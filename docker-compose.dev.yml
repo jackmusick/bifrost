@@ -34,6 +34,8 @@ services:
       - ./api/shared:/app/shared:ro
       - ./api/bifrost:/app/bifrost:ro
       - ./api/platform:/app/platform:ro
+    command: >
+      watchmedo auto-restart --directory=/app/src --directory=/app/shared --pattern="*.py" --recursive -- python -m src.discovery.main
 
   # Scheduler with hot reload for development
   scheduler:
@@ -42,6 +44,8 @@ services:
       - ./api/shared:/app/shared:ro
       - ./api/bifrost:/app/bifrost:ro
       - ./api/platform:/app/platform:ro
+    command: >
+      watchmedo auto-restart --directory=/app/src --directory=/app/shared --pattern="*.py" --recursive -- python -m src.scheduler.main
 
   # Worker with hot reload for development
   worker:
@@ -50,13 +54,15 @@ services:
       - ./api/shared:/app/shared:ro
       - ./api/bifrost:/app/bifrost:ro
       - ./api/platform:/app/platform:ro
+    command: >
+      watchmedo auto-restart --directory=/app/src --directory=/app/shared --pattern="*.py" --recursive -- python -m src.worker.main
 
   # Client with hot reload for development
   client:
     build:
       context: ./client
       dockerfile: Dockerfile.dev
-      target: ""  # Clear the production target from base compose file
+      target: "" # Clear the production target from base compose file
     volumes:
       - ./client/src:/app/src
       - ./client/public:/app/public

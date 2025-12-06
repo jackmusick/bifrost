@@ -225,6 +225,7 @@ services:
       - ./api/shared:/app/shared:ro
       - ./api/bifrost:/app/bifrost:ro
       - ./api/platform:/app/platform:ro
+      - ./api/stubs:/app/stubs:ro
       - ./api/tests:/app/tests:ro
       - ./api/alembic:/app/alembic:ro
       - ./api/alembic.ini:/app/alembic.ini:ro

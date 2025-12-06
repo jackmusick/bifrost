@@ -1,9 +1,15 @@
 """
 Async Workflow Execution
-Handles queueing and execution of long-running workflows via RabbitMQ
+Handles queueing of workflows via Redis + RabbitMQ
+
+Flow:
+1. API stores pending execution in Redis
+2. API publishes message to RabbitMQ
+3. API returns execution_id immediately (<100ms)
+4. Worker reads from Redis, writes to PostgreSQL, executes
 
 For sync execution (sync=True):
-- Caller provides execution_id
+- Caller provides execution_id (already stored in Redis)
 - Worker pushes result to Redis
 - Caller waits on Redis BLPOP
 """
@@ -12,8 +18,6 @@ import logging
 import uuid
 from typing import Any
 
-from shared.execution_logger import get_execution_logger
-from shared.models import ExecutionStatus
 from shared.context import ExecutionContext
 
 logger = logging.getLogger(__name__)
@@ -33,8 +37,8 @@ async def enqueue_workflow_execution(
     """
     Enqueue a workflow or script for async execution.
 
-    Creates execution record with status=PENDING, enqueues message to RabbitMQ,
-    and returns execution ID immediately (<500ms).
+    Stores pending execution in Redis, publishes to RabbitMQ,
+    and returns execution ID immediately (<100ms target).
 
     Args:
         context: Request context with org scope and user info
@@ -48,52 +52,34 @@ async def enqueue_workflow_execution(
     Returns:
         execution_id: UUID of the queued execution
     """
+    from src.core.redis_client import get_redis_client
     from src.jobs.rabbitmq import publish_message
 
+    redis_client = get_redis_client()
+
     # Generate or use provided execution ID
-    # If execution_id is provided (sync execution), record already exists
-    skip_record_creation = execution_id is not None
+    # If execution_id is provided (sync execution), pending record may already exist
     if execution_id is None:
         execution_id = str(uuid.uuid4())
 
-    # Create execution record with PENDING status (unless already exists)
-    if not skip_record_creation:
-        exec_logger = get_execution_logger()
-
-        # Initialize Web PubSub broadcaster for real-time updates
-        from shared.webpubsub_broadcaster import WebPubSubBroadcaster
-        broadcaster = WebPubSubBroadcaster()
-
-        await exec_logger.create_execution(
+    # Store pending execution in Redis (unless sync with pre-existing record)
+    # For sync execution, the caller already created the pending record
+    if not sync:
+        await redis_client.set_pending_execution(
             execution_id=execution_id,
+            workflow_name=workflow_name,
+            parameters=parameters,
             org_id=context.org_id,
             user_id=context.user_id,
             user_name=context.name,
-            workflow_name=workflow_name,
-            input_data=parameters,
+            user_email=context.email,
             form_id=form_id,
-            webpubsub_broadcaster=broadcaster
         )
 
-        # Update status to PENDING (queued) - will broadcast to history page
-        await exec_logger.update_execution(
-            execution_id=execution_id,
-            org_id=context.org_id,
-            user_id=context.user_id,
-            status=ExecutionStatus.PENDING,
-            webpubsub_broadcaster=broadcaster
-        )
-
-    # Prepare queue message
+    # Prepare queue message (minimal - worker reads full context from Redis)
     message = {
         "execution_id": execution_id,
         "workflow_name": workflow_name,
-        "org_id": context.org_id,
-        "user_id": context.user_id,
-        "user_name": context.name,
-        "user_email": context.email,
-        "parameters": parameters,
-        "form_id": form_id,
         "code": code_base64,  # Optional: for inline scripts
         "sync": sync,  # If True, worker pushes result to Redis
     }

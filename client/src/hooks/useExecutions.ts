@@ -40,6 +40,17 @@ export function useExecution(
 		queryFn: () => executionsService.getExecution(executionId!),
 		enabled: !!executionId,
 		staleTime: 0, // No caching - always fetch fresh data
+		// Retry on 404 for a short period (Redis-first architecture)
+		// The execution may be in Redis pending but not yet in PostgreSQL
+		retry: (failureCount, error) => {
+			// Only retry 404s up to 5 times (10 seconds total with 2s interval)
+			if (error instanceof Error && error.message.includes("404")) {
+				return failureCount < 5;
+			}
+			// Don't retry other errors
+			return false;
+		},
+		retryDelay: 2000, // Retry every 2 seconds
 		refetchInterval: (query) => {
 			// Disable polling if Web PubSub is handling updates
 			if (disablePolling) {
@@ -47,9 +58,13 @@ export function useExecution(
 			}
 
 			// Poll every 2 seconds if status is Pending or Running
+			// Also poll if we haven't got data yet (waiting for worker to create record)
 			// This gives a near-real-time experience in local dev without Web PubSub
 			// In production with Web PubSub, this is just a backup
 			const status = query.state.data?.status;
+			if (!query.state.data) {
+				return 2000; // Poll while waiting for execution to appear
+			}
 			return status === "Pending" || status === "Running" ? 2000 : false;
 		},
 	});

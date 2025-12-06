@@ -14,6 +14,7 @@ from sqlalchemy import select, update
 
 from src.core.database import get_session_factory
 from src.models.database import Execution as ExecutionModel
+from src.models.enums import ExecutionStatus
 
 logger = logging.getLogger(__name__)
 
@@ -36,6 +37,79 @@ async def get_execution_status(execution_id: str, org_id: str | None) -> str | N
         )
         status = result.scalar_one_or_none()
         return status
+
+
+async def create_execution(
+    execution_id: str,
+    workflow_name: str,
+    parameters: dict[str, Any],
+    org_id: str | None,
+    user_id: str,
+    user_name: str,
+    form_id: str | None = None,
+    status: "ExecutionStatus" = ExecutionStatus.RUNNING,
+) -> None:
+    """
+    Create a new execution record in PostgreSQL.
+
+    Called by worker when it picks up a job from the queue.
+    This replaces the previous flow where API created the record.
+
+    Args:
+        execution_id: Execution ID (from Redis pending record)
+        workflow_name: Name of workflow to execute
+        parameters: Workflow input parameters
+        org_id: Organization ID (None for GLOBAL scope)
+        user_id: User ID who initiated execution
+        user_name: Display name of user
+        form_id: Optional form ID if triggered by form
+        status: Initial status (default RUNNING)
+    """
+    session_factory = get_session_factory()
+    async with session_factory() as db:
+        # Parse org_id - strip "ORG:" prefix if present
+        parsed_org_id = None
+        if org_id and org_id != "GLOBAL":
+            if org_id.startswith("ORG:"):
+                parsed_org_id = UUID(org_id[4:])
+            else:
+                parsed_org_id = UUID(org_id)
+
+        # Parse user_id - handle API key format
+        parsed_user_id: UUID
+        if user_id.startswith("api-key:"):
+            # For API key executions, we need a valid UUID
+            # Use a deterministic UUID based on the key ID
+            key_id = user_id.split(":")[1]
+            try:
+                parsed_user_id = UUID(key_id)
+            except ValueError:
+                # If key_id isn't a UUID, generate one deterministically
+                import hashlib
+                hash_bytes = hashlib.md5(key_id.encode()).digest()
+                parsed_user_id = UUID(bytes=hash_bytes)
+        else:
+            parsed_user_id = UUID(user_id)
+
+        # Parse form_id if present
+        parsed_form_id = UUID(form_id) if form_id else None
+
+        execution = ExecutionModel(
+            id=UUID(execution_id),
+            workflow_name=workflow_name,
+            status=status,
+            parameters=parameters,
+            executed_by=parsed_user_id,
+            executed_by_name=user_name,
+            organization_id=parsed_org_id,
+            form_id=parsed_form_id,
+            started_at=datetime.utcnow(),
+        )
+
+        db.add(execution)
+        await db.commit()
+
+        logger.info(f"Created execution record: {execution_id} (status={status.value})")
 
 
 async def update_execution(

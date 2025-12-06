@@ -48,9 +48,32 @@ class OAuthStorageService:
     - Implement org→GLOBAL fallback pattern
     """
 
-    def __init__(self):
-        """Initialize OAuth storage service."""
+    def __init__(self, session: Any = None):
+        """Initialize OAuth storage service.
+
+        Args:
+            session: Optional async database session. If provided, this session
+                     will be used for all operations. If not provided, creates
+                     new sessions internally using get_session_factory().
+        """
+        self._session = session
         logger.info("OAuthStorageService initialized with PostgreSQL")
+
+    def _get_session_context(self) -> Any:
+        """Get session context manager.
+
+        Returns the injected session if available, otherwise creates a new one.
+        """
+        from contextlib import asynccontextmanager
+
+        if self._session is not None:
+            @asynccontextmanager
+            async def injected_session():
+                yield self._session
+            return injected_session()
+
+        from src.core.database import get_session_factory
+        return get_session_factory()()
 
     async def create_connection(
         self,
@@ -69,15 +92,13 @@ class OAuthStorageService:
         Returns:
             Created OAuthConnection
         """
-        from src.core.database import get_session_factory
         from src.models import OAuthProvider
 
-        session_factory = get_session_factory()
-        async with session_factory() as db:
+        async with self._get_session_context() as db:
             org_uuid = UUID(org_id) if org_id and org_id != "GLOBAL" else None
 
-            # Encrypt client secret
-            encrypted_secret = _encrypt(request.client_secret)
+            # Encrypt client secret (required for most flows, validated by model)
+            encrypted_secret = _encrypt(request.client_secret) if request.client_secret else None
 
             provider = OAuthProvider(
                 organization_id=org_uuid,
@@ -117,11 +138,9 @@ class OAuthStorageService:
             OAuthConnection or None if not found
         """
         from sqlalchemy import select, or_
-        from src.core.database import get_session_factory
         from src.models import OAuthProvider
 
-        session_factory = get_session_factory()
-        async with session_factory() as db:
+        async with self._get_session_context() as db:
             org_uuid = UUID(org_id) if org_id and org_id != "GLOBAL" else None
 
             # Try org-specific first, then GLOBAL fallback
@@ -166,11 +185,9 @@ class OAuthStorageService:
             Updated OAuthConnection or None if not found
         """
         from sqlalchemy import select
-        from src.core.database import get_session_factory
         from src.models import OAuthProvider
 
-        session_factory = get_session_factory()
-        async with session_factory() as db:
+        async with self._get_session_context() as db:
             org_uuid = UUID(org_id) if org_id and org_id != "GLOBAL" else None
 
             query = select(OAuthProvider).where(
@@ -189,7 +206,7 @@ class OAuthStorageService:
             if request.client_secret:
                 provider.encrypted_client_secret = _encrypt(request.client_secret)
             if request.scopes:
-                provider.scopes = request.scopes.split(",")
+                provider.scopes = request.scopes  # Already a list from validator
 
             # Update metadata
             metadata = dict(provider.provider_metadata)
@@ -221,11 +238,9 @@ class OAuthStorageService:
             True if deleted, False if not found
         """
         from sqlalchemy import select, delete
-        from src.core.database import get_session_factory
         from src.models import OAuthProvider, OAuthToken
 
-        session_factory = get_session_factory()
-        async with session_factory() as db:
+        async with self._get_session_context() as db:
             org_uuid = UUID(org_id) if org_id and org_id != "GLOBAL" else None
 
             query = select(OAuthProvider).where(
@@ -263,11 +278,9 @@ class OAuthStorageService:
             List of OAuthConnections
         """
         from sqlalchemy import select, or_
-        from src.core.database import get_session_factory
         from src.models import OAuthProvider
 
-        session_factory = get_session_factory()
-        async with session_factory() as db:
+        async with self._get_session_context() as db:
             org_uuid = UUID(org_id) if org_id and org_id != "GLOBAL" else None
 
             if org_uuid:
@@ -315,11 +328,9 @@ class OAuthStorageService:
             True if stored successfully
         """
         from sqlalchemy import select
-        from src.core.database import get_session_factory
         from src.models import OAuthProvider, OAuthToken
 
-        session_factory = get_session_factory()
-        async with session_factory() as db:
+        async with self._get_session_context() as db:
             org_uuid = UUID(org_id) if org_id and org_id != "GLOBAL" else None
             user_uuid = UUID(user_id) if user_id else None
 
@@ -390,11 +401,9 @@ class OAuthStorageService:
             Dict with token info or None if not found
         """
         from sqlalchemy import select
-        from src.core.database import get_session_factory
         from src.models import OAuthProvider, OAuthToken
 
-        session_factory = get_session_factory()
-        async with session_factory() as db:
+        async with self._get_session_context() as db:
             org_uuid = UUID(org_id) if org_id and org_id != "GLOBAL" else None
             user_uuid = UUID(user_id) if user_id else None
 
@@ -430,15 +439,22 @@ class OAuthStorageService:
     def _to_connection_model(self, provider) -> OAuthConnection:
         """Convert OAuthProvider to OAuthConnection model."""
         metadata = provider.provider_metadata or {}
+        org_id = str(provider.organization_id) if provider.organization_id else "GLOBAL"
         return OAuthConnection(
+            org_id=org_id,
             connection_name=provider.provider_name,
+            description=metadata.get("description"),
             oauth_flow_type=metadata.get("oauth_flow_type", "authorization_code"),
             client_id=provider.client_id,
+            client_secret_config_key=f"oauth_{provider.provider_name}_client_secret",
+            oauth_response_config_key=f"oauth_{provider.provider_name}_oauth_response",
             authorization_url=metadata.get("authorization_url"),
-            token_url=metadata.get("token_url"),
+            token_url=metadata.get("token_url", "https://oauth.example.com/token"),
             scopes=",".join(provider.scopes) if provider.scopes else "",
-            redirect_uri=metadata.get("redirect_uri"),
+            redirect_uri=metadata.get("redirect_uri", f"/oauth/callback/{provider.provider_name}"),
+            expires_at=None,
             status=metadata.get("status", "not_connected"),
+            created_by=metadata.get("created_by", "system"),
             created_at=provider.created_at,
             updated_at=provider.updated_at
         )

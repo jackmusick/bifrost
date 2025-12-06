@@ -3,6 +3,9 @@ Test forms file system synchronization.
 
 Verifies that forms are persisted to *.form.json files and that
 the discovery watcher syncs file changes to the database.
+
+NOTE: These tests require the full API stack running (http_client connects to api:8000).
+Run with `./test.sh --e2e` to include these tests.
 """
 
 import json
@@ -18,6 +21,7 @@ from src.models.orm import Form as FormORM
 from tests.helpers.mock_auth import create_platform_admin_headers
 
 
+@pytest.mark.e2e
 @pytest.mark.asyncio
 async def test_form_create_writes_to_file_system(http_client: AsyncClient, integration_db_session):
     """Test that creating a form via API writes to file system."""
@@ -71,6 +75,7 @@ async def test_form_create_writes_to_file_system(http_client: AsyncClient, integ
     form_file.unlink()
 
 
+@pytest.mark.e2e
 @pytest.mark.asyncio
 async def test_form_update_syncs_to_file_system(http_client: AsyncClient, integration_db_session):
     """Test that updating a form syncs changes to file system."""
@@ -140,6 +145,7 @@ async def test_form_update_syncs_to_file_system(http_client: AsyncClient, integr
     updated_file.unlink()
 
 
+@pytest.mark.e2e
 @pytest.mark.asyncio
 async def test_form_delete_deactivates_in_file_system(http_client: AsyncClient, integration_db_session):
     """Test that deleting a form sets isActive=false in file system."""
@@ -198,6 +204,7 @@ async def test_form_delete_deactivates_in_file_system(http_client: AsyncClient, 
     form_file.unlink()
 
 
+@pytest.mark.e2e
 @pytest.mark.skip(reason="Requires discovery watcher container running - test in E2E mode")
 @pytest.mark.asyncio
 async def test_manual_form_file_synced_to_database(http_client: AsyncClient, integration_db_session):

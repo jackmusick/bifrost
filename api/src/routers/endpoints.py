@@ -17,7 +17,6 @@ Architecture:
 """
 
 import logging
-from datetime import datetime
 from typing import Any
 from uuid import uuid4
 
@@ -28,8 +27,6 @@ from shared.context import ExecutionContext
 from shared.discovery import get_workflow
 from src.core.database import get_db_context
 from src.core.redis_client import get_redis_client, DEFAULT_TIMEOUT_SECONDS
-from src.models import Execution
-from src.models.enums import ExecutionStatus as DbExecutionStatus
 from src.routers.workflow_keys import validate_workflow_key
 
 logger = logging.getLogger(__name__)
@@ -213,36 +210,30 @@ async def _execute_sync(
 
     Instead of executing workflow directly (which would block and require
     filesystem access), we:
-    1. Create execution record
+    1. Store pending execution in Redis
     2. Queue to RabbitMQ with sync=True
     3. Wait for result via Redis BLPOP
     4. Return result to caller
 
     This allows the API to stay lightweight without filesystem access.
+    Worker will write to PostgreSQL when it starts execution.
     """
     from shared.async_executor import enqueue_workflow_execution
-    from src.core.database import get_session_factory
-    from src.core.pubsub import publish_execution_update
 
     execution_id = str(uuid4())
-    start_time = datetime.utcnow()
 
-    # Create execution record
-    session_factory = get_session_factory()
-    async with session_factory() as db:
-        execution = Execution(
-            id=execution_id,
-            workflow_name=workflow_name,
-            status=DbExecutionStatus.PENDING,
-            parameters=input_data,
-            executed_by=None,  # API key execution
-            executed_by_name="API Key",
-            created_at=start_time,
-        )
-        db.add(execution)
-        await db.commit()
-
-    await publish_execution_update(execution_id, "Pending")
+    # Store pending execution in Redis
+    redis_client = get_redis_client()
+    await redis_client.set_pending_execution(
+        execution_id=execution_id,
+        workflow_name=workflow_name,
+        parameters=input_data,
+        org_id=context.org_id,
+        user_id=context.user_id,
+        user_name=context.name or "API Key",
+        user_email=context.email or "",
+        form_id=None,
+    )
 
     # Get timeout from workflow metadata (default 5 minutes)
     timeout_seconds = getattr(workflow_metadata, "timeout_seconds", DEFAULT_TIMEOUT_SECONDS)
@@ -260,7 +251,6 @@ async def _execute_sync(
     logger.info(f"Queued sync workflow execution: {workflow_name} ({execution_id})")
 
     # Wait for result from Redis
-    redis_client = get_redis_client()
     result = await redis_client.wait_for_result(
         execution_id=execution_id,
         timeout_seconds=timeout_seconds,

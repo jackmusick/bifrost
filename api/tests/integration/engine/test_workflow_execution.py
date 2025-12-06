@@ -3,7 +3,7 @@ Integration Tests for Workflow Execution
 End-to-end tests for the workflow execution endpoint
 """
 
-from unittest.mock import MagicMock, patch
+from unittest.mock import MagicMock
 
 import pytest
 
@@ -140,40 +140,3 @@ class TestWorkflowExecutionEndpoint:
         assert result["step"] == "validation"
 
 
-class TestExecutionLogger:
-    """Test the ExecutionLogger directly"""
-
-    @pytest.mark.skip(reason="ExecutionLogger requires Azure Blob Storage - needs migration")
-    @pytest.mark.asyncio
-    async def test_create_execution_dual_indexing(self, mock_table_storage):
-        """Test that create_execution uses ExecutionRepository"""
-        from shared.execution_logger import ExecutionLogger
-        from unittest.mock import AsyncMock
-
-        # Mock ExecutionRepository
-        mock_exec_repo = MagicMock()
-        mock_execution = MagicMock()
-        mock_execution.model_dump.return_value = {
-            "execution_id": "test-exec-123",
-            "org_id": "org-456"
-        }
-        mock_exec_repo.create_execution = AsyncMock(return_value=mock_execution)
-
-        with patch('shared.execution_logger.ExecutionRepository') as mock_repo_class:
-            with patch('shared.execution_logger.get_blob_service') as mock_blob:
-                mock_repo_class.return_value = mock_exec_repo
-                mock_blob.return_value = MagicMock()
-
-                logger = ExecutionLogger()
-
-                await logger.create_execution(
-                    execution_id="test-exec-123",
-                    org_id="org-456",
-                    user_id="user-789",
-                    user_name="Test User",
-                    workflow_name="test_workflow",
-                    input_data={"key": "value"},
-                    form_id="form-abc")
-
-                # Verify repository was called
-                mock_exec_repo.create_execution.assert_called_once()

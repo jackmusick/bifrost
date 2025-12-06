@@ -7,7 +7,7 @@ These models define the database schema and relationships.
 For API schemas (Create/Update/Public), see schemas.py
 """
 
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import TYPE_CHECKING
 from uuid import UUID, uuid4
 
@@ -45,6 +45,7 @@ if TYPE_CHECKING:
 
 class Base(DeclarativeBase):
     """Base class for all ORM models."""
+
     pass
 
 
@@ -55,6 +56,7 @@ class Base(DeclarativeBase):
 
 class Organization(Base):
     """Organization database table."""
+
     __tablename__ = "organizations"
 
     id: Mapped[UUID] = mapped_column(primary_key=True, default=uuid4)
@@ -67,8 +69,10 @@ class Organization(Base):
     )
     created_by: Mapped[str] = mapped_column(String(255))
     updated_at: Mapped[datetime] = mapped_column(
-        DateTime, default=datetime.utcnow, server_default=text("NOW()"),
-        onupdate=datetime.utcnow
+        DateTime,
+        default=datetime.utcnow,
+        server_default=text("NOW()"),
+        onupdate=datetime.utcnow,
     )
 
     # Relationships
@@ -76,11 +80,11 @@ class Organization(Base):
     forms: Mapped[list["Form"]] = relationship(back_populates="organization")
     executions: Mapped[list["Execution"]] = relationship(back_populates="organization")
     configs: Mapped[list["Config"]] = relationship(back_populates="organization")
-    system_configs: Mapped[list["SystemConfig"]] = relationship(back_populates="organization")
-
-    __table_args__ = (
-        Index("ix_organizations_domain", "domain"),
+    system_configs: Mapped[list["SystemConfig"]] = relationship(
+        back_populates="organization"
     )
+
+    __table_args__ = (Index("ix_organizations_domain", "domain"),)
 
 
 # =============================================================================
@@ -90,6 +94,7 @@ class Organization(Base):
 
 class User(Base):
     """User database table."""
+
     __tablename__ = "users"
 
     id: Mapped[UUID] = mapped_column(primary_key=True, default=uuid4)
@@ -101,15 +106,15 @@ class User(Base):
     is_verified: Mapped[bool] = mapped_column(Boolean, default=False)
     is_registered: Mapped[bool] = mapped_column(Boolean, default=True)
     mfa_enabled: Mapped[bool] = mapped_column(Boolean, default=False)
-    mfa_enforced_at: Mapped[datetime | None] = mapped_column(DateTime, default=None)
+    mfa_enforced_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), default=None)
     user_type: Mapped[UserType] = mapped_column(
         SQLAlchemyEnum(
             UserType,
             name="user_type",
             create_type=False,
-            values_callable=lambda x: [e.value for e in x]
+            values_callable=lambda x: [e.value for e in x],
         ),
-        default=UserType.ORG
+        default=UserType.ORG,
     )
     organization_id: Mapped[UUID | None] = mapped_column(
         ForeignKey("organizations.id"), default=None
@@ -119,18 +124,26 @@ class User(Base):
         DateTime, default=datetime.utcnow, server_default=text("NOW()")
     )
     updated_at: Mapped[datetime] = mapped_column(
-        DateTime, default=datetime.utcnow, server_default=text("NOW()"),
-        onupdate=datetime.utcnow
+        DateTime,
+        default=datetime.utcnow,
+        server_default=text("NOW()"),
+        onupdate=datetime.utcnow,
     )
 
     # Relationships
     organization: Mapped[Organization | None] = relationship(back_populates="users")
     roles: Mapped[list["UserRole"]] = relationship(back_populates="user")
-    executions: Mapped[list["Execution"]] = relationship(back_populates="executed_by_user")
+    executions: Mapped[list["Execution"]] = relationship(
+        back_populates="executed_by_user"
+    )
     mfa_methods: Mapped[list["UserMFAMethod"]] = relationship(back_populates="user")
-    recovery_codes: Mapped[list["MFARecoveryCode"]] = relationship(back_populates="user")
+    recovery_codes: Mapped[list["MFARecoveryCode"]] = relationship(
+        back_populates="user"
+    )
     trusted_devices: Mapped[list["TrustedDevice"]] = relationship(back_populates="user")
-    oauth_accounts: Mapped[list["UserOAuthAccount"]] = relationship(back_populates="user")
+    oauth_accounts: Mapped[list["UserOAuthAccount"]] = relationship(
+        back_populates="user"
+    )
 
     __table_args__ = (
         Index("ix_users_email", "email"),
@@ -145,6 +158,7 @@ class User(Base):
 
 class Role(Base):
     """Role database table."""
+
     __tablename__ = "roles"
 
     id: Mapped[UUID] = mapped_column(primary_key=True, default=uuid4)
@@ -159,20 +173,21 @@ class Role(Base):
         DateTime, default=datetime.utcnow, server_default=text("NOW()")
     )
     updated_at: Mapped[datetime] = mapped_column(
-        DateTime, default=datetime.utcnow, server_default=text("NOW()"),
-        onupdate=datetime.utcnow
+        DateTime,
+        default=datetime.utcnow,
+        server_default=text("NOW()"),
+        onupdate=datetime.utcnow,
     )
 
     # Relationships
     users: Mapped[list["UserRole"]] = relationship(back_populates="role")
 
-    __table_args__ = (
-        Index("ix_roles_organization_id", "organization_id"),
-    )
+    __table_args__ = (Index("ix_roles_organization_id", "organization_id"),)
 
 
 class UserRole(Base):
     """User-Role association table."""
+
     __tablename__ = "user_roles"
 
     user_id: Mapped[UUID] = mapped_column(ForeignKey("users.id"), primary_key=True)
@@ -194,10 +209,13 @@ class UserRole(Base):
 
 class FormField(Base):
     """Form field database table."""
+
     __tablename__ = "form_fields"
 
     id: Mapped[UUID] = mapped_column(primary_key=True, default=uuid4)
-    form_id: Mapped[UUID] = mapped_column(ForeignKey("forms.id", ondelete="CASCADE"), nullable=False)
+    form_id: Mapped[UUID] = mapped_column(
+        ForeignKey("forms.id", ondelete="CASCADE"), nullable=False
+    )
     name: Mapped[str] = mapped_column(String(100), nullable=False)
     label: Mapped[str | None] = mapped_column(String(200), default=None)
     type: Mapped[str] = mapped_column(String(50), nullable=False)
@@ -228,8 +246,15 @@ class FormField(Base):
     # For markdown/html fields
     content: Mapped[str | None] = mapped_column(Text, default=None)
 
-    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, server_default=text("NOW()"))
-    updated_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, server_default=text("NOW()"), onupdate=datetime.utcnow)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime, default=datetime.utcnow, server_default=text("NOW()")
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime,
+        default=datetime.utcnow,
+        server_default=text("NOW()"),
+        onupdate=datetime.utcnow,
+    )
 
     # Relationships
     form: Mapped["Form"] = relationship(back_populates="fields")
@@ -237,6 +262,7 @@ class FormField(Base):
 
 class Form(Base):
     """Form database table."""
+
     __tablename__ = "forms"
 
     id: Mapped[UUID] = mapped_column(primary_key=True, default=uuid4)
@@ -251,9 +277,9 @@ class Form(Base):
             FormAccessLevel,
             name="form_access_level",
             create_type=False,
-            values_callable=lambda x: [e.value for e in x]
+            values_callable=lambda x: [e.value for e in x],
         ),
-        default=FormAccessLevel.ROLE_BASED
+        default=FormAccessLevel.ROLE_BASED,
     )
     is_active: Mapped[bool] = mapped_column(Boolean, default=True)
     organization_id: Mapped[UUID | None] = mapped_column(
@@ -264,8 +290,10 @@ class Form(Base):
         DateTime, default=datetime.utcnow, server_default=text("NOW()")
     )
     updated_at: Mapped[datetime] = mapped_column(
-        DateTime, default=datetime.utcnow, server_default=text("NOW()"),
-        onupdate=datetime.utcnow
+        DateTime,
+        default=datetime.utcnow,
+        server_default=text("NOW()"),
+        onupdate=datetime.utcnow,
     )
 
     # Discovery metadata (synced from file watcher)
@@ -276,11 +304,16 @@ class Form(Base):
     # Relationships
     organization: Mapped[Organization | None] = relationship(back_populates="forms")
     executions: Mapped[list["Execution"]] = relationship(back_populates="form")
-    fields: Mapped[list["FormField"]] = relationship(back_populates="form", cascade="all, delete-orphan", order_by="FormField.position")
+    fields: Mapped[list["FormField"]] = relationship(
+        back_populates="form",
+        cascade="all, delete-orphan",
+        order_by="FormField.position",
+    )
 
 
 class FormRole(Base):
     """Form-Role association table."""
+
     __tablename__ = "form_roles"
 
     form_id: Mapped[UUID] = mapped_column(ForeignKey("forms.id"), primary_key=True)
@@ -298,6 +331,7 @@ class FormRole(Base):
 
 class Execution(Base):
     """Execution database table."""
+
     __tablename__ = "executions"
 
     id: Mapped[UUID] = mapped_column(primary_key=True, default=uuid4)
@@ -308,9 +342,9 @@ class Execution(Base):
             ExecutionStatus,
             name="execution_status",
             create_type=False,
-            values_callable=lambda x: [e.value for e in x]
+            values_callable=lambda x: [e.value for e in x],
         ),
-        default=ExecutionStatus.PENDING
+        default=ExecutionStatus.PENDING,
     )
     parameters: Mapped[dict] = mapped_column(JSONB, default={})
     result: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
@@ -339,7 +373,9 @@ class Execution(Base):
 
     # Relationships
     executed_by_user: Mapped[User] = relationship(back_populates="executions")
-    organization: Mapped[Organization | None] = relationship(back_populates="executions")
+    organization: Mapped[Organization | None] = relationship(
+        back_populates="executions"
+    )
     form: Mapped[Form | None] = relationship(back_populates="executions")
     logs: Mapped[list["ExecutionLog"]] = relationship(back_populates="execution")
 
@@ -353,6 +389,7 @@ class Execution(Base):
 
 class ExecutionLog(Base):
     """Execution log entries."""
+
     __tablename__ = "execution_logs"
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
@@ -368,9 +405,7 @@ class ExecutionLog(Base):
     # Relationships
     execution: Mapped[Execution] = relationship(back_populates="logs")
 
-    __table_args__ = (
-        Index("ix_execution_logs_exec_seq", "execution_id", "sequence"),
-    )
+    __table_args__ = (Index("ix_execution_logs_exec_seq", "execution_id", "sequence"),)
 
 
 # =============================================================================
@@ -380,6 +415,7 @@ class ExecutionLog(Base):
 
 class Config(Base):
     """Configuration key-value store."""
+
     __tablename__ = "configs"
 
     id: Mapped[UUID] = mapped_column(primary_key=True, default=uuid4)
@@ -390,9 +426,9 @@ class Config(Base):
             ConfigType,
             name="config_type",
             create_type=False,
-            values_callable=lambda x: [e.value for e in x]
+            values_callable=lambda x: [e.value for e in x],
         ),
-        default=ConfigType.STRING
+        default=ConfigType.STRING,
     )
     description: Mapped[str | None] = mapped_column(Text, default=None)
     organization_id: Mapped[UUID | None] = mapped_column(
@@ -402,8 +438,10 @@ class Config(Base):
         DateTime, default=datetime.utcnow, server_default=text("NOW()")
     )
     updated_at: Mapped[datetime] = mapped_column(
-        DateTime, default=datetime.utcnow, server_default=text("NOW()"),
-        onupdate=datetime.utcnow
+        DateTime,
+        default=datetime.utcnow,
+        server_default=text("NOW()"),
+        onupdate=datetime.utcnow,
     )
     updated_by: Mapped[str] = mapped_column(String(255))
 
@@ -427,6 +465,7 @@ class Workflow(Base):
     This table stores workflow metadata discovered from Python files in the
     workspace. The discovery watcher syncs file changes to this table.
     """
+
     __tablename__ = "workflows"
 
     id: Mapped[UUID] = mapped_column(primary_key=True, default=uuid4)
@@ -437,11 +476,15 @@ class Workflow(Base):
     # File discovery metadata
     file_path: Mapped[str] = mapped_column(String(1000))
     module_path: Mapped[str | None] = mapped_column(String(500), default=None)
-    schedule: Mapped[str | None] = mapped_column(String(100), default=None)  # CRON expression
+    schedule: Mapped[str | None] = mapped_column(
+        String(100), default=None
+    )  # CRON expression
     parameters_schema: Mapped[list] = mapped_column(JSONB, default=[])
     tags: Mapped[list] = mapped_column(JSONB, default=[])
     is_active: Mapped[bool] = mapped_column(Boolean, default=True, index=True)
-    is_platform: Mapped[bool] = mapped_column(Boolean, default=False, index=True)  # True if from platform/ directory
+    is_platform: Mapped[bool] = mapped_column(
+        Boolean, default=False, index=True
+    )  # True if from platform/ directory
     last_seen_at: Mapped[datetime | None] = mapped_column(DateTime, default=None)
 
     # Endpoint configuration
@@ -450,12 +493,16 @@ class Workflow(Base):
     execution_mode: Mapped[str] = mapped_column(String(20), default="sync")
 
     # API key (one per workflow, replaces workflow_keys table)
-    api_key_hash: Mapped[str | None] = mapped_column(String(64), default=None)  # SHA-256 hash
+    api_key_hash: Mapped[str | None] = mapped_column(
+        String(64), default=None
+    )  # SHA-256 hash
     api_key_description: Mapped[str | None] = mapped_column(Text, default=None)
     api_key_enabled: Mapped[bool] = mapped_column(Boolean, default=False)
     api_key_created_by: Mapped[str | None] = mapped_column(String(255), default=None)
     api_key_created_at: Mapped[datetime | None] = mapped_column(DateTime, default=None)
-    api_key_last_used_at: Mapped[datetime | None] = mapped_column(DateTime, default=None)
+    api_key_last_used_at: Mapped[datetime | None] = mapped_column(
+        DateTime, default=None
+    )
     api_key_expires_at: Mapped[datetime | None] = mapped_column(DateTime, default=None)
 
     # Timestamps
@@ -463,13 +510,23 @@ class Workflow(Base):
         DateTime, default=datetime.utcnow, server_default=text("NOW()")
     )
     updated_at: Mapped[datetime] = mapped_column(
-        DateTime, default=datetime.utcnow, server_default=text("NOW()"),
-        onupdate=datetime.utcnow
+        DateTime,
+        default=datetime.utcnow,
+        server_default=text("NOW()"),
+        onupdate=datetime.utcnow,
     )
 
     __table_args__ = (
-        Index("ix_workflows_schedule", "schedule", postgresql_where=text("schedule IS NOT NULL")),
-        Index("ix_workflows_api_key_hash", "api_key_hash", postgresql_where=text("api_key_hash IS NOT NULL")),
+        Index(
+            "ix_workflows_schedule",
+            "schedule",
+            postgresql_where=text("schedule IS NOT NULL"),
+        ),
+        Index(
+            "ix_workflows_api_key_hash",
+            "api_key_hash",
+            postgresql_where=text("api_key_hash IS NOT NULL"),
+        ),
     )
 
 
@@ -485,6 +542,7 @@ class DataProvider(Base):
     This table stores data provider metadata discovered from Python files
     in the workspace. The discovery watcher syncs file changes to this table.
     """
+
     __tablename__ = "data_providers"
 
     id: Mapped[UUID] = mapped_column(primary_key=True, default=uuid4)
@@ -498,8 +556,10 @@ class DataProvider(Base):
         DateTime, default=datetime.utcnow, server_default=text("NOW()")
     )
     updated_at: Mapped[datetime] = mapped_column(
-        DateTime, default=datetime.utcnow, server_default=text("NOW()"),
-        onupdate=datetime.utcnow
+        DateTime,
+        default=datetime.utcnow,
+        server_default=text("NOW()"),
+        onupdate=datetime.utcnow,
     )
 
 
@@ -527,13 +587,16 @@ class DataProvider(Base):
 
 class OAuthProvider(Base):
     """OAuth provider configuration."""
+
     __tablename__ = "oauth_providers"
 
     id: Mapped[UUID] = mapped_column(primary_key=True, default=uuid4)
     provider_name: Mapped[str] = mapped_column(String(100))
     display_name: Mapped[str | None] = mapped_column(String(255), default=None)
     description: Mapped[str | None] = mapped_column(Text, default=None)
-    oauth_flow_type: Mapped[str] = mapped_column(String(50), default="authorization_code")
+    oauth_flow_type: Mapped[str] = mapped_column(
+        String(50), default="authorization_code"
+    )
     client_id: Mapped[str] = mapped_column(String(255))
     encrypted_client_secret: Mapped[bytes] = mapped_column(LargeBinary)
     authorization_url: Mapped[str | None] = mapped_column(String(500), default=None)
@@ -552,20 +615,28 @@ class OAuthProvider(Base):
         DateTime, default=datetime.utcnow, server_default=text("NOW()")
     )
     updated_at: Mapped[datetime] = mapped_column(
-        DateTime, default=datetime.utcnow, server_default=text("NOW()"),
-        onupdate=datetime.utcnow
+        DateTime,
+        default=datetime.utcnow,
+        server_default=text("NOW()"),
+        onupdate=datetime.utcnow,
     )
 
     # Relationships
     tokens: Mapped[list["OAuthToken"]] = relationship(back_populates="provider")
 
     __table_args__ = (
-        Index("ix_oauth_providers_org_name", "organization_id", "provider_name", unique=True),
+        Index(
+            "ix_oauth_providers_org_name",
+            "organization_id",
+            "provider_name",
+            unique=True,
+        ),
     )
 
 
 class OAuthToken(Base):
     """OAuth tokens for integration connections."""
+
     __tablename__ = "oauth_tokens"
 
     id: Mapped[UUID] = mapped_column(primary_key=True, default=uuid4)
@@ -575,15 +646,19 @@ class OAuthToken(Base):
     provider_id: Mapped[UUID] = mapped_column(ForeignKey("oauth_providers.id"))
     user_id: Mapped[UUID | None] = mapped_column(ForeignKey("users.id"), default=None)
     encrypted_access_token: Mapped[bytes] = mapped_column(LargeBinary)
-    encrypted_refresh_token: Mapped[bytes | None] = mapped_column(LargeBinary, default=None)
+    encrypted_refresh_token: Mapped[bytes | None] = mapped_column(
+        LargeBinary, default=None
+    )
     expires_at: Mapped[datetime | None] = mapped_column(DateTime, default=None)
     scopes: Mapped[list] = mapped_column(JSONB, default=[])
     created_at: Mapped[datetime] = mapped_column(
         DateTime, default=datetime.utcnow, server_default=text("NOW()")
     )
     updated_at: Mapped[datetime] = mapped_column(
-        DateTime, default=datetime.utcnow, server_default=text("NOW()"),
-        onupdate=datetime.utcnow
+        DateTime,
+        default=datetime.utcnow,
+        server_default=text("NOW()"),
+        onupdate=datetime.utcnow,
     )
 
     # Relationships
@@ -597,6 +672,7 @@ class OAuthToken(Base):
 
 class AuditLog(Base):
     """Audit log for tracking user actions."""
+
     __tablename__ = "audit_logs"
 
     id: Mapped[UUID] = mapped_column(primary_key=True, default=uuid4)
@@ -627,6 +703,7 @@ class AuditLog(Base):
 
 class UserMFAMethod(Base):
     """User MFA method enrollment."""
+
     __tablename__ = "user_mfa_methods"
 
     id: Mapped[UUID] = mapped_column(primary_key=True, default=uuid4)
@@ -636,7 +713,7 @@ class UserMFAMethod(Base):
             MFAMethodType,
             name="mfa_method_type",
             create_type=False,
-            values_callable=lambda x: [e.value for e in x]
+            values_callable=lambda x: [e.value for e in x],
         )
     )
     status: Mapped[MFAMethodStatus] = mapped_column(
@@ -644,21 +721,23 @@ class UserMFAMethod(Base):
             MFAMethodStatus,
             name="mfa_method_status",
             create_type=False,
-            values_callable=lambda x: [e.value for e in x]
+            values_callable=lambda x: [e.value for e in x],
         ),
-        default=MFAMethodStatus.PENDING
+        default=MFAMethodStatus.PENDING,
     )
     encrypted_secret: Mapped[str | None] = mapped_column(Text, default=None)
     mfa_metadata: Mapped[dict] = mapped_column(JSONB, default={})
     last_used_counter: Mapped[int | None] = mapped_column(Integer, default=None)
-    last_used_at: Mapped[datetime | None] = mapped_column(DateTime, default=None)
+    last_used_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), default=None)
     created_at: Mapped[datetime] = mapped_column(
-        DateTime, default=datetime.utcnow, server_default=text("NOW()")
+        DateTime(timezone=True), default=lambda: datetime.now(timezone.utc), server_default=text("NOW()")
     )
-    verified_at: Mapped[datetime | None] = mapped_column(DateTime, default=None)
+    verified_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), default=None)
     updated_at: Mapped[datetime] = mapped_column(
-        DateTime, default=datetime.utcnow, server_default=text("NOW()"),
-        onupdate=datetime.utcnow
+        DateTime(timezone=True),
+        default=lambda: datetime.now(timezone.utc),
+        server_default=text("NOW()"),
+        onupdate=lambda: datetime.now(timezone.utc),
     )
 
     # Relationships
@@ -672,16 +751,17 @@ class UserMFAMethod(Base):
 
 class MFARecoveryCode(Base):
     """MFA recovery codes."""
+
     __tablename__ = "mfa_recovery_codes"
 
     id: Mapped[UUID] = mapped_column(primary_key=True, default=uuid4)
     user_id: Mapped[UUID] = mapped_column(ForeignKey("users.id"))
     code_hash: Mapped[str] = mapped_column(String(255))
     is_used: Mapped[bool] = mapped_column(Boolean, default=False)
-    used_at: Mapped[datetime | None] = mapped_column(DateTime, default=None)
+    used_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), default=None)
     used_from_ip: Mapped[str | None] = mapped_column(String(45), default=None)
     created_at: Mapped[datetime] = mapped_column(
-        DateTime, default=datetime.utcnow, server_default=text("NOW()")
+        DateTime(timezone=True), default=lambda: datetime.now(timezone.utc), server_default=text("NOW()")
     )
 
     # Relationships
@@ -695,17 +775,18 @@ class MFARecoveryCode(Base):
 
 class TrustedDevice(Base):
     """Trusted devices that can bypass MFA."""
+
     __tablename__ = "trusted_devices"
 
     id: Mapped[UUID] = mapped_column(primary_key=True, default=uuid4)
     user_id: Mapped[UUID] = mapped_column(ForeignKey("users.id"))
     device_fingerprint: Mapped[str] = mapped_column(String(64))
     device_name: Mapped[str | None] = mapped_column(String(255), default=None)
-    expires_at: Mapped[datetime] = mapped_column(DateTime)
-    last_used_at: Mapped[datetime | None] = mapped_column(DateTime, default=None)
+    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    last_used_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), default=None)
     last_ip_address: Mapped[str | None] = mapped_column(String(45), default=None)
     created_at: Mapped[datetime] = mapped_column(
-        DateTime, default=datetime.utcnow, server_default=text("NOW()")
+        DateTime(timezone=True), default=lambda: datetime.now(timezone.utc), server_default=text("NOW()")
     )
 
     # Relationships
@@ -713,12 +794,18 @@ class TrustedDevice(Base):
 
     __table_args__ = (
         Index("ix_trusted_devices_user_id", "user_id"),
-        Index("ix_trusted_devices_fingerprint", "user_id", "device_fingerprint", unique=True),
+        Index(
+            "ix_trusted_devices_fingerprint",
+            "user_id",
+            "device_fingerprint",
+            unique=True,
+        ),
     )
 
 
 class UserOAuthAccount(Base):
     """Links OAuth accounts to users for SSO."""
+
     __tablename__ = "user_oauth_accounts"
 
     id: Mapped[UUID] = mapped_column(primary_key=True, default=uuid4)
@@ -727,15 +814,20 @@ class UserOAuthAccount(Base):
     provider_user_id: Mapped[str] = mapped_column(String(255))
     email: Mapped[str] = mapped_column(String(320))
     created_at: Mapped[datetime] = mapped_column(
-        DateTime, default=datetime.utcnow, server_default=text("NOW()")
+        DateTime(timezone=True), default=lambda: datetime.now(timezone.utc), server_default=text("NOW()")
     )
-    last_login: Mapped[datetime | None] = mapped_column(DateTime, default=None)
+    last_login: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), default=None)
 
     # Relationships
     user: Mapped[User] = relationship(back_populates="oauth_accounts")
 
     __table_args__ = (
-        Index("ix_user_oauth_provider_user", "provider_id", "provider_user_id", unique=True),
+        Index(
+            "ix_user_oauth_provider_user",
+            "provider_id",
+            "provider_user_id",
+            unique=True,
+        ),
         Index("ix_user_oauth_user", "user_id"),
     )
 
@@ -747,20 +839,27 @@ class UserOAuthAccount(Base):
 
 class GlobalBranding(Base):
     """Global platform branding configuration."""
+
     __tablename__ = "branding"
 
     id: Mapped[UUID] = mapped_column(primary_key=True, default=uuid4)
     square_logo_data: Mapped[bytes | None] = mapped_column(LargeBinary, default=None)
-    square_logo_content_type: Mapped[str | None] = mapped_column(String(50), default=None)
+    square_logo_content_type: Mapped[str | None] = mapped_column(
+        String(50), default=None
+    )
     rectangle_logo_data: Mapped[bytes | None] = mapped_column(LargeBinary, default=None)
-    rectangle_logo_content_type: Mapped[str | None] = mapped_column(String(50), default=None)
+    rectangle_logo_content_type: Mapped[str | None] = mapped_column(
+        String(50), default=None
+    )
     primary_color: Mapped[str | None] = mapped_column(String(7), default=None)
     created_at: Mapped[datetime] = mapped_column(
         DateTime, default=datetime.utcnow, server_default=text("NOW()")
     )
     updated_at: Mapped[datetime] = mapped_column(
-        DateTime, default=datetime.utcnow, server_default=text("NOW()"),
-        onupdate=datetime.utcnow
+        DateTime,
+        default=datetime.utcnow,
+        server_default=text("NOW()"),
+        onupdate=datetime.utcnow,
     )
 
 
@@ -783,11 +882,12 @@ class SystemConfig(Base):
 
     Services handle their own encryption as needed.
     """
+
     __tablename__ = "system_configs"
     __table_args__ = (
-        Index('ix_system_configs_category', 'category'),
-        Index('ix_system_configs_category_key', 'category', 'key'),
-        Index('ix_system_configs_org_id', 'organization_id'),
+        Index("ix_system_configs_category", "category"),
+        Index("ix_system_configs_category_key", "category", "key"),
+        Index("ix_system_configs_org_id", "organization_id"),
     )
 
     id: Mapped[UUID] = mapped_column(primary_key=True, default=uuid4)
@@ -802,14 +902,18 @@ class SystemConfig(Base):
         DateTime, default=datetime.utcnow, server_default=text("NOW()")
     )
     updated_at: Mapped[datetime] = mapped_column(
-        DateTime, default=datetime.utcnow, server_default=text("NOW()"),
-        onupdate=datetime.utcnow
+        DateTime,
+        default=datetime.utcnow,
+        server_default=text("NOW()"),
+        onupdate=datetime.utcnow,
     )
     created_by: Mapped[str | None] = mapped_column(String(255), nullable=True)
     updated_by: Mapped[str | None] = mapped_column(String(255), nullable=True)
 
     # Relationships
-    organization: Mapped["Organization | None"] = relationship("Organization", back_populates="system_configs")
+    organization: Mapped["Organization | None"] = relationship(
+        "Organization", back_populates="system_configs"
+    )
 
 
 # =============================================================================
@@ -824,6 +928,7 @@ class ExecutionMetricsDaily(Base):
     Populated by the consumer on each execution completion.
     Used for trend charts and organization usage reports.
     """
+
     __tablename__ = "execution_metrics_daily"
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
@@ -855,14 +960,24 @@ class ExecutionMetricsDaily(Base):
         DateTime, default=datetime.utcnow, server_default=text("NOW()")
     )
     updated_at: Mapped[datetime] = mapped_column(
-        DateTime, default=datetime.utcnow, server_default=text("NOW()"),
-        onupdate=datetime.utcnow
+        DateTime,
+        default=datetime.utcnow,
+        server_default=text("NOW()"),
+        onupdate=datetime.utcnow,
     )
 
     __table_args__ = (
         UniqueConstraint("date", "organization_id", name="uq_metrics_daily_date_org"),
         Index("ix_metrics_daily_date", "date"),
         Index("ix_metrics_daily_org", "organization_id"),
+        # Partial unique index for global metrics (org_id IS NULL)
+        # Enforces single global row per date
+        Index(
+            "uq_metrics_daily_date_global",
+            "date",
+            unique=True,
+            postgresql_where=text("organization_id IS NULL"),
+        ),
     )
 
 
@@ -874,6 +989,7 @@ class PlatformMetricsSnapshot(Base):
     Used for instant dashboard loads without expensive queries.
     Single row table - always id=1.
     """
+
     __tablename__ = "platform_metrics_snapshot"
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, default=1)

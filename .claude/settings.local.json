@@ -47,7 +47,9 @@
       "Bash(./test.sh:*)",
       "Bash(../venv/bin/alembic revision:*)",
       "Bash(../venv/bin/python:*)",
-      "WebFetch(domain:hub.docker.com)"
+      "WebFetch(domain:hub.docker.com)",
+      "Bash(for module in custom_types forms_registry validators middleware registry queue_init init_tables)",
+      "Bash(do echo '=== Checking $module ===' grep -r $module /Users/jack/GitHub/bifrost-api/api --include=*.py)"
     ],
     "deny": [],
     "ask": [],

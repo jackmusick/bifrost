@@ -200,7 +200,8 @@ fi
 if [ ${#PYTEST_ARGS[@]} -eq 0 ]; then
     # Default: run all tests except E2E (unless in E2E mode)
     if [ "$E2E_MODE" = true ]; then
-        PYTEST_CMD+=("tests/e2e/" "-v")
+        # Override the default "-m not e2e" from pytest.ini addopts
+        PYTEST_CMD+=("tests/e2e/" "-m" "e2e" "-v")
     else
         PYTEST_CMD+=("tests/" "--ignore=tests/e2e/" "-v")
     fi

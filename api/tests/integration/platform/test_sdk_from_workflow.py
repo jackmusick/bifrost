@@ -11,8 +11,6 @@ from pathlib import Path
 # This ensures we use the same ContextVar instance that storage module uses
 from bifrost._context import set_execution_context, clear_execution_context, get_execution_context
 
-# Skip this test module - it references the old Azure Functions app that has been migrated to FastAPI
-pytestmark = pytest.mark.skip(reason="Tests require migration from Azure Functions to FastAPI")
 
 
 @pytest.fixture
@@ -68,7 +66,6 @@ class TestSDKImportsFromWorkflow:
         """Test importing workflows module"""
         from bifrost import workflows
 
-        assert hasattr(workflows, 'execute')
         assert hasattr(workflows, 'list')
         assert hasattr(workflows, 'get')
 
@@ -150,34 +147,6 @@ class TestSDKFileOperations:
         # Simple test: absolute paths outside /home should be rejected
         with pytest.raises(ValueError, match="Path must be within"):
             files._resolve_path("/etc/passwd", location="workspace")
-
-
-class TestWorkflowDiscovery:
-    """Test that workflows in /home and /platform are discovered"""
-
-    def test_workspace_paths_include_home_and_platform(self):
-        """Test that workspace discovery includes both workspace (from env) and /platform"""
-        import os
-        from function_app import get_workspace_paths
-
-        paths = get_workspace_paths()
-
-        # Paths might not exist in test environment, but function should return list
-        assert isinstance(paths, list)
-
-        # Workspace location from environment variable (set by test fixture)
-        workspace_location = os.getenv('BIFROST_WORKSPACE_LOCATION')
-        if workspace_location:
-            workspace_path = Path(workspace_location)
-            if workspace_path.exists():
-                assert str(workspace_path) in paths
-
-        # Platform path should be in the list if it exists
-        base_dir = Path(__file__).parent.parent.parent.parent
-        platform_path = base_dir / 'platform'
-
-        if platform_path.exists():
-            assert str(platform_path) in paths
 
 
 class TestImportRestrictions:

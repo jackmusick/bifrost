@@ -157,6 +157,19 @@ def orgs_list_key() -> str:
 # =============================================================================
 
 
+def execution_pending_key(execution_id: str) -> str:
+    """
+    Key for pending execution data (written by API, read by worker).
+
+    Structure: JSON serialized execution context including:
+    - workflow_name, parameters, org_id, user_id, user_name, user_email
+    - form_id, created_at, cancelled (bool)
+
+    TTL: 1 hour (safety for orphaned entries)
+    """
+    return f"bifrost:exec:{execution_id}:pending"
+
+
 def execution_context_key(execution_id: str) -> str:
     """
     Key for execution context (read by worker process).
@@ -264,6 +277,7 @@ TTL_FORMS = 600  # 10 minutes
 TTL_ROLES = 600  # 10 minutes
 TTL_ORGS = 3600  # 1 hour
 TTL_PENDING = 3600  # 1 hour (safety for orphaned changes)
+TTL_PENDING_EXECUTION = 3600  # 1 hour (safety for orphaned pending executions)
 
 # Auth TTLs
 TTL_REFRESH_TOKEN = 604800  # 7 days (matches refresh token expiry)

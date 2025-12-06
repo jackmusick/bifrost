@@ -716,8 +716,8 @@ async def _execute_workflow_with_trace(
             log_entry = f"[{record.levelname}] {record.getMessage()}"
             workflow_logs.append(log_entry)
 
-            # Real-time log processing (if broadcaster enabled)
-            if broadcaster and execution_id:
+            # Real-time log processing - stream to Redis pub/sub for WebSocket delivery
+            if execution_id:
                 import uuid
                 log_id = str(uuid.uuid4())
                 timestamp = datetime.utcnow().isoformat() + "Z"
@@ -833,7 +833,6 @@ async def _execute_workflow_with_trace(
         return trace_func
 
     # Build trace function chain (with existing trace if present, e.g., debugpy)
-    # Note: trace is installed per-thread in _run_workflow_in_thread
     existing_trace = sys.gettrace()
 
     def chained_trace_func(frame, event, arg):
@@ -905,45 +904,34 @@ async def _execute_workflow_with_trace(
             else:
                 return await func(**accepted_params)
 
-        def _run_workflow_in_thread():
-            """
-            Run the async workflow in a separate thread with its own event loop.
-            This allows blocking code (like time.sleep) to not block the main event loop,
-            enabling concurrent workflow execution.
-            """
-            # Propagate ContextVar to this thread for SDK support
-            # ContextVars don't automatically cross thread boundaries
+        # Set up execution context for SDK support
+        if BIFROST_CONTEXT_AVAILABLE:
+            set_execution_context(context)
+
+        # Initialize write buffer for SDK writes
+        if WRITE_BUFFER_AVAILABLE and WriteBuffer and set_write_buffer:
+            org_id = context.org_id if context.org_id != "GLOBAL" else None
+            buffer = WriteBuffer(
+                execution_id=execution_id or "",
+                org_id=org_id,
+                user_id=context.user_id,
+            )
+            set_write_buffer(buffer)
+
+        # Set up trace function for variable capture
+        sys.settrace(chained_trace_func if existing_trace else trace_func)
+        try:
+            # Run the workflow directly - isolation is provided by subprocess
+            result = await _run_workflow_async()
+        finally:
+            # Clear trace function
+            sys.settrace(None)
+            # Clear context
             if BIFROST_CONTEXT_AVAILABLE:
-                set_execution_context(context)
-
-            # Initialize write buffer for SDK writes in this thread
-            if WRITE_BUFFER_AVAILABLE and WriteBuffer and set_write_buffer:
-                org_id = context.org_id if context.org_id != "GLOBAL" else None
-                buffer = WriteBuffer(
-                    execution_id=execution_id or "",
-                    org_id=org_id,
-                    user_id=context.user_id,
-                )
-                set_write_buffer(buffer)
-
-            # Set up trace function in this thread (trace is per-thread)
-            sys.settrace(chained_trace_func if existing_trace else trace_func)
-            try:
-                # Run the async workflow in a new event loop for this thread
-                return asyncio.run(_run_workflow_async())
-            finally:
-                # Clear trace function
-                sys.settrace(None)
-                # Clear context in this thread
-                if BIFROST_CONTEXT_AVAILABLE:
-                    clear_execution_context()
-                # Clear write buffer in this thread
-                if WRITE_BUFFER_AVAILABLE and clear_write_buffer:
-                    clear_write_buffer()
-
-        # Run user code in thread pool to handle blocking operations
-        # This allows multiple workflows to run concurrently even if they use blocking calls
-        result = await asyncio.to_thread(_run_workflow_in_thread)
+                clear_execution_context()
+            # Clear write buffer
+            if WRITE_BUFFER_AVAILABLE and clear_write_buffer:
+                clear_write_buffer()
     except TypeError as e:
         # Check if this is the "got multiple values" error caused by missing context parameter
         if "got multiple values for argument" in str(e):

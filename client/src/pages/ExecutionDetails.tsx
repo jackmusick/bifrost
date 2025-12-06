@@ -417,6 +417,35 @@ export function ExecutionDetails() {
 		return <PageLoader message="Loading execution details..." />;
 	}
 
+	// Handle case where execution is not found yet (Redis-first architecture)
+	// The execution may be in Redis pending but not yet in PostgreSQL
+	// Show a waiting state instead of immediate error
+	if (!execution && !error) {
+		return (
+			<div className="flex items-center justify-center min-h-[60vh] p-6">
+				<motion.div
+					initial={{ opacity: 0, y: 20 }}
+					animate={{ opacity: 1, y: 0 }}
+					transition={{ duration: 0.3 }}
+					className="max-w-md w-full space-y-6"
+				>
+					<div className="flex justify-center">
+						<Loader2 className="h-16 w-16 text-muted-foreground animate-spin" />
+					</div>
+					<div className="text-center">
+						<h2 className="text-xl font-semibold">
+							Waiting for execution to start...
+						</h2>
+						<p className="text-muted-foreground mt-2">
+							The execution is being prepared. This page will
+							update automatically.
+						</p>
+					</div>
+				</motion.div>
+			</div>
+		);
+	}
+
 	if (error || !execution) {
 		return (
 			<div className="flex items-center justify-center min-h-[60vh] p-6">

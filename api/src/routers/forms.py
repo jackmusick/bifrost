@@ -26,7 +26,6 @@ from sqlalchemy.orm import selectinload
 
 from src.core.auth import Context, CurrentActiveUser, CurrentSuperuser
 from src.core.database import DbSession
-from src.core.pubsub import publish_execution_update
 from src.models.orm import Form as FormORM, FormField as FormFieldORM, FormRole as FormRoleORM, UserRole as UserRoleORM
 from src.models.models import FormCreate, FormUpdate, FormPublic
 from shared.models import WorkflowExecutionResponse
@@ -237,7 +236,6 @@ async def _update_form_file(form: FormORM, old_file_path: str | None) -> str:
     """
     # Generate new filename
     new_filename = _generate_form_filename(form.name, str(form.id))
-    new_relative_path = f"forms/{new_filename}"
     new_file_path = WORKSPACE_LOCATION / "forms" / new_filename
 
     # If we have the old file path and it's different, delete the old file
@@ -845,16 +843,8 @@ async def execute_form(
         }
         exec_status = status_map.get(status_str, ExecutionStatus.PENDING)
 
-        # Publish execution update via WebSocket
-        if execution_id:
-            await publish_execution_update(
-                execution_id=execution_id,
-                status=exec_status.value,
-                data={
-                    "form_id": str(form.id),
-                    "workflow_name": form.linked_workflow,
-                },
-            )
+        # Note: WebSocket broadcast removed - worker handles this when it picks up the job
+        # This enables Redis-first architecture where API returns immediately
 
         logger.info(f"Form {form_id} executed by user {ctx.user.email}, execution_id={execution_id}")
 

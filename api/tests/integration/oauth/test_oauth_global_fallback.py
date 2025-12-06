@@ -12,9 +12,7 @@ from datetime import datetime, timedelta
 from uuid import uuid4
 from shared.services.oauth_storage_service import OAuthStorageService
 from shared.models import CreateOAuthConnectionRequest
-
-
-pytestmark = pytest.mark.skip(reason="Database connection not available in isolated test environment")
+from src.models import Organization
 
 
 @pytest.mark.integration
@@ -24,7 +22,7 @@ class TestOAuthGlobalFallback:
     @pytest.mark.asyncio
     async def test_get_connection_fallback_to_global(self, clean_db):
         """Test that get_connection falls back to GLOBAL when not found in org"""
-        storage = OAuthStorageService()
+        storage = OAuthStorageService(session=clean_db)
 
         # Create connection in GLOBAL scope
         test_provider = "test_fallback_provider"
@@ -54,8 +52,17 @@ class TestOAuthGlobalFallback:
         assert success is True
 
         # Try to get from a different org (should fall back to GLOBAL)
-        org_id = str(uuid4())
-        connection = await storage.get_connection(org_id, test_provider)
+        # Create the org first to satisfy FK constraint
+        org = Organization(
+            id=uuid4(),
+            name="Test Org",
+            is_active=True,
+            created_by="test-user"
+        )
+        clean_db.add(org)
+        await clean_db.flush()
+
+        connection = await storage.get_connection(str(org.id), test_provider)
 
         # Verify we got the GLOBAL connection
         assert connection is not None
@@ -65,10 +72,20 @@ class TestOAuthGlobalFallback:
     @pytest.mark.asyncio
     async def test_get_connection_org_specific_takes_precedence(self, clean_db):
         """Test that org-specific connections take precedence over GLOBAL"""
-        storage = OAuthStorageService()
+        storage = OAuthStorageService(session=clean_db)
 
         test_provider = "test_precedence_provider"
-        org_id = str(uuid4())
+
+        # Create an organization first
+        org = Organization(
+            id=uuid4(),
+            name="Test Org",
+            is_active=True,
+            created_by="test-user"
+        )
+        clean_db.add(org)
+        await clean_db.flush()
+        org_id = str(org.id)
 
         # Create connection in GLOBAL
         connection_create = CreateOAuthConnectionRequest(
@@ -134,12 +151,21 @@ class TestOAuthGlobalFallback:
     @pytest.mark.asyncio
     async def test_get_connection_returns_none_when_not_found(self, clean_db):
         """Test that get_connection returns None when connection not found anywhere"""
-        storage = OAuthStorageService()
+        storage = OAuthStorageService(session=clean_db)
+
+        # Create org for the query
+        org = Organization(
+            id=uuid4(),
+            name="Test Org",
+            is_active=True,
+            created_by="test-user"
+        )
+        clean_db.add(org)
+        await clean_db.flush()
 
         # Try to get a connection that doesn't exist
-        org_id = str(uuid4())
         connection = await storage.get_connection(
-            org_id,
+            str(org.id),
             "nonexistent_provider_xyz"
         )
 
@@ -149,7 +175,7 @@ class TestOAuthGlobalFallback:
     @pytest.mark.asyncio
     async def test_get_connection_uses_none_for_global_org_id(self, clean_db):
         """Test that get_connection handles both GLOBAL string and None for GLOBAL scope"""
-        storage = OAuthStorageService()
+        storage = OAuthStorageService(session=clean_db)
 
         test_provider = "test_none_provider"
         connection_create = CreateOAuthConnectionRequest(

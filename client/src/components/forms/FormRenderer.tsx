@@ -102,6 +102,9 @@ function FormRendererInner({ form }: FormRendererProps) {
 	const [hasCompletedInitialLoad, setHasCompletedInitialLoad] =
 		useState(false);
 
+	// Track navigation state to keep button disabled through redirect
+	const [isNavigating, setIsNavigating] = useState(false);
+
 	// Helper to evaluate data provider inputs (T040, T055, T075 - All three modes)
 	const evaluateDataProviderInputs = useCallback(
 		(
@@ -481,8 +484,14 @@ function FormRendererInner({ form }: FormRendererProps) {
 			form_data: data,
 		};
 
-		const result = await submitForm.mutateAsync(submission);
-		navigate(`/history/${result.execution_id}`);
+		setIsNavigating(true);
+		try {
+			const result = await submitForm.mutateAsync(submission);
+			navigate(`/history/${result.execution_id}`);
+			// Don't reset isNavigating - component will unmount on navigation
+		} catch {
+			setIsNavigating(false); // Only re-enable button on error
+		}
 	};
 
 	// Props interface for DataProviderField
@@ -1156,9 +1165,13 @@ function FormRendererInner({ form }: FormRendererProps) {
 						<div className="pt-4">
 							<Button
 								type="submit"
-								disabled={!isValid || submitForm.isPending}
+								disabled={
+									!isValid ||
+									submitForm.isPending ||
+									isNavigating
+								}
 							>
-								{submitForm.isPending
+								{submitForm.isPending || isNavigating
 									? "Submitting..."
 									: "Submit"}
 							</Button>

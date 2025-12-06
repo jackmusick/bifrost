@@ -1,20 +1,19 @@
 """
 Execution Service
 Clean service layer for executing workflows, code, and data providers.
-All execution routes through shared/engine.py.
+All execution runs in isolated subprocess via ExecutionPool.
 """
 
 from __future__ import annotations
 
+import asyncio
 import base64
 import logging
 import uuid
 from datetime import datetime
 from typing import TYPE_CHECKING, Any
 
-from shared.context import Caller
 from shared.discovery import get_workflow, get_data_provider
-from shared.engine import ExecutionRequest, execute
 from shared.models import ExecutionStatus, WorkflowExecutionResponse
 
 if TYPE_CHECKING:
@@ -159,7 +158,9 @@ async def run_data_provider(
         DataProviderLoadError: If provider fails to load
         RuntimeError: If provider execution fails
     """
-    # Load data provider
+    from shared.execution import get_execution_pool
+
+    # Load data provider to get metadata
     try:
         result = get_data_provider(provider_name)
         if not result:
@@ -173,32 +174,51 @@ async def run_data_provider(
         logger.error(f"Failed to load data provider {provider_name}: {e}", exc_info=True)
         raise DataProviderLoadError(f"Failed to load data provider '{provider_name}': {str(e)}")
 
-    # Execute through engine
-    request = ExecutionRequest(
-        execution_id=str(uuid.uuid4()),
-        caller=Caller(
-            user_id=context.user_id,
-            email=context.email,
-            name=context.name
-        ),
-        organization=context.organization,
-        config=context._config,
-        func=provider_func,
-        name=provider_name,
-        tags=["data_provider"],
-        cache_ttl_seconds=provider_metadata.cache_ttl_seconds,
-        parameters=params or {},
-        transient=True,  # No execution tracking for data providers
-        no_cache=no_cache,
-        is_platform_admin=context.is_platform_admin
+    execution_id = str(uuid.uuid4())
+
+    # Build context data for subprocess
+    org_data = None
+    if context.organization:
+        org_data = {
+            "id": context.organization.id,
+            "name": context.organization.name,
+            "is_active": context.organization.is_active,
+        }
+
+    context_data = {
+        "execution_id": execution_id,
+        "name": provider_name,
+        "code": None,
+        "parameters": params or {},
+        "caller": {
+            "user_id": context.user_id,
+            "email": context.email,
+            "name": context.name,
+        },
+        "organization": org_data,
+        "config": context._config,
+        "tags": ["data_provider"],
+        "timeout_seconds": 60,  # Data providers should be quick
+        "cache_ttl_seconds": provider_metadata.cache_ttl_seconds,
+        "transient": True,  # No execution tracking for data providers
+        "no_cache": no_cache,
+        "is_platform_admin": context.is_platform_admin,
+    }
+
+    # Execute in isolated subprocess
+    pool = get_execution_pool()
+    result = await pool.execute(
+        execution_id=execution_id,
+        context_data=context_data,
+        timeout_seconds=60,  # Data providers should be quick
     )
 
-    result = await execute(request)
+    # Check result status
+    status_str = result.get("status", "Failed")
+    if status_str != "Success":
+        raise RuntimeError(f"Data provider execution failed: {result.get('error_message')}")
 
-    if result.status != ExecutionStatus.SUCCESS:
-        raise RuntimeError(f"Data provider execution failed: {result.error_message}")
-
-    options = result.result
+    options = result.get("result")
     if not isinstance(options, list):
         raise RuntimeError(f"Data provider must return a list, got {type(options).__name__}")
 
@@ -239,7 +259,8 @@ async def _execute_sync(
     form_id: str | None = None,
     transient: bool = False,
 ) -> WorkflowExecutionResponse:
-    """Execute workflow synchronously."""
+    """Execute workflow synchronously in isolated subprocess."""
+    from shared.execution import get_execution_pool
     from shared.execution_logger import get_execution_logger
     from shared.webpubsub_broadcaster import WebPubSubBroadcaster
 
@@ -247,6 +268,7 @@ async def _execute_sync(
     exec_logger = get_execution_logger()
     start_time = datetime.utcnow()
     broadcaster = WebPubSubBroadcaster()
+    timeout_seconds = workflow_metadata.timeout_seconds if workflow_metadata else 1800
 
     try:
         # Create execution record
@@ -263,7 +285,7 @@ async def _execute_sync(
             )
 
         logger.info(
-            f"Starting workflow execution: {workflow_name}",
+            f"Starting sync workflow execution: {workflow_name}",
             extra={
                 "execution_id": execution_id,
                 "org_id": context.org_id,
@@ -271,28 +293,44 @@ async def _execute_sync(
             }
         )
 
-        # Build execution request
-        request = ExecutionRequest(
+        # Build context data for subprocess
+        org_data = None
+        if context.organization:
+            org_data = {
+                "id": context.organization.id,
+                "name": context.organization.name,
+                "is_active": context.organization.is_active,
+            }
+
+        context_data = {
+            "execution_id": execution_id,
+            "name": workflow_name,
+            "code": None,  # Not a script
+            "parameters": parameters,
+            "caller": {
+                "user_id": context.user_id,
+                "email": context.email,
+                "name": context.name,
+            },
+            "organization": org_data,
+            "config": context._config,
+            "tags": ["workflow"],
+            "timeout_seconds": timeout_seconds,
+            "transient": transient,
+            "is_platform_admin": context.is_platform_admin,
+        }
+
+        # Execute in isolated subprocess
+        pool = get_execution_pool()
+        result = await pool.execute(
             execution_id=execution_id,
-            caller=Caller(
-                user_id=context.user_id,
-                email=context.email,
-                name=context.name
-            ),
-            organization=context.organization,
-            config=context._config,
-            func=workflow_func,
-            name=workflow_name,
-            tags=["workflow"],
-            timeout_seconds=workflow_metadata.timeout_seconds if workflow_metadata else 1800,
-            parameters=parameters,
-            transient=transient,
-            is_platform_admin=context.is_platform_admin,
-            broadcaster=broadcaster
+            context_data=context_data,
+            timeout_seconds=timeout_seconds,
         )
 
-        # Execute via engine
-        result = await execute(request)
+        # Map result status
+        status_str = result.get("status", "Failed")
+        status = ExecutionStatus(status_str) if status_str in [s.value for s in ExecutionStatus] else ExecutionStatus.FAILED
 
         # Update execution record
         if not transient:
@@ -300,14 +338,14 @@ async def _execute_sync(
                 execution_id=execution_id,
                 org_id=context.org_id,
                 user_id=context.user_id,
-                status=result.status,
-                result=result.result,
-                error_message=result.error_message,
-                error_type=result.error_type,
-                duration_ms=result.duration_ms,
-                integration_calls=result.integration_calls,
-                logs=result.logs if result.logs else None,
-                variables=result.variables if result.variables else None,
+                status=status,
+                result=result.get("result"),
+                error_message=result.get("error_message"),
+                error_type=result.get("error_type"),
+                duration_ms=result.get("duration_ms", 0),
+                integration_calls=result.get("integration_calls"),
+                logs=result.get("logs"),
+                variables=result.get("variables"),
                 webpubsub_broadcaster=broadcaster
             )
 
@@ -316,38 +354,98 @@ async def _execute_sync(
         # Build response with appropriate error/log filtering
         error = None
         error_type = None
-        if result.status != ExecutionStatus.SUCCESS and result.error_message:
+        if status != ExecutionStatus.SUCCESS and result.get("error_message"):
             if context.is_platform_admin:
-                error = result.error_message
-                error_type = result.error_type
-            elif result.error_type == "UserError":
-                error = result.error_message
+                error = result.get("error_message")
+                error_type = result.get("error_type")
+            elif result.get("error_type") == "UserError":
+                error = result.get("error_message")
             else:
                 error = "An error occurred during execution"
 
         # Filter logs for non-admins
         logs = None
-        if result.logs:
+        if result.get("logs"):
             if context.is_platform_admin:
-                logs = result.logs
+                logs = result.get("logs")
             else:
                 logs = [
-                    log for log in result.logs
+                    log for log in result.get("logs", [])
                     if log.get('level') not in ['debug', 'traceback']
                 ]
 
         return WorkflowExecutionResponse(
             execution_id=execution_id,
             workflow_name=workflow_name,
-            status=result.status,
-            result=result.result if result.status == ExecutionStatus.SUCCESS else None,
+            status=status,
+            result=result.get("result") if status == ExecutionStatus.SUCCESS else None,
             error=error,
             error_type=error_type,
-            duration_ms=result.duration_ms,
+            duration_ms=result.get("duration_ms", 0),
             started_at=start_time,
             completed_at=end_time,
             logs=logs,
-            variables=result.variables if context.is_platform_admin else None,
+            variables=result.get("variables") if context.is_platform_admin else None,
+            is_transient=transient,
+        )
+
+    except asyncio.CancelledError:
+        # Execution was cancelled
+        end_time = datetime.utcnow()
+        duration_ms = int((end_time - start_time).total_seconds() * 1000)
+
+        if not transient:
+            try:
+                await exec_logger.update_execution(
+                    execution_id=execution_id,
+                    org_id=context.org_id,
+                    user_id=context.user_id,
+                    status=ExecutionStatus.CANCELLED,
+                    error_message="Execution cancelled by user",
+                    duration_ms=duration_ms
+                )
+            except Exception as update_error:
+                logger.error(f"Failed to update execution record: {update_error}")
+
+        return WorkflowExecutionResponse(
+            execution_id=execution_id,
+            workflow_name=workflow_name,
+            status=ExecutionStatus.CANCELLED,
+            error="Execution cancelled by user",
+            duration_ms=duration_ms,
+            started_at=start_time,
+            completed_at=end_time,
+            is_transient=transient,
+        )
+
+    except TimeoutError as e:
+        # Execution timed out
+        end_time = datetime.utcnow()
+        duration_ms = int((end_time - start_time).total_seconds() * 1000)
+
+        if not transient:
+            try:
+                await exec_logger.update_execution(
+                    execution_id=execution_id,
+                    org_id=context.org_id,
+                    user_id=context.user_id,
+                    status=ExecutionStatus.TIMEOUT,
+                    error_message=str(e),
+                    error_type="TimeoutError",
+                    duration_ms=duration_ms
+                )
+            except Exception as update_error:
+                logger.error(f"Failed to update execution record: {update_error}")
+
+        return WorkflowExecutionResponse(
+            execution_id=execution_id,
+            workflow_name=workflow_name,
+            status=ExecutionStatus.TIMEOUT,
+            error=str(e),
+            error_type="TimeoutError",
+            duration_ms=duration_ms,
+            started_at=start_time,
+            completed_at=end_time,
             is_transient=transient,
         )
 

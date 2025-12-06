@@ -219,7 +219,6 @@ class TestFileOperations:
 class TestBifrostTypesEndpoint:
     """Integration tests for bifrost types endpoint"""
 
-    @pytest.mark.skip(reason="bifrost.pyi stubs file not yet generated")
     def test_bifrost_pyi_file_exists(self):
         """Test that bifrost.pyi file exists in stubs directory"""
         from pathlib import Path
@@ -231,7 +230,6 @@ class TestBifrostTypesEndpoint:
         assert stubs_path.exists(), f"bifrost.pyi should exist at {stubs_path}"
         assert stubs_path.is_file(), "bifrost.pyi should be a file"
 
-    @pytest.mark.skip(reason="bifrost.pyi stubs file not yet generated")
     def test_bifrost_pyi_contains_expected_content(self):
         """Test that bifrost.pyi contains expected type definitions"""
         from pathlib import Path
@@ -254,7 +252,6 @@ class TestBifrostTypesEndpoint:
         assert "def get(" in content  # config.get and oauth.get_token methods
         assert "@staticmethod" in content  # SDK methods use staticmethod
 
-    @pytest.mark.skip(reason="bifrost.pyi stubs file not yet generated")
     def test_bifrost_pyi_is_valid_python_syntax(self):
         """Test that bifrost.pyi is valid Python syntax"""
         from pathlib import Path

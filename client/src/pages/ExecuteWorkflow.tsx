@@ -1,3 +1,4 @@
+import { useState } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import { ArrowLeft, XCircle } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -19,19 +20,28 @@ export function ExecuteWorkflow() {
 	const { data, isLoading } = useWorkflowsMetadata();
 	const executeWorkflow = useExecuteWorkflow();
 
+	// Track navigation state to keep button disabled through redirect
+	const [isNavigating, setIsNavigating] = useState(false);
+
 	const workflow = data?.workflows?.find((w) => w.name === workflowName);
 
 	const handleExecute = async (parameters: Record<string, unknown>) => {
 		if (!workflow) return;
 
-		// Execute workflow with workflowName and inputData
-		const result = await executeWorkflow.mutateAsync({
-			workflowName: workflow.name ?? "",
-			inputData: parameters,
-		});
+		setIsNavigating(true);
+		try {
+			// Execute workflow with workflowName and inputData
+			const result = await executeWorkflow.mutateAsync({
+				workflowName: workflow.name ?? "",
+				inputData: parameters,
+			});
 
-		// Redirect directly to execution details page
-		navigate(`/history/${result.execution_id}`);
+			// Redirect directly to execution details page
+			navigate(`/history/${result.execution_id}`);
+			// Don't reset isNavigating - component will unmount on navigation
+		} catch {
+			setIsNavigating(false); // Only re-enable button on error
+		}
 	};
 
 	if (isLoading) {
@@ -101,7 +111,9 @@ export function ExecuteWorkflow() {
 							<WorkflowParametersForm
 								parameters={workflow.parameters || []}
 								onExecute={handleExecute}
-								isExecuting={executeWorkflow.isPending}
+								isExecuting={
+									executeWorkflow.isPending || isNavigating
+								}
 							/>
 						</CardContent>
 					</Card>

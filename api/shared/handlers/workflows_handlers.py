@@ -1,18 +1,17 @@
 """
 Workflows Handlers V2 - Refactored to use unified engine
-Business logic for workflow execution using shared/engine.py
+Business logic for workflow execution using subprocess isolation.
 
 Note: HTTP handlers have been removed - see FastAPI routers in src/routers/
 """
 
+import asyncio
 import logging
 import uuid
 from datetime import datetime
 from typing import TYPE_CHECKING
 
-from shared.context import Caller
 from shared.discovery import get_workflow
-from shared.engine import ExecutionRequest, execute
 from shared.models import ErrorResponse, ExecutionStatus
 
 # Lazy imports to avoid unnecessary dependencies for validation-only use cases
@@ -99,15 +98,17 @@ async def execute_workflow_internal(
             "message": "Workflow queued for async execution" if not is_script else "Script queued for async execution"
         }, 202
 
-    # Synchronous execution path
+    # Synchronous execution path - execute in isolated subprocess
     execution_id = str(uuid.uuid4())
 
     # Runtime imports to avoid unnecessary dependencies at module load
+    from shared.execution import get_execution_pool
     from shared.execution_logger import get_execution_logger
     from shared.webpubsub_broadcaster import WebPubSubBroadcaster
 
     exec_logger = get_execution_logger()
     start_time = datetime.utcnow()
+    timeout_seconds = workflow_metadata.timeout_seconds if workflow_metadata else 1800
 
     # Initialize Web PubSub broadcaster for real-time updates
     broadcaster = WebPubSubBroadcaster()
@@ -127,7 +128,7 @@ async def execute_workflow_internal(
             )
 
         logger.info(
-            f"Starting workflow execution: {workflow_name}",
+            f"Starting sync workflow execution: {workflow_name}",
             extra={
                 "execution_id": execution_id,
                 "org_id": context.org_id,
@@ -135,29 +136,44 @@ async def execute_workflow_internal(
             }
         )
 
-        # Build execution request for engine
-        request = ExecutionRequest(
+        # Build context data for subprocess
+        org_data = None
+        if context.organization:
+            org_data = {
+                "id": context.organization.id,
+                "name": context.organization.name,
+                "is_active": context.organization.is_active,
+            }
+
+        context_data = {
+            "execution_id": execution_id,
+            "name": workflow_name,
+            "code": code_base64 if is_script else None,
+            "parameters": parameters,
+            "caller": {
+                "user_id": context.user_id,
+                "email": context.email,
+                "name": context.name,
+            },
+            "organization": org_data,
+            "config": context._config,
+            "tags": ["workflow"] if not is_script else [],
+            "timeout_seconds": timeout_seconds,
+            "transient": transient,
+            "is_platform_admin": context.is_platform_admin,
+        }
+
+        # Execute in isolated subprocess
+        pool = get_execution_pool()
+        result = await pool.execute(
             execution_id=execution_id,
-            caller=Caller(
-                user_id=context.user_id,
-                email=context.email,
-                name=context.name
-            ),
-            organization=context.organization,
-            config=context._config,
-            func=workflow_func if not is_script else None,
-            code=code_base64 if is_script else None,
-            name=workflow_name,
-            tags=["workflow"] if not is_script else [],
-            timeout_seconds=workflow_metadata.timeout_seconds if workflow_metadata else 1800,
-            parameters=parameters,
-            transient=transient,
-            is_platform_admin=context.is_platform_admin,
-            broadcaster=broadcaster
+            context_data=context_data,
+            timeout_seconds=timeout_seconds,
         )
 
-        # Execute via unified engine
-        result = await execute(request)
+        # Map result status
+        status_str = result.get("status", "Failed")
+        status = ExecutionStatus(status_str) if status_str in [s.value for s in ExecutionStatus] else ExecutionStatus.FAILED
 
         # Update execution record - skip if transient
         if not transient:
@@ -165,14 +181,14 @@ async def execute_workflow_internal(
                 execution_id=execution_id,
                 org_id=context.org_id,
                 user_id=user_id,
-                status=result.status,
-                result=result.result,
-                error_message=result.error_message,
-                error_type=result.error_type,
-                duration_ms=result.duration_ms,
-                integration_calls=result.integration_calls,
-                logs=result.logs if result.logs else None,
-                variables=result.variables if result.variables else None,
+                status=status,
+                result=result.get("result"),
+                error_message=result.get("error_message"),
+                error_type=result.get("error_type"),
+                duration_ms=result.get("duration_ms", 0),
+                integration_calls=result.get("integration_calls"),
+                logs=result.get("logs"),
+                variables=result.get("variables"),
                 webpubsub_broadcaster=broadcaster
             )
 
@@ -181,45 +197,102 @@ async def execute_workflow_internal(
 
         response_dict = {
             "executionId": execution_id,
-            "status": result.status.value,
-            "durationMs": result.duration_ms,
+            "status": status.value,
+            "durationMs": result.get("duration_ms", 0),
             "startedAt": start_time.isoformat(),
             "completedAt": end_time.isoformat(),
             "isTransient": transient
         }
 
-        if result.status == ExecutionStatus.SUCCESS:
-            response_dict["result"] = result.result
-        elif result.error_message:
+        if status == ExecutionStatus.SUCCESS:
+            response_dict["result"] = result.get("result")
+        elif result.get("error_message"):
             # Filter error details based on user role and error type
             if context.is_platform_admin:
                 # Admins see full technical details
-                response_dict["error"] = result.error_message
-                response_dict["errorType"] = result.error_type
+                response_dict["error"] = result.get("error_message")
+                response_dict["errorType"] = result.get("error_type")
             else:
                 # Regular users: Check if it's a UserError (show message) or generic error (hide details)
-                # We need to check the error_type to determine if it was a UserError
-                if result.error_type == "UserError":
-                    response_dict["error"] = result.error_message
+                if result.get("error_type") == "UserError":
+                    response_dict["error"] = result.get("error_message")
                 else:
                     response_dict["error"] = "An error occurred during execution"
 
         # Include logs/variables for platform admins
         if context.is_platform_admin:
-            if result.logs:
-                response_dict["logs"] = result.logs
-            if result.variables:
-                response_dict["variables"] = result.variables
+            if result.get("logs"):
+                response_dict["logs"] = result.get("logs")
+            if result.get("variables"):
+                response_dict["variables"] = result.get("variables")
         else:
             # Regular users: Filter logs to exclude DEBUG and TRACEBACK levels
-            if result.logs:
+            if result.get("logs"):
                 filtered_logs = [
-                    log for log in result.logs
+                    log for log in result.get("logs", [])
                     if log.get('level') not in ['debug', 'traceback']
                 ]
                 response_dict["logs"] = filtered_logs
 
         return response_dict, 200
+
+    except asyncio.CancelledError:
+        # Execution was cancelled
+        end_time = datetime.utcnow()
+        duration_ms = int((end_time - start_time).total_seconds() * 1000)
+
+        if not transient:
+            try:
+                await exec_logger.update_execution(
+                    execution_id=execution_id,
+                    org_id=context.org_id,
+                    user_id=user_id,
+                    status=ExecutionStatus.CANCELLED,
+                    error_message="Execution cancelled by user",
+                    duration_ms=duration_ms
+                )
+            except Exception as update_error:
+                logger.error(f"Failed to update execution record: {update_error}")
+
+        return {
+            "executionId": execution_id,
+            "status": "Cancelled",
+            "error": "Execution cancelled by user",
+            "durationMs": duration_ms,
+            "startedAt": start_time.isoformat(),
+            "completedAt": end_time.isoformat(),
+            "isTransient": transient
+        }, 200
+
+    except TimeoutError as e:
+        # Execution timed out
+        end_time = datetime.utcnow()
+        duration_ms = int((end_time - start_time).total_seconds() * 1000)
+
+        if not transient:
+            try:
+                await exec_logger.update_execution(
+                    execution_id=execution_id,
+                    org_id=context.org_id,
+                    user_id=user_id,
+                    status=ExecutionStatus.TIMEOUT,
+                    error_message=str(e),
+                    error_type="TimeoutError",
+                    duration_ms=duration_ms
+                )
+            except Exception as update_error:
+                logger.error(f"Failed to update execution record: {update_error}")
+
+        return {
+            "executionId": execution_id,
+            "status": "Timeout",
+            "error": str(e),
+            "errorType": "TimeoutError",
+            "durationMs": duration_ms,
+            "startedAt": start_time.isoformat(),
+            "completedAt": end_time.isoformat(),
+            "isTransient": transient
+        }, 200
 
     except Exception as e:
         # CRITICAL: Catch-all to prevent stuck executions

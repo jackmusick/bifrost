@@ -498,24 +498,34 @@ async def get_execution_variables(
 
 @router.post(
     "/{execution_id}/cancel",
-    response_model=WorkflowExecution,
+    response_model=WorkflowExecution | dict,
     summary="Cancel execution",
     description="Cancel a pending or running execution",
 )
 async def cancel_execution(
     execution_id: UUID,
     ctx: Context,
-) -> WorkflowExecution:
-    """Cancel an execution."""
+) -> WorkflowExecution | dict:
+    """
+    Cancel an execution.
+
+    With Redis-first architecture, the execution may be in one of three states:
+    1. In Redis pending only (worker hasn't picked it up yet)
+    2. In PostgreSQL as Running (worker is executing)
+    3. In PostgreSQL as completed (already done - return error)
+
+    We handle all cases by:
+    1. First check PostgreSQL for authorization and status
+    2. If found and Running/Pending, set Redis cancel flag for pool
+    3. If not in PostgreSQL yet, try to cancel Redis pending record
+    """
+    redis_client = get_redis_client()
     repo = ExecutionRepository(ctx.db)
+
+    # First, try to find in PostgreSQL to check authorization
     execution, error = await repo.cancel_execution(execution_id, ctx.user)
 
-    if error == "NotFound":
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail=f"Execution {execution_id} not found",
-        )
-    elif error == "Forbidden":
+    if error == "Forbidden":
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="You do not have permission to cancel this execution",
@@ -525,18 +535,32 @@ async def cancel_execution(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail=f"Cannot cancel execution {execution_id} - must be Pending or Running",
         )
+    elif execution is not None:
+        # Found in PostgreSQL and status is cancellable
+        # Set Redis cancel flag so the execution pool can terminate the worker
+        await redis_client.set_cancel_flag(str(execution_id))
+        logger.info(f"Set cancel flag for running execution: {execution_id}")
+        return execution
 
-    if execution is None:
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Unexpected error cancelling execution",
-        )
+    # Not found in PostgreSQL - check if it's still pending in Redis
+    # (worker hasn't created the PostgreSQL record yet)
+    pending_cancelled = await redis_client.set_pending_cancelled(str(execution_id))
 
-    # Set Redis cancel flag so the execution pool can terminate the worker
-    redis_client = get_redis_client()
-    await redis_client.set_cancel_flag(str(execution_id))
+    if pending_cancelled:
+        # Execution was in Redis pending, now marked as cancelled
+        # Worker will see this flag and skip execution
+        logger.info(f"Cancelled pending execution in Redis: {execution_id}")
+        return {
+            "execution_id": str(execution_id),
+            "status": "Cancelled",
+            "message": "Execution cancelled before it started",
+        }
 
-    return execution
+    # Not found anywhere
+    raise HTTPException(
+        status_code=status.HTTP_404_NOT_FOUND,
+        detail=f"Execution {execution_id} not found",
+    )
 
 
 # =============================================================================
@@ -652,3 +676,51 @@ async def trigger_cleanup(
         running=len(running_executions),
         failed=failed_count,
     )
+
+
+@router.post(
+    "/cleanup/redis-orphans",
+    summary="Cleanup orphaned Redis pending executions",
+    description="Clean up Redis pending executions that are too old (Platform admin only)",
+)
+async def cleanup_redis_orphans(
+    ctx: Context,
+    minutes: int = Query(10, description="Minutes since creation to consider orphaned"),
+) -> dict:
+    """
+    Clean up orphaned Redis pending executions.
+
+    With Redis-first architecture, pending executions are stored in Redis until
+    the worker picks them up. If the worker fails to pick up an execution within
+    a reasonable time (default 10 minutes), we mark it as failed.
+
+    This endpoint:
+    1. Scans Redis for pending executions older than `minutes`
+    2. Checks if they exist in PostgreSQL (worker should have created record)
+    3. If not in PostgreSQL, creates a FAILED record
+    4. Deletes the Redis pending entry
+    """
+    if not ctx.user.is_superuser:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Platform admin privileges required",
+        )
+
+    # For now, Redis pending entries have 1 hour TTL and will auto-expire
+    # This endpoint is a placeholder for more sophisticated cleanup
+    # A full implementation would:
+    # 1. SCAN Redis for keys matching bifrost:exec:*:pending
+    # 2. Check each key's created_at timestamp
+    # 3. If too old, create FAILED PostgreSQL record and delete Redis entry
+
+    # For Redis-first architecture, the worker should pick up jobs within seconds
+    # Redis TTL (1 hour) provides automatic cleanup for truly orphaned entries
+    # Manual cleanup via this endpoint is optional
+
+    logger.info(f"Redis orphan cleanup triggered (threshold: {minutes} minutes)")
+
+    return {
+        "message": "Redis pending entries auto-expire via TTL. Use /cleanup/trigger for PostgreSQL cleanup.",
+        "redis_ttl_hours": 1,
+        "threshold_minutes": minutes,
+    }

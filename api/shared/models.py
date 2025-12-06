@@ -1784,7 +1784,7 @@ def model_to_entity(
 OAuthFlowType = Literal["authorization_code", "client_credentials", "refresh_token"]
 
 # OAuth connection status
-OAuthStatus = Literal["not_connected", "waiting_callback", "testing", "completed", "failed"]
+OAuthStatus = Literal["not_connected", "waiting_callback", "testing", "connected", "completed", "failed"]
 
 
 class CreateOAuthConnectionRequest(BaseModel):
@@ -1835,6 +1835,10 @@ class CreateOAuthConnectionRequest(BaseModel):
     scopes: str = Field(
         default="",
         description="Comma-separated list of OAuth scopes to request"
+    )
+    redirect_uri: str | None = Field(
+        None,
+        description="OAuth redirect URI (defaults to /oauth/callback/{connection_name})"
     )
 
     @classmethod

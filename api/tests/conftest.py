@@ -9,16 +9,16 @@ This module provides:
 5. Common test data fixtures
 """
 
-import asyncio
 import os
 import sys
-from typing import Any, AsyncGenerator, Generator
+from typing import Any, AsyncGenerator
 from unittest.mock import AsyncMock
 
 import pytest
 import pytest_asyncio
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine, async_sessionmaker
+from sqlalchemy.pool import NullPool
 
 # Add parent directory to path for imports
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
@@ -29,41 +29,34 @@ pytest_plugins = ["tests.fixtures.registry", "tests.fixtures.auth"]
 
 # ==================== CONFIGURATION ====================
 
-# Test database URL (from environment or docker-compose.test.yml defaults)
+# Test database URL (prefer env provided by docker-compose; fall back to container hostnames)
 TEST_DATABASE_URL = os.getenv(
     "BIFROST_DATABASE_URL",
-    "postgresql+asyncpg://bifrost:bifrost_test@localhost:15432/bifrost_test"
+    "postgresql+asyncpg://bifrost:bifrost_test@pgbouncer:5432/bifrost_test",
 )
 
 TEST_DATABASE_URL_SYNC = os.getenv(
     "BIFROST_DATABASE_URL_SYNC",
-    "postgresql://bifrost:bifrost_test@localhost:15432/bifrost_test"
+    "postgresql://bifrost:bifrost_test@pgbouncer:5432/bifrost_test",
 )
 
 TEST_RABBITMQ_URL = os.getenv(
     "BIFROST_RABBITMQ_URL",
-    "amqp://bifrost:bifrost_test@localhost:15672/"
+    "amqp://bifrost:bifrost_test@rabbitmq:5672/",
 )
 
 TEST_REDIS_URL = os.getenv(
     "BIFROST_REDIS_URL",
-    "redis://localhost:16379/0"
+    "redis://redis:6379/0",
 )
 
-TEST_API_URL = os.getenv("TEST_API_URL", "http://localhost:18000")
-
-
-# ==================== EVENT LOOP FIXTURES ====================
-
-@pytest.fixture(scope="session")
-def event_loop() -> Generator[asyncio.AbstractEventLoop, None, None]:
-    """Create an instance of the default event loop for the test session."""
-    loop = asyncio.get_event_loop_policy().new_event_loop()
-    yield loop
-    loop.close()
+TEST_API_URL = os.getenv("TEST_API_URL", "http://api:8000")
 
 
 # ==================== SESSION FIXTURES (Start Once Per Test Run) ====================
+# Note: pytest-asyncio handles event loop management automatically.
+# Session-scoped async fixtures will share a loop; function-scoped ones get fresh loops.
+
 
 @pytest.fixture(scope="session", autouse=True)
 def setup_test_environment(tmp_path_factory):
@@ -82,21 +75,36 @@ def setup_test_environment(tmp_path_factory):
     os.environ["BIFROST_WORKSPACE_LOCATION"] = str(test_workspace)
     os.environ["BIFROST_TEMP_LOCATION"] = str(test_temp)
 
+    # Reset global database state to ensure it uses test settings
+    # This is important because shared code (e.g., shared/metrics.py) uses
+    # get_session_factory() which relies on global state
+    from src.core.database import reset_db_state
+
+    reset_db_state()
+
     yield
+
+    # Clean up global database state after tests
+    reset_db_state()
 
 
 # ==================== DATABASE FIXTURES ====================
 
+
 @pytest.fixture(scope="session")
 def async_engine():
-    """Create async SQLAlchemy engine for test session."""
+    """Create async SQLAlchemy engine for test session.
+
+    Uses NullPool to avoid connection pooling issues with pytest-asyncio's
+    function-scoped event loops. Each test gets fresh connections.
+    """
     engine = create_async_engine(
         TEST_DATABASE_URL,
         echo=False,
-        pool_pre_ping=True,
+        poolclass=NullPool,
     )
     yield engine
-    # Cleanup handled by test.sh
+    # Cleanup handled by test.sh; NullPool ensures no lingering connections
 
 
 @pytest.fixture(scope="session")
@@ -123,7 +131,7 @@ async def db_session(async_session_factory) -> AsyncGenerator[AsyncSession, None
 
 
 @pytest_asyncio.fixture
-async def clean_db(db_session: AsyncSession) -> AsyncSession:
+async def clean_db(db_session: AsyncSession) -> AsyncGenerator[AsyncSession, None]:
     """
     Provide a clean database for tests that need it.
 
@@ -152,6 +160,7 @@ async def clean_db(db_session: AsyncSession) -> AsyncSession:
 
 
 # ==================== CONTEXT FIXTURES ====================
+
 
 @pytest.fixture
 def platform_admin_context():
@@ -200,6 +209,7 @@ def function_key_context():
 
 # ==================== MOCK FIXTURES ====================
 
+
 @pytest.fixture
 def mock_rabbitmq():
     """Mock RabbitMQ connection for unit tests."""
@@ -221,6 +231,7 @@ def mock_redis():
 
 
 # ==================== TEST DATA FIXTURES ====================
+
 
 @pytest.fixture
 def sample_user_data() -> dict[str, Any]:
@@ -298,7 +309,9 @@ def cleanup_workspace_files():
     from pathlib import Path
     import shutil
 
-    workspace_path = Path(os.environ.get("BIFROST_WORKSPACE_LOCATION", "/tmp/workspace"))
+    workspace_path = Path(
+        os.environ.get("BIFROST_WORKSPACE_LOCATION", "/tmp/workspace")
+    )
     cleanup_paths = []
 
     def register_cleanup(path: str):
@@ -331,6 +344,7 @@ def cleanup_workspace_files():
 
 
 # ==================== MARKERS ====================
+
 
 def pytest_configure(config):
     """Register custom pytest markers."""

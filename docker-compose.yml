@@ -109,7 +109,7 @@ services:
   api:
     build:
       context: .
-      dockerfile: api/Dockerfile.dev
+      dockerfile: api/Dockerfile
     container_name: bifrost-api
     environment:
       # Core
@@ -189,7 +189,7 @@ services:
   discovery:
     build:
       context: .
-      dockerfile: api/Dockerfile.dev
+      dockerfile: api/Dockerfile
     container_name: bifrost-discovery
     environment:
       # Core (must match API)
@@ -210,14 +210,14 @@ services:
     deploy:
       replicas: 1 # MUST be single instance
     command: >
-      watchmedo auto-restart --directory=/app/src --directory=/app/shared --pattern="*.py" --recursive -- python -m src.discovery.main
+      python -m src.discovery.main
 
   # Scheduler Service (APScheduler only)
   # MUST run as single instance - handles CRON jobs, cleanup tasks, OAuth refresh
   scheduler:
     build:
       context: .
-      dockerfile: api/Dockerfile.dev
+      dockerfile: api/Dockerfile
     container_name: bifrost-scheduler
     environment:
       # Core (must match API)
@@ -244,14 +244,14 @@ services:
     deploy:
       replicas: 1 # MUST be single instance
     command: >
-      watchmedo auto-restart --directory=/app/src --directory=/app/shared --pattern="*.py" --recursive -- python -m src.scheduler.main
+      python -m src.scheduler.main
 
   # Worker Service (RabbitMQ Consumers)
   # Can be scaled horizontally for increased throughput
   worker:
     build:
       context: .
-      dockerfile: api/Dockerfile.dev
+      dockerfile: api/Dockerfile
     container_name: bifrost-worker
     environment:
       # Core (must match API)
@@ -283,7 +283,7 @@ services:
     deploy:
       replicas: ${WORKER_REPLICAS:-1}
     command: >
-      watchmedo auto-restart --directory=/app/src --directory=/app/shared --pattern="*.py" --recursive -- python -m src.worker.main
+      python -m src.worker.main
 
 volumes:
   postgres_data:

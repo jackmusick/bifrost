@@ -359,7 +359,8 @@ class TestFlushLogsToPostgres:
 
             # Patch at the location where it's used, not where it's defined
             with patch("src.core.database.get_session_factory") as mock_session_factory:
-                mock_db = AsyncMock()
+                mock_db = MagicMock()
+                mock_db.commit = AsyncMock()  # commit is async
                 mock_session_factory.return_value.return_value.__aenter__.return_value = mock_db
 
                 count = await flush_logs_to_postgres(exec_id)

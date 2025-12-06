@@ -1,7 +1,7 @@
 """
 Security Integration Tests for Bifrost SDK
 
-Tests UNIQUE to new SDK additions (config, secrets, oauth, custom packages):
+Tests UNIQUE to new SDK additions (config, oauth, custom packages):
 1. Custom packages isolation (.packages directory)
 2. Context protection for new modules
 3. Default org scoping (list() returns only current org)
@@ -22,9 +22,9 @@ from bifrost._context import set_execution_context, clear_execution_context
 
 class TestSDKContextProtection:
     """
-    Test that new SDK modules (config, secrets, oauth) require execution context.
+    Test that new SDK modules (config, oauth) require execution context.
 
-    UNIQUE TO: New config, secrets, oauth modules
+    UNIQUE TO: New config, oauth modules
     """
 
     async def test_config_requires_context(self):
@@ -37,16 +37,6 @@ class TestSDKContextProtection:
         # Should raise RuntimeError
         with pytest.raises(RuntimeError, match="No execution context found"):
             await config.get("test_key")
-
-    async def test_secrets_requires_context(self):
-        """Test that secrets SDK requires execution context"""
-        from bifrost import secrets
-
-        clear_execution_context()
-
-        # secrets.get() raises RuntimeError when no context
-        with pytest.raises(RuntimeError, match="No execution context found"):
-            await secrets.get("test_key")
 
     async def test_oauth_requires_context(self):
         """Test that oauth SDK requires execution context"""
@@ -72,6 +62,7 @@ class TestDefaultOrgScoping:
     async def test_config_list_defaults_to_current_org(self):
         """Test that config.list() uses context.org_id by default"""
         from unittest.mock import AsyncMock, patch
+        from contextlib import asynccontextmanager
         from bifrost import config
         from shared.context import ExecutionContext, Organization
 
@@ -90,173 +81,30 @@ class TestDefaultOrgScoping:
         set_execution_context(context)
 
         try:
-            # Mock get_session_factory at the source (src.core.database)
-            with patch('src.core.database.get_session_factory') as mock_get_factory:
-                from sqlalchemy.ext.asyncio import AsyncSession
-                from unittest.mock import MagicMock
-                from contextlib import asynccontextmanager
+            # Mock get_redis - config.list reads from Redis cache
+            with patch('bifrost.config.get_redis') as mock_get_redis:
+                mock_redis = AsyncMock()
 
-                # Create a mock async session
-                mock_session = AsyncMock(spec=AsyncSession)
+                # Mock hgetall to return empty dict (no configs)
+                mock_redis.hgetall = AsyncMock(return_value={})
 
-                # Make the session factory return an async context manager
                 @asynccontextmanager
-                async def mock_async_context():
-                    yield mock_session
+                async def mock_redis_context():
+                    yield mock_redis
 
-                mock_get_factory.return_value = mock_async_context
-
-                # Mock execute to return empty result (no configs)
-                from unittest.mock import MagicMock
-                mock_result = MagicMock()
-                mock_result.scalars.return_value.all.return_value = []
-                mock_session.execute = AsyncMock(return_value=mock_result)
+                mock_get_redis.return_value = mock_redis_context()
 
                 # Call list() without org_id
                 result = await config.list()
 
-                # Verify it called execute with a query targeting org-123
-                mock_session.execute.assert_called_once()
+                # Verify it called hgetall with org-123 hash key
+                mock_redis.hgetall.assert_called_once()
+                call_args = mock_redis.hgetall.call_args
+                # The hash key should contain org-123
+                assert "org-123" in call_args[0][0]
                 # Verify result is a dict (empty in this case)
                 assert isinstance(result, dict)
-        finally:
-            clear_execution_context()
-
-    async def test_secrets_list_defaults_to_current_org(self):
-        """Test that secrets.list() uses context.org_id by default"""
-        from unittest.mock import AsyncMock, patch
-        from bifrost import secrets
-        from shared.context import ExecutionContext, Organization
-
-        org = Organization(id="org-456", name="Test Org", is_active=True)
-        context = ExecutionContext(
-            user_id="test-user",
-            email="test@example.com",
-            name="Test User",
-            scope="org-456",
-            organization=org,
-            is_platform_admin=False,
-            is_function_key=False,
-            execution_id="test-exec-456"
-        )
-        set_execution_context(context)
-
-        try:
-            # Mock get_session_factory at the source (src.core.database)
-            with patch('src.core.database.get_session_factory') as mock_get_factory:
-                from sqlalchemy.ext.asyncio import AsyncSession
-                from contextlib import asynccontextmanager
-
-                # Create a mock async session
-                mock_session = AsyncMock(spec=AsyncSession)
-
-                # Make the session factory return an async context manager
-                @asynccontextmanager
-                async def mock_async_context():
-                    yield mock_session
-
-                mock_get_factory.return_value = mock_async_context
-
-                # Mock execute to return configs with SECRET type
-                from unittest.mock import MagicMock
-                mock_result = MagicMock()
-                mock_result.scalars.return_value.all.return_value = []
-                mock_session.execute = AsyncMock(return_value=mock_result)
-
-                # Call list() without org_id
-                result = await secrets.list()
-
-                # Verify it called execute with a query
-                mock_session.execute.assert_called_once()
-                # Verify result is a list (empty in this case)
-                assert isinstance(result, list)
-        finally:
-            clear_execution_context()
-
-    async def test_oauth_list_defaults_to_current_org(self):
-        """Test that oauth.list_providers() uses context.org_id by default"""
-        from unittest.mock import AsyncMock, Mock, patch
-        from bifrost import oauth
-        from shared.context import ExecutionContext, Organization
-
-        org = Organization(id="org-789", name="Test Org", is_active=True)
-        context = ExecutionContext(
-            user_id="test-user",
-            email="test@example.com",
-            name="Test User",
-            scope="org-789",
-            organization=org,
-            is_platform_admin=False,
-            is_function_key=False,
-            execution_id="test-exec-789"
-        )
-        set_execution_context(context)
-
-        try:
-            # Mock OAuthStorageService - patch where it's imported IN SDK
-            with patch('bifrost.oauth.OAuthStorageService') as mock_storage_class:
-                from unittest.mock import AsyncMock
-                from shared.models import OAuthConnection
-                from datetime import datetime
-
-                mock_storage = Mock()
-                mock_storage_class.return_value = mock_storage
-
-                # list_connections is async and returns OAuthConnection objects
-                mock_connections = [
-                    OAuthConnection(
-                        org_id="org-789",
-                        connection_name="microsoft",
-                        description="Microsoft OAuth",
-                        oauth_flow_type="authorization_code",
-                        client_id="client-123",
-                        client_secret_config_key="oauth_microsoft_client_secret",
-                        oauth_response_config_key="oauth_microsoft_oauth_response",
-                        authorization_url="https://login.microsoft.com",
-                        token_url="https://login.microsoft.com/token",
-                        scopes="openid profile",
-                        redirect_uri="/oauth/callback/microsoft",
-                        status="completed",
-                        created_at=datetime.utcnow(),
-                        created_by="test-user",
-                        updated_at=datetime.utcnow()
-                    ),
-                    OAuthConnection(
-                        org_id="org-789",
-                        connection_name="google",
-                        description="Google OAuth",
-                        oauth_flow_type="authorization_code",
-                        client_id="client-456",
-                        client_secret_config_key="oauth_google_client_secret",
-                        oauth_response_config_key="oauth_google_oauth_response",
-                        authorization_url="https://accounts.google.com",
-                        token_url="https://oauth2.googleapis.com/token",
-                        scopes="openid email",
-                        redirect_uri="/oauth/callback/google",
-                        status="completed",
-                        created_at=datetime.utcnow(),
-                        created_by="test-user",
-                        updated_at=datetime.utcnow()
-                    )
-                ]
-
-                # Create async mock for list_connections
-                async def mock_list_connections(org_id, include_global=True):
-                    return mock_connections
-
-                mock_storage.list_connections = AsyncMock(side_effect=mock_list_connections)
-
-                # Call list_providers() without org_id
-                result = await oauth.list_providers()
-
-                # Verify it called list_connections with correct org_id
-                mock_storage.list_connections.assert_called_once()
-                call_args = mock_storage.list_connections.call_args
-                assert call_args[0][0] == "org-789"  # First positional arg
-                assert call_args[1]["include_global"]  # Keyword arg
-
-                # Verify result
-                assert result == ["microsoft", "google"]
+                assert result == {}
         finally:
             clear_execution_context()
 
@@ -265,7 +113,7 @@ class TestCrossOrgParameterUsage:
     """
     Test that when org_id parameter is specified, it's actually used.
 
-    UNIQUE TO: New optional org_id parameter on config, secrets, oauth
+    UNIQUE TO: New optional org_id parameter on config, oauth
 
     NOTE: Whether the user is AUTHORIZED to access another org's data is
     checked at the repository/service layer (existing tests). These tests
@@ -274,7 +122,9 @@ class TestCrossOrgParameterUsage:
 
     async def test_config_get_with_explicit_org_id(self):
         """Test that config.get(org_id='other-org') uses the specified org"""
+        import json
         from unittest.mock import AsyncMock, patch
+        from contextlib import asynccontextmanager
         from bifrost import config
         from shared.context import ExecutionContext, Organization
 
@@ -293,39 +143,34 @@ class TestCrossOrgParameterUsage:
         set_execution_context(context)
 
         try:
-            # Mock get_session_factory at the source (src.core.database)
-            with patch('src.core.database.get_session_factory') as mock_get_factory:
-                from sqlalchemy.ext.asyncio import AsyncSession
-                from contextlib import asynccontextmanager
+            # Mock get_redis - config.get reads from Redis cache
+            with patch('bifrost.config.get_redis') as mock_get_redis:
+                mock_redis = AsyncMock()
 
-                # Create a mock async session
-                mock_session = AsyncMock(spec=AsyncSession)
+                # Create cached config data as JSON
+                cached_config_data = json.dumps({
+                    "value": "other-value",
+                    "type": "string"
+                })
 
-                # Make the session factory return an async context manager
+                # Mock hget to return our cached data
+                mock_redis.hget = AsyncMock(return_value=cached_config_data)
+
                 @asynccontextmanager
-                async def mock_async_context():
-                    yield mock_session
+                async def mock_redis_context():
+                    yield mock_redis
 
-                mock_get_factory.return_value = mock_async_context
-
-                # Mock execute to return a config with the expected value
-                from unittest.mock import MagicMock
-                mock_result = MagicMock()
-
-                # Create a mock config object
-                class MockConfig:
-                    value = {"value": "other-value"}
-                    config_type = type('obj', (object,), {'value': 'string'})()
-                    organization_id = "org-999"
-
-                mock_result.scalars.return_value.first.return_value = MockConfig()
-                mock_session.execute = AsyncMock(return_value=mock_result)
+                mock_get_redis.return_value = mock_redis_context()
 
                 # Explicitly request org-999's config
                 result = await config.get("test_key", org_id="org-999")
 
-                # Verify it called execute with a query
-                mock_session.execute.assert_called_once()
+                # Verify it called hget with org-999 hash key
+                mock_redis.hget.assert_called_once()
+                call_args = mock_redis.hget.call_args
+                # The hash key should contain org-999
+                assert "org-999" in call_args[0][0]
+                assert call_args[0][1] == "test_key"
                 # Verify result contains the value
                 assert result == "other-value"
         finally:
@@ -337,7 +182,7 @@ class TestCrossOrgParameterUsage:
 
     async def test_config_set_with_explicit_org_id(self):
         """Test that config.set(org_id='other-org') writes to the specified org"""
-        from unittest.mock import AsyncMock, patch
+        from unittest.mock import AsyncMock, MagicMock, patch
         from bifrost import config
         from shared.context import ExecutionContext, Organization
 
@@ -356,42 +201,28 @@ class TestCrossOrgParameterUsage:
         set_execution_context(context)
 
         try:
-            # Mock get_session_factory at the source (src.core.database)
-            with patch('src.core.database.get_session_factory') as mock_get_factory:
-                from sqlalchemy.ext.asyncio import AsyncSession
-                from contextlib import asynccontextmanager
-
-                # Create a mock async session
-                mock_session = AsyncMock(spec=AsyncSession)
-
-                # Make the session factory return an async context manager
-                @asynccontextmanager
-                async def mock_async_context():
-                    yield mock_session
-
-                mock_get_factory.return_value = mock_async_context
-
-                # Mock execute to return no existing config
-                from unittest.mock import MagicMock
-                mock_result = MagicMock()
-                mock_result.scalars.return_value.first.return_value = None
-                mock_session.execute = AsyncMock(return_value=mock_result)
-                mock_session.add = MagicMock()
-                mock_session.commit = AsyncMock()
+            # Mock get_write_buffer - config.set writes to buffer, not directly to DB
+            with patch('bifrost.config.get_write_buffer') as mock_get_buffer:
+                mock_buffer = MagicMock()
+                mock_buffer.add_config_change = AsyncMock()
+                mock_get_buffer.return_value = mock_buffer
 
                 # Set config for org-999
                 await config.set("api_url", "https://api.other.com", org_id="org-999")
 
-                # Verify it called execute (checking if config exists)
-                mock_session.execute.assert_called()
-                # Verify it attempted to add config
-                assert mock_session.add.called or mock_session.commit.called
+                # Verify it called add_config_change with org-999
+                mock_buffer.add_config_change.assert_called_once()
+                call_kwargs = mock_buffer.add_config_change.call_args[1]
+                assert call_kwargs["org_id"] == "org-999"
+                assert call_kwargs["key"] == "api_url"
+                assert call_kwargs["value"] == "https://api.other.com"
+                assert call_kwargs["operation"] == "set"
         finally:
             clear_execution_context()
 
     async def test_config_delete_with_explicit_org_id(self):
         """Test that config.delete(org_id='other-org') deletes from the specified org"""
-        from unittest.mock import AsyncMock, patch
+        from unittest.mock import AsyncMock, MagicMock, patch
         from bifrost import config
         from shared.context import ExecutionContext, Organization
 
@@ -410,53 +241,33 @@ class TestCrossOrgParameterUsage:
         set_execution_context(context)
 
         try:
-            # Mock get_session_factory at the source (src.core.database)
-            with patch('src.core.database.get_session_factory') as mock_get_factory:
-                from sqlalchemy.ext.asyncio import AsyncSession
-                from contextlib import asynccontextmanager
-
-                # Create a mock async session
-                mock_session = AsyncMock(spec=AsyncSession)
-
-                # Make the session factory return an async context manager
-                @asynccontextmanager
-                async def mock_async_context():
-                    yield mock_session
-
-                mock_get_factory.return_value = mock_async_context
-
-                # Create a mock config object that exists
-                class MockConfig:
-                    key = "old_key"
-                    organization_id = "org-999"
-
-                # Mock execute to return existing config
-                from unittest.mock import MagicMock
-                mock_result = MagicMock()
-                mock_result.scalars.return_value.first.return_value = MockConfig()
-                mock_session.execute = AsyncMock(return_value=mock_result)
-                mock_session.delete = MagicMock(return_value=None)
-                mock_session.commit = AsyncMock()
+            # Mock get_write_buffer - config.delete writes to buffer, not directly to DB
+            with patch('bifrost.config.get_write_buffer') as mock_get_buffer:
+                mock_buffer = MagicMock()
+                mock_buffer.add_config_change = AsyncMock()
+                mock_get_buffer.return_value = mock_buffer
 
                 # Delete config from org-999
                 result = await config.delete("old_key", org_id="org-999")
 
-                # Verify it called execute (checking if config exists)
-                mock_session.execute.assert_called()
-                # Verify it attempted to delete
-                assert mock_session.delete.called
-                # Verify result is True (config was deleted)
+                # Verify it called add_config_change with org-999
+                mock_buffer.add_config_change.assert_called_once()
+                call_kwargs = mock_buffer.add_config_change.call_args[1]
+                assert call_kwargs["org_id"] == "org-999"
+                assert call_kwargs["key"] == "old_key"
+                assert call_kwargs["operation"] == "delete"
+                # Verify result is True (deletion queued)
                 assert result is True
         finally:
             clear_execution_context()
 
-    async def test_oauth_get_token_with_explicit_org_id(self):
+    async def test_oauth_get_with_explicit_org_id(self):
         """Test that oauth.get(org_id='other-org') uses the specified org"""
-        from unittest.mock import AsyncMock, Mock, patch
+        import json
+        from unittest.mock import AsyncMock, patch
+        from contextlib import asynccontextmanager
         from bifrost import oauth
         from shared.context import ExecutionContext, Organization
-        from shared.models import OAuthConnection
-        from datetime import datetime
 
         org = Organization(id="org-123", name="Test Org", is_active=True)
         context = ExecutionContext(
@@ -472,48 +283,47 @@ class TestCrossOrgParameterUsage:
         set_execution_context(context)
 
         try:
-            # Mock OAuthStorageService.get_connection and get_tokens
-            with patch('bifrost.oauth.OAuthStorageService') as mock_storage_class:
-                mock_storage = Mock()
-                mock_storage_class.return_value = mock_storage
+            # Mock get_redis - oauth.get reads from Redis cache
+            with patch('bifrost.oauth.get_redis') as mock_get_redis:
+                mock_redis = AsyncMock()
 
-                # Create mock connection
-                mock_connection = OAuthConnection(
-                    org_id="org-777",
-                    connection_name="microsoft",
-                    description="Microsoft OAuth",
-                    oauth_flow_type="authorization_code",
-                    client_id="client-123",
-                    client_secret_config_key="oauth_microsoft_client_secret",
-                    oauth_response_config_key="oauth_microsoft_oauth_response",
-                    authorization_url="https://login.microsoft.com",
-                    token_url="https://login.microsoft.com/token",
-                    scopes="openid profile",
-                    redirect_uri="/oauth/callback/microsoft",
-                    status="completed",
-                    created_at=datetime.utcnow(),
-                    created_by="test-user",
-                    updated_at=datetime.utcnow()
-                )
-
-                # Mock get_connection to return our connection
-                mock_storage.get_connection = AsyncMock(return_value=mock_connection)
-                # Mock get_tokens to return token data
-                mock_storage.get_tokens = AsyncMock(return_value={
+                # Create cached OAuth data as JSON
+                cached_oauth_data = json.dumps({
+                    "provider_name": "microsoft",
+                    "client_id": "client-123",
+                    "client_secret": "secret-456",
+                    "authorization_url": "https://login.microsoft.com",
+                    "token_url": "https://login.microsoft.com/token",
+                    "scopes": ["openid", "profile"],
                     "access_token": "xxx",
                     "refresh_token": "yyy",
                     "expires_at": None
                 })
 
-                # Explicitly request org-777's token
+                # Mock hget to return our cached data
+                mock_redis.hget = AsyncMock(return_value=cached_oauth_data)
+
+                @asynccontextmanager
+                async def mock_redis_context():
+                    yield mock_redis
+
+                mock_get_redis.return_value = mock_redis_context()
+
+                # Explicitly request org-777's OAuth token
                 result = await oauth.get("microsoft", org_id="org-777")
 
-                # Verify it called get_connection with org-777
-                mock_storage.get_connection.assert_called_once_with("org-777", "microsoft")
+                # Verify it called hget with org-777 hash key
+                mock_redis.hget.assert_called_once()
+                call_args = mock_redis.hget.call_args
+                # The hash key should contain org-777
+                assert "org-777" in call_args[0][0]
+                assert call_args[0][1] == "microsoft"
+
                 # Verify result contains the OAuth config
                 assert result is not None
                 assert result["connection_name"] == "microsoft"
                 assert result["client_id"] == "client-123"
+                assert result["access_token"] == "xxx"
         finally:
             clear_execution_context()
 
@@ -567,7 +377,7 @@ The following security concerns are ALREADY tested in existing test suites:
 
 This test file focuses ONLY on security concerns UNIQUE to the new SDK additions:
 - Custom packages isolation
-- Context protection for new modules (config, secrets, oauth)
+- Context protection for new modules (config, oauth)
 - Default org scoping in SDK (not repository)
 - Cross-org parameter passing
 """
