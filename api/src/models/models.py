@@ -173,8 +173,7 @@ class FormCreate(BaseModel):
     """Input for creating a form."""
     name: str
     description: str | None = None
-    linked_workflow: str | None = None
-    launch_workflow_id: str | None = None
+    workflow_id: str | None = None
     default_launch_params: dict | None = None
     allowed_query_params: list[str] | None = None
     form_schema: dict | FormSchema
@@ -196,8 +195,7 @@ class FormUpdate(BaseModel):
     """Input for updating a form."""
     name: str | None = None
     description: str | None = None
-    linked_workflow: str | None = None
-    launch_workflow_id: str | None = None
+    workflow_id: str | None = None
     default_launch_params: dict | None = None
     allowed_query_params: list[str] | None = None
     form_schema: dict | FormSchema | None = None
@@ -223,8 +221,7 @@ class FormPublic(BaseModel):
     id: UUID
     name: str
     description: str | None = None
-    linked_workflow: str | None = None
-    launch_workflow_id: str | None = None
+    workflow_id: str | None = None
     default_launch_params: dict | None = None
     allowed_query_params: list[str] | None = None
     form_schema: dict | FormSchema | None = None
@@ -287,8 +284,7 @@ class FormPublic(BaseModel):
                 "id": data.id,
                 "name": data.name,
                 "description": data.description,
-                "linked_workflow": data.linked_workflow,
-                "launch_workflow_id": data.launch_workflow_id,
+                "workflow_id": data.workflow_id,
                 "default_launch_params": data.default_launch_params,
                 "allowed_query_params": data.allowed_query_params,
                 "form_schema": {"fields": fields_data},

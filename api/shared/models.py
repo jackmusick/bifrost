@@ -831,7 +831,7 @@ class Form(BaseModel):
     org_id: str = Field(..., description="Organization ID or 'GLOBAL'")
     name: str = Field(..., min_length=1, max_length=200)
     description: str | None = None
-    linked_workflow: str = Field(..., description="Workflow name to execute")
+    workflow_id: str | None = Field(None, description="Workflow ID (UUID) to execute when form is submitted")
     form_schema: FormSchema
     is_active: bool = Field(default=True)
     is_global: bool = Field(default=False)
@@ -841,50 +841,44 @@ class Form(BaseModel):
     created_at: datetime
     updated_at: datetime
 
-    # NEW MVP fields (T012)
-    launch_workflow_id: str | None = Field(
-        None, description="Optional workflow to execute on form load for context generation")
+    # Optional launch params
     allowed_query_params: list[str] | None = Field(
         None, description="List of allowed query parameter names to inject into form context")
     default_launch_params: dict[str, Any] | None = Field(
-        None, description="Default parameter values for launch workflow (used when not provided via query params or POST body)")
+        None, description="Default parameter values for workflow execution")
 
 
 class CreateFormRequest(BaseModel):
     """Request model for creating a form"""
     name: str = Field(..., min_length=1, max_length=200)
     description: str | None = None
-    linked_workflow: str
+    workflow_id: str = Field(..., description="Workflow ID (UUID) to execute when form is submitted")
     form_schema: FormSchema
     is_global: bool = Field(default=False)
     access_level: FormAccessLevel = Field(
         default=FormAccessLevel.ROLE_BASED, description="Access control level")
 
-    # NEW MVP fields (T012)
-    launch_workflow_id: str | None = Field(
-        None, description="Optional workflow to execute on form load for context generation")
+    # Optional launch params
     allowed_query_params: list[str] | None = Field(
         None, description="List of allowed query parameter names to inject into form context")
     default_launch_params: dict[str, Any] | None = Field(
-        None, description="Default parameter values for launch workflow (used when not provided via query params or POST body)")
+        None, description="Default parameter values for workflow execution")
 
 
 class UpdateFormRequest(BaseModel):
     """Request model for updating a form"""
     name: str | None = Field(None, min_length=1, max_length=200)
     description: str | None = None
-    linked_workflow: str | None = None
+    workflow_id: str | None = Field(None, description="Workflow ID (UUID) to execute when form is submitted")
     form_schema: FormSchema | None = None
     is_active: bool | None = None
     access_level: FormAccessLevel | None = None
 
-    # NEW MVP fields (T012)
-    launch_workflow_id: str | None = Field(
-        None, description="Optional workflow to execute on form load for context generation")
+    # Optional launch params
     allowed_query_params: list[str] | None = Field(
         None, description="List of allowed query parameter names to inject into form context")
     default_launch_params: dict[str, Any] | None = Field(
-        None, description="Default parameter values for launch workflow (used when not provided via query params or POST body)")
+        None, description="Default parameter values for workflow execution")
 
 
 class FormExecuteRequest(BaseModel):
@@ -932,25 +926,26 @@ class WorkflowExecution(BaseModel):
 
 class WorkflowExecutionRequest(BaseModel):
     """Request model for executing a workflow"""
-    workflow_name: str | None = Field(None, description="Name of the workflow to execute (required if code not provided)")
+    workflow_id: str | None = Field(None, description="UUID of the workflow to execute (required if code not provided)")
     input_data: dict[str, Any] = Field(default_factory=dict, description="Workflow input parameters")
     form_id: str | None = Field(None, description="Optional form ID that triggered this execution")
     transient: bool = Field(default=False, description="If true, skip database persistence (for code editor debugging)")
-    code: str | None = Field(None, description="Optional: Python code to execute as script (base64 encoded). If provided, executes code instead of looking up workflow by name.")
+    code: str | None = Field(None, description="Optional: Python code to execute as script (base64 encoded). If provided, executes code instead of looking up workflow by ID.")
     script_name: str | None = Field(None, description="Optional: Name/identifier for the script (used for logging when code is provided)")
 
     @model_validator(mode='after')
     def validate_workflow_or_code(self) -> 'WorkflowExecutionRequest':
-        """Ensure either workflow_name or code is provided"""
-        if not self.workflow_name and not self.code:
-            raise ValueError("Either 'workflow_name' or 'code' must be provided")
+        """Ensure either workflow_id or code is provided"""
+        if not self.workflow_id and not self.code:
+            raise ValueError("Either 'workflow_id' or 'code' must be provided")
         return self
 
 
 class WorkflowExecutionResponse(BaseModel):
     """Response model for workflow execution"""
     execution_id: str
-    workflow_name: str | None = None
+    workflow_id: str | None = None
+    workflow_name: str | None = None  # Display name from @workflow decorator
     status: ExecutionStatus
     result: dict[str, Any] | list[Any] | str | None = None  # Can be dict/list (JSON) or str (HTML/text)
     error: str | None = None
@@ -1022,9 +1017,12 @@ class WorkflowParameter(BaseModel):
 
 class WorkflowMetadata(BaseModel):
     """Workflow metadata for discovery API"""
+    # Unique identifier
+    id: str = Field(..., description="Workflow UUID")
+
     # Required fields
     name: str = Field(..., min_length=1, pattern=r"^[a-z0-9_]+$", description="Workflow name (snake_case)")
-    description: str = Field(..., min_length=1, description="Human-readable description")
+    description: str | None = Field(None, description="Human-readable description")
 
     # Optional fields with defaults
     category: str = Field("General", description="Category for organization")
@@ -1054,7 +1052,7 @@ class WorkflowMetadata(BaseModel):
 class DataProviderMetadata(BaseModel):
     """Data provider metadata from @data_provider decorator (T008)"""
     name: str
-    description: str
+    description: str | None = None
     category: str = "General"
     cache_ttl_seconds: int = 300
     parameters: list[WorkflowParameter] = Field(default_factory=list, description="Input parameters from @param decorators")
@@ -1066,14 +1064,13 @@ class FormDiscoveryMetadata(BaseModel):
     """Lightweight form metadata for discovery endpoint"""
     id: str
     name: str
-    linked_workflow: str
+    workflow_id: str | None = None
     org_id: str
     is_active: bool
     is_global: bool
     access_level: FormAccessLevel | str | None = None
     created_at: datetime
     updated_at: datetime
-    launch_workflow_id: str | None = None
 
 
 class MetadataResponse(BaseModel):

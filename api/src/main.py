@@ -14,6 +14,7 @@ from src.config import get_settings
 from src.core.csrf import CSRFMiddleware
 from src.core.database import close_db, init_db
 from src.core.pubsub import manager as pubsub_manager
+from src.core.workspace_sync import workspace_sync
 from src.routers import (
     auth_router,
     mfa_router,
@@ -39,6 +40,7 @@ from src.routers import (
     oauth_connections_router,
     endpoints_router,
     file_uploads_router,
+    sdk_router,
 )
 
 # Configure logging
@@ -75,8 +77,10 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     await init_db()
     logger.info("Database connection established")
 
-    # NOTE: File watching and DB sync is handled by the Discovery container.
-    # API queries workflows/providers/forms from the database.
+    # Start workspace sync service (downloads from S3, listens for changes)
+    logger.info("Starting workspace sync service...")
+    await workspace_sync.start()
+    logger.info("Workspace sync service started")
 
     # Create default admin user if configured via environment variables
     if settings.default_user_email and settings.default_user_password:
@@ -89,6 +93,7 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     # Shutdown
     logger.info("Shutting down Bifrost API...")
 
+    await workspace_sync.stop()
     await pubsub_manager.close()
     await close_db()
     logger.info("Bifrost API shutdown complete")
@@ -185,6 +190,7 @@ def create_app() -> FastAPI:
     app.include_router(oauth_connections_router)
     app.include_router(endpoints_router)
     app.include_router(file_uploads_router)
+    app.include_router(sdk_router)
 
     # Root endpoint
     @app.get("/")

@@ -170,8 +170,8 @@ class ConfigRepository(OrgScopedRepository[ConfigModel]):
         if not config:
             return False
 
-        # Note: session.delete() is NOT async - it just marks for deletion
-        self.session.delete(config)
+        # In SQLAlchemy 2.0 async, delete() is async
+        await self.session.delete(config)
         await self.session.flush()
 
         logger.info(f"Deleted config {key}")

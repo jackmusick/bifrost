@@ -2,18 +2,27 @@
 Execution Service
 Clean service layer for executing workflows, code, and data providers.
 All execution runs in isolated subprocess via ExecutionPool.
+
+Workflows are loaded by ID:
+1. Look up workflow in database to get file_path and name
+2. Load Python module from local workspace (/tmp/bifrost/workspace)
+3. Find the @workflow decorated function by name
+4. Execute in isolated subprocess
 """
 
 from __future__ import annotations
 
 import asyncio
 import base64
+import importlib.util
 import logging
+import sys
 import uuid
 from datetime import datetime
-from typing import TYPE_CHECKING, Any
+from pathlib import Path
+from typing import TYPE_CHECKING, Any, Callable
 
-from shared.discovery import get_workflow, get_data_provider
+from shared.discovery import get_data_provider, WorkflowMetadata
 from shared.models import ExecutionStatus, WorkflowExecutionResponse
 
 if TYPE_CHECKING:
@@ -21,46 +30,140 @@ if TYPE_CHECKING:
 
 logger = logging.getLogger(__name__)
 
+# Local workspace path (synced from S3)
+WORKSPACE_PATH = Path("/tmp/bifrost/workspace")
+
 
 class WorkflowNotFoundError(Exception):
     """Raised when a workflow cannot be found."""
+
     pass
 
 
 class WorkflowLoadError(Exception):
     """Raised when a workflow fails to load."""
+
     pass
 
 
 class DataProviderNotFoundError(Exception):
     """Raised when a data provider cannot be found."""
+
     pass
 
 
 class DataProviderLoadError(Exception):
     """Raised when a data provider fails to load."""
+
     pass
+
+
+async def get_workflow_by_id(
+    workflow_id: str,
+) -> tuple[Callable, WorkflowMetadata]:
+    """
+    Load a workflow by ID from the database and local workspace.
+
+    Args:
+        workflow_id: Workflow UUID from database
+
+    Returns:
+        Tuple of (function, metadata)
+
+    Raises:
+        WorkflowNotFoundError: If workflow doesn't exist in database
+        WorkflowLoadError: If workflow file can't be loaded
+    """
+    from sqlalchemy import select
+    from src.core.database import get_session_factory
+    from src.models.orm import Workflow as WorkflowORM
+
+    # Look up workflow in database
+    session_factory = get_session_factory()
+    async with session_factory() as db:
+        stmt = select(WorkflowORM).where(
+            WorkflowORM.id == workflow_id,
+            WorkflowORM.is_active == True,  # noqa: E712
+        )
+        result = await db.execute(stmt)
+        workflow_record = result.scalar_one_or_none()
+
+    if not workflow_record:
+        raise WorkflowNotFoundError(f"Workflow with ID '{workflow_id}' not found")
+
+    # Load from local workspace
+    file_path = WORKSPACE_PATH / workflow_record.file_path
+    if not file_path.exists():
+        raise WorkflowLoadError(
+            f"Workflow file not found: {workflow_record.file_path}. "
+            "Workspace may be out of sync."
+        )
+
+    # Import the module
+    try:
+        module_name = f"workflow_{workflow_id.replace('-', '_')}"
+        spec = importlib.util.spec_from_file_location(module_name, file_path)
+        if not spec or not spec.loader:
+            raise WorkflowLoadError(f"Cannot create module spec for {file_path}")
+
+        module = importlib.util.module_from_spec(spec)
+        sys.modules[module_name] = module
+        spec.loader.exec_module(module)
+    except Exception as e:
+        raise WorkflowLoadError(f"Failed to load workflow module: {e}")
+
+    # Find the decorated function by workflow name
+    workflow_func = None
+    workflow_metadata = None
+
+    for name in dir(module):
+        obj = getattr(module, name)
+        # Only check callable objects (functions) for workflow metadata
+        # This avoids triggering __getattr__ on proxy objects like `context`
+        if callable(obj) and hasattr(obj, "_workflow_metadata"):
+            meta = obj._workflow_metadata
+            if meta.name == workflow_record.name:
+                workflow_func = obj
+                workflow_metadata = meta
+                break
+
+    if not workflow_func or not workflow_metadata:
+        raise WorkflowLoadError(
+            f"No @workflow function named '{workflow_record.name}' found in {workflow_record.file_path}"
+        )
+
+    # Enrich metadata from database record
+    workflow_metadata.id = str(workflow_record.id)
+    workflow_metadata.source_file_path = workflow_record.file_path
+
+    logger.debug(f"Loaded workflow by ID: {workflow_id} -> {workflow_record.name}")
+    return workflow_func, workflow_metadata
 
 
 async def run_workflow(
     context: "ExecutionContext",
-    workflow_name: str,
+    workflow_id: str,
     input_data: dict[str, Any] | None = None,
     form_id: str | None = None,
     transient: bool = False,
+    sync: bool = False,
 ) -> WorkflowExecutionResponse:
     """
-    Execute a named workflow.
+    Execute a workflow by ID.
+
+    All workflows are executed via the worker queue (RabbitMQ). The `sync` parameter
+    controls whether we wait for the result or return immediately with PENDING status.
 
     Args:
         context: ExecutionContext with org scope and user info
-        workflow_name: Name of workflow to execute
+        workflow_id: UUID of workflow to execute (from database)
         input_data: Input parameters for the workflow
         form_id: Optional form ID if triggered by form
         transient: If True, don't persist execution record
+        sync: If True, wait for result via Redis BLPOP. If False, return PENDING immediately.
 
     Returns:
-        WorkflowExecutionResponse with execution results
+        WorkflowExecutionResponse with execution results (or PENDING status if sync=False)
 
     Raises:
         WorkflowNotFoundError: If workflow doesn't exist
@@ -68,38 +171,36 @@ async def run_workflow(
     """
     parameters = input_data or {}
 
-    # Load workflow
+    # Validate workflow exists by looking it up (worker will also look it up)
     try:
-        result = get_workflow(workflow_name)
-        if not result:
-            raise WorkflowNotFoundError(f"Workflow '{workflow_name}' not found")
-
-        workflow_func, workflow_metadata = result
-        logger.debug(f"Loaded workflow: {workflow_name}")
+        _, workflow_metadata = await get_workflow_by_id(workflow_id)
+        logger.debug(
+            f"Validated workflow by ID: {workflow_id} -> {workflow_metadata.name}"
+        )
     except WorkflowNotFoundError:
         raise
+    except WorkflowLoadError:
+        raise
     except Exception as e:
-        logger.error(f"Failed to load workflow {workflow_name}: {e}", exc_info=True)
-        raise WorkflowLoadError(f"Failed to load workflow '{workflow_name}': {str(e)}")
-
-    # Check if async execution is required
-    if workflow_metadata.execution_mode == "async":
-        return await _enqueue_async_execution(
-            context=context,
-            workflow_name=workflow_name,
-            parameters=parameters,
-            form_id=form_id,
+        logger.error(f"Failed to validate workflow {workflow_id}: {e}", exc_info=True)
+        raise WorkflowLoadError(
+            f"Failed to validate workflow '{workflow_id}': {str(e)}"
         )
 
-    # Synchronous execution
-    return await _execute_sync(
+    # Determine sync mode - if not explicitly set, use workflow's execution_mode
+    use_sync = sync
+    if not sync and workflow_metadata.execution_mode == "sync":
+        use_sync = True
+        logger.debug(f"Workflow {workflow_id} has execution_mode='sync', waiting for result")
+
+    # Enqueue for execution via worker
+    return await _enqueue_workflow_async(
         context=context,
-        workflow_name=workflow_name,
-        workflow_func=workflow_func,
-        workflow_metadata=workflow_metadata,
+        workflow_id=workflow_id,
+        workflow_name=workflow_metadata.name,
         parameters=parameters,
         form_id=form_id,
-        transient=transient,
+        sync=use_sync,
     )
 
 
@@ -127,11 +228,11 @@ async def run_code(
     code_base64 = base64.b64encode(code.encode()).decode()
 
     # Scripts always run async
-    return await _enqueue_async_execution(
+    return await _enqueue_code_async(
         context=context,
-        workflow_name=script_name,
-        parameters=parameters,
+        script_name=script_name,
         code_base64=code_base64,
+        parameters=parameters,
     )
 
 
@@ -164,15 +265,21 @@ async def run_data_provider(
     try:
         result = get_data_provider(provider_name)
         if not result:
-            raise DataProviderNotFoundError(f"Data provider '{provider_name}' not found")
+            raise DataProviderNotFoundError(
+                f"Data provider '{provider_name}' not found"
+            )
 
         provider_func, provider_metadata = result
         logger.debug(f"Loaded data provider: {provider_name}")
     except DataProviderNotFoundError:
         raise
     except Exception as e:
-        logger.error(f"Failed to load data provider {provider_name}: {e}", exc_info=True)
-        raise DataProviderLoadError(f"Failed to load data provider '{provider_name}': {str(e)}")
+        logger.error(
+            f"Failed to load data provider {provider_name}: {e}", exc_info=True
+        )
+        raise DataProviderLoadError(
+            f"Failed to load data provider '{provider_name}': {str(e)}"
+        )
 
     execution_id = str(uuid.uuid4())
 
@@ -216,273 +323,105 @@ async def run_data_provider(
     # Check result status
     status_str = result.get("status", "Failed")
     if status_str != "Success":
-        raise RuntimeError(f"Data provider execution failed: {result.get('error_message')}")
+        raise RuntimeError(
+            f"Data provider execution failed: {result.get('error_message')}"
+        )
 
     options = result.get("result")
     if not isinstance(options, list):
-        raise RuntimeError(f"Data provider must return a list, got {type(options).__name__}")
+        raise RuntimeError(
+            f"Data provider must return a list, got {type(options).__name__}"
+        )
 
     return options
 
 
-async def _enqueue_async_execution(
+async def _enqueue_workflow_async(
     context: "ExecutionContext",
+    workflow_id: str,
     workflow_name: str,
     parameters: dict[str, Any],
     form_id: str | None = None,
-    code_base64: str | None = None,
+    sync: bool = False,
 ) -> WorkflowExecutionResponse:
-    """Enqueue workflow for async execution via RabbitMQ."""
+    """
+    Enqueue workflow for execution via RabbitMQ.
+
+    If sync=True, waits for result via Redis BLPOP.
+    If sync=False, returns immediately with PENDING status.
+    """
     from shared.async_executor import enqueue_workflow_execution
+    from src.core.redis_client import get_redis_client
 
     execution_id = await enqueue_workflow_execution(
         context=context,
-        workflow_name=workflow_name,
+        workflow_id=workflow_id,
         parameters=parameters,
         form_id=form_id,
-        code_base64=code_base64
+        sync=sync,
+    )
+
+    if not sync:
+        # Return immediately with pending status
+        return WorkflowExecutionResponse(
+            execution_id=execution_id,
+            workflow_id=workflow_id,
+            workflow_name=workflow_name,
+            status=ExecutionStatus.PENDING,
+        )
+
+    # Wait for result via Redis BLPOP
+    redis_client = get_redis_client()
+    result = await redis_client.wait_for_result(execution_id, timeout_seconds=1800)
+
+    if result is None:
+        return WorkflowExecutionResponse(
+            execution_id=execution_id,
+            workflow_id=workflow_id,
+            workflow_name=workflow_name,
+            status=ExecutionStatus.TIMEOUT,
+            error="Execution timed out waiting for result",
+            error_type="TimeoutError",
+        )
+
+    # Map result to response
+    status_str = result.get("status", "Failed")
+    status = (
+        ExecutionStatus(status_str)
+        if status_str in [s.value for s in ExecutionStatus]
+        else ExecutionStatus.FAILED
     )
 
     return WorkflowExecutionResponse(
         execution_id=execution_id,
+        workflow_id=workflow_id,
         workflow_name=workflow_name,
-        status=ExecutionStatus.PENDING,
+        status=status,
+        result=result.get("result"),
+        error=result.get("error"),
+        error_type=result.get("error_type"),
+        duration_ms=result.get("duration_ms"),
     )
 
 
-async def _execute_sync(
+async def _enqueue_code_async(
     context: "ExecutionContext",
-    workflow_name: str,
-    workflow_func,
-    workflow_metadata,
+    script_name: str,
+    code_base64: str,
     parameters: dict[str, Any],
-    form_id: str | None = None,
-    transient: bool = False,
 ) -> WorkflowExecutionResponse:
-    """Execute workflow synchronously in isolated subprocess."""
-    from shared.execution import get_execution_pool
-    from shared.execution_logger import get_execution_logger
-    from shared.webpubsub_broadcaster import WebPubSubBroadcaster
+    """Enqueue inline code for async execution via RabbitMQ."""
+    from shared.async_executor import enqueue_code_execution
 
-    execution_id = str(uuid.uuid4())
-    exec_logger = get_execution_logger()
-    start_time = datetime.utcnow()
-    broadcaster = WebPubSubBroadcaster()
-    timeout_seconds = workflow_metadata.timeout_seconds if workflow_metadata else 1800
+    execution_id = await enqueue_code_execution(
+        context=context,
+        script_name=script_name,
+        code_base64=code_base64,
+        parameters=parameters,
+    )
 
-    try:
-        # Create execution record
-        if not transient:
-            await exec_logger.create_execution(
-                execution_id=execution_id,
-                org_id=context.org_id,
-                user_id=context.user_id,
-                user_name=context.name,
-                workflow_name=workflow_name,
-                input_data=parameters,
-                form_id=form_id,
-                webpubsub_broadcaster=broadcaster
-            )
-
-        logger.info(
-            f"Starting sync workflow execution: {workflow_name}",
-            extra={
-                "execution_id": execution_id,
-                "org_id": context.org_id,
-                "user_id": context.user_id
-            }
-        )
-
-        # Build context data for subprocess
-        org_data = None
-        if context.organization:
-            org_data = {
-                "id": context.organization.id,
-                "name": context.organization.name,
-                "is_active": context.organization.is_active,
-            }
-
-        context_data = {
-            "execution_id": execution_id,
-            "name": workflow_name,
-            "code": None,  # Not a script
-            "parameters": parameters,
-            "caller": {
-                "user_id": context.user_id,
-                "email": context.email,
-                "name": context.name,
-            },
-            "organization": org_data,
-            "config": context._config,
-            "tags": ["workflow"],
-            "timeout_seconds": timeout_seconds,
-            "transient": transient,
-            "is_platform_admin": context.is_platform_admin,
-        }
-
-        # Execute in isolated subprocess
-        pool = get_execution_pool()
-        result = await pool.execute(
-            execution_id=execution_id,
-            context_data=context_data,
-            timeout_seconds=timeout_seconds,
-        )
-
-        # Map result status
-        status_str = result.get("status", "Failed")
-        status = ExecutionStatus(status_str) if status_str in [s.value for s in ExecutionStatus] else ExecutionStatus.FAILED
-
-        # Update execution record
-        if not transient:
-            await exec_logger.update_execution(
-                execution_id=execution_id,
-                org_id=context.org_id,
-                user_id=context.user_id,
-                status=status,
-                result=result.get("result"),
-                error_message=result.get("error_message"),
-                error_type=result.get("error_type"),
-                duration_ms=result.get("duration_ms", 0),
-                integration_calls=result.get("integration_calls"),
-                logs=result.get("logs"),
-                variables=result.get("variables"),
-                webpubsub_broadcaster=broadcaster
-            )
-
-        end_time = datetime.utcnow()
-
-        # Build response with appropriate error/log filtering
-        error = None
-        error_type = None
-        if status != ExecutionStatus.SUCCESS and result.get("error_message"):
-            if context.is_platform_admin:
-                error = result.get("error_message")
-                error_type = result.get("error_type")
-            elif result.get("error_type") == "UserError":
-                error = result.get("error_message")
-            else:
-                error = "An error occurred during execution"
-
-        # Filter logs for non-admins
-        logs = None
-        if result.get("logs"):
-            if context.is_platform_admin:
-                logs = result.get("logs")
-            else:
-                logs = [
-                    log for log in result.get("logs", [])
-                    if log.get('level') not in ['debug', 'traceback']
-                ]
-
-        return WorkflowExecutionResponse(
-            execution_id=execution_id,
-            workflow_name=workflow_name,
-            status=status,
-            result=result.get("result") if status == ExecutionStatus.SUCCESS else None,
-            error=error,
-            error_type=error_type,
-            duration_ms=result.get("duration_ms", 0),
-            started_at=start_time,
-            completed_at=end_time,
-            logs=logs,
-            variables=result.get("variables") if context.is_platform_admin else None,
-            is_transient=transient,
-        )
-
-    except asyncio.CancelledError:
-        # Execution was cancelled
-        end_time = datetime.utcnow()
-        duration_ms = int((end_time - start_time).total_seconds() * 1000)
-
-        if not transient:
-            try:
-                await exec_logger.update_execution(
-                    execution_id=execution_id,
-                    org_id=context.org_id,
-                    user_id=context.user_id,
-                    status=ExecutionStatus.CANCELLED,
-                    error_message="Execution cancelled by user",
-                    duration_ms=duration_ms
-                )
-            except Exception as update_error:
-                logger.error(f"Failed to update execution record: {update_error}")
-
-        return WorkflowExecutionResponse(
-            execution_id=execution_id,
-            workflow_name=workflow_name,
-            status=ExecutionStatus.CANCELLED,
-            error="Execution cancelled by user",
-            duration_ms=duration_ms,
-            started_at=start_time,
-            completed_at=end_time,
-            is_transient=transient,
-        )
-
-    except TimeoutError as e:
-        # Execution timed out
-        end_time = datetime.utcnow()
-        duration_ms = int((end_time - start_time).total_seconds() * 1000)
-
-        if not transient:
-            try:
-                await exec_logger.update_execution(
-                    execution_id=execution_id,
-                    org_id=context.org_id,
-                    user_id=context.user_id,
-                    status=ExecutionStatus.TIMEOUT,
-                    error_message=str(e),
-                    error_type="TimeoutError",
-                    duration_ms=duration_ms
-                )
-            except Exception as update_error:
-                logger.error(f"Failed to update execution record: {update_error}")
-
-        return WorkflowExecutionResponse(
-            execution_id=execution_id,
-            workflow_name=workflow_name,
-            status=ExecutionStatus.TIMEOUT,
-            error=str(e),
-            error_type="TimeoutError",
-            duration_ms=duration_ms,
-            started_at=start_time,
-            completed_at=end_time,
-            is_transient=transient,
-        )
-
-    except Exception as e:
-        # Catch-all to prevent stuck executions
-        end_time = datetime.utcnow()
-        duration_ms = int((end_time - start_time).total_seconds() * 1000)
-
-        logger.error(
-            f"Unexpected error in workflow execution: {workflow_name}",
-            extra={"execution_id": execution_id, "error": str(e)},
-            exc_info=True
-        )
-
-        # Try to update execution record
-        if not transient:
-            try:
-                await exec_logger.update_execution(
-                    execution_id=execution_id,
-                    org_id=context.org_id,
-                    user_id=context.user_id,
-                    status=ExecutionStatus.FAILED,
-                    error_message=f"Unexpected error: {str(e)}",
-                    error_type="InternalError",
-                    duration_ms=duration_ms
-                )
-            except Exception as update_error:
-                logger.error(f"Failed to update execution record: {update_error}")
-
-        return WorkflowExecutionResponse(
-            execution_id=execution_id,
-            workflow_name=workflow_name,
-            status=ExecutionStatus.FAILED,
-            error=str(e),
-            error_type="InternalError",
-            duration_ms=duration_ms,
-            started_at=start_time,
-            completed_at=end_time,
-            is_transient=transient,
-        )
+    return WorkflowExecutionResponse(
+        execution_id=execution_id,
+        workflow_name=script_name,
+        status=ExecutionStatus.PENDING,
+    )

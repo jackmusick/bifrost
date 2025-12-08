@@ -5,23 +5,20 @@ CRUD operations for workflow forms.
 Support for org-specific and global forms.
 Form execution for org users with access control.
 
-Forms are persisted to BOTH database AND file system:
+Forms are persisted to BOTH database AND file system (S3):
 - Database: Fast queries, org scoping, access control
-- File system: Source control, deployment portability
+- S3/File system: Source control, deployment portability, workspace sync
 """
 
-import aiofiles
-import aiofiles.os
 import json
 import logging
-import os
 import re
 from datetime import datetime
-from pathlib import Path
 from uuid import UUID, uuid4
 
 from fastapi import APIRouter, Body, HTTPException, status
-from sqlalchemy import select, or_
+from sqlalchemy import delete, select, or_
+from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
 from src.core.auth import Context, CurrentActiveUser, CurrentSuperuser
@@ -41,9 +38,6 @@ except ImportError:
 logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/api/forms", tags=["Forms"])
-
-# Workspace location for form files
-WORKSPACE_LOCATION = Path(os.environ.get("BIFROST_WORKSPACE_LOCATION", "/workspace"))
 
 
 def _generate_form_filename(form_name: str, form_id: str) -> str:
@@ -161,14 +155,18 @@ def _fields_to_form_schema(fields: list[FormFieldORM]) -> dict:
     return {"fields": fields_data}
 
 
-async def _write_form_to_file(form: FormORM) -> str:
+async def _write_form_to_file(form: FormORM, db: AsyncSession) -> str:
     """
-    Write form to file system as *.form.json.
+    Write form to S3 via FileStorageService as *.form.json.
 
-    Uses async file operations to avoid blocking the event loop.
+    This triggers:
+    - S3 upload
+    - workspace_files index update
+    - Redis pub/sub for workspace sync
 
     Args:
         form: Form ORM instance
+        db: Database session for FileStorageService
 
     Returns:
         Workspace-relative file path (e.g., 'forms/my-form-abc123.form.json')
@@ -176,12 +174,11 @@ async def _write_form_to_file(form: FormORM) -> str:
     Raises:
         Exception: If file write fails
     """
+    from shared.services.file_storage_service import FileStorageService
+
     # Generate filename
     filename = _generate_form_filename(form.name, str(form.id))
-    # Forms are stored in the 'forms' subdirectory
-    forms_dir = WORKSPACE_LOCATION / "forms"
-    await aiofiles.os.makedirs(forms_dir, exist_ok=True)
-    file_path = forms_dir / filename
+    file_path = f"forms/{filename}"
 
     # Build form JSON (using snake_case for consistency with Python conventions)
     # Convert fields to form_schema format for file storage
@@ -191,7 +188,7 @@ async def _write_form_to_file(form: FormORM) -> str:
         "id": str(form.id),
         "name": form.name,
         "description": form.description,
-        "linked_workflow": form.linked_workflow,
+        "workflow_id": form.workflow_id,
         "form_schema": form_schema,
         "is_active": form.is_active,
         "is_global": form.organization_id is None,
@@ -200,101 +197,104 @@ async def _write_form_to_file(form: FormORM) -> str:
         "created_by": form.created_by,
         "created_at": form.created_at.isoformat() + "Z",
         "updated_at": form.updated_at.isoformat() + "Z",
-        "launch_workflow_id": form.launch_workflow_id,
         "allowed_query_params": form.allowed_query_params,
         "default_launch_params": form.default_launch_params,
     }
 
-    # Write to file (atomic write via temp file)
-    temp_file = file_path.with_suffix('.tmp')
-    try:
-        async with aiofiles.open(temp_file, mode='w', encoding='utf-8') as f:
-            await f.write(json.dumps(form_data, indent=2))
-        await aiofiles.os.replace(str(temp_file), str(file_path))
-        logger.info(f"Wrote form to file: forms/{filename}")
-        # Return workspace-relative path
-        return f"forms/{filename}"
-    except Exception as e:
-        # Clean up temp file if it exists
-        if await aiofiles.os.path.exists(str(temp_file)):
-            await aiofiles.os.remove(str(temp_file))
-        raise e
+    # Write to S3 via FileStorageService
+    content = json.dumps(form_data, indent=2).encode("utf-8")
+    storage = FileStorageService(db)
+    await storage.write_file(
+        path=file_path,
+        content=content,
+        updated_by=form.created_by or "system",
+    )
+
+    logger.info(f"Wrote form to S3: {file_path}")
+    return file_path
 
 
-async def _update_form_file(form: FormORM, old_file_path: str | None) -> str:
+async def _update_form_file(form: FormORM, old_file_path: str | None, db: AsyncSession) -> str:
     """
     Update form file, handling renames if the form name changed.
 
-    Uses async file operations to avoid blocking the event loop.
+    Uses FileStorageService for S3 storage and workspace sync.
 
     Args:
         form: Updated form ORM instance
         old_file_path: Previous workspace-relative file path (if known)
+        db: Database session for FileStorageService
 
     Returns:
         New workspace-relative file path
     """
+    from shared.services.file_storage_service import FileStorageService
+
     # Generate new filename
     new_filename = _generate_form_filename(form.name, str(form.id))
-    new_file_path = WORKSPACE_LOCATION / "forms" / new_filename
+    new_file_path = f"forms/{new_filename}"
 
     # If we have the old file path and it's different, delete the old file
-    if old_file_path:
-        old_full_path = WORKSPACE_LOCATION / old_file_path
-        if await aiofiles.os.path.exists(str(old_full_path)) and old_full_path != new_file_path:
-            await aiofiles.os.remove(str(old_full_path))
+    if old_file_path and old_file_path != new_file_path:
+        storage = FileStorageService(db)
+        try:
+            await storage.delete_file(old_file_path)
             logger.info(f"Deleted old form file: {old_file_path}")
+        except Exception as e:
+            logger.warning(f"Failed to delete old form file {old_file_path}: {e}")
 
     # Write the updated form
-    return await _write_form_to_file(form)
+    return await _write_form_to_file(form, db)
 
 
-async def _deactivate_form_file(form_id: str) -> None:
+async def _deactivate_form_file(form: FormORM, db: AsyncSession) -> None:
     """
-    Deactivate form file by setting isActive=false.
+    Deactivate form file by updating is_active=false in S3.
 
-    Uses async file operations to avoid blocking the event loop.
+    Uses FileStorageService for S3 storage and workspace sync.
 
     Args:
-        form_id: Form UUID
+        form: Form ORM instance with updated is_active=False
+        db: Database session for FileStorageService
     """
-    # Find the form file by scanning for the ID in the forms directory
-    forms_dir = WORKSPACE_LOCATION / "forms"
-    if not await aiofiles.os.path.exists(str(forms_dir)):
-        logger.warning(f"Forms directory not found, cannot deactivate form: {form_id}")
-        return
+    from shared.services.file_storage_service import FileStorageService
 
-    # List form files asynchronously
-    try:
-        all_files = await aiofiles.os.listdir(str(forms_dir))
-        form_files = [f for f in all_files if f.endswith('.form.json')]
-    except OSError as e:
-        logger.warning(f"Error listing forms directory: {e}")
-        return
+    # Use the form's file_path if available, otherwise generate it
+    file_path = form.file_path
+    if not file_path:
+        filename = _generate_form_filename(form.name, str(form.id))
+        file_path = f"forms/{filename}"
 
-    for filename in form_files:
-        form_file = forms_dir / filename
-        try:
-            async with aiofiles.open(form_file, mode='r', encoding='utf-8') as f:
-                content = await f.read()
-            data = json.loads(content)
-            if data.get("id") == form_id:
-                # Update is_active to false
-                data["is_active"] = False
-                data["updated_at"] = datetime.utcnow().isoformat() + "Z"
+    # Build form JSON with is_active=False
+    form_schema = _fields_to_form_schema(form.fields)
 
-                # Write back atomically
-                temp_file = form_file.with_suffix('.tmp')
-                async with aiofiles.open(temp_file, mode='w', encoding='utf-8') as f:
-                    await f.write(json.dumps(data, indent=2))
-                await aiofiles.os.replace(str(temp_file), str(form_file))
-                logger.info(f"Deactivated form file: forms/{filename}")
-                return
-        except Exception as e:
-            logger.warning(f"Error processing form file {form_file}: {e}")
-            continue
+    form_data = {
+        "id": str(form.id),
+        "name": form.name,
+        "description": form.description,
+        "workflow_id": form.workflow_id,
+        "form_schema": form_schema,
+        "is_active": False,  # Deactivated
+        "is_global": form.organization_id is None,
+        "org_id": str(form.organization_id) if form.organization_id else "GLOBAL",
+        "access_level": form.access_level.value if form.access_level else "role_based",
+        "created_by": form.created_by,
+        "created_at": form.created_at.isoformat() + "Z",
+        "updated_at": datetime.utcnow().isoformat() + "Z",
+        "allowed_query_params": form.allowed_query_params,
+        "default_launch_params": form.default_launch_params,
+    }
 
-    logger.warning(f"Form file not found for deactivation: {form_id}")
+    # Write to S3 via FileStorageService (overwrites with is_active=False)
+    content = json.dumps(form_data, indent=2).encode("utf-8")
+    storage = FileStorageService(db)
+    await storage.write_file(
+        path=file_path,
+        content=content,
+        updated_by="system",
+    )
+
+    logger.info(f"Deactivated form file: {file_path}")
 
 
 @router.get(
@@ -397,8 +397,7 @@ async def create_form(
     form = FormORM(
         name=request.name,
         description=request.description,
-        linked_workflow=request.linked_workflow,
-        launch_workflow_id=request.launch_workflow_id,
+        workflow_id=request.workflow_id,
         default_launch_params=request.default_launch_params,
         allowed_query_params=request.allowed_query_params,
         access_level=request.access_level,
@@ -432,13 +431,13 @@ async def create_form(
 
     # Write to file system (dual-write pattern)
     try:
-        file_path = await _write_form_to_file(form)
+        file_path = await _write_form_to_file(form, db)
         # Store file path in database for tracking
         form.file_path = file_path
         await db.flush()
     except Exception as e:
         logger.error(f"Failed to write form file for {form.id}: {e}", exc_info=True)
-        # Continue - database write succeeded, file write can be retried by discovery watcher
+        # Continue - database write succeeded, file write can be retried
 
     logger.info(f"Created form {form.id}: {form.name} (file: {form.file_path})")
 
@@ -557,22 +556,19 @@ async def update_form(
         form.name = request.name
     if request.description is not None:
         form.description = request.description
-    if request.linked_workflow is not None:
-        form.linked_workflow = request.linked_workflow
-    if request.launch_workflow_id is not None:
-        form.launch_workflow_id = request.launch_workflow_id
+    if request.workflow_id is not None:
+        form.workflow_id = request.workflow_id
     if request.default_launch_params is not None:
         form.default_launch_params = request.default_launch_params
     if request.allowed_query_params is not None:
         form.allowed_query_params = request.allowed_query_params
     if request.form_schema is not None:
-        # Delete all existing fields and recreate them
+        # Delete all existing fields using bulk delete
         await db.execute(
-            select(FormFieldORM).where(FormFieldORM.form_id == form_id)
+            delete(FormFieldORM).where(FormFieldORM.form_id == form_id)
         )
-        for field in form.fields:
-            await db.delete(field)
-        await db.flush()
+        # Expire the relationship to reflect the deletion
+        db.expire(form, ["fields"])
 
         # Convert new form_schema to FormField records
         form_schema_data: dict = request.form_schema  # type: ignore[assignment]
@@ -602,7 +598,7 @@ async def update_form(
 
     # Update file system (dual-write pattern)
     try:
-        new_file_path = await _update_form_file(form, old_file_path)
+        new_file_path = await _update_form_file(form, old_file_path, db)
         form.file_path = new_file_path
         await db.flush()
     except Exception as e:
@@ -656,7 +652,11 @@ async def delete_form(
     Sets isActive=false in BOTH database AND file system.
     The form file remains for version control, but is marked inactive.
     """
-    result = await db.execute(select(FormORM).where(FormORM.id == form_id))
+    result = await db.execute(
+        select(FormORM)
+        .options(selectinload(FormORM.fields))
+        .where(FormORM.id == form_id)
+    )
     form = result.scalar_one_or_none()
 
     if not form:
@@ -672,7 +672,7 @@ async def delete_form(
 
     # Deactivate in file system (dual-write pattern)
     try:
-        await _deactivate_form_file(str(form_id))
+        await _deactivate_form_file(form, db)
     except Exception as e:
         logger.error(f"Failed to deactivate form file for {form_id}: {e}", exc_info=True)
         # Continue - database write succeeded
@@ -764,8 +764,7 @@ async def execute_form(
     - 'role_based': User must be assigned to a role that has this form
     """
     from shared.context import ExecutionContext as SharedContext, Organization
-    from shared.handlers.workflows_handlers import execute_workflow_internal
-    from shared.models import ExecutionStatus
+    from shared.execution_service import run_workflow, WorkflowNotFoundError, WorkflowLoadError
 
     # Get the form
     result = await db.execute(select(FormORM).where(FormORM.id == form_id))
@@ -785,11 +784,11 @@ async def execute_form(
             detail="Access denied to this form",
         )
 
-    # Form must have a linked workflow
-    if not form.linked_workflow:
+    # Form must have a workflow_id
+    if not form.workflow_id:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Form has no linked workflow",
+            detail="Form has no workflow configured",
         )
 
     # Merge default launch params with provided input
@@ -800,7 +799,7 @@ async def execute_form(
     if ctx.org_id:
         org = Organization(id=str(ctx.org_id), name="", is_active=True)
 
-    # Create shared context compatible with existing handlers
+    # Create shared context for execution
     shared_ctx = SharedContext(
         user_id=str(ctx.user.user_id),
         name=ctx.user.name,
@@ -813,50 +812,30 @@ async def execute_form(
     )
 
     try:
-        # Execute the linked workflow
-        result_dict, status_code = await execute_workflow_internal(
+        # Execute workflow by ID
+        response = await run_workflow(
             context=shared_ctx,
-            workflow_name=form.linked_workflow,
-            parameters=merged_params,
+            workflow_id=form.workflow_id,
+            input_data=merged_params,
             form_id=str(form.id),
-            transient=False,
         )
 
-        # Convert to response model
-        if status_code >= 400:
-            # Error response
-            raise HTTPException(
-                status_code=status_code,
-                detail=result_dict.get("message", "Execution failed"),
-            )
+        logger.info(f"Form {form_id} executed by user {ctx.user.email}, execution_id={response.execution_id}")
 
-        # Success or pending response
-        execution_id = result_dict.get("executionId", "")
-        status_str = result_dict.get("status", "Pending")
+        return response
 
-        # Map status string to enum
-        status_map = {
-            "Pending": ExecutionStatus.PENDING,
-            "Running": ExecutionStatus.RUNNING,
-            "Success": ExecutionStatus.SUCCESS,
-            "Failed": ExecutionStatus.FAILED,
-        }
-        exec_status = status_map.get(status_str, ExecutionStatus.PENDING)
-
-        # Note: WebSocket broadcast removed - worker handles this when it picks up the job
-        # This enables Redis-first architecture where API returns immediately
-
-        logger.info(f"Form {form_id} executed by user {ctx.user.email}, execution_id={execution_id}")
-
-        return WorkflowExecutionResponse(
-            execution_id=execution_id,
-            status=exec_status,
-            result=result_dict.get("result"),
-            error=result_dict.get("error"),
-            error_type=result_dict.get("errorType"),
-            duration_ms=result_dict.get("durationMs"),
+    except WorkflowNotFoundError as e:
+        logger.error(f"Workflow not found for form {form_id}: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Workflow not found: {form.workflow_id}",
         )
-
+    except WorkflowLoadError as e:
+        logger.error(f"Workflow load error for form {form_id}: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to load workflow: {str(e)}",
+        )
     except HTTPException:
         raise
     except Exception as e:

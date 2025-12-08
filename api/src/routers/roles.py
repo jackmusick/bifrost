@@ -19,6 +19,7 @@ from src.models.orm import (
     Role as RoleORM,
     UserRole as UserRoleORM,
     FormRole as FormRoleORM,
+    Form as FormORM,
     User as UserORM,
 )
 from src.models.models import (
@@ -33,7 +34,12 @@ from src.models.models import (
 
 # Import cache invalidation
 try:
-    from shared.cache import invalidate_role, invalidate_role_users, invalidate_role_forms
+    from shared.cache import (
+        invalidate_role,
+        invalidate_role_users,
+        invalidate_role_forms,
+    )
+
     CACHE_INVALIDATION_AVAILABLE = True
 except ImportError:
     CACHE_INVALIDATION_AVAILABLE = False
@@ -296,7 +302,9 @@ async def assign_users_to_role(
 
     # Invalidate cache - need to get role's org_id
     if CACHE_INVALIDATION_AVAILABLE and invalidate_role_users:
-        role_result = await db.execute(select(RoleORM.organization_id).where(RoleORM.id == role_id))
+        role_result = await db.execute(
+            select(RoleORM.organization_id).where(RoleORM.id == role_id)
+        )
         role_org_id = role_result.scalar_one_or_none()
         org_id_str = str(role_org_id) if role_org_id else None
         await invalidate_role_users(org_id_str, str(role_id))
@@ -318,9 +326,7 @@ async def remove_user_from_role(
     try:
         user_uuid = UUID(user_id)
     except ValueError:
-        result = await db.execute(
-            select(UserORM.id).where(UserORM.email == user_id)
-        )
+        result = await db.execute(select(UserORM.id).where(UserORM.email == user_id))
         user_uuid = result.scalar_one_or_none()
         if not user_uuid:
             raise HTTPException(
@@ -345,7 +351,9 @@ async def remove_user_from_role(
 
     # Invalidate cache - need to get role's org_id
     if CACHE_INVALIDATION_AVAILABLE and invalidate_role_users:
-        role_result = await db.execute(select(RoleORM.organization_id).where(RoleORM.id == role_id))
+        role_result = await db.execute(
+            select(RoleORM.organization_id).where(RoleORM.id == role_id)
+        )
         role_org_id = role_result.scalar_one_or_none()
         org_id_str = str(role_org_id) if role_org_id else None
         await invalidate_role_users(org_id_str, str(role_id))
@@ -393,6 +401,16 @@ async def assign_forms_to_role(
     for form_id_str in request.form_ids:
         form_uuid = UUID(form_id_str)
 
+        # Verify form exists before creating assignment
+        form_result = await db.execute(
+            select(FormORM.id).where(FormORM.id == form_uuid)
+        )
+        if not form_result.scalar_one_or_none():
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=f"Form with ID '{form_id_str}' not found",
+            )
+
         # Check if already assigned
         existing = await db.execute(
             select(FormRoleORM).where(
@@ -416,7 +434,9 @@ async def assign_forms_to_role(
 
     # Invalidate cache - need to get role's org_id
     if CACHE_INVALIDATION_AVAILABLE and invalidate_role_forms:
-        role_result = await db.execute(select(RoleORM.organization_id).where(RoleORM.id == role_id))
+        role_result = await db.execute(
+            select(RoleORM.organization_id).where(RoleORM.id == role_id)
+        )
         role_org_id = role_result.scalar_one_or_none()
         org_id_str = str(role_org_id) if role_org_id else None
         await invalidate_role_forms(org_id_str, str(role_id))
@@ -452,7 +472,9 @@ async def remove_form_from_role(
 
     # Invalidate cache - need to get role's org_id
     if CACHE_INVALIDATION_AVAILABLE and invalidate_role_forms:
-        role_result = await db.execute(select(RoleORM.organization_id).where(RoleORM.id == role_id))
+        role_result = await db.execute(
+            select(RoleORM.organization_id).where(RoleORM.id == role_id)
+        )
         role_org_id = role_result.scalar_one_or_none()
         org_id_str = str(role_org_id) if role_org_id else None
         await invalidate_role_forms(org_id_str, str(role_id))

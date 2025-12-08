@@ -28,7 +28,7 @@ class TestDynamicDiscovery:
         assert "example" in workflow.tags
 
     def test_test_workflow_parameters(self):
-        """Test that test_workflow has correct parameters"""
+        """Test that test_workflow has correct parameters extracted from function signature"""
         workflows = scan_all_workflows()
         workflow = next((w for w in workflows if w.name == "test_workflow"), None)
         assert workflow is not None
@@ -39,22 +39,22 @@ class TestDynamicDiscovery:
         param_names = [p.name for p in workflow.parameters]
         assert param_names == ["name", "count"]
 
-        # Check name parameter
+        # Check name parameter (extracted from function signature)
         name_param = workflow.parameters[0]
         assert name_param.name == "name"
         assert name_param.type == "string"
-        assert name_param.label == "Name"
         assert name_param.required is True
-        assert name_param.help_text == "Name to greet"
+        # Label defaults to title-cased name when extracted from signature
+        assert name_param.label == "Name"
 
-        # Check count parameter with default
+        # Check count parameter with default (extracted from function signature)
         count_param = workflow.parameters[1]
         assert count_param.name == "count"
         assert count_param.type == "int"
-        assert count_param.label == "Count"
         assert count_param.required is False
         assert count_param.default_value == 1
-        assert count_param.help_text == "Number of times to greet"
+        # Label defaults to title-cased name when extracted from signature
+        assert count_param.label == "Count"
 
     def test_workflow_function_loadable(self):
         """Test that discovered workflow function is loadable"""

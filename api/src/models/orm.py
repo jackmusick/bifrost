@@ -34,6 +34,7 @@ from src.models.enums import (
     ConfigType,
     ExecutionStatus,
     FormAccessLevel,
+    GitStatus,
     MFAMethodStatus,
     MFAMethodType,
     UserType,
@@ -142,6 +143,12 @@ class User(Base):
     )
     trusted_devices: Mapped[list["TrustedDevice"]] = relationship(back_populates="user")
     oauth_accounts: Mapped[list["UserOAuthAccount"]] = relationship(
+        back_populates="user"
+    )
+    developer_context: Mapped["DeveloperContext | None"] = relationship(
+        back_populates="user", uselist=False
+    )
+    developer_api_keys: Mapped[list["DeveloperApiKey"]] = relationship(
         back_populates="user"
     )
 
@@ -268,8 +275,7 @@ class Form(Base):
     id: Mapped[UUID] = mapped_column(primary_key=True, default=uuid4)
     name: Mapped[str] = mapped_column(String(255))
     description: Mapped[str | None] = mapped_column(Text, default=None)
-    linked_workflow: Mapped[str | None] = mapped_column(String(255), default=None)
-    launch_workflow_id: Mapped[str | None] = mapped_column(String(255), default=None)
+    workflow_id: Mapped[str | None] = mapped_column(String(255), default=None)
     default_launch_params: Mapped[dict | None] = mapped_column(JSONB, default=None)
     allowed_query_params: Mapped[list | None] = mapped_column(JSONB, default=None)
     access_level: Mapped[FormAccessLevel] = mapped_column(
@@ -308,6 +314,16 @@ class Form(Base):
         back_populates="form",
         cascade="all, delete-orphan",
         order_by="FormField.position",
+    )
+
+    __table_args__ = (
+        # Unique constraint on file_path (when not NULL) for ON CONFLICT upserts
+        Index(
+            "ix_forms_file_path_unique",
+            "file_path",
+            unique=True,
+            postgresql_where=text("file_path IS NOT NULL"),
+        ),
     )
 
 
@@ -469,7 +485,8 @@ class Workflow(Base):
     __tablename__ = "workflows"
 
     id: Mapped[UUID] = mapped_column(primary_key=True, default=uuid4)
-    name: Mapped[str] = mapped_column(String(255), unique=True, index=True)
+    name: Mapped[str] = mapped_column(String(255), index=True)  # Display name (not unique)
+    function_name: Mapped[str] = mapped_column(String(255))  # Actual Python function name
     description: Mapped[str | None] = mapped_column(Text, default=None)
     category: Mapped[str] = mapped_column(String(100), default="General")
 
@@ -527,6 +544,8 @@ class Workflow(Base):
             "api_key_hash",
             postgresql_where=text("api_key_hash IS NOT NULL"),
         ),
+        # Unique constraint on (file_path, function_name) for ON CONFLICT upserts
+        UniqueConstraint("file_path", "function_name", name="workflows_file_function_key"),
     )
 
 
@@ -546,7 +565,8 @@ class DataProvider(Base):
     __tablename__ = "data_providers"
 
     id: Mapped[UUID] = mapped_column(primary_key=True, default=uuid4)
-    name: Mapped[str] = mapped_column(String(255), unique=True, index=True)
+    name: Mapped[str] = mapped_column(String(255), index=True)  # Display name (not unique)
+    function_name: Mapped[str] = mapped_column(String(255))  # Actual Python function name
     description: Mapped[str | None] = mapped_column(Text, default=None)
     file_path: Mapped[str] = mapped_column(String(1000))
     module_path: Mapped[str | None] = mapped_column(String(500), default=None)
@@ -560,6 +580,11 @@ class DataProvider(Base):
         default=datetime.utcnow,
         server_default=text("NOW()"),
         onupdate=datetime.utcnow,
+    )
+
+    __table_args__ = (
+        # Unique constraint on (file_path, function_name) for ON CONFLICT upserts
+        UniqueConstraint("file_path", "function_name", name="data_providers_file_function_key"),
     )
 
 
@@ -1027,4 +1052,170 @@ class PlatformMetricsSnapshot(Base):
     # Timestamp
     refreshed_at: Mapped[datetime] = mapped_column(
         DateTime, default=datetime.utcnow, server_default=text("NOW()")
+    )
+
+
+# =============================================================================
+# Workspace Files (S3-based storage index)
+# =============================================================================
+
+
+class WorkspaceFile(Base):
+    """
+    Workspace file index for S3-based storage.
+
+    This table indexes files stored in S3, enabling:
+    - Fast file listing and search without S3 List operations
+    - Git status tracking for each file
+    - Content hash for change detection
+
+    The actual file content is stored in S3 bucket: bifrost-{instance_id}-workspace
+    """
+
+    __tablename__ = "workspace_files"
+
+    id: Mapped[UUID] = mapped_column(primary_key=True, default=uuid4)
+    path: Mapped[str] = mapped_column(String(1000), nullable=False)
+    content_hash: Mapped[str] = mapped_column(String(64), nullable=False)
+    size_bytes: Mapped[int] = mapped_column(Integer, nullable=False)
+    content_type: Mapped[str | None] = mapped_column(String(100), default="text/plain")
+
+    # Git sync status
+    git_status: Mapped[GitStatus] = mapped_column(
+        SQLAlchemyEnum(
+            GitStatus,
+            name="git_status",
+            create_type=False,
+            values_callable=lambda x: [e.value for e in x],
+        ),
+        default=GitStatus.UNTRACKED,
+    )
+    last_git_commit_hash: Mapped[str | None] = mapped_column(String(40), default=None)
+
+    # Timestamps
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime, default=datetime.utcnow, server_default=text("NOW()")
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime,
+        default=datetime.utcnow,
+        server_default=text("NOW()"),
+        onupdate=datetime.utcnow,
+    )
+
+    # Soft delete
+    is_deleted: Mapped[bool] = mapped_column(Boolean, default=False)
+
+    __table_args__ = (
+        # Unique constraint for ON CONFLICT upsert
+        UniqueConstraint("path", name="uq_workspace_files_path"),
+        # Index for path lookups (filtered for active files)
+        Index(
+            "ix_workspace_files_path",
+            "path",
+            postgresql_where=text("NOT is_deleted"),
+        ),
+        Index(
+            "ix_workspace_files_git_status",
+            "git_status",
+            postgresql_where=text("NOT is_deleted"),
+        ),
+    )
+
+
+# =============================================================================
+# Developer Context (SDK configuration)
+# =============================================================================
+
+
+class DeveloperContext(Base):
+    """
+    Developer context for SDK configuration.
+
+    Stores per-user development settings used by the Bifrost SDK
+    for local development and debugging.
+    """
+
+    __tablename__ = "developer_contexts"
+
+    id: Mapped[UUID] = mapped_column(primary_key=True, default=uuid4)
+    user_id: Mapped[UUID] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), unique=True)
+
+    # Context configuration
+    default_org_id: Mapped[UUID | None] = mapped_column(
+        ForeignKey("organizations.id", ondelete="SET NULL"), default=None
+    )
+    default_parameters: Mapped[dict] = mapped_column(JSONB, default={})
+    track_executions: Mapped[bool] = mapped_column(Boolean, default=True)
+
+    # Timestamps
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime, default=datetime.utcnow, server_default=text("NOW()")
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime,
+        default=datetime.utcnow,
+        server_default=text("NOW()"),
+        onupdate=datetime.utcnow,
+    )
+
+    # Relationships
+    user: Mapped["User"] = relationship(back_populates="developer_context")
+    default_org: Mapped["Organization | None"] = relationship()
+
+    __table_args__ = (
+        Index("ix_developer_contexts_user_id", "user_id"),
+    )
+
+
+class DeveloperApiKey(Base):
+    """
+    Developer API key for SDK authentication.
+
+    These keys allow developers to authenticate their local SDK
+    installations with the Bifrost API.
+    """
+
+    __tablename__ = "developer_api_keys"
+
+    id: Mapped[UUID] = mapped_column(primary_key=True, default=uuid4)
+    user_id: Mapped[UUID] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"))
+
+    # Key identification
+    name: Mapped[str] = mapped_column(String(100), nullable=False)
+    key_prefix: Mapped[str] = mapped_column(String(12), nullable=False)  # bfsk_xxxx
+    key_hash: Mapped[str] = mapped_column(String(64), nullable=False, unique=True)  # SHA-256
+
+    # Status
+    is_active: Mapped[bool] = mapped_column(Boolean, default=True)
+    expires_at: Mapped[datetime | None] = mapped_column(DateTime, default=None)
+
+    # Usage tracking
+    last_used_at: Mapped[datetime | None] = mapped_column(DateTime, default=None)
+    last_used_ip: Mapped[str | None] = mapped_column(String(45), default=None)
+    use_count: Mapped[int] = mapped_column(Integer, default=0)
+
+    # Timestamps
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime, default=datetime.utcnow, server_default=text("NOW()")
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime,
+        default=datetime.utcnow,
+        server_default=text("NOW()"),
+        onupdate=datetime.utcnow,
+    )
+
+    # Relationships
+    user: Mapped["User"] = relationship(back_populates="developer_api_keys")
+
+    __table_args__ = (
+        Index("ix_developer_api_keys_user_id", "user_id"),
+        Index("ix_developer_api_keys_key_hash", "key_hash", unique=True),
+        Index(
+            "ix_developer_api_keys_active",
+            "user_id",
+            "is_active",
+            postgresql_where=text("is_active = true"),
+        ),
     )

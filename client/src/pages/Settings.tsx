@@ -5,6 +5,7 @@ import { TabActions } from "@/components/ui/tab-actions";
 import { WorkflowKeys } from "@/pages/WorkflowKeys";
 import { Branding } from "@/pages/settings/Branding";
 import { GitHub } from "@/pages/settings/GitHub";
+import { DeveloperSettings } from "@/pages/settings/DeveloperSettings";
 
 export function Settings() {
 	const navigate = useNavigate();
@@ -44,6 +45,7 @@ export function Settings() {
 							Workflow Keys
 						</TabsTrigger>
 						<TabsTrigger value="github">GitHub</TabsTrigger>
+						<TabsTrigger value="developer">Developer</TabsTrigger>
 						<TabsTrigger value="branding">Branding</TabsTrigger>
 					</TabsList>
 
@@ -56,6 +58,10 @@ export function Settings() {
 
 				<TabsContent value="github" className="mt-6">
 					<GitHub />
+				</TabsContent>
+
+				<TabsContent value="developer" className="mt-6">
+					<DeveloperSettings />
 				</TabsContent>
 
 				<TabsContent value="branding" className="mt-6">

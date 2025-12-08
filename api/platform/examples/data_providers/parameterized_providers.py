@@ -1,33 +1,16 @@
 """
 Example Data Providers with Parameters (T041)
-Demonstrates @param decorator usage with data providers
+Demonstrates parameter usage with data providers using function signature type hints
 """
 
-from bifrost import data_provider, param
+from bifrost import data_provider
 
 
 @data_provider(
     name="get_github_repos",
     description="Get GitHub repositories for an organization (requires GitHub token)",
-    category="github",
-    cache_ttl_seconds=300
 )
-@param(
-    "token",
-    type="string",
-    label="GitHub Personal Access Token",
-    required=True,
-    help_text="GitHub PAT with repo access"
-)
-@param(
-    "org",
-    type="string",
-    label="GitHub Organization",
-    required=False,
-    default_value="",
-    help_text="Organization name (leave empty for personal repos)"
-)
-async def get_github_repos(context, token: str, org: str = ""):
+async def get_github_repos(token: str, org: str = ""):
     """
     Example data provider that requires a GitHub token parameter.
 
@@ -35,7 +18,6 @@ async def get_github_repos(context, token: str, org: str = ""):
     In production, this would make real GitHub API calls.
 
     Args:
-        context: ExecutionContext with organization and user info
         token: GitHub personal access token
         org: Optional GitHub organization name
 
@@ -74,28 +56,12 @@ async def get_github_repos(context, token: str, org: str = ""):
 @data_provider(
     name="get_github_branches",
     description="Get branches for a GitHub repository",
-    category="github",
-    cache_ttl_seconds=180
 )
-@param(
-    "token",
-    type="string",
-    label="GitHub Personal Access Token",
-    required=True
-)
-@param(
-    "repo",
-    type="string",
-    label="Repository (owner/name)",
-    required=True,
-    help_text="Format: owner/repository-name"
-)
-async def get_github_branches(context, token: str, repo: str):
+async def get_github_branches(token: str, repo: str):
     """
     Example data provider for getting repository branches.
 
     Args:
-        context: ExecutionContext
         token: GitHub personal access token
         repo: Repository in format "owner/name"
 
@@ -114,23 +80,12 @@ async def get_github_branches(context, token: str, repo: str):
 @data_provider(
     name="get_filtered_licenses",
     description="Get Microsoft 365 licenses with filtering",
-    category="m365",
-    cache_ttl_seconds=300
 )
-@param(
-    "filter",
-    type="string",
-    label="Filter",
-    required=False,
-    default_value="all",
-    help_text="Filter: 'all', 'available', or 'assigned'"
-)
-async def get_filtered_licenses(context, filter: str = "all"):
+async def get_filtered_licenses(filter: str = "all"):
     """
     Example data provider with optional parameter and default value.
 
     Args:
-        context: ExecutionContext
         filter: Filter mode ('all', 'available', 'assigned')
 
     Returns:

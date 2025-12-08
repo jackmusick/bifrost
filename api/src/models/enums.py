@@ -69,3 +69,11 @@ class MFAMethodStatus(str, Enum):
     PENDING = "pending"
     ACTIVE = "active"
     DISABLED = "disabled"
+
+
+class GitStatus(str, Enum):
+    """Git sync status for workspace files"""
+    UNTRACKED = "untracked"
+    SYNCED = "synced"
+    MODIFIED = "modified"
+    DELETED = "deleted"

@@ -37,8 +37,9 @@ class WorkflowExecutionConsumer(BaseConsumer):
     Message format (minimal - context is in Redis):
     {
         "execution_id": "uuid",
-        "workflow_name": "workflow-name",
+        "workflow_id": "uuid" (optional, for workflow execution),
         "code": "base64-encoded-script" (optional, for inline scripts),
+        "script_name": "name" (optional, for inline scripts),
         "sync": false (optional, if true pushes result to Redis for API)
     }
 
@@ -59,11 +60,13 @@ class WorkflowExecutionConsumer(BaseConsumer):
         from shared.execution.queue_tracker import remove_from_queue
 
         execution_id = message_data.get("execution_id", "")
+        workflow_id = message_data.get("workflow_id")
+        code_base64 = message_data.get("code")
+        script_name = message_data.get("script_name")
         is_sync = message_data.get("sync", False)
         start_time = datetime.utcnow()
 
         # Remove from queue tracking (execution is now being processed)
-        # This publishes updated positions to remaining queued executions
         await remove_from_queue(execution_id)
 
         # Read execution context from Redis
@@ -71,7 +74,6 @@ class WorkflowExecutionConsumer(BaseConsumer):
 
         if pending is None:
             logger.error(f"No pending execution found in Redis: {execution_id}")
-            # Push error to Redis for sync callers
             if is_sync:
                 await self._redis_client.push_result(
                     execution_id=execution_id,
@@ -83,26 +85,27 @@ class WorkflowExecutionConsumer(BaseConsumer):
             return
 
         # Extract context from Redis pending record
-        workflow_name = pending["workflow_name"]
         parameters = pending["parameters"]
         org_id = pending["org_id"]
         user_id = pending["user_id"]
         user_name = pending["user_name"]
         user_email = pending["user_email"]
         form_id = pending.get("form_id")
-        code_base64 = message_data.get("code")  # Code comes from queue message
+
+        # Determine if this is a code or workflow execution
+        is_script = bool(code_base64)
 
         try:
             logger.info(
-                f"Processing workflow execution: {workflow_name}",
+                f"Processing {'code' if is_script else 'workflow'} execution",
                 extra={
                     "execution_id": execution_id,
-                    "workflow_name": workflow_name,
+                    "workflow_id": workflow_id,
+                    "script_name": script_name,
                     "org_id": org_id,
                 },
             )
 
-            from shared.discovery import get_workflow
             from src.models.enums import ExecutionStatus
             from shared.consumers._helpers import (
                 create_execution,
@@ -112,10 +115,9 @@ class WorkflowExecutionConsumer(BaseConsumer):
             # Check if execution was cancelled in Redis before we started
             if pending.get("cancelled", False):
                 logger.info(f"Execution {execution_id} was cancelled before starting")
-                # Create PostgreSQL record as CANCELLED
                 await create_execution(
                     execution_id=execution_id,
-                    workflow_name=workflow_name,
+                    workflow_name=script_name or "workflow",
                     parameters=parameters,
                     org_id=org_id,
                     user_id=user_id,
@@ -132,9 +134,7 @@ class WorkflowExecutionConsumer(BaseConsumer):
                     duration_ms=0,
                 )
                 await publish_execution_update(execution_id, "Cancelled")
-                # Delete pending record from Redis
                 await self._redis_client.delete_pending_execution(execution_id)
-                # Push to Redis for sync callers
                 if is_sync:
                     await self._redis_client.push_result(
                         execution_id=execution_id,
@@ -143,6 +143,84 @@ class WorkflowExecutionConsumer(BaseConsumer):
                         duration_ms=0,
                     )
                 return
+
+            # Get workflow metadata from database if this is a workflow execution
+            workflow_name = script_name or "inline_script"
+            timeout_seconds = 1800  # Default 30 minutes
+
+            if not is_script and workflow_id:
+                from shared.execution_service import get_workflow_by_id, WorkflowNotFoundError, WorkflowLoadError
+
+                try:
+                    _, metadata = await get_workflow_by_id(workflow_id)
+                    workflow_name = metadata.name
+                    timeout_seconds = metadata.timeout_seconds if metadata else 1800
+                except WorkflowNotFoundError:
+                    logger.error(f"Workflow not found: {workflow_id}")
+                    duration_ms = int((datetime.utcnow() - start_time).total_seconds() * 1000)
+                    error_msg = f"Workflow with ID '{workflow_id}' not found"
+                    await create_execution(
+                        execution_id=execution_id,
+                        workflow_name="unknown",
+                        parameters=parameters,
+                        org_id=org_id,
+                        user_id=user_id,
+                        user_name=user_name,
+                        form_id=form_id,
+                        status=ExecutionStatus.FAILED,
+                    )
+                    await update_execution(
+                        execution_id=execution_id,
+                        org_id=org_id,
+                        user_id=user_id,
+                        status=ExecutionStatus.FAILED,
+                        result={"error": "WorkflowNotFound", "message": error_msg},
+                        duration_ms=duration_ms,
+                    )
+                    await publish_execution_update(execution_id, "Failed", {"error": error_msg})
+                    await self._redis_client.delete_pending_execution(execution_id)
+                    if is_sync:
+                        await self._redis_client.push_result(
+                            execution_id=execution_id,
+                            status="Failed",
+                            error=error_msg,
+                            error_type="WorkflowNotFound",
+                            duration_ms=duration_ms,
+                        )
+                    return
+                except WorkflowLoadError as e:
+                    logger.error(f"Failed to load workflow {workflow_id}: {e}")
+                    duration_ms = int((datetime.utcnow() - start_time).total_seconds() * 1000)
+                    error_msg = str(e)
+                    await create_execution(
+                        execution_id=execution_id,
+                        workflow_name="unknown",
+                        parameters=parameters,
+                        org_id=org_id,
+                        user_id=user_id,
+                        user_name=user_name,
+                        form_id=form_id,
+                        status=ExecutionStatus.FAILED,
+                    )
+                    await update_execution(
+                        execution_id=execution_id,
+                        org_id=org_id,
+                        user_id=user_id,
+                        status=ExecutionStatus.FAILED,
+                        result={"error": "WorkflowLoadError", "message": error_msg},
+                        duration_ms=duration_ms,
+                    )
+                    await publish_execution_update(execution_id, "Failed", {"error": error_msg})
+                    await self._redis_client.delete_pending_execution(execution_id)
+                    if is_sync:
+                        await self._redis_client.push_result(
+                            execution_id=execution_id,
+                            status="Failed",
+                            error=error_msg,
+                            error_type="WorkflowLoadError",
+                            duration_ms=duration_ms,
+                        )
+                    return
 
             # Create PostgreSQL record with RUNNING status
             await create_execution(
@@ -180,86 +258,10 @@ class WorkflowExecutionConsumer(BaseConsumer):
                 resolver = ConfigResolver()
                 config = await resolver.load_config_for_scope("GLOBAL")
 
-            # Determine if this is a script or workflow execution
-            is_script = bool(code_base64)
-
-            # Get timeout from workflow metadata
-            timeout_seconds = 1800  # Default 30 minutes
-            if not is_script:
-                try:
-                    result = get_workflow(workflow_name)
-                    if not result:
-                        logger.error(f"Workflow not found: {workflow_name}")
-                        duration_ms = int(
-                            (datetime.utcnow() - start_time).total_seconds() * 1000
-                        )
-                        error_msg = f"Workflow '{workflow_name}' not found"
-                        await update_execution(
-                            execution_id=execution_id,
-                            org_id=org_id,
-                            user_id=user_id,
-                            status=ExecutionStatus.FAILED,
-                            result={
-                                "error": "WorkflowNotFound",
-                                "message": error_msg,
-                            },
-                            duration_ms=duration_ms,
-                        )
-                        await publish_execution_update(
-                            execution_id,
-                            "Failed",
-                            {"error": error_msg},
-                        )
-                        # Delete pending from Redis
-                        await self._redis_client.delete_pending_execution(execution_id)
-                        if is_sync:
-                            await self._redis_client.push_result(
-                                execution_id=execution_id,
-                                status="Failed",
-                                error=error_msg,
-                                error_type="WorkflowNotFound",
-                                duration_ms=duration_ms,
-                            )
-                        return
-
-                    _, metadata = result
-                    timeout_seconds = metadata.timeout_seconds if metadata else 1800
-
-                except Exception as e:
-                    logger.error(f"Failed to load workflow {workflow_name}: {e}")
-                    duration_ms = int(
-                        (datetime.utcnow() - start_time).total_seconds() * 1000
-                    )
-                    error_msg = f"Failed to load workflow '{workflow_name}': {str(e)}"
-                    await update_execution(
-                        execution_id=execution_id,
-                        org_id=org_id,
-                        user_id=user_id,
-                        status=ExecutionStatus.FAILED,
-                        result={
-                            "error": "WorkflowLoadError",
-                            "message": error_msg,
-                        },
-                        duration_ms=duration_ms,
-                    )
-                    await publish_execution_update(
-                        execution_id, "Failed", {"error": str(e)}
-                    )
-                    # Delete pending from Redis
-                    await self._redis_client.delete_pending_execution(execution_id)
-                    if is_sync:
-                        await self._redis_client.push_result(
-                            execution_id=execution_id,
-                            status="Failed",
-                            error=error_msg,
-                            error_type="WorkflowLoadError",
-                            duration_ms=duration_ms,
-                        )
-                    return
-
             # Build context for worker process
             context_data = {
                 "execution_id": execution_id,
+                "workflow_id": workflow_id,
                 "name": workflow_name,
                 "code": code_base64,
                 "parameters": parameters,
@@ -288,10 +290,7 @@ class WorkflowExecutionConsumer(BaseConsumer):
                     timeout_seconds=timeout_seconds,
                 )
             except asyncio.CancelledError:
-                # Cancelled via Redis flag
-                duration_ms = int(
-                    (datetime.utcnow() - start_time).total_seconds() * 1000
-                )
+                duration_ms = int((datetime.utcnow() - start_time).total_seconds() * 1000)
                 await update_execution(
                     execution_id=execution_id,
                     org_id=org_id,
@@ -301,7 +300,6 @@ class WorkflowExecutionConsumer(BaseConsumer):
                     duration_ms=duration_ms,
                 )
                 await publish_execution_update(execution_id, "Cancelled")
-                # Delete pending from Redis
                 await self._redis_client.delete_pending_execution(execution_id)
                 if is_sync:
                     await self._redis_client.push_result(
@@ -312,10 +310,7 @@ class WorkflowExecutionConsumer(BaseConsumer):
                     )
                 return
             except TimeoutError as e:
-                # Timeout from pool
-                duration_ms = int(
-                    (datetime.utcnow() - start_time).total_seconds() * 1000
-                )
+                duration_ms = int((datetime.utcnow() - start_time).total_seconds() * 1000)
                 error_msg = str(e)
                 await update_execution(
                     execution_id=execution_id,
@@ -327,7 +322,6 @@ class WorkflowExecutionConsumer(BaseConsumer):
                     duration_ms=duration_ms,
                 )
                 await publish_execution_update(execution_id, "Timeout")
-                # Delete pending from Redis
                 await self._redis_client.delete_pending_execution(execution_id)
                 if is_sync:
                     await self._redis_client.push_result(
@@ -392,9 +386,10 @@ class WorkflowExecutionConsumer(BaseConsumer):
             )
 
             logger.info(
-                f"Workflow execution completed: {workflow_name}",
+                f"Execution completed: {workflow_name}",
                 extra={
                     "execution_id": execution_id,
+                    "workflow_id": workflow_id,
                     "status": status.value,
                     "duration_ms": result.get("duration_ms", 0),
                     "peak_memory_mb": round(metrics.get("peak_memory_bytes", 0) / 1024 / 1024, 1) if metrics else None,
@@ -404,7 +399,6 @@ class WorkflowExecutionConsumer(BaseConsumer):
 
         except asyncio.CancelledError:
             logger.info(f"Execution task {execution_id} was cancelled")
-            # Delete pending from Redis
             await self._redis_client.delete_pending_execution(execution_id)
             raise
 
@@ -433,7 +427,6 @@ class WorkflowExecutionConsumer(BaseConsumer):
                 {"error": error_msg, "errorType": error_type},
             )
 
-            # Delete pending from Redis
             await self._redis_client.delete_pending_execution(execution_id)
 
             if is_sync:
@@ -449,6 +442,7 @@ class WorkflowExecutionConsumer(BaseConsumer):
                 f"Workflow execution error: {execution_id}",
                 extra={
                     "execution_id": execution_id,
+                    "workflow_id": workflow_id,
                     "error": error_msg,
                     "error_type": error_type,
                 },

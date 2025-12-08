@@ -43,7 +43,8 @@ PENDING_EXECUTION_TTL_SECONDS = 3600
 class PendingExecution(TypedDict):
     """Schema for pending execution data stored in Redis."""
     execution_id: str
-    workflow_name: str
+    workflow_id: str | None  # UUID from database (None for inline code)
+    script_name: str | None  # Name for inline code execution
     parameters: dict[str, Any]
     org_id: str | None
     user_id: str
@@ -84,13 +85,14 @@ class RedisClient:
     async def set_pending_execution(
         self,
         execution_id: str,
-        workflow_name: str,
+        workflow_id: str | None,
         parameters: dict[str, Any],
         org_id: str | None,
         user_id: str,
         user_name: str,
         user_email: str,
         form_id: str | None = None,
+        script_name: str | None = None,
     ) -> None:
         """
         Store pending execution in Redis.
@@ -100,20 +102,22 @@ class RedisClient:
 
         Args:
             execution_id: Unique execution ID (UUID)
-            workflow_name: Name of workflow to execute
+            workflow_id: UUID of workflow to execute (None for inline code)
             parameters: Workflow input parameters
             org_id: Organization ID (None for GLOBAL scope)
             user_id: User ID who initiated execution
             user_name: Display name of user
             user_email: Email of user
             form_id: Optional form ID if triggered by form
+            script_name: Optional script name for inline code execution
         """
         redis_client = await self._get_redis()
         key = f"{PENDING_KEY_PREFIX}{execution_id}{PENDING_KEY_SUFFIX}"
 
         data: PendingExecution = {
             "execution_id": execution_id,
-            "workflow_name": workflow_name,
+            "workflow_id": workflow_id,
+            "script_name": script_name,
             "parameters": parameters,
             "org_id": org_id,
             "user_id": user_id,

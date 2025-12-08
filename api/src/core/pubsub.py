@@ -317,3 +317,109 @@ async def publish_system_event(
         **data
     }
     await manager.broadcast("system", event)
+
+
+# =============================================================================
+# Workspace File Sync Pub/Sub
+# =============================================================================
+# These functions enable containers to stay in sync without shared NFS volumes.
+# When a file is written/deleted/renamed, all containers are notified to apply
+# the same change to their local /tmp workspace.
+
+
+async def publish_workspace_file_write(
+    path: str,
+    content: bytes,
+    content_hash: str,
+) -> None:
+    """
+    Publish workspace file write event.
+
+    All containers listening will write this content to their local workspace.
+
+    Args:
+        path: File path relative to workspace root
+        content: File content bytes (base64 encoded for transport)
+        content_hash: SHA-256 hash for verification
+    """
+    import base64
+
+    message = {
+        "type": "workspace_file_write",
+        "path": path,
+        "content": base64.b64encode(content).decode("utf-8"),
+        "content_hash": content_hash,
+    }
+    await manager._publish_to_redis("workspace:sync", message)
+
+
+async def publish_workspace_file_delete(path: str) -> None:
+    """
+    Publish workspace file delete event.
+
+    All containers listening will delete this file from their local workspace.
+
+    Args:
+        path: File path relative to workspace root
+    """
+    message = {
+        "type": "workspace_file_delete",
+        "path": path,
+    }
+    await manager._publish_to_redis("workspace:sync", message)
+
+
+async def publish_workspace_file_rename(old_path: str, new_path: str) -> None:
+    """
+    Publish workspace file rename event.
+
+    All containers listening will rename this file in their local workspace.
+
+    Args:
+        old_path: Original file path
+        new_path: New file path
+    """
+    message = {
+        "type": "workspace_file_rename",
+        "old_path": old_path,
+        "new_path": new_path,
+    }
+    await manager._publish_to_redis("workspace:sync", message)
+
+
+def publish_workspace_file_write_sync(
+    path: str,
+    content: bytes,
+    content_hash: str,
+) -> None:
+    """
+    Publish workspace file write event (sync version for non-async contexts).
+
+    Args:
+        path: File path relative to workspace root
+        content: File content bytes
+        content_hash: SHA-256 hash for verification
+    """
+    import base64
+
+    message = {
+        "type": "workspace_file_write",
+        "path": path,
+        "content": base64.b64encode(content).decode("utf-8"),
+        "content_hash": content_hash,
+    }
+    publish_to_redis_sync("workspace:sync", message)
+
+
+def publish_workspace_file_delete_sync(path: str) -> None:
+    """
+    Publish workspace file delete event (sync version).
+
+    Args:
+        path: File path relative to workspace root
+    """
+    message = {
+        "type": "workspace_file_delete",
+        "path": path,
+    }
+    publish_to_redis_sync("workspace:sync", message)

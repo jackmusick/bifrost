@@ -7,7 +7,7 @@ This workflow demonstrates basic parameter handling and execution.
 
 import logging
 
-from bifrost import ExecutionContext, param, workflow
+from bifrost import workflow, context
 
 logger = logging.getLogger(__name__)
 
@@ -17,14 +17,10 @@ logger = logging.getLogger(__name__)
     description="Simple test workflow for validation",
     category="testing",
     tags=["test", "example"],
-    # execution_mode defaults to "sync" (because endpoint_enabled=True)
     endpoint_enabled=True,
     allowed_methods=["GET", "POST"],
-    disable_global_key=False
 )
-@param("name", type="string", label="Name", required=True, help_text="Name to greet")
-@param("count", type="int", label="Count", required=False, default_value=1, help_text="Number of times to greet")
-async def test_workflow(context: ExecutionContext, name: str, count: int = 1) -> dict:
+async def test_workflow(name: str, count: int = 1) -> dict:
     """
     Simple test workflow that greets a name.
 
@@ -33,7 +29,6 @@ async def test_workflow(context: ExecutionContext, name: str, count: int = 1) ->
     - POST /api/endpoints/test_workflow (with JSON body)
 
     Args:
-        context: Organization context with org info and integrations
         name: Name to greet (required)
         count: Number of times to greet (default: 1)
 
@@ -55,8 +50,6 @@ async def test_workflow(context: ExecutionContext, name: str, count: int = 1) ->
 
         # Log each greeting
         logger.info(f"Generated greeting: {greeting}")
-
-    # Note: save_checkpoint() has been removed - no longer needed
 
     return {
         "greetings": greetings,

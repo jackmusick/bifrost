@@ -6,6 +6,7 @@
 # - Separate ports (offset by 1000)
 # - Fresh database for each test run
 # - PgBouncer for connection pooling (matches production)
+# - MinIO for S3-compatible storage (workspace and files)
 #
 # Usage:
 #   ./test.sh                          # Run unit/integration tests
@@ -89,6 +90,41 @@ services:
       timeout: 5s
       retries: 10
 
+  # MinIO - S3-compatible object storage (Test)
+  # Stores workspace files and runtime outputs
+  minio:
+    image: minio/minio:latest
+    container_name: bifrost-test-minio
+    command: server /data --console-address ":9001"
+    environment:
+      MINIO_ROOT_USER: bifrost
+      MINIO_ROOT_PASSWORD: bifrost_test_key
+    ports:
+      - "19000:9000"  # S3 API - offset port
+      - "19001:9001"  # Console - offset port
+    tmpfs:
+      - /data  # Ephemeral storage - fresh each run
+    healthcheck:
+      test: ["CMD", "mc", "ready", "local"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  # MinIO bucket initialization (Test)
+  minio-init:
+    image: minio/mc:latest
+    container_name: bifrost-test-minio-init
+    depends_on:
+      minio:
+        condition: service_healthy
+    entrypoint: |
+      /bin/sh -c "
+      mc alias set myminio http://minio:9000 bifrost bifrost_test_key
+      mc mb myminio/bifrost-test-workspace --ignore-existing
+      mc mb myminio/bifrost-test-files --ignore-existing
+      echo 'MinIO buckets created successfully'
+      "
+
   # FastAPI Application (Test) - Only started for E2E tests
   api:
     build:
@@ -103,8 +139,12 @@ services:
       BIFROST_REDIS_URL: redis://redis:6379/0
       BIFROST_SECRET_KEY: test-secret-key-for-e2e-testing-must-be-32-chars
       BIFROST_ENVIRONMENT: testing
-      # Workspace location - writable directory for user workflows
-      BIFROST_WORKSPACE_LOCATION: /workspace
+      # S3 configuration for MinIO
+      BIFROST_INSTANCE_ID: test
+      BIFROST_S3_ENDPOINT_URL: http://minio:9000
+      BIFROST_S3_ACCESS_KEY: bifrost
+      BIFROST_S3_SECRET_KEY: bifrost_test_key
+      BIFROST_S3_REGION: us-east-1
       # Enable registration for E2E tests
       BIFROST_ALLOW_REGISTRATION: "true"
     ports:
@@ -113,10 +153,10 @@ services:
       - ./api/src:/app/src:ro
       - ./api/shared:/app/shared:ro
       - ./api/bifrost:/app/bifrost:ro
+      - ./api/bifrost_sdk:/app/bifrost_sdk:ro
       - ./api/platform:/app/platform:ro  # Built-in platform workflows (read-only)
       - ./api/alembic:/app/alembic:ro
       - ./api/alembic.ini:/app/alembic.ini:ro
-      - test-workspace:/workspace  # Writable workspace for E2E tests (hot reload)
       - test-mounts:/mounts  # File storage for uploads, branding, etc.
     depends_on:
       pgbouncer:
@@ -125,6 +165,8 @@ services:
         condition: service_healthy
       redis:
         condition: service_healthy
+      minio-init:
+        condition: service_completed_successfully
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
       interval: 5s
@@ -134,37 +176,9 @@ services:
     user: root
     command: ["sh", "-c", "alembic upgrade head && uvicorn src.main:app --host 0.0.0.0 --port 8000"]
 
-  # Discovery Service (Test) - Watches files and syncs to DB
-  discovery:
-    build:
-      context: .
-      dockerfile: api/Dockerfile.dev
-    container_name: bifrost-test-discovery
-    environment:
-      # Database via PgBouncer (matches production architecture)
-      BIFROST_DATABASE_URL: postgresql+asyncpg://bifrost:bifrost_test@pgbouncer:5432/bifrost_test
-      BIFROST_DATABASE_URL_SYNC: postgresql://bifrost:bifrost_test@pgbouncer:5432/bifrost_test
-      BIFROST_REDIS_URL: redis://redis:6379/0
-      BIFROST_SECRET_KEY: test-secret-key-for-e2e-testing-must-be-32-chars
-      BIFROST_ENVIRONMENT: testing
-      BIFROST_WORKSPACE_LOCATION: /workspace
-    volumes:
-      - ./api/src:/app/src:ro
-      - ./api/shared:/app/shared:ro
-      - ./api/bifrost:/app/bifrost:ro
-      - ./api/platform:/app/platform:ro
-      - test-workspace:/workspace  # Same workspace as API for hot reload
-    depends_on:
-      api:
-        condition: service_healthy  # Wait for API (which runs migrations)
-      redis:
-        condition: service_healthy
-    user: root
-    command: ["python", "-m", "src.discovery.main"]
-    profiles:
-      - e2e  # Only start in E2E mode
-
   # Background Worker (Test) - Only started for E2E tests
+  # Note: Discovery service has been removed - workflow/form extraction
+  # now happens at write time in FileStorageService
   worker:
     build:
       context: .
@@ -178,22 +192,27 @@ services:
       BIFROST_REDIS_URL: redis://redis:6379/0
       BIFROST_SECRET_KEY: test-secret-key-for-e2e-testing-must-be-32-chars
       BIFROST_ENVIRONMENT: testing
-      BIFROST_WORKSPACE_LOCATION: /workspace
+      # S3 configuration for MinIO
+      BIFROST_INSTANCE_ID: test
+      BIFROST_S3_ENDPOINT_URL: http://minio:9000
+      BIFROST_S3_ACCESS_KEY: bifrost
+      BIFROST_S3_SECRET_KEY: bifrost_test_key
+      BIFROST_S3_REGION: us-east-1
       # Lower concurrency for E2E queue position testing (10 executions, 3 concurrent = 7 queued)
       BIFROST_MAX_CONCURRENCY: ${BIFROST_MAX_CONCURRENCY:-3}
     volumes:
       - ./api/src:/app/src:ro
       - ./api/shared:/app/shared:ro
       - ./api/bifrost:/app/bifrost:ro
+      - ./api/bifrost_sdk:/app/bifrost_sdk:ro
       - ./api/platform:/app/platform:ro
-      - test-workspace:/workspace  # Same writable workspace as API (hot reload)
     depends_on:
       pgbouncer:
         condition: service_healthy
       rabbitmq:
         condition: service_healthy
-      discovery:
-        condition: service_started
+      minio-init:
+        condition: service_completed_successfully
       api:
         condition: service_healthy
     # Entrypoint handles permissions; run as root so it can fix volume ownership
@@ -217,7 +236,12 @@ services:
       BIFROST_SECRET_KEY: test-secret-key-for-e2e-testing-must-be-32-chars
       BIFROST_ENVIRONMENT: testing
       BIFROST_ALLOW_REGISTRATION: "true"
-      BIFROST_WORKSPACE_LOCATION: /app/platform
+      # S3 configuration for MinIO
+      BIFROST_INSTANCE_ID: test
+      BIFROST_S3_ENDPOINT_URL: http://minio:9000
+      BIFROST_S3_ACCESS_KEY: bifrost
+      BIFROST_S3_SECRET_KEY: bifrost_test_key
+      BIFROST_S3_REGION: us-east-1
       # For E2E tests, point to the API container
       TEST_API_URL: http://api:8000
       PYTHONPATH: /app
@@ -225,6 +249,7 @@ services:
       - ./api/src:/app/src:ro
       - ./api/shared:/app/shared:ro
       - ./api/bifrost:/app/bifrost:ro
+      - ./api/bifrost_sdk:/app/bifrost_sdk:ro
       - ./api/platform:/app/platform:ro
       - ./api/stubs:/app/stubs:ro
       - ./api/tests:/app/tests:ro
@@ -240,6 +265,8 @@ services:
         condition: service_healthy
       redis:
         condition: service_healthy
+      minio-init:
+        condition: service_completed_successfully
     # Default command runs all tests except E2E
     command: ["pytest", "tests/", "--ignore=tests/e2e/", "-v"]
     profiles:
@@ -247,5 +274,4 @@ services:
 
 # Named volumes for test data - ephemeral within test session
 volumes:
-  test-workspace:  # Writable workspace for testing hot reload
   test-mounts:  # File storage for uploads, branding, etc.

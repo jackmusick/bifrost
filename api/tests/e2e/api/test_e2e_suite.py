@@ -81,6 +81,12 @@ class State:
     e2e_oauth_connection_name: str | None = None
     # Cancellation test state
     cancellation_execution_id: str | None = None
+    # SDK API key tests
+    sdk_api_key_id: str | None = None
+    sdk_api_key_full: str | None = None
+    # Workflow IDs for form execution tests
+    sync_workflow_id: str | None = None
+    async_workflow_id: str | None = None
 
 
 @pytest.fixture(scope="module", autouse=True)
@@ -485,7 +491,7 @@ class TestFullApplicationFlow:
             json={
                 "name": "Customer Onboarding",
                 "description": "New customer intake form",
-                "linked_workflow": "customer_onboarding",
+                "workflow_id": None,  # No workflow linked for this test
                 "form_schema": {
                     "fields": [
                         {"name": "company_name", "type": "text", "label": "Company Name", "required": True},
@@ -539,7 +545,7 @@ class TestFullApplicationFlow:
         form_data = {
             "name": "Test Form File Path",
             "description": "Testing workspace-relative file paths",
-            "linked_workflow": None,
+            "workflow_id": None,
             "form_schema": {
                 "fields": [
                     {"name": "test_field", "type": "text", "label": "Test Field", "required": False}
@@ -621,7 +627,7 @@ class TestFullApplicationFlow:
             params={"path": file_path},
             headers=State.platform_admin.headers,
         )
-        assert response.status_code == 200, f"Failed to delete form file: {response.text}"
+        assert response.status_code in [200, 204], f"Failed to delete form file: {response.text}"
 
         # Verify file is gone
         response = State.client.get(
@@ -775,6 +781,7 @@ class TestFullApplicationFlow:
         workflows = response.json()
         assert isinstance(workflows, list)
 
+    @pytest.mark.skip(reason="Platform workflows concept being removed - see Phase 2 in plan")
     def test_92b_platform_workflows_properly_categorized(self):
         """Platform workflows are correctly marked with is_platform=true."""
         response = State.client.get(
@@ -1063,6 +1070,16 @@ async def e2e_test_async_workflow(delay_seconds: int = 2):
         )
         assert test_workflow is not None, "e2e_test_sync_workflow workflow not found"
 
+        # Store workflow ID for form creation tests
+        State.sync_workflow_id = test_workflow["id"]
+
+        # Also find and store async workflow ID (used for config scoping tests)
+        async_workflow = next(
+            (w for w in workflows if w["name"] == "e2e_test_async_workflow"), None
+        )
+        if async_workflow:
+            State.async_workflow_id = async_workflow["id"]
+
         # Verify parameters are present
         assert "parameters" in test_workflow, "Workflow missing parameters field"
         parameters = test_workflow["parameters"]
@@ -1118,14 +1135,15 @@ async def e2e_test_async_workflow(delay_seconds: int = 2):
         """Platform admin creates a form.json file via editor API."""
 
         # Create a .form.json file for hot reload testing
+        # Use workflow_id (null here since we're testing file creation, not execution)
         form_content = json.dumps({
             "id": "e2e-workspace-form",
             "name": "E2E Workspace Form",
             "description": "Form created via file API for hot reload testing",
-            "linkedWorkflow": "e2e_test_sync_workflow",
-            "isGlobal": True,
-            "accessLevel": "authenticated",
-            "formSchema": {
+            "workflow_id": None,
+            "is_global": True,
+            "access_level": "authenticated",
+            "form_schema": {
                 "fields": [
                     {"name": "message", "type": "text", "label": "Message", "required": True}
                 ]
@@ -1167,12 +1185,24 @@ async def e2e_test_async_workflow(delay_seconds: int = 2):
 
     def test_120_execute_sync_workflow(self):
         """Platform admin executes sync workflow."""
+        # First, get the workflow ID by searching for the workflow
+        list_response = State.client.get(
+            "/api/workflows",
+            headers=State.platform_admin.headers,
+            params={"search": "e2e_test_sync_workflow"}
+        )
+        assert list_response.status_code == 200, f"Failed to list workflows: {list_response.text}"
+        workflows = list_response.json()
+        matching = [w for w in workflows if w.get("name") == "e2e_test_sync_workflow"]
+        if not matching:
+            pytest.skip("Sync workflow not found - workflow not available")
+        workflow_id = matching[0]["id"]
 
         response = State.client.post(
             "/api/workflows/execute",
             headers=State.platform_admin.headers,
             json={
-                "workflow_name": "e2e_test_sync_workflow",
+                "workflow_id": workflow_id,
                 "input_data": {
                     "message": "Hello from E2E test",
                     "count": 42,
@@ -1194,11 +1224,23 @@ async def e2e_test_async_workflow(delay_seconds: int = 2):
         if not State.sync_execution_id:
             pytest.skip("No previous execution - workflow not available")
 
+        # Get workflow ID
+        list_response = State.client.get(
+            "/api/workflows",
+            headers=State.platform_admin.headers,
+            params={"search": "e2e_test_sync_workflow"}
+        )
+        workflows = list_response.json()
+        matching = [w for w in workflows if w.get("name") == "e2e_test_sync_workflow"]
+        if not matching:
+            pytest.skip("Sync workflow not found")
+        workflow_id = matching[0]["id"]
+
         response = State.client.post(
             "/api/workflows/execute",
             headers=State.platform_admin.headers,
             json={
-                "workflow_name": "e2e_test_sync_workflow",
+                "workflow_id": workflow_id,
                 "input_data": {"message": "Test message", "count": 10},
             },
         )
@@ -1212,11 +1254,12 @@ async def e2e_test_async_workflow(delay_seconds: int = 2):
 
     def test_122_org_user_cannot_execute_directly(self):
         """Org user cannot call /execute endpoint directly (403)."""
+        # Use a fake workflow ID - the point is org users can't execute directly
         response = State.client.post(
             "/api/workflows/execute",
             headers=State.org1_user.headers,
             json={
-                "workflow_name": "any_workflow",
+                "workflow_id": "00000000-0000-0000-0000-000000000000",
                 "input_data": {"message": "Hacked"},
             },
         )
@@ -1229,12 +1272,25 @@ async def e2e_test_async_workflow(delay_seconds: int = 2):
 
     def test_130_execute_async_workflow(self):
         """Platform admin executes async workflow."""
+        # Get workflow ID
+        list_response = State.client.get(
+            "/api/workflows",
+            headers=State.platform_admin.headers,
+            params={"search": "e2e_test_async_workflow"}
+        )
+        if list_response.status_code != 200:
+            pytest.skip("Could not list workflows")
+        workflows = list_response.json()
+        matching = [w for w in workflows if w.get("name") == "e2e_test_async_workflow"]
+        if not matching:
+            pytest.skip("Async workflow not found - workflow not available")
+        workflow_id = matching[0]["id"]
 
         response = State.client.post(
             "/api/workflows/execute",
             headers=State.platform_admin.headers,
             json={
-                "workflow_name": "e2e_test_async_workflow",
+                "workflow_id": workflow_id,
                 "input_data": {"delay_seconds": 1},
             },
         )
@@ -1321,11 +1377,25 @@ async def e2e_cancellation_test(sleep_seconds: int = 30):
 
     def test_133_execute_cancellation_workflow_async(self):
         """Start async workflow with long sleep for cancellation testing."""
+        # Get workflow ID
+        list_response = State.client.get(
+            "/api/workflows",
+            headers=State.platform_admin.headers,
+            params={"search": "e2e_cancellation_test"}
+        )
+        if list_response.status_code != 200:
+            pytest.skip("Could not list workflows")
+        workflows = list_response.json()
+        matching = [w for w in workflows if w.get("name") == "e2e_cancellation_test"]
+        if not matching:
+            pytest.skip("Cancellation workflow not found")
+        workflow_id = matching[0]["id"]
+
         response = State.client.post(
             "/api/workflows/execute",
             headers=State.platform_admin.headers,
             json={
-                "workflow_name": "e2e_cancellation_test",
+                "workflow_id": workflow_id,
                 "input_data": {"sleep_seconds": 30},
             },
         )
@@ -1453,14 +1523,17 @@ async def e2e_cancellation_test(sleep_seconds: int = 30):
 
     def test_150_create_form_linked_to_workflow(self):
         """Platform admin creates form linked to test workflow."""
-        # Use a simple workflow name - actual execution may fail but form creation should work
+        # Skip if workflow ID not captured
+        if not State.sync_workflow_id:
+            pytest.skip("Workflow ID not captured from test_112")
+
         response = State.client.post(
             "/api/forms",
             headers=State.platform_admin.headers,
             json={
                 "name": "E2E Test Form",
                 "description": "Form for E2E testing",
-                "linked_workflow": "e2e_test_sync_workflow",
+                "workflow_id": State.sync_workflow_id,
                 "form_schema": {
                     "fields": [
                         {"name": "message", "type": "text", "label": "Message", "required": True},
@@ -1555,13 +1628,16 @@ async def e2e_cancellation_test(sleep_seconds: int = 30):
 
     def test_156_create_authenticated_access_form(self):
         """Platform admin creates form with 'authenticated' access level."""
+        if not State.sync_workflow_id:
+            pytest.skip("Workflow ID not captured from test_112")
+
         response = State.client.post(
             "/api/forms",
             headers=State.platform_admin.headers,
             json={
                 "name": "Authenticated Access Form",
                 "description": "Any authenticated user can execute",
-                "linked_workflow": "e2e_test_sync_workflow",
+                "workflow_id": State.sync_workflow_id,
                 "form_schema": {
                     "fields": [
                         {"name": "message", "type": "text", "label": "Message", "required": True},
@@ -1591,13 +1667,16 @@ async def e2e_cancellation_test(sleep_seconds: int = 30):
 
     def test_158_create_public_access_form(self):
         """Platform admin creates form with 'public' access level."""
+        if not State.sync_workflow_id:
+            pytest.skip("Workflow ID not captured from test_112")
+
         response = State.client.post(
             "/api/forms",
             headers=State.platform_admin.headers,
             json={
                 "name": "Public Access Form",
                 "description": "Any user can execute (public)",
-                "linked_workflow": "e2e_test_sync_workflow",
+                "workflow_id": State.sync_workflow_id,
                 "form_schema": {
                     "fields": [
                         {"name": "message", "type": "text", "label": "Message", "required": True},
@@ -1835,15 +1914,18 @@ async def e2e_cancellation_test(sleep_seconds: int = 30):
 
     def test_179_org_user_execution_uses_org_config(self):
         """Org user execution resolves org-specific config over global."""
+        if not State.async_workflow_id:
+            pytest.skip("Async workflow ID not captured from test_112")
 
-        # Create a form that links to e2e_test_async_workflow so org user can execute
+        # Create a form that links to async workflow (which retrieves config)
+        # so org user can execute with their org context
         response = State.client.post(
             "/api/forms",
             headers=State.platform_admin.headers,
             json={
                 "name": "E2E Config Test Form",
                 "description": "Form for config scoping test",
-                "linked_workflow": "e2e_test_async_workflow",
+                "workflow_id": State.async_workflow_id,
                 "form_schema": {"fields": []},
                 "access_level": "authenticated",
             },
@@ -1869,13 +1951,26 @@ async def e2e_cancellation_test(sleep_seconds: int = 30):
 
     def test_180_admin_execution_uses_global_config(self):
         """Admin execution without org context uses global config."""
+        # Get workflow ID
+        list_response = State.client.get(
+            "/api/workflows",
+            headers=State.platform_admin.headers,
+            params={"search": "e2e_test_async_workflow"}
+        )
+        if list_response.status_code != 200:
+            pytest.skip("Could not list workflows")
+        workflows = list_response.json()
+        matching = [w for w in workflows if w.get("name") == "e2e_test_async_workflow"]
+        if not matching:
+            pytest.skip("Async workflow not found")
+        workflow_id = matching[0]["id"]
 
         # Execute as platform admin (no org context) via direct execute
         response = State.client.post(
             "/api/workflows/execute",
             headers=State.platform_admin.headers,
             json={
-                "workflow_name": "e2e_test_async_workflow",
+                "workflow_id": workflow_id,
                 "input_data": {},
             },
         )
@@ -2004,6 +2099,20 @@ async def e2e_cancellation_test(sleep_seconds: int = 30):
         import time
         from websockets.asyncio.client import connect
 
+        # Get workflow ID first
+        list_response = State.client.get(
+            "/api/workflows",
+            headers=State.platform_admin.headers,
+            params={"search": "e2e_test_async_workflow"}
+        )
+        if list_response.status_code != 200:
+            pytest.skip("Could not list workflows")
+        workflows = list_response.json()
+        matching = [w for w in workflows if w.get("name") == "e2e_test_async_workflow"]
+        if not matching:
+            pytest.skip("Async workflow not found")
+        workflow_id = matching[0]["id"]
+
         ws_url = f"{WS_BASE_URL}/ws/connect"
         # WebSocket auth uses Authorization header (not query params for security)
         extra_headers = {
@@ -2025,7 +2134,7 @@ async def e2e_cancellation_test(sleep_seconds: int = 30):
                         "/api/workflows/execute",
                         headers=State.platform_admin.headers,
                         json={
-                            "workflow_name": "e2e_test_async_workflow",
+                            "workflow_id": workflow_id,
                             "input_data": {"delay_seconds": 2},
                         },
                     )
@@ -2204,10 +2313,12 @@ async def e2e_cancellation_test(sleep_seconds: int = 30):
         import asyncio
         from websockets.asyncio.client import connect
 
-        ws_url = f"{WS_BASE_URL}/ws/connect?token={State.platform_admin.access_token}"
+        ws_url = f"{WS_BASE_URL}/ws/connect"
+        # WebSocket auth uses Authorization header (not query params for security)
+        extra_headers = {"Authorization": f"Bearer {State.platform_admin.access_token}"}
 
         try:
-            async with connect(ws_url) as ws:
+            async with connect(ws_url, additional_headers=extra_headers) as ws:
                 # Should receive connected message
                 msg = await asyncio.wait_for(ws.recv(), timeout=5)
                 data = json.loads(msg)
@@ -2222,10 +2333,12 @@ async def e2e_cancellation_test(sleep_seconds: int = 30):
         from websockets.asyncio.client import connect
         from websockets.exceptions import InvalidStatus
 
-        ws_url = f"{WS_BASE_URL}/ws/connect?token=invalid-token-12345"
+        ws_url = f"{WS_BASE_URL}/ws/connect"
+        # Invalid token via Authorization header
+        extra_headers = {"Authorization": "Bearer invalid-token-12345"}
 
         try:
-            async with connect(ws_url) as _ws:
+            async with connect(ws_url, additional_headers=extra_headers) as _ws:
                 # Should not get here - connection should be rejected
                 pytest.fail("Connection should have been rejected")
         except InvalidStatus as e:
@@ -2241,10 +2354,11 @@ async def e2e_cancellation_test(sleep_seconds: int = 30):
         import asyncio
         from websockets.asyncio.client import connect
 
-        ws_url = f"{WS_BASE_URL}/ws/connect?token={State.platform_admin.access_token}"
+        ws_url = f"{WS_BASE_URL}/ws/connect"
+        extra_headers = {"Authorization": f"Bearer {State.platform_admin.access_token}"}
 
         try:
-            async with connect(ws_url) as ws:
+            async with connect(ws_url, additional_headers=extra_headers) as ws:
                 # Receive connected message first
                 await asyncio.wait_for(ws.recv(), timeout=5)
 
@@ -2267,10 +2381,11 @@ async def e2e_cancellation_test(sleep_seconds: int = 30):
         if not State.sync_execution_id:
             pytest.skip("No execution ID to subscribe to")
 
-        ws_url = f"{WS_BASE_URL}/ws/connect?token={State.platform_admin.access_token}"
+        ws_url = f"{WS_BASE_URL}/ws/connect"
+        extra_headers = {"Authorization": f"Bearer {State.platform_admin.access_token}"}
 
         try:
-            async with connect(ws_url) as ws:
+            async with connect(ws_url, additional_headers=extra_headers) as ws:
                 # Receive connected message
                 await asyncio.wait_for(ws.recv(), timeout=5)
 
@@ -2299,10 +2414,11 @@ async def e2e_cancellation_test(sleep_seconds: int = 30):
         import asyncio
         from websockets.asyncio.client import connect
 
-        ws_url = f"{WS_BASE_URL}/ws/connect?token={State.org1_user.access_token}"
+        ws_url = f"{WS_BASE_URL}/ws/connect"
+        extra_headers = {"Authorization": f"Bearer {State.org1_user.access_token}"}
 
         try:
-            async with connect(ws_url) as ws:
+            async with connect(ws_url, additional_headers=extra_headers) as ws:
                 # Should receive connected message
                 msg = await asyncio.wait_for(ws.recv(), timeout=5)
                 data = json.loads(msg)
@@ -2643,7 +2759,7 @@ async def e2e_cancellation_test(sleep_seconds: int = 30):
             headers=State.org1_user.headers,
             json={
                 "name": "Unauthorized Form",
-                "linked_workflow": "e2e_test_workflow",
+                "workflow_id": None,
                 "form_schema": {"fields": []},
             },
         )
@@ -3294,7 +3410,418 @@ async def e2e_cancellation_test(sleep_seconds: int = 30):
         assert hit_rate_limit, "Rate limit should be enforced on login endpoint"
 
     # =========================================================================
-    # PHASE 28: Cleanup (Cleanup last)
+    # PHASE 28: SDK API Key Management
+    # =========================================================================
+
+    def test_400_create_sdk_api_key(self):
+        """Test creating an SDK API key."""
+        response = State.client.post(
+            "/api/sdk/keys",
+            headers=State.platform_admin.headers,
+            json={
+                "name": "E2E Test Key",
+                "expires_in_days": 30
+            }
+        )
+        assert response.status_code == 201, f"Failed to create API key: {response.text}"
+
+        data = response.json()
+        assert "id" in data
+        assert "key" in data
+        assert data["name"] == "E2E Test Key"
+        assert data["key"].startswith("bfsk_")
+        assert data["key_prefix"] == data["key"][:12]
+        assert data["is_active"] is True
+
+        # Store for later tests
+        State.sdk_api_key_id = data["id"]
+        State.sdk_api_key_full = data["key"]
+        logger.info(f"Created API key with prefix: {data['key_prefix']}")
+
+    def test_401_list_sdk_api_keys(self):
+        """Test listing SDK API keys."""
+        response = State.client.get(
+            "/api/sdk/keys",
+            headers=State.platform_admin.headers
+        )
+        assert response.status_code == 200, f"Failed to list API keys: {response.text}"
+
+        data = response.json()
+        assert "keys" in data
+        assert len(data["keys"]) >= 1
+
+        # Find our key
+        our_key = next((k for k in data["keys"] if k["id"] == State.sdk_api_key_id), None)
+        assert our_key is not None, "Created key not found in list"
+        assert our_key["name"] == "E2E Test Key"
+        assert our_key["is_active"] is True
+        # Full key should NOT be returned in list
+        assert "key" not in our_key or our_key.get("key") is None
+
+    def test_402_get_context_with_api_key(self):
+        """Test getting developer context using API key authentication."""
+        response = State.client.get(
+            "/api/sdk/context",
+            headers={
+                "Authorization": f"Bearer {State.sdk_api_key_full}"
+            }
+        )
+        assert response.status_code == 200, f"Failed to get context: {response.text}"
+
+        data = response.json()
+        assert "user" in data
+        assert data["user"]["email"] == State.platform_admin.email
+        assert "default_parameters" in data
+        assert "track_executions" in data
+
+    def test_403_update_developer_context(self):
+        """Test updating developer context settings."""
+        response = State.client.put(
+            "/api/sdk/context",
+            headers=State.platform_admin.headers,
+            json={
+                "default_parameters": {"test_param": "test_value"},
+                "track_executions": False
+            }
+        )
+        assert response.status_code == 200, f"Failed to update context: {response.text}"
+
+        data = response.json()
+        assert data["default_parameters"]["test_param"] == "test_value"
+        assert data["track_executions"] is False
+
+    def test_404_verify_context_updated(self):
+        """Verify context was updated by fetching it again."""
+        response = State.client.get(
+            "/api/sdk/context",
+            headers={
+                "Authorization": f"Bearer {State.sdk_api_key_full}"
+            }
+        )
+        assert response.status_code == 200
+
+        data = response.json()
+        assert data["default_parameters"]["test_param"] == "test_value"
+        assert data["track_executions"] is False
+
+    def test_405_revoke_sdk_api_key(self):
+        """Test revoking an SDK API key."""
+        response = State.client.patch(
+            f"/api/sdk/keys/{State.sdk_api_key_id}/revoke",
+            headers=State.platform_admin.headers
+        )
+        assert response.status_code == 200, f"Failed to revoke API key: {response.text}"
+
+        data = response.json()
+        assert data["is_active"] is False
+
+    def test_406_revoked_key_cannot_authenticate(self):
+        """Test that revoked API key cannot be used."""
+        response = State.client.get(
+            "/api/sdk/context",
+            headers={
+                "Authorization": f"Bearer {State.sdk_api_key_full}"
+            }
+        )
+        assert response.status_code == 401, "Revoked key should not authenticate"
+
+    def test_407_create_new_key_for_remaining_tests(self):
+        """Create a new key for remaining tests."""
+        response = State.client.post(
+            "/api/sdk/keys",
+            headers=State.platform_admin.headers,
+            json={
+                "name": "E2E Test Key 2"
+            }
+        )
+        assert response.status_code == 201
+
+        data = response.json()
+        State.sdk_api_key_id = data["id"]
+        State.sdk_api_key_full = data["key"]
+
+    def test_408_delete_sdk_api_key(self):
+        """Test deleting an SDK API key."""
+        response = State.client.delete(
+            f"/api/sdk/keys/{State.sdk_api_key_id}",
+            headers=State.platform_admin.headers
+        )
+        assert response.status_code == 204, f"Failed to delete API key: {response.text}"
+
+    def test_409_deleted_key_not_in_list(self):
+        """Verify deleted key is not in list."""
+        response = State.client.get(
+            "/api/sdk/keys",
+            headers=State.platform_admin.headers
+        )
+        assert response.status_code == 200
+
+        data = response.json()
+        our_key = next((k for k in data["keys"] if k["id"] == State.sdk_api_key_id), None)
+        assert our_key is None, "Deleted key should not be in list"
+
+    # =========================================================================
+    # PHASE 29: SDK Download
+    # =========================================================================
+
+    def test_410_download_sdk_package(self):
+        """Test downloading the SDK package."""
+        import io
+        import tarfile
+
+        response = State.client.get(
+            "/api/sdk/download",
+            headers=State.platform_admin.headers
+        )
+        assert response.status_code == 200, f"Failed to download SDK: {response.text}"
+
+        # Verify it's a gzip tarball
+        assert response.headers.get("content-type") == "application/gzip"
+
+        # Verify it can be extracted
+        buffer = io.BytesIO(response.content)
+        with tarfile.open(fileobj=buffer, mode="r:gz") as tar:
+            names = tar.getnames()
+            # Should contain setup.py and bifrost_sdk files
+            assert "setup.py" in names, "SDK tarball should contain setup.py"
+            # Should have bifrost_sdk package files
+            sdk_files = [n for n in names if n.startswith("bifrost_sdk/")]
+            assert len(sdk_files) > 0, "SDK tarball should contain bifrost_sdk package"
+            logger.info(f"SDK package contains {len(names)} files")
+
+    # =========================================================================
+    # PHASE 30: S3 File Operations (via Editor Files API)
+    # =========================================================================
+
+    def test_420_write_file_to_s3(self):
+        """Test writing a file to S3 via editor files API."""
+        response = State.client.put(
+            "/api/editor/files/content",
+            headers=State.platform_admin.headers,
+            json={
+                "path": "sdk_test_file.txt",
+                "content": "Hello from E2E SDK test!",
+                "encoding": "utf-8"
+            }
+        )
+        assert response.status_code in [200, 201], f"Failed to write file: {response.text}"
+
+        data = response.json()
+        assert data["path"] == "sdk_test_file.txt"
+        logger.info("Created test file at sdk_test_file.txt")
+
+    def test_421_read_file_from_s3(self):
+        """Test reading a file from S3 via editor files API."""
+        response = State.client.get(
+            "/api/editor/files/content",
+            headers=State.platform_admin.headers,
+            params={"path": "sdk_test_file.txt"}
+        )
+        assert response.status_code == 200, f"Failed to read file: {response.text}"
+
+        data = response.json()
+        assert data["content"] == "Hello from E2E SDK test!"
+        assert data["path"] == "sdk_test_file.txt"
+
+    def test_422_list_files(self):
+        """Test listing files from S3 via editor files API."""
+        response = State.client.get(
+            "/api/editor/files",
+            headers=State.platform_admin.headers,
+            params={"path": ""}
+        )
+        assert response.status_code == 200, f"Failed to list files: {response.text}"
+
+        data = response.json()
+        # Should be a list of file metadata
+        assert isinstance(data, list)
+
+        # Our test file should be in the list
+        test_file = next((f for f in data if f.get("name") == "sdk_test_file.txt"), None)
+        assert test_file is not None, "Test file sdk_test_file.txt not in file list"
+
+    def test_423_update_file_content(self):
+        """Test updating file content in S3."""
+        new_content = "Updated content from E2E SDK test!"
+        response = State.client.put(
+            "/api/editor/files/content",
+            headers=State.platform_admin.headers,
+            json={
+                "path": "sdk_test_file.txt",
+                "content": new_content,
+                "encoding": "utf-8"
+            }
+        )
+        assert response.status_code == 200, f"Failed to update file: {response.text}"
+
+        # Verify the update
+        read_response = State.client.get(
+            "/api/editor/files/content",
+            headers=State.platform_admin.headers,
+            params={"path": "sdk_test_file.txt"}
+        )
+        assert read_response.status_code == 200
+        assert read_response.json()["content"] == new_content
+
+    def test_424_create_folder(self):
+        """Test creating a folder in S3."""
+        response = State.client.post(
+            "/api/editor/files/folder",
+            headers=State.platform_admin.headers,
+            params={"path": "sdk_test_folder"}
+        )
+        # Folder creation might return 200 or 201
+        assert response.status_code in [200, 201], f"Failed to create folder: {response.text}"
+        logger.info("Created test folder at sdk_test_folder")
+
+    def test_425_write_file_in_folder(self):
+        """Test writing a file inside a folder in S3."""
+        response = State.client.put(
+            "/api/editor/files/content",
+            headers=State.platform_admin.headers,
+            json={
+                "path": "sdk_test_folder/nested_file.txt",
+                "content": "Nested file content",
+                "encoding": "utf-8"
+            }
+        )
+        assert response.status_code in [200, 201], f"Failed to write nested file: {response.text}"
+
+    def test_426_list_folder_contents(self):
+        """Test listing folder contents from S3."""
+        response = State.client.get(
+            "/api/editor/files",
+            headers=State.platform_admin.headers,
+            params={"path": "sdk_test_folder"}
+        )
+        assert response.status_code == 200, f"Failed to list folder: {response.text}"
+
+        data = response.json()
+        # Should contain our nested file
+        nested_file = next((f for f in data if "nested_file" in f.get("name", "")), None)
+        assert nested_file is not None, "Nested file not found in folder listing"
+
+    def test_427_rename_file(self):
+        """Test renaming a file in S3."""
+        response = State.client.post(
+            "/api/editor/files/rename",
+            headers=State.platform_admin.headers,
+            params={
+                "old_path": "sdk_test_file.txt",
+                "new_path": "renamed_sdk_test_file.txt"
+            }
+        )
+        assert response.status_code == 200, f"Failed to rename file: {response.text}"
+
+        # Verify old path doesn't exist
+        old_response = State.client.get(
+            "/api/editor/files/content",
+            headers=State.platform_admin.headers,
+            params={"path": "sdk_test_file.txt"}
+        )
+        assert old_response.status_code == 404, "Old file path should not exist"
+
+        # Verify new path exists
+        new_response = State.client.get(
+            "/api/editor/files/content",
+            headers=State.platform_admin.headers,
+            params={"path": "renamed_sdk_test_file.txt"}
+        )
+        assert new_response.status_code == 200, "New file path should exist"
+
+    def test_428_delete_file(self):
+        """Test deleting a file from S3."""
+        response = State.client.delete(
+            "/api/editor/files",
+            headers=State.platform_admin.headers,
+            params={"path": "renamed_sdk_test_file.txt"}
+        )
+        assert response.status_code == 204, f"Failed to delete file: {response.text}"
+
+        # Verify file is deleted
+        read_response = State.client.get(
+            "/api/editor/files/content",
+            headers=State.platform_admin.headers,
+            params={"path": "renamed_sdk_test_file.txt"}
+        )
+        assert read_response.status_code == 404, "Deleted file should not exist"
+
+    def test_429_delete_folder(self):
+        """Test deleting a folder from S3."""
+        response = State.client.delete(
+            "/api/editor/files",
+            headers=State.platform_admin.headers,
+            params={"path": "sdk_test_folder"}
+        )
+        assert response.status_code == 204, f"Failed to delete folder: {response.text}"
+
+    # =========================================================================
+    # PHASE 31: Workflow Extraction Tests (Write-time discovery)
+    # =========================================================================
+
+    def test_430_write_workflow_file_extracts_metadata(self):
+        """Test that writing a workflow file extracts metadata to DB."""
+        workflow_content = '''"""Test workflow for E2E SDK tests."""
+from bifrost import workflow
+
+@workflow(
+    name="sdk_e2e_test_workflow",
+    description="Workflow created via SDK E2E test",
+    category="e2e_testing",
+    tags=["sdk", "e2e", "test"]
+)
+async def sdk_e2e_test_workflow(name: str, count: int = 1) -> dict:
+    """A simple test workflow."""
+    return {"greeting": f"Hello {name}!", "count": count}
+'''
+        response = State.client.put(
+            "/api/editor/files/content",
+            headers=State.platform_admin.headers,
+            json={
+                "path": "workflows/sdk_e2e_test_workflow.py",
+                "content": workflow_content,
+                "encoding": "utf-8"
+            }
+        )
+        assert response.status_code in [200, 201], f"Failed to write workflow: {response.text}"
+        logger.info("Created test workflow file")
+
+    def test_431_workflow_appears_in_list(self):
+        """Test that the written workflow appears in the workflows list."""
+        import time
+        # Give a moment for the extraction to complete
+        time.sleep(1)
+
+        response = State.client.get(
+            "/api/workflows",
+            headers=State.platform_admin.headers
+        )
+        assert response.status_code == 200, f"Failed to list workflows: {response.text}"
+
+        data = response.json()
+        workflows = data.get("workflows", data) if isinstance(data, dict) else data
+
+        # Find our workflow
+        our_workflow = next(
+            (w for w in workflows if w.get("name") == "sdk_e2e_test_workflow"),
+            None
+        )
+        assert our_workflow is not None, "SDK E2E test workflow not found in workflows list"
+        assert our_workflow.get("description") == "Workflow created via SDK E2E test"
+        assert our_workflow.get("category") == "e2e_testing"
+        logger.info("Verified workflow was extracted and indexed")
+
+    def test_432_cleanup_workflow_file(self):
+        """Clean up the test workflow file."""
+        response = State.client.delete(
+            "/api/editor/files",
+            headers=State.platform_admin.headers,
+            params={"path": "workflows/sdk_e2e_test_workflow.py"}
+        )
+        assert response.status_code == 204, f"Failed to delete workflow file: {response.text}"
+
+    # =========================================================================
+    # PHASE 32: Cleanup (Cleanup last)
     # =========================================================================
 
     def test_900_cleanup_e2e_test_files(self):

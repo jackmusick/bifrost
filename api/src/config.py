@@ -164,11 +164,57 @@ class Settings(BaseSettings):
         return [origin.strip() for origin in self.cors_origins.split(",") if origin.strip()]
 
     # ==========================================================================
-    # File Storage
+    # S3 Storage (for horizontal scaling)
     # ==========================================================================
-    workspace_location: str = Field(
-        default="/workspace",
-        description="Path to workspace directory for user workflows"
+    instance_id: str = Field(
+        default="local",
+        description="Instance ID for unique bucket names (e.g., 'local', 'prod', or a UUID)"
+    )
+
+    s3_endpoint_url: str | None = Field(
+        default=None,
+        description="S3 endpoint URL (None for AWS, 'http://minio:9000' for local MinIO)"
+    )
+
+    s3_access_key: str | None = Field(
+        default=None,
+        description="S3 access key"
+    )
+
+    s3_secret_key: str | None = Field(
+        default=None,
+        description="S3 secret key"
+    )
+
+    s3_region: str = Field(
+        default="us-east-1",
+        description="S3 region"
+    )
+
+    @computed_field
+    @property
+    def s3_workspace_bucket(self) -> str:
+        """Bucket name for workspace files (indexed, git-tracked)."""
+        return f"bifrost-{self.instance_id}-workspace"
+
+    @computed_field
+    @property
+    def s3_files_bucket(self) -> str:
+        """Bucket name for runtime files (blob storage, not indexed)."""
+        return f"bifrost-{self.instance_id}-files"
+
+    @computed_field
+    @property
+    def s3_configured(self) -> bool:
+        """Check if S3 storage is configured."""
+        return bool(self.s3_access_key and self.s3_secret_key)
+
+    # ==========================================================================
+    # File Storage (Legacy - used when S3 not configured)
+    # ==========================================================================
+    workspace_location: str | None = Field(
+        default=None,
+        description="Path to workspace directory (legacy, used when S3 not configured)"
     )
 
     temp_location: str = Field(
@@ -315,15 +361,25 @@ class Settings(BaseSettings):
         """
         Validate that required filesystem paths exist.
 
+        With S3 storage, workspace_location is optional.
+        Without S3, workspace_location must be set and exist.
+
         Raises:
-            ValueError: If workspace location doesn't exist
+            ValueError: If workspace location required but doesn't exist
         """
-        workspace = Path(self.workspace_location)
-        if not workspace.exists():
-            raise ValueError(
-                f"Workspace location does not exist: {self.workspace_location}. "
-                "Please create it or set BIFROST_WORKSPACE_LOCATION environment variable."
-            )
+        # If S3 is configured, workspace_location is not required
+        if not self.s3_configured:
+            if not self.workspace_location:
+                raise ValueError(
+                    "Either S3 storage (BIFROST_S3_ACCESS_KEY, BIFROST_S3_SECRET_KEY) "
+                    "or BIFROST_WORKSPACE_LOCATION must be configured."
+                )
+            workspace = Path(self.workspace_location)
+            if not workspace.exists():
+                raise ValueError(
+                    f"Workspace location does not exist: {self.workspace_location}. "
+                    "Please create it or configure S3 storage instead."
+                )
 
         # Create temp location if it doesn't exist
         temp = Path(self.temp_location)

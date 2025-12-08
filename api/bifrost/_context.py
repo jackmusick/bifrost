@@ -23,9 +23,8 @@ if TYPE_CHECKING:
 
 # Context variable for current execution context
 # Set by workflow engine before executing user code
-_execution_context: ContextVar['ExecutionContext | None'] = ContextVar(
-    'bifrost_execution_context',
-    default=None
+_execution_context: ContextVar["ExecutionContext | None"] = ContextVar(
+    "bifrost_execution_context", default=None
 )
 
 
@@ -49,7 +48,10 @@ class _ContextProxy:
         """Forward attribute access to the underlying ExecutionContext."""
         ctx = _execution_context.get()
         if ctx is None:
-            raise RuntimeError(
+            # Raise AttributeError so hasattr() returns False correctly
+            # (hasattr only catches AttributeError, not RuntimeError)
+            raise AttributeError(
+                f"'{type(self).__name__}' has no attribute '{name}' - "
                 "No active execution context. "
                 "This usually means you're trying to access 'context' outside of a workflow execution. "
                 "Make sure you're inside a @workflow decorated function."
@@ -67,7 +69,7 @@ class _ContextProxy:
 context: "ExecutionContext" = _ContextProxy()  # type: ignore[assignment]
 
 
-def set_execution_context(ctx: 'ExecutionContext') -> None:
+def set_execution_context(ctx: "ExecutionContext") -> None:
     """
     Set the execution context for the current workflow execution.
 
@@ -79,7 +81,7 @@ def set_execution_context(ctx: 'ExecutionContext') -> None:
     _execution_context.set(ctx)
 
 
-def get_execution_context() -> 'ExecutionContext':
+def get_execution_context() -> "ExecutionContext":
     """
     Get the current execution context.
 

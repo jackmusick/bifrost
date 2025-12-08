@@ -1,0 +1,905 @@
+"""
+File Storage Service for S3-based workspace storage.
+
+Handles workspace files with PostgreSQL indexing and workflow extraction.
+Files are stored in S3, indexed in PostgreSQL for fast querying.
+
+S3 storage is required - no filesystem fallback.
+"""
+
+import ast
+import hashlib
+import logging
+import mimetypes
+import re
+from contextlib import asynccontextmanager
+from datetime import datetime
+from pathlib import Path
+from typing import Any
+
+from sqlalchemy import select, update
+from sqlalchemy.dialects.postgresql import insert
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from src.config import Settings, get_settings
+from src.models.enums import GitStatus
+from src.models.orm import WorkspaceFile
+
+logger = logging.getLogger(__name__)
+
+
+class FileStorageService:
+    """
+    Storage service for workspace files.
+
+    Provides a unified interface for file operations that:
+    - Stores files in S3
+    - Maintains PostgreSQL index for fast queries
+    - Extracts workflow/form metadata at write time
+    """
+
+    def __init__(self, db: AsyncSession, settings: Settings | None = None):
+        self.db = db
+        self.settings = settings or get_settings()
+        self._s3_client = None
+
+    @asynccontextmanager
+    async def _get_s3_client(self):
+        """Get S3 client context manager."""
+        if not self.settings.s3_configured:
+            raise RuntimeError("S3 storage not configured")
+
+        from aiobotocore.session import get_session
+
+        session = get_session()
+        async with session.create_client(
+            "s3",
+            endpoint_url=self.settings.s3_endpoint_url,
+            aws_access_key_id=self.settings.s3_access_key,
+            aws_secret_access_key=self.settings.s3_secret_key,
+            region_name=self.settings.s3_region,
+        ) as client:
+            yield client
+
+    def _compute_hash(self, content: bytes) -> str:
+        """Compute SHA-256 hash of content."""
+        return hashlib.sha256(content).hexdigest()
+
+    def _guess_content_type(self, path: str) -> str:
+        """Guess content type from file path."""
+        content_type, _ = mimetypes.guess_type(path)
+        return content_type or "application/octet-stream"
+
+    async def read_file(self, path: str) -> tuple[bytes, WorkspaceFile | None]:
+        """
+        Read file content and metadata.
+
+        Args:
+            path: Relative path within workspace
+
+        Returns:
+            Tuple of (content bytes, WorkspaceFile record or None)
+
+        Raises:
+            FileNotFoundError: If file doesn't exist
+        """
+        # Get index record
+        stmt = select(WorkspaceFile).where(
+            WorkspaceFile.path == path,
+            WorkspaceFile.is_deleted == False,  # noqa: E712
+        )
+        result = await self.db.execute(stmt)
+        file_record = result.scalar_one_or_none()
+
+        async with self._get_s3_client() as s3:
+            try:
+                response = await s3.get_object(
+                    Bucket=self.settings.s3_workspace_bucket,
+                    Key=path,
+                )
+                content = await response["Body"].read()
+                return content, file_record
+            except s3.exceptions.NoSuchKey:
+                raise FileNotFoundError(f"File not found: {path}")
+
+    async def write_file(
+        self,
+        path: str,
+        content: bytes,
+        updated_by: str = "system",
+    ) -> WorkspaceFile:
+        """
+        Write file content to storage and update index.
+
+        Also extracts workflow/form metadata at write time.
+
+        Args:
+            path: Relative path within workspace
+            content: File content as bytes
+            updated_by: User who made the change
+
+        Returns:
+            Updated WorkspaceFile record
+        """
+        content_hash = self._compute_hash(content)
+        content_type = self._guess_content_type(path)
+        size_bytes = len(content)
+
+        # Write to S3
+        async with self._get_s3_client() as s3:
+            await s3.put_object(
+                Bucket=self.settings.s3_workspace_bucket,
+                Key=path,
+                Body=content,
+                ContentType=content_type,
+            )
+
+        # Upsert index record
+        # Use UTC datetime without timezone info to match SQLAlchemy model defaults
+        now = datetime.utcnow()
+        stmt = insert(WorkspaceFile).values(
+            path=path,
+            content_hash=content_hash,
+            size_bytes=size_bytes,
+            content_type=content_type,
+            git_status=GitStatus.MODIFIED,
+            is_deleted=False,
+            created_at=now,
+            updated_at=now,
+        ).on_conflict_do_update(
+            index_elements=[WorkspaceFile.path],
+            set_={
+                "content_hash": content_hash,
+                "size_bytes": size_bytes,
+                "content_type": content_type,
+                "git_status": GitStatus.MODIFIED,
+                "is_deleted": False,
+                "updated_at": now,
+            },
+            where=WorkspaceFile.is_deleted == False,  # noqa: E712
+        ).returning(WorkspaceFile)
+
+        result = await self.db.execute(stmt)
+        file_record = result.scalar_one()
+
+        # Extract metadata for workflows/forms
+        await self._extract_metadata(path, content)
+
+        # Publish sync event for other containers
+        try:
+            from src.core.pubsub import publish_workspace_file_write
+            await publish_workspace_file_write(path, content, content_hash)
+        except Exception as e:
+            logger.warning(f"Failed to publish workspace sync event: {e}")
+
+        logger.info(f"File written: {path} ({size_bytes} bytes) by {updated_by}")
+        return file_record
+
+    async def delete_file(self, path: str) -> None:
+        """
+        Delete a file from storage.
+
+        Args:
+            path: Relative path within workspace
+        """
+        async with self._get_s3_client() as s3:
+            await s3.delete_object(
+                Bucket=self.settings.s3_workspace_bucket,
+                Key=path,
+            )
+
+        # Soft delete in index
+        stmt = update(WorkspaceFile).where(
+            WorkspaceFile.path == path,
+        ).values(
+            is_deleted=True,
+            git_status=GitStatus.DELETED,
+            updated_at=datetime.utcnow(),
+        )
+        await self.db.execute(stmt)
+
+        # Clean up related metadata
+        await self._remove_metadata(path)
+
+        # Publish sync event for other containers
+        try:
+            from src.core.pubsub import publish_workspace_file_delete
+            await publish_workspace_file_delete(path)
+        except Exception as e:
+            logger.warning(f"Failed to publish workspace delete event: {e}")
+
+        logger.info(f"File deleted: {path}")
+
+    async def list_files(
+        self,
+        directory: str = "",
+        include_deleted: bool = False,
+    ) -> list[WorkspaceFile]:
+        """
+        List files in a directory.
+
+        Args:
+            directory: Directory path (empty for root)
+            include_deleted: Whether to include soft-deleted files
+
+        Returns:
+            List of WorkspaceFile records
+        """
+        # Normalize directory path
+        if directory and not directory.endswith("/"):
+            directory = directory + "/"
+
+        stmt = select(WorkspaceFile)
+
+        if directory:
+            # Match files that start with directory but aren't in subdirectories
+            stmt = stmt.where(
+                WorkspaceFile.path.like(f"{directory}%"),
+                ~WorkspaceFile.path.like(f"{directory}%/%"),
+            )
+
+        if not include_deleted:
+            stmt = stmt.where(WorkspaceFile.is_deleted == False)  # noqa: E712
+
+        stmt = stmt.order_by(WorkspaceFile.path)
+
+        result = await self.db.execute(stmt)
+        return list(result.scalars().all())
+
+    async def list_all_files(
+        self,
+        include_deleted: bool = False,
+    ) -> list[WorkspaceFile]:
+        """
+        List all files in workspace.
+
+        Args:
+            include_deleted: Whether to include soft-deleted files
+
+        Returns:
+            List of WorkspaceFile records
+        """
+        stmt = select(WorkspaceFile)
+
+        if not include_deleted:
+            stmt = stmt.where(WorkspaceFile.is_deleted == False)  # noqa: E712
+
+        stmt = stmt.order_by(WorkspaceFile.path)
+
+        result = await self.db.execute(stmt)
+        return list(result.scalars().all())
+
+    async def download_workspace(self, local_path: Path) -> None:
+        """
+        Download entire workspace to local directory.
+
+        Used by workers before execution.
+
+        Args:
+            local_path: Local directory to download to
+        """
+        local_path.mkdir(parents=True, exist_ok=True)
+
+        async with self._get_s3_client() as s3:
+            # List all objects in workspace bucket
+            paginator = s3.get_paginator("list_objects_v2")
+            async for page in paginator.paginate(Bucket=self.settings.s3_workspace_bucket):
+                for obj in page.get("Contents", []):
+                    key = obj.get("Key")
+                    if not key:
+                        continue
+                    local_file = local_path / key
+
+                    # Create parent directories
+                    local_file.parent.mkdir(parents=True, exist_ok=True)
+
+                    # Download file
+                    response = await s3.get_object(
+                        Bucket=self.settings.s3_workspace_bucket,
+                        Key=key,
+                    )
+                    content = await response["Body"].read()
+                    local_file.write_bytes(content)
+
+        logger.info(f"Workspace downloaded to {local_path}")
+
+    async def upload_from_directory(
+        self,
+        local_path: Path,
+        updated_by: str = "system",
+    ) -> list[WorkspaceFile]:
+        """
+        Upload all files from local directory to workspace.
+
+        Used for git sync operations.
+
+        Args:
+            local_path: Local directory to upload from
+            updated_by: User who made the change
+
+        Returns:
+            List of uploaded WorkspaceFile records
+        """
+        uploaded = []
+
+        for file_path in local_path.rglob("*"):
+            if file_path.is_file():
+                # Skip git metadata
+                if ".git" in file_path.parts:
+                    continue
+
+                rel_path = str(file_path.relative_to(local_path))
+                content = file_path.read_bytes()
+
+                file_record = await self.write_file(rel_path, content, updated_by)
+                uploaded.append(file_record)
+
+        logger.info(f"Uploaded {len(uploaded)} files from {local_path}")
+        return uploaded
+
+    async def sync_index_from_s3(self) -> int:
+        """
+        Sync index from S3 bucket contents.
+
+        Used for initial setup or recovery. Scans S3 bucket and
+        creates index entries for all files.
+
+        Returns:
+            Number of files indexed
+        """
+        if not self.settings.s3_configured:
+            raise RuntimeError("S3 storage not configured")
+
+        count = 0
+        async with self._get_s3_client() as s3:
+            paginator = s3.get_paginator("list_objects_v2")
+            async for page in paginator.paginate(Bucket=self.settings.s3_workspace_bucket):
+                for obj in page.get("Contents", []):
+                    key = obj.get("Key")
+                    size = obj.get("Size", 0)
+                    if not key:
+                        continue
+
+                    # Get content for hash
+                    response = await s3.get_object(
+                        Bucket=self.settings.s3_workspace_bucket,
+                        Key=key,
+                    )
+                    content = await response["Body"].read()
+                    content_hash = self._compute_hash(content)
+                    content_type = self._guess_content_type(key)
+
+                    # Upsert index
+                    now = datetime.utcnow()
+                    stmt = insert(WorkspaceFile).values(
+                        path=key,
+                        content_hash=content_hash,
+                        size_bytes=size,
+                        content_type=content_type,
+                        git_status=GitStatus.UNTRACKED,
+                        is_deleted=False,
+                        created_at=now,
+                        updated_at=now,
+                    ).on_conflict_do_update(
+                        index_elements=[WorkspaceFile.path],
+                        set_={
+                            "content_hash": content_hash,
+                            "size_bytes": size,
+                            "content_type": content_type,
+                            "is_deleted": False,
+                            "updated_at": now,
+                        },
+                    )
+                    await self.db.execute(stmt)
+
+                    # Extract metadata
+                    await self._extract_metadata(key, content)
+                    count += 1
+
+        logger.info(f"Indexed {count} files from S3")
+        return count
+
+    async def _extract_metadata(self, path: str, content: bytes) -> None:
+        """
+        Extract workflow/form metadata from file content.
+
+        Called at write time to keep registry in sync.
+        """
+        try:
+            if path.endswith(".py"):
+                await self._index_python_file(path, content)
+            elif path.endswith(".form.json"):
+                await self._index_form(path, content)
+        except Exception as e:
+            # Log but don't fail the write
+            logger.warning(f"Failed to extract metadata from {path}: {e}")
+
+    async def _index_python_file(self, path: str, content: bytes) -> None:
+        """
+        Extract and index workflows/providers from Python file.
+
+        Uses AST-based parsing to extract metadata from @workflow and
+        @data_provider decorators without importing the module.
+        """
+        from src.models.orm import Workflow, DataProvider
+
+        content_str = content.decode("utf-8", errors="replace")
+
+        try:
+            tree = ast.parse(content_str, filename=path)
+        except SyntaxError as e:
+            logger.warning(f"Syntax error parsing {path}: {e}")
+            return
+
+        now = datetime.utcnow()
+
+        for node in ast.walk(tree):
+            if not isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
+                continue
+
+            for decorator in node.decorator_list:
+                decorator_info = self._parse_decorator(decorator)
+                if not decorator_info:
+                    continue
+
+                decorator_name, kwargs = decorator_info
+
+                if decorator_name == "workflow":
+                    # Get workflow name from decorator or function name
+                    workflow_name = kwargs.get("name") or node.name
+                    description = kwargs.get("description")
+
+                    # If no description in decorator, try to get from docstring
+                    if description is None:
+                        docstring = ast.get_docstring(node)
+                        if docstring:
+                            description = docstring.strip().split("\n")[0].strip()
+
+                    category = kwargs.get("category", "General")
+                    tags = kwargs.get("tags", [])
+                    schedule = kwargs.get("schedule")
+                    endpoint_enabled = kwargs.get("endpoint_enabled", False)
+                    allowed_methods = kwargs.get("allowed_methods", ["POST"])
+                    execution_mode = kwargs.get("execution_mode", "sync")
+
+                    # Extract parameters from function signature
+                    parameters_schema = self._extract_parameters_from_ast(node)
+
+                    # function_name is the actual Python function name (unique per file)
+                    # workflow_name is the display name from decorator (can have duplicates)
+                    function_name = node.name
+
+                    stmt = insert(Workflow).values(
+                        name=workflow_name,
+                        function_name=function_name,
+                        file_path=path,
+                        description=description,
+                        category=category,
+                        parameters_schema=parameters_schema,
+                        tags=tags,
+                        schedule=schedule,
+                        endpoint_enabled=endpoint_enabled,
+                        allowed_methods=allowed_methods,
+                        execution_mode=execution_mode,
+                        is_active=True,
+                        is_platform=path.startswith("platform/"),
+                        last_seen_at=now,
+                    ).on_conflict_do_update(
+                        index_elements=[Workflow.file_path, Workflow.function_name],
+                        set_={
+                            "name": workflow_name,
+                            "description": description,
+                            "category": category,
+                            "parameters_schema": parameters_schema,
+                            "tags": tags,
+                            "schedule": schedule,
+                            "endpoint_enabled": endpoint_enabled,
+                            "allowed_methods": allowed_methods,
+                            "execution_mode": execution_mode,
+                            "is_active": True,
+                            "is_platform": path.startswith("platform/"),
+                            "last_seen_at": now,
+                            "updated_at": now,
+                        },
+                    )
+                    await self.db.execute(stmt)
+                    logger.debug(f"Indexed workflow: {workflow_name} ({function_name}) from {path}")
+
+                elif decorator_name == "data_provider":
+                    # Get provider name from decorator (required)
+                    provider_name = kwargs.get("name") or node.name
+                    description = kwargs.get("description")
+
+                    # function_name is the actual Python function name (unique per file)
+                    # provider_name is the display name from decorator (can have duplicates)
+                    function_name = node.name
+
+                    stmt = insert(DataProvider).values(
+                        name=provider_name,
+                        function_name=function_name,
+                        file_path=path,
+                        description=description,
+                        is_active=True,
+                        last_seen_at=now,
+                    ).on_conflict_do_update(
+                        index_elements=[DataProvider.file_path, DataProvider.function_name],
+                        set_={
+                            "name": provider_name,
+                            "description": description,
+                            "is_active": True,
+                            "last_seen_at": now,
+                            "updated_at": now,
+                        },
+                    )
+                    await self.db.execute(stmt)
+                    logger.debug(f"Indexed data provider: {provider_name} ({function_name}) from {path}")
+
+    def _parse_decorator(self, decorator: ast.AST) -> tuple[str, dict[str, Any]] | None:
+        """
+        Parse a decorator AST node to extract name and keyword arguments.
+
+        Returns:
+            Tuple of (decorator_name, kwargs_dict) or None if not a workflow/provider decorator
+        """
+        # Handle @workflow (no parentheses)
+        if isinstance(decorator, ast.Name):
+            if decorator.id in ("workflow", "data_provider"):
+                return decorator.id, {}
+            return None
+
+        # Handle @workflow(...) (with parentheses)
+        if isinstance(decorator, ast.Call):
+            if isinstance(decorator.func, ast.Name):
+                decorator_name = decorator.func.id
+            elif isinstance(decorator.func, ast.Attribute):
+                # Handle module.workflow (e.g., bifrost.workflow)
+                decorator_name = decorator.func.attr
+            else:
+                return None
+
+            if decorator_name not in ("workflow", "data_provider"):
+                return None
+
+            # Extract keyword arguments
+            kwargs = {}
+            for keyword in decorator.keywords:
+                if keyword.arg:
+                    value = self._ast_value_to_python(keyword.value)
+                    if value is not None:
+                        kwargs[keyword.arg] = value
+
+            return decorator_name, kwargs
+
+        return None
+
+    def _ast_value_to_python(self, node: ast.AST) -> Any:
+        """Convert an AST node to a Python value."""
+        if isinstance(node, ast.Constant):
+            return node.value
+        elif isinstance(node, ast.Str):  # Python 3.7 compatibility
+            return node.s
+        elif isinstance(node, ast.Num):  # Python 3.7 compatibility
+            return node.n
+        elif isinstance(node, ast.NameConstant):  # Python 3.7 compatibility
+            return node.value
+        elif isinstance(node, ast.List):
+            return [self._ast_value_to_python(elt) for elt in node.elts]
+        elif isinstance(node, ast.Dict):
+            return {
+                self._ast_value_to_python(k): self._ast_value_to_python(v)
+                for k, v in zip(node.keys, node.values)
+                if k is not None
+            }
+        elif isinstance(node, ast.Name):
+            # Handle True, False, None
+            if node.id == "True":
+                return True
+            elif node.id == "False":
+                return False
+            elif node.id == "None":
+                return None
+        return None
+
+    def _extract_parameters_from_ast(
+        self, func_node: ast.FunctionDef | ast.AsyncFunctionDef
+    ) -> list[dict[str, Any]]:
+        """
+        Extract parameter metadata from function definition AST.
+
+        Returns list of parameter dicts with: name, type, required, label, default_value
+        """
+        parameters: list[dict[str, Any]] = []
+        args = func_node.args
+
+        # Get defaults - they align with the end of the args list
+        defaults = args.defaults
+        num_defaults = len(defaults)
+        num_args = len(args.args)
+
+        for i, arg in enumerate(args.args):
+            param_name = arg.arg
+
+            # Skip 'self', 'cls', and context parameters
+            if param_name in ("self", "cls", "context"):
+                continue
+
+            # Skip ExecutionContext parameter (by annotation)
+            if arg.annotation:
+                annotation_str = self._annotation_to_string(arg.annotation)
+                if "ExecutionContext" in annotation_str:
+                    continue
+
+            # Determine if parameter has a default
+            default_index = i - (num_args - num_defaults)
+            has_default = default_index >= 0
+
+            # Get default value
+            default_value = None
+            if has_default:
+                default_node = defaults[default_index]
+                default_value = self._ast_value_to_python(default_node)
+
+            # Determine type from annotation
+            ui_type = "string"
+            is_optional = has_default
+            if arg.annotation:
+                ui_type = self._annotation_to_ui_type(arg.annotation)
+                is_optional = is_optional or self._is_optional_annotation(arg.annotation)
+
+            # Generate label from parameter name
+            label = re.sub(r"([a-z])([A-Z])", r"\1 \2", param_name.replace("_", " ")).title()
+
+            param_meta = {
+                "name": param_name,
+                "type": ui_type,
+                "required": not is_optional,
+                "label": label,
+            }
+
+            if default_value is not None:
+                param_meta["default_value"] = default_value
+
+            parameters.append(param_meta)
+
+        return parameters
+
+    def _annotation_to_string(self, annotation: ast.AST) -> str:
+        """Convert annotation AST to string representation."""
+        if isinstance(annotation, ast.Name):
+            return annotation.id
+        elif isinstance(annotation, ast.Constant):
+            return str(annotation.value)
+        elif isinstance(annotation, ast.Subscript):
+            return f"{self._annotation_to_string(annotation.value)}[...]"
+        elif isinstance(annotation, ast.Attribute):
+            return f"{self._annotation_to_string(annotation.value)}.{annotation.attr}"
+        elif isinstance(annotation, ast.BinOp) and isinstance(annotation.op, ast.BitOr):
+            # Python 3.10+ union syntax: str | None
+            left = self._annotation_to_string(annotation.left)
+            right = self._annotation_to_string(annotation.right)
+            return f"{left} | {right}"
+        return ""
+
+    def _annotation_to_ui_type(self, annotation: ast.AST) -> str:
+        """Convert annotation AST to UI type string."""
+        type_mapping = {
+            "str": "string",
+            "int": "int",
+            "float": "float",
+            "bool": "bool",
+            "list": "list",
+            "dict": "json",
+        }
+
+        if isinstance(annotation, ast.Name):
+            return type_mapping.get(annotation.id, "json")
+
+        elif isinstance(annotation, ast.Subscript):
+            # Handle list[str], dict[str, Any], etc.
+            if isinstance(annotation.value, ast.Name):
+                base_type = annotation.value.id
+                if base_type == "list":
+                    return "list"
+                elif base_type == "dict":
+                    return "json"
+                elif base_type == "Optional":
+                    # Optional[str] -> string
+                    if isinstance(annotation.slice, ast.Name):
+                        return type_mapping.get(annotation.slice.id, "string")
+                    return "string"
+
+        elif isinstance(annotation, ast.BinOp) and isinstance(annotation.op, ast.BitOr):
+            # str | None -> string
+            left_type = self._annotation_to_ui_type(annotation.left)
+            return left_type
+
+        return "json"
+
+    def _is_optional_annotation(self, annotation: ast.AST) -> bool:
+        """Check if annotation represents an optional type."""
+        if isinstance(annotation, ast.Subscript):
+            if isinstance(annotation.value, ast.Name):
+                if annotation.value.id == "Optional":
+                    return True
+
+        elif isinstance(annotation, ast.BinOp) and isinstance(annotation.op, ast.BitOr):
+            # Check for str | None pattern
+            right_str = self._annotation_to_string(annotation.right)
+            left_str = self._annotation_to_string(annotation.left)
+            if right_str == "None" or left_str == "None":
+                return True
+
+        return False
+
+    async def _index_form(self, path: str, content: bytes) -> None:
+        """
+        Parse and index form from .form.json file.
+
+        If the JSON contains an 'id' field, uses that ID (for dual-write from API).
+        Otherwise generates a new ID (for files synced from git/editor).
+
+        Uses ON CONFLICT on primary key (id) to update existing forms.
+        """
+        import json
+        from uuid import UUID
+        from src.models.orm import Form
+
+        try:
+            form_data = json.loads(content.decode("utf-8"))
+        except json.JSONDecodeError:
+            logger.warning(f"Invalid JSON in form file: {path}")
+            return
+
+        name = form_data.get("name")
+        if not name:
+            logger.warning(f"Form file missing name: {path}")
+            return
+
+        # Use ID from JSON if present (for API-created forms), otherwise generate new
+        form_id_str = form_data.get("id")
+        if form_id_str:
+            try:
+                form_id = UUID(form_id_str)
+            except ValueError:
+                logger.warning(f"Invalid form ID in {path}: {form_id_str}")
+                form_id = None
+        else:
+            form_id = None
+
+        now = datetime.utcnow()
+
+        if form_id:
+            # Form has an ID - use upsert on primary key
+            # This handles dual-write from API (form already exists)
+            stmt = insert(Form).values(
+                id=form_id,
+                name=name,
+                description=form_data.get("description"),
+                workflow_id=form_data.get("workflow_id"),
+                default_launch_params=form_data.get("default_launch_params"),
+                allowed_query_params=form_data.get("allowed_query_params"),
+                file_path=path,
+                is_active=True,
+                last_seen_at=now,
+                created_by="file_sync",
+            ).on_conflict_do_update(
+                index_elements=[Form.id],
+                set_={
+                    "file_path": path,
+                    "is_active": True,
+                    "last_seen_at": now,
+                    "updated_at": now,
+                },
+            )
+        else:
+            # No ID - use upsert on file_path (for git sync / editor writes)
+            stmt = insert(Form).values(
+                name=name,
+                description=form_data.get("description"),
+                workflow_id=form_data.get("workflow_id"),
+                default_launch_params=form_data.get("default_launch_params"),
+                allowed_query_params=form_data.get("allowed_query_params"),
+                file_path=path,
+                is_active=True,
+                last_seen_at=now,
+                created_by="file_sync",
+            ).on_conflict_do_update(
+                index_elements=[Form.file_path],
+                set_={
+                    "name": name,
+                    "description": form_data.get("description"),
+                    "workflow_id": form_data.get("workflow_id"),
+                    "default_launch_params": form_data.get("default_launch_params"),
+                    "allowed_query_params": form_data.get("allowed_query_params"),
+                    "is_active": True,
+                    "last_seen_at": now,
+                    "updated_at": now,
+                },
+            )
+        await self.db.execute(stmt)
+
+    async def _remove_metadata(self, path: str) -> None:
+        """Remove workflow/form metadata when file is deleted."""
+        from src.models.orm import Workflow, DataProvider, Form
+
+        # Mark workflows from this file as inactive
+        await self.db.execute(
+            update(Workflow).where(Workflow.file_path == path).values(is_active=False)
+        )
+
+        # Mark data providers from this file as inactive
+        await self.db.execute(
+            update(DataProvider).where(DataProvider.file_path == path).values(is_active=False)
+        )
+
+        # Mark forms from this file as inactive
+        await self.db.execute(
+            update(Form).where(Form.file_path == path).values(is_active=False)
+        )
+
+    async def update_git_status(
+        self,
+        path: str,
+        status: GitStatus,
+        commit_hash: str | None = None,
+    ) -> None:
+        """
+        Update git status for a file.
+
+        Args:
+            path: File path
+            status: New git status
+            commit_hash: Git commit hash (for synced files)
+        """
+        values = {
+            "git_status": status,
+            "updated_at": datetime.utcnow(),
+        }
+        if commit_hash:
+            values["last_git_commit_hash"] = commit_hash
+
+        stmt = update(WorkspaceFile).where(
+            WorkspaceFile.path == path,
+        ).values(**values)
+
+        await self.db.execute(stmt)
+
+    async def bulk_update_git_status(
+        self,
+        status: GitStatus,
+        commit_hash: str | None = None,
+        paths: list[str] | None = None,
+    ) -> int:
+        """
+        Bulk update git status for files.
+
+        Args:
+            status: New git status
+            commit_hash: Git commit hash
+            paths: List of paths to update (all if None)
+
+        Returns:
+            Number of files updated
+        """
+        values = {
+            "git_status": status,
+            "updated_at": datetime.utcnow(),
+        }
+        if commit_hash:
+            values["last_git_commit_hash"] = commit_hash
+
+        stmt = update(WorkspaceFile).values(**values)
+
+        if paths:
+            stmt = stmt.where(WorkspaceFile.path.in_(paths))
+
+        cursor = await self.db.execute(stmt)
+
+        # rowcount may be -1 for some database drivers
+        row_count = getattr(cursor, "rowcount", 0)
+        return row_count if row_count >= 0 else 0
+
+
+def get_file_storage_service(db: AsyncSession) -> FileStorageService:
+    """Factory function for FileStorageService."""
+    return FileStorageService(db)

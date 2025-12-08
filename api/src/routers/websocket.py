@@ -43,10 +43,12 @@ async def websocket_connect(
             ...payload
         }
     """
-    # Authenticate via query param or header
+    # Authenticate via header (query params not supported for security)
     user = await get_current_user_ws(websocket)
 
     if not user:
+        # Must accept before closing, otherwise client sees HTTP 403
+        await websocket.accept()
         await websocket.close(code=4001, reason="Unauthorized")
         return
 

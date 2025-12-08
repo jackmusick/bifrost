@@ -150,8 +150,8 @@ done
 # =============================================================================
 if [ "$E2E_MODE" = true ]; then
     echo ""
-    echo "E2E Mode: Starting API, Discovery, and Worker..."
-    docker compose -f "$COMPOSE_FILE" --profile e2e up -d api discovery worker
+    echo "E2E Mode: Starting API and Worker..."
+    docker compose -f "$COMPOSE_FILE" --profile e2e up -d --build api worker
 
     # Wait for API to be healthy
     echo "Waiting for API to be ready..."
@@ -168,10 +168,6 @@ if [ "$E2E_MODE" = true ]; then
         echo "  Waiting for API... (attempt $i/120)"
         sleep 1
     done
-
-    # Wait for Discovery to sync initial index
-    echo "Waiting for Discovery to sync..."
-    sleep 3  # Give discovery time to build initial index and sync to DB
 fi
 
 # =============================================================================
@@ -206,7 +202,13 @@ if [ ${#PYTEST_ARGS[@]} -eq 0 ]; then
         PYTEST_CMD+=("tests/" "--ignore=tests/e2e/" "-v")
     fi
 else
-    PYTEST_CMD+=("${PYTEST_ARGS[@]}")
+    # Custom test paths provided
+    if [ "$E2E_MODE" = true ]; then
+        # In E2E mode, add -m e2e to override pytest.ini addopts
+        PYTEST_CMD+=("-m" "e2e" "${PYTEST_ARGS[@]}")
+    else
+        PYTEST_CMD+=("${PYTEST_ARGS[@]}")
+    fi
 fi
 
 # Run tests in container

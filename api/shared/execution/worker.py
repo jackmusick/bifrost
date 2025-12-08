@@ -235,12 +235,72 @@ async def _run_execution(execution_id: str, context_data: dict[str, Any]) -> dic
         }
 
 
+async def _download_workspace_from_s3(settings, local_path) -> bool:
+    """
+    Download workspace files from S3 to local path.
+
+    Args:
+        settings: Application settings
+        local_path: Path to download to
+
+    Returns:
+        True if download successful, False otherwise
+    """
+    from pathlib import Path
+    import os
+
+    if not settings.s3_configured:
+        return False
+
+    try:
+        from aiobotocore.session import get_session
+
+        local_path = Path(local_path)
+        local_path.mkdir(parents=True, exist_ok=True)
+
+        session = get_session()
+        async with session.create_client(
+            "s3",
+            endpoint_url=settings.s3_endpoint_url,
+            aws_access_key_id=settings.s3_access_key,
+            aws_secret_access_key=settings.s3_secret_key,
+            region_name=settings.s3_region,
+        ) as s3:
+            # List all objects in workspace bucket
+            paginator = s3.get_paginator("list_objects_v2")
+            async for page in paginator.paginate(Bucket=settings.s3_workspace_bucket):
+                for obj in page.get("Contents", []):
+                    key = obj["Key"]
+                    local_file = local_path / key
+
+                    # Create parent directories
+                    local_file.parent.mkdir(parents=True, exist_ok=True)
+
+                    # Download file
+                    response = await s3.get_object(
+                        Bucket=settings.s3_workspace_bucket,
+                        Key=key,
+                    )
+                    content = await response["Body"].read()
+                    local_file.write_bytes(content)
+
+        logger.info(f"Downloaded workspace from S3 to {local_path}")
+        return True
+
+    except Exception as e:
+        logger.error(f"Failed to download workspace from S3: {e}")
+        return False
+
+
 async def worker_main(execution_id: str):
     """
     Main entry point for worker process.
 
     Called by the pool manager when spawning a new worker.
     """
+    import os
+    import tempfile
+    from pathlib import Path
     import redis.asyncio as redis
     from src.config import get_settings
 
@@ -250,6 +310,31 @@ async def worker_main(execution_id: str):
     _setup_signal_handlers()
 
     logger.info(f"Worker starting for execution: {execution_id}")
+
+    # Workspace directory (either S3-downloaded or filesystem)
+    workspace_dir = None
+    temp_workspace = None
+
+    # Download workspace from S3 if configured
+    if settings.s3_configured:
+        # Create temp directory for this execution
+        temp_workspace = Path(tempfile.mkdtemp(prefix=f"bifrost-{execution_id[:8]}-"))
+        workspace_dir = temp_workspace
+
+        # Download workspace
+        download_success = await _download_workspace_from_s3(settings, workspace_dir)
+        if download_success:
+            # Add to Python path for imports
+            sys.path.insert(0, str(workspace_dir))
+            logger.info(f"S3 workspace downloaded to {workspace_dir}, added to sys.path")
+        else:
+            logger.warning("S3 download failed, will attempt to use local workspace if available")
+            workspace_dir = None
+    elif settings.workspace_location:
+        workspace_dir = Path(settings.workspace_location)
+        # Ensure workspace is in Python path
+        if str(workspace_dir) not in sys.path:
+            sys.path.insert(0, str(workspace_dir))
 
     # Connect to Redis
     redis_client = redis.from_url(
@@ -304,6 +389,15 @@ async def worker_main(execution_id: str):
             pass  # Best effort
     finally:
         await redis_client.aclose()
+
+        # Clean up temp workspace
+        if temp_workspace and temp_workspace.exists():
+            import shutil
+            try:
+                shutil.rmtree(temp_workspace)
+                logger.debug(f"Cleaned up temp workspace: {temp_workspace}")
+            except Exception as e:
+                logger.warning(f"Failed to clean up temp workspace: {e}")
 
 
 def run_in_worker(execution_id: str):

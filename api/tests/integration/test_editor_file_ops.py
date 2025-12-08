@@ -243,7 +243,6 @@ class TestBifrostTypesEndpoint:
         # Check for key type definitions
         assert "class ExecutionContext" in content
         assert "def workflow(" in content
-        assert "def param(" in content
         assert "def data_provider(" in content
         assert "class OAuthCredentials" in content
         # Check for SDK modules (now class-based)

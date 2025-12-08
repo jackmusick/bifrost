@@ -18,10 +18,10 @@ import asyncio
 import logging
 import signal
 import sys
-from typing import NoReturn
 
 from src.config import get_settings
 from src.core.database import init_db, close_db
+from src.core.workspace_sync import workspace_sync
 from src.jobs.rabbitmq import rabbitmq
 from src.jobs.consumers.workflow_execution import WorkflowExecutionConsumer
 from src.jobs.consumers.git_sync import GitSyncConsumer
@@ -75,6 +75,11 @@ class Worker:
         await init_db()
         logger.info("Database connection established")
 
+        # Initialize workspace sync (downloads from S3, starts pub/sub listener)
+        logger.info("Initializing workspace sync...")
+        await workspace_sync.start()
+        logger.info("Workspace sync initialized")
+
         # Initialize and start RabbitMQ consumers
         logger.info("Starting RabbitMQ consumers...")
         await self._start_consumers()
@@ -116,6 +121,10 @@ class Worker:
             except Exception as e:
                 logger.error(f"Error stopping consumer {consumer.queue_name}: {e}")
 
+        # Stop workspace sync
+        await workspace_sync.stop()
+        logger.info("Workspace sync stopped")
+
         # Close RabbitMQ connections
         await rabbitmq.close()
         logger.info("RabbitMQ connections closed")
@@ -133,7 +142,7 @@ class Worker:
         asyncio.create_task(self.stop())
 
 
-async def main() -> NoReturn:
+async def main() -> None:
     """Main entry point."""
     worker = Worker()
 

@@ -10,7 +10,7 @@ from pydantic import ValidationError
 from shared.models import ErrorResponse, ExecutionStatus, WorkflowExecutionRequest, WorkflowExecutionResponse
 
 
-# Note: Models use snake_case (e.g., workflow_name, input_data, execution_id)
+# Note: Models use snake_case (e.g., workflow_id, input_data, execution_id)
 # This matches the OpenAPI/TypeScript schema
 
 
@@ -20,7 +20,7 @@ class TestWorkflowExecutionRequest:
     def test_valid_execution_request(self):
         """Test valid execution request with all fields"""
         request = WorkflowExecutionRequest(
-            workflow_name="sync_users",
+            workflow_id="550e8400-e29b-41d4-a716-446655440000",
             form_id="form-123",
             input_data={
                 "email": "test@example.com",
@@ -29,39 +29,39 @@ class TestWorkflowExecutionRequest:
             }
         )
 
-        assert request.workflow_name == "sync_users"
+        assert request.workflow_id == "550e8400-e29b-41d4-a716-446655440000"
         assert request.form_id == "form-123"
         assert request.input_data["email"] == "test@example.com"
 
     def test_execution_request_minimal(self):
         """Test execution request with minimal fields"""
         request = WorkflowExecutionRequest(
-            workflow_name="test_workflow",
+            workflow_id="550e8400-e29b-41d4-a716-446655440001",
             input_data={"key": "value"}
         )
 
-        assert request.workflow_name == "test_workflow"
+        assert request.workflow_id == "550e8400-e29b-41d4-a716-446655440001"
         assert request.form_id is None
         assert request.input_data == {"key": "value"}
 
-    def test_execution_request_missing_workflow_name(self):
-        """Test that either workflow_name or code is required"""
+    def test_execution_request_missing_workflow_id(self):
+        """Test that either workflow_id or code is required"""
         with pytest.raises(ValidationError) as exc_info:
             WorkflowExecutionRequest()
 
         errors = exc_info.value.errors()
-        assert any("Either 'workflow_name' or 'code' must be provided" in str(e) for e in errors)
+        assert any("Either 'workflow_id' or 'code' must be provided" in str(e) for e in errors)
 
     def test_execution_request_missing_input_data(self):
         """Test that input_data has default factory"""
         request = WorkflowExecutionRequest(
-            workflow_name="test_workflow",
+            workflow_id="550e8400-e29b-41d4-a716-446655440002",
             form_id="form-123"
         )
 
         assert request.input_data == {}
         assert request.form_id == "form-123"
-        assert request.workflow_name == "test_workflow"
+        assert request.workflow_id == "550e8400-e29b-41d4-a716-446655440002"
 
 
 class TestWorkflowExecutionResponse:

@@ -56,8 +56,9 @@ def _convert_workflow_orm_to_schema(workflow: WorkflowORM) -> WorkflowMetadata:
     execution_mode: Literal["sync", "async"] = "async" if raw_mode == "async" else "sync"
 
     return WorkflowMetadata(
+        id=str(workflow.id),
         name=workflow.name,
-        description=workflow.description or "",
+        description=workflow.description if workflow.description else None,
         category=workflow.category or "General",
         tags=workflow.tags or [],
         parameters=parameters,
@@ -172,16 +173,16 @@ async def execute_workflow(
                 transient=request.transient,
             )
         else:
-            # Execute named workflow
-            if not request.workflow_name:
+            # Execute workflow by ID
+            if not request.workflow_id:
                 raise HTTPException(
                     status_code=status.HTTP_400_BAD_REQUEST,
-                    detail="Either workflow_name or code must be provided",
+                    detail="Either workflow_id or code must be provided",
                 )
 
             result = await run_workflow(
                 context=shared_ctx,
-                workflow_name=request.workflow_name,
+                workflow_id=request.workflow_id,
                 input_data=request.input_data,
                 form_id=request.form_id,
                 transient=request.transient,
