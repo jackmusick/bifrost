@@ -9,7 +9,7 @@ import logging
 
 from fastapi import APIRouter, HTTPException, Query, status
 
-from shared.models import SystemLog, SystemLogsListResponse
+from src.models.models import SystemLog, SystemLogsListResponse
 from src.core.auth import Context, CurrentSuperuser
 
 logger = logging.getLogger(__name__)

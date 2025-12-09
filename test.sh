@@ -54,8 +54,37 @@ cleanup() {
     echo "Cleanup complete"
 }
 
+# =============================================================================
+# Error handler - prompts before cleanup on any failure
+# =============================================================================
+error_handler() {
+    local exit_code=$?
+    local line_number=$1
+
+    echo ""
+    echo "============================================================"
+    echo "ERROR: Script failed at line $line_number (exit code: $exit_code)"
+    echo "============================================================"
+
+    # Show recent container logs for debugging
+    echo ""
+    echo "Recent container logs:"
+    echo "------------------------------------------------------------"
+    docker compose -f "$COMPOSE_FILE" logs --tail=50 2>/dev/null || true
+    echo "------------------------------------------------------------"
+
+    # In interactive mode, wait for user before cleanup
+    if [ "$CI_MODE" = false ]; then
+        echo ""
+        echo "Press Enter to cleanup and exit (or Ctrl+C to keep containers running for debugging)..."
+        read -r
+    fi
+}
+
+# Trap errors to show logs and wait before cleanup
+trap 'error_handler $LINENO' ERR
 # Trap to ensure cleanup on exit or Ctrl+C
-trap cleanup EXIT INT TERM
+trap cleanup EXIT
 
 # =============================================================================
 # Start services
@@ -86,7 +115,6 @@ for i in {1..60}; do
     fi
     if [ $i -eq 60 ]; then
         echo "ERROR: PostgreSQL failed to start within 60 seconds"
-        docker compose -f "$COMPOSE_FILE" logs postgres
         exit 1
     fi
     echo "  Waiting for PostgreSQL... (attempt $i/60)"
@@ -102,7 +130,6 @@ for i in {1..60}; do
     fi
     if [ $i -eq 60 ]; then
         echo "ERROR: RabbitMQ failed to start within 60 seconds"
-        docker compose -f "$COMPOSE_FILE" logs rabbitmq
         exit 1
     fi
     echo "  Waiting for RabbitMQ... (attempt $i/60)"
@@ -118,7 +145,6 @@ for i in {1..30}; do
     fi
     if [ $i -eq 30 ]; then
         echo "ERROR: Redis failed to start within 30 seconds"
-        docker compose -f "$COMPOSE_FILE" logs redis
         exit 1
     fi
     echo "  Waiting for Redis... (attempt $i/30)"
@@ -138,7 +164,6 @@ for i in {1..30}; do
     fi
     if [ $i -eq 30 ]; then
         echo "ERROR: PgBouncer failed to start within 30 seconds"
-        docker compose -f "$COMPOSE_FILE" logs pgbouncer
         exit 1
     fi
     echo "  Waiting for PgBouncer... (attempt $i/30)"
@@ -162,7 +187,6 @@ if [ "$E2E_MODE" = true ]; then
         fi
         if [ $i -eq 120 ]; then
             echo "ERROR: API failed to start within 120 seconds"
-            docker compose -f "$COMPOSE_FILE" logs api
             exit 1
         fi
         echo "  Waiting for API... (attempt $i/120)"
@@ -211,8 +235,9 @@ else
     fi
 fi
 
-# Run tests in container
-set +e  # Don't exit on test failure
+# Run tests in container (disable ERR trap for tests - we handle exit code manually)
+trap - ERR
+set +e
 docker compose -f "$COMPOSE_FILE" --profile test run --rm test-runner "${PYTEST_CMD[@]}"
 TEST_EXIT_CODE=$?
 set -e

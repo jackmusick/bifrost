@@ -43,8 +43,7 @@ logging.getLogger("aiormq").setLevel(logging.WARNING)
 logging.getLogger("aio_pika").setLevel(logging.WARNING)
 
 # Enable DEBUG for execution engine to troubleshoot workflows
-logging.getLogger("shared.engine").setLevel(logging.DEBUG)
-logging.getLogger("shared.execution_service").setLevel(logging.DEBUG)
+logging.getLogger("src.services.execution").setLevel(logging.DEBUG)
 logging.getLogger("bifrost").setLevel(logging.DEBUG)
 logging.getLogger("src.jobs.consumers.workflow_execution").setLevel(logging.DEBUG)
 

@@ -6,7 +6,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-from shared.cache.data_provider_cache import (
+from src.core.cache.data_provider_cache import (
     TTL_DATA_PROVIDER,
     acquire_compute_lock,
     cache_result,
@@ -90,7 +90,7 @@ class TestGetCachedResult:
         mock_redis = AsyncMock()
         mock_redis.get = AsyncMock(return_value=None)
 
-        with patch("shared.cache.data_provider_cache.get_redis") as mock_get_redis:
+        with patch("src.core.cache.data_provider_cache.get_redis") as mock_get_redis:
             mock_get_redis.return_value.__aenter__ = AsyncMock(return_value=mock_redis)
             mock_get_redis.return_value.__aexit__ = AsyncMock(return_value=None)
 
@@ -109,7 +109,7 @@ class TestGetCachedResult:
         mock_redis = AsyncMock()
         mock_redis.get = AsyncMock(return_value=json.dumps(cached_data))
 
-        with patch("shared.cache.data_provider_cache.get_redis") as mock_get_redis:
+        with patch("src.core.cache.data_provider_cache.get_redis") as mock_get_redis:
             mock_get_redis.return_value.__aenter__ = AsyncMock(return_value=mock_redis)
             mock_get_redis.return_value.__aexit__ = AsyncMock(return_value=None)
 
@@ -130,7 +130,7 @@ class TestGetCachedResult:
         mock_redis.get = AsyncMock(return_value=json.dumps(cached_data))
         mock_redis.delete = AsyncMock()
 
-        with patch("shared.cache.data_provider_cache.get_redis") as mock_get_redis:
+        with patch("src.core.cache.data_provider_cache.get_redis") as mock_get_redis:
             mock_get_redis.return_value.__aenter__ = AsyncMock(return_value=mock_redis)
             mock_get_redis.return_value.__aexit__ = AsyncMock(return_value=None)
 
@@ -148,7 +148,7 @@ class TestCacheResult:
         mock_redis = AsyncMock()
         mock_redis.setex = AsyncMock()
 
-        with patch("shared.cache.data_provider_cache.get_redis") as mock_get_redis:
+        with patch("src.core.cache.data_provider_cache.get_redis") as mock_get_redis:
             mock_get_redis.return_value.__aenter__ = AsyncMock(return_value=mock_redis)
             mock_get_redis.return_value.__aexit__ = AsyncMock(return_value=None)
 
@@ -168,7 +168,7 @@ class TestCacheResult:
         mock_redis = AsyncMock()
         mock_redis.setex = AsyncMock()
 
-        with patch("shared.cache.data_provider_cache.get_redis") as mock_get_redis:
+        with patch("src.core.cache.data_provider_cache.get_redis") as mock_get_redis:
             mock_get_redis.return_value.__aenter__ = AsyncMock(return_value=mock_redis)
             mock_get_redis.return_value.__aexit__ = AsyncMock(return_value=None)
 
@@ -187,7 +187,7 @@ class TestInvalidateDataProvider:
         mock_redis = AsyncMock()
         mock_redis.delete = AsyncMock(return_value=1)
 
-        with patch("shared.cache.data_provider_cache.get_redis") as mock_get_redis:
+        with patch("src.core.cache.data_provider_cache.get_redis") as mock_get_redis:
             mock_get_redis.return_value.__aenter__ = AsyncMock(return_value=mock_redis)
             mock_get_redis.return_value.__aexit__ = AsyncMock(return_value=None)
 
@@ -204,7 +204,7 @@ class TestInvalidateDataProvider:
         ]))
         mock_redis.delete = AsyncMock(return_value=2)
 
-        with patch("shared.cache.data_provider_cache.get_redis") as mock_get_redis:
+        with patch("src.core.cache.data_provider_cache.get_redis") as mock_get_redis:
             mock_get_redis.return_value.__aenter__ = AsyncMock(return_value=mock_redis)
             mock_get_redis.return_value.__aexit__ = AsyncMock(return_value=None)
 
@@ -222,7 +222,7 @@ class TestStampedeProtection:
         mock_redis = AsyncMock()
         mock_redis.set = AsyncMock(return_value=True)
 
-        with patch("shared.cache.data_provider_cache.get_redis") as mock_get_redis:
+        with patch("src.core.cache.data_provider_cache.get_redis") as mock_get_redis:
             mock_get_redis.return_value.__aenter__ = AsyncMock(return_value=mock_redis)
             mock_get_redis.return_value.__aexit__ = AsyncMock(return_value=None)
 
@@ -239,7 +239,7 @@ class TestStampedeProtection:
         mock_redis = AsyncMock()
         mock_redis.set = AsyncMock(return_value=False)
 
-        with patch("shared.cache.data_provider_cache.get_redis") as mock_get_redis:
+        with patch("src.core.cache.data_provider_cache.get_redis") as mock_get_redis:
             mock_get_redis.return_value.__aenter__ = AsyncMock(return_value=mock_redis)
             mock_get_redis.return_value.__aexit__ = AsyncMock(return_value=None)
 
@@ -252,7 +252,7 @@ class TestStampedeProtection:
         mock_redis = AsyncMock()
         mock_redis.delete = AsyncMock()
 
-        with patch("shared.cache.data_provider_cache.get_redis") as mock_get_redis:
+        with patch("src.core.cache.data_provider_cache.get_redis") as mock_get_redis:
             mock_get_redis.return_value.__aenter__ = AsyncMock(return_value=mock_redis)
             mock_get_redis.return_value.__aexit__ = AsyncMock(return_value=None)
 

@@ -12,7 +12,7 @@ import json as json_module
 import logging
 from typing import Any
 
-from shared.cache import get_redis, oauth_hash_key
+from src.core.cache import get_redis, oauth_hash_key
 
 from ._internal import get_context
 

@@ -22,13 +22,13 @@ from fastapi import APIRouter, Depends, HTTPException, Request, Response, status
 from fastapi.security import OAuth2PasswordRequestForm
 from pydantic import BaseModel, EmailStr
 
-from shared.cache import get_shared_redis
-from shared.cache.keys import (
+from src.core.cache import get_shared_redis
+from src.core.cache.keys import (
     refresh_token_jti_key,
     user_refresh_tokens_pattern,
     TTL_REFRESH_TOKEN,
 )
-from shared.models import OAuthProviderInfo, AuthStatusResponse
+from src.models.models import OAuthProviderInfo, AuthStatusResponse
 from src.config import get_settings
 from src.core.auth import CurrentActiveUser
 from src.core.database import DbSession

@@ -133,7 +133,7 @@ class TestWriteBufferConfigOperations:
     @pytest.mark.asyncio
     async def test_add_config_change_set(self, buffer, mock_redis):
         """add_config_change buffers set operation."""
-        with patch("shared.cache.get_redis") as mock_get_redis:
+        with patch("src.core.cache.get_redis") as mock_get_redis:
             mock_get_redis.return_value.__aenter__.return_value = mock_redis
 
             await buffer.add_config_change(
@@ -150,7 +150,7 @@ class TestWriteBufferConfigOperations:
     @pytest.mark.asyncio
     async def test_add_config_change_delete(self, buffer, mock_redis):
         """add_config_change buffers delete operation."""
-        with patch("shared.cache.get_redis") as mock_get_redis:
+        with patch("src.core.cache.get_redis") as mock_get_redis:
             mock_get_redis.return_value.__aenter__.return_value = mock_redis
 
             await buffer.add_config_change(
@@ -164,7 +164,7 @@ class TestWriteBufferConfigOperations:
     @pytest.mark.asyncio
     async def test_add_config_change_increments_sequence(self, buffer, mock_redis):
         """Each add_config_change increments sequence."""
-        with patch("shared.cache.get_redis") as mock_get_redis:
+        with patch("src.core.cache.get_redis") as mock_get_redis:
             mock_get_redis.return_value.__aenter__.return_value = mock_redis
 
             await buffer.add_config_change("set", "key1", "val1")
@@ -175,7 +175,7 @@ class TestWriteBufferConfigOperations:
     @pytest.mark.asyncio
     async def test_add_config_change_uses_org_id_from_param(self, buffer, mock_redis):
         """add_config_change uses org_id parameter when provided."""
-        with patch("shared.cache.get_redis") as mock_get_redis:
+        with patch("src.core.cache.get_redis") as mock_get_redis:
             mock_get_redis.return_value.__aenter__.return_value = mock_redis
 
             await buffer.add_config_change(
@@ -210,7 +210,7 @@ class TestWriteBufferRoleOperations:
     @pytest.mark.asyncio
     async def test_add_role_change_create(self, buffer, mock_redis):
         """add_role_change generates ID for create operation."""
-        with patch("shared.cache.get_redis") as mock_get_redis:
+        with patch("src.core.cache.get_redis") as mock_get_redis:
             mock_get_redis.return_value.__aenter__.return_value = mock_redis
 
             role_id = await buffer.add_role_change(
@@ -226,7 +226,7 @@ class TestWriteBufferRoleOperations:
     @pytest.mark.asyncio
     async def test_add_role_change_update(self, buffer, mock_redis):
         """add_role_change uses existing ID for update operation."""
-        with patch("shared.cache.get_redis") as mock_get_redis:
+        with patch("src.core.cache.get_redis") as mock_get_redis:
             mock_get_redis.return_value.__aenter__.return_value = mock_redis
 
             role_id = await buffer.add_role_change(
@@ -240,7 +240,7 @@ class TestWriteBufferRoleOperations:
     @pytest.mark.asyncio
     async def test_add_role_users_change(self, buffer, mock_redis):
         """add_role_users_change buffers user assignment."""
-        with patch("shared.cache.get_redis") as mock_get_redis:
+        with patch("src.core.cache.get_redis") as mock_get_redis:
             mock_get_redis.return_value.__aenter__.return_value = mock_redis
 
             await buffer.add_role_users_change(
@@ -253,7 +253,7 @@ class TestWriteBufferRoleOperations:
     @pytest.mark.asyncio
     async def test_add_role_forms_change(self, buffer, mock_redis):
         """add_role_forms_change buffers form assignment."""
-        with patch("shared.cache.get_redis") as mock_get_redis:
+        with patch("src.core.cache.get_redis") as mock_get_redis:
             mock_get_redis.return_value.__aenter__.return_value = mock_redis
 
             await buffer.add_role_forms_change(
@@ -285,7 +285,7 @@ class TestWriteBufferOrgOperations:
     @pytest.mark.asyncio
     async def test_add_org_change_create(self, buffer, mock_redis):
         """add_org_change generates ID for create operation."""
-        with patch("shared.cache.get_redis") as mock_get_redis:
+        with patch("src.core.cache.get_redis") as mock_get_redis:
             mock_get_redis.return_value.__aenter__.return_value = mock_redis
 
             org_id = await buffer.add_org_change(
@@ -300,7 +300,7 @@ class TestWriteBufferOrgOperations:
     @pytest.mark.asyncio
     async def test_add_org_change_update(self, buffer, mock_redis):
         """add_org_change uses existing ID for update operation."""
-        with patch("shared.cache.get_redis") as mock_get_redis:
+        with patch("src.core.cache.get_redis") as mock_get_redis:
             mock_get_redis.return_value.__aenter__.return_value = mock_redis
 
             org_id = await buffer.add_org_change(
@@ -334,7 +334,7 @@ class TestWriteBufferUtilityMethods:
         """get_pending_count returns 0 when no pending changes."""
         mock_redis.hlen = AsyncMock(return_value=0)
 
-        with patch("shared.cache.get_redis") as mock_get_redis:
+        with patch("src.core.cache.get_redis") as mock_get_redis:
             mock_get_redis.return_value.__aenter__.return_value = mock_redis
 
             count = await buffer.get_pending_count()
@@ -346,7 +346,7 @@ class TestWriteBufferUtilityMethods:
         """get_pending_count returns actual count."""
         mock_redis.hlen = AsyncMock(return_value=5)
 
-        with patch("shared.cache.get_redis") as mock_get_redis:
+        with patch("src.core.cache.get_redis") as mock_get_redis:
             mock_get_redis.return_value.__aenter__.return_value = mock_redis
 
             count = await buffer.get_pending_count()
@@ -358,7 +358,7 @@ class TestWriteBufferUtilityMethods:
         """has_pending_changes returns False when no pending changes."""
         mock_redis.hlen = AsyncMock(return_value=0)
 
-        with patch("shared.cache.get_redis") as mock_get_redis:
+        with patch("src.core.cache.get_redis") as mock_get_redis:
             mock_get_redis.return_value.__aenter__.return_value = mock_redis
 
             has_changes = await buffer.has_pending_changes()
@@ -370,7 +370,7 @@ class TestWriteBufferUtilityMethods:
         """has_pending_changes returns True when changes exist."""
         mock_redis.hlen = AsyncMock(return_value=3)
 
-        with patch("shared.cache.get_redis") as mock_get_redis:
+        with patch("src.core.cache.get_redis") as mock_get_redis:
             mock_get_redis.return_value.__aenter__.return_value = mock_redis
 
             has_changes = await buffer.has_pending_changes()

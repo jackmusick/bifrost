@@ -7,7 +7,7 @@ Tests SDK usage extraction (regex patterns) and validation against stored data.
 import pytest
 from unittest.mock import AsyncMock, MagicMock, patch
 
-from shared.services.sdk_usage_scanner import SDKUsageScanner, SDKCall, FileSDKUsage
+from src.services.sdk_usage_scanner import SDKUsageScanner, SDKCall, FileSDKUsage
 
 
 class TestSDKCallExtraction:

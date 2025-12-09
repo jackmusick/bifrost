@@ -41,7 +41,7 @@ async def process_scheduled_workflows() -> dict[str, Any]:
     }
 
     try:
-        from shared.workflows.cron_parser import calculate_next_run, is_cron_expression_valid
+        from src.services.cron_parser import calculate_next_run, is_cron_expression_valid
 
         # Query scheduled workflows from database (replaces scan_all_workflows)
         async with get_db_context() as db:

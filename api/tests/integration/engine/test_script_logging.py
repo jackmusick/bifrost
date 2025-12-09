@@ -5,8 +5,8 @@ import base64
 import sys
 import pytest
 
-from shared.context import Caller, Organization
-from shared.engine import ExecutionRequest, execute
+from src.sdk.context import Caller, Organization
+from src.services.execution.engine import ExecutionRequest, execute
 
 
 def is_coverage_running() -> bool:

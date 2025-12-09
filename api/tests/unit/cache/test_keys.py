@@ -6,7 +6,7 @@ Tests the Redis key generation functions to ensure consistent patterns.
 
 import pytest
 
-from shared.cache.keys import (
+from src.core.cache.keys import (
     TTL_CONFIG,
     TTL_FORMS,
     TTL_OAUTH,

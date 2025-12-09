@@ -9,7 +9,7 @@ import asyncio
 from datetime import datetime
 from unittest.mock import MagicMock, AsyncMock, patch
 
-from shared.services.oauth_provider import OAuthProviderClient
+from src.services.oauth_provider import OAuthProviderClient
 
 
 @pytest.fixture

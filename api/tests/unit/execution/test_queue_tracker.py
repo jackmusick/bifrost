@@ -6,7 +6,7 @@ import pytest
 from unittest.mock import AsyncMock, patch, MagicMock
 import time
 
-from shared.execution.queue_tracker import (
+from src.services.execution.queue_tracker import (
     add_to_queue,
     remove_from_queue,
     get_queue_position,
@@ -29,7 +29,7 @@ def mock_redis():
 def mock_get_redis(mock_redis):
     """Patch _get_redis to return our mock."""
     with patch(
-        "shared.execution.queue_tracker._get_redis",
+        "src.services.execution.queue_tracker._get_redis",
         return_value=mock_redis
     ) as patched:
         yield patched
@@ -45,7 +45,7 @@ class TestAddToQueue:
         mock_redis.zrank = AsyncMock(return_value=0)
 
         with patch(
-            "shared.execution.queue_tracker.publish_all_queue_positions",
+            "src.services.execution.queue_tracker.publish_all_queue_positions",
             new_callable=AsyncMock
         ):
             with patch("time.time", return_value=1000.0):
@@ -64,7 +64,7 @@ class TestAddToQueue:
         mock_redis.zrank = AsyncMock(return_value=4)  # 5th position (0-indexed)
 
         with patch(
-            "shared.execution.queue_tracker.publish_all_queue_positions",
+            "src.services.execution.queue_tracker.publish_all_queue_positions",
             new_callable=AsyncMock
         ):
             position = await add_to_queue("exec-456")
@@ -78,7 +78,7 @@ class TestAddToQueue:
         mock_redis.zrank = AsyncMock(return_value=0)
 
         with patch(
-            "shared.execution.queue_tracker.publish_all_queue_positions",
+            "src.services.execution.queue_tracker.publish_all_queue_positions",
             new_callable=AsyncMock
         ) as mock_publish:
             await add_to_queue("exec-789")
@@ -95,7 +95,7 @@ class TestRemoveFromQueue:
         mock_redis.zrem = AsyncMock(return_value=1)
 
         with patch(
-            "shared.execution.queue_tracker.publish_all_queue_positions",
+            "src.services.execution.queue_tracker.publish_all_queue_positions",
             new_callable=AsyncMock
         ):
             await remove_from_queue("exec-123")
@@ -108,7 +108,7 @@ class TestRemoveFromQueue:
         mock_redis.zrem = AsyncMock(return_value=1)
 
         with patch(
-            "shared.execution.queue_tracker.publish_all_queue_positions",
+            "src.services.execution.queue_tracker.publish_all_queue_positions",
             new_callable=AsyncMock
         ) as mock_publish:
             await remove_from_queue("exec-123")
@@ -121,7 +121,7 @@ class TestRemoveFromQueue:
         mock_redis.zrem = AsyncMock(return_value=0)
 
         with patch(
-            "shared.execution.queue_tracker.publish_all_queue_positions",
+            "src.services.execution.queue_tracker.publish_all_queue_positions",
             new_callable=AsyncMock
         ) as mock_publish:
             await remove_from_queue("exec-nonexistent")
@@ -249,7 +249,7 @@ class TestCleanupStaleEntries:
         mock_redis.zremrangebyscore = AsyncMock(return_value=2)
 
         with patch(
-            "shared.execution.queue_tracker.publish_all_queue_positions",
+            "src.services.execution.queue_tracker.publish_all_queue_positions",
             new_callable=AsyncMock
         ):
             with patch("time.time", return_value=1000.0):
@@ -269,7 +269,7 @@ class TestCleanupStaleEntries:
         mock_redis.zremrangebyscore = AsyncMock(return_value=1)
 
         with patch(
-            "shared.execution.queue_tracker.publish_all_queue_positions",
+            "src.services.execution.queue_tracker.publish_all_queue_positions",
             new_callable=AsyncMock
         ) as mock_publish:
             await cleanup_stale_entries()
@@ -282,7 +282,7 @@ class TestCleanupStaleEntries:
         mock_redis.zremrangebyscore = AsyncMock(return_value=0)
 
         with patch(
-            "shared.execution.queue_tracker.publish_all_queue_positions",
+            "src.services.execution.queue_tracker.publish_all_queue_positions",
             new_callable=AsyncMock
         ) as mock_publish:
             await cleanup_stale_entries()

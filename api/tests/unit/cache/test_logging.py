@@ -241,7 +241,7 @@ class TestAsyncLogFunctions:
         """Async version successfully appends to stream."""
         exec_id = str(uuid4())
 
-        with patch("shared.cache.get_redis") as mock_get_redis:
+        with patch("src.core.cache.get_redis") as mock_get_redis:
             mock_redis = AsyncMock()
             mock_redis.xadd.return_value = "async-entry-id"
             mock_get_redis.return_value.__aenter__.return_value = mock_redis
@@ -257,7 +257,7 @@ class TestAsyncLogFunctions:
     @pytest.mark.asyncio
     async def test_append_log_to_stream_async_handles_error(self):
         """Async version returns None on error."""
-        with patch("shared.cache.get_redis") as mock_get_redis:
+        with patch("src.core.cache.get_redis") as mock_get_redis:
             mock_redis = AsyncMock()
             mock_redis.xadd.side_effect = Exception("Async error")
             mock_get_redis.return_value.__aenter__.return_value = mock_redis
@@ -275,7 +275,7 @@ class TestAsyncLogFunctions:
         """Successfully reads logs from stream."""
         exec_id = str(uuid4())
 
-        with patch("shared.cache.get_redis") as mock_get_redis:
+        with patch("src.core.cache.get_redis") as mock_get_redis:
             mock_redis = AsyncMock()
             mock_redis.xrange.return_value = [
                 ("1234-0", {
@@ -307,7 +307,7 @@ class TestAsyncLogFunctions:
     @pytest.mark.asyncio
     async def test_read_logs_from_stream_empty(self):
         """Returns empty list when no logs."""
-        with patch("shared.cache.get_redis") as mock_get_redis:
+        with patch("src.core.cache.get_redis") as mock_get_redis:
             mock_redis = AsyncMock()
             mock_redis.xrange.return_value = []
             mock_get_redis.return_value.__aenter__.return_value = mock_redis
@@ -325,7 +325,7 @@ class TestFlushLogsToPostgres:
         """Returns 0 when stream is empty."""
         exec_id = str(uuid4())  # Use valid UUID
 
-        with patch("shared.cache.get_redis") as mock_get_redis:
+        with patch("src.core.cache.get_redis") as mock_get_redis:
             mock_redis = AsyncMock()
             mock_redis.xrange.return_value = []
             mock_get_redis.return_value.__aenter__.return_value = mock_redis
@@ -339,7 +339,7 @@ class TestFlushLogsToPostgres:
         """Successfully persists entries and clears stream."""
         exec_id = str(uuid4())
 
-        with patch("shared.cache.get_redis") as mock_get_redis:
+        with patch("src.core.cache.get_redis") as mock_get_redis:
             mock_redis = AsyncMock()
             mock_redis.xrange.return_value = [
                 ("1234-0", {

@@ -10,8 +10,8 @@ function signatures - no @param decorator needed.
 
 import pytest
 
-from shared.decorators import data_provider, workflow
-from shared.type_inference import extract_parameters_from_signature
+from src.sdk.decorators import data_provider, workflow
+from src.services.execution.type_inference import extract_parameters_from_signature
 
 
 class TestWorkflowDecorator:

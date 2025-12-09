@@ -10,8 +10,8 @@ Uses real PostgreSQL database for integration testing.
 import pytest
 from datetime import datetime, timedelta
 from uuid import uuid4
-from shared.services.oauth_storage_service import OAuthStorageService
-from shared.models import CreateOAuthConnectionRequest
+from src.services.oauth_storage import OAuthStorageService
+from src.models.models import CreateOAuthConnectionRequest
 from src.models import Organization
 
 

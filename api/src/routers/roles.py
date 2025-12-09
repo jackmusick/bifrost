@@ -34,7 +34,7 @@ from src.models.models import (
 
 # Import cache invalidation
 try:
-    from shared.cache import (
+    from src.core.cache import (
         invalidate_role,
         invalidate_role_users,
         invalidate_role_forms,

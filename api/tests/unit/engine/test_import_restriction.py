@@ -30,7 +30,7 @@ class TestImportRestrictionContract:
     def test_import_restrictor_module_exists(self):
         """Contract: Import restrictor module must exist"""
         try:
-            from shared import import_restrictor
+            from src.services.execution import import_restrictor
             assert hasattr(import_restrictor, 'WorkspaceImportRestrictor'), (
                 "Module must export WorkspaceImportRestrictor class"
             )
@@ -41,41 +41,43 @@ class TestImportRestrictionContract:
             pytest.fail(f"Import restrictor module not found: {e}")
 
     def test_blocked_prefixes_defined(self):
-        """Contract: BLOCKED_PREFIXES must include 'engine.' and 'shared.'"""
-        from shared.import_restrictor import WorkspaceImportRestrictor
+        """Contract: BLOCKED_PREFIXES must include 'src.'"""
+        from src.services.execution.import_restrictor import WorkspaceImportRestrictor
 
         assert hasattr(WorkspaceImportRestrictor, 'BLOCKED_PREFIXES'), (
             "WorkspaceImportRestrictor must define BLOCKED_PREFIXES"
         )
 
         blocked = WorkspaceImportRestrictor.BLOCKED_PREFIXES
-        assert 'engine.' in blocked, "BLOCKED_PREFIXES must include 'engine.'"
-        assert 'shared.' in blocked, "BLOCKED_PREFIXES must include 'shared.'"
+        assert 'src.' in blocked, "BLOCKED_PREFIXES must include 'src.'"
 
     def test_allowed_exports_defined(self):
-        """Contract: ALLOWED_SHARED_EXPORTS must whitelist public API modules"""
-        from shared.import_restrictor import WorkspaceImportRestrictor
+        """Contract: ALLOWED_EXPORTS must whitelist SDK contract modules"""
+        from src.services.execution.import_restrictor import WorkspaceImportRestrictor
 
-        assert hasattr(WorkspaceImportRestrictor, 'ALLOWED_SHARED_EXPORTS'), (
-            "WorkspaceImportRestrictor must define ALLOWED_SHARED_EXPORTS"
+        assert hasattr(WorkspaceImportRestrictor, 'ALLOWED_EXPORTS'), (
+            "WorkspaceImportRestrictor must define ALLOWED_EXPORTS"
         )
 
-        allowed = WorkspaceImportRestrictor.ALLOWED_SHARED_EXPORTS
+        allowed = WorkspaceImportRestrictor.ALLOWED_EXPORTS
+        # SDK contract modules that must be whitelisted
         expected_exports = {
-            'engine.shared.decorators',
-            'engine.shared.context',
-            'engine.shared.error_handling',
-            'engine.shared.models'
+            'src.sdk.decorators',
+            'src.sdk.context',
+            'src.sdk.error_handling',
+            'src.sdk.errors',
+            'src.models.models',
+            'bifrost',
         }
 
         for export in expected_exports:
-            assert export in allowed, f"ALLOWED_SHARED_EXPORTS must include '{export}'"
+            assert export in allowed, f"ALLOWED_EXPORTS must include '{export}'"
 
     def test_install_function_signature(self):
         """Contract: install_import_restrictions must accept workspace_paths list"""
         import inspect
 
-        from shared.import_restrictor import install_import_restrictions
+        from src.services.execution.import_restrictor import install_import_restrictions
 
         sig = inspect.signature(install_import_restrictions)
         params = list(sig.parameters.keys())
@@ -91,11 +93,11 @@ class TestImportRestrictionContract:
         """Contract: Workspace code must not import blocked internal modules"""
         import tempfile
 
-        from shared.import_restrictor import install_import_restrictions
+        from src.services.execution.import_restrictor import install_import_restrictions
 
         # Clear module cache to ensure restrictor can intercept the import
-        if 'shared.blob_storage' in sys.modules:
-            del sys.modules['shared.blob_storage']
+        if 'src.services.execution.blob_storage' in sys.modules:
+            del sys.modules['src.services.execution.blob_storage']
 
         # Create temporary home directory (user code with stricter restrictions)
         with tempfile.TemporaryDirectory() as tmpdir:
@@ -103,9 +105,9 @@ class TestImportRestrictionContract:
             install_import_restrictions([tmpdir], home_path=tmpdir)
 
             # Create a test file in home that attempts the import
-            # shared.blob_storage is NOT accessible to user code (not in whitelist)
+            # src.services.execution.blob_storage is NOT accessible to user code (not in whitelist)
             test_file = Path(tmpdir) / "test_workspace_import.py"
-            test_file.write_text("import shared.blob_storage\n")
+            test_file.write_text("import src.services.execution.blob_storage\n")
 
             # Attempt to import that file (which will trigger the blocked import)
             # Note: This test simulates home user code attempting import
@@ -128,7 +130,7 @@ class TestImportRestrictionContract:
         """Contract: Workspace code must be able to import shared.decorators"""
         import tempfile
 
-        from shared.import_restrictor import install_import_restrictions
+        from src.services.execution.import_restrictor import install_import_restrictions
 
         # Create temporary workspace directory
         with tempfile.TemporaryDirectory() as tmpdir:
@@ -136,7 +138,7 @@ class TestImportRestrictionContract:
 
             # This should NOT raise (decorators are whitelisted)
             try:
-                from shared.decorators import workflow
+                from src.sdk.decorators import workflow
                 assert workflow is not None
             except ImportError as e:
                 pytest.fail(f"Allowed import failed: {e}")
@@ -145,20 +147,20 @@ class TestImportRestrictionContract:
         """Contract: ImportError must provide clear guidance to developers"""
         import tempfile
 
-        from shared.import_restrictor import install_import_restrictions
+        from src.services.execution.import_restrictor import install_import_restrictions
 
         # Clear module cache
-        if 'shared.execution_logger' in sys.modules:
-            del sys.modules['shared.execution_logger']
+        if 'src.services.execution.logger' in sys.modules:
+            del sys.modules['src.services.execution.logger']
 
         with tempfile.TemporaryDirectory() as tmpdir:
             # Treat tmpdir as home code (stricter restrictions)
             install_import_restrictions([tmpdir], home_path=tmpdir)
 
             # Create a test file in home that attempts blocked import
-            # shared.execution_logger is NOT accessible to user code (not in whitelist)
+            # src.services.execution.logger is NOT accessible to user code (not in whitelist)
             test_file = Path(tmpdir) / "test_import_guidance.py"
-            test_file.write_text("import shared.execution_logger\n")
+            test_file.write_text("import src.services.execution.logger\n")
 
             try:
                 sys.path.insert(0, tmpdir)
@@ -196,7 +198,7 @@ class TestImportRestrictionBehavior:
         """Contract: Restrictor must be added to sys.meta_path"""
         import tempfile
 
-        from shared.import_restrictor import install_import_restrictions
+        from src.services.execution.import_restrictor import install_import_restrictions
 
         initial_count = len(sys.meta_path)
 
@@ -219,7 +221,7 @@ class TestImportRestrictionBehavior:
         """Contract: Engine code is not restricted (only workspace is restricted)"""
         import tempfile
 
-        from shared.import_restrictor import install_import_restrictions
+        from src.services.execution.import_restrictor import install_import_restrictions
 
         with tempfile.TemporaryDirectory() as tmpdir:
             install_import_restrictions([tmpdir])
@@ -227,7 +229,7 @@ class TestImportRestrictionBehavior:
             # Engine code should be able to import anything
             # This import is from engine code (this test file is not in workspace)
             try:
-                import shared.storage  # noqa: F401
+                from src.services.execution import blob_storage  # noqa: F401
                 # Should not raise
             except ImportError:
                 # It's OK if the module doesn't exist yet, we're testing restriction logic
@@ -237,7 +239,7 @@ class TestImportRestrictionBehavior:
         """Contract: install_import_restrictions must support multiple workspace paths"""
         import tempfile
 
-        from shared.import_restrictor import install_import_restrictions
+        from src.services.execution.import_restrictor import install_import_restrictions
 
         with tempfile.TemporaryDirectory() as tmpdir1, tempfile.TemporaryDirectory() as tmpdir2:
             # Should not raise
@@ -263,14 +265,14 @@ class TestStackInspection:
         """Contract: find_spec must inspect call stack to detect workspace imports"""
         import tempfile
 
-        from shared.import_restrictor import WorkspaceImportRestrictor
+        from src.services.execution.import_restrictor import WorkspaceImportRestrictor
 
         with tempfile.TemporaryDirectory() as tmpdir:
             restrictor = WorkspaceImportRestrictor([tmpdir])
 
             # Create a test file in workspace
             workspace_file = Path(tmpdir) / "test.py"
-            workspace_file.write_text("from shared.storage import test")
+            workspace_file.write_text("from src.services.storage import test")
 
             # Verify restrictor can detect workspace paths
             assert restrictor._is_workspace_code(str(workspace_file)), (

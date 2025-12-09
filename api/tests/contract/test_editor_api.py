@@ -6,7 +6,7 @@ Tests file operations, search, and editor-related models.
 
 import pytest
 from pydantic import ValidationError
-from shared.models import (
+from src.models.models import (
     FileMetadata,
     FileType,
     FileContentRequest,

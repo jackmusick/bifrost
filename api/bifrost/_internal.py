@@ -10,7 +10,7 @@ from typing import TYPE_CHECKING
 from ._context import get_execution_context
 
 if TYPE_CHECKING:
-    from shared.context import ExecutionContext
+    from src.sdk.context import ExecutionContext
 
 logger = logging.getLogger(__name__)
 

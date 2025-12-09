@@ -11,14 +11,21 @@ All file operations use S3-based storage via FileStorageService.
 import logging
 from datetime import datetime, timezone
 
-from fastapi import APIRouter, Query, HTTPException, status, Depends
+from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from shared.models import FileContentRequest, FileContentResponse, FileMetadata, SearchRequest, SearchResponse, FileType
-from shared.editor.search import search_files
-from shared.services.file_storage_service import FileStorageService
+from src.models.models import (
+    FileContentRequest,
+    FileContentResponse,
+    FileMetadata,
+    FileType,
+    SearchRequest,
+    SearchResponse,
+)
 from src.core.auth import Context, CurrentSuperuser
 from src.core.database import get_db
+from src.services.editor.search import search_files
+from src.services.file_storage_service import FileStorageService
 
 logger = logging.getLogger(__name__)
 

@@ -9,7 +9,7 @@ import pytest
 from pydantic import ValidationError
 
 # Import OAuth models for testing
-from shared.models import (
+from src.models.models import (
     CreateOAuthConnectionRequest,
     OAuthConnection,
     OAuthConnectionDetail,

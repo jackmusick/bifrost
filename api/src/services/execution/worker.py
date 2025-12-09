@@ -1,0 +1,416 @@
+"""
+Worker process entry point for isolated execution.
+
+This module runs in a separate process and:
+1. Reads execution context from Redis
+2. Runs the workflow/script
+3. Writes logs to Redis Stream (already handled by engine)
+4. Writes result to Redis (including resource metrics)
+5. Exits cleanly (or gets killed on timeout)
+
+The worker imports minimal dependencies to keep memory footprint low.
+"""
+
+from __future__ import annotations
+
+import asyncio
+import json
+import logging
+import resource
+import signal
+import sys
+from dataclasses import dataclass
+from datetime import datetime
+from typing import Any
+
+logger = logging.getLogger(__name__)
+
+
+@dataclass
+class ResourceMetrics:
+    """Resource usage metrics captured during execution."""
+    # Memory metrics (bytes)
+    peak_memory_bytes: int  # Maximum RSS during execution
+    # CPU metrics (seconds)
+    cpu_user_seconds: float  # User-mode CPU time
+    cpu_system_seconds: float  # Kernel-mode CPU time
+    cpu_total_seconds: float  # Total CPU time (user + system)
+
+
+def _get_resource_usage() -> tuple[int, float, float]:
+    """Get current resource usage from the OS.
+
+    Returns:
+        Tuple of (max_rss_bytes, user_cpu_seconds, system_cpu_seconds)
+    """
+    usage = resource.getrusage(resource.RUSAGE_SELF)
+    # ru_maxrss is in KB on Linux, bytes on macOS
+    # Normalize to bytes
+    if sys.platform == 'darwin':
+        max_rss_bytes = usage.ru_maxrss  # Already in bytes on macOS
+    else:
+        max_rss_bytes = usage.ru_maxrss * 1024  # KB to bytes on Linux
+
+    return max_rss_bytes, usage.ru_utime, usage.ru_stime
+
+
+def _capture_metrics(start_rss: int, start_utime: float, start_stime: float) -> ResourceMetrics:
+    """Capture resource metrics since execution started.
+
+    Args:
+        start_rss: RSS at start (for reference, we use peak which is cumulative)
+        start_utime: User CPU time at start
+        start_stime: System CPU time at start
+
+    Returns:
+        ResourceMetrics with delta values
+    """
+    end_rss, end_utime, end_stime = _get_resource_usage()
+
+    cpu_user = end_utime - start_utime
+    cpu_system = end_stime - start_stime
+
+    return ResourceMetrics(
+        peak_memory_bytes=end_rss,  # Peak is cumulative from process start
+        cpu_user_seconds=round(cpu_user, 4),
+        cpu_system_seconds=round(cpu_system, 4),
+        cpu_total_seconds=round(cpu_user + cpu_system, 4),
+    )
+
+
+def _setup_signal_handlers():
+    """Set up signal handlers for graceful shutdown."""
+    def handle_sigterm(signum, frame):
+        logger.info("Worker received SIGTERM, initiating graceful shutdown")
+        # Raise SystemExit to trigger cleanup
+        sys.exit(0)
+
+    signal.signal(signal.SIGTERM, handle_sigterm)
+
+
+async def _read_execution_context(redis_client, execution_id: str) -> dict[str, Any] | None:
+    """Read execution context from Redis."""
+    key = f"bifrost:exec:{execution_id}:context"
+    data = await redis_client.get(key)
+    if data:
+        return json.loads(data)
+    return None
+
+
+async def _write_execution_result(redis_client, execution_id: str, result: dict[str, Any]):
+    """Write execution result to Redis."""
+    key = f"bifrost:exec:{execution_id}:result"
+    # Set with 1 hour TTL (parent should read quickly, but safety margin)
+    await redis_client.setex(key, 3600, json.dumps(result, default=str))
+
+
+async def _run_execution(execution_id: str, context_data: dict[str, Any]) -> dict[str, Any]:
+    """
+    Run the actual execution.
+
+    This is the core execution logic, isolated in the worker process.
+    """
+    from src.sdk.context import Caller, Organization
+    from src.services.execution.engine import ExecutionRequest, execute
+    from src.models.enums import ExecutionStatus
+
+    start_time = datetime.utcnow()
+
+    # Capture starting resource usage
+    start_rss, start_utime, start_stime = _get_resource_usage()
+
+    try:
+        # Reconstruct Organization
+        org = None
+        org_data = context_data.get("organization")
+        if org_data:
+            org = Organization(
+                id=org_data["id"],
+                name=org_data["name"],
+                is_active=org_data.get("is_active", True)
+            )
+
+        # Reconstruct Caller
+        caller_data = context_data["caller"]
+        caller = Caller(
+            user_id=caller_data["user_id"],
+            email=caller_data["email"],
+            name=caller_data["name"]
+        )
+
+        # Load workflow function if not a script
+        workflow_func = None
+        is_script = bool(context_data.get("code"))
+
+        if not is_script:
+            from src.services.execution.module_loader import get_workflow
+            workflow_name = context_data["name"]
+            result = get_workflow(workflow_name)
+            if not result:
+                metrics = _capture_metrics(start_rss, start_utime, start_stime)
+                return {
+                    "status": ExecutionStatus.FAILED.value,
+                    "error_message": f"Workflow '{workflow_name}' not found",
+                    "error_type": "WorkflowNotFound",
+                    "duration_ms": int((datetime.utcnow() - start_time).total_seconds() * 1000),
+                    "result": None,
+                    "logs": [],
+                    "variables": None,
+                    "metrics": {
+                        "peak_memory_bytes": metrics.peak_memory_bytes,
+                        "cpu_user_seconds": metrics.cpu_user_seconds,
+                        "cpu_system_seconds": metrics.cpu_system_seconds,
+                        "cpu_total_seconds": metrics.cpu_total_seconds,
+                    },
+                }
+            workflow_func, metadata = result
+
+        # Build execution request
+        request = ExecutionRequest(
+            execution_id=execution_id,
+            caller=caller,
+            organization=org,
+            config=context_data.get("config", {}),
+            func=workflow_func,
+            code=context_data.get("code"),
+            name=context_data.get("name"),
+            tags=context_data.get("tags", []),
+            timeout_seconds=context_data.get("timeout_seconds", 1800),
+            cache_ttl_seconds=context_data.get("cache_ttl_seconds", 300),
+            parameters=context_data.get("parameters", {}),
+            transient=context_data.get("transient", False),
+            no_cache=context_data.get("no_cache", False),
+            is_platform_admin=context_data.get("is_platform_admin", False),
+            broadcaster=None,  # Logs go to Redis Stream directly
+        )
+
+        # Execute
+        exec_result = await execute(request)
+
+        # Capture resource metrics after execution
+        metrics = _capture_metrics(start_rss, start_utime, start_stime)
+
+        # Convert result to dict for serialization
+        return {
+            "status": exec_result.status.value,
+            "result": exec_result.result,
+            "duration_ms": exec_result.duration_ms,
+            "logs": exec_result.logs,
+            "variables": exec_result.variables,
+            "integration_calls": exec_result.integration_calls,
+            "error_message": exec_result.error_message,
+            "error_type": exec_result.error_type,
+            "cached": exec_result.cached,
+            "cache_expires_at": exec_result.cache_expires_at,
+            "metrics": {
+                "peak_memory_bytes": metrics.peak_memory_bytes,
+                "cpu_user_seconds": metrics.cpu_user_seconds,
+                "cpu_system_seconds": metrics.cpu_system_seconds,
+                "cpu_total_seconds": metrics.cpu_total_seconds,
+            },
+        }
+
+    except Exception as e:
+        import traceback
+        logger.exception(f"Worker execution failed: {e}")
+
+        # Still capture metrics even on failure
+        metrics = _capture_metrics(start_rss, start_utime, start_stime)
+
+        return {
+            "status": ExecutionStatus.FAILED.value,
+            "error_message": str(e),
+            "error_type": type(e).__name__,
+            "duration_ms": int((datetime.utcnow() - start_time).total_seconds() * 1000),
+            "result": None,
+            "logs": [],
+            "variables": None,
+            "traceback": traceback.format_exc(),
+            "metrics": {
+                "peak_memory_bytes": metrics.peak_memory_bytes,
+                "cpu_user_seconds": metrics.cpu_user_seconds,
+                "cpu_system_seconds": metrics.cpu_system_seconds,
+                "cpu_total_seconds": metrics.cpu_total_seconds,
+            },
+        }
+
+
+async def _download_workspace_from_s3(settings, local_path) -> bool:
+    """
+    Download workspace files from S3 to local path.
+
+    Args:
+        settings: Application settings
+        local_path: Path to download to
+
+    Returns:
+        True if download successful, False otherwise
+    """
+    from pathlib import Path
+    import os
+
+    if not settings.s3_configured:
+        return False
+
+    try:
+        from aiobotocore.session import get_session
+
+        local_path = Path(local_path)
+        local_path.mkdir(parents=True, exist_ok=True)
+
+        session = get_session()
+        async with session.create_client(
+            "s3",
+            endpoint_url=settings.s3_endpoint_url,
+            aws_access_key_id=settings.s3_access_key,
+            aws_secret_access_key=settings.s3_secret_key,
+            region_name=settings.s3_region,
+        ) as s3:
+            # List all objects in workspace bucket
+            paginator = s3.get_paginator("list_objects_v2")
+            async for page in paginator.paginate(Bucket=settings.s3_workspace_bucket):
+                for obj in page.get("Contents", []):
+                    key = obj["Key"]
+                    local_file = local_path / key
+
+                    # Create parent directories
+                    local_file.parent.mkdir(parents=True, exist_ok=True)
+
+                    # Download file
+                    response = await s3.get_object(
+                        Bucket=settings.s3_workspace_bucket,
+                        Key=key,
+                    )
+                    content = await response["Body"].read()
+                    local_file.write_bytes(content)
+
+        logger.info(f"Downloaded workspace from S3 to {local_path}")
+        return True
+
+    except Exception as e:
+        logger.error(f"Failed to download workspace from S3: {e}")
+        return False
+
+
+async def worker_main(execution_id: str):
+    """
+    Main entry point for worker process.
+
+    Called by the pool manager when spawning a new worker.
+    """
+    import os
+    import tempfile
+    from pathlib import Path
+    import redis.asyncio as redis
+    from src.config import get_settings
+
+    settings = get_settings()
+
+    # Set up signal handlers
+    _setup_signal_handlers()
+
+    logger.info(f"Worker starting for execution: {execution_id}")
+
+    # Workspace directory (either S3-downloaded or filesystem)
+    workspace_dir = None
+    temp_workspace = None
+
+    # Download workspace from S3 if configured
+    if settings.s3_configured:
+        # Create temp directory for this execution
+        temp_workspace = Path(tempfile.mkdtemp(prefix=f"bifrost-{execution_id[:8]}-"))
+        workspace_dir = temp_workspace
+
+        # Download workspace
+        download_success = await _download_workspace_from_s3(settings, workspace_dir)
+        if download_success:
+            # Add to Python path for imports
+            sys.path.insert(0, str(workspace_dir))
+            logger.info(f"S3 workspace downloaded to {workspace_dir}, added to sys.path")
+        else:
+            logger.warning("S3 download failed, will attempt to use local workspace if available")
+            workspace_dir = None
+    elif settings.workspace_location:
+        workspace_dir = Path(settings.workspace_location)
+        # Ensure workspace is in Python path
+        if str(workspace_dir) not in sys.path:
+            sys.path.insert(0, str(workspace_dir))
+
+    # Connect to Redis
+    redis_client = redis.from_url(
+        settings.redis_url,
+        decode_responses=True,
+        socket_timeout=5.0,
+    )
+
+    try:
+        # Read context from Redis
+        context_data = await _read_execution_context(redis_client, execution_id)
+        if not context_data:
+            logger.error(f"No context found for execution: {execution_id}")
+            await _write_execution_result(redis_client, execution_id, {
+                "status": "Failed",
+                "error_message": "Execution context not found in Redis",
+                "error_type": "ContextNotFound",
+                "duration_ms": 0,
+                "metrics": None,
+            })
+            return
+
+        # Run the execution
+        result = await _run_execution(execution_id, context_data)
+
+        # Write result to Redis
+        await _write_execution_result(redis_client, execution_id, result)
+
+        # Log metrics
+        metrics = result.get("metrics")
+        if metrics:
+            logger.info(
+                f"Worker completed execution: {execution_id}, "
+                f"status: {result.get('status')}, "
+                f"memory: {metrics['peak_memory_bytes'] / 1024 / 1024:.1f}MB, "
+                f"cpu: {metrics['cpu_total_seconds']:.3f}s"
+            )
+        else:
+            logger.info(f"Worker completed execution: {execution_id}, status: {result.get('status')}")
+
+    except Exception as e:
+        logger.exception(f"Worker failed for execution {execution_id}: {e}")
+        try:
+            await _write_execution_result(redis_client, execution_id, {
+                "status": "Failed",
+                "error_message": str(e),
+                "error_type": type(e).__name__,
+                "duration_ms": 0,
+                "metrics": None,
+            })
+        except Exception:
+            pass  # Best effort
+    finally:
+        await redis_client.aclose()
+
+        # Clean up temp workspace
+        if temp_workspace and temp_workspace.exists():
+            import shutil
+            try:
+                shutil.rmtree(temp_workspace)
+                logger.debug(f"Cleaned up temp workspace: {temp_workspace}")
+            except Exception as e:
+                logger.warning(f"Failed to clean up temp workspace: {e}")
+
+
+def run_in_worker(execution_id: str):
+    """
+    Synchronous entry point for multiprocessing.
+
+    This is called when the process is spawned.
+    """
+    # Configure logging for worker process
+    logging.basicConfig(
+        level=logging.INFO,
+        format=f"[Worker:{execution_id[:8]}] %(levelname)s - %(message)s"
+    )
+
+    # Run the async worker
+    asyncio.run(worker_main(execution_id))

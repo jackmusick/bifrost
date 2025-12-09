@@ -19,7 +19,7 @@ from contextvars import ContextVar
 from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
-    from shared.context import ExecutionContext
+    from src.sdk.context import ExecutionContext
 
 # Context variable for current execution context
 # Set by workflow engine before executing user code

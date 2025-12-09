@@ -3563,11 +3563,11 @@ async def e2e_cancellation_test(sleep_seconds: int = 30):
         buffer = io.BytesIO(response.content)
         with tarfile.open(fileobj=buffer, mode="r:gz") as tar:
             names = tar.getnames()
-            # Should contain setup.py and bifrost_sdk files
+            # Should contain setup.py and bifrost files
             assert "setup.py" in names, "SDK tarball should contain setup.py"
-            # Should have bifrost_sdk package files
-            sdk_files = [n for n in names if n.startswith("bifrost_sdk/")]
-            assert len(sdk_files) > 0, "SDK tarball should contain bifrost_sdk package"
+            # Should have bifrost package files
+            sdk_files = [n for n in names if n.startswith("bifrost/")]
+            assert len(sdk_files) > 0, "SDK tarball should contain bifrost package"
             logger.info(f"SDK package contains {len(names)} files")
 
     # =========================================================================
@@ -3831,7 +3831,7 @@ async def sdk_e2e_test_workflow(name: str, count: int = 1) -> dict:
             pytest.skip("No SDK key available")
 
         # Use the SDK client class directly (simulates developer usage)
-        from bifrost_sdk.client import BifrostClient
+        from bifrost.client import BifrostClient
 
         client = BifrostClient(API_BASE_URL, State.sdk_client_key)
         try:
@@ -3856,7 +3856,7 @@ async def sdk_e2e_test_workflow(name: str, count: int = 1) -> dict:
         if not hasattr(State, 'sdk_client_key') or not State.sdk_client_key:
             pytest.skip("No SDK key available")
 
-        from bifrost_sdk.client import BifrostClient
+        from bifrost.client import BifrostClient
 
         client = BifrostClient(API_BASE_URL, State.sdk_client_key)
         try:
@@ -3891,7 +3891,7 @@ async def sdk_e2e_test_workflow(name: str, count: int = 1) -> dict:
         assert response.status_code == 200, f"Failed to update context: {response.text}"
 
         # Verify via SDK API key
-        from bifrost_sdk.client import BifrostClient
+        from bifrost.client import BifrostClient
         client = BifrostClient(API_BASE_URL, State.sdk_client_key)
         try:
             context = await client._fetch_context()
@@ -3905,7 +3905,7 @@ async def sdk_e2e_test_workflow(name: str, count: int = 1) -> dict:
         if not hasattr(State, 'sdk_client_key') or not State.sdk_client_key:
             pytest.skip("No SDK key available")
 
-        from bifrost_sdk.client import BifrostClient
+        from bifrost.client import BifrostClient
 
         client = BifrostClient(API_BASE_URL, State.sdk_client_key)
         try:
@@ -3929,7 +3929,7 @@ async def sdk_e2e_test_workflow(name: str, count: int = 1) -> dict:
         if not hasattr(State, 'sdk_client_key') or not State.sdk_client_key:
             pytest.skip("No SDK key available")
 
-        from bifrost_sdk.client import BifrostClient
+        from bifrost.client import BifrostClient
 
         client = BifrostClient(API_BASE_URL, State.sdk_client_key)
         try:
@@ -3953,7 +3953,7 @@ async def sdk_e2e_test_workflow(name: str, count: int = 1) -> dict:
         if not hasattr(State, 'sdk_client_key') or not State.sdk_client_key:
             pytest.skip("No SDK key available")
 
-        from bifrost_sdk.client import BifrostClient
+        from bifrost.client import BifrostClient
 
         client = BifrostClient(API_BASE_URL, State.sdk_client_key)
         try:

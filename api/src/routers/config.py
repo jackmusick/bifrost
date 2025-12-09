@@ -13,7 +13,7 @@ from fastapi import APIRouter, HTTPException, status
 from sqlalchemy import select
 
 # Import existing Pydantic models for API compatibility
-from shared.models import (
+from src.models.models import (
     Config as ConfigSchema,
     ConfigType,
     SetConfigRequest,
@@ -26,7 +26,7 @@ from src.repositories.org_scoped import OrgScopedRepository
 
 # Import cache invalidation
 try:
-    from shared.cache import invalidate_config
+    from src.core.cache import invalidate_config
     CACHE_INVALIDATION_AVAILABLE = True
 except ImportError:
     CACHE_INVALIDATION_AVAILABLE = False
@@ -116,7 +116,7 @@ class ConfigRepository(OrgScopedRepository[ConfigModel]):
             "value": stored_value,
         }
 
-        # Convert shared.models.ConfigType to src.models.enums.ConfigType
+        # Convert API ConfigType to DB ConfigTypeEnum
         # Both enums have same values, so we can use the value to lookup
         db_config_type = ConfigTypeEnum(request.type.value) if request.type else ConfigTypeEnum.STRING
 

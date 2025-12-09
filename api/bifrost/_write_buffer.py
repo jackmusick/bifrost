@@ -136,7 +136,7 @@ class WriteBuffer:
 
     async def _async_buffer_change(self, change: ChangeRecord) -> None:
         """Buffer a change using async Redis (for async SDK methods)."""
-        from shared.cache import get_redis, TTL_PENDING
+        from src.core.cache import get_redis, TTL_PENDING
 
         async with get_redis() as r:
             field_name = f"changes:{change.entity_type}:{change.entity_key}"
@@ -189,7 +189,7 @@ class WriteBuffer:
         org_id: str | None,
     ) -> None:
         """Update the read cache after a write (read-your-writes consistency)."""
-        from shared.cache import config_hash_key, get_redis
+        from src.core.cache import config_hash_key, get_redis
 
         cache_value = {"value": value, "type": config_type}
         async with get_redis() as r:
@@ -246,7 +246,7 @@ class WriteBuffer:
         org_id: str | None,
     ) -> None:
         """Update the read cache after a role write."""
-        from shared.cache import get_redis, roles_hash_key
+        from src.core.cache import get_redis, roles_hash_key
 
         async with get_redis() as r:
             await r.hset(roles_hash_key(org_id), role_id, json.dumps(data))  # type: ignore[misc]
@@ -335,7 +335,7 @@ class WriteBuffer:
 
     async def _update_org_cache(self, org_id: str, data: dict[str, Any]) -> None:
         """Update the read cache after an org write."""
-        from shared.cache import get_redis, org_key
+        from src.core.cache import get_redis, org_key
 
         async with get_redis() as r:
             await r.set(org_key(org_id), json.dumps(data))  # type: ignore[misc]
@@ -346,7 +346,7 @@ class WriteBuffer:
 
     async def get_pending_count(self) -> int:
         """Get the number of pending changes."""
-        from shared.cache import get_redis
+        from src.core.cache import get_redis
 
         async with get_redis() as r:
             return await r.hlen(self._pending_key)  # type: ignore[misc]

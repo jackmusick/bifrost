@@ -5,7 +5,7 @@ Unit tests for memory_monitor module.
 import pytest
 from unittest.mock import patch, mock_open
 
-from shared.execution.memory_monitor import (
+from src.services.execution.memory_monitor import (
     get_available_memory_mb,
     has_sufficient_memory,
 )
@@ -69,7 +69,7 @@ class TestHasSufficientMemory:
     def test_returns_true_when_memory_above_threshold(self):
         """Should return True when available memory exceeds threshold."""
         with patch(
-            "shared.execution.memory_monitor.get_available_memory_mb",
+            "src.services.execution.memory_monitor.get_available_memory_mb",
             return_value=500
         ):
             assert has_sufficient_memory(300) is True
@@ -77,7 +77,7 @@ class TestHasSufficientMemory:
     def test_returns_false_when_memory_below_threshold(self):
         """Should return False when available memory is below threshold."""
         with patch(
-            "shared.execution.memory_monitor.get_available_memory_mb",
+            "src.services.execution.memory_monitor.get_available_memory_mb",
             return_value=200
         ):
             assert has_sufficient_memory(300) is False
@@ -85,7 +85,7 @@ class TestHasSufficientMemory:
     def test_returns_true_when_memory_equals_threshold(self):
         """Should return True when available memory equals threshold."""
         with patch(
-            "shared.execution.memory_monitor.get_available_memory_mb",
+            "src.services.execution.memory_monitor.get_available_memory_mb",
             return_value=300
         ):
             assert has_sufficient_memory(300) is True
@@ -93,7 +93,7 @@ class TestHasSufficientMemory:
     def test_returns_true_when_memory_check_unavailable(self):
         """Should return True when memory check returns -1 (macOS)."""
         with patch(
-            "shared.execution.memory_monitor.get_available_memory_mb",
+            "src.services.execution.memory_monitor.get_available_memory_mb",
             return_value=-1
         ):
             # Should not block execution on macOS/dev environments
@@ -102,14 +102,14 @@ class TestHasSufficientMemory:
     def test_uses_default_threshold_of_300mb(self):
         """Should use 300MB as default threshold."""
         with patch(
-            "shared.execution.memory_monitor.get_available_memory_mb",
+            "src.services.execution.memory_monitor.get_available_memory_mb",
             return_value=250
         ):
             # 250 < 300 (default threshold)
             assert has_sufficient_memory() is False
 
         with patch(
-            "shared.execution.memory_monitor.get_available_memory_mb",
+            "src.services.execution.memory_monitor.get_available_memory_mb",
             return_value=350
         ):
             # 350 > 300 (default threshold)

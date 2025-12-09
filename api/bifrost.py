@@ -5,16 +5,16 @@ This module allows workflows to use simplified imports:
     from bifrost import workflow, param, OrganizationContext
 
 Instead of:
-    from shared.decorators import workflow, param
-    from shared.context import OrganizationContext
+    from src.sdk.decorators import workflow, param
+    from src.sdk.context import OrganizationContext
 
 Both import styles work at runtime. Use bifrost.pyi for development type hints.
 """
 
 # Re-export everything from shared modules
-from shared.context import Caller, Organization, OrganizationContext
-from shared.decorators import data_provider, param, workflow
-from shared.models import (
+from src.sdk.context import Caller, Organization, OrganizationContext
+from src.sdk.decorators import data_provider, param, workflow
+from src.models.models import (
     ConfigType,
     ExecutionStatus,
     FormFieldType,

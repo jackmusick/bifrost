@@ -15,7 +15,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.models.orm import ExecutionMetricsDaily, Organization
 from src.models.enums import ExecutionStatus
-from shared.metrics import _upsert_daily_metrics
+from src.core.metrics import _upsert_daily_metrics
 
 
 @pytest_asyncio.fixture

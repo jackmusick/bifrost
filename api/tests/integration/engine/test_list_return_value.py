@@ -3,9 +3,9 @@ Test that workflows can return list values.
 """
 
 import pytest
-from shared.decorators import workflow
-from shared.engine import execute, ExecutionRequest, ExecutionStatus
-from shared.context import Caller, Organization
+from src.sdk.decorators import workflow
+from src.services.execution.engine import execute, ExecutionRequest, ExecutionStatus
+from src.sdk.context import Caller, Organization
 
 
 class TestListReturnValue:

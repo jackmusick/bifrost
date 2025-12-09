@@ -7,7 +7,7 @@ without requiring any external dependencies.
 
 import re
 import pytest
-from shared.secret_naming import (
+from src.core.secret_naming import (
     sanitize_scope,
     sanitize_name_component,
     generate_secret_name,

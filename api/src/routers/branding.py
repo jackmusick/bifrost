@@ -13,7 +13,7 @@ from typing import Annotated
 from fastapi import APIRouter, Depends, File, HTTPException, UploadFile, status
 from fastapi.responses import Response
 
-from shared.models import BrandingSettings, BrandingUpdateRequest
+from src.models.models import BrandingSettings, BrandingUpdateRequest
 from src.core.auth import Context, CurrentActiveUser
 from src.core.database import AsyncSession, get_db
 

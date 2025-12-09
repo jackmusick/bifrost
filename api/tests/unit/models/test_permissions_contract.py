@@ -8,7 +8,7 @@ from datetime import datetime
 import pytest
 from pydantic import ValidationError
 
-from shared.models import GrantPermissionsRequest, PermissionsData, User, UserPermission
+from src.models.models import GrantPermissionsRequest, PermissionsData, User, UserPermission
 
 
 # Note: Models use snake_case (e.g., user_id, org_id, can_execute_workflows)

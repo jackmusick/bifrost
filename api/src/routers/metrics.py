@@ -18,7 +18,7 @@ from fastapi import APIRouter, HTTPException, Query, status
 from sqlalchemy import select, func, case, desc
 from datetime import datetime
 
-from shared.models import (
+from src.models.models import (
     DashboardMetricsResponse,
     ExecutionStats,
     RecentFailure,

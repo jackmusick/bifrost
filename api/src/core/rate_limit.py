@@ -10,8 +10,8 @@ from typing import Callable
 
 from fastapi import HTTPException, Request, status
 
-from shared.cache import get_shared_redis
-from shared.cache.keys import rate_limit_key, TTL_RATE_LIMIT
+from src.core.cache import get_shared_redis
+from src.core.cache.keys import rate_limit_key, TTL_RATE_LIMIT
 
 logger = logging.getLogger(__name__)
 

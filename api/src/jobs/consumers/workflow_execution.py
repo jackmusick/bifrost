@@ -57,7 +57,7 @@ class WorkflowExecutionConsumer(BaseConsumer):
 
     async def process_message(self, message_data: dict[str, Any]) -> None:
         """Process a workflow execution message."""
-        from shared.execution.queue_tracker import remove_from_queue
+        from src.services.execution.queue_tracker import remove_from_queue
 
         execution_id = message_data.get("execution_id", "")
         workflow_id = message_data.get("workflow_id")
@@ -107,7 +107,7 @@ class WorkflowExecutionConsumer(BaseConsumer):
             )
 
             from src.models.enums import ExecutionStatus
-            from shared.consumers._helpers import (
+            from src.repositories.executions import (
                 create_execution,
                 update_execution,
             )
@@ -127,8 +127,6 @@ class WorkflowExecutionConsumer(BaseConsumer):
                 )
                 await update_execution(
                     execution_id=execution_id,
-                    org_id=org_id,
-                    user_id=user_id,
                     status=ExecutionStatus.CANCELLED,
                     error_message="Execution was cancelled before it could start",
                     duration_ms=0,
@@ -149,7 +147,7 @@ class WorkflowExecutionConsumer(BaseConsumer):
             timeout_seconds = 1800  # Default 30 minutes
 
             if not is_script and workflow_id:
-                from shared.execution_service import get_workflow_by_id, WorkflowNotFoundError, WorkflowLoadError
+                from src.services.execution.service import get_workflow_by_id, WorkflowNotFoundError, WorkflowLoadError
 
                 try:
                     _, metadata = await get_workflow_by_id(workflow_id)
@@ -171,8 +169,6 @@ class WorkflowExecutionConsumer(BaseConsumer):
                     )
                     await update_execution(
                         execution_id=execution_id,
-                        org_id=org_id,
-                        user_id=user_id,
                         status=ExecutionStatus.FAILED,
                         result={"error": "WorkflowNotFound", "message": error_msg},
                         duration_ms=duration_ms,
@@ -204,8 +200,6 @@ class WorkflowExecutionConsumer(BaseConsumer):
                     )
                     await update_execution(
                         execution_id=execution_id,
-                        org_id=org_id,
-                        user_id=user_id,
                         status=ExecutionStatus.FAILED,
                         result={"error": "WorkflowLoadError", "message": error_msg},
                         duration_ms=duration_ms,
@@ -241,7 +235,7 @@ class WorkflowExecutionConsumer(BaseConsumer):
             config = {}
 
             if org_id:
-                from shared.config_resolver import ConfigResolver
+                from src.core.config_resolver import ConfigResolver
 
                 resolver = ConfigResolver()
                 org = await resolver.get_organization(org_id)
@@ -253,7 +247,7 @@ class WorkflowExecutionConsumer(BaseConsumer):
                         "is_active": org.is_active,
                     }
             else:
-                from shared.config_resolver import ConfigResolver
+                from src.core.config_resolver import ConfigResolver
 
                 resolver = ConfigResolver()
                 config = await resolver.load_config_for_scope("GLOBAL")
@@ -279,7 +273,7 @@ class WorkflowExecutionConsumer(BaseConsumer):
             }
 
             # Execute in isolated process
-            from shared.execution import get_execution_pool
+            from src.services.execution.pool import get_execution_pool
 
             pool = get_execution_pool()
 
@@ -293,8 +287,6 @@ class WorkflowExecutionConsumer(BaseConsumer):
                 duration_ms = int((datetime.utcnow() - start_time).total_seconds() * 1000)
                 await update_execution(
                     execution_id=execution_id,
-                    org_id=org_id,
-                    user_id=user_id,
                     status=ExecutionStatus.CANCELLED,
                     error_message="Execution cancelled by user",
                     duration_ms=duration_ms,
@@ -314,8 +306,6 @@ class WorkflowExecutionConsumer(BaseConsumer):
                 error_msg = str(e)
                 await update_execution(
                     execution_id=execution_id,
-                    org_id=org_id,
-                    user_id=user_id,
                     status=ExecutionStatus.TIMEOUT,
                     error_message=error_msg,
                     error_type="TimeoutError",
@@ -340,8 +330,6 @@ class WorkflowExecutionConsumer(BaseConsumer):
             # Update execution with result and metrics
             await update_execution(
                 execution_id=execution_id,
-                org_id=org_id,
-                user_id=user_id,
                 status=status,
                 result=result.get("result"),
                 error_message=result.get("error_message"),
@@ -376,7 +364,7 @@ class WorkflowExecutionConsumer(BaseConsumer):
 
             # Update daily metrics for dashboards
             metrics = result.get("metrics", {})
-            from shared.metrics import update_daily_metrics
+            from src.core.metrics import update_daily_metrics
             await update_daily_metrics(
                 org_id=org_id,
                 status=status.value,
@@ -409,12 +397,10 @@ class WorkflowExecutionConsumer(BaseConsumer):
             error_type = type(e).__name__
 
             from src.models.enums import ExecutionStatus
-            from shared.consumers._helpers import update_execution
+            from src.repositories.executions import update_execution
 
             await update_execution(
                 execution_id=execution_id,
-                org_id=org_id,
-                user_id=user_id,
                 status=ExecutionStatus.FAILED,
                 error_message=error_msg,
                 error_type=error_type,

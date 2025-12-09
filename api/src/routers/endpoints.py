@@ -23,8 +23,8 @@ from uuid import uuid4
 from fastapi import APIRouter, Header, HTTPException, Request, status
 from pydantic import BaseModel
 
-from shared.context import ExecutionContext
-from shared.module_loader import get_workflow
+from src.sdk.context import ExecutionContext
+from src.services.execution.module_loader import get_workflow
 from src.core.database import get_db_context
 from src.core.redis_client import get_redis_client, DEFAULT_TIMEOUT_SECONDS
 from src.routers.workflow_keys import validate_workflow_key
@@ -182,7 +182,7 @@ async def _execute_async(
     input_data: dict[str, Any],
 ) -> EndpointExecuteResponse:
     """Execute workflow asynchronously via queue."""
-    from shared.async_executor import enqueue_workflow_execution
+    from src.services.execution.async_executor import enqueue_workflow_execution
 
     execution_id = await enqueue_workflow_execution(
         context=context,
@@ -218,7 +218,7 @@ async def _execute_sync(
     This allows the API to stay lightweight without filesystem access.
     Worker will write to PostgreSQL when it starts execution.
     """
-    from shared.async_executor import enqueue_workflow_execution
+    from src.services.execution.async_executor import enqueue_workflow_execution
 
     execution_id = str(uuid4())
 

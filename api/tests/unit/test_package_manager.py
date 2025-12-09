@@ -7,7 +7,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-from shared.package_manager import PackageInfo, PackageNotFoundError, WorkspacePackageManager
+from src.services.package_manager import PackageInfo, PackageNotFoundError, WorkspacePackageManager
 
 
 @pytest.fixture
@@ -47,7 +47,7 @@ class TestWorkspacePackageManager:
             }
         })
 
-        with patch('shared.package_manager.aiohttp.ClientSession') as mock_session_class:
+        with patch('src.services.package_manager.aiohttp.ClientSession') as mock_session_class:
             mock_session = MagicMock()
             mock_session.__aenter__ = AsyncMock(return_value=mock_session)
             mock_session.__aexit__ = AsyncMock(return_value=None)
@@ -69,7 +69,7 @@ class TestWorkspacePackageManager:
         mock_response = MagicMock()
         mock_response.status = 404
 
-        with patch('shared.package_manager.aiohttp.ClientSession') as mock_session_class:
+        with patch('src.services.package_manager.aiohttp.ClientSession') as mock_session_class:
             mock_session = MagicMock()
             mock_session.__aenter__ = AsyncMock(return_value=mock_session)
             mock_session.__aexit__ = AsyncMock(return_value=None)

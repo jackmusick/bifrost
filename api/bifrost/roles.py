@@ -13,13 +13,13 @@ import logging
 from datetime import datetime
 from typing import Any
 
-from shared.cache import (
+from src.core.cache import (
     get_redis,
     role_forms_key,
     role_users_key,
     roles_hash_key,
 )
-from shared.models import Role as RoleSchema
+from src.models.models import Role as RoleSchema
 
 from ._internal import get_context, require_permission
 from ._write_buffer import get_write_buffer

@@ -16,7 +16,7 @@ class TestFileUploadRequestValidation:
 
     def test_file_upload_request_missing_fields(self):
         """Test that all FileUploadRequest fields are required"""
-        from shared.models import FileUploadRequest
+        from src.models.models import FileUploadRequest
 
         with pytest.raises(ValidationError) as exc_info:
             FileUploadRequest(
@@ -35,7 +35,7 @@ class TestFileUploadResponseValidation:
 
     def test_file_upload_response_missing_fields(self):
         """Test that all FileUploadResponse fields are required"""
-        from shared.models import FileUploadResponse
+        from src.models.models import FileUploadResponse
 
         with pytest.raises(ValidationError) as exc_info:
             FileUploadResponse(

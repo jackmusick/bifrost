@@ -20,8 +20,8 @@ from sqlalchemy import select, or_
 from src.core.auth import Context, CurrentSuperuser
 from src.core.database import DbSession
 from src.models.orm import Workflow
-from shared.models import WorkflowKeyCreateRequest, WorkflowKeyResponse
-from shared.workflow_keys import generate_workflow_key
+from src.models.models import WorkflowKeyCreateRequest, WorkflowKeyResponse
+from src.services.workflow_keys import generate_workflow_key
 
 logger = logging.getLogger(__name__)
 

@@ -4,9 +4,9 @@ Test variable capture during workflow exceptions.
 
 import sys
 import pytest
-from shared.decorators import workflow
-from shared.engine import execute, ExecutionRequest, ExecutionStatus
-from shared.context import Caller, Organization
+from src.sdk.decorators import workflow
+from src.services.execution.engine import execute, ExecutionRequest, ExecutionStatus
+from src.sdk.context import Caller, Organization
 
 
 def is_coverage_running() -> bool:

@@ -7,8 +7,8 @@ from unittest.mock import MagicMock
 
 import pytest
 
-from shared.context import Organization, ExecutionContext
-from shared.context import Caller
+from src.sdk.context import Organization, ExecutionContext
+from src.sdk.context import Caller
 
 
 @pytest.fixture
@@ -66,7 +66,7 @@ class TestWorkflowExecutionEndpoint:
     async def test_workflow_execution_flow(self, mock_context):
         """Test complete workflow execution flow"""
 
-        from shared.decorators import workflow
+        from src.sdk.decorators import workflow
 
         # Define a simple test workflow with decorator
         @workflow(
@@ -93,8 +93,8 @@ class TestWorkflowExecutionEndpoint:
     async def test_workflow_with_validation_error(self, mock_context):
         """Test workflow that raises ValidationError"""
 
-        from shared.decorators import workflow
-        from shared.error_handling import ValidationError
+        from src.sdk.decorators import workflow
+        from src.sdk.error_handling import ValidationError
 
         @workflow(
             name="validation_workflow",
@@ -122,7 +122,7 @@ class TestWorkflowExecutionEndpoint:
     async def test_workflow_with_state_tracking(self, mock_context):
         """Test that state tracking works correctly"""
 
-        from shared.decorators import workflow
+        from src.sdk.decorators import workflow
 
         @workflow(
             name="state_test_workflow",

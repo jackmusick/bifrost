@@ -8,7 +8,7 @@ from datetime import datetime
 import pytest
 from pydantic import ValidationError
 
-from shared.models import IntegrationConfig, IntegrationType, SetIntegrationConfigRequest
+from src.models.models import IntegrationConfig, IntegrationType, SetIntegrationConfigRequest
 
 
 # Note: Models use snake_case (e.g., updated_at, updated_by)

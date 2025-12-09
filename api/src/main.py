@@ -39,7 +39,6 @@ from src.routers import (
     github_router,
     oauth_connections_router,
     endpoints_router,
-    file_uploads_router,
     sdk_router,
 )
 
@@ -54,8 +53,7 @@ logging.getLogger("aiormq").setLevel(logging.WARNING)
 logging.getLogger("aio_pika").setLevel(logging.WARNING)
 
 # Enable DEBUG for execution engine to troubleshoot workflows
-logging.getLogger("shared.engine").setLevel(logging.DEBUG)
-logging.getLogger("shared.execution_service").setLevel(logging.DEBUG)
+logging.getLogger("src.services.execution").setLevel(logging.DEBUG)
 logging.getLogger("bifrost").setLevel(logging.DEBUG)
 
 logger = logging.getLogger(__name__)
@@ -189,7 +187,6 @@ def create_app() -> FastAPI:
     app.include_router(github_router)
     app.include_router(oauth_connections_router)
     app.include_router(endpoints_router)
-    app.include_router(file_uploads_router)
     app.include_router(sdk_router)
 
     # Root endpoint

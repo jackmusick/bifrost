@@ -9,9 +9,9 @@ Tests that workflow parameters are correctly:
 
 import pytest
 
-from shared.context import ExecutionContext, Organization
-from shared.decorators import workflow
-from shared.engine import _execute_workflow_with_trace
+from src.sdk.context import ExecutionContext, Organization
+from src.sdk.decorators import workflow
+from src.services.execution.engine import _execute_workflow_with_trace
 
 
 @pytest.fixture

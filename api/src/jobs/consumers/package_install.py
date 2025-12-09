@@ -77,7 +77,7 @@ class PackageInstallConsumer(BroadcastConsumer):
             )
             workspace_path = Path(workspace_location)
 
-            from shared.package_manager import WorkspacePackageManager
+            from src.services.package_manager import WorkspacePackageManager
 
             pkg_manager = WorkspacePackageManager(workspace_path)
 

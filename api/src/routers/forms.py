@@ -25,11 +25,11 @@ from src.core.auth import Context, CurrentActiveUser, CurrentSuperuser
 from src.core.database import DbSession
 from src.models.orm import Form as FormORM, FormField as FormFieldORM, FormRole as FormRoleORM, UserRole as UserRoleORM
 from src.models.models import FormCreate, FormUpdate, FormPublic
-from shared.models import WorkflowExecutionResponse
+from src.models.models import WorkflowExecutionResponse
 
 # Import cache invalidation
 try:
-    from shared.cache import invalidate_form
+    from src.core.cache import invalidate_form
     CACHE_INVALIDATION_AVAILABLE = True
 except ImportError:
     CACHE_INVALIDATION_AVAILABLE = False
@@ -72,7 +72,7 @@ def _form_schema_to_fields(form_schema: dict, form_id: UUID) -> list[FormFieldOR
     Returns:
         List of FormField ORM objects
     """
-    from shared.models import FormSchema
+    from src.models.models import FormSchema
 
     # Validate structure
     schema = FormSchema.model_validate(form_schema)
@@ -174,7 +174,7 @@ async def _write_form_to_file(form: FormORM, db: AsyncSession) -> str:
     Raises:
         Exception: If file write fails
     """
-    from shared.services.file_storage_service import FileStorageService
+    from src.services.file_storage_service import FileStorageService
 
     # Generate filename
     filename = _generate_form_filename(form.name, str(form.id))
@@ -228,7 +228,7 @@ async def _update_form_file(form: FormORM, old_file_path: str | None, db: AsyncS
     Returns:
         New workspace-relative file path
     """
-    from shared.services.file_storage_service import FileStorageService
+    from src.services.file_storage_service import FileStorageService
 
     # Generate new filename
     new_filename = _generate_form_filename(form.name, str(form.id))
@@ -257,7 +257,7 @@ async def _deactivate_form_file(form: FormORM, db: AsyncSession) -> None:
         form: Form ORM instance with updated is_active=False
         db: Database session for FileStorageService
     """
-    from shared.services.file_storage_service import FileStorageService
+    from src.services.file_storage_service import FileStorageService
 
     # Use the form's file_path if available, otherwise generate it
     file_path = form.file_path
@@ -763,8 +763,8 @@ async def execute_form(
     - 'authenticated': Any logged-in user can execute
     - 'role_based': User must be assigned to a role that has this form
     """
-    from shared.context import ExecutionContext as SharedContext, Organization
-    from shared.execution_service import run_workflow, WorkflowNotFoundError, WorkflowLoadError
+    from src.sdk.context import ExecutionContext as SharedContext, Organization
+    from src.services.execution.service import run_workflow, WorkflowNotFoundError, WorkflowLoadError
 
     # Get the form
     result = await db.execute(select(FormORM).where(FormORM.id == form_id))

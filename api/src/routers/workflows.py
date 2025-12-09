@@ -15,7 +15,7 @@ from fastapi import APIRouter, HTTPException, status
 from sqlalchemy import select
 
 # Import existing Pydantic models for API compatibility
-from shared.models import (
+from src.models.models import (
     FileScanRequest,
     WorkflowExecutionRequest,
     WorkflowExecutionResponse,
@@ -133,8 +133,8 @@ async def execute_workflow(
 ) -> WorkflowExecutionResponse:
     """Execute a workflow or script with the provided parameters."""
     from uuid import uuid4
-    from shared.context import ExecutionContext as SharedContext, Organization
-    from shared.execution_service import (
+    from src.sdk.context import ExecutionContext as SharedContext, Organization
+    from src.services.execution.service import (
         run_workflow,
         run_code,
         WorkflowNotFoundError,
@@ -235,7 +235,7 @@ async def validate_workflow(
     user: CurrentActiveUser,
 ) -> WorkflowValidationResponse:
     """Validate a workflow file for errors."""
-    from shared.logic.workflows_handlers import validate_workflow_file
+    from src.services.workflow_validation import validate_workflow_file
 
     try:
         result = await validate_workflow_file(
@@ -274,8 +274,8 @@ async def scan_workspace(
     from uuid import uuid4
     from sqlalchemy import func
     from src.models import Form as FormORM
-    from shared.services.sdk_usage_scanner import SDKUsageScanner
-    from shared.context import ExecutionContext as SharedContext, Organization
+    from src.services.sdk_usage_scanner import SDKUsageScanner
+    from src.sdk.context import ExecutionContext as SharedContext, Organization
 
     try:
         workspace_path = os.environ.get("BIFROST_WORKSPACE_LOCATION", "/mounts/workspace")
@@ -345,8 +345,8 @@ async def scan_file(
 ) -> WorkspaceScanResponse:
     """Scan a single file for SDK dependencies."""
     from uuid import uuid4
-    from shared.services.sdk_usage_scanner import SDKUsageScanner
-    from shared.context import ExecutionContext as SharedContext, Organization
+    from src.services.sdk_usage_scanner import SDKUsageScanner
+    from src.sdk.context import ExecutionContext as SharedContext, Organization
 
     try:
         workspace_path = os.environ.get("BIFROST_WORKSPACE_LOCATION", "/mounts/workspace")
@@ -394,3 +394,5 @@ async def scan_file(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Failed to scan file",
         )
+
+

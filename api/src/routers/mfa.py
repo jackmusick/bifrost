@@ -13,8 +13,8 @@ from uuid import UUID
 from fastapi import APIRouter, HTTPException, Request, status
 from pydantic import BaseModel, Field
 
-from shared.cache import get_shared_redis
-from shared.cache.keys import refresh_token_jti_key, TTL_REFRESH_TOKEN
+from src.core.cache import get_shared_redis
+from src.core.cache.keys import refresh_token_jti_key, TTL_REFRESH_TOKEN
 from src.core.auth import CurrentActiveUser, get_current_user_from_db
 from src.core.database import DbSession
 from src.core.security import (

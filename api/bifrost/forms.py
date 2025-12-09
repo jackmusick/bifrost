@@ -12,7 +12,7 @@ import json as json_module
 import logging
 from typing import Any
 
-from shared.cache import form_key, forms_hash_key, get_redis, user_forms_key
+from src.core.cache import form_key, forms_hash_key, get_redis, user_forms_key
 
 from ._internal import get_context
 

@@ -14,7 +14,7 @@ from uuid import UUID
 
 from sqlalchemy import delete, select
 
-from shared.cache import get_shared_redis, pending_changes_key
+from src.core.cache import get_shared_redis, pending_changes_key
 
 if TYPE_CHECKING:
     from sqlalchemy.ext.asyncio import AsyncSession

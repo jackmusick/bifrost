@@ -14,8 +14,8 @@ from datetime import datetime, timezone
 from fastapi import APIRouter, HTTPException, Query, Request, Response, status
 from pydantic import BaseModel
 
-from shared.cache import get_shared_redis
-from shared.cache.keys import (
+from src.core.cache import get_shared_redis
+from src.core.cache.keys import (
     oauth_state_key,
     refresh_token_jti_key,
     TTL_OAUTH_STATE,

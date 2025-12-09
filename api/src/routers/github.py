@@ -10,7 +10,7 @@ from datetime import datetime
 
 from fastapi import APIRouter, HTTPException, Query, status
 
-from shared.models import (
+from src.models.models import (
     ValidateTokenRequest,
     DetectedRepoInfo,
     GitHubConfigRequest,
@@ -29,7 +29,7 @@ from shared.models import (
     CreateRepoRequest,
     CreateRepoResponse,
 )
-from shared.services.git_integration_service import GitIntegrationService
+from src.services.git_integration import GitIntegrationService
 from src.core.auth import Context, CurrentSuperuser
 
 logger = logging.getLogger(__name__)

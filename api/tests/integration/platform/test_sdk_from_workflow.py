@@ -16,7 +16,7 @@ from bifrost._context import set_execution_context, clear_execution_context, get
 @pytest.fixture
 def test_context():
     """Create a test execution context"""
-    from shared.context import ExecutionContext, Organization
+    from src.sdk.context import ExecutionContext, Organization
 
     org = Organization(id="test-org", name="Test Org", is_active=True)
     return ExecutionContext(
@@ -34,7 +34,7 @@ def test_context():
 @pytest.fixture
 def admin_context():
     """Create an admin execution context"""
-    from shared.context import ExecutionContext, Organization
+    from src.sdk.context import ExecutionContext, Organization
 
     org = Organization(id="test-org", name="Test Org", is_active=True)
     return ExecutionContext(
@@ -152,35 +152,35 @@ class TestSDKFileOperations:
 class TestImportRestrictions:
     """Test that import restrictions work correctly"""
 
-    def test_home_code_cannot_import_shared_directly(self):
-        """Test that code in /home cannot import from shared.*"""
+    def test_home_code_cannot_import_src_directly(self):
+        """Test that code in /home cannot import from src.*"""
         # This would need to be tested with actual files in /home
         # For now, we verify the restrictor is configured correctly
 
-        from shared.import_restrictor import get_active_restrictors
+        from src.services.execution.import_restrictor import get_active_restrictors
 
         restrictors = get_active_restrictors()
 
         if restrictors:
             restrictor = restrictors[0]
-            # Verify blocked prefixes include 'shared.'
-            assert 'shared.' in restrictor.BLOCKED_PREFIXES
+            # Verify blocked prefixes include 'src.'
+            assert 'src.' in restrictor.BLOCKED_PREFIXES
 
             # Verify bifrost is in allowed exports
-            assert 'bifrost' in restrictor.ALLOWED_SHARED_EXPORTS
+            assert 'bifrost' in restrictor.ALLOWED_EXPORTS
 
     def test_bifrost_modules_are_whitelisted(self):
         """Test that bifrost SDK modules are whitelisted for import"""
-        from shared.import_restrictor import WorkspaceImportRestrictor
+        from src.services.execution.import_restrictor import WorkspaceImportRestrictor
 
         # Check that bifrost modules are in whitelist
-        assert 'bifrost' in WorkspaceImportRestrictor.ALLOWED_SHARED_EXPORTS
-        assert 'bifrost.organizations' in WorkspaceImportRestrictor.ALLOWED_SHARED_EXPORTS
-        assert 'bifrost.workflows' in WorkspaceImportRestrictor.ALLOWED_SHARED_EXPORTS
-        assert 'bifrost.files' in WorkspaceImportRestrictor.ALLOWED_SHARED_EXPORTS
-        assert 'bifrost.forms' in WorkspaceImportRestrictor.ALLOWED_SHARED_EXPORTS
-        assert 'bifrost.executions' in WorkspaceImportRestrictor.ALLOWED_SHARED_EXPORTS
-        assert 'bifrost.roles' in WorkspaceImportRestrictor.ALLOWED_SHARED_EXPORTS
+        assert 'bifrost' in WorkspaceImportRestrictor.ALLOWED_EXPORTS
+        assert 'bifrost.organizations' in WorkspaceImportRestrictor.ALLOWED_EXPORTS
+        assert 'bifrost.workflows' in WorkspaceImportRestrictor.ALLOWED_EXPORTS
+        assert 'bifrost.files' in WorkspaceImportRestrictor.ALLOWED_EXPORTS
+        assert 'bifrost.forms' in WorkspaceImportRestrictor.ALLOWED_EXPORTS
+        assert 'bifrost.executions' in WorkspaceImportRestrictor.ALLOWED_EXPORTS
+        assert 'bifrost.roles' in WorkspaceImportRestrictor.ALLOWED_EXPORTS
 
 
 class TestEndToEndSDKUsage:

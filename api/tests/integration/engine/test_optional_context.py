@@ -11,7 +11,7 @@ import pytest
 
 from bifrost import ExecutionContext, workflow
 from bifrost._context import clear_execution_context, set_execution_context
-from shared.context import Caller, Organization
+from src.sdk.context import Caller, Organization
 
 
 @pytest.fixture

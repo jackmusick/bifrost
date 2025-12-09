@@ -58,7 +58,7 @@ class TestWorkspaceIsolation:
         """Integration: Workspace code can access whitelisted shared modules"""
         # Workspace workflows should be able to import decorators
         try:
-            from shared.decorators import workflow, data_provider
+            from src.sdk.decorators import workflow, data_provider
             assert workflow is not None
             assert data_provider is not None
         except ImportError as e:
@@ -66,7 +66,7 @@ class TestWorkspaceIsolation:
 
     def test_import_restrictions_active_for_workspace(self, workspace_path):
         """Integration: Import restrictions are enforced when enabled"""
-        from shared.import_restrictor import install_import_restrictions
+        from src.services.execution.import_restrictor import install_import_restrictions
 
         # Install restrictions
         install_import_restrictions([str(workspace_path)])
@@ -141,7 +141,7 @@ class TestWorkspacePublicAPI:
     def test_decorators_module_accessible(self):
         """Integration: @workflow and @data_provider decorators are accessible"""
         try:
-            from shared.decorators import data_provider, workflow
+            from src.sdk.decorators import data_provider, workflow
             assert callable(workflow)
             assert callable(data_provider)
         except ImportError as e:
@@ -150,7 +150,7 @@ class TestWorkspacePublicAPI:
     def test_context_module_accessible(self):
         """Integration: ExecutionContext is accessible"""
         try:
-            from shared.context import ExecutionContext
+            from src.sdk.context import ExecutionContext
             # Verify it's a class
             assert isinstance(ExecutionContext, type)
         except ImportError as e:
@@ -159,7 +159,7 @@ class TestWorkspacePublicAPI:
     def test_error_handling_module_accessible(self):
         """Integration: Error classes are accessible"""
         try:
-            from shared.error_handling import IntegrationError, ValidationError, WorkflowError
+            from src.sdk.error_handling import IntegrationError, ValidationError, WorkflowError
             assert all(isinstance(cls, type) for cls in [
                 WorkflowError,
                 ValidationError,
@@ -171,7 +171,8 @@ class TestWorkspacePublicAPI:
     def test_models_module_accessible(self):
         """Integration: Pydantic models are accessible"""
         try:
-            from shared.models import ExecutionStatus, WorkflowExecutionResponse
+            from src.models.models import WorkflowExecutionResponse
+            from src.models.enums import ExecutionStatus
             # These should be importable
             assert WorkflowExecutionResponse is not None
             assert ExecutionStatus is not None

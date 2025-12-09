@@ -3,6 +3,10 @@ File management SDK for Bifrost.
 
 Provides Python API for file operations in workspace/files/ and temp directories.
 
+Works in two modes:
+1. Platform context (inside workflows): Direct filesystem access
+2. External context (via dev API key): API calls to SDK endpoints
+
 Location Options:
 - "temp": Temporary files (cleared periodically, for execution-scoped data)
 - "workspace": Persistent workspace files (survives across executions)
@@ -22,7 +26,18 @@ import shutil
 from pathlib import Path
 from typing import Literal
 
-from ._internal import get_context
+from ._context import _execution_context
+
+
+def _is_platform_context() -> bool:
+    """Check if running inside platform execution context."""
+    return _execution_context.get() is not None
+
+
+def _get_client():
+    """Get the BifrostClient for API calls."""
+    from .client import get_client
+    return get_client()
 
 
 class files:
@@ -31,6 +46,8 @@ class files:
 
     Provides safe file access within workspace/files/ and temp directories.
     All paths are sandboxed to prevent access outside allowed directories.
+
+    Works in both platform context (direct access) and external context (API calls).
     """
 
     # Allowed base paths for file operations (loaded from environment)
@@ -101,18 +118,26 @@ class files:
         Raises:
             FileNotFoundError: If file doesn't exist
             ValueError: If path is outside allowed directories
-            RuntimeError: If no execution context
+            RuntimeError: If no execution context (in platform mode)
 
         Example:
             >>> from bifrost import files
             >>> content = files.read("data/customers.csv", location="workspace")
         """
-        get_context()  # Ensure execution context exists
-
-        file_path = files._resolve_path(path, location)
-
-        with open(file_path, 'r', encoding='utf-8') as f:
-            return f.read()
+        if _is_platform_context():
+            # Direct filesystem access (platform mode)
+            file_path = files._resolve_path(path, location)
+            with open(file_path, 'r', encoding='utf-8') as f:
+                return f.read()
+        else:
+            # API call (external mode)
+            client = _get_client()
+            response = client.post_sync(
+                "/api/sdk/files/read",
+                json={"path": path, "location": location}
+            )
+            response.raise_for_status()
+            return response.text
 
     @staticmethod
     def read_bytes(path: str, location: Literal["temp", "workspace"] = "workspace") -> bytes:
@@ -129,18 +154,27 @@ class files:
         Raises:
             FileNotFoundError: If file doesn't exist
             ValueError: If path is outside allowed directories
-            RuntimeError: If no execution context
+            RuntimeError: If no execution context (in platform mode)
 
         Example:
             >>> from bifrost import files
             >>> data = files.read_bytes("reports/report.pdf", location="workspace")
         """
-        get_context()  # Ensure execution context exists
-
-        file_path = files._resolve_path(path, location)
-
-        with open(file_path, 'rb') as f:
-            return f.read()
+        if _is_platform_context():
+            # Direct filesystem access (platform mode)
+            file_path = files._resolve_path(path, location)
+            with open(file_path, 'rb') as f:
+                return f.read()
+        else:
+            # API call (external mode) - binary not supported via text API
+            # Fall back to reading text and encoding
+            client = _get_client()
+            response = client.post_sync(
+                "/api/sdk/files/read",
+                json={"path": path, "location": location}
+            )
+            response.raise_for_status()
+            return response.content
 
     @staticmethod
     def write(path: str, content: str, location: Literal["temp", "workspace"] = "workspace") -> None:
@@ -154,21 +188,26 @@ class files:
 
         Raises:
             ValueError: If path is outside allowed directories
-            RuntimeError: If no execution context
+            RuntimeError: If no execution context (in platform mode)
 
         Example:
             >>> from bifrost import files
             >>> files.write("output/report.txt", "Report data", location="workspace")
         """
-        get_context()  # Ensure execution context exists
-
-        file_path = files._resolve_path(path, location)
-
-        # Create parent directories if needed
-        file_path.parent.mkdir(parents=True, exist_ok=True)
-
-        with open(file_path, 'w', encoding='utf-8') as f:
-            f.write(content)
+        if _is_platform_context():
+            # Direct filesystem access (platform mode)
+            file_path = files._resolve_path(path, location)
+            file_path.parent.mkdir(parents=True, exist_ok=True)
+            with open(file_path, 'w', encoding='utf-8') as f:
+                f.write(content)
+        else:
+            # API call (external mode)
+            client = _get_client()
+            response = client.post_sync(
+                "/api/sdk/files/write",
+                json={"path": path, "content": content, "location": location}
+            )
+            response.raise_for_status()
 
     @staticmethod
     def write_bytes(path: str, content: bytes, location: Literal["temp", "workspace"] = "workspace") -> None:
@@ -182,21 +221,29 @@ class files:
 
         Raises:
             ValueError: If path is outside allowed directories
-            RuntimeError: If no execution context
+            RuntimeError: If no execution context (in platform mode)
 
         Example:
             >>> from bifrost import files
             >>> files.write_bytes("uploads/image.png", image_data, location="workspace")
         """
-        get_context()  # Ensure execution context exists
-
-        file_path = files._resolve_path(path, location)
-
-        # Create parent directories if needed
-        file_path.parent.mkdir(parents=True, exist_ok=True)
-
-        with open(file_path, 'wb') as f:
-            f.write(content)
+        if _is_platform_context():
+            # Direct filesystem access (platform mode)
+            file_path = files._resolve_path(path, location)
+            file_path.parent.mkdir(parents=True, exist_ok=True)
+            with open(file_path, 'wb') as f:
+                f.write(content)
+        else:
+            # API call (external mode) - convert bytes to base64 for transport
+            import base64
+            client = _get_client()
+            # For binary, we encode as base64 and send as text
+            # The API endpoint would need to handle this - for now we just write text
+            response = client.post_sync(
+                "/api/sdk/files/write",
+                json={"path": path, "content": base64.b64encode(content).decode(), "location": location}
+            )
+            response.raise_for_status()
 
     @staticmethod
     def list(directory: str = "", location: Literal["temp", "workspace"] = "workspace") -> list[str]:
@@ -213,7 +260,7 @@ class files:
         Raises:
             FileNotFoundError: If directory doesn't exist
             ValueError: If path is outside allowed directories
-            RuntimeError: If no execution context
+            RuntimeError: If no execution context (in platform mode)
 
         Example:
             >>> from bifrost import files
@@ -221,17 +268,23 @@ class files:
             >>> for item in items:
             ...     print(item)
         """
-        get_context()  # Ensure execution context exists
-
-        dir_path = files._resolve_path(directory, location)
-
-        if not dir_path.exists():
-            raise FileNotFoundError(f"Directory not found: {directory}")
-
-        if not dir_path.is_dir():
-            raise ValueError(f"Not a directory: {directory}")
-
-        return [item.name for item in dir_path.iterdir()]
+        if _is_platform_context():
+            # Direct filesystem access (platform mode)
+            dir_path = files._resolve_path(directory, location)
+            if not dir_path.exists():
+                raise FileNotFoundError(f"Directory not found: {directory}")
+            if not dir_path.is_dir():
+                raise ValueError(f"Not a directory: {directory}")
+            return [item.name for item in dir_path.iterdir()]
+        else:
+            # API call (external mode)
+            client = _get_client()
+            response = client.post_sync(
+                "/api/sdk/files/list",
+                json={"directory": directory, "location": location}
+            )
+            response.raise_for_status()
+            return response.json()
 
     @staticmethod
     def delete(path: str, location: Literal["temp", "workspace"] = "workspace") -> None:
@@ -245,23 +298,29 @@ class files:
         Raises:
             FileNotFoundError: If file doesn't exist
             ValueError: If path is outside allowed directories
-            RuntimeError: If no execution context
+            RuntimeError: If no execution context (in platform mode)
 
         Example:
             >>> from bifrost import files
             >>> files.delete("temp/old_file.txt", location="temp")
         """
-        get_context()  # Ensure execution context exists
-
-        file_path = files._resolve_path(path, location)
-
-        if not file_path.exists():
-            raise FileNotFoundError(f"Path not found: {path}")
-
-        if file_path.is_dir():
-            shutil.rmtree(file_path)
+        if _is_platform_context():
+            # Direct filesystem access (platform mode)
+            file_path = files._resolve_path(path, location)
+            if not file_path.exists():
+                raise FileNotFoundError(f"Path not found: {path}")
+            if file_path.is_dir():
+                shutil.rmtree(file_path)
+            else:
+                file_path.unlink()
         else:
-            file_path.unlink()
+            # API call (external mode)
+            client = _get_client()
+            response = client.post_sync(
+                "/api/sdk/files/delete",
+                json={"path": path, "location": location}
+            )
+            response.raise_for_status()
 
     @staticmethod
     def exists(path: str, location: Literal["temp", "workspace"] = "workspace") -> bool:
@@ -277,17 +336,28 @@ class files:
 
         Raises:
             ValueError: If path is outside allowed directories
-            RuntimeError: If no execution context
+            RuntimeError: If no execution context (in platform mode)
 
         Example:
             >>> from bifrost import files
             >>> if files.exists("data/customers.csv", location="workspace"):
             ...     data = files.read("data/customers.csv", location="workspace")
         """
-        get_context()  # Ensure execution context exists
-
-        try:
-            file_path = files._resolve_path(path, location)
-            return file_path.exists()
-        except ValueError:
-            return False
+        if _is_platform_context():
+            # Direct filesystem access (platform mode)
+            try:
+                file_path = files._resolve_path(path, location)
+                return file_path.exists()
+            except ValueError:
+                return False
+        else:
+            # API call (external mode) - try to list and catch 404
+            try:
+                client = _get_client()
+                response = client.post_sync(
+                    "/api/sdk/files/read",
+                    json={"path": path, "location": location}
+                )
+                return response.status_code == 200
+            except Exception:
+                return False

@@ -16,7 +16,7 @@ from pydantic import BaseModel, Field
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from shared.models import (
+from src.models.models import (
     CreateOAuthConnectionRequest,
     UpdateOAuthConnectionRequest,
     OAuthConnectionDetail,
@@ -33,7 +33,7 @@ from src.models import OAuthProvider, OAuthToken
 
 # Import cache invalidation
 try:
-    from shared.cache import invalidate_oauth, invalidate_oauth_token
+    from src.core.cache import invalidate_oauth, invalidate_oauth_token
     CACHE_INVALIDATION_AVAILABLE = True
 except ImportError:
     CACHE_INVALIDATION_AVAILABLE = False
@@ -649,7 +649,7 @@ async def refresh_token(
 ) -> RefreshTokenResponse:
     """Refresh OAuth token using refresh token."""
     from src.core.security import decrypt_secret, encrypt_secret
-    from shared.services.oauth_provider import OAuthProviderClient
+    from src.services.oauth_provider import OAuthProviderClient
 
     repo = OAuthConnectionRepository(ctx.db)
     org_id = ctx.org_id
@@ -751,7 +751,7 @@ async def oauth_callback(
 ) -> OAuthCallbackResponse:
     """Handle OAuth callback and exchange authorization code for tokens."""
     from src.core.security import decrypt_secret
-    from shared.services.oauth_provider import OAuthProviderClient
+    from src.services.oauth_provider import OAuthProviderClient
 
     repo = OAuthConnectionRepository(ctx.db)
     # Callbacks may come from non-authenticated contexts
@@ -884,7 +884,7 @@ async def get_credentials(
 ) -> OAuthCredentialsResponse:
     """Get OAuth credentials for use in workflows."""
     from src.core.security import decrypt_secret
-    from shared.models import OAuthCredentialsModel
+    from src.models.models import OAuthCredentialsModel
 
     repo = OAuthConnectionRepository(ctx.db)
     org_id = ctx.org_id

@@ -16,7 +16,7 @@ import logging
 from fastapi import APIRouter, HTTPException, status
 from sqlalchemy import select
 
-from shared.models import ScheduleInfo, SchedulesListResponse
+from src.models.models import ScheduleInfo, SchedulesListResponse
 from src.models import Workflow as WorkflowORM
 from src.core.auth import Context, CurrentSuperuser
 from src.core.database import DbSession
@@ -51,7 +51,7 @@ async def list_schedules(
     try:
         # Try to import cron_parser, but don't fail if croniter isn't installed
         try:
-            from shared.workflows.cron_parser import cron_to_human_readable
+            from src.services.cron_parser import cron_to_human_readable
             get_human_readable = cron_to_human_readable
         except ImportError:
             get_human_readable = lambda x: x  # noqa: E731

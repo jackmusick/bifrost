@@ -21,7 +21,7 @@ from uuid import UUID
 
 import redis as redis_sync
 
-from shared.cache.keys import execution_logs_stream_key
+from src.core.cache.keys import execution_logs_stream_key
 
 logger = logging.getLogger(__name__)
 
@@ -193,7 +193,7 @@ async def append_log_to_stream_async(
 
     Use this in async contexts (API routes, background tasks).
     """
-    from shared.cache import get_redis
+    from src.core.cache import get_redis
 
     exec_id = str(execution_id)
     ts = timestamp or datetime.utcnow()
@@ -232,7 +232,7 @@ async def read_logs_from_stream(
     Returns:
         List of log entries with id, level, message, metadata, timestamp
     """
-    from shared.cache import get_redis
+    from src.core.cache import get_redis
 
     exec_id = str(execution_id)
     stream_key = execution_logs_stream_key(exec_id)
@@ -294,7 +294,7 @@ async def flush_logs_to_postgres(execution_id: str | UUID) -> int:
     stream_key = execution_logs_stream_key(exec_id)
 
     try:
-        from shared.cache import get_redis
+        from src.core.cache import get_redis
 
         async with get_redis() as r:
             # Read all entries from stream

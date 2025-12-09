@@ -4,7 +4,7 @@ Contract tests for branding API endpoints
 Tests branding configuration retrieval and updates with logo uploads and color validation.
 """
 
-from shared.models import BrandingSettings
+from src.models.models import BrandingSettings
 
 
 class TestBrandingContracts:

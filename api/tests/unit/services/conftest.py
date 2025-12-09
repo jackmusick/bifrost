@@ -14,7 +14,7 @@ from unittest.mock import AsyncMock, MagicMock, Mock, patch
 @pytest.fixture
 def mock_blob_service_client():
     """Mock BlobServiceClient with full blob operations support"""
-    with patch("shared.blob_storage.BlobServiceClient") as mock_service_class:
+    with patch("src.core.blob_storage.BlobServiceClient") as mock_service_class:
         # Create mock instances
         mock_service = MagicMock()
         mock_blob_client = MagicMock()
@@ -43,7 +43,7 @@ def mock_blob_service_client():
 @pytest.fixture
 def mock_secret_client():
     """Mock SecretClient for Key Vault operations"""
-    with patch("shared.keyvault.SecretClient") as mock_client_class:
+    with patch("src.core.keyvault.SecretClient") as mock_client_class:
         # Create mock instance
         mock_instance = MagicMock()
         mock_client_class.return_value = mock_instance
@@ -101,7 +101,7 @@ def mock_secret_client():
 @pytest.fixture
 def mock_default_credential():
     """Mock DefaultAzureCredential"""
-    with patch("shared.keyvault.DefaultAzureCredential") as mock:
+    with patch("src.core.keyvault.DefaultAzureCredential") as mock:
         yield mock
 
 
@@ -177,38 +177,13 @@ def temp_test_dir(tmp_path):
     return tmp_path
 
 
-@pytest.fixture
-def mock_workspace_service():
-    """Mock WorkspaceService for zip service tests"""
-    with patch("shared.services.zip_service.get_workspace_service") as mock:
-        # Use Mock instead of MagicMock to prevent MagicProxy issues with AsyncMock
-        service = Mock(spec=['list_files', 'read_file'])
-
-        # Sample files for listing
-        sample_files = [
-            {"path": "file1.txt", "isDirectory": False, "size": 1024},
-            {"path": "file2.py", "isDirectory": False, "size": 2048},
-            {"path": "subdir/file3.json", "isDirectory": False, "size": 512},
-        ]
-
-        def mock_list_files(directory_path=""):
-            return sample_files
-
-        # Use AsyncMock for async method
-        service.list_files = mock_list_files
-        service.read_file = AsyncMock(return_value=b"Sample file content")
-
-        mock.return_value = service
-        yield {"service": service, "mock": mock}
-
-
 # ====================  OAuth Storage Service Fixtures ====================
 
 
 @pytest.fixture
 def mock_table_service():
     """Mock AsyncTableStorageService for OAuth storage"""
-    with patch("shared.services.oauth_storage_service.AsyncTableStorageService") as mock:
+    with patch("src.services.oauth_storage.AsyncTableStorageService") as mock:
         instance = AsyncMock()
         instance.insert_entity = AsyncMock()  # Async
         instance.get_entity = AsyncMock()     # Async
@@ -222,7 +197,7 @@ def mock_table_service():
 @pytest.fixture
 def mock_keyvault_client():
     """Mock KeyVaultClient for OAuth storage"""
-    with patch("shared.services.oauth_storage_service.KeyVaultClient") as mock_kv_class:
+    with patch("src.services.oauth_storage.KeyVaultClient") as mock_kv_class:
         # Create async mock methods
         set_secret_mock = AsyncMock(return_value={"name": "test-secret", "message": "Secret saved successfully"})
         get_secret_mock = AsyncMock(return_value="test-value")
@@ -330,32 +305,6 @@ def mock_config_table_response():
 
 
 # ====================  Workspace Service Fixtures ====================
-
-
-@pytest.fixture
-def mock_filesystem():
-    """Mock file system operations for workspace service"""
-    with patch("shared.services.workspace_service.Path") as mock_path:
-        # Create mock path instance
-        path_instance = MagicMock()
-        mock_path.return_value = path_instance
-
-        # Setup default behaviors
-        path_instance.exists.return_value = True
-        path_instance.is_dir.return_value = True
-        path_instance.is_file.return_value = True
-        path_instance.mkdir.return_value = None
-        path_instance.parent = MagicMock()
-        path_instance.parent.mkdir.return_value = None
-        path_instance.stat.return_value = MagicMock(st_size=1024, st_mtime=1000000000)
-        path_instance.name = "test_file.py"
-        path_instance.rglob.return_value = []
-        path_instance.read_bytes.return_value = b"print('Hello')"
-        path_instance.write_bytes.return_value = None
-        path_instance.unlink.return_value = None
-        path_instance.rmdir.return_value = None
-
-        yield {"path": mock_path, "instance": path_instance}
 
 
 @pytest.fixture

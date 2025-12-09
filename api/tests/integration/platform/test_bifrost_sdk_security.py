@@ -64,7 +64,7 @@ class TestDefaultOrgScoping:
         from unittest.mock import AsyncMock, patch
         from contextlib import asynccontextmanager
         from bifrost import config
-        from shared.context import ExecutionContext, Organization
+        from src.sdk.context import ExecutionContext, Organization
 
         # Create context for org-123
         org = Organization(id="org-123", name="Test Org", is_active=True)
@@ -126,7 +126,7 @@ class TestCrossOrgParameterUsage:
         from unittest.mock import AsyncMock, patch
         from contextlib import asynccontextmanager
         from bifrost import config
-        from shared.context import ExecutionContext, Organization
+        from src.sdk.context import ExecutionContext, Organization
 
         # User is in org-123
         org = Organization(id="org-123", name="Test Org", is_active=True)
@@ -184,7 +184,7 @@ class TestCrossOrgParameterUsage:
         """Test that config.set(org_id='other-org') writes to the specified org"""
         from unittest.mock import AsyncMock, MagicMock, patch
         from bifrost import config
-        from shared.context import ExecutionContext, Organization
+        from src.sdk.context import ExecutionContext, Organization
 
         # User is in org-123
         org = Organization(id="org-123", name="Test Org", is_active=True)
@@ -224,7 +224,7 @@ class TestCrossOrgParameterUsage:
         """Test that config.delete(org_id='other-org') deletes from the specified org"""
         from unittest.mock import AsyncMock, MagicMock, patch
         from bifrost import config
-        from shared.context import ExecutionContext, Organization
+        from src.sdk.context import ExecutionContext, Organization
 
         # User is in org-123
         org = Organization(id="org-123", name="Test Org", is_active=True)
@@ -267,7 +267,7 @@ class TestCrossOrgParameterUsage:
         from unittest.mock import AsyncMock, patch
         from contextlib import asynccontextmanager
         from bifrost import oauth
-        from shared.context import ExecutionContext, Organization
+        from src.sdk.context import ExecutionContext, Organization
 
         org = Organization(id="org-123", name="Test Org", is_active=True)
         context = ExecutionContext(

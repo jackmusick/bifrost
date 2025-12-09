@@ -159,54 +159,6 @@ async def clean_db(db_session: AsyncSession) -> AsyncGenerator[AsyncSession, Non
     yield db_session
 
 
-# ==================== CONTEXT FIXTURES ====================
-
-
-@pytest.fixture
-def platform_admin_context():
-    """Returns a RequestContext for a platform admin user."""
-    from shared.request_context import RequestContext
-
-    return RequestContext(
-        user_id="admin-user-12345",
-        email="admin@test.com",
-        name="Test Platform Admin",
-        org_id="GLOBAL",
-        is_platform_admin=True,
-        is_function_key=False,
-    )
-
-
-@pytest.fixture
-def org_user_context():
-    """Returns a RequestContext for an organization user."""
-    from shared.request_context import RequestContext
-
-    return RequestContext(
-        user_id="org-user-67890",
-        email="user@test.com",
-        name="Test Org User",
-        org_id="test-org-12345",
-        is_platform_admin=False,
-        is_function_key=False,
-    )
-
-
-@pytest.fixture
-def function_key_context():
-    """Returns a RequestContext for function key authentication."""
-    from shared.request_context import RequestContext
-
-    return RequestContext(
-        user_id="system",
-        email="system@local",
-        name="System (Function Key)",
-        org_id="GLOBAL",
-        is_platform_admin=True,
-        is_function_key=True,
-    )
-
-
 # ==================== MOCK FIXTURES ====================
 
 

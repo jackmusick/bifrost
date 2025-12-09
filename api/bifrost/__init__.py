@@ -46,17 +46,15 @@ from .roles import roles
 from .workflows import workflows
 
 # Import decorators and context from shared module
-from shared.decorators import workflow, data_provider
-from shared.context import ExecutionContext, Organization
+from src.sdk.decorators import workflow, data_provider
+from src.sdk.context import ExecutionContext, Organization
 
 # Import context proxy for accessing ExecutionContext without parameter
 from ._context import context
-from shared.errors import UserError, WorkflowError, ValidationError, IntegrationError, ConfigurationError
-from shared.models import (
-    ExecutionStatus,
+from src.sdk.errors import UserError, WorkflowError, ValidationError, IntegrationError, ConfigurationError
+from src.models.enums import ExecutionStatus, ConfigType, FormFieldType
+from src.models.models import (
     OAuthCredentials,
-    ConfigType,
-    FormFieldType,
     IntegrationType,
     Role,
     Form,

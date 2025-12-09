@@ -22,7 +22,6 @@ from src.routers.packages import router as packages_router
 from src.routers.github import router as github_router
 from src.routers.oauth_connections import router as oauth_connections_router
 from src.routers.endpoints import router as endpoints_router
-from src.routers.file_uploads import router as file_uploads_router
 from src.routers.sdk import router as sdk_router
 
 __all__ = [
@@ -49,6 +48,5 @@ __all__ = [
     "github_router",
     "oauth_connections_router",
     "endpoints_router",
-    "file_uploads_router",
     "sdk_router",
 ]

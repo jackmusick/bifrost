@@ -16,11 +16,11 @@ from sqlalchemy import select
 from src.core.database import get_db_context
 from src.core.security import decrypt_secret, encrypt_secret
 from src.models import OAuthToken, OAuthProvider
-from shared.services.oauth_provider import OAuthProviderClient
+from src.services.oauth_provider import OAuthProviderClient
 
 # Import cache invalidation
 try:
-    from shared.cache import invalidate_oauth_token
+    from src.core.cache import invalidate_oauth_token
     CACHE_INVALIDATION_AVAILABLE = True
 except ImportError:
     CACHE_INVALIDATION_AVAILABLE = False

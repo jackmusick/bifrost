@@ -91,7 +91,7 @@ class GitSyncConsumer(BaseConsumer):
 
             context = Context(org_id)
 
-            from shared.services.git_integration_service import GitIntegrationService
+            from src.services.git_integration import GitIntegrationService
 
             git_service = GitIntegrationService()
 
@@ -194,7 +194,7 @@ class GitSyncConsumer(BaseConsumer):
 
             context = Context(org_id)
 
-            from shared.services.git_integration_service import GitIntegrationService
+            from src.services.git_integration import GitIntegrationService
 
             git_service = GitIntegrationService()
 
