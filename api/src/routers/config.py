@@ -260,6 +260,5 @@ async def delete_config(
 # =============================================================================
 # Integration Config Endpoints
 # TODO: Migrate integrations to dedicated IntegrationConfiguration table with
-#       PostgreSQL storage. The shared/handlers/org_config_handlers.py
-#       integration handlers still use Azure Table Storage patterns.
+#       PostgreSQL storage.
 # =============================================================================

@@ -13,9 +13,18 @@ from contextlib import asynccontextmanager
 from pathlib import Path
 from uuid import uuid4
 
-from src.config import Settings, get_settings
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from src.config import Settings
 
 logger = logging.getLogger(__name__)
+
+
+def _get_settings() -> "Settings":
+    """Lazy import of settings to avoid circular dependencies."""
+    from src.config import get_settings
+    return get_settings()
 
 
 class BlobStorageService:
@@ -25,8 +34,8 @@ class BlobStorageService:
     Provides simple blob operations without PostgreSQL indexing.
     """
 
-    def __init__(self, settings: Settings | None = None):
-        self.settings = settings or get_settings()
+    def __init__(self, settings: "Settings | None" = None):
+        self.settings = settings or _get_settings()
 
     @asynccontextmanager
     async def _get_s3_client(self):

@@ -65,11 +65,7 @@ class WorkspaceImportRestrictor(MetaPathFinder):
         'shared.decorators',  # Required by bifrost (internal dependency)
         'shared.context',  # Required by bifrost (internal dependency)
         'shared.models',  # Required by bifrost (internal dependency)
-        'shared.handlers.organizations_handlers',  # Business logic for bifrost SDK
-        'shared.handlers.workflows_handlers',  # Business logic for bifrost SDK
-        'shared.handlers.workflows_logic',  # Business logic for bifrost SDK
-        'shared.handlers.forms_handlers',  # Business logic for bifrost SDK
-        'shared.handlers.forms_logic',  # Business logic for bifrost SDK
+        'shared.logic.workflows_handlers',  # Business logic for workflow validation
         'shared.request_context',  # Used by bifrost SDK
         'shared.registry',  # Used by bifrost SDK
         'shared.keyvault',  # Used by bifrost secrets SDK

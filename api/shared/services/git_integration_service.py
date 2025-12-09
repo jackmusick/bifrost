@@ -35,9 +35,9 @@ from shared.models import (
     CommitInfo,
 )
 from shared.utils.file_operations import manual_copy_tree, get_system_tmp
-from src.config import get_settings
 
 if TYPE_CHECKING:
+    from src.config import Settings
     from shared.services.file_storage_service import FileStorageService
 
 logger = logging.getLogger(__name__)
@@ -45,6 +45,12 @@ logger = logging.getLogger(__name__)
 # Module-level lock to prevent concurrent Git fetch operations
 # This prevents SMB lock file conflicts when multiple requests arrive simultaneously
 _fetch_lock = asyncio.Lock()
+
+
+def _get_settings() -> "Settings":
+    """Lazy import of settings to avoid circular dependencies."""
+    from src.config import get_settings
+    return get_settings()
 
 
 class GitIntegrationService:
@@ -72,7 +78,7 @@ class GitIntegrationService:
             workspace_path: Path to workspace directory (for filesystem mode)
             file_storage: FileStorageService instance (for S3 mode)
         """
-        self.settings = get_settings()
+        self.settings = _get_settings()
         self.file_storage = file_storage
         self._temp_workspace: Path | None = None
         self._owns_temp_workspace = False

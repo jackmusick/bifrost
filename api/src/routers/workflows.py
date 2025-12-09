@@ -235,7 +235,7 @@ async def validate_workflow(
     user: CurrentActiveUser,
 ) -> WorkflowValidationResponse:
     """Validate a workflow file for errors."""
-    from shared.handlers.workflows_handlers import validate_workflow_file
+    from shared.logic.workflows_handlers import validate_workflow_file
 
     try:
         result = await validate_workflow_file(

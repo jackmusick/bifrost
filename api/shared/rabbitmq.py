@@ -15,9 +15,13 @@ import aio_pika
 from aio_pika import IncomingMessage, RobustConnection, RobustChannel
 from aio_pika.pool import Pool
 
-from src.config import get_settings
-
 logger = logging.getLogger(__name__)
+
+
+def _get_settings():
+    """Lazy import of settings to avoid circular dependencies."""
+    from src.config import get_settings
+    return get_settings()
 
 
 class RabbitMQConnection:
@@ -56,7 +60,7 @@ class RabbitMQConnection:
 
     async def _init_pools(self) -> None:
         """Initialize connection and channel pools."""
-        settings = get_settings()
+        settings = _get_settings()
 
         async def get_connection() -> RobustConnection:
             return await aio_pika.connect_robust(settings.rabbitmq_url)
@@ -125,7 +129,7 @@ class BaseConsumer(ABC):
         await rabbitmq.init_pools()
 
         # Create a dedicated connection directly (robust connection handles reconnects)
-        settings = get_settings()
+        settings = _get_settings()
         self._connection = await aio_pika.connect_robust(settings.rabbitmq_url)
         self._channel = await self._connection.channel()
         await self._channel.set_qos(prefetch_count=self.prefetch_count)
@@ -266,7 +270,7 @@ class BroadcastConsumer(ABC):
         await rabbitmq.init_pools()
 
         # Create a dedicated connection directly (robust connection handles reconnects)
-        settings = get_settings()
+        settings = _get_settings()
         self._connection = await aio_pika.connect_robust(settings.rabbitmq_url)
         self._channel = await self._connection.channel()
         await self._channel.set_qos(prefetch_count=1)

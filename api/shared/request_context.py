@@ -208,5 +208,5 @@ async def get_request_context(req: func.HttpRequest) -> RequestContext:
     )
 
 
-# Note: User provisioning is handled by GetRoles endpoint (shared/handlers/roles_source_handlers.py)
+# Note: User provisioning is handled by GetRoles endpoint (src/routers/roles.py)
 # This module only looks up existing users - GetRoles ensures they exist first
