@@ -70,7 +70,6 @@ def _convert_workflow_orm_to_schema(workflow: WorkflowORM) -> WorkflowMetadata:
         allowed_methods=workflow.allowed_methods or ["POST"],
         disable_global_key=False,
         public_endpoint=False,
-        is_platform=workflow.is_platform or False,
         source_file_path=workflow.file_path,
         relative_file_path=None,
     )
@@ -269,10 +268,12 @@ async def validate_workflow(
 async def scan_workspace(
     ctx: Context,
     user: CurrentSuperuser,
+    db: DbSession,
 ) -> WorkspaceScanResponse:
     """Scan entire workspace for SDK dependencies and issues."""
     from uuid import uuid4
-    from shared.discovery import scan_all_forms
+    from sqlalchemy import func
+    from src.models import Form as FormORM
     from shared.services.sdk_usage_scanner import SDKUsageScanner
     from shared.context import ExecutionContext as SharedContext, Organization
 
@@ -302,9 +303,11 @@ async def scan_workspace(
         scanned_count = len(file_usages)
         sdk_issues = await scanner.validate_workspace(shared_ctx)
 
-        # Scan for forms
-        forms = scan_all_forms()
-        form_count = len(forms)
+        # Count forms from database (not file scanning)
+        result = await db.execute(
+            select(func.count(FormORM.id)).where(FormORM.is_active.is_(True))
+        )
+        form_count = result.scalar() or 0
 
         response = WorkspaceScanResponse(
             issues=sdk_issues,

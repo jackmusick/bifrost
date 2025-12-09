@@ -17,7 +17,6 @@ import asyncio
 import logging
 import signal
 import sys
-from typing import NoReturn
 
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from apscheduler.triggers.cron import CronTrigger
@@ -79,29 +78,9 @@ class JobsWorker:
         await init_db()
         logger.info("Database connection established")
 
-        # Initialize discovery watcher for hot reload
-        logger.info("Initializing workspace file watcher...")
-        try:
-            from shared.discovery import get_workspace_paths
-            from shared.discovery_watcher import (
-                build_initial_index,
-                start_watcher,
-                get_index_stats,
-            )
-
-            workspace_paths = get_workspace_paths()
-            if workspace_paths:
-                build_initial_index(workspace_paths)
-                start_watcher(workspace_paths)
-                stats = get_index_stats()
-                logger.info(
-                    f"Workspace watcher started: {stats['workflows']} workflows, "
-                    f"{stats['providers']} providers, {stats['forms']} forms indexed"
-                )
-            else:
-                logger.warning("No workspace paths configured - watcher not started")
-        except Exception as e:
-            logger.warning(f"Failed to initialize workspace watcher: {e}")
+        # NOTE: Discovery watcher has been removed!
+        # Workflow/form metadata extraction now happens at write time in FileStorageService.
+        # This eliminates the need for file watching and enables horizontal scaling.
 
         # Initialize and start RabbitMQ consumers
         logger.info("Starting RabbitMQ consumers...")
@@ -179,13 +158,7 @@ class JobsWorker:
             except Exception as e:
                 logger.error(f"Error stopping consumer {consumer.queue_name}: {e}")
 
-        # Stop workspace watcher
-        try:
-            from shared.discovery_watcher import stop_watcher
-            stop_watcher()
-            logger.info("Workspace watcher stopped")
-        except Exception as e:
-            logger.warning(f"Error stopping workspace watcher: {e}")
+        # NOTE: Discovery watcher has been removed - no cleanup needed
 
         # Close RabbitMQ connections
         await rabbitmq.close()
@@ -204,7 +177,7 @@ class JobsWorker:
         asyncio.create_task(self.stop())
 
 
-async def main() -> NoReturn:
+async def main() -> None:
     """Main entry point."""
     worker = JobsWorker()
 

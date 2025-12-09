@@ -27,15 +27,9 @@ services:
                uvicorn src.main:app --host 0.0.0.0 --port 8000 --reload --reload-dir /app/src --reload-dir /app/shared;
              fi"
 
-  # Discovery with hot reload for development
-  discovery:
-    volumes:
-      - ./api/src:/app/src:ro
-      - ./api/shared:/app/shared:ro
-      - ./api/bifrost:/app/bifrost:ro
-      - ./api/platform:/app/platform:ro
-    command: >
-      watchmedo auto-restart --directory=/app/src --directory=/app/shared --pattern="*.py" --recursive -- python -m src.discovery.main
+  # NOTE: Discovery service has been removed!
+  # Workflow/form metadata extraction now happens at write time in FileStorageService.
+  # This eliminates the need for file watching and enables horizontal scaling.
 
   # Scheduler with hot reload for development
   scheduler:

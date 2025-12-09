@@ -35,12 +35,12 @@ def get_value():
         # 3. Add tmp_path to sys.path and mock workspace paths to include tmp_path
         sys.path.insert(0, str(tmp_path))
         try:
-            from shared.discovery import reload_single_module, get_workspace_paths
+            from shared.module_loader import reload_single_module, get_workspace_paths
 
             # Mock get_workspace_paths to include our tmp_path
             original_paths = get_workspace_paths()
             with patch(
-                "shared.discovery.get_workspace_paths",
+                "shared.module_loader.get_workspace_paths",
                 return_value=[str(tmp_path)] + original_paths,
             ):
                 # Import workflow, check initial value
@@ -98,12 +98,12 @@ def get_result():
 
         sys.path.insert(0, str(tmp_path))
         try:
-            from shared.discovery import reload_single_module, get_workspace_paths
+            from shared.module_loader import reload_single_module, get_workspace_paths
 
             # Mock get_workspace_paths to include our tmp_path
             original_paths = get_workspace_paths()
             with patch(
-                "shared.discovery.get_workspace_paths",
+                "shared.module_loader.get_workspace_paths",
                 return_value=[str(tmp_path)] + original_paths,
             ):
                 import nested_workflow
@@ -150,12 +150,12 @@ def get_value():
         sys.path.insert(0, str(tmp_path))
         sys.path.insert(0, str(packages_dir))
         try:
-            from shared.discovery import reload_single_module, get_workspace_paths
+            from shared.module_loader import reload_single_module, get_workspace_paths
 
             # Mock get_workspace_paths to include our tmp_path
             original_paths = get_workspace_paths()
             with patch(
-                "shared.discovery.get_workspace_paths",
+                "shared.module_loader.get_workspace_paths",
                 return_value=[str(tmp_path)] + original_paths,
             ):
                 # Import fake package

@@ -87,6 +87,11 @@ class State:
     # Workflow IDs for form execution tests
     sync_workflow_id: str | None = None
     async_workflow_id: str | None = None
+    # SDK client integration tests
+    sdk_client_key: str | None = None
+    sdk_client_key_id: str | None = None
+    sdk_client_workflow_id: str | None = None
+    sdk_client_execution_id: str | None = None
 
 
 @pytest.fixture(scope="module", autouse=True)
@@ -780,37 +785,6 @@ class TestFullApplicationFlow:
         assert response.status_code == 200, f"List workflows failed: {response.text}"
         workflows = response.json()
         assert isinstance(workflows, list)
-
-    @pytest.mark.skip(reason="Platform workflows concept being removed - see Phase 2 in plan")
-    def test_92b_platform_workflows_properly_categorized(self):
-        """Platform workflows are correctly marked with is_platform=true."""
-        response = State.client.get(
-            "/api/workflows",
-            headers=State.platform_admin.headers,
-        )
-        assert response.status_code == 200, f"List workflows failed: {response.text}"
-        workflows = response.json()
-
-        # Find platform workflows (should be from /app/platform/ directory in Docker)
-        platform_workflows = [w for w in workflows if w.get("is_platform") is True]
-        user_workflows = [w for w in workflows if w.get("is_platform") is False]
-
-        # Verify we have some platform example workflows
-        assert len(platform_workflows) > 0, "Expected at least one platform workflow"
-
-        # Check that platform workflows have proper categorization
-        for wf in platform_workflows:
-            assert wf.get("is_platform") is True, f"Workflow {wf['name']} should be marked as platform"
-            # Platform workflows should have file paths containing /platform/
-            file_path = wf.get("source_file_path", "")
-            assert "/platform/" in file_path or "\\platform\\" in file_path, \
-                f"Platform workflow {wf['name']} has unexpected file path: {file_path}"
-
-        # Check that user workflows are not marked as platform
-        for wf in user_workflows:
-            assert wf.get("is_platform") is False, f"Workflow {wf['name']} should not be marked as platform"
-
-        logger.info(f"Platform workflow categorization verified: {len(platform_workflows)} platform, {len(user_workflows)} user")
 
     def test_93_list_data_providers(self):
         """Users can list data providers."""
@@ -2330,23 +2304,30 @@ async def e2e_cancellation_test(sleep_seconds: int = 30):
     @pytest.mark.asyncio
     async def test_301_websocket_connect_invalid_token(self):
         """Connect to WebSocket with invalid token should fail."""
+        import asyncio
         from websockets.asyncio.client import connect
-        from websockets.exceptions import InvalidStatus
+        from websockets.exceptions import ConnectionClosedError, InvalidStatus
 
         ws_url = f"{WS_BASE_URL}/ws/connect"
         # Invalid token via Authorization header
         extra_headers = {"Authorization": "Bearer invalid-token-12345"}
 
         try:
-            async with connect(ws_url, additional_headers=extra_headers) as _ws:
-                # Should not get here - connection should be rejected
-                pytest.fail("Connection should have been rejected")
+            async with connect(ws_url, additional_headers=extra_headers) as ws:
+                # With accept-before-auth pattern, connection opens then closes
+                # Try to receive - should get a close frame with code 4001
+                try:
+                    await asyncio.wait_for(ws.recv(), timeout=5)
+                    pytest.fail("Should have received close frame, not a message")
+                except ConnectionClosedError as e:
+                    # Expected - server accepted then closed with auth failure code
+                    assert e.code == 4001, f"Expected close code 4001, got {e.code}"
         except InvalidStatus as e:
-            # Expected - connection rejected
-            assert e.response.status_code in [401, 403, 4001], f"Unexpected status: {e.response.status_code}"
-        except Exception:
-            # Other rejection is acceptable
-            pass
+            # Also acceptable - connection rejected at HTTP level
+            assert e.response.status_code in [401, 403], f"Unexpected status: {e.response.status_code}"
+        except ConnectionClosedError as e:
+            # Connection was closed - verify it was auth failure
+            assert e.code == 4001, f"Expected close code 4001, got {e.code}"
 
     @pytest.mark.asyncio
     async def test_302_websocket_ping_pong(self):
@@ -3819,6 +3800,201 @@ async def sdk_e2e_test_workflow(name: str, count: int = 1) -> dict:
             params={"path": "workflows/sdk_e2e_test_workflow.py"}
         )
         assert response.status_code == 204, f"Failed to delete workflow file: {response.text}"
+
+    # =========================================================================
+    # PHASE 33: SDK HTTP Client Integration Tests
+    # Tests the developer SDK workflow: create key, use SDK client, execute workflow
+    # =========================================================================
+
+    def test_500_create_sdk_key_for_client_tests(self):
+        """Create a fresh API key for SDK client tests."""
+        response = State.client.post(
+            "/api/sdk/keys",
+            headers=State.platform_admin.headers,
+            json={
+                "name": "SDK Client E2E Test Key",
+                "expires_in_days": 1  # Short expiry for tests
+            }
+        )
+        assert response.status_code == 201, f"Failed to create SDK key: {response.text}"
+
+        data = response.json()
+        assert data["key"].startswith("bfsk_")
+        State.sdk_client_key = data["key"]
+        State.sdk_client_key_id = data["id"]
+        logger.info(f"Created SDK client test key: {data['key_prefix']}...")
+
+    @pytest.mark.asyncio
+    async def test_501_sdk_client_get_context(self):
+        """Test using BifrostClient to fetch developer context."""
+        if not hasattr(State, 'sdk_client_key') or not State.sdk_client_key:
+            pytest.skip("No SDK key available")
+
+        # Use the SDK client class directly (simulates developer usage)
+        from bifrost_sdk.client import BifrostClient
+
+        client = BifrostClient(API_BASE_URL, State.sdk_client_key)
+        try:
+            # Fetch context asynchronously
+            context = await client._fetch_context()
+
+            assert "user" in context, "Context should include user info"
+            assert context["user"]["email"] == State.platform_admin.email
+            assert "default_parameters" in context
+            logger.info(f"SDK client fetched context for user: {context['user']['email']}")
+        finally:
+            await client.close()
+
+    @pytest.mark.asyncio
+    async def test_502_sdk_api_key_only_for_sdk_endpoints(self):
+        """
+        Verify SDK API key only works for /api/sdk/* endpoints.
+
+        The SDK API key (bfsk_...) is scoped to SDK context endpoints only.
+        General API endpoints require JWT authentication.
+        """
+        if not hasattr(State, 'sdk_client_key') or not State.sdk_client_key:
+            pytest.skip("No SDK key available")
+
+        from bifrost_sdk.client import BifrostClient
+
+        client = BifrostClient(API_BASE_URL, State.sdk_client_key)
+        try:
+            # SDK endpoints SHOULD work with API key
+            response = await client.get("/api/sdk/context")
+            assert response.status_code == 200, "SDK context endpoint should accept API key"
+
+            # General API endpoints should NOT work with SDK API key
+            response = await client.get("/api/workflows")
+            assert response.status_code == 401, \
+                "General API endpoints should reject SDK API keys (require JWT)"
+
+            logger.info("SDK API key scoping is correctly enforced")
+        finally:
+            await client.close()
+
+    @pytest.mark.asyncio
+    async def test_503_sdk_client_update_context(self):
+        """Test updating developer context settings via SDK client."""
+        if not hasattr(State, 'sdk_client_key') or not State.sdk_client_key:
+            pytest.skip("No SDK key available")
+
+        # Use platform admin JWT for update (SDK API key is read-only for context)
+        response = State.client.put(
+            "/api/sdk/context",
+            headers=State.platform_admin.headers,
+            json={
+                "default_parameters": {"sdk_test_param": "test_value_503"},
+                "track_executions": True
+            }
+        )
+        assert response.status_code == 200, f"Failed to update context: {response.text}"
+
+        # Verify via SDK API key
+        from bifrost_sdk.client import BifrostClient
+        client = BifrostClient(API_BASE_URL, State.sdk_client_key)
+        try:
+            context = await client._fetch_context()
+            assert context["default_parameters"].get("sdk_test_param") == "test_value_503"
+            logger.info("SDK context update verified via API key fetch")
+        finally:
+            await client.close()
+
+    def test_504_sdk_client_context_property(self):
+        """Test BifrostClient context property works correctly."""
+        if not hasattr(State, 'sdk_client_key') or not State.sdk_client_key:
+            pytest.skip("No SDK key available")
+
+        from bifrost_sdk.client import BifrostClient
+
+        client = BifrostClient(API_BASE_URL, State.sdk_client_key)
+        try:
+            # Test the context property (uses sync fetch)
+            ctx = client.context
+            assert "user" in ctx
+            assert ctx["user"]["email"] == State.platform_admin.email
+
+            # Test user property shortcut
+            assert client.user["email"] == State.platform_admin.email
+
+            # Test default_parameters property
+            assert isinstance(client.default_parameters, dict)
+
+            logger.info("SDK client context properties work correctly")
+        finally:
+            client._sync_http.close()
+
+    def test_505_sdk_client_sync_operations(self):
+        """Test using BifrostClient synchronous operations."""
+        if not hasattr(State, 'sdk_client_key') or not State.sdk_client_key:
+            pytest.skip("No SDK key available")
+
+        from bifrost_sdk.client import BifrostClient
+
+        client = BifrostClient(API_BASE_URL, State.sdk_client_key)
+        try:
+            # Test sync GET
+            response = client.get_sync("/api/sdk/context")
+            assert response.status_code == 200, f"Sync GET failed: {response.text}"
+
+            context = response.json()
+            assert "user" in context
+            assert context["user"]["email"] == State.platform_admin.email
+
+            # Test post_sync (though SDK endpoints are mostly GET)
+            # This verifies the sync HTTP client is properly configured
+            logger.info("SDK client sync operations work correctly")
+        finally:
+            client._sync_http.close()
+
+    @pytest.mark.asyncio
+    async def test_506_sdk_client_async_operations(self):
+        """Test using BifrostClient async operations."""
+        if not hasattr(State, 'sdk_client_key') or not State.sdk_client_key:
+            pytest.skip("No SDK key available")
+
+        from bifrost_sdk.client import BifrostClient
+
+        client = BifrostClient(API_BASE_URL, State.sdk_client_key)
+        try:
+            # Test async context fetch
+            context = await client._fetch_context()
+            assert "user" in context
+            assert context["user"]["email"] == State.platform_admin.email
+
+            # Test async GET
+            response = await client.get("/api/sdk/context")
+            assert response.status_code == 200
+
+            logger.info("SDK client async operations work correctly")
+        finally:
+            await client.close()
+
+    def test_507_cleanup_sdk_context(self):
+        """Clean up SDK context test data."""
+        # Reset context to defaults
+        response = State.client.put(
+            "/api/sdk/context",
+            headers=State.platform_admin.headers,
+            json={
+                "default_parameters": {},
+                "track_executions": True
+            }
+        )
+        assert response.status_code == 200
+        logger.info("Cleaned up SDK context test data")
+
+    def test_511_cleanup_sdk_client_key(self):
+        """Clean up the SDK client test API key."""
+        if not hasattr(State, 'sdk_client_key_id') or not State.sdk_client_key_id:
+            pytest.skip("No SDK key ID to clean up")
+
+        response = State.client.delete(
+            f"/api/sdk/keys/{State.sdk_client_key_id}",
+            headers=State.platform_admin.headers
+        )
+        assert response.status_code == 204, f"Failed to delete SDK key: {response.text}"
+        logger.info("Cleaned up SDK client test key")
 
     # =========================================================================
     # PHASE 32: Cleanup (Cleanup last)

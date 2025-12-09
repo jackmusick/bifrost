@@ -499,9 +499,6 @@ class Workflow(Base):
     parameters_schema: Mapped[list] = mapped_column(JSONB, default=[])
     tags: Mapped[list] = mapped_column(JSONB, default=[])
     is_active: Mapped[bool] = mapped_column(Boolean, default=True, index=True)
-    is_platform: Mapped[bool] = mapped_column(
-        Boolean, default=False, index=True
-    )  # True if from platform/ directory
     last_seen_at: Mapped[datetime | None] = mapped_column(DateTime, default=None)
 
     # Endpoint configuration

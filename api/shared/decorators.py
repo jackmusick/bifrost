@@ -12,7 +12,7 @@ import logging
 from collections.abc import Callable
 from typing import Any, Literal
 
-from .discovery import DataProviderMetadata, WorkflowMetadata, WorkflowParameter
+from .module_loader import DataProviderMetadata, WorkflowMetadata, WorkflowParameter
 from .type_inference import extract_parameters_from_signature
 
 logger = logging.getLogger(__name__)
@@ -114,14 +114,10 @@ def workflow(
             for p in param_dicts
         ]
 
-        # Detect if workflow is from platform directory
-        is_platform = False
+        # Get source file path
         source_file_path = None
         if hasattr(func, '__code__'):
-            file_path = func.__code__.co_filename
-            source_file_path = file_path
-            if '/platform/' in file_path or '\\platform\\' in file_path:
-                is_platform = True
+            source_file_path = func.__code__.co_filename
 
         # Initialize metadata
         metadata = WorkflowMetadata(
@@ -138,7 +134,6 @@ def workflow(
             allowed_methods=workflow_allowed_methods,
             disable_global_key=disable_global_key,
             public_endpoint=public_endpoint,
-            is_platform=is_platform,
             source_file_path=source_file_path,
             parameters=parameters,
             function=func

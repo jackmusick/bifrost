@@ -7,18 +7,126 @@ Note: HTTP handlers have been removed - see FastAPI routers in src/routers/
 
 import asyncio
 import logging
+import os
 import uuid
 from datetime import datetime
-from typing import TYPE_CHECKING
+from pathlib import Path
+from typing import Any, TYPE_CHECKING
 
-from shared.discovery import get_workflow
-from shared.models import ErrorResponse, ExecutionStatus
+from shared.module_loader import get_workflow
+from shared.models import ErrorResponse, ExecutionStatus, WorkflowMetadata as WorkflowMetadataModel
 
 # Lazy imports to avoid unnecessary dependencies for validation-only use cases
 if TYPE_CHECKING:
     pass
 
 logger = logging.getLogger(__name__)
+
+
+def _extract_relative_path(source_file_path: str | None) -> str | None:
+    """
+    Extract workspace-relative file path from absolute path.
+    Returns path with /workspace/ prefix for consistency with editor paths.
+
+    Args:
+        source_file_path: Absolute file path (e.g., /path/to/workspace/repo/workflows/my_workflow.py)
+
+    Returns:
+        Path with /workspace/ prefix (e.g., /workspace/workflows/my_workflow.py)
+        Returns None if source_file_path is None or no marker found
+    """
+    if not source_file_path:
+        return None
+
+    # Get workspace location from environment
+    workspace_location = os.getenv("BIFROST_WORKSPACE_LOCATION")
+    if workspace_location:
+        workspace_path = Path(workspace_location)
+        source_path = Path(source_file_path)
+
+        # Check if source_path is relative to workspace
+        try:
+            relative = source_path.relative_to(workspace_path)
+            # Return with /workspace/ prefix for consistency
+            return f"/workspace/{relative}"
+        except ValueError:
+            # Not relative to workspace, fall through to marker check
+            pass
+
+    # Fallback: Extract everything after markers and prepend /workspace/
+    for marker in ['/home/', '/platform/']:
+        if marker in source_file_path:
+            relative = source_file_path.split(marker, 1)[1]
+            return f"/workspace/{relative}"
+
+    # If already has /workspace/ prefix, return as-is
+    if '/workspace/' in source_file_path:
+        return '/workspace/' + source_file_path.split('/workspace/', 1)[1]
+
+    return None
+
+
+def _convert_workflow_metadata_to_model(
+    workflow_metadata: Any,
+) -> WorkflowMetadataModel:
+    """
+    Convert a discovery WorkflowMetadata dataclass to a Pydantic model.
+
+    Args:
+        workflow_metadata: Workflow metadata from discovery (dataclass)
+
+    Returns:
+        WorkflowMetadata Pydantic model for API response
+    """
+    # Convert parameters from dataclass to dict with proper field mapping
+    parameters = []
+    if workflow_metadata.parameters:
+        for p in workflow_metadata.parameters:
+            param_dict = {
+                "name": p.name,
+                "type": p.type,
+                "required": p.required,
+            }
+            # Add optional fields only if they're not None
+            if p.label is not None:
+                param_dict["label"] = p.label
+            if p.data_provider is not None:
+                param_dict["dataProvider"] = p.data_provider
+            if p.default_value is not None:
+                param_dict["defaultValue"] = p.default_value
+            if p.help_text is not None:
+                param_dict["helpText"] = p.help_text
+            if p.validation is not None:
+                param_dict["validation"] = p.validation
+            if hasattr(p, 'description') and p.description is not None:
+                param_dict["description"] = p.description
+            parameters.append(param_dict)
+
+    # Get or generate workflow ID
+    # Use existing id if available, otherwise generate deterministic UUID from name
+    workflow_id = workflow_metadata.id
+    if not workflow_id:
+        # Generate deterministic UUID from workflow name for consistency
+        workflow_id = str(uuid.uuid5(uuid.NAMESPACE_DNS, f"bifrost.workflow.{workflow_metadata.name}"))
+
+    return WorkflowMetadataModel(
+        id=workflow_id,
+        name=workflow_metadata.name,
+        description=workflow_metadata.description,
+        category=workflow_metadata.category,
+        tags=workflow_metadata.tags,
+        parameters=parameters,
+        execution_mode=workflow_metadata.execution_mode,
+        timeout_seconds=workflow_metadata.timeout_seconds,
+        retry_policy=workflow_metadata.retry_policy,
+        schedule=workflow_metadata.schedule,
+        endpoint_enabled=workflow_metadata.endpoint_enabled,
+        allowed_methods=workflow_metadata.allowed_methods,
+        disable_global_key=workflow_metadata.disable_global_key,
+        public_endpoint=workflow_metadata.public_endpoint,
+        source_file_path=workflow_metadata.source_file_path,
+        relative_file_path=_extract_relative_path(workflow_metadata.source_file_path),
+    )
 
 
 async def execute_workflow_internal(
@@ -349,14 +457,11 @@ async def validate_workflow_file(path: str, content: str | None = None):
     Returns:
         WorkflowValidationResponse with validation results
     """
-    from pathlib import Path
     import tempfile
-    import os
     import re
     from pydantic import ValidationError
     from shared.models import WorkflowValidationResponse, ValidationIssue
-    from shared.handlers.discovery_handlers import convert_workflow_metadata_to_model
-    from shared.discovery import import_module_fresh, WorkflowMetadata
+    from shared.module_loader import import_module_fresh, WorkflowMetadata
     from shared.type_inference import VALID_PARAM_TYPES
 
     issues = []
@@ -502,7 +607,7 @@ async def validate_workflow_file(path: str, content: str | None = None):
 
         # Step 9: Validate Pydantic model conversion (this is what discovery endpoint does)
         try:
-            metadata = convert_workflow_metadata_to_model(workflow_metadata)
+            metadata = _convert_workflow_metadata_to_model(workflow_metadata)
         except ValidationError as e:
             for error in e.errors():
                 field = ".".join(str(loc) for loc in error["loc"])

@@ -1043,8 +1043,7 @@ class WorkflowMetadata(BaseModel):
     disable_global_key: bool = Field(False, description="If true, only workflow-specific API keys work")
     public_endpoint: bool = Field(False, description="If true, skip authentication for webhooks")
 
-    # Source tracking (for UI filtering)
-    is_platform: bool = Field(False, description="True if workflow is from platform/ directory (examples/templates)")
+    # Source tracking
     source_file_path: str | None = Field(None, description="Full file path to the workflow source code")
     relative_file_path: str | None = Field(None, description="Workspace-relative file path with /workspace/ prefix (e.g., '/workspace/workflows/my_workflow.py')")
 

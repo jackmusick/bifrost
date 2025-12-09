@@ -1,7 +1,10 @@
 """
-Dynamic Discovery Module
-Pure functions for discovering and loading workflows, data providers, and forms.
+Module Loader
+Pure functions for loading workflows, data providers, and forms at runtime.
 No singletons, no caching - always fresh imports.
+
+Note: Metadata discovery (for DB sync) is handled by FileStorageService at write time.
+This module is only for runtime loading of Python code for execution.
 """
 
 import importlib
@@ -60,7 +63,6 @@ class WorkflowMetadata:
     public_endpoint: bool = False
 
     # Source tracking
-    is_platform: bool = False  # True if from platform/ directory
     source_file_path: str | None = None
 
     # Parameters and function
@@ -626,14 +628,6 @@ def get_forms_by_workflow(workflow_name: str) -> list[FormMetadata]:
 
 def _convert_workflow_metadata(old_metadata: Any) -> WorkflowMetadata:
     """Convert old registry WorkflowMetadata to discovery WorkflowMetadata."""
-    # Try to determine is_platform from old source field or file path
-    is_platform = False
-    if hasattr(old_metadata, 'source') and old_metadata.source == 'platform':
-        is_platform = True
-    elif hasattr(old_metadata, 'source_file_path') and old_metadata.source_file_path:
-        if '/platform/' in old_metadata.source_file_path or '\\platform\\' in old_metadata.source_file_path:
-            is_platform = True
-
     return WorkflowMetadata(
         id=getattr(old_metadata, 'id', None),
         name=old_metadata.name,
@@ -648,7 +642,6 @@ def _convert_workflow_metadata(old_metadata: Any) -> WorkflowMetadata:
         allowed_methods=getattr(old_metadata, 'allowed_methods', ['POST']),
         disable_global_key=getattr(old_metadata, 'disable_global_key', False),
         public_endpoint=getattr(old_metadata, 'public_endpoint', False),
-        is_platform=is_platform,
         source_file_path=getattr(old_metadata, 'source_file_path', None),
         parameters=_convert_parameters(getattr(old_metadata, 'parameters', [])),
         function=getattr(old_metadata, 'function', None)
@@ -794,13 +787,7 @@ def get_data_provider(name: str) -> tuple[Callable, DataProviderMetadata] | None
 
 def get_form(form_id: str) -> dict | None:
     """
-    Get a form by ID using watchdog index.
-
-    This is the efficient version that:
-    1. Uses O(1) index lookup to find the file
-    2. Reads the JSON file fresh (no caching)
-
-    Falls back to full scan if watchdog isn't running.
+    Get a form by ID.
 
     Args:
         form_id: Form ID
@@ -808,17 +795,4 @@ def get_form(form_id: str) -> dict | None:
     Returns:
         Form dict or None if not found
     """
-    # Try watchdog index first
-    try:
-        from shared.discovery_watcher import get_form_path
-
-        file_path = get_form_path(form_id)
-        if file_path:
-            return json.loads(Path(file_path).read_text(encoding='utf-8'))
-
-    except ImportError:
-        # Watchdog not available, fall back to full scan
-        logger.debug("Watchdog not available, falling back to load_form()")
-
-    # Fall back to full scan
     return load_form(form_id)

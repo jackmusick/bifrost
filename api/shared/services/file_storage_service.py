@@ -482,7 +482,6 @@ class FileStorageService:
                         allowed_methods=allowed_methods,
                         execution_mode=execution_mode,
                         is_active=True,
-                        is_platform=path.startswith("platform/"),
                         last_seen_at=now,
                     ).on_conflict_do_update(
                         index_elements=[Workflow.file_path, Workflow.function_name],
@@ -497,7 +496,6 @@ class FileStorageService:
                             "allowed_methods": allowed_methods,
                             "execution_mode": execution_mode,
                             "is_active": True,
-                            "is_platform": path.startswith("platform/"),
                             "last_seen_at": now,
                             "updated_at": now,
                         },

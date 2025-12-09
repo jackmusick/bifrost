@@ -143,7 +143,7 @@ async def _run_execution(execution_id: str, context_data: dict[str, Any]) -> dic
         is_script = bool(context_data.get("code"))
 
         if not is_script:
-            from shared.discovery import get_workflow
+            from shared.module_loader import get_workflow
             workflow_name = context_data["name"]
             result = get_workflow(workflow_name)
             if not result:

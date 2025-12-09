@@ -120,15 +120,10 @@ class GitSyncConsumer(BaseConsumer):
                 logger.info(f"Git sync stopped due to conflicts: {job_id}")
                 return
 
-            # Step 2: Discover new workflows/providers after pull
-            await send_log("Discovering workflows and data providers...")
-            from shared.discovery import scan_all_workflows, scan_all_data_providers
+            # NOTE: Discovery is no longer needed here - FileStorageService
+            # extracts workflow/data provider metadata at write time during git pull.
 
-            scan_all_workflows()
-            scan_all_data_providers()
-            await send_log("Discovery complete")
-
-            # Step 3: Push to remote
+            # Step 2: Push to remote
             await send_log("No conflicts detected, pushing changes to GitHub...")
             push_result = await git_service.push(context, connection_id=connection_id)
 
@@ -208,15 +203,8 @@ class GitSyncConsumer(BaseConsumer):
 
             if result.get("success"):
                 await send_log("✓ Status refreshed successfully", "success")
-
-                # Discover workflows and data providers
-                await send_log("Discovering workflows and data providers...")
-                from shared.discovery import scan_all_workflows, scan_all_data_providers
-
-                scan_all_workflows()
-                scan_all_data_providers()
-                await send_log("Discovery complete")
-
+                # NOTE: Discovery is no longer needed here - FileStorageService
+                # extracts workflow/data provider metadata at write time.
                 await send_completion("success", "Status refreshed", data=result)
                 logger.info(f"Git refresh completed successfully: {job_id}")
             else:

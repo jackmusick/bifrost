@@ -22,7 +22,7 @@ from datetime import datetime
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Callable
 
-from shared.discovery import get_data_provider, WorkflowMetadata
+from shared.module_loader import get_data_provider, WorkflowMetadata
 from shared.models import ExecutionStatus, WorkflowExecutionResponse
 
 if TYPE_CHECKING:

@@ -18,7 +18,7 @@ from shared.models import (
 )
 
 
-# Note: Models use snake_case (e.g., linked_workflow, form_schema, is_global)
+# Note: Models use snake_case (e.g., workflow_id, form_schema, is_global)
 # This matches the OpenAPI/TypeScript schema
 
 
@@ -29,7 +29,7 @@ class TestCreateFormRequest:
         """Test valid create form request"""
         request = CreateFormRequest(
             name="Customer Onboarding",
-            linked_workflow="workflows.onboarding.customer_onboarding",
+            workflow_id="00000000-0000-0000-0000-000000000001",
             form_schema=FormSchema(
                 fields=[
                     FormField(
@@ -42,7 +42,7 @@ class TestCreateFormRequest:
             )
         )
         assert request.name == "Customer Onboarding"
-        assert request.linked_workflow == "workflows.onboarding.customer_onboarding"
+        assert request.workflow_id == "00000000-0000-0000-0000-000000000001"
         assert len(request.form_schema.fields) == 1
         assert request.is_global is False  # Default
 
@@ -50,7 +50,7 @@ class TestCreateFormRequest:
         """Test creating a global form"""
         request = CreateFormRequest(
             name="Global Template",
-            linked_workflow="workflows.templates.global_template",
+            workflow_id="00000000-0000-0000-0000-000000000002",
             form_schema=FormSchema(fields=[]),
             is_global=True
         )
@@ -60,7 +60,7 @@ class TestCreateFormRequest:
         """Test creating form with optional description"""
         request = CreateFormRequest(
             name="Test Form",
-            linked_workflow="workflows.test",
+            workflow_id="00000000-0000-0000-0000-000000000003",
             form_schema=FormSchema(fields=[]),
             description="This is a test form"
         )
@@ -70,15 +70,15 @@ class TestCreateFormRequest:
         """Test that name is required"""
         with pytest.raises(ValidationError) as exc_info:
             CreateFormRequest(
-                linked_workflow="workflows.test",
+                workflow_id="00000000-0000-0000-0000-000000000001",
                 form_schema=FormSchema(fields=[])
             )
 
         errors = exc_info.value.errors()
         assert any(e["loc"] == ("name",) and e["type"] == "missing" for e in errors)
 
-    def test_missing_required_linked_workflow(self):
-        """Test that linked_workflow is required"""
+    def test_missing_required_workflow_id(self):
+        """Test that workflow_id is required"""
         with pytest.raises(ValidationError) as exc_info:
             CreateFormRequest(
                 name="Test Form",
@@ -86,14 +86,14 @@ class TestCreateFormRequest:
             )
 
         errors = exc_info.value.errors()
-        assert any(e["loc"] == ("linked_workflow",) and e["type"] == "missing" for e in errors)
+        assert any(e["loc"] == ("workflow_id",) and e["type"] == "missing" for e in errors)
 
     def test_missing_required_form_schema(self):
         """Test that form_schema is required"""
         with pytest.raises(ValidationError) as exc_info:
             CreateFormRequest(
                 name="Test Form",
-                linked_workflow="workflows.test"
+                workflow_id="00000000-0000-0000-0000-000000000001"
             )
 
         errors = exc_info.value.errors()
@@ -108,7 +108,7 @@ class TestUpdateFormRequest:
         request = UpdateFormRequest(
             name="Updated Form",
             description="Updated description",
-            linked_workflow="workflows.updated",
+            workflow_id="00000000-0000-0000-0000-000000000001",
             form_schema=FormSchema(
                 fields=[
                     FormField(
@@ -132,7 +132,7 @@ class TestUpdateFormRequest:
         )
         assert request.name == "New Name"
         assert request.description is None
-        assert request.linked_workflow is None
+        assert request.workflow_id is None
         assert request.form_schema is None
 
     def test_update_form_request_empty_valid(self):
@@ -140,7 +140,7 @@ class TestUpdateFormRequest:
         request = UpdateFormRequest()
         assert request.name is None
         assert request.description is None
-        assert request.linked_workflow is None
+        assert request.workflow_id is None
         assert request.form_schema is None
         assert request.is_active is None
 
@@ -362,7 +362,7 @@ class TestFormResponse:
             id="form-123",
             org_id="org-456",
             name="Test Form",
-            linked_workflow="workflows.test",
+            workflow_id="00000000-0000-0000-0000-000000000001",
             form_schema=FormSchema(
                 fields=[
                     FormField(
@@ -392,7 +392,7 @@ class TestFormResponse:
             org_id="org-456",
             name="Test Form",
             description="Test description",
-            linked_workflow="workflows.test",
+            workflow_id="00000000-0000-0000-0000-000000000001",
             form_schema=FormSchema(fields=[]),
             is_active=True,
             is_global=False,
@@ -408,7 +408,7 @@ class TestFormResponse:
             id="form-123",
             org_id="GLOBAL",
             name="Global Form",
-            linked_workflow="workflows.global",
+            workflow_id="00000000-0000-0000-0000-000000000001",
             form_schema=FormSchema(fields=[]),
             is_active=True,
             is_global=True,
@@ -425,7 +425,7 @@ class TestFormResponse:
             id="form-123",
             org_id="org-456",
             name="Test Form",
-            linked_workflow="workflows.test",
+            workflow_id="00000000-0000-0000-0000-000000000001",
             form_schema=FormSchema(fields=[]),
             created_by="user-789",
             created_at=datetime.utcnow(),
@@ -442,11 +442,11 @@ class TestFormResponse:
                 id="form-123",
                 org_id="org-456",
                 name="Test Form"
-                # Missing: linked_workflow, form_schema, created_by, created_at, updated_at
+                # Missing: form_schema, created_by, created_at, updated_at
             )
 
         errors = exc_info.value.errors()
-        required_fields = {"linked_workflow", "form_schema", "created_by", "created_at", "updated_at"}
+        required_fields = {"form_schema", "created_by", "created_at", "updated_at"}
         missing_fields = {e["loc"][0] for e in errors if e["type"] == "missing"}
         assert required_fields.issubset(missing_fields)
 
@@ -456,7 +456,7 @@ class TestFormResponse:
             id="form-123",
             org_id="org-456",
             name="Test Form",
-            linked_workflow="workflows.test",
+            workflow_id="00000000-0000-0000-0000-000000000001",
             form_schema=FormSchema(
                 fields=[
                     FormField(
@@ -478,7 +478,7 @@ class TestFormResponse:
         assert "id" in form_dict
         assert "org_id" in form_dict
         assert "name" in form_dict
-        assert "linked_workflow" in form_dict
+        assert "workflow_id" in form_dict
         assert "form_schema" in form_dict
         assert "is_active" in form_dict
         assert "is_global" in form_dict
@@ -492,7 +492,7 @@ class TestFormResponse:
             id="form-123",
             org_id="org-456",
             name="Test Form",
-            linked_workflow="workflows.test",
+            workflow_id="00000000-0000-0000-0000-000000000001",
             form_schema=FormSchema(fields=[]),
             is_active=True,
             is_global=False,

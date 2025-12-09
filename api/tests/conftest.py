@@ -24,7 +24,7 @@ from sqlalchemy.pool import NullPool
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
 # Import fixture modules
-pytest_plugins = ["tests.fixtures.registry", "tests.fixtures.auth"]
+pytest_plugins = ["tests.fixtures.auth"]
 
 
 # ==================== CONFIGURATION ====================

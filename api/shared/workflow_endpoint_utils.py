@@ -8,7 +8,7 @@ from datetime import datetime
 from typing import Any
 
 from shared.context import ExecutionContext
-from shared.discovery import WorkflowMetadata
+from shared.module_loader import WorkflowMetadata
 from shared.execution_logger import ExecutionLogger
 from shared.models import ExecutionStatus, WorkflowExecutionResponse
 

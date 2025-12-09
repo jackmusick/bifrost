@@ -8,12 +8,13 @@ All methods are async and must be awaited.
 
 from __future__ import annotations
 
+import logging
 from typing import Any
-
-from shared.handlers.workflows_logic import list_workflows_logic
 
 from ._internal import get_context
 from .executions import executions
+
+logger = logging.getLogger(__name__)
 
 
 class workflows:
@@ -44,7 +45,32 @@ class workflows:
         """
         context = get_context()
 
-        return list_workflows_logic(context)
+        logger.info(f"User {context.user_id} listing workflows")
+
+        if not context._db:
+            logger.warning("No database session in context, returning empty workflow list")
+            return []
+
+        from src.repositories.workflows import WorkflowRepository
+
+        repo = WorkflowRepository(context._db)
+        db_workflows = await repo.get_all_active()
+
+        # Convert to dicts for serialization
+        workflow_list = [
+            {
+                "name": wf.name,
+                "description": wf.description or "",
+                "parameters": wf.parameters_schema or [],
+                "executionMode": wf.execution_mode or "sync",
+                "endpointEnabled": wf.endpoint_enabled or False
+            }
+            for wf in db_workflows
+        ]
+
+        logger.info(f"Returning {len(workflow_list)} workflows for user {context.user_id}")
+
+        return workflow_list
 
     @staticmethod
     async def get(execution_id: str) -> dict[str, Any]:

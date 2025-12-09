@@ -24,7 +24,7 @@ from fastapi import APIRouter, Header, HTTPException, Request, status
 from pydantic import BaseModel
 
 from shared.context import ExecutionContext
-from shared.discovery import get_workflow
+from shared.module_loader import get_workflow
 from src.core.database import get_db_context
 from src.core.redis_client import get_redis_client, DEFAULT_TIMEOUT_SECONDS
 from src.routers.workflow_keys import validate_workflow_key
