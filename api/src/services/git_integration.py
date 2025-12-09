@@ -1244,25 +1244,16 @@ class GitIntegrationService:
         """Internal push implementation."""
         repo = self.get_repo()
 
-        # Initialize WebPubSub broadcaster for streaming logs
-        from src.core.pubsub_broadcaster import WebPubSubBroadcaster
-        broadcaster = WebPubSubBroadcaster()
+        # Import pubsub manager for streaming logs via WebSocket
+        from src.core.pubsub import manager as pubsub_manager
 
         async def send_log(message: str, level: str = "info"):
-            """Send log message to WebPubSub terminal"""
-            if connection_id and broadcaster.enabled and broadcaster.client:
-                try:
-                    broadcaster.client.send_to_connection(
-                        connection_id=connection_id,
-                        message={
-                            "type": "log",
-                            "level": level,
-                            "message": message
-                        },
-                        content_type="application/json"
-                    )
-                except Exception as e:
-                    logger.warning(f"Failed to send log to WebPubSub: {e}")
+            """Send log message via WebSocket."""
+            if connection_id:
+                await pubsub_manager.broadcast(
+                    f"git:{connection_id}",
+                    {"type": "log", "level": level, "message": message},
+                )
 
         try:
             # Check for uncommitted changes before pushing
@@ -1420,25 +1411,16 @@ class GitIntegrationService:
         """Internal pull implementation."""
         repo = self.get_repo()
 
-        # Initialize WebPubSub broadcaster for streaming logs
-        from src.core.pubsub_broadcaster import WebPubSubBroadcaster
-        broadcaster = WebPubSubBroadcaster()
+        # Import pubsub manager for streaming logs via WebSocket
+        from src.core.pubsub import manager as pubsub_manager
 
         async def send_log(message: str, level: str = "info"):
-            """Send log message to WebPubSub terminal"""
-            if connection_id and broadcaster.enabled and broadcaster.client:
-                try:
-                    broadcaster.client.send_to_connection(
-                        connection_id=connection_id,
-                        message={
-                            "type": "log",
-                            "level": level,
-                            "message": message
-                        },
-                        content_type="application/json"
-                    )
-                except Exception as e:
-                    logger.warning(f"Failed to send log to WebPubSub: {e}")
+            """Send log message via WebSocket."""
+            if connection_id:
+                await pubsub_manager.broadcast(
+                    f"git:{connection_id}",
+                    {"type": "log", "level": level, "message": message},
+                )
 
         # Check if we're already in a merge state
         from pathlib import Path

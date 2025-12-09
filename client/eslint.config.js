@@ -21,6 +21,14 @@ export default tseslint.config(
 			...reactHooks.configs.recommended.rules,
 			"react-refresh/only-export-components": "off",
 			"no-console": ["warn", { allow: ["warn", "error"] }], // Allow console.warn and console.error, but warn about console.log
+			// Allow underscore-prefixed unused variables
+			"@typescript-eslint/no-unused-vars": [
+				"error",
+				{
+					argsIgnorePattern: "^_",
+					varsIgnorePattern: "^_",
+				},
+			],
 		},
 	},
 );

@@ -8,8 +8,10 @@ import type { components } from "@/lib/v1";
 
 // Type aliases for cleaner code
 export type DailyMetricsEntry = components["schemas"]["DailyMetricsEntry"];
-export type DailyMetricsResponse = components["schemas"]["DailyMetricsResponse"];
-export type ResourceMetricsEntry = components["schemas"]["ResourceMetricsEntry"];
+export type DailyMetricsResponse =
+	components["schemas"]["DailyMetricsResponse"];
+export type ResourceMetricsEntry =
+	components["schemas"]["ResourceMetricsEntry"];
 export type ResourceMetricsResponse =
 	components["schemas"]["ResourceMetricsResponse"];
 export type OrganizationMetricsSummary =
@@ -47,11 +49,14 @@ export const metricsService = {
 	/**
 	 * Get resource usage trends (platform admin only)
 	 */
-	async getResourceMetrics(days: number = 7): Promise<ResourceMetricsResponse> {
+	async getResourceMetrics(
+		days: number = 7,
+	): Promise<ResourceMetricsResponse> {
 		const { data, error } = await apiClient.GET("/api/metrics/resources", {
 			params: { query: { days } },
 		});
-		if (error) throw new Error(`Failed to fetch resource metrics: ${error}`);
+		if (error)
+			throw new Error(`Failed to fetch resource metrics: ${error}`);
 		return data!;
 	},
 
@@ -62,9 +67,12 @@ export const metricsService = {
 		days: number = 30,
 		limit: number = 10,
 	): Promise<OrganizationMetricsResponse> {
-		const { data, error } = await apiClient.GET("/api/metrics/organizations", {
-			params: { query: { days, limit } },
-		});
+		const { data, error } = await apiClient.GET(
+			"/api/metrics/organizations",
+			{
+				params: { query: { days, limit } },
+			},
+		);
 		if (error)
 			throw new Error(`Failed to fetch organization metrics: ${error}`);
 		return data!;
@@ -81,7 +89,8 @@ export const metricsService = {
 		const { data, error } = await apiClient.GET("/api/metrics/workflows", {
 			params: { query: { days, sort_by: sortBy, limit } },
 		});
-		if (error) throw new Error(`Failed to fetch workflow metrics: ${error}`);
+		if (error)
+			throw new Error(`Failed to fetch workflow metrics: ${error}`);
 		return data!;
 	},
 };

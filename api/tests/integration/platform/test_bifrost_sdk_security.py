@@ -28,15 +28,17 @@ class TestSDKContextProtection:
     """
 
     async def test_config_requires_context(self):
-        """Test that config SDK requires execution context"""
+        """Test that config SDK requires execution context in external mode (no API key)"""
         from bifrost import config
+        from unittest.mock import patch
 
         # Clear context
         clear_execution_context()
 
-        # Should raise RuntimeError
-        with pytest.raises(RuntimeError, match="No execution context found"):
-            await config.get("test_key")
+        # In external mode without API key configured, should raise RuntimeError
+        with patch.dict('os.environ', {'BIFROST_DEV_URL': '', 'BIFROST_DEV_KEY': ''}, clear=False):
+            with pytest.raises(RuntimeError, match="BIFROST_DEV_URL and BIFROST_DEV_KEY"):
+                await config.get("test_key")
 
     async def test_oauth_requires_context(self):
         """Test that oauth SDK requires execution context"""
@@ -44,6 +46,7 @@ class TestSDKContextProtection:
 
         clear_execution_context()
 
+        # Without execution context, should raise RuntimeError
         with pytest.raises(RuntimeError, match="No execution context found"):
             await oauth.get("microsoft")
 
@@ -82,7 +85,7 @@ class TestDefaultOrgScoping:
 
         try:
             # Mock get_redis - config.list reads from Redis cache
-            with patch('bifrost.config.get_redis') as mock_get_redis:
+            with patch('src.core.cache.get_redis') as mock_get_redis:
                 mock_redis = AsyncMock()
 
                 # Mock hgetall to return empty dict (no configs)
@@ -144,7 +147,7 @@ class TestCrossOrgParameterUsage:
 
         try:
             # Mock get_redis - config.get reads from Redis cache
-            with patch('bifrost.config.get_redis') as mock_get_redis:
+            with patch('src.core.cache.get_redis') as mock_get_redis:
                 mock_redis = AsyncMock()
 
                 # Create cached config data as JSON
@@ -202,7 +205,7 @@ class TestCrossOrgParameterUsage:
 
         try:
             # Mock get_write_buffer - config.set writes to buffer, not directly to DB
-            with patch('bifrost.config.get_write_buffer') as mock_get_buffer:
+            with patch('bifrost._write_buffer.get_write_buffer') as mock_get_buffer:
                 mock_buffer = MagicMock()
                 mock_buffer.add_config_change = AsyncMock()
                 mock_get_buffer.return_value = mock_buffer
@@ -242,7 +245,7 @@ class TestCrossOrgParameterUsage:
 
         try:
             # Mock get_write_buffer - config.delete writes to buffer, not directly to DB
-            with patch('bifrost.config.get_write_buffer') as mock_get_buffer:
+            with patch('bifrost._write_buffer.get_write_buffer') as mock_get_buffer:
                 mock_buffer = MagicMock()
                 mock_buffer.add_config_change = AsyncMock()
                 mock_get_buffer.return_value = mock_buffer
@@ -283,7 +286,7 @@ class TestCrossOrgParameterUsage:
         set_execution_context(context)
 
         try:
-            # Mock get_redis - oauth.get reads from Redis cache
+            # Mock get_redis - oauth imports it at module level, so patch where imported
             with patch('bifrost.oauth.get_redis') as mock_get_redis:
                 mock_redis = AsyncMock()
 

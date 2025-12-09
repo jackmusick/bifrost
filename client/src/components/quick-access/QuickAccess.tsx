@@ -5,7 +5,10 @@ import { useEditorStore } from "@/stores/editorStore";
 import { useForms } from "@/hooks/useForms";
 import { useWorkflowsMetadata } from "@/hooks/useWorkflows";
 import { fileService } from "@/services/fileService";
-import { searchService, type SearchResult as ApiSearchResult } from "@/services/searchService";
+import {
+	searchService,
+	type SearchResult as ApiSearchResult,
+} from "@/services/searchService";
 import type { components } from "@/lib/v1";
 
 type WorkflowMetadata = components["schemas"]["WorkflowMetadata"];
@@ -298,7 +301,9 @@ export function QuickAccess({ isOpen, onClose }: QuickAccessProps) {
 						{results.map((result, index) => (
 							<button
 								key={`${result.type}-${result.name}-${index}`}
-								ref={(el) => (resultsRef.current[index] = el)}
+								ref={(el) => {
+									resultsRef.current[index] = el;
+								}}
 								onClick={() => handleSelect(result)}
 								className={`w-full flex items-start gap-3 px-4 py-3 text-left hover:bg-muted/50 transition-colors ${
 									index === selectedIndex ? "bg-muted" : ""

@@ -68,41 +68,44 @@ export function useSaveQueue() {
 	/**
 	 * Process the next item in the queue
 	 */
-	const processQueue = useCallback(async () => {
-		if (savingRef.current) return;
+	const processQueue = useCallback(
+		async function processQueueInternal() {
+			if (savingRef.current) return;
 
-		const queue = saveQueueRef.current;
-		const entries = Array.from(queue.values());
+			const queue = saveQueueRef.current;
+			const entries = Array.from(queue.values());
 
-		for (const entry of entries) {
-			// Skip if still debouncing
-			if (entry.debounceTimer) continue;
+			for (const entry of entries) {
+				// Skip if still debouncing
+				if (entry.debounceTimer) continue;
 
-			// Mark as saving
-			savingRef.current = true;
+				// Mark as saving
+				savingRef.current = true;
 
-			// Execute save
-			const result = await executeSave(entry);
+				// Execute save
+				const result = await executeSave(entry);
 
-			// Call completion callback if provided
-			if (result.success && entry.onComplete && result.etag) {
-				entry.onComplete(result.etag);
+				// Call completion callback if provided
+				if (result.success && entry.onComplete && result.etag) {
+					entry.onComplete(result.etag);
+				}
+
+				// Remove from queue after processing (success or failure)
+				// For failures, the onConflict callback has already been called
+				// and the user will need to manually resolve the conflict
+				queue.delete(entry.filePath);
+
+				savingRef.current = false;
+
+				// Process next item recursively
+				if (queue.size > 0) {
+					processQueueInternal();
+				}
+				break;
 			}
-
-			// Remove from queue after processing (success or failure)
-			// For failures, the onConflict callback has already been called
-			// and the user will need to manually resolve the conflict
-			queue.delete(entry.filePath);
-
-			savingRef.current = false;
-
-			// Process next item
-			if (queue.size > 0) {
-				processQueue();
-			}
-			break;
-		}
-	}, [executeSave]);
+		},
+		[executeSave],
+	);
 
 	/**
 	 * Enqueue a save with 1-second debounce

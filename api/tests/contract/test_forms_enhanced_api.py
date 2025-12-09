@@ -152,10 +152,10 @@ class TestEnhancedFormIntegration:
         assert schema.fields[4].type == FormFieldType.FILE
 
     def test_form_with_context_and_visibility(self):
-        """Test form with launch workflow, query params, and field visibility"""
+        """Test form with workflow, query params, and field visibility"""
         request = CreateFormRequest(
             name="Advanced Dynamic Form",
-            linked_workflow="workflows.process_advanced_form",
+            workflow_id="550e8400-e29b-41d4-a716-446655440000",
             form_schema=FormSchema(
                 fields=[
                     FormField(
@@ -181,10 +181,9 @@ class TestEnhancedFormIntegration:
                     )
                 ]
             ),
-            launch_workflow_id="workflows.load_customer_context",
             allowed_query_params=["customer_id", "source"]
         )
-        assert request.launch_workflow_id == "workflows.load_customer_context"
+        assert request.workflow_id == "550e8400-e29b-41d4-a716-446655440000"
         assert request.allowed_query_params == ["customer_id", "source"]
         assert len(request.form_schema.fields) == 3
         assert request.form_schema.fields[1].visibility_expression == "context.field.customer_type === 'enterprise'"
@@ -197,7 +196,7 @@ class TestEnhancedFormIntegration:
             org_id="org-456",
             name="Enhanced Form",
             description="Form with all new features",
-            linked_workflow="workflows.process_enhanced",
+            workflow_id="550e8400-e29b-41d4-a716-446655440000",
             form_schema=FormSchema(
                 fields=[
                     FormField(
@@ -230,12 +229,11 @@ class TestEnhancedFormIntegration:
             created_by="user-789",
             created_at=datetime.utcnow(),
             updated_at=datetime.utcnow(),
-            launch_workflow_id="workflows.context_loader",
             allowed_query_params=["customer_id", "requires_date"]
         )
 
         # Verify all enhanced features are preserved
-        assert form.launch_workflow_id == "workflows.context_loader"
+        assert form.workflow_id == "550e8400-e29b-41d4-a716-446655440000"
         assert form.allowed_query_params == ["customer_id", "requires_date"]
         assert len(form.form_schema.fields) == 3
 
@@ -363,7 +361,7 @@ class TestDataProviderInputsValidation:
         """
         request = CreateFormRequest(
             name="Form with Data Provider Inputs",
-            linked_workflow="workflows.process_repo_selection",
+            workflow_id="550e8400-e29b-41d4-a716-446655440001",
             form_schema=FormSchema(
                 fields=[
                     FormField(

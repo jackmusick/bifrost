@@ -63,7 +63,10 @@ baseClient.use({
 	async onResponse({ response }) {
 		// Handle 429 Too Many Requests - rate limited
 		if (response.status === 429) {
-			const retryAfter = parseInt(response.headers.get("Retry-After") || "60", 10);
+			const retryAfter = parseInt(
+				response.headers.get("Retry-After") || "60",
+				10,
+			);
 			throw new RateLimitError(retryAfter);
 		}
 
@@ -101,7 +104,10 @@ export const apiClient = baseClient;
 function handleAuthResponse(response: Response): Response {
 	// Handle 429 Too Many Requests - rate limited
 	if (response.status === 429) {
-		const retryAfter = parseInt(response.headers.get("Retry-After") || "60", 10);
+		const retryAfter = parseInt(
+			response.headers.get("Retry-After") || "60",
+			10,
+		);
 		throw new RateLimitError(retryAfter);
 	}
 

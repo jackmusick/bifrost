@@ -102,7 +102,7 @@ export default function SystemLogs() {
 				(log.executed_by &&
 					log.executed_by.toLowerCase().includes(search)),
 		);
-	}, [data?.logs, searchText]);
+	}, [data, searchText]);
 
 	// Check admin access (after all hooks are called)
 	if (!isPlatformAdmin) {

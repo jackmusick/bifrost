@@ -8,7 +8,7 @@ import { useCmdCtrlShortcut } from "@/contexts/KeyboardContext";
 import { fileService } from "@/services/fileService";
 import { Loader2, FileIcon } from "lucide-react";
 import { toast } from "sonner";
-import type * as Monaco from "monaco-editor/esm/vs/editor/editor.api";
+import type * as Monaco from "monaco-editor";
 import { initializeMonaco } from "@/lib/monaco-setup";
 import { ConflictDiffView } from "./ConflictDiffView";
 import { sdkScannerService } from "@/services/sdkScannerService";

@@ -204,7 +204,10 @@ export function ExecutionDetails() {
 
 		// Check if scrolled to bottom (with 50px threshold)
 		const isAtBottom =
-			container.scrollHeight - container.scrollTop - container.clientHeight < 50;
+			container.scrollHeight -
+				container.scrollTop -
+				container.clientHeight <
+			50;
 		setAutoScroll(isAtBottom);
 	}, []);
 
@@ -249,7 +252,8 @@ export function ExecutionDetails() {
 					return (
 						<Badge variant="outline" className="border-orange-500">
 							<Loader2 className="mr-1 h-3 w-3 animate-spin" />
-							Heavy Load ({availableMemory ?? "?"}MB / {requiredMemory ?? "?"}MB)
+							Heavy Load ({availableMemory ?? "?"}MB /{" "}
+							{requiredMemory ?? "?"}MB)
 						</Badge>
 					);
 				}
@@ -1232,7 +1236,9 @@ export function ExecutionDetails() {
 								>
 									<Card>
 										<CardHeader>
-											<CardTitle>Resource Usage</CardTitle>
+											<CardTitle>
+												Resource Usage
+											</CardTitle>
 											<CardDescription>
 												Execution resource metrics
 											</CardDescription>

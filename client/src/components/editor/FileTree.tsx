@@ -146,12 +146,8 @@ export function FileTree() {
 		refreshAll,
 		addFilesOptimistically,
 	} = useFileTree();
-	const {
-		startUpload,
-		updateProgress,
-		recordFailure,
-		finishUpload,
-	} = useUploadProgress();
+	const { startUpload, updateProgress, recordFailure, finishUpload } =
+		useUploadProgress();
 	const tabs = useEditorStore((state) => state.tabs);
 	const activeTabIndex = useEditorStore((state) => state.activeTabIndex);
 	const setOpenFile = useEditorStore((state) => state.setOpenFile);
@@ -945,14 +941,14 @@ interface FileTreeItemProps {
 	creatingInFolder: string | null;
 	newItemName: string;
 	setNewItemName: (name: string) => void;
-	inputRef: React.RefObject<HTMLInputElement>;
+	inputRef: React.RefObject<HTMLInputElement | null>;
 	handleNewItemKeyDown: (e: React.KeyboardEvent<HTMLInputElement>) => void;
 	handleInputMouseDown: (e: React.MouseEvent) => void;
 	handleCancelNewItem: () => void;
 	renamingFile: FileMetadata | null;
 	renameValue: string;
 	setRenameValue: (name: string) => void;
-	renameInputRef: React.RefObject<HTMLInputElement>;
+	renameInputRef: React.RefObject<HTMLInputElement | null>;
 	handleRenameKeyDown: (e: React.KeyboardEvent<HTMLInputElement>) => void;
 	handleRenameInputMouseDown: (e: React.MouseEvent) => void;
 	isProcessing: boolean;
@@ -980,7 +976,6 @@ function FileTreeItem({
 	inputRef,
 	handleNewItemKeyDown,
 	handleInputMouseDown,
-	// eslint-disable-next-line @typescript-eslint/no-unused-vars
 	handleCancelNewItem: _handleCancelNewItem,
 	renamingFile,
 	renameValue,

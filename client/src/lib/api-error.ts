@@ -45,9 +45,7 @@ function isFastAPIValidationError(
 function formatValidationErrors(error: FastAPIValidationError): string {
 	const messages = error.detail.map((err) => {
 		// Get the field name from location (skip 'body' prefix)
-		const fieldPath = err.loc
-			.filter((part) => part !== "body")
-			.join(".");
+		const fieldPath = err.loc.filter((part) => part !== "body").join(".");
 		const fieldName = fieldPath || "request";
 		return `${fieldName}: ${err.msg}`;
 	});
@@ -66,7 +64,9 @@ export class RateLimitError extends Error {
 	public readonly statusCode = 429;
 
 	constructor(retryAfter: number, message?: string) {
-		super(message || `Too many requests. Please wait ${retryAfter} seconds.`);
+		super(
+			message || `Too many requests. Please wait ${retryAfter} seconds.`,
+		);
 		this.retryAfter = retryAfter;
 		this.name = "RateLimitError";
 	}

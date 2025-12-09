@@ -3,6 +3,7 @@ import {
 	useContext,
 	useState,
 	useEffect,
+	useRef,
 	ReactNode,
 } from "react";
 import { initializeBranding, applyBrandingTheme } from "@/lib/branding";
@@ -70,21 +71,31 @@ export function OrgScopeProvider({ children }: { children: ReactNode }) {
 		}
 	}, [scope]);
 
+	// Track current loading request to avoid race conditions
+	const loadingRequestRef = useRef(0);
+
 	// Initialize branding when scope changes or on mount
 	useEffect(() => {
-		setBrandingLoaded(false);
-		setLogoLoaded(false);
-		setSquareLogoUrl(null);
-		setRectangleLogoUrl(null);
+		const requestId = ++loadingRequestRef.current;
 
 		async function loadBrandingAndLogo() {
+			// Reset state at start of async operation
+			setBrandingLoaded(false);
+			setLogoLoaded(false);
+			setSquareLogoUrl(null);
+			setRectangleLogoUrl(null);
+
 			try {
 				// Fetch branding data (public endpoint, always GLOBAL)
 				const response = await fetch("/api/branding");
 
+				// Check if this request is still current
+				if (loadingRequestRef.current !== requestId) return;
+
 				if (!response.ok) {
 					// Fallback to default branding
 					await initializeBranding();
+					if (loadingRequestRef.current !== requestId) return;
 					setBrandingLoaded(true);
 					setLogoLoaded(true);
 					return;
@@ -125,6 +136,9 @@ export function OrgScopeProvider({ children }: { children: ReactNode }) {
 				// Wait for all logos to preload
 				await Promise.all(preloadPromises);
 
+				// Check if this request is still current
+				if (loadingRequestRef.current !== requestId) return;
+
 				// Store logo URLs in context
 				setSquareLogoUrl(sqUrl || null);
 				setRectangleLogoUrl(rectUrl || null);
@@ -136,8 +150,11 @@ export function OrgScopeProvider({ children }: { children: ReactNode }) {
 				setBrandingLoaded(true);
 				setLogoLoaded(true);
 			} catch {
+				// Check if this request is still current
+				if (loadingRequestRef.current !== requestId) return;
 				// Apply default branding on error
 				await initializeBranding();
+				if (loadingRequestRef.current !== requestId) return;
 				setBrandingLoaded(true);
 				setLogoLoaded(true);
 			}

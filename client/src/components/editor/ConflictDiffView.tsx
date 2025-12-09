@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { DiffEditor, type DiffOnMount } from "@monaco-editor/react";
 import { useTheme } from "@/contexts/ThemeContext";
-import type * as Monaco from "monaco-editor/esm/vs/editor/editor.api";
+import type * as Monaco from "monaco-editor";
 import { Button } from "@/components/ui/button";
 import { Check } from "lucide-react";
 import {

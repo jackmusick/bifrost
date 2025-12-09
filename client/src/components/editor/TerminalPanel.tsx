@@ -15,9 +15,6 @@ interface TerminalPanelProps {
  * Displays output from script/workflow/data provider executions
  */
 export function TerminalPanel({ onResizeStart }: TerminalPanelProps) {
-	// Track render count for debugging
-	const renderCountRef = useRef(0);
-	renderCountRef.current += 1;
 	const terminalOutput = useEditorStore((state) => state.terminalOutput);
 	const clearTerminalOutput = useEditorStore(
 		(state) => state.clearTerminalOutput,

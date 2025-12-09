@@ -227,9 +227,7 @@ export function expiresSoon(
 ): boolean {
 	if (!expires_at) return true;
 	const expiresDate = new Date(expires_at);
-	const thresholdDate = new Date(
-		Date.now() + minutesThreshold * 60 * 1000,
-	);
+	const thresholdDate = new Date(Date.now() + minutesThreshold * 60 * 1000);
 	return expiresDate <= thresholdDate;
 }
 

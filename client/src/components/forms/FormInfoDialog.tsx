@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import {
 	Dialog,
 	DialogContent,
@@ -68,17 +68,6 @@ export function FormInfoDialog({
 	onSave,
 	initialData,
 }: FormInfoDialogProps) {
-	const [formName, setFormName] = useState("");
-	const [formDescription, setFormDescription] = useState("");
-	const [linkedWorkflow, setLinkedWorkflow] = useState("");
-	const [launchWorkflowId, setLaunchWorkflowId] = useState<string>("");
-	const [defaultLaunchParams, setDefaultLaunchParams] = useState<
-		Record<string, unknown>
-	>({});
-	const [accessLevel, setAccessLevel] = useState<
-		"public" | "authenticated" | "role_based"
-	>("role_based");
-	const [selectedRoleIds, setSelectedRoleIds] = useState<string[]>([]);
 	const [rolesPopoverOpen, setRolesPopoverOpen] = useState(false);
 
 	const { data: metadata, isLoading: metadataLoading } =
@@ -93,33 +82,35 @@ export function FormInfoDialog({
 		queryFn: () => rolesService.getRoles(),
 	}) as { data?: Role[]; isLoading: boolean };
 
+	// Initialize form state from initialData
+	const [formName, setFormName] = useState(() => initialData?.formName || "");
+	const [formDescription, setFormDescription] = useState(
+		() => initialData?.formDescription || "",
+	);
+	const [linkedWorkflow, setLinkedWorkflow] = useState(
+		() => initialData?.linkedWorkflow || "",
+	);
+	const [launchWorkflowId, setLaunchWorkflowId] = useState<string>(
+		() => initialData?.launchWorkflowId || "",
+	);
+	const [defaultLaunchParams, setDefaultLaunchParams] = useState<
+		Record<string, unknown>
+	>(
+		() =>
+			(initialData?.defaultLaunchParams as Record<string, unknown>) || {},
+	);
+	const [accessLevel, setAccessLevel] = useState<
+		"public" | "authenticated" | "role_based"
+	>(() => initialData?.accessLevel || "role_based");
+	const [selectedRoleIds, setSelectedRoleIds] = useState<string[]>(
+		() => initialData?.selectedRoleIds || [],
+	);
+
 	// Get selected launch workflow metadata
 	const selectedLaunchWorkflow = metadata?.workflows?.find(
 		(w: WorkflowMetadata) => w.name === launchWorkflowId,
 	);
 	const launchWorkflowParams = selectedLaunchWorkflow?.parameters || [];
-
-	useEffect(() => {
-		if (initialData) {
-			setFormName(initialData.formName);
-			setFormDescription(initialData.formDescription);
-			setLinkedWorkflow(initialData.linkedWorkflow);
-			setLaunchWorkflowId(initialData.launchWorkflowId || "");
-			setDefaultLaunchParams(
-				(initialData.defaultLaunchParams as Record<string, unknown>) ||
-					{},
-			);
-			setAccessLevel(initialData.accessLevel || "role_based");
-			setSelectedRoleIds(initialData.selectedRoleIds || []);
-		}
-	}, [initialData, open]);
-
-	// Clear default params when launch workflow changes
-	useEffect(() => {
-		if (!launchWorkflowId || launchWorkflowId === "__none__") {
-			setDefaultLaunchParams({});
-		}
-	}, [launchWorkflowId]);
 
 	const handleParameterChange = (paramName: string, value: unknown) => {
 		setDefaultLaunchParams((prev) => ({
@@ -354,6 +345,14 @@ export function FormInfoDialog({
 				? prev.filter((id) => id !== roleId)
 				: [...prev, roleId],
 		);
+	};
+
+	const handleLaunchWorkflowChange = (value: string) => {
+		setLaunchWorkflowId(value);
+		// Clear default params when launch workflow changes
+		if (!value || value === "__none__") {
+			setDefaultLaunchParams({});
+		}
 	};
 
 	const removeRole = (roleId: string) => {
@@ -591,7 +590,7 @@ export function FormInfoDialog({
 						<Combobox
 							id="launchWorkflowId"
 							value={launchWorkflowId}
-							onValueChange={setLaunchWorkflowId}
+							onValueChange={handleLaunchWorkflowChange}
 							options={[
 								{
 									value: "__none__",

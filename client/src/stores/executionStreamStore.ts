@@ -203,18 +203,19 @@ export const useExecutionStreamStore = create<ExecutionStreamStore>((set) => ({
 						// Update queue fields if provided, clear if not Pending
 						queuePosition: clearQueueFields
 							? undefined
-							: queueData?.queuePosition ?? stream.queuePosition,
+							: (queueData?.queuePosition ??
+								stream.queuePosition),
 						waitReason: clearQueueFields
 							? undefined
-							: queueData?.waitReason ?? stream.waitReason,
+							: (queueData?.waitReason ?? stream.waitReason),
 						availableMemoryMb: clearQueueFields
 							? undefined
-							: queueData?.availableMemoryMb ??
-								stream.availableMemoryMb,
+							: (queueData?.availableMemoryMb ??
+								stream.availableMemoryMb),
 						requiredMemoryMb: clearQueueFields
 							? undefined
-							: queueData?.requiredMemoryMb ??
-								stream.requiredMemoryMb,
+							: (queueData?.requiredMemoryMb ??
+								stream.requiredMemoryMb),
 					},
 				},
 			};
@@ -282,7 +283,6 @@ export const useExecutionStreamStore = create<ExecutionStreamStore>((set) => ({
 
 	clearStream: (executionId) => {
 		set((state) => {
-			// eslint-disable-next-line @typescript-eslint/no-unused-vars
 			const { [executionId]: _removed, ...remainingStreams } =
 				state.streams;
 			return {

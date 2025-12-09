@@ -266,7 +266,9 @@ export function EditorLayout() {
 									<SourceControlPanel />
 								)}
 								{sidebarPanel === "run" && <RunPanel />}
-								{sidebarPanel === "packages" && <PackagePanel />}
+								{sidebarPanel === "packages" && (
+									<PackagePanel />
+								)}
 							</div>
 
 							{/* Resize handle */}

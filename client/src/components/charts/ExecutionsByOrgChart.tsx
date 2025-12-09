@@ -46,7 +46,9 @@ export function ExecutionsByOrgChart({
 			<Card>
 				<CardHeader>
 					<CardTitle>Executions by Organization</CardTitle>
-					<CardDescription>Top organizations by execution count</CardDescription>
+					<CardDescription>
+						Top organizations by execution count
+					</CardDescription>
 				</CardHeader>
 				<CardContent>
 					<Skeleton className="h-[300px] w-full" />
@@ -70,7 +72,9 @@ export function ExecutionsByOrgChart({
 			<Card>
 				<CardHeader>
 					<CardTitle>Executions by Organization</CardTitle>
-					<CardDescription>Top organizations by execution count</CardDescription>
+					<CardDescription>
+						Top organizations by execution count
+					</CardDescription>
 				</CardHeader>
 				<CardContent>
 					<div className="flex items-center justify-center h-[300px] text-muted-foreground">
@@ -86,14 +90,22 @@ export function ExecutionsByOrgChart({
 			<CardHeader>
 				<CardTitle>Executions by Organization</CardTitle>
 				<CardDescription>
-					Top {chartData.length} organizations by execution count (30 days)
+					Top {chartData.length} organizations by execution count (30
+					days)
 				</CardDescription>
 			</CardHeader>
 			<CardContent>
 				<ResponsiveContainer width="100%" height={300}>
 					<BarChart data={chartData} layout="vertical">
-						<CartesianGrid strokeDasharray="3 3" className="stroke-muted" />
-						<XAxis type="number" className="text-xs" tick={{ fontSize: 12 }} />
+						<CartesianGrid
+							strokeDasharray="3 3"
+							className="stroke-muted"
+						/>
+						<XAxis
+							type="number"
+							className="text-xs"
+							tick={{ fontSize: 12 }}
+						/>
 						<YAxis
 							dataKey="name"
 							type="category"
@@ -107,7 +119,11 @@ export function ExecutionsByOrgChart({
 								border: "1px solid hsl(var(--border))",
 								borderRadius: "6px",
 							}}
-							formatter={(value: number, _name: string, props) => [
+							formatter={(
+								value: number,
+								_name: string,
+								props,
+							) => [
 								`${value.toLocaleString()} executions`,
 								props.payload.fullName,
 							]}

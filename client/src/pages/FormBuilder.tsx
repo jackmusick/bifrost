@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo } from "react";
+import { useState, useMemo } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import { ArrowLeft, Save, Eye, Pencil, Info, Play } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -44,43 +44,32 @@ export function FormBuilder() {
 	const updateForm = useUpdateForm();
 	const { data: workflowsMetadata } = useWorkflowsMetadata();
 
-	// Form state
-	const [formName, setFormName] = useState("");
-	const [formDescription, setFormDescription] = useState("");
-	const [linkedWorkflow, setLinkedWorkflow] = useState("");
-	const [isGlobal, setIsGlobal] = useState(isGlobalScope); // Default based on current scope
+	// Form state - initialize from existingForm
+	const [formName, setFormName] = useState(() => existingForm?.name || "");
+	const [formDescription, setFormDescription] = useState(
+		() => existingForm?.description || "",
+	);
+	const [linkedWorkflow, setLinkedWorkflow] = useState(
+		() => existingForm?.linked_workflow || "",
+	);
+	// Determine if form is global based on edit state and existing form data
+	const isGlobal =
+		isEditing && existingForm
+			? !existingForm.organization_id
+			: isGlobalScope;
 	const [launchWorkflowId, setLaunchWorkflowId] = useState<string | null>(
-		null,
+		() => existingForm?.launch_workflow_id || null,
 	);
 	const [defaultLaunchParams, setDefaultLaunchParams] = useState<Record<
 		string,
 		unknown
-	> | null>(null);
+	> | null>(() => existingForm?.default_launch_params || null);
 	const [accessLevel, setAccessLevel] = useState<
 		"public" | "authenticated" | "role_based"
-	>("role_based");
+	>(() => existingForm?.access_level || "role_based");
 	const [selectedRoleIds, setSelectedRoleIds] = useState<string[]>([]);
-	const [fields, setFields] = useState<FormField[]>([]);
-	const [isInfoDialogOpen, setIsInfoDialogOpen] = useState(false);
-	const [isContextDialogOpen, setIsContextDialogOpen] = useState(false);
-	const [workflowResultsDialogOpen, setWorkflowResultsDialogOpen] =
-		useState(false);
-	const [workflowParamsDialogOpen, setWorkflowParamsDialogOpen] =
-		useState(false);
-	const [workflowResults] = useState<Record<string, unknown> | null>(null);
-
-	// Load existing form data
-	useEffect(() => {
-		if (existingForm && existingForm.form_schema) {
-			setFormName(existingForm.name);
-			setFormDescription(existingForm.description || "");
-			setLinkedWorkflow(existingForm.linked_workflow || "");
-			// Form is global if it has no organization_id
-			setIsGlobal(!existingForm.organization_id);
-			setLaunchWorkflowId(existingForm.launch_workflow_id || null);
-			setDefaultLaunchParams(existingForm.default_launch_params || null);
-			setAccessLevel(existingForm.access_level || "role_based");
-			// Type guard to ensure form_schema has fields property
+	const [fields, setFields] = useState<FormField[]>(() => {
+		if (existingForm?.form_schema) {
 			if (
 				typeof existingForm.form_schema === "object" &&
 				existingForm.form_schema !== null &&
@@ -89,32 +78,22 @@ export function FormBuilder() {
 				const schema = existingForm.form_schema as {
 					fields: unknown[];
 				};
-				setFields(schema.fields as FormField[]);
+				return schema.fields as FormField[];
 			}
 		}
-	}, [existingForm]);
-
-	// Load form roles when editing
-	useEffect(() => {
-		if (formId && isEditing) {
-			// TODO: Implement getFormRoles when form->roles endpoints are available
-			// For now, roles for a form cannot be fetched
-		}
-	}, [formId, isEditing]);
-
-	// Update isGlobal when scope changes (only for new forms)
-	useEffect(() => {
-		if (!isEditing) {
-			setIsGlobal(isGlobalScope);
-		}
-	}, [isGlobalScope, isEditing]);
-
+		return [];
+	});
 	// Open info dialog automatically for new forms
-	useEffect(() => {
-		if (!isEditing && !formName) {
-			setIsInfoDialogOpen(true);
-		}
-	}, [isEditing, formName]);
+	const [isInfoDialogOpen, setIsInfoDialogOpen] = useState(() => !isEditing);
+	const [isContextDialogOpen, setIsContextDialogOpen] = useState(false);
+	const [workflowResultsDialogOpen, setWorkflowResultsDialogOpen] =
+		useState(false);
+	const [workflowParamsDialogOpen, setWorkflowParamsDialogOpen] =
+		useState(false);
+	const [workflowResults] = useState<Record<string, unknown> | null>(null);
+
+	// Note: Opening info dialog for new forms is handled by checking
+	// isEditing and formName state at render time to avoid effect loops
 
 	const handleSave = async () => {
 		try {

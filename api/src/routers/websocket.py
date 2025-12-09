@@ -67,6 +67,10 @@ async def websocket_connect(
             # Package installation channels - users can subscribe to their own
             if channel == f"package:{user.user_id}":
                 allowed_channels.append(channel)
+        elif channel.startswith("git:"):
+            # Git operation channels - users can subscribe to their own
+            if channel == f"git:{user.user_id}":
+                allowed_channels.append(channel)
         elif channel.startswith("history:"):
             # History channels for real-time updates
             allowed_channels.append(channel)

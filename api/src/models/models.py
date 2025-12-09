@@ -156,7 +156,6 @@ __all__ = [
     # Health
     'HealthCheck',
     'GeneralHealthResponse',
-    'KeyVaultHealthResponse',
     'BasicHealthResponse',
 
     # Dashboard
@@ -1577,24 +1576,6 @@ class GeneralHealthResponse(BaseModel):
     service: str = Field(default="Bifrost Integrations API", description="Service name")
     timestamp: datetime = Field(..., description="Health check timestamp")
     checks: list[HealthCheck] = Field(..., description="Individual service health checks")
-
-
-class KeyVaultHealthResponse(BaseModel):
-    """Health check response for Azure Key Vault"""
-    status: Literal["healthy", "degraded",
-                    "unhealthy"] = Field(..., description="Health status")
-    message: str = Field(..., description="Health status message")
-    vault_url: str | None = Field(
-        None, description="Key Vault URL being monitored")
-    can_connect: bool = Field(...,
-                             description="Whether connection to Key Vault succeeded")
-    can_list_secrets: bool = Field(...,
-                                 description="Whether listing secrets is permitted")
-    can_get_secrets: bool = Field(...,
-                                description="Whether reading secrets is permitted")
-    secret_count: int | None = Field(
-        None, description="Number of secrets in Key Vault (if accessible)")
-    last_checked: datetime = Field(..., description="Timestamp of health check")
 
 
 # ==================== OAUTH PROVIDER MODELS ====================

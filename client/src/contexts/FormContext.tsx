@@ -14,7 +14,6 @@ import {
 	createContext,
 	useContext,
 	useState,
-	useEffect,
 	useCallback,
 	useMemo,
 	ReactNode,
@@ -130,38 +129,39 @@ export function FormContextProvider({
 	const [isLoadingLaunchWorkflow, setIsLoadingLaunchWorkflow] =
 		useState(false);
 
-	// Initialize context with filtered query params
-	const [context, setContext] = useState<FormContextValue>(() => ({
-		workflow: {},
-		query: filterQueryParams(queryParams, form.allowed_query_params),
-		field: {},
-	}));
+	// Store workflow and field values in state (mutable parts)
+	const [workflowResults, setWorkflowResultsState] = useState<
+		Record<string, unknown>
+	>({});
+	const [fieldValues, setFieldValues] = useState<Record<string, unknown>>({});
 
-	// Update context when query params change (e.g., URL navigation)
-	useEffect(() => {
-		setContext((prev) => ({
-			...prev,
-			query: filterQueryParams(queryParams, form.allowed_query_params),
-		}));
-	}, [queryParams, form.allowed_query_params]);
+	// Compute query params from props (derived value, not state)
+	const filteredQuery = useMemo(
+		() => filterQueryParams(queryParams, form.allowed_query_params),
+		[queryParams, form.allowed_query_params],
+	);
+
+	// Combine into full context (memoized)
+	const context = useMemo<FormContextValue>(
+		() => ({
+			workflow: workflowResults,
+			query: filteredQuery,
+			field: fieldValues,
+		}),
+		[workflowResults, filteredQuery, fieldValues],
+	);
 
 	const setWorkflowResults = useCallback(
 		(results: Record<string, unknown>) => {
-			setContext((prev) => ({
-				...prev,
-				workflow: results,
-			}));
+			setWorkflowResultsState(results);
 		},
 		[],
 	);
 
 	const setFieldValue = useCallback((fieldName: string, value: unknown) => {
-		setContext((prev) => ({
+		setFieldValues((prev) => ({
 			...prev,
-			field: {
-				...prev.field,
-				[fieldName]: value,
-			},
+			[fieldName]: value,
 		}));
 	}, []);
 

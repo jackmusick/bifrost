@@ -42,21 +42,15 @@ export function Dashboard() {
 		"executions" | "memory" | "duration" | "cpu"
 	>("memory");
 
-	const { data: resourceData, isLoading: resourceLoading } = useResourceMetrics(
-		7,
-		isPlatformAdmin,
-	);
+	const { data: resourceData, isLoading: resourceLoading } =
+		useResourceMetrics(7, isPlatformAdmin);
 	const { data: orgData, isLoading: orgLoading } = useOrganizationMetrics(
 		30,
 		10,
 		isPlatformAdmin,
 	);
-	const { data: workflowData, isLoading: workflowLoading } = useWorkflowMetrics(
-		30,
-		workflowSort,
-		20,
-		isPlatformAdmin,
-	);
+	const { data: workflowData, isLoading: workflowLoading } =
+		useWorkflowMetrics(30, workflowSort, 20, isPlatformAdmin);
 
 	// Redirect OrgUsers to /forms (their only accessible page)
 	if (isOrgUser && !isPlatformAdmin) {
@@ -286,7 +280,9 @@ export function Dashboard() {
 			{/* Platform Analytics - Admin Only */}
 			{isPlatformAdmin && (
 				<div className="space-y-4">
-					<h2 className="text-xl font-semibold">Platform Analytics</h2>
+					<h2 className="text-xl font-semibold">
+						Platform Analytics
+					</h2>
 
 					{/* Resource Trend Chart - Full Width */}
 					<ResourceTrendChart

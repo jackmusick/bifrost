@@ -26,19 +26,16 @@ interface ThemeProviderProps {
 }
 
 export function ThemeProvider({ children }: ThemeProviderProps) {
-	const [theme, setThemeState] = useState<Theme>("dark"); // Default to dark
-
-	useEffect(() => {
-		// Initialize theme from localStorage or default to dark
+	// Use lazy initializer to read from localStorage on first render
+	const [theme, setThemeState] = useState<Theme>(() => {
 		const storedTheme = localStorage.getItem("theme") as Theme | null;
 		if (storedTheme) {
-			setThemeState(storedTheme);
-		} else {
-			// Set default to dark
-			localStorage.setItem("theme", "dark");
-			setThemeState("dark");
+			return storedTheme;
 		}
-	}, []);
+		// Set default to dark
+		localStorage.setItem("theme", "dark");
+		return "dark";
+	});
 
 	useEffect(() => {
 		// Apply theme to document

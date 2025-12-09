@@ -1,7 +1,14 @@
 import { useEditorStore } from "@/stores/editorStore";
 import { useWorkflowsStore } from "@/stores/workflowsStore";
 import { useUploadProgress } from "@/hooks/useUploadProgress";
-import { Circle, Workflow, Loader2, CheckCircle, AlertCircle, X } from "lucide-react";
+import {
+	Circle,
+	Workflow,
+	Loader2,
+	CheckCircle,
+	AlertCircle,
+	X,
+} from "lucide-react";
 import { useMemo } from "react";
 import { Progress } from "@/components/ui/progress";
 
@@ -50,11 +57,16 @@ export function StatusBar() {
 	const saveStatusText = getSaveStatusText();
 
 	// Check if we should show upload state
-	const showUploadProgress = uploadState.isUploading || uploadState.totalCount > 0;
-	const uploadSuccessCount = uploadState.totalCount - uploadState.failures.length;
-	const uploadProgressPercent = uploadState.totalCount > 0
-		? Math.round((uploadState.completedCount / uploadState.totalCount) * 100)
-		: 0;
+	const showUploadProgress =
+		uploadState.isUploading || uploadState.totalCount > 0;
+	const uploadSuccessCount =
+		uploadState.totalCount - uploadState.failures.length;
+	const uploadProgressPercent =
+		uploadState.totalCount > 0
+			? Math.round(
+					(uploadState.completedCount / uploadState.totalCount) * 100,
+				)
+			: 0;
 
 	return (
 		<div className="flex h-6 items-center justify-between border-t bg-muted/50 px-4 text-xs text-muted-foreground">
@@ -69,9 +81,13 @@ export function StatusBar() {
 									{uploadState.currentFile || "Preparing..."}
 								</span>
 								<span className="shrink-0 text-muted-foreground">
-									{uploadState.completedCount}/{uploadState.totalCount}
+									{uploadState.completedCount}/
+									{uploadState.totalCount}
 								</span>
-								<Progress value={uploadProgressPercent} className="h-1.5 w-24" />
+								<Progress
+									value={uploadProgressPercent}
+									className="h-1.5 w-24"
+								/>
 							</>
 						) : (
 							<>
@@ -98,7 +114,11 @@ export function StatusBar() {
 				) : (
 					<>
 						{/* File path */}
-						{openFile && <span className="font-mono truncate">{openFile.path}</span>}
+						{openFile && (
+							<span className="font-mono truncate">
+								{openFile.path}
+							</span>
+						)}
 
 						{/* File type badge */}
 						{openFile && openFile.path.endsWith(".py") && (

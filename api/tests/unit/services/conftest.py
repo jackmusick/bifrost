@@ -1,127 +1,14 @@
 """
-Pytest fixtures for infrastructure service tests.
+Pytest fixtures for service unit tests.
 
 Provides mocks for:
-- BlobServiceClient and related blob operations
-- SecretClient for Key Vault operations
-- Temporary file and directory setup
+- OAuth storage and connection testing
+- Workspace operations
+- Common test data
 """
 
 import pytest
-from unittest.mock import AsyncMock, MagicMock, Mock, patch
-
-
-@pytest.fixture
-def mock_blob_service_client():
-    """Mock BlobServiceClient with full blob operations support"""
-    with patch("src.core.blob_storage.BlobServiceClient") as mock_service_class:
-        # Create mock instances
-        mock_service = MagicMock()
-        mock_blob_client = MagicMock()
-        mock_container_client = MagicMock()
-
-        # Setup service class to return mock instance
-        mock_service_class.from_connection_string.return_value = mock_service
-
-        # Setup blob and container client returns
-        mock_service.get_blob_client.return_value = mock_blob_client
-        mock_service.get_container_client.return_value = mock_container_client
-        mock_service.create_container.return_value = mock_container_client
-        mock_container_client.get_blob_client.return_value = mock_blob_client
-
-        # Setup account name for SAS URL generation
-        mock_service.account_name = "teststorage"
-
-        yield {
-            "service_class": mock_service_class,
-            "service": mock_service,
-            "blob": mock_blob_client,
-            "container": mock_container_client,
-        }
-
-
-@pytest.fixture
-def mock_secret_client():
-    """Mock SecretClient for Key Vault operations"""
-    with patch("src.core.keyvault.SecretClient") as mock_client_class:
-        # Create mock instance
-        mock_instance = MagicMock()
-        mock_client_class.return_value = mock_instance
-
-        # In-memory secret storage for testing
-        secrets_store = {}
-
-        async def mock_set_secret(name, value):
-            secrets_store[name] = value
-            secret_obj = MagicMock()
-            secret_obj.name = name
-            secret_obj.value = value
-            return secret_obj
-
-        async def mock_get_secret(name):
-            if name not in secrets_store:
-                from azure.core.exceptions import ResourceNotFoundError
-                raise ResourceNotFoundError(f"Secret not found: {name}")
-            secret_obj = MagicMock()
-            secret_obj.name = name
-            secret_obj.value = secrets_store[name]
-            return secret_obj
-
-        async def mock_list_properties():
-            props_list = []
-            for name in secrets_store:
-                prop = MagicMock()
-                prop.name = name
-                props_list.append(prop)
-            # Return async generator
-            for prop in props_list:
-                yield prop
-
-        async def mock_delete_secret(name):
-            if name in secrets_store:
-                del secrets_store[name]
-            return MagicMock()
-
-        # Attach async methods to mock
-        mock_instance.set_secret = AsyncMock(side_effect=mock_set_secret)
-        mock_instance.get_secret = AsyncMock(side_effect=mock_get_secret)
-        mock_instance.list_properties_of_secrets = mock_list_properties
-        mock_instance.delete_secret = AsyncMock(side_effect=mock_delete_secret)
-
-        # Store secrets dictionary for test access
-        mock_instance._secrets_store = secrets_store
-
-        yield {
-            "client_class": mock_client_class,
-            "instance": mock_instance,
-            "secrets_store": secrets_store,
-        }
-
-
-@pytest.fixture
-def mock_default_credential():
-    """Mock DefaultAzureCredential"""
-    with patch("src.core.keyvault.DefaultAzureCredential") as mock:
-        yield mock
-
-
-@pytest.fixture
-def sample_blob_data():
-    """Sample blob content for upload/download tests"""
-    return b"Test blob content for execution logs"
-
-
-@pytest.fixture
-def sample_json_blob():
-    """Sample JSON blob data"""
-    import json
-    data = {
-        "execution_id": "test-exec-123",
-        "status": "completed",
-        "result": "success",
-        "data": {"key": "value"}
-    }
-    return json.dumps(data).encode('utf-8')
+from unittest.mock import AsyncMock, Mock, patch
 
 
 @pytest.fixture
@@ -162,16 +49,6 @@ def sample_execution_result():
 
 
 @pytest.fixture
-def sample_secret():
-    """Sample secret for Key Vault tests"""
-    return {
-        "name": "test-secret",
-        "value": "super-secret-value-123",
-        "enabled": True
-    }
-
-
-@pytest.fixture
 def temp_test_dir(tmp_path):
     """Provides a temporary directory for file operations tests"""
     return tmp_path
@@ -192,42 +69,6 @@ def mock_table_service():
         instance.query_entities = AsyncMock() # Async
         mock.return_value = instance
         yield instance
-
-
-@pytest.fixture
-def mock_keyvault_client():
-    """Mock KeyVaultClient for OAuth storage"""
-    with patch("src.services.oauth_storage.KeyVaultClient") as mock_kv_class:
-        # Create async mock methods
-        set_secret_mock = AsyncMock(return_value={"name": "test-secret", "message": "Secret saved successfully"})
-        get_secret_mock = AsyncMock(return_value="test-value")
-        delete_secret_mock = AsyncMock(return_value={"name": "test-secret", "message": "Secret deleted"})
-
-        # Create client mock without assigning AsyncMock to avoid warnings
-        client_mock = Mock(
-            set_secret=AsyncMock(),
-            get_secret=AsyncMock(),
-            delete_secret=AsyncMock()
-        )
-
-        # Create mock context using **kwargs to avoid dynamic setattr
-        mock_context = Mock(
-            set_secret=set_secret_mock,
-            get_secret=get_secret_mock,
-            delete_secret=delete_secret_mock,
-            _client=client_mock
-        )
-
-        # Create the KeyVaultClient mock with async context manager support
-        aenter_mock = AsyncMock(return_value=mock_context)
-        aexit_mock = AsyncMock(return_value=None)
-
-        mock_instance = Mock(__aenter__=aenter_mock, __aexit__=aexit_mock)
-
-        # When KeyVaultClient() is instantiated, return our mock instance
-        mock_kv_class.return_value = mock_instance
-
-        yield mock_kv_class
 
 
 @pytest.fixture

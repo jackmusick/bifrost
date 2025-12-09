@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { AlertCircle, CheckCircle2, Copy, Check } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -26,21 +26,7 @@ export function CronTester() {
 	const [result, setResult] = useState<ValidationResult | null>(null);
 	const [copied, setCopied] = useState(false);
 
-	// Debounced validation
-	useEffect(() => {
-		if (!expression) {
-			setResult(null);
-			return;
-		}
-
-		const timer = setTimeout(() => {
-			validateExpression(expression);
-		}, 500);
-
-		return () => clearTimeout(timer);
-	}, [expression]);
-
-	const validateExpression = async (expr: string) => {
+	const validateExpression = useCallback(async (expr: string) => {
 		if (!expr.trim()) return;
 
 		try {
@@ -58,7 +44,24 @@ export function CronTester() {
 				error: "Unable to connect to validation service",
 			});
 		}
-	};
+	}, []);
+
+	// Debounced validation - only validate non-empty expressions
+	useEffect(() => {
+		if (!expression) {
+			// Don't call setResult in effect - result will be filtered in render
+			return;
+		}
+
+		const timer = setTimeout(() => {
+			validateExpression(expression);
+		}, 500);
+
+		return () => clearTimeout(timer);
+	}, [expression, validateExpression]);
+
+	// Computed result - null when expression is empty
+	const displayResult = expression ? result : null;
 
 	const handleCopy = () => {
 		navigator.clipboard.writeText(expression);
@@ -91,63 +94,67 @@ export function CronTester() {
 				)}
 			</div>
 
-			{result && (
+			{displayResult && (
 				<div className="space-y-3">
-					{result.valid ? (
+					{displayResult.valid ? (
 						<Alert className="bg-green-50 border-green-200 dark:bg-green-950 dark:border-green-800">
 							<CheckCircle2 className="h-4 w-4 text-green-600 dark:text-green-400" />
 							<AlertDescription className="text-green-800 dark:text-green-200">
-								{result.human_readable}
+								{displayResult.human_readable}
 							</AlertDescription>
 						</Alert>
 					) : (
 						<Alert variant="destructive">
 							<AlertCircle className="h-4 w-4" />
 							<AlertDescription>
-								{result.error || result.human_readable}
+								{displayResult.error ||
+									displayResult.human_readable}
 							</AlertDescription>
 						</Alert>
 					)}
 
-					{result.warning && (
+					{displayResult.warning && (
 						<Alert className="bg-yellow-50 border-yellow-200 dark:bg-yellow-950 dark:border-yellow-800">
 							<AlertCircle className="h-4 w-4 text-yellow-600 dark:text-yellow-400" />
 							<AlertDescription className="text-yellow-800 dark:text-yellow-200">
-								{result.warning}
+								{displayResult.warning}
 							</AlertDescription>
 						</Alert>
 					)}
 
-					{result.next_runs && result.next_runs.length > 0 && (
-						<div>
-							<h4 className="text-sm font-semibold mb-2">
-								Next 5 runs:
-							</h4>
-							<div className="space-y-1">
-								{result.next_runs.map((run, i) => {
-									const date = new Date(run);
-									return (
-										<div
-											key={i}
-											className="text-sm flex items-center gap-2"
-										>
-											<span className="text-gray-500 dark:text-gray-400">
-												•
-											</span>
-											<span>{date.toLocaleString()}</span>
-											<span className="text-xs text-gray-500">
-												(
-												{formatDistanceToNow(date, {
-													addSuffix: true,
-												})}
-												)
-											</span>
-										</div>
-									);
-								})}
+					{displayResult.next_runs &&
+						displayResult.next_runs.length > 0 && (
+							<div>
+								<h4 className="text-sm font-semibold mb-2">
+									Next 5 runs:
+								</h4>
+								<div className="space-y-1">
+									{displayResult.next_runs.map((run, i) => {
+										const date = new Date(run);
+										return (
+											<div
+												key={i}
+												className="text-sm flex items-center gap-2"
+											>
+												<span className="text-gray-500 dark:text-gray-400">
+													•
+												</span>
+												<span>
+													{date.toLocaleString()}
+												</span>
+												<span className="text-xs text-gray-500">
+													(
+													{formatDistanceToNow(date, {
+														addSuffix: true,
+													})}
+													)
+												</span>
+											</div>
+										);
+									})}
+								</div>
 							</div>
-						</div>
-					)}
+						)}
 				</div>
 			)}
 

@@ -1,110 +1,102 @@
 # Bifrost API - FastAPI Stack Requirements
-# This file replaces Azure Functions dependencies with local services
 
 # =============================================================================
 # Web Framework
 # =============================================================================
-fastapi>=0.109.0
-uvicorn[standard]>=0.27.0
-python-multipart>=0.0.6  # Form data handling
+fastapi
+uvicorn[standard]
+python-multipart  # Form data handling
 
 # =============================================================================
 # Database (PostgreSQL)
 # =============================================================================
-sqlmodel>=0.0.27  # Combines SQLAlchemy + Pydantic
-sqlalchemy[asyncio]>=2.0.25
-asyncpg>=0.29.0  # Async PostgreSQL driver
-psycopg2-binary>=2.9.9  # Sync PostgreSQL driver (for SDK/workflow threads)
-alembic>=1.13.0  # Database migrations
-greenlet>=3.0.0  # Required by SQLAlchemy async
+sqlalchemy[asyncio]
+asyncpg  # Async PostgreSQL driver
+psycopg2-binary  # Sync PostgreSQL driver (for SDK/workflow threads)
+alembic  # Database migrations
+greenlet  # Required by SQLAlchemy async
 
 # =============================================================================
 # Message Queue (RabbitMQ)
 # =============================================================================
-aio-pika>=9.4.0  # Async RabbitMQ client
+aio-pika  # Async RabbitMQ client
 
 # =============================================================================
 # Cache & Sessions (Redis)
 # =============================================================================
-redis>=5.0.0
-aioredis>=2.0.1
+redis  # Includes async support (aioredis merged in v5.0)
 
 # =============================================================================
 # Authentication & Security
 # =============================================================================
-pyjwt[crypto]>=2.8.0  # JWT tokens
-pwdlib[bcrypt]>=0.2.0  # Modern password hashing (replaces unmaintained passlib)
-python-jose[cryptography]>=3.3.0  # Alternative JWT (compatibility)
-cryptography>=41.0.0  # Encryption utilities
-pyotp>=2.9.0  # TOTP/HOTP for MFA
+pyjwt[crypto]  # JWT tokens
+pwdlib[bcrypt]  # Modern password hashing
+python-jose[cryptography]  # Alternative JWT (compatibility)
+cryptography  # Encryption utilities
+pyotp  # TOTP/HOTP for MFA
 
 # =============================================================================
 # Configuration
 # =============================================================================
-pydantic>=2.5.0
-pydantic-settings>=2.1.0
-python-dotenv>=1.0.0
-email-validator>=2.1.0  # Required by Pydantic for email validation
+pydantic
+pydantic-settings
+python-dotenv
+email-validator  # Required by Pydantic for email validation
 
 # =============================================================================
 # HTTP & Async
 # =============================================================================
-httpx>=0.26.0  # Async HTTP client
-aiohttp>=3.9.0
-aiofiles>=23.2.0
+httpx  # Async HTTP client
+aiohttp
+aiofiles
 
 # =============================================================================
 # Data Processing
 # =============================================================================
-PyYAML>=6.0
-python-dateutil>=2.8.0
-croniter>=2.0.0  # CRON expression parsing
-jmespath>=1.0.0
+PyYAML
+python-dateutil
+croniter  # CRON expression parsing
+jmespath
 
 # =============================================================================
-# Templating & Documents
+# Templating
 # =============================================================================
-jinja2>=3.1.0
-openpyxl>=3.1.0  # Excel
-python-docx>=1.1.0  # Word documents
+jinja2
 
 # =============================================================================
 # Git Integration
 # =============================================================================
-dulwich>=0.21.0
-merge3>=0.0.14
-PyGithub>=2.1.0
+dulwich
+PyGithub
 
 # =============================================================================
 # Background Jobs
 # =============================================================================
-apscheduler>=3.10.0  # Scheduler
+apscheduler  # Scheduler
 
 # =============================================================================
 # Logging & Monitoring
 # =============================================================================
-python-json-logger>=2.0.0
-structlog>=24.1.0
+python-json-logger
+structlog
 
 # =============================================================================
 # Testing
 # =============================================================================
-pytest>=7.4.0
-pytest-asyncio>=0.23.0
-pytest-cov>=4.1.0
-pytest-env>=1.1.0
-httpx  # For TestClient
-websockets>=12.0  # For E2E WebSocket tests
+pytest
+pytest-asyncio
+pytest-cov
+pytest-env
+websockets  # For E2E WebSocket tests
 
 # =============================================================================
 # Object Storage (S3/MinIO)
 # =============================================================================
-aiobotocore>=2.9.0  # Async S3 client
-types-aiobotocore[s3]>=2.9.0  # Type stubs for S3
+aiobotocore  # Async S3 client
+types-aiobotocore[s3]  # Type stubs for S3
 
 # =============================================================================
 # Development
 # =============================================================================
-debugpy>=1.8.0
-watchdog>=3.0.0
-ruff>=0.1.0
+debugpy  # Remote debugging (VS Code attach)
+ruff

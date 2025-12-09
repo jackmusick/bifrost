@@ -5,7 +5,7 @@
  * Exchanges authorization code for tokens and redirects to the app.
  */
 
-import { useEffect, useState, useCallback } from "react";
+import { useEffect, useState, useRef } from "react";
 import { useNavigate, useParams, useSearchParams } from "react-router-dom";
 import { useAuth } from "@/contexts/AuthContext";
 import { Loader2, AlertCircle } from "lucide-react";
@@ -19,57 +19,64 @@ export function AuthCallback() {
 	const { loginWithOAuth } = useAuth();
 
 	const [error, setError] = useState<string | null>(null);
-
-	const handleCallback = useCallback(async () => {
-		// Get OAuth response parameters
-		const code = searchParams.get("code");
-		const state = searchParams.get("state");
-		const errorParam = searchParams.get("error");
-		const errorDescription = searchParams.get("error_description");
-
-		// Check for OAuth error
-		if (errorParam) {
-			setError(errorDescription || errorParam);
-			return;
-		}
-
-		// Verify required parameters
-		if (!code || !state || !provider) {
-			setError("Missing required OAuth parameters");
-			return;
-		}
-
-		// Get stored state
-		// Note: code_verifier is now handled server-side (stored in Redis when init is called)
-		const storedState = sessionStorage.getItem("oauth_state");
-		const redirectFrom =
-			sessionStorage.getItem("oauth_redirect_from") || "/";
-
-		// Clear stored OAuth data
-		sessionStorage.removeItem("oauth_state");
-		sessionStorage.removeItem("oauth_redirect_from");
-		sessionStorage.removeItem("oauth_provider");
-
-		// Verify state matches
-		if (state !== storedState) {
-			setError("Invalid OAuth state - possible CSRF attack");
-			return;
-		}
-
-		try {
-			// Exchange code for tokens (server handles PKCE verification)
-			await loginWithOAuth(provider, code, state);
-
-			// Redirect to original destination
-			navigate(redirectFrom, { replace: true });
-		} catch (err) {
-			setError(err instanceof Error ? err.message : "OAuth login failed");
-		}
-	}, [searchParams, provider, loginWithOAuth, navigate]);
+	const hasHandledRef = useRef(false);
 
 	useEffect(() => {
+		// Prevent double execution in strict mode
+		if (hasHandledRef.current) return;
+		hasHandledRef.current = true;
+
+		async function handleCallback() {
+			// Get OAuth response parameters
+			const code = searchParams.get("code");
+			const state = searchParams.get("state");
+			const errorParam = searchParams.get("error");
+			const errorDescription = searchParams.get("error_description");
+
+			// Check for OAuth error
+			if (errorParam) {
+				setError(errorDescription || errorParam);
+				return;
+			}
+
+			// Verify required parameters
+			if (!code || !state || !provider) {
+				setError("Missing required OAuth parameters");
+				return;
+			}
+
+			// Get stored state
+			// Note: code_verifier is now handled server-side (stored in Redis when init is called)
+			const storedState = sessionStorage.getItem("oauth_state");
+			const redirectFrom =
+				sessionStorage.getItem("oauth_redirect_from") || "/";
+
+			// Clear stored OAuth data
+			sessionStorage.removeItem("oauth_state");
+			sessionStorage.removeItem("oauth_redirect_from");
+			sessionStorage.removeItem("oauth_provider");
+
+			// Verify state matches
+			if (state !== storedState) {
+				setError("Invalid OAuth state - possible CSRF attack");
+				return;
+			}
+
+			try {
+				// Exchange code for tokens (server handles PKCE verification)
+				await loginWithOAuth(provider, code, state);
+
+				// Redirect to original destination
+				navigate(redirectFrom, { replace: true });
+			} catch (err) {
+				setError(
+					err instanceof Error ? err.message : "OAuth login failed",
+				);
+			}
+		}
+
 		handleCallback();
-	}, [handleCallback]);
+	}, [searchParams, provider, loginWithOAuth, navigate]);
 
 	if (error) {
 		return (

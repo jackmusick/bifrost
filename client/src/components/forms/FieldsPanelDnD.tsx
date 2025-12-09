@@ -613,11 +613,14 @@ export function FieldsPanelDnD({
 							</p>
 							<div className="space-y-2">
 								{workflowParams.map(
-									(param: WorkflowParameter) => (
+									(
+										param: WorkflowParameter,
+										index: number,
+									) => (
 										<WorkflowInputItem
 											key={
 												param.name ??
-												Math.random().toString()
+												`workflow-param-${index}`
 											}
 											param={param}
 										/>

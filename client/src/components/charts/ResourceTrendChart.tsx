@@ -23,13 +23,18 @@ interface ResourceTrendChartProps {
 	isLoading?: boolean;
 }
 
-export function ResourceTrendChart({ data, isLoading }: ResourceTrendChartProps) {
+export function ResourceTrendChart({
+	data,
+	isLoading,
+}: ResourceTrendChartProps) {
 	if (isLoading) {
 		return (
 			<Card>
 				<CardHeader>
 					<CardTitle>Resource Utilization</CardTitle>
-					<CardDescription>Memory and CPU trends over time</CardDescription>
+					<CardDescription>
+						Memory and CPU trends over time
+					</CardDescription>
 				</CardHeader>
 				<CardContent>
 					<Skeleton className="h-[300px] w-full" />
@@ -54,7 +59,9 @@ export function ResourceTrendChart({ data, isLoading }: ResourceTrendChartProps)
 			<Card>
 				<CardHeader>
 					<CardTitle>Resource Utilization</CardTitle>
-					<CardDescription>Memory and CPU trends over time</CardDescription>
+					<CardDescription>
+						Memory and CPU trends over time
+					</CardDescription>
 				</CardHeader>
 				<CardContent>
 					<div className="flex items-center justify-center h-[300px] text-muted-foreground">
@@ -76,8 +83,15 @@ export function ResourceTrendChart({ data, isLoading }: ResourceTrendChartProps)
 			<CardContent>
 				<ResponsiveContainer width="100%" height={300}>
 					<LineChart data={chartData}>
-						<CartesianGrid strokeDasharray="3 3" className="stroke-muted" />
-						<XAxis dataKey="date" className="text-xs" tick={{ fontSize: 12 }} />
+						<CartesianGrid
+							strokeDasharray="3 3"
+							className="stroke-muted"
+						/>
+						<XAxis
+							dataKey="date"
+							className="text-xs"
+							tick={{ fontSize: 12 }}
+						/>
 						<YAxis
 							yAxisId="left"
 							className="text-xs"
@@ -108,16 +122,20 @@ export function ResourceTrendChart({ data, isLoading }: ResourceTrendChartProps)
 								borderRadius: "6px",
 							}}
 							formatter={(value: number, name: string) => {
-								if (name === "memory_mb") return [`${value} MB`, "Avg Memory"];
-								if (name === "cpu_seconds") return [`${value}s`, "Avg CPU"];
+								if (name === "memory_mb")
+									return [`${value} MB`, "Avg Memory"];
+								if (name === "cpu_seconds")
+									return [`${value}s`, "Avg CPU"];
 								return [value, name];
 							}}
 							labelFormatter={(label) => `Date: ${label}`}
 						/>
 						<Legend
 							formatter={(value) => {
-								if (value === "memory_mb") return "Avg Memory (MB)";
-								if (value === "cpu_seconds") return "Avg CPU (s)";
+								if (value === "memory_mb")
+									return "Avg Memory (MB)";
+								if (value === "cpu_seconds")
+									return "Avg CPU (s)";
 								return value;
 							}}
 						/>

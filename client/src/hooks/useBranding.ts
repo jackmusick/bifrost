@@ -5,7 +5,7 @@
  * Separated from org scope to allow independent loading and caching.
  */
 
-import { useState, useEffect, useCallback, useRef } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import {
 	initializeBranding,
@@ -61,7 +61,7 @@ export function useBranding(): BrandingState {
 	const [rectangleLogoUrl, setRectangleLogoUrl] = useState<string | null>(
 		null,
 	);
-	const brandingAppliedRef = useRef(false);
+	const [brandingApplied, setBrandingApplied] = useState(false);
 
 	// Fetch branding data (public endpoint)
 	const { data: branding, isLoading } = useQuery<BrandingSettings | null>({
@@ -84,10 +84,8 @@ export function useBranding(): BrandingState {
 
 			if (!branding) {
 				// No branding data - apply defaults
-				if (!brandingAppliedRef.current) {
-					await initializeBranding();
-					brandingAppliedRef.current = true;
-				}
+				await initializeBranding();
+				setBrandingApplied(true);
 				setLogoLoaded(true);
 				return;
 			}
@@ -111,7 +109,7 @@ export function useBranding(): BrandingState {
 
 			// Apply theme colors
 			applyBrandingTheme(branding);
-			brandingAppliedRef.current = true;
+			setBrandingApplied(true);
 
 			setLogoLoaded(true);
 		}
@@ -122,12 +120,12 @@ export function useBranding(): BrandingState {
 	}, [branding, isLoading]);
 
 	const refreshBranding = useCallback(() => {
-		brandingAppliedRef.current = false;
+		setBrandingApplied(false);
 		queryClient.invalidateQueries({ queryKey: ["branding"] });
 	}, [queryClient]);
 
 	return {
-		brandingLoaded: !isLoading && brandingAppliedRef.current,
+		brandingLoaded: !isLoading && brandingApplied,
 		logoLoaded,
 		squareLogoUrl,
 		rectangleLogoUrl,

@@ -3,7 +3,7 @@
  * Ensures all language features (comments, formatting, etc.) are properly loaded
  */
 import { loader } from "@monaco-editor/react";
-import type * as Monaco from "monaco-editor/esm/vs/editor/editor.api";
+import type * as Monaco from "monaco-editor";
 
 let setupComplete = false;
 

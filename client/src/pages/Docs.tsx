@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import { ChevronRight, ChevronDown, FileText, Folder } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
@@ -47,33 +47,30 @@ export function Docs() {
 	const navigate = useNavigate();
 	const params = useParams();
 	const [structure, setStructure] = useState<DocFolder>(docsStructure);
-	const [selectedDoc, setSelectedDoc] = useState<DocFile | null>(null);
 	const [content, setContent] = useState<string>("");
 
 	// Get document slug from URL params
 	const docSlug = params["*"] || "";
 
-	useEffect(() => {
-		if (docSlug) {
-			// Find the doc in the structure by slug
-			const findDoc = (folder: DocFolder): DocFile | null => {
-				for (const file of folder.files) {
-					if (file.slug === docSlug) {
-						return file;
-					}
-				}
-				for (const subfolder of folder.folders) {
-					const found = findDoc(subfolder);
-					if (found) return found;
-				}
-				return null;
-			};
+	// Derive selectedDoc from docSlug and structure (no useEffect needed)
+	const selectedDoc = useMemo(() => {
+		if (!docSlug) return null;
 
-			const doc = findDoc(structure);
-			if (doc) {
-				setSelectedDoc(doc);
+		// Find the doc in the structure by slug
+		const findDoc = (folder: DocFolder): DocFile | null => {
+			for (const file of folder.files) {
+				if (file.slug === docSlug) {
+					return file;
+				}
 			}
-		}
+			for (const subfolder of folder.folders) {
+				const found = findDoc(subfolder);
+				if (found) return found;
+			}
+			return null;
+		};
+
+		return findDoc(structure);
 	}, [docSlug, structure]);
 
 	useEffect(() => {

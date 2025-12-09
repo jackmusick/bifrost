@@ -139,7 +139,8 @@ export function useFileTree() {
 						const folderExistsInMap = existingInParent.some(
 							(f) => f.path === folderPath,
 						);
-						const folderAlreadyQueued = foldersQueued.has(folderPath);
+						const folderAlreadyQueued =
+							foldersQueued.has(folderPath);
 
 						if (!folderExistsInMap && !folderAlreadyQueued) {
 							// Create folder entry
@@ -156,7 +157,9 @@ export function useFileTree() {
 							if (!itemsByParent.has(folderParentPath)) {
 								itemsByParent.set(folderParentPath, []);
 							}
-							itemsByParent.get(folderParentPath)!.push(folderEntry);
+							itemsByParent
+								.get(folderParentPath)!
+								.push(folderEntry);
 							foldersQueued.add(folderPath);
 
 							// Auto-expand folders that contain new files

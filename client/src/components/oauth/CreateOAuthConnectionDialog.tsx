@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useMemo, useEffect } from "react";
 import { Button } from "@/components/ui/button";
 import {
 	Dialog,
@@ -38,7 +38,6 @@ type UpdateOAuthConnectionRequest =
 type OAuthConnectionDetail = components["schemas"]["OAuthConnectionDetail"];
 type OAuthFlowType = OAuthProviderPreset["oauth_flow_type"];
 import { toast } from "sonner";
-import { useEffect } from "react";
 
 interface CreateOAuthConnectionDialogProps {
 	open: boolean;
@@ -52,24 +51,6 @@ export function CreateOAuthConnectionDialog({
 	onOpenChange,
 	editConnectionName,
 }: CreateOAuthConnectionDialogProps) {
-	const [step, setStep] = useState<1 | 2>(1);
-	const [mode, setMode] = useState<"preset" | "custom">("preset");
-	const [selectedPreset, setSelectedPreset] = useState<string>("");
-	const [copiedRedirect, setCopiedRedirect] = useState(false);
-	const [nameValidationError, setNameValidationError] = useState<
-		string | null
-	>(null);
-	const [formData, setFormData] = useState<CreateOAuthConnectionRequest>({
-		connection_name: "",
-		description: "",
-		oauth_flow_type: "authorization_code",
-		client_id: "",
-		client_secret: "",
-		authorization_url: "",
-		token_url: "",
-		scopes: "",
-	});
-
 	const isEditMode = !!editConnectionName;
 	const createMutation = useCreateOAuthConnection();
 	const updateMutation = useUpdateOAuthConnection();
@@ -77,10 +58,10 @@ export function CreateOAuthConnectionDialog({
 		editConnectionName || "",
 	) as { data?: OAuthConnectionDetail | undefined };
 
-	// Load existing connection data when in edit mode
-	useEffect(() => {
-		if (isEditMode && existingConnection && open) {
-			setFormData({
+	// Compute initial form data from existing connection (for edit mode)
+	const initialFormData = useMemo((): CreateOAuthConnectionRequest => {
+		if (isEditMode && existingConnection) {
+			return {
 				connection_name: existingConnection.connection_name,
 				description: existingConnection.description || "",
 				oauth_flow_type: existingConnection.oauth_flow_type,
@@ -89,24 +70,50 @@ export function CreateOAuthConnectionDialog({
 				authorization_url: existingConnection.authorization_url ?? null,
 				token_url: existingConnection.token_url,
 				scopes: existingConnection.scopes || "",
-			});
-			setStep(2); // Skip to step 2 in edit mode
-		} else if (!open) {
-			// Reset when dialog closes
-			setFormData({
-				connection_name: "",
-				description: "",
-				oauth_flow_type: "authorization_code",
-				client_id: "",
-				client_secret: "",
-				authorization_url: "",
-				token_url: "",
-				scopes: "",
-			});
-			setStep(1);
-			setSelectedPreset("");
+			};
 		}
-	}, [isEditMode, existingConnection, open]);
+		return {
+			connection_name: "",
+			description: "",
+			oauth_flow_type: "authorization_code",
+			client_id: "",
+			client_secret: "",
+			authorization_url: "",
+			token_url: "",
+			scopes: "",
+		};
+	}, [isEditMode, existingConnection]);
+
+	const [step, setStep] = useState<1 | 2>(() =>
+		isEditMode && existingConnection ? 2 : 1,
+	);
+	const [mode, setMode] = useState<"preset" | "custom">("preset");
+	const [selectedPreset, setSelectedPreset] = useState<string>("");
+	const [copiedRedirect, setCopiedRedirect] = useState(false);
+	const [nameValidationError, setNameValidationError] = useState<
+		string | null
+	>(null);
+	const [formData, setFormData] =
+		useState<CreateOAuthConnectionRequest>(initialFormData);
+
+	// Reset form when dialog opens with new data - wrap in async to satisfy React Compiler
+	useEffect(() => {
+		// Schedule reset for next tick to avoid synchronous setState in effect
+		const timeoutId = setTimeout(() => {
+			if (open) {
+				setFormData(initialFormData);
+				setStep(isEditMode && existingConnection ? 2 : 1);
+				setSelectedPreset("");
+			}
+		}, 0);
+		return () => clearTimeout(timeoutId);
+	}, [
+		open,
+		editConnectionName,
+		initialFormData,
+		isEditMode,
+		existingConnection,
+	]);
 
 	const redirectUri = formData.connection_name
 		? `${window.location.origin}/oauth/callback/${formData.connection_name}`

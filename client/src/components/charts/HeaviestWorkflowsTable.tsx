@@ -56,7 +56,9 @@ export function HeaviestWorkflowsTable({
 			<Card>
 				<CardHeader>
 					<CardTitle>Heaviest Workflows</CardTitle>
-					<CardDescription>Workflows consuming most resources</CardDescription>
+					<CardDescription>
+						Workflows consuming most resources
+					</CardDescription>
 				</CardHeader>
 				<CardContent>
 					<Skeleton className="h-[300px] w-full" />
@@ -116,7 +118,11 @@ export function HeaviestWorkflowsTable({
 						{sortOptions.map((option) => (
 							<Badge
 								key={option.value}
-								variant={sortBy === option.value ? "default" : "outline"}
+								variant={
+									sortBy === option.value
+										? "default"
+										: "outline"
+								}
 								className="cursor-pointer"
 								onClick={() => onSortChange(option.value)}
 							>
@@ -132,9 +138,15 @@ export function HeaviestWorkflowsTable({
 						<TableRow>
 							<TableHead>Workflow</TableHead>
 							<TableHead className="text-right">Runs</TableHead>
-							<TableHead className="text-right">Avg Memory</TableHead>
-							<TableHead className="text-right">Avg Duration</TableHead>
-							<TableHead className="text-right">Success</TableHead>
+							<TableHead className="text-right">
+								Avg Memory
+							</TableHead>
+							<TableHead className="text-right">
+								Avg Duration
+							</TableHead>
+							<TableHead className="text-right">
+								Success
+							</TableHead>
 							<TableHead className="w-8"></TableHead>
 						</TableRow>
 					</TableHeader>
@@ -143,7 +155,9 @@ export function HeaviestWorkflowsTable({
 							<TableRow
 								key={workflow.workflow_name}
 								className="cursor-pointer hover:bg-muted/50"
-								onClick={() => handleRowClick(workflow.workflow_name)}
+								onClick={() =>
+									handleRowClick(workflow.workflow_name)
+								}
 							>
 								<TableCell className="font-mono text-sm max-w-[200px] truncate">
 									{workflow.workflow_name}
@@ -160,7 +174,9 @@ export function HeaviestWorkflowsTable({
 								<TableCell className="text-right">
 									<Badge
 										variant={
-											workflow.success_rate >= 90 ? "default" : "destructive"
+											workflow.success_rate >= 90
+												? "default"
+												: "destructive"
 										}
 									>
 										{workflow.success_rate.toFixed(0)}%
