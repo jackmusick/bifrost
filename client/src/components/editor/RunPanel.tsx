@@ -20,8 +20,8 @@ import { useScopeStore } from "@/stores/scopeStore";
 import { WorkflowParametersForm } from "@/components/workflows/WorkflowParametersForm";
 import { VariablesTreeView } from "@/components/ui/variables-tree-view";
 import { toast } from "sonner";
-import { executionsService } from "@/services/executions";
-import { workflowsService } from "@/services/workflows";
+import { getExecutionVariables } from "@/hooks/useExecutions";
+import { validateWorkflow } from "@/hooks/useWorkflows";
 import type { components } from "@/lib/v1";
 
 type WorkflowMetadata = components["schemas"]["WorkflowMetadata"];
@@ -114,8 +114,7 @@ export function RunPanel() {
 	const handleStreamComplete = useCallback(async (executionId: string) => {
 		// Fetch variables when execution completes
 		try {
-			const variablesData =
-				await executionsService.getExecutionVariables(executionId);
+			const variablesData = await getExecutionVariables(executionId);
 			setLastExecutionVariables(
 				(variablesData || {}) as Record<string, unknown>,
 			);
@@ -266,9 +265,14 @@ export function RunPanel() {
 		setLastExecutionVariables({}); // Clear variables on new execution
 		try {
 			const result = (await executeWorkflow.mutateAsync({
-				workflowName: detectedItem.metadata.name ?? "",
-				inputData: params,
-				transient: true, // Editor executions are transient (no DB writes)
+				body: {
+					workflow_name: detectedItem.metadata.name ?? "",
+					input_data: params,
+					form_id: null,
+					transient: true, // Editor executions are transient (no DB writes)
+					code: null,
+					script_name: null,
+				},
 			})) as WorkflowExecutionResponse;
 
 			performance.mark("workflow-execute-end");
@@ -356,10 +360,14 @@ export function RunPanel() {
 
 			// Execute script via workflow API with transient flag and code
 			const result = (await executeWorkflow.mutateAsync({
-				inputData: {},
-				transient: true, // Editor executions are transient (no DB writes)
-				code: codeBase64, // Base64-encoded script content
-				scriptName: fileName, // Script identifier for logging
+				body: {
+					workflow_name: null,
+					input_data: {},
+					form_id: null,
+					transient: true, // Editor executions are transient (no DB writes)
+					code: codeBase64, // Base64-encoded script content
+					script_name: fileName, // Script identifier for logging
+				},
 			})) as WorkflowExecutionResponse;
 
 			// For synchronous executions, logs come back immediately in the response
@@ -445,7 +453,7 @@ export function RunPanel() {
 		setIsValidating(true);
 		try {
 			// Call validation API
-			const result = (await workflowsService.validateWorkflow(
+			const result = (await validateWorkflow(
 				openFile.path,
 				fileContent,
 			)) as WorkflowValidationResponse;

@@ -1,23 +1,41 @@
-import { useQuery } from "@tanstack/react-query";
-import {
-	metricsService,
-	type ResourceMetricsResponse,
-	type OrganizationMetricsResponse,
-	type WorkflowMetricsResponse,
-} from "@/services/metrics";
+import { $api } from "@/lib/api-client";
+import type { components } from "@/lib/v1";
+
+// Re-export types for convenience
+export type DailyMetricsEntry = components["schemas"]["DailyMetricsEntry"];
+export type DailyMetricsResponse =
+	components["schemas"]["DailyMetricsResponse"];
+export type ResourceMetricsEntry =
+	components["schemas"]["ResourceMetricsEntry"];
+export type ResourceMetricsResponse =
+	components["schemas"]["ResourceMetricsResponse"];
+export type OrganizationMetricsSummary =
+	components["schemas"]["OrganizationMetricsSummary"];
+export type OrganizationMetricsResponse =
+	components["schemas"]["OrganizationMetricsResponse"];
+export type WorkflowMetricsSummary =
+	components["schemas"]["WorkflowMetricsSummary"];
+export type WorkflowMetricsResponse =
+	components["schemas"]["WorkflowMetricsResponse"];
 
 /**
  * Hook for fetching resource usage trends (memory, CPU)
  * Platform admin only
  */
 export function useResourceMetrics(days: number = 7, enabled: boolean = true) {
-	return useQuery<ResourceMetricsResponse>({
-		queryKey: ["resource-metrics", days],
-		queryFn: () => metricsService.getResourceMetrics(days),
-		enabled,
-		staleTime: 60000, // 1 minute
-		refetchInterval: 60000,
-	});
+	return $api.useQuery(
+		"get",
+		"/api/metrics/resources",
+		{
+			params: { query: { days } },
+		},
+		{
+			queryKey: ["resource-metrics", days],
+			enabled,
+			staleTime: 60000, // 1 minute
+			refetchInterval: 60000,
+		},
+	);
 }
 
 /**
@@ -29,13 +47,19 @@ export function useOrganizationMetrics(
 	limit: number = 10,
 	enabled: boolean = true,
 ) {
-	return useQuery<OrganizationMetricsResponse>({
-		queryKey: ["organization-metrics", days, limit],
-		queryFn: () => metricsService.getOrganizationMetrics(days, limit),
-		enabled,
-		staleTime: 60000,
-		refetchInterval: 60000,
-	});
+	return $api.useQuery(
+		"get",
+		"/api/metrics/organizations",
+		{
+			params: { query: { days, limit } },
+		},
+		{
+			queryKey: ["organization-metrics", days, limit],
+			enabled,
+			staleTime: 60000,
+			refetchInterval: 60000,
+		},
+	);
 }
 
 /**
@@ -48,11 +72,17 @@ export function useWorkflowMetrics(
 	limit: number = 20,
 	enabled: boolean = true,
 ) {
-	return useQuery<WorkflowMetricsResponse>({
-		queryKey: ["workflow-metrics", days, sortBy, limit],
-		queryFn: () => metricsService.getWorkflowMetrics(days, sortBy, limit),
-		enabled,
-		staleTime: 60000,
-		refetchInterval: 60000,
-	});
+	return $api.useQuery(
+		"get",
+		"/api/metrics/workflows",
+		{
+			params: { query: { days, sort_by: sortBy, limit } },
+		},
+		{
+			queryKey: ["workflow-metrics", days, sortBy, limit],
+			enabled,
+			staleTime: 60000,
+			refetchInterval: 60000,
+		},
+	);
 }

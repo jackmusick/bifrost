@@ -1,4 +1,3 @@
-import { useState } from "react";
 import { FileCode } from "lucide-react";
 import {
 	Dialog,
@@ -13,6 +12,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { Badge } from "@/components/ui/badge";
 import { useForms } from "@/hooks/useForms";
 import { useAssignFormsToRole } from "@/hooks/useRoles";
+import { useMultiSelect } from "@/hooks/useMultiSelect";
 import type { components } from "@/lib/v1";
 type Role = components["schemas"]["RolePublic"];
 type FormResponse = components["schemas"]["FormPublic"];
@@ -28,33 +28,25 @@ export function AssignFormsDialog({
 	open,
 	onClose,
 }: AssignFormsDialogProps) {
-	const [selectedFormIds, setSelectedFormIds] = useState<string[]>([]);
+	const { selectedIds, toggle, clear, isSelected, count } = useMultiSelect();
 
 	const { data: forms, isLoading } = useForms();
 	const assignForms = useAssignFormsToRole();
 
-	const handleToggleForm = (formId: string) => {
-		setSelectedFormIds((prev) =>
-			prev.includes(formId)
-				? prev.filter((id) => id !== formId)
-				: [...prev, formId],
-		);
-	};
-
 	const handleAssign = async () => {
-		if (!role || selectedFormIds.length === 0) return;
+		if (!role || count === 0) return;
 
 		await assignForms.mutateAsync({
-			roleId: role.id,
-			request: { formIds: selectedFormIds },
+			params: { path: { role_id: role.id } },
+			body: { formIds: selectedIds },
 		});
 
-		setSelectedFormIds([]);
+		clear();
 		onClose();
 	};
 
 	const handleClose = () => {
-		setSelectedFormIds([]);
+		clear();
 		onClose();
 	};
 
@@ -81,17 +73,13 @@ export function AssignFormsDialog({
 					) : forms && forms.length > 0 ? (
 						<div className="space-y-2">
 							{forms.map((form: FormResponse) => {
-								const isSelected = selectedFormIds.includes(
-									form.id,
-								);
+								const selected = isSelected(form.id);
 								return (
 									<button
 										key={form.id}
-										onClick={() =>
-											handleToggleForm(form.id)
-										}
+										onClick={() => toggle(form.id)}
 										className={`w-full rounded-lg border p-4 text-left transition-colors ${
-											isSelected
+											selected
 												? "border-primary bg-primary/5"
 												: "border-border hover:bg-accent"
 										}`}
@@ -129,7 +117,7 @@ export function AssignFormsDialog({
 													</Badge>
 												</div>
 											</div>
-											{isSelected && (
+											{selected && (
 												<Badge>Selected</Badge>
 											)}
 										</div>
@@ -157,14 +145,11 @@ export function AssignFormsDialog({
 					</Button>
 					<Button
 						onClick={handleAssign}
-						disabled={
-							selectedFormIds.length === 0 ||
-							assignForms.isPending
-						}
+						disabled={count === 0 || assignForms.isPending}
 					>
 						{assignForms.isPending
 							? "Assigning..."
-							: `Assign ${selectedFormIds.length} Form${selectedFormIds.length !== 1 ? "s" : ""}`}
+							: `Assign ${count} Form${count !== 1 ? "s" : ""}`}
 					</Button>
 				</DialogFooter>
 			</DialogContent>

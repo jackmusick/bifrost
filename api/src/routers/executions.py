@@ -20,7 +20,7 @@ from src.models import (
     WorkflowExecution,
     StuckExecutionsResponse,
     CleanupTriggeredResponse,
-    ExecutionLog,
+    ExecutionLogPublic,
 )
 
 from src.core.auth import Context, UserPrincipal
@@ -150,7 +150,7 @@ class ExecutionRepository:
         log_entries = logs_result.scalars().all()
 
         logs = [
-            ExecutionLog(
+            ExecutionLogPublic(
                 timestamp=log.timestamp.isoformat() if log.timestamp else "",
                 level=log.level or "info",
                 message=log.message or "",
@@ -209,7 +209,7 @@ class ExecutionRepository:
         self,
         execution_id: UUID,
         user: UserPrincipal,
-    ) -> tuple[list[ExecutionLog] | None, str | None]:
+    ) -> tuple[list[ExecutionLogPublic] | None, str | None]:
         """Get execution logs from the execution_logs table."""
         # First check if execution exists and user has access
         result = await self.db.execute(
@@ -239,7 +239,7 @@ class ExecutionRepository:
 
         # Convert ORM models to Pydantic models
         logs = [
-            ExecutionLog(
+            ExecutionLogPublic(
                 timestamp=log.timestamp.isoformat() if log.timestamp else "",
                 level=log.level or "info",
                 message=log.message or "",
@@ -445,12 +445,12 @@ async def get_execution_result(
     "/{execution_id}/logs",
     summary="Get execution logs only",
     description="Get only the logs of a specific execution (progressive loading)",
-    response_model=list[ExecutionLog],
+    response_model=list[ExecutionLogPublic],
 )
 async def get_execution_logs(
     execution_id: UUID,
     ctx: Context,
-) -> list[ExecutionLog]:
+) -> list[ExecutionLogPublic]:
     """Get execution logs."""
     repo = ExecutionRepository(ctx.db)
     logs, error = await repo.get_execution_logs(execution_id, ctx.user)

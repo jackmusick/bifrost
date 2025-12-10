@@ -100,9 +100,11 @@ export function Organizations() {
 	const handleSubmitCreate = async (e: React.FormEvent) => {
 		e.preventDefault();
 		await createMutation.mutateAsync({
-			name: formData.name,
-			domain: formData.domain || null,
-			is_active: true,
+			body: {
+				name: formData.name,
+				domain: formData.domain || null,
+				is_active: true,
+			},
 		});
 		setIsCreateDialogOpen(false);
 		setFormData({ name: "", domain: "" });
@@ -113,8 +115,8 @@ export function Organizations() {
 		if (!selectedOrg) return;
 
 		await updateMutation.mutateAsync({
-			orgId: selectedOrg.id,
-			data: {
+			params: { path: { org_id: selectedOrg.id } },
+			body: {
 				name: formData.name || null,
 				domain: formData.domain || null,
 				is_active: null,
@@ -128,7 +130,9 @@ export function Organizations() {
 	const handleConfirmDelete = async () => {
 		if (!selectedOrg) return;
 
-		await deleteMutation.mutateAsync(selectedOrg.id);
+		await deleteMutation.mutateAsync({
+			params: { path: { org_id: selectedOrg.id } },
+		});
 		setIsDeleteDialogOpen(false);
 		setSelectedOrg(undefined);
 	};

@@ -14,7 +14,7 @@ from sqlalchemy import select
 
 # Import existing Pydantic models for API compatibility
 from src.models import (
-    Config as ConfigSchema,
+    ConfigResponse,
     ConfigType,
     SetConfigRequest,
 )
@@ -52,7 +52,7 @@ class ConfigRepository(OrgScopedRepository[ConfigModel]):  # type: ignore[type-v
 
     model = ConfigModel
 
-    async def list_configs(self) -> list[ConfigSchema]:
+    async def list_configs(self) -> list[ConfigResponse]:
         """List all configs visible to current org scope."""
         query = select(self.model)
         query = self.filter_cascade(query)
@@ -71,7 +71,7 @@ class ConfigRepository(OrgScopedRepository[ConfigModel]):  # type: ignore[type-v
                 display_value = raw_value
 
             schemas.append(
-                ConfigSchema(
+                ConfigResponse(
                     key=c.key,
                     value=display_value,
                     type=ConfigType(c.config_type.value) if c.config_type else ConfigType.STRING,
@@ -101,7 +101,7 @@ class ConfigRepository(OrgScopedRepository[ConfigModel]):  # type: ignore[type-v
         result = await self.session.execute(query)
         return result.scalar_one_or_none()
 
-    async def set_config(self, request: SetConfigRequest, updated_by: str) -> ConfigSchema:
+    async def set_config(self, request: SetConfigRequest, updated_by: str) -> ConfigResponse:
         """Create or update a config in current org scope."""
         now = datetime.utcnow()
 
@@ -153,7 +153,7 @@ class ConfigRepository(OrgScopedRepository[ConfigModel]):  # type: ignore[type-v
 
         # Extract value from JSONB for response
         stored_value = config.value.get("value") if isinstance(config.value, dict) else config.value
-        return ConfigSchema(
+        return ConfigResponse(
             key=config.key,
             value=stored_value,
             type=request.type if request.type else ConfigType.STRING,
@@ -185,14 +185,14 @@ class ConfigRepository(OrgScopedRepository[ConfigModel]):  # type: ignore[type-v
 
 @router.get(
     "/api/config",
-    response_model=list[ConfigSchema],
+    response_model=list[ConfigResponse],
     summary="Get configuration values",
     description="Get configuration values for current scope (includes global configs)",
 )
 async def get_config(
     ctx: Context,
     user: CurrentSuperuser,
-) -> list[ConfigSchema]:
+) -> list[ConfigResponse]:
     """Get configuration for current scope."""
     repo = ConfigRepository(ctx.db, ctx.org_id)
     return await repo.list_configs()
@@ -200,7 +200,7 @@ async def get_config(
 
 @router.post(
     "/api/config",
-    response_model=ConfigSchema,
+    response_model=ConfigResponse,
     status_code=status.HTTP_201_CREATED,
     summary="Set configuration value",
     description="Set a configuration value in the current scope",
@@ -209,7 +209,7 @@ async def set_config(
     request: SetConfigRequest,
     ctx: Context,
     user: CurrentSuperuser,
-) -> ConfigSchema:
+) -> ConfigResponse:
     """Set a configuration key-value pair."""
     repo = ConfigRepository(ctx.db, ctx.org_id)
 

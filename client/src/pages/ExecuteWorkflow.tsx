@@ -32,8 +32,14 @@ export function ExecuteWorkflow() {
 		try {
 			// Execute workflow with workflowName and inputData
 			const result = await executeWorkflow.mutateAsync({
-				workflowName: workflow.name ?? "",
-				inputData: parameters,
+				body: {
+					workflow_name: workflow.name ?? "",
+					input_data: parameters,
+					form_id: null,
+					transient: false,
+					code: null,
+					script_name: null,
+				},
 			});
 
 			// Redirect directly to execution details page

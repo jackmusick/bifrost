@@ -92,7 +92,7 @@ from src.models.contracts.executions import (
     CleanupTriggeredResponse,
     ExecutionBase,
     ExecutionCreate,
-    ExecutionLog,
+    ExecutionLogPublic,
     ExecutionPublic,
     ExecutionUpdate,
     ExecutionsListResponse,
@@ -106,10 +106,10 @@ from src.models.contracts.executions import (
 
 # Configuration & Secrets
 from src.models.contracts.config import (
-    Config,
     ConfigBase,
     ConfigCreate,
     ConfigPublic,
+    ConfigResponse,
     ConfigUpdate,
     IntegrationConfig,
     SecretBase,
@@ -174,7 +174,7 @@ from src.models.contracts.dashboard import (
     ExecutionStats,
     OrganizationMetricsResponse,
     OrganizationMetricsSummary,
-    PlatformMetricsSnapshot,
+    PlatformMetricsResponse,
     RecentFailure,
     ResourceMetricsEntry,
     ResourceMetricsResponse,
@@ -292,6 +292,9 @@ from src.models.contracts.sdk import (
 
 __all__ = [
     # Re-export everything defined above
+    # NOTE: Bare names like User, Organization, Role, Form, Config, ExecutionLog
+    # are NOT exported here to avoid conflicts with ORM models.
+    # Use *Public, *Response, *Request suffixed versions instead.
     "RetryPolicy",
     "DataProviderInputMode",
     "IntegrationType",
@@ -300,14 +303,14 @@ __all__ = [
     "generate_entity_id",
     "parse_row_key",
     "parse_composite_row_key",
-    "Organization",
+    # Organizations - use OrganizationPublic for responses
     "CreateOrganizationRequest",
     "UpdateOrganizationRequest",
     "OrganizationBase",
     "OrganizationCreate",
     "OrganizationUpdate",
     "OrganizationPublic",
-    "User",
+    # Users - use UserPublic/UserResponse for responses
     "CreateUserRequest",
     "UpdateUserRequest",
     "UserBase",
@@ -315,15 +318,14 @@ __all__ = [
     "UserUpdate",
     "UserPublic",
     "UserResponse",
-    "Role",
+    # Roles - use RolePublic for responses
     "CreateRoleRequest",
     "UpdateRoleRequest",
     "RoleBase",
     "RoleCreate",
     "RoleUpdate",
     "RolePublic",
-    "UserRole",
-    "FormRole",
+    # User/Role assignments
     "UserPermission",
     "PermissionsData",
     "GrantPermissionsRequest",
@@ -345,11 +347,10 @@ __all__ = [
     "MFAEnrollVerifyRequest",
     "MFAEnrollVerifyResponse",
     "OAuthLoginRequest",
+    # Forms - use FormPublic for responses
     "FormFieldValidation",
     "DataProviderInputConfig",
-    "FormField",
     "FormSchema",
-    "Form",
     "CreateFormRequest",
     "UpdateFormRequest",
     "FormExecuteRequest",
@@ -357,8 +358,9 @@ __all__ = [
     "FormCreate",
     "FormUpdate",
     "FormPublic",
+    # Executions
     "ExecutionBase",
-    "ExecutionLog",
+    "ExecutionLogPublic",
     "WorkflowExecution",
     "WorkflowExecutionRequest",
     "WorkflowExecutionResponse",
@@ -370,12 +372,13 @@ __all__ = [
     "ExecutionPublic",
     "SystemLog",
     "SystemLogsListResponse",
-    "Config",
+    # Config - use ConfigResponse or ConfigPublic for responses
     "SetConfigRequest",
     "ConfigBase",
     "ConfigCreate",
     "ConfigUpdate",
     "ConfigPublic",
+    "ConfigResponse",
     "IntegrationConfig",
     "SetIntegrationConfigRequest",
     "SecretListResponse",
@@ -392,7 +395,7 @@ __all__ = [
     "ExecutionStats",
     "RecentFailure",
     "DashboardMetricsResponse",
-    "PlatformMetricsSnapshot",
+    "PlatformMetricsResponse",
     "DailyMetricsEntry",
     "DailyMetricsResponse",
     "OrganizationMetricsSummary",

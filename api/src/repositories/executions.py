@@ -42,6 +42,7 @@ class ExecutionRepository(BaseRepository[Execution]):
         user_id: str,
         user_name: str,
         form_id: str | None = None,
+        api_key_id: str | None = None,
         status: ExecutionStatus = ExecutionStatus.RUNNING,
     ) -> Execution:
         """
@@ -55,9 +56,10 @@ class ExecutionRepository(BaseRepository[Execution]):
             workflow_name: Name of workflow to execute
             parameters: Workflow input parameters
             org_id: Organization ID (None for GLOBAL scope)
-            user_id: User ID who initiated execution
+            user_id: User ID who initiated execution (system user for API key executions)
             user_name: Display name of user
             form_id: Optional form ID if triggered by form
+            api_key_id: Optional workflow ID whose API key triggered this execution
             status: Initial status (default RUNNING)
 
         Returns:
@@ -71,24 +73,14 @@ class ExecutionRepository(BaseRepository[Execution]):
             else:
                 parsed_org_id = UUID(org_id)
 
-        # Parse user_id - handle API key format
-        parsed_user_id: UUID
-        if user_id.startswith("api-key:"):
-            # For API key executions, we need a valid UUID
-            # Use a deterministic UUID based on the key ID
-            key_id = user_id.split(":")[1]
-            try:
-                parsed_user_id = UUID(key_id)
-            except ValueError:
-                # If key_id isn't a UUID, generate one deterministically
-                import hashlib
-                hash_bytes = hashlib.md5(key_id.encode()).digest()
-                parsed_user_id = UUID(bytes=hash_bytes)
-        else:
-            parsed_user_id = UUID(user_id)
+        # Parse user_id
+        parsed_user_id = UUID(user_id)
 
         # Parse form_id if present
         parsed_form_id = UUID(form_id) if form_id else None
+
+        # Parse api_key_id if present
+        parsed_api_key_id = UUID(api_key_id) if api_key_id else None
 
         execution = Execution(
             id=UUID(execution_id),
@@ -99,6 +91,7 @@ class ExecutionRepository(BaseRepository[Execution]):
             executed_by_name=user_name,
             organization_id=parsed_org_id,
             form_id=parsed_form_id,
+            api_key_id=parsed_api_key_id,
             started_at=datetime.utcnow(),
         )
 
@@ -513,6 +506,7 @@ async def create_execution(
     user_id: str,
     user_name: str,
     form_id: str | None = None,
+    api_key_id: str | None = None,
     status: ExecutionStatus = ExecutionStatus.RUNNING,
 ) -> None:
     """
@@ -533,6 +527,7 @@ async def create_execution(
             user_id=user_id,
             user_name=user_name,
             form_id=form_id,
+            api_key_id=api_key_id,
             status=status,
         )
         await session.commit()

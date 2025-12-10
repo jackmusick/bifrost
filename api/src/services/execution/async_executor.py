@@ -32,6 +32,7 @@ async def enqueue_workflow_execution(
     form_id: str | None = None,
     execution_id: str | None = None,
     sync: bool = False,
+    api_key_id: str | None = None,
 ) -> str:
     """
     Enqueue a workflow for async execution.
@@ -46,6 +47,7 @@ async def enqueue_workflow_execution(
         form_id: Optional form ID if triggered by form
         execution_id: Optional pre-generated execution ID (for sync execution)
         sync: If True, worker will push result to Redis for caller to BLPOP
+        api_key_id: Optional workflow ID whose API key triggered this execution
 
     Returns:
         execution_id: UUID of the queued execution
@@ -71,6 +73,7 @@ async def enqueue_workflow_execution(
         user_email=context.email,
         form_id=form_id,
         startup=context.startup,  # Pass launch workflow results to worker
+        api_key_id=api_key_id,
     )
 
     # Add to queue tracking (publishes position updates to all queued executions)

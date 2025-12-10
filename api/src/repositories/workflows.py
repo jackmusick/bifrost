@@ -163,6 +163,42 @@ class WorkflowRepository(BaseRepository[Workflow]):
             workflow.api_key_last_used_at = datetime.utcnow()
             await self.session.flush()
 
+    async def get_endpoint_workflow_by_name(self, name: str) -> Workflow | None:
+        """
+        Get endpoint-enabled workflow by name.
+
+        Used by the /api/endpoints/{workflow_name} route to resolve
+        user-friendly names to workflow IDs.
+
+        Args:
+            name: Workflow name to look up
+
+        Returns:
+            Workflow if exactly one found, None if not found
+
+        Raises:
+            ValueError: If multiple endpoint-enabled workflows have the same name
+                        (includes file paths for debugging)
+        """
+        result = await self.session.execute(
+            select(Workflow)
+            .where(Workflow.name == name)
+            .where(Workflow.endpoint_enabled.is_(True))
+            .where(Workflow.is_active.is_(True))
+        )
+        workflows = list(result.scalars().all())
+
+        if len(workflows) == 0:
+            return None
+
+        if len(workflows) > 1:
+            paths = [w.file_path for w in workflows]
+            raise ValueError(
+                f"Multiple endpoint-enabled workflows named '{name}' found: {paths}"
+            )
+
+        return workflows[0]
+
     async def validate_api_key(
         self,
         key_hash: str,

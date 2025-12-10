@@ -1,6 +1,7 @@
 import { useEffect, useRef, useCallback } from "react";
 import Editor, { type OnMount, type BeforeMount } from "@monaco-editor/react";
 import { useEditorStore } from "@/stores/editorStore";
+import { useEditorSession } from "@/hooks/useEditorSession";
 import { useAutoSave } from "@/hooks/useAutoSave";
 import { useWindowFocusRefresh } from "@/hooks/useWindowFocusRefresh";
 import { useTheme } from "@/contexts/ThemeContext";
@@ -18,30 +19,19 @@ import { sdkScannerService } from "@/services/sdkScannerService";
  * Provides code editing with syntax highlighting, auto-save, and manual save
  */
 export function CodeEditor() {
-	const tabs = useEditorStore((state) => state.tabs);
-	const activeTabIndex = useEditorStore((state) => state.activeTabIndex);
-	const isLoadingFile = useEditorStore((state) => state.isLoadingFile);
-	const setFileContent = useEditorStore((state) => state.setFileContent);
-	const setCursorPosition = useEditorStore(
-		(state) => state.setCursorPosition,
-	);
-	const setSelectedLanguage = useEditorStore(
-		(state) => state.setSelectedLanguage,
-	);
-
-	// Compute active tab from state
-	const activeTab =
-		activeTabIndex >= 0 && activeTabIndex < tabs.length
-			? tabs[activeTabIndex]
-			: null;
-
-	const openFile = activeTab?.file || null;
-	const fileContent = activeTab?.content || "";
-	const fileEncoding = activeTab?.encoding || "utf-8";
-	const unsavedChanges = activeTab?.unsavedChanges || false;
-	const gitConflict = activeTab?.gitConflict;
-	const markSaved = useEditorStore((state) => state.markSaved);
-	const setConflictState = useEditorStore((state) => state.setConflictState);
+	const {
+		openFile,
+		fileContent,
+		fileEncoding,
+		unsavedChanges,
+		gitConflict,
+		isLoadingFile,
+		setFileContent,
+		setCursorPosition,
+		setSelectedLanguage,
+		markSaved,
+		setConflictState,
+	} = useEditorSession();
 
 	useAutoSave(); // Still use auto-save for debounced saving
 	useWindowFocusRefresh(); // Still refresh file tree on window focus

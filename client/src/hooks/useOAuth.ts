@@ -1,17 +1,13 @@
 /**
  * React Query hooks for OAuth connections
- * All hooks use the centralized api client which handles X-Organization-Id automatically
+ * Uses openapi-react-query pattern with $api for type-safe queries and mutations
+ * All hooks automatically handle X-Organization-Id via api-client middleware
  */
 
-import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
-import { oauthService } from "@/services/oauth";
-import type { components } from "@/lib/v1";
+import { $api, apiClient } from "@/lib/api-client";
 import { useScopeStore } from "@/stores/scopeStore";
-type CreateOAuthConnectionRequest =
-	components["schemas"]["CreateOAuthConnectionRequest"];
-type UpdateOAuthConnectionRequest =
-	components["schemas"]["UpdateOAuthConnectionRequest"];
 
 // Query keys
 export const oauthKeys = {
@@ -31,20 +27,26 @@ export const oauthKeys = {
 export function useOAuthConnections() {
 	const orgId = useScopeStore((state) => state.scope.orgId);
 
-	return useQuery<components["schemas"]["OAuthConnectionSummary"][]>({
-		queryKey: oauthKeys.list(orgId),
-		queryFn: async () => {
-			const result = await oauthService.listConnections();
-			// API returns { connections: [...] }, extract the array
-			return result.connections ?? [];
+	const query = $api.useQuery(
+		"get",
+		"/api/oauth/connections",
+		{},
+		{
+			queryKey: oauthKeys.list(orgId),
+			// Don't use cached data from previous scope
+			staleTime: 0,
+			// Remove from cache immediately when component unmounts
+			gcTime: 0,
+			// Always refetch when component mounts (navigating to page)
+			refetchOnMount: "always",
 		},
-		// Don't use cached data from previous scope
-		staleTime: 0,
-		// Remove from cache immediately when component unmounts
-		gcTime: 0,
-		// Always refetch when component mounts (navigating to page)
-		refetchOnMount: "always",
-	});
+	);
+
+	// Extract connections array from response
+	return {
+		...query,
+		data: query.data?.connections ?? [],
+	};
 }
 
 /**
@@ -52,11 +54,17 @@ export function useOAuthConnections() {
  * Organization context is handled automatically by the api client
  */
 export function useOAuthConnection(connectionName: string) {
-	return useQuery({
-		queryKey: oauthKeys.detail(connectionName),
-		queryFn: () => oauthService.getConnection(connectionName),
-		enabled: !!connectionName,
-	});
+	return $api.useQuery(
+		"get",
+		"/api/oauth/connections/{connection_name}",
+		{
+			params: { path: { connection_name: connectionName } },
+		},
+		{
+			queryKey: oauthKeys.detail(connectionName),
+			enabled: !!connectionName,
+		},
+	);
 }
 
 /**
@@ -66,18 +74,20 @@ export function useOAuthConnection(connectionName: string) {
 export function useCreateOAuthConnection() {
 	const queryClient = useQueryClient();
 
-	return useMutation({
-		mutationFn: (data: CreateOAuthConnectionRequest) =>
-			oauthService.createConnection(data),
-		onSuccess: (_, data) => {
+	return $api.useMutation("post", "/api/oauth/connections", {
+		onSuccess: (_, variables) => {
 			// Invalidate all OAuth list queries (for all scopes)
 			queryClient.invalidateQueries({ queryKey: ["oauth", "list"] });
 			toast.success(
-				`Connection "${data.connection_name}" created successfully`,
+				`Connection "${variables.body?.connection_name}" created successfully`,
 			);
 		},
-		onError: (error: Error) => {
-			toast.error(error.message || "Failed to create OAuth connection");
+		onError: (error) => {
+			const message =
+				typeof error === "object" && error !== null && "detail" in error
+					? String(error.detail)
+					: "Failed to create OAuth connection";
+			toast.error(message);
 		},
 	});
 }
@@ -89,28 +99,30 @@ export function useCreateOAuthConnection() {
 export function useUpdateOAuthConnection() {
 	const queryClient = useQueryClient();
 
-	return useMutation({
-		mutationFn: ({
-			connectionName,
-			data,
-		}: {
-			connectionName: string;
-			data: UpdateOAuthConnectionRequest;
-		}) => oauthService.updateConnection(connectionName, data),
-		onSuccess: (_, variables) => {
-			// Invalidate all OAuth list queries (for all scopes)
-			queryClient.invalidateQueries({ queryKey: ["oauth", "list"] });
-			queryClient.invalidateQueries({
-				queryKey: oauthKeys.detail(variables.connectionName),
-			});
-			toast.success(
-				`Connection "${variables.connectionName}" updated successfully`,
-			);
+	return $api.useMutation(
+		"put",
+		"/api/oauth/connections/{connection_name}",
+		{
+			onSuccess: (_, variables) => {
+				const connectionName = variables.params?.path?.connection_name;
+				// Invalidate all OAuth list queries (for all scopes)
+				queryClient.invalidateQueries({ queryKey: ["oauth", "list"] });
+				queryClient.invalidateQueries({
+					queryKey: oauthKeys.detail(connectionName || ""),
+				});
+				toast.success(
+					`Connection "${connectionName}" updated successfully`,
+				);
+			},
+			onError: (error) => {
+				const message =
+					typeof error === "object" && error !== null && "detail" in error
+						? String(error.detail)
+						: "Failed to update OAuth connection";
+				toast.error(message);
+			},
 		},
-		onError: (error: Error) => {
-			toast.error(error.message || "Failed to update OAuth connection");
-		},
-	});
+	);
 }
 
 /**
@@ -120,20 +132,27 @@ export function useUpdateOAuthConnection() {
 export function useDeleteOAuthConnection() {
 	const queryClient = useQueryClient();
 
-	return useMutation({
-		mutationFn: (connectionName: string) =>
-			oauthService.deleteConnection(connectionName),
-		onSuccess: (_, connectionName) => {
-			// Invalidate all OAuth list queries (for all scopes)
-			queryClient.invalidateQueries({ queryKey: ["oauth", "list"] });
-			toast.success(
-				`Connection "${connectionName}" deleted successfully`,
-			);
+	return $api.useMutation(
+		"delete",
+		"/api/oauth/connections/{connection_name}",
+		{
+			onSuccess: (_, variables) => {
+				const connectionName = variables.params?.path?.connection_name;
+				// Invalidate all OAuth list queries (for all scopes)
+				queryClient.invalidateQueries({ queryKey: ["oauth", "list"] });
+				toast.success(
+					`Connection "${connectionName}" deleted successfully`,
+				);
+			},
+			onError: (error) => {
+				const message =
+					typeof error === "object" && error !== null && "detail" in error
+						? String(error.detail)
+						: "Failed to delete OAuth connection";
+				toast.error(message);
+			},
 		},
-		onError: (error: Error) => {
-			toast.error(error.message || "Failed to delete OAuth connection");
-		},
-	});
+	);
 }
 
 /**
@@ -143,34 +162,41 @@ export function useDeleteOAuthConnection() {
 export function useAuthorizeOAuthConnection() {
 	const queryClient = useQueryClient();
 
-	return useMutation({
-		mutationFn: (connectionName: string) =>
-			oauthService.authorize(connectionName),
-		onSuccess: (response, connectionName) => {
-			// Invalidate to show updated status
-			// Invalidate all OAuth list queries (for all scopes)
-			queryClient.invalidateQueries({ queryKey: ["oauth", "list"] });
-			queryClient.invalidateQueries({
-				queryKey: oauthKeys.detail(connectionName),
-			});
+	return $api.useMutation(
+		"post",
+		"/api/oauth/connections/{connection_name}/authorize",
+		{
+			onSuccess: (response, variables) => {
+				const connectionName = variables.params?.path?.connection_name;
+				// Invalidate to show updated status
+				// Invalidate all OAuth list queries (for all scopes)
+				queryClient.invalidateQueries({ queryKey: ["oauth", "list"] });
+				queryClient.invalidateQueries({
+					queryKey: oauthKeys.detail(connectionName || ""),
+				});
 
-			// Log the authorization URL for debugging
+				// Open authorization URL in new window
+				if (response?.authorization_url) {
+					window.open(
+						response.authorization_url,
+						"_blank",
+						"width=600,height=700",
+					);
+				}
 
-			// Open authorization URL in new window
-			window.open(
-				response.authorization_url,
-				"_blank",
-				"width=600,height=700",
-			);
-
-			toast.success(
-				"Authorization started - complete it in the popup window",
-			);
+				toast.success(
+					"Authorization started - complete it in the popup window",
+				);
+			},
+			onError: (error) => {
+				const message =
+					typeof error === "object" && error !== null && "detail" in error
+						? String(error.detail)
+						: "Failed to start authorization";
+				toast.error(message);
+			},
 		},
-		onError: (error: Error) => {
-			toast.error(error.message || "Failed to start authorization");
-		},
-	});
+	);
 }
 
 /**
@@ -180,21 +206,28 @@ export function useAuthorizeOAuthConnection() {
 export function useCancelOAuthAuthorization() {
 	const queryClient = useQueryClient();
 
-	return useMutation({
-		mutationFn: (connectionName: string) =>
-			oauthService.cancelAuthorization(connectionName),
-		onSuccess: (_, connectionName) => {
-			// Invalidate all OAuth list queries (for all scopes)
-			queryClient.invalidateQueries({ queryKey: ["oauth", "list"] });
-			queryClient.invalidateQueries({
-				queryKey: oauthKeys.detail(connectionName),
-			});
-			toast.success("Authorization canceled");
+	return $api.useMutation(
+		"post",
+		"/api/oauth/connections/{connection_name}/cancel",
+		{
+			onSuccess: (_, variables) => {
+				const connectionName = variables.params?.path?.connection_name;
+				// Invalidate all OAuth list queries (for all scopes)
+				queryClient.invalidateQueries({ queryKey: ["oauth", "list"] });
+				queryClient.invalidateQueries({
+					queryKey: oauthKeys.detail(connectionName || ""),
+				});
+				toast.success("Authorization canceled");
+			},
+			onError: (error) => {
+				const message =
+					typeof error === "object" && error !== null && "detail" in error
+						? String(error.detail)
+						: "Failed to cancel authorization";
+				toast.error(message);
+			},
 		},
-		onError: (error: Error) => {
-			toast.error(error.message || "Failed to cancel authorization");
-		},
-	});
+	);
 }
 
 /**
@@ -204,21 +237,28 @@ export function useCancelOAuthAuthorization() {
 export function useRefreshOAuthToken() {
 	const queryClient = useQueryClient();
 
-	return useMutation({
-		mutationFn: (connectionName: string) =>
-			oauthService.refreshToken(connectionName),
-		onSuccess: (_, connectionName) => {
-			// Invalidate all OAuth list queries (for all scopes)
-			queryClient.invalidateQueries({ queryKey: ["oauth", "list"] });
-			queryClient.invalidateQueries({
-				queryKey: oauthKeys.detail(connectionName),
-			});
-			toast.success("OAuth token refreshed successfully");
+	return $api.useMutation(
+		"post",
+		"/api/oauth/connections/{connection_name}/refresh",
+		{
+			onSuccess: (_, variables) => {
+				const connectionName = variables.params?.path?.connection_name;
+				// Invalidate all OAuth list queries (for all scopes)
+				queryClient.invalidateQueries({ queryKey: ["oauth", "list"] });
+				queryClient.invalidateQueries({
+					queryKey: oauthKeys.detail(connectionName || ""),
+				});
+				toast.success("OAuth token refreshed successfully");
+			},
+			onError: (error) => {
+				const message =
+					typeof error === "object" && error !== null && "detail" in error
+						? String(error.detail)
+						: "Failed to refresh OAuth token";
+				toast.error(message);
+			},
 		},
-		onError: (error: Error) => {
-			toast.error(error.message || "Failed to refresh OAuth token");
-		},
-	});
+	);
 }
 
 /**
@@ -226,34 +266,48 @@ export function useRefreshOAuthToken() {
  * Organization context is handled automatically by the api client
  */
 export function useOAuthCredentials(connectionName: string) {
-	return useQuery({
-		queryKey: [...oauthKeys.detail(connectionName), "credentials"],
-		queryFn: () => oauthService.getCredentials(connectionName),
-		enabled: !!connectionName,
-		// Don't retry on error - credentials might not be available
-		retry: false,
-	});
+	return $api.useQuery(
+		"get",
+		"/api/oauth/credentials/{connection_name}",
+		{
+			params: { path: { connection_name: connectionName } },
+		},
+		{
+			queryKey: [...oauthKeys.detail(connectionName), "credentials"],
+			enabled: !!connectionName,
+			// Don't retry on error - credentials might not be available
+			retry: false,
+		},
+	);
 }
 
 /**
  * Get OAuth refresh job status
  */
 export function useOAuthRefreshJobStatus() {
-	return useQuery({
-		queryKey: [...oauthKeys.all, "refresh-job-status"],
-		queryFn: async () => {
-			// eslint-disable-next-line @typescript-eslint/no-explicit-any
-			const data = (await oauthService.getRefreshJobStatus()) as any;
-			if (!data || !data.last_run) {
-				return null; // Job hasn't run yet
-			}
-			return {
-				...data.last_run,
-				updated_at: data.last_run.end_time || data.last_run.start_time,
-			};
+	const query = $api.useQuery(
+		"get",
+		"/api/oauth/refresh_job_status",
+		{},
+		{
+			queryKey: [...oauthKeys.all, "refresh-job-status"],
+			refetchInterval: 30000, // Refresh every 30 seconds
 		},
-		refetchInterval: 30000, // Refresh every 30 seconds
-	});
+	);
+
+	// Transform response to extract and enrich last_run data
+	return {
+		...query,
+		data:
+			query.data && "last_run" in query.data && query.data.last_run
+				? {
+						...query.data.last_run,
+						updated_at:
+							query.data.last_run.end_time ||
+							query.data.last_run.start_time,
+					}
+				: null,
+	};
 }
 
 /**
@@ -262,18 +316,44 @@ export function useOAuthRefreshJobStatus() {
 export function useTriggerOAuthRefreshJob() {
 	const queryClient = useQueryClient();
 
-	return useMutation({
-		mutationFn: () => oauthService.triggerRefreshJob(),
-		// eslint-disable-next-line @typescript-eslint/no-explicit-any
-		onSuccess: (data: any) => {
+	return $api.useMutation("post", "/api/oauth/refresh_all", {
+		onSuccess: (data) => {
 			// Invalidate all OAuth queries to refresh the UI
 			queryClient.invalidateQueries({ queryKey: ["oauth"] });
 			toast.success(
 				`Refresh job completed: ${data.refreshed_successfully} refreshed, ${data.refresh_failed} failed`,
 			);
 		},
-		onError: (error: Error) => {
-			toast.error(error.message || "Failed to trigger refresh job");
+		onError: () => {
+			toast.error("Failed to trigger refresh job");
 		},
 	});
+}
+
+/**
+ * Handle OAuth callback (exchange authorization code for tokens)
+ * Called from the UI callback page after OAuth provider redirects
+ * This is a standalone async function used outside React hooks
+ */
+export async function handleOAuthCallback(
+	connectionName: string,
+	code: string,
+	state?: string | null,
+) {
+	const { data, error } = await apiClient.POST(
+		"/api/oauth/callback/{connection_name}",
+		{
+			params: { path: { connection_name: connectionName } },
+			body: {
+				code,
+				state: state ?? null,
+			},
+		},
+	);
+	if (error) {
+		throw new Error(
+			`Failed to handle OAuth callback: ${error instanceof Error ? error.message : String(error)}`,
+		);
+	}
+	return data;
 }

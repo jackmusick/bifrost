@@ -1,13 +1,18 @@
 /**
  * React Query hooks for workflows
+ * Uses openapi-react-query for type-safe API calls
  */
 
-import { useQuery, useMutation } from "@tanstack/react-query";
-import { workflowsService } from "@/services/workflows";
-import { dataProvidersService } from "@/services/dataProviders";
+import { useQueryClient } from "@tanstack/react-query";
+import { $api, apiClient, withContext } from "@/lib/api-client";
+import { getErrorMessage } from "@/lib/api-error";
 import { toast } from "sonner";
 import { useWorkflowsStore } from "@/stores/workflowsStore";
 import { useAuth } from "@/contexts/AuthContext";
+import type { components } from "@/lib/v1";
+
+type WorkflowExecutionRequest = components["schemas"]["WorkflowExecutionRequest"];
+type WorkflowValidationRequest = components["schemas"]["WorkflowValidationRequest"];
 
 /**
  * Fetch workflow and data provider metadata.
@@ -21,60 +26,48 @@ export function useWorkflowsMetadata() {
 	const setWorkflows = useWorkflowsStore((state) => state.setWorkflows);
 	const { user } = useAuth();
 
-	return useQuery({
-		queryKey: ["workflows", "metadata"],
-		queryFn: async () => {
-			// Fetch both workflows and data providers in parallel
-			const [workflows, dataProviders] = await Promise.all([
-				workflowsService.getWorkflows(),
-				dataProvidersService.getAllProviders(),
-			]);
-
-			// Update Zustand store for global file type detection
-			if (workflows) {
-				setWorkflows(workflows);
-			}
-
-			// Return combined metadata
-			return {
-				workflows: workflows || [],
-				dataProviders: dataProviders || [],
-			};
-		},
-		// Only fetch when authenticated
+	// Fetch workflows
+	const workflowsQuery = $api.useQuery("get", "/api/workflows", {}, {
+		queryKey: ["workflows"],
 		enabled: !!user,
-		// Cache for 1 minute - workflows don't change often
 		staleTime: 60000,
 	});
+
+	// Fetch data providers
+	const dataProvidersQuery = $api.useQuery("get", "/api/data-providers", {}, {
+		queryKey: ["data-providers"],
+		enabled: !!user,
+		staleTime: 60000,
+	});
+
+	// Update Zustand store when workflows change
+	if (workflowsQuery.data) {
+		setWorkflows(workflowsQuery.data);
+	}
+
+	// Return combined metadata with combined loading/error states
+	return {
+		data: {
+			workflows: workflowsQuery.data || [],
+			dataProviders: dataProvidersQuery.data || [],
+		},
+		isLoading: workflowsQuery.isLoading || dataProvidersQuery.isLoading,
+		isError: workflowsQuery.isError || dataProvidersQuery.isError,
+		error: workflowsQuery.error || dataProvidersQuery.error,
+		refetch: () => {
+			workflowsQuery.refetch();
+			dataProvidersQuery.refetch();
+		},
+	};
 }
 
 export function useExecuteWorkflow() {
-	return useMutation({
-		mutationFn: ({
-			workflowName,
-			inputData,
-			transient,
-			code,
-			scriptName,
-		}: {
-			workflowName?: string;
-			inputData?: Record<string, unknown>;
-			transient?: boolean;
-			code?: string;
-			scriptName?: string;
-		}) =>
-			workflowsService.executeWorkflow(
-				workflowName,
-				inputData || {},
-				transient,
-				code,
-				scriptName,
-			),
+	return $api.useMutation("post", "/api/workflows/execute", {
 		// Note: onSuccess toast removed - let caller handle toasts based on sync vs async
 		// RunPanel shows different toasts for sync (immediate success) vs async (started)
-		onError: (error: Error) => {
+		onError: (error) => {
 			toast.error("Failed to execute workflow", {
-				description: error.message,
+				description: getErrorMessage(error, "Unknown error occurred"),
 			});
 		},
 	});
@@ -87,22 +80,76 @@ export function useExecuteWorkflow() {
  */
 export function useReloadWorkflowFile() {
 	const setWorkflows = useWorkflowsStore((state) => state.setWorkflows);
+	const queryClient = useQueryClient();
 
-	return useMutation({
-		mutationFn: async () => {
-			// Reload all workflows (incremental reload not supported by API)
-			const workflows = await workflowsService.getWorkflows();
-			return workflows;
-		},
-		onSuccess: (workflows) => {
-			// Update store with refreshed workflow list
-			if (workflows) {
-				setWorkflows(workflows);
+	// Use a manual mutation that fetches workflows via apiClient
+	return {
+		mutate: async () => {
+			try {
+				const { data, error } = await apiClient.GET("/api/workflows", {});
+				if (error) {
+					console.error("Failed to reload workflow file:", error);
+					return;
+				}
+				// Update store with refreshed workflow list
+				if (data) {
+					setWorkflows(data);
+				}
+				// Also invalidate the query cache
+				queryClient.invalidateQueries({ queryKey: ["workflows"] });
+			} catch (error) {
+				console.error("Failed to reload workflow file:", error);
+				// Silent failure - don't show toast for background operations
 			}
 		},
-		onError: (error: Error) => {
-			console.error("Failed to reload workflow file:", error);
-			// Silent failure - don't show toast for background operations
-		},
+	};
+}
+
+/**
+ * Execute a workflow with context override (admin only)
+ * Used when re-running executions from ExecutionDetails page
+ */
+export async function executeWorkflowWithContext(
+	workflowName: string | undefined,
+	parameters: Record<string, unknown>,
+	transient?: boolean,
+	code?: string,
+	scriptName?: string,
+	options?: { orgId?: string; userId?: string },
+) {
+	const client =
+		options?.orgId && options?.userId
+			? withContext(options.orgId, options.userId)
+			: apiClient;
+
+	const { data, error } = await client.POST("/api/workflows/execute", {
+		body: {
+			workflow_name: workflowName ?? null,
+			input_data: parameters,
+			form_id: null,
+			transient: transient ?? false,
+			code: code ?? null,
+			script_name: scriptName ?? null,
+		} as WorkflowExecutionRequest,
 	});
+
+	if (error) throw new Error(`Failed to execute workflow: ${error}`);
+	return data!;
+}
+
+/**
+ * Validate a workflow file for syntax errors and decorator issues
+ * @param path - Relative workspace path to the workflow file
+ * @param content - Optional file content to validate (if not provided, reads from disk)
+ */
+export async function validateWorkflow(path: string, content?: string) {
+	const { data, error } = await apiClient.POST("/api/workflows/validate", {
+		body: {
+			path,
+			content: content ?? null,
+		} as WorkflowValidationRequest,
+	});
+
+	if (error) throw new Error(`Failed to validate workflow: ${error}`);
+	return data!;
 }

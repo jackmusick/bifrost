@@ -117,7 +117,9 @@ export function OAuthConnections() {
 
 	const handleRefresh = async (connectionName: string) => {
 		try {
-			await refreshMutation.mutateAsync(connectionName);
+			await refreshMutation.mutateAsync({
+				params: { path: { connection_name: connectionName } },
+			});
 			refetch();
 		} catch {
 			// Error is already handled by the mutation's onError
@@ -128,32 +130,39 @@ export function OAuthConnections() {
 		connectionName: string,
 	): Promise<string | void> => {
 		return new Promise((resolve) => {
-			authorizeMutation.mutate(connectionName, {
-				onSuccess: (response) => {
-					// Open authorization URL in popup window
-					const width = 600;
-					const height = 700;
-					const left =
-						window.screenX + (window.outerWidth - width) / 2;
-					const top =
-						window.screenY + (window.outerHeight - height) / 2;
-					window.open(
-						response.authorization_url,
-						"oauth_popup",
-						`width=${width},height=${height},left=${left},top=${top},scrollbars=yes`,
-					);
-					resolve(response.authorization_url);
+			authorizeMutation.mutate(
+				{
+					params: { path: { connection_name: connectionName } },
 				},
-				onError: () => {
-					resolve();
+				{
+					onSuccess: (response) => {
+						// Open authorization URL in popup window
+						const width = 600;
+						const height = 700;
+						const left =
+							window.screenX + (window.outerWidth - width) / 2;
+						const top =
+							window.screenY + (window.outerHeight - height) / 2;
+						window.open(
+							response.authorization_url,
+							"oauth_popup",
+							`width=${width},height=${height},left=${left},top=${top},scrollbars=yes`,
+						);
+						resolve(response.authorization_url);
+					},
+					onError: () => {
+						resolve();
+					},
 				},
-			});
+			);
 		});
 	};
 
 	const handleCancel = async (connectionName: string) => {
 		try {
-			await cancelMutation.mutateAsync(connectionName);
+			await cancelMutation.mutateAsync({
+				params: { path: { connection_name: connectionName } },
+			});
 			refetch();
 		} catch {
 			// Error is already handled by the mutation's onError
@@ -169,7 +178,9 @@ export function OAuthConnections() {
 		if (!connectionToDelete) return;
 
 		try {
-			await deleteMutation.mutateAsync(connectionToDelete);
+			await deleteMutation.mutateAsync({
+				params: { path: { connection_name: connectionToDelete } },
+			});
 			refetch();
 		} catch {
 			// Error is already handled by the mutation's onError
@@ -244,7 +255,7 @@ export function OAuthConnections() {
 								size="sm"
 								className="rounded-none border-r h-9"
 								onClick={() =>
-									triggerRefreshJobMutation.mutate()
+									triggerRefreshJobMutation.mutate({})
 								}
 								disabled={triggerRefreshJobMutation.isPending}
 								title="Refresh all expiring tokens"

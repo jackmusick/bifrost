@@ -22,7 +22,7 @@ from src.models import (
     DashboardMetricsResponse,
     ExecutionStats,
     RecentFailure,
-    PlatformMetricsSnapshot,
+    PlatformMetricsResponse,
     DailyMetricsEntry,
     DailyMetricsResponse,
     OrganizationMetricsSummary,
@@ -34,11 +34,8 @@ from src.models import (
 )
 from src.core.auth import Context, CurrentActiveUser, RequirePlatformAdmin
 from src.models import Execution as ExecutionModel
-from src.models import (
-    ExecutionMetricsDaily,
-    PlatformMetricsSnapshot as PlatformMetricsSnapshotModel,
-    Organization,
-)
+from src.models import ExecutionMetricsDaily, Organization
+from src.models.orm import PlatformMetricsSnapshot as PlatformMetricsSnapshotORM
 from src.models.enums import ExecutionStatus
 
 logger = logging.getLogger(__name__)
@@ -72,8 +69,8 @@ async def get_metrics(
     """
     try:
         # Try to use pre-computed snapshot first (instant)
-        snapshot_query = select(PlatformMetricsSnapshotModel).where(
-            PlatformMetricsSnapshotModel.id == 1
+        snapshot_query = select(PlatformMetricsSnapshotORM).where(
+            PlatformMetricsSnapshotORM.id == 1
         )
         snapshot_result = await ctx.db.execute(snapshot_query)
         snapshot = snapshot_result.scalar_one_or_none()
@@ -120,7 +117,7 @@ async def get_metrics(
 
 @router.get(
     "/snapshot",
-    response_model=PlatformMetricsSnapshot,
+    response_model=PlatformMetricsResponse,
     summary="Get full platform metrics snapshot",
     description="Get the complete pre-computed metrics snapshot. Platform admin only.",
     dependencies=[RequirePlatformAdmin],
@@ -128,7 +125,7 @@ async def get_metrics(
 async def get_metrics_snapshot(
     ctx: Context,
     user: CurrentActiveUser,
-) -> PlatformMetricsSnapshot:
+) -> PlatformMetricsResponse:
     """
     Get the full platform metrics snapshot.
 
@@ -138,8 +135,8 @@ async def get_metrics_snapshot(
     Platform admin only.
     """
     try:
-        snapshot_query = select(PlatformMetricsSnapshotModel).where(
-            PlatformMetricsSnapshotModel.id == 1
+        snapshot_query = select(PlatformMetricsSnapshotORM).where(
+            PlatformMetricsSnapshotORM.id == 1
         )
         snapshot_result = await ctx.db.execute(snapshot_query)
         snapshot = snapshot_result.scalar_one_or_none()
@@ -150,7 +147,7 @@ async def get_metrics_snapshot(
                 detail="Metrics snapshot not available",
             )
 
-        return PlatformMetricsSnapshot(
+        return PlatformMetricsResponse(
             workflow_count=snapshot.workflow_count,
             form_count=snapshot.form_count,
             data_provider_count=snapshot.data_provider_count,

@@ -3,33 +3,19 @@
  * Used for testing launch workflows before form publication
  */
 
-import { useMutation } from "@tanstack/react-query";
-import { workflowsService } from "@/services/workflows";
+import { $api } from "@/lib/api-client";
+import { getErrorMessage } from "@/lib/api-error";
 import { toast } from "sonner";
-
-interface ExecuteWorkflowParams {
-	workflowName: string;
-	parameters?: Record<string, unknown>;
-}
 
 /**
  * Execute a workflow manually and return its results
  * Useful for testing launch workflows in the form builder
  */
 export function useManualWorkflowExecution() {
-	return useMutation({
-		mutationFn: async ({
-			workflowName,
-			parameters = {},
-		}: ExecuteWorkflowParams) => {
-			return await workflowsService.executeWorkflow(
-				workflowName,
-				parameters,
-			);
-		},
-		onError: (error: Error) => {
+	return $api.useMutation("post", "/api/workflows/execute", {
+		onError: (error) => {
 			toast.error("Failed to execute workflow", {
-				description: error.message,
+				description: getErrorMessage(error, "Unknown error occurred"),
 			});
 		},
 	});

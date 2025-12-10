@@ -8,7 +8,8 @@ from datetime import datetime
 import pytest
 from pydantic import ValidationError
 
-from src.models import CreateOrganizationRequest, ErrorResponse, Organization, UpdateOrganizationRequest
+from src.models import CreateOrganizationRequest, ErrorResponse, UpdateOrganizationRequest
+from src.models.contracts.organizations import Organization
 
 
 # Note: Models use snake_case (e.g., is_active, created_at, created_by, updated_at)

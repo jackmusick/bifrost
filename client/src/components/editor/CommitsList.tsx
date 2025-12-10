@@ -25,7 +25,7 @@ import {
 	AlertDialogHeader,
 	AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
-import type { CommitInfo } from "@/services/github";
+import type { CommitInfo } from "@/hooks/useGitHub";
 
 interface CommitsListProps {
 	commits: CommitInfo[];

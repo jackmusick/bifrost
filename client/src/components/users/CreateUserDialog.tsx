@@ -74,12 +74,14 @@ function CreateUserDialogContent({
 
 		try {
 			await createMutation.mutateAsync({
-				email: email.trim(),
-				name: displayName.trim(),
-				is_active: true,
-				is_superuser: isPlatformAdmin,
-				user_type: isPlatformAdmin ? "PLATFORM" : "ORG",
-				organization_id: isPlatformAdmin ? null : orgId || null,
+				body: {
+					email: email.trim(),
+					name: displayName.trim(),
+					is_active: true,
+					is_superuser: isPlatformAdmin,
+					user_type: isPlatformAdmin ? "PLATFORM" : "ORG",
+					organization_id: isPlatformAdmin ? null : orgId || null,
+				},
 			});
 
 			toast.success("User created successfully", {

@@ -2,15 +2,16 @@
 # Bifrost API - Test Runner
 #
 # This script runs tests in an isolated Docker environment using docker-compose.test.yml.
-# All dependencies (PostgreSQL, RabbitMQ, Redis) are ephemeral and cleaned up after tests.
+# All dependencies (PostgreSQL, RabbitMQ, Redis, API, Worker) are ephemeral and cleaned up after tests.
 #
 # Usage:
-#   ./test.sh                          # Run unit/integration tests (waits before cleanup)
-#   ./test.sh --e2e                    # Run E2E tests (starts API + Jobs workers)
-#   ./test.sh --coverage               # Run tests with coverage report
-#   ./test.sh --ci                     # Skip interactive wait (for CI/CD pipelines)
-#   ./test.sh tests/unit/ -v           # Run specific tests with pytest args
-#   ./test.sh tests/integration/api/test_auth.py::test_login -v  # Run single test
+#   ./test.sh                          # Run ALL tests (unit, integration, e2e)
+#   ./test.sh --coverage               # Run all tests with coverage report
+#   ./test.sh --wait                   # Wait before cleanup (for debugging)
+#   ./test.sh tests/unit/ -v           # Run only unit tests
+#   ./test.sh tests/integration/ -v    # Run only integration tests
+#   ./test.sh tests/e2e/ -v            # Run only E2E tests
+#   ./test.sh tests/unit/test_foo.py::test_bar -v  # Run single test
 
 set -e
 
@@ -22,35 +23,62 @@ cd "$SCRIPT_DIR"
 # Configuration
 # =============================================================================
 COMPOSE_FILE="docker-compose.test.yml"
-E2E_MODE=false
 COVERAGE=false
-CI_MODE=false
+WAIT_MODE=false
 PYTEST_ARGS=()
 
 # Parse command line arguments
 for arg in "$@"; do
-    if [ "$arg" = "--e2e" ]; then
-        E2E_MODE=true
-    elif [ "$arg" = "--coverage" ]; then
+    if [ "$arg" = "--coverage" ]; then
         COVERAGE=true
+    elif [ "$arg" = "--wait" ]; then
+        WAIT_MODE=true
     elif [ "$arg" = "--ci" ]; then
-        CI_MODE=true
+        # Legacy flag - now the default behavior, kept for backwards compatibility
+        true
+    elif [ "$arg" = "--e2e" ]; then
+        # Legacy flag - E2E now runs by default, kept for backwards compatibility
+        true
     else
         PYTEST_ARGS+=("$arg")
     fi
 done
 
 # =============================================================================
+# Docker log export directory
+# =============================================================================
+LOG_DIR="/tmp/bifrost"
+mkdir -p "$LOG_DIR"
+
+# =============================================================================
+# Function to export docker logs
+# =============================================================================
+export_docker_logs() {
+    echo "Exporting docker logs to $LOG_DIR/docker-logs.txt..."
+    {
+        echo "============================================================"
+        echo "Docker Compose Logs - $(date)"
+        echo "============================================================"
+        docker compose -f "$COMPOSE_FILE" logs --no-color 2>&1
+    } > "$LOG_DIR/docker-logs.txt" 2>&1 || true
+
+    # Also export individual service logs for easier debugging
+    for service in api worker postgres rabbitmq redis pgbouncer; do
+        docker compose -f "$COMPOSE_FILE" logs --no-color "$service" > "$LOG_DIR/$service.log" 2>&1 || true
+    done
+
+    echo "Docker logs exported to $LOG_DIR/"
+}
+
+# =============================================================================
 # Cleanup function
 # =============================================================================
 cleanup() {
     echo ""
+    # Export logs before cleanup
+    export_docker_logs
     echo "Cleaning up test environment..."
-    if [ "$E2E_MODE" = true ]; then
-        docker compose -f "$COMPOSE_FILE" --profile e2e --profile test down -v 2>/dev/null || true
-    else
-        docker compose -f "$COMPOSE_FILE" --profile test down -v 2>/dev/null || true
-    fi
+    docker compose -f "$COMPOSE_FILE" --profile e2e --profile test down -v 2>/dev/null || true
     echo "Cleanup complete"
 }
 
@@ -73,8 +101,8 @@ error_handler() {
     docker compose -f "$COMPOSE_FILE" logs --tail=50 2>/dev/null || true
     echo "------------------------------------------------------------"
 
-    # In interactive mode, wait for user before cleanup
-    if [ "$CI_MODE" = false ]; then
+    # In wait mode, wait for user before cleanup
+    if [ "$WAIT_MODE" = true ]; then
         echo ""
         echo "Press Enter to cleanup and exit (or Ctrl+C to keep containers running for debugging)..."
         read -r
@@ -171,28 +199,26 @@ for i in {1..30}; do
 done
 
 # =============================================================================
-# E2E Mode: Start API and Jobs workers
+# Start API and Worker for E2E tests
 # =============================================================================
-if [ "$E2E_MODE" = true ]; then
-    echo ""
-    echo "E2E Mode: Starting API and Worker..."
-    docker compose -f "$COMPOSE_FILE" --profile e2e up -d --build api worker
+echo ""
+echo "Starting API and Worker for E2E tests..."
+docker compose -f "$COMPOSE_FILE" --profile e2e up -d --build api worker
 
-    # Wait for API to be healthy
-    echo "Waiting for API to be ready..."
-    for i in {1..120}; do
-        if docker compose -f "$COMPOSE_FILE" exec -T api curl -sf http://localhost:8000/health > /dev/null 2>&1; then
-            echo "API is ready!"
-            break
-        fi
-        if [ $i -eq 120 ]; then
-            echo "ERROR: API failed to start within 120 seconds"
-            exit 1
-        fi
-        echo "  Waiting for API... (attempt $i/120)"
-        sleep 1
-    done
-fi
+# Wait for API to be healthy
+echo "Waiting for API to be ready..."
+for i in {1..120}; do
+    if docker compose -f "$COMPOSE_FILE" exec -T api curl -sf http://localhost:8000/health > /dev/null 2>&1; then
+        echo "API is ready!"
+        break
+    fi
+    if [ $i -eq 120 ]; then
+        echo "ERROR: API failed to start within 120 seconds"
+        exit 1
+    fi
+    echo "  Waiting for API... (attempt $i/120)"
+    sleep 1
+done
 
 # =============================================================================
 # Run database migrations
@@ -218,21 +244,11 @@ if [ "$COVERAGE" = true ]; then
 fi
 
 if [ ${#PYTEST_ARGS[@]} -eq 0 ]; then
-    # Default: run all tests except E2E (unless in E2E mode)
-    if [ "$E2E_MODE" = true ]; then
-        # Override the default "-m not e2e" from pytest.ini addopts
-        PYTEST_CMD+=("tests/e2e/" "-m" "e2e" "-v")
-    else
-        PYTEST_CMD+=("tests/" "--ignore=tests/e2e/" "-v")
-    fi
+    # Default: run ALL tests (unit, integration, e2e)
+    PYTEST_CMD+=("tests/" "-v")
 else
     # Custom test paths provided
-    if [ "$E2E_MODE" = true ]; then
-        # In E2E mode, add -m e2e to override pytest.ini addopts
-        PYTEST_CMD+=("-m" "e2e" "${PYTEST_ARGS[@]}")
-    else
-        PYTEST_CMD+=("${PYTEST_ARGS[@]}")
-    fi
+    PYTEST_CMD+=("${PYTEST_ARGS[@]}")
 fi
 
 # Run tests in container (disable ERR trap for tests - we handle exit code manually)
@@ -258,8 +274,8 @@ else
 fi
 echo "============================================================"
 
-# In interactive mode, wait for user before cleanup
-if [ "$CI_MODE" = false ]; then
+# In wait mode, wait for user before cleanup
+if [ "$WAIT_MODE" = true ]; then
     echo ""
     echo "Press Enter to cleanup and exit (or Ctrl+C to keep containers running)..."
     read -r

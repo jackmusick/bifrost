@@ -16,7 +16,7 @@ import {
 	CardDescription,
 } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
-import type { ResourceMetricsEntry } from "@/services/metrics";
+import type { ResourceMetricsEntry } from "@/hooks/useAdminMetrics";
 
 interface ResourceTrendChartProps {
 	data: ResourceMetricsEntry[];

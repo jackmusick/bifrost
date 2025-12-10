@@ -1,4 +1,3 @@
-import { useState } from "react";
 import { UserPlus } from "lucide-react";
 import {
 	Dialog,
@@ -13,6 +12,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { Badge } from "@/components/ui/badge";
 import { useUsers } from "@/hooks/useUsers";
 import { useAssignUsersToRole } from "@/hooks/useRoles";
+import { useMultiSelect } from "@/hooks/useMultiSelect";
 import type { components } from "@/lib/v1";
 type Role = components["schemas"]["RolePublic"];
 type User = components["schemas"]["UserPublic"];
@@ -28,34 +28,26 @@ export function AssignUsersDialog({
 	open,
 	onClose,
 }: AssignUsersDialogProps) {
-	const [selectedUserIds, setSelectedUserIds] = useState<string[]>([]);
+	const { selectedIds, toggle, clear, isSelected, count } = useMultiSelect();
 
 	// Fetch users (filtered by scope via X-Organization-Id header)
 	const { data: users, isLoading } = useUsers();
 	const assignUsers = useAssignUsersToRole();
 
-	const handleToggleUser = (userId: string) => {
-		setSelectedUserIds((prev) =>
-			prev.includes(userId)
-				? prev.filter((id) => id !== userId)
-				: [...prev, userId],
-		);
-	};
-
 	const handleAssign = async () => {
-		if (!role || selectedUserIds.length === 0) return;
+		if (!role || count === 0) return;
 
 		await assignUsers.mutateAsync({
-			roleId: role.id,
-			request: { userIds: selectedUserIds },
+			params: { path: { role_id: role.id } },
+			body: { userIds: selectedIds },
 		});
 
-		setSelectedUserIds([]);
+		clear();
 		onClose();
 	};
 
 	const handleClose = () => {
-		setSelectedUserIds([]);
+		clear();
 		onClose();
 	};
 
@@ -81,17 +73,13 @@ export function AssignUsersDialog({
 					) : users && users.length > 0 ? (
 						<div className="space-y-2">
 							{users.map((user: User) => {
-								const isSelected = selectedUserIds.includes(
-									user.id,
-								);
+								const selected = isSelected(user.id);
 								return (
 									<button
 										key={user.id}
-										onClick={() =>
-											handleToggleUser(user.id)
-										}
+										onClick={() => toggle(user.id)}
 										className={`w-full rounded-lg border p-4 text-left transition-colors ${
-											isSelected
+											selected
 												? "border-primary bg-primary/5"
 												: "border-border hover:bg-accent"
 										}`}
@@ -105,7 +93,7 @@ export function AssignUsersDialog({
 													{user.email}
 												</p>
 											</div>
-											{isSelected && (
+											{selected && (
 												<Badge>Selected</Badge>
 											)}
 										</div>
@@ -133,14 +121,11 @@ export function AssignUsersDialog({
 					</Button>
 					<Button
 						onClick={handleAssign}
-						disabled={
-							selectedUserIds.length === 0 ||
-							assignUsers.isPending
-						}
+						disabled={count === 0 || assignUsers.isPending}
 					>
 						{assignUsers.isPending
 							? "Assigning..."
-							: `Assign ${selectedUserIds.length} User${selectedUserIds.length !== 1 ? "s" : ""}`}
+							: `Assign ${count} User${count !== 1 ? "s" : ""}`}
 					</Button>
 				</DialogFooter>
 			</DialogContent>

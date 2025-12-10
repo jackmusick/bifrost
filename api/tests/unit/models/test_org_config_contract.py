@@ -8,7 +8,7 @@ from datetime import datetime
 import pytest
 from pydantic import ValidationError
 
-from src.models import Config, ConfigType, SetConfigRequest
+from src.models import ConfigType, SetConfigRequest, ConfigResponse
 
 
 # Note: Models use snake_case (e.g., updated_at, updated_by, org_id)
@@ -177,7 +177,7 @@ class TestConfigResponse:
 
     def test_valid_config_response(self):
         """Test that valid config response is accepted"""
-        config = Config(
+        config = ConfigResponse(
             key="api_timeout",
             value="30",
             type=ConfigType.INT,
@@ -196,7 +196,7 @@ class TestConfigResponse:
 
     def test_config_without_description(self):
         """Test config with null description"""
-        config = Config(
+        config = ConfigResponse(
             key="test_key",
             value="test_value",
             type=ConfigType.STRING,
@@ -213,7 +213,7 @@ class TestConfigResponse:
     def test_config_missing_required_fields(self):
         """Test that key and value are required"""
         with pytest.raises(ValidationError) as exc_info:
-            Config(
+            ConfigResponse(
                 type=ConfigType.STRING
                 # Missing: key, value
             )
@@ -225,7 +225,7 @@ class TestConfigResponse:
 
     def test_config_serialization(self):
         """Test that config can be serialized to dict/JSON"""
-        config = Config(
+        config = ConfigResponse(
             key="test_key",
             value="test_value",
             type=ConfigType.STRING,
@@ -246,7 +246,7 @@ class TestConfigResponse:
 
     def test_config_json_serialization(self):
         """Test that config can be serialized to JSON mode"""
-        config = Config(
+        config = ConfigResponse(
             key="test_key",
             value="test_value",
             type=ConfigType.STRING,

@@ -1,4 +1,4 @@
-import { workflowsService } from "@/services/workflows";
+import { validateWorkflow } from "@/hooks/useWorkflows";
 import { useEditorStore } from "@/stores/editorStore";
 import { queryClient } from "@/lib/queryClient";
 import { useScopeStore } from "@/stores/scopeStore";
@@ -24,7 +24,7 @@ export async function silentValidateWorkflow(
 
 	try {
 		const result: WorkflowValidationResponse =
-			await workflowsService.validateWorkflow(filePath, fileContent);
+			await validateWorkflow(filePath, fileContent);
 
 		// Always log to terminal (errors and success)
 		const errors = (result.issues || []).filter(

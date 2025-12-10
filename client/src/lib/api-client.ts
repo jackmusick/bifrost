@@ -1,10 +1,16 @@
 /**
- * Type-safe API client using openapi-fetch
+ * Type-safe API client using openapi-fetch and openapi-react-query
  * Automatically handles X-Organization-Id and X-User-Id headers from session storage
  * Includes CSRF protection for cookie-based authentication
+ *
+ * Usage:
+ * - $api.useQuery("get", "/api/endpoint") for queries in components
+ * - $api.useMutation("post", "/api/endpoint") for mutations in components
+ * - apiClient.GET/POST/etc for imperative usage outside React
  */
 
 import createClient from "openapi-fetch";
+import createQueryClient from "openapi-react-query";
 import type { paths } from "./v1";
 import { parseApiError, ApiError, RateLimitError } from "./api-error";
 
@@ -91,11 +97,30 @@ baseClient.use({
 });
 
 /**
- * API client with automatic header injection
- * Use the GET, POST, PUT, PATCH, DELETE methods with openapi-fetch syntax
- * Check result.error to handle errors
+ * Raw API client with automatic header injection
+ * Use for imperative calls outside React components
+ * For React components, prefer $api.useQuery() and $api.useMutation()
  */
 export const apiClient = baseClient;
+
+/**
+ * Type-safe React Query hooks from OpenAPI spec
+ * Use in React components for automatic caching, refetching, and loading states
+ *
+ * @example
+ * // Query
+ * const { data, isLoading } = $api.useQuery("get", "/api/organizations");
+ *
+ * // Query with parameters
+ * const { data } = $api.useQuery("get", "/api/organizations/{org_id}", {
+ *   params: { path: { org_id: "123" } }
+ * });
+ *
+ * // Mutation
+ * const mutation = $api.useMutation("post", "/api/organizations");
+ * mutation.mutate({ body: { name: "New Org" } });
+ */
+export const $api = createQueryClient(baseClient);
 
 /**
  * Shared response handler for all clients

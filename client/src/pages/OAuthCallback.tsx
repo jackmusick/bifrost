@@ -9,7 +9,7 @@ import {
 } from "@/components/ui/card";
 import { Loader2, CheckCircle2, XCircle, AlertTriangle } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { oauthService } from "@/services/oauth";
+import { handleOAuthCallback } from "@/hooks/useOAuth";
 
 export function OAuthCallback() {
 	const navigate = useNavigate();
@@ -59,7 +59,7 @@ export function OAuthCallback() {
 
 			try {
 				// Send the authorization code to the API for token exchange
-				const response = await oauthService.handleCallback(
+				const response = await handleOAuthCallback(
 					connectionName,
 					code,
 					state,

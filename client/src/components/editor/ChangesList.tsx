@@ -5,7 +5,7 @@ import {
 	CollapsibleContent,
 	CollapsibleTrigger,
 } from "@/components/ui/collapsible";
-import type { FileChange } from "@/services/github";
+import type { FileChange } from "@/hooks/useGitHub";
 
 interface ChangesListProps {
 	changes: FileChange[];

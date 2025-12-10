@@ -15,7 +15,7 @@ import re
 from contextlib import asynccontextmanager
 from datetime import datetime
 from pathlib import Path
-from typing import Any
+from typing import Any, TYPE_CHECKING
 
 from sqlalchemy import select, update
 from sqlalchemy.dialects.postgresql import insert
@@ -24,6 +24,9 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from src.config import Settings, get_settings
 from src.models.enums import GitStatus
 from src.models import WorkspaceFile
+
+if TYPE_CHECKING:
+    from src.models import Workflow
 
 logger = logging.getLogger(__name__)
 
@@ -554,9 +557,14 @@ class FileStorageService:
                             "last_seen_at": now,
                             "updated_at": now,
                         },
-                    )
-                    await self.db.execute(stmt)
+                    ).returning(Workflow)
+                    result = await self.db.execute(stmt)
+                    workflow = result.scalar_one()
                     logger.debug(f"Indexed workflow: {workflow_name} ({function_name}) from {path}")
+
+                    # Refresh endpoint registration if endpoint_enabled
+                    if endpoint_enabled:
+                        await self._refresh_workflow_endpoint(workflow)
 
                 elif decorator_name == "data_provider":
                     # Get provider name from decorator (required)
@@ -871,9 +879,48 @@ class FileStorageService:
             )
         await self.db.execute(stmt)
 
+    async def _refresh_workflow_endpoint(self, workflow: "Workflow") -> None:
+        """
+        Refresh the dynamic endpoint registration for an endpoint-enabled workflow.
+
+        This is called when a workflow with endpoint_enabled=True is indexed,
+        allowing live updates to the OpenAPI spec without restarting the API.
+
+        Args:
+            workflow: The Workflow ORM model that was just indexed
+        """
+        try:
+            from src.services.openapi_endpoints import refresh_workflow_endpoint
+            from src.main import app
+
+            refresh_workflow_endpoint(app, workflow)
+            logger.info(f"Refreshed endpoint for workflow: {workflow.name}")
+        except ImportError:
+            # App not fully initialized yet (during startup)
+            pass
+        except Exception as e:
+            # Log but don't fail the file write
+            logger.warning(f"Failed to refresh endpoint for {workflow.name}: {e}")
+
     async def _remove_metadata(self, path: str) -> None:
         """Remove workflow/form metadata when file is deleted."""
         from src.models import Workflow, DataProvider, Form
+
+        # Get workflows being removed (to clean up endpoints)
+        result = await self.db.execute(
+            select(Workflow).where(Workflow.file_path == path, Workflow.endpoint_enabled == True)  # noqa: E712
+        )
+        endpoint_workflows = result.scalars().all()
+
+        # Remove endpoint registrations for deleted workflows
+        for workflow in endpoint_workflows:
+            try:
+                from src.services.openapi_endpoints import remove_workflow_endpoint
+                from src.main import app
+
+                remove_workflow_endpoint(app, workflow.name)
+            except Exception as e:
+                logger.warning(f"Failed to remove endpoint for {workflow.name}: {e}")
 
         # Mark workflows from this file as inactive
         await self.db.execute(

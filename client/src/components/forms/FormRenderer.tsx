@@ -27,10 +27,8 @@ import type {
 type Form = components["schemas"]["FormPublic"];
 import { useSubmitForm } from "@/hooks/useForms";
 
-import {
-	dataProvidersService,
-	type DataProviderOption,
-} from "@/services/dataProviders";
+import type { DataProviderOption } from "@/services/dataProviders";
+import { getDataProviderOptions } from "@/services/dataProviders";
 import { FormContextProvider, useFormContext } from "@/contexts/FormContext";
 import { useLaunchWorkflow } from "@/hooks/useLaunchWorkflow";
 
@@ -237,7 +235,7 @@ function FormRendererInner({ form }: FormRendererProps) {
 					>,
 				}));
 
-				const options = await dataProvidersService.getOptions(
+				const options = await getDataProviderOptions(
 					form.id,
 					providerName,
 					inputs || undefined,
@@ -479,14 +477,12 @@ function FormRendererInner({ form }: FormRendererProps) {
 	}, [formValues, setFieldValue, fields]);
 
 	const onSubmit = async (data: Record<string, unknown>) => {
-		const submission = {
-			form_id: form.id,
-			form_data: data,
-		};
-
 		setIsNavigating(true);
 		try {
-			const result = await submitForm.mutateAsync(submission);
+			const result = await submitForm.mutateAsync({
+				params: { path: { form_id: form.id } },
+				body: data,
+			});
 			navigate(`/history/${result.execution_id}`);
 			// Don't reset isNavigating - component will unmount on navigation
 		} catch {

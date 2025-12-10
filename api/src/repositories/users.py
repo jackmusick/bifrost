@@ -77,16 +77,23 @@ class UserRepository(BaseRepository[User]):  # type: ignore[type-var]
 
     async def has_any_users(self) -> bool:
         """
-        Check if any users exist in the system.
+        Check if any real users exist in the system.
 
         Used for first-user detection during auto-provisioning.
+        Excludes SYSTEM users (service accounts) from the count.
 
         Returns:
-            True if at least one user exists, False otherwise
+            True if at least one non-system user exists, False otherwise
         """
         from sqlalchemy import exists
+
+        from src.models.enums import UserType
+
         result = await self.session.execute(
-            select(exists().where(User.id.isnot(None)))
+            select(exists().where(
+                User.id.isnot(None),
+                User.user_type != UserType.SYSTEM,
+            ))
         )
         return result.scalar() or False
 

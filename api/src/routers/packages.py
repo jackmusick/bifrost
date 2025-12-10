@@ -142,7 +142,10 @@ async def list_packages(
     try:
         packages = await get_installed_packages()
         logger.info(f"Listed {len(packages)} installed packages")
-        return InstalledPackagesResponse(packages=packages)
+        return InstalledPackagesResponse(
+            packages=packages,
+            total_count=len(packages),
+        )
 
     except Exception as e:
         logger.error(f"Error listing packages: {str(e)}", exc_info=True)
@@ -171,7 +174,10 @@ async def check_updates(
     try:
         updates = await check_package_updates()
         logger.info(f"Found {len(updates)} package updates available")
-        return PackageUpdatesResponse(updates=updates)
+        return PackageUpdatesResponse(
+            updates_available=updates,
+            total_count=len(updates),
+        )
 
     except Exception as e:
         logger.error(f"Error checking package updates: {str(e)}", exc_info=True)

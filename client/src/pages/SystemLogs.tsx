@@ -2,6 +2,7 @@ import { useState, useMemo } from "react";
 import { useNavigate } from "react-router-dom";
 import { useAuth } from "@/contexts/AuthContext";
 import { useSystemLogs } from "@/hooks/useSystemLogs";
+import { getErrorMessage } from "@/lib/api-error";
 import { LogDetailsDialog } from "@/components/logs/LogDetailsDialog";
 import {
 	TableBody,
@@ -36,7 +37,7 @@ import {
 	Loader2,
 } from "lucide-react";
 import { Alert, AlertDescription } from "@/components/ui/alert";
-import type { SystemLog, GetSystemLogsParams } from "@/services/logs";
+import type { SystemLog, GetSystemLogsParams } from "@/hooks/useSystemLogs";
 
 const CATEGORIES = [
 	"All",
@@ -295,7 +296,7 @@ export default function SystemLogs() {
 									<AlertCircle className="h-4 w-4" />
 									<AlertDescription>
 										Failed to load system logs:{" "}
-										{error.message}
+										{getErrorMessage(error, "Unknown error")}
 									</AlertDescription>
 								</Alert>
 							)}

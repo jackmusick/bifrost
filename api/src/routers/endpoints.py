@@ -17,7 +17,7 @@ Architecture:
 """
 
 import logging
-from typing import Any
+from typing import Any, get_type_hints
 from uuid import uuid4
 
 from fastapi import APIRouter, Header, HTTPException, Request, status
@@ -28,10 +28,80 @@ from src.services.execution.module_loader import get_workflow
 from src.core.database import get_db_context
 from src.core.redis_client import get_redis_client, DEFAULT_TIMEOUT_SECONDS
 from src.routers.workflow_keys import validate_workflow_key
+from src.repositories.workflows import WorkflowRepository
 
 logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/api/endpoints", tags=["Endpoints"])
+
+# System user ID for API key executions (created by migration)
+SYSTEM_USER_ID = "00000000-0000-0000-0000-000000000001"
+SYSTEM_USER_EMAIL = "system@bifrost.local"
+
+
+def _coerce_query_params(query_params: dict[str, str], workflow_func: Any) -> dict[str, Any]:
+    """
+    Coerce query parameter strings to the types expected by the workflow function.
+
+    GET query parameters are always strings, but workflow functions may expect
+    int, float, bool, etc. This function inspects the function signature and
+    converts parameters accordingly.
+
+    Args:
+        query_params: Dictionary of string query parameters
+        workflow_func: The workflow function to get type hints from
+
+    Returns:
+        Dictionary with parameters coerced to the correct types
+    """
+    if not query_params:
+        return {}
+
+    result: dict[str, Any] = {}
+
+    # Get type hints from the workflow function
+    try:
+        hints = get_type_hints(workflow_func)
+    except Exception:
+        # If we can't get type hints, return params as-is
+        return dict(query_params)
+
+    for key, value in query_params.items():
+        if key not in hints:
+            # No type hint, keep as string
+            result[key] = value
+            continue
+
+        expected_type = hints[key]
+
+        # Handle Optional types (Union[X, None])
+        origin = getattr(expected_type, "__origin__", None)
+        if origin is type(None):  # noqa: E721
+            result[key] = value
+            continue
+
+        # Extract the actual type from Optional/Union
+        if hasattr(expected_type, "__args__"):
+            # Filter out NoneType from Union args
+            non_none_types = [t for t in expected_type.__args__ if t is not type(None)]
+            if non_none_types:
+                expected_type = non_none_types[0]
+
+        # Coerce based on expected type
+        try:
+            if expected_type is int:
+                result[key] = int(value)
+            elif expected_type is float:
+                result[key] = float(value)
+            elif expected_type is bool:
+                result[key] = value.lower() in ("true", "1", "yes", "on")
+            else:
+                result[key] = value
+        except (ValueError, TypeError):
+            # Coercion failed, keep as string (will fail validation later)
+            result[key] = value
+
+    return result
 
 
 # =============================================================================
@@ -87,8 +157,8 @@ async def execute_endpoint(
     Returns:
         Execution response with result or async execution ID
     """
-    # Validate API key
     async with get_db_context() as db:
+        # Validate API key
         is_valid, key_id = await validate_workflow_key(db, x_bifrost_key, workflow_name)
 
         if not is_valid:
@@ -100,11 +170,32 @@ async def execute_endpoint(
 
         logger.info(f"API key validated for workflow: {workflow_name} (key_id: {key_id})")
 
-    # Load workflow
+        # Get workflow from database (need the UUID for execution)
+        workflow_repo = WorkflowRepository(db)
+        try:
+            workflow = await workflow_repo.get_endpoint_workflow_by_name(workflow_name)
+        except ValueError as e:
+            # Multiple workflows with same name and endpoint_enabled
+            logger.error(f"Duplicate endpoint workflows: {e}")
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail=str(e),
+            )
+
+        if not workflow:
+            logger.warning(f"Endpoint workflow not found: {workflow_name}")
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=f"Endpoint workflow '{workflow_name}' not found or not enabled",
+            )
+
+        workflow_id = str(workflow.id)
+
+    # Load workflow module (for metadata like allowed_methods, execution_mode)
     try:
         result = get_workflow(workflow_name)
         if not result:
-            logger.warning(f"Workflow not found: {workflow_name}")
+            logger.warning(f"Workflow module not found: {workflow_name}")
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
                 detail=f"Workflow '{workflow_name}' not found",
@@ -119,14 +210,6 @@ async def execute_endpoint(
             detail=f"Failed to load workflow '{workflow_name}': {str(e)}",
         )
 
-    # Check if endpoint is enabled
-    if not workflow_metadata.endpoint_enabled:
-        logger.warning(f"Workflow endpoint not enabled: {workflow_name}")
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail=f"Workflow endpoint '{workflow_name}' is not enabled",
-        )
-
     # Check HTTP method
     http_method = request.method
     allowed_methods = workflow_metadata.allowed_methods or ["POST"]
@@ -138,7 +221,8 @@ async def execute_endpoint(
         )
 
     # Parse input data (query params + body)
-    input_data = dict(request.query_params)
+    # Coerce query params to expected types based on workflow function signature
+    input_data = _coerce_query_params(dict(request.query_params), workflow_func)
     try:
         body = await request.json()
         if isinstance(body, dict):
@@ -146,11 +230,11 @@ async def execute_endpoint(
     except Exception:
         pass  # No JSON body or invalid JSON
 
-    # Create execution context (no user, using API key)
+    # Create execution context using system user (API key executions)
     context = ExecutionContext(
-        user_id=f"api-key:{key_id}",
+        user_id=SYSTEM_USER_ID,
         name="API Key",
-        email="api-key@bifrost.local",
+        email=SYSTEM_USER_EMAIL,
         scope="GLOBAL",
         organization=None,
         is_platform_admin=False,
@@ -162,34 +246,42 @@ async def execute_endpoint(
     if workflow_metadata.execution_mode == "async":
         return await _execute_async(
             context=context,
+            workflow_id=workflow_id,
             workflow_name=workflow_name,
             input_data=input_data,
+            api_key_id=workflow_id,  # Track which workflow's API key was used
         )
 
     # Execute synchronously
     return await _execute_sync(
         context=context,
+        workflow_id=workflow_id,
         workflow_name=workflow_name,
         input_data=input_data,
-        workflow_func=workflow_func,
         workflow_metadata=workflow_metadata,
+        api_key_id=workflow_id,  # Track which workflow's API key was used
     )
 
 
 async def _execute_async(
     context: ExecutionContext,
+    workflow_id: str,
     workflow_name: str,
     input_data: dict[str, Any],
+    api_key_id: str | None = None,
 ) -> EndpointExecuteResponse:
     """Execute workflow asynchronously via queue."""
     from src.services.execution.async_executor import enqueue_workflow_execution
 
     execution_id = await enqueue_workflow_execution(
         context=context,
-        workflow_name=workflow_name,
+        workflow_id=workflow_id,
         parameters=input_data,
         form_id=None,
+        api_key_id=api_key_id,
     )
+
+    logger.info(f"Queued async workflow execution: {workflow_name} ({execution_id})")
 
     return EndpointExecuteResponse(
         execution_id=execution_id,
@@ -200,10 +292,11 @@ async def _execute_async(
 
 async def _execute_sync(
     context: ExecutionContext,
+    workflow_id: str,
     workflow_name: str,
     input_data: dict[str, Any],
-    workflow_func: Any,
     workflow_metadata: Any,
+    api_key_id: str | None = None,
 ) -> EndpointExecuteResponse:
     """
     Execute workflow synchronously via queue.
@@ -226,13 +319,14 @@ async def _execute_sync(
     redis_client = get_redis_client()
     await redis_client.set_pending_execution(
         execution_id=execution_id,
-        workflow_name=workflow_name,
+        workflow_id=workflow_id,
         parameters=input_data,
         org_id=context.org_id,
         user_id=context.user_id,
         user_name=context.name or "API Key",
         user_email=context.email or "",
         form_id=None,
+        api_key_id=api_key_id,
     )
 
     # Get timeout from workflow metadata (default 5 minutes)
@@ -241,11 +335,12 @@ async def _execute_sync(
     # Queue execution with sync=True
     await enqueue_workflow_execution(
         context=context,
-        workflow_name=workflow_name,
+        workflow_id=workflow_id,
         parameters=input_data,
         form_id=None,
         execution_id=execution_id,
         sync=True,
+        api_key_id=api_key_id,
     )
 
     logger.info(f"Queued sync workflow execution: {workflow_name} ({execution_id})")

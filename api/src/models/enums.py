@@ -20,9 +20,10 @@ class ExecutionStatus(str, Enum):
 
 
 class UserType(str, Enum):
-    """User type - Platform admin or organization user"""
+    """User type - Platform admin, organization user, or system account"""
     PLATFORM = "PLATFORM"
     ORG = "ORG"
+    SYSTEM = "SYSTEM"  # Hidden service accounts (API key executions)
 
 
 class FormAccessLevel(str, Enum):

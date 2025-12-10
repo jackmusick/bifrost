@@ -12,7 +12,7 @@ from datetime import datetime, timedelta
 from uuid import uuid4
 from src.services.oauth_storage import OAuthStorageService
 from src.models import CreateOAuthConnectionRequest
-from src.models import Organization
+from src.models.orm import Organization
 
 
 @pytest.mark.integration

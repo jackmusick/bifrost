@@ -1,86 +1,116 @@
 /**
  * React Query hooks for user management
+ * Uses openapi-react-query for type-safe API calls
  */
 
-import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { usersService } from "@/services/users";
+import { useQueryClient } from "@tanstack/react-query";
+import { $api } from "@/lib/api-client";
 import { useScopeStore } from "@/stores/scopeStore";
 
+/**
+ * Fetch all users filtered by current scope (from X-Organization-Id header)
+ */
 export function useUsers() {
 	const orgId = useScopeStore((state) => state.scope.orgId);
 
-	return useQuery({
-		queryKey: ["users", orgId],
-		queryFn: () => {
-			// orgId is sent via X-Organization-Id header (handled by api.ts from sessionStorage)
-			// We include orgId in the key so React Query automatically refetches when scope changes
-			return usersService.getUsers();
+	return $api.useQuery(
+		"get",
+		"/api/users",
+		{},
+		{
+			// Include orgId in the key so React Query automatically refetches when scope changes
+			queryKey: ["users", orgId],
+			// Don't use cached data from previous scope
+			staleTime: 0,
+			// Remove from cache immediately when component unmounts
+			gcTime: 0,
+			// Always refetch when component mounts (navigating to page)
+			refetchOnMount: "always",
 		},
-		// Don't use cached data from previous scope
-		staleTime: 0,
-		// Remove from cache immediately when component unmounts
-		gcTime: 0,
-		// Always refetch when component mounts (navigating to page)
-		refetchOnMount: "always",
-	});
+	);
 }
 
+/**
+ * Fetch a specific user by ID
+ */
 export function useUser(userId: string | undefined) {
-	return useQuery({
-		queryKey: ["users", userId],
-		queryFn: () => usersService.getUser(userId!),
-		enabled: !!userId,
-	});
+	return $api.useQuery(
+		"get",
+		"/api/users/{user_id}",
+		{
+			params: { path: { user_id: userId! } },
+		},
+		{
+			queryKey: ["users", userId],
+			enabled: !!userId,
+		},
+	);
 }
 
-// Permissions system has been deprecated
-
+/**
+ * Fetch roles for a specific user
+ */
 export function useUserRoles(userId: string | undefined) {
-	return useQuery({
-		queryKey: ["users", userId, "roles"],
-		queryFn: () => usersService.getUserRoles(userId!),
-		enabled: !!userId,
-	});
+	return $api.useQuery(
+		"get",
+		"/api/users/{user_id}/roles",
+		{
+			params: { path: { user_id: userId! } },
+		},
+		{
+			queryKey: ["users", userId, "roles"],
+			enabled: !!userId,
+		},
+	);
 }
 
+/**
+ * Fetch forms accessible to a specific user
+ */
 export function useUserForms(userId: string | undefined) {
-	return useQuery({
-		queryKey: ["users", userId, "forms"],
-		queryFn: () => usersService.getUserForms(userId!),
-		enabled: !!userId,
-	});
+	return $api.useQuery(
+		"get",
+		"/api/users/{user_id}/forms",
+		{
+			params: { path: { user_id: userId! } },
+		},
+		{
+			queryKey: ["users", userId, "forms"],
+			enabled: !!userId,
+		},
+	);
 }
 
+/**
+ * Create a new user
+ */
 export function useCreateUser() {
 	const queryClient = useQueryClient();
-	return useMutation({
-		mutationFn: usersService.createUser,
+	return $api.useMutation("post", "/api/users", {
 		onSuccess: () => {
 			queryClient.invalidateQueries({ queryKey: ["users"] });
 		},
 	});
 }
 
+/**
+ * Update an existing user
+ */
 export function useUpdateUser() {
 	const queryClient = useQueryClient();
-	return useMutation({
-		mutationFn: ({
-			userId,
-			body,
-		}: {
-			userId: string;
-			body: Parameters<typeof usersService.updateUser>[1];
-		}) => usersService.updateUser(userId, body),
+	return $api.useMutation("patch", "/api/users/{user_id}", {
 		onSuccess: () => {
 			queryClient.invalidateQueries({ queryKey: ["users"] });
 		},
 	});
 }
 
+/**
+ * Delete a user
+ */
 export function useDeleteUser() {
 	const queryClient = useQueryClient();
-	return useMutation({
-		mutationFn: (userId: string) => usersService.deleteUser(userId),
+	return $api.useMutation("delete", "/api/users/{user_id}", {
 		onSuccess: () => {
 			queryClient.invalidateQueries({ queryKey: ["users"] });
 		},

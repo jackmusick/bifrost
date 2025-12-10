@@ -51,7 +51,7 @@ import {
 	type DeveloperApiKey,
 	type CreateApiKeyResponse,
 } from "@/services/sdk";
-import { organizationsService } from "@/services/organizations";
+import { apiClient } from "@/lib/api-client";
 import type { components } from "@/lib/v1";
 
 type Organization = components["schemas"]["OrganizationPublic"];
@@ -86,11 +86,12 @@ export function DeveloperSettings() {
 	useEffect(() => {
 		async function loadData() {
 			try {
-				const [contextData, keysData, orgsData] = await Promise.all([
+				const [contextData, keysData, orgsResult] = await Promise.all([
 					sdkService.getContext(),
 					sdkService.listApiKeys(),
-					organizationsService.getOrganizations(),
+					apiClient.GET("/api/organizations"),
 				]);
+				const orgsData = orgsResult.data ?? [];
 
 				setContext(contextData);
 				setApiKeys(keysData);

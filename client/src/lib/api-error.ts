@@ -198,3 +198,27 @@ export function parseApiError(error: unknown, statusCode?: number): ApiError {
 	// Fallback for unknown error types
 	return new ApiError(String(error), statusCode);
 }
+
+/**
+ * Extract a human-readable error message from any error type
+ * Useful for displaying errors in toasts or UI components
+ *
+ * @param error - The error to extract message from
+ * @param fallback - Fallback message if no message can be extracted
+ * @returns A human-readable error message
+ */
+export function getErrorMessage(error: unknown, fallback: string): string {
+	if (error instanceof ApiError) {
+		return error.message;
+	}
+	if (error instanceof RateLimitError) {
+		return error.getUserMessage();
+	}
+	if (error instanceof Error) {
+		return error.message;
+	}
+	if (error && typeof error === "object" && "message" in error) {
+		return String((error as { message: unknown }).message);
+	}
+	return fallback;
+}

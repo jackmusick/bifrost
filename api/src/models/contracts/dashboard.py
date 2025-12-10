@@ -41,7 +41,7 @@ class DashboardMetricsResponse(BaseModel):
     recent_failures: list[RecentFailure]
 
 
-class PlatformMetricsSnapshot(BaseModel):
+class PlatformMetricsResponse(BaseModel):
     """
     Platform metrics snapshot response.
 

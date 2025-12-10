@@ -17,8 +17,8 @@ if TYPE_CHECKING:
 # ==================== WORKFLOW EXECUTION MODELS ====================
 
 
-class ExecutionLog(BaseModel):
-    """Single log entry from workflow execution"""
+class ExecutionLogPublic(BaseModel):
+    """Single log entry from workflow execution (API response model)"""
     timestamp: str
     level: str  # debug, info, warning, error
     message: str

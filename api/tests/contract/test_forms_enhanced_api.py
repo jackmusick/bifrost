@@ -14,12 +14,12 @@ from src.models import (
     DataProviderInputMode,
     FileUploadRequest,
     FileUploadResponse,
-    Form,
-    FormField,
     FormFieldType,
     FormSchema,
     UploadedFileMetadata,
 )
+# Import Pydantic models from contracts (not ORM models)
+from src.models.contracts.forms import Form, FormField
 
 
 

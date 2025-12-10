@@ -71,7 +71,9 @@ export function Roles() {
 
 	const handleConfirmDelete = async () => {
 		if (!roleToDelete) return;
-		deleteRole.mutate(roleToDelete.id);
+		deleteRole.mutate({
+			params: { path: { role_id: roleToDelete.id } },
+		});
 		setIsDeleteDialogOpen(false);
 		setRoleToDelete(undefined);
 	};

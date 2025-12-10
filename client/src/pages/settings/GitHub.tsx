@@ -27,16 +27,21 @@ import {
 import { toast } from "sonner";
 import { Loader2, Github, CheckCircle2, AlertCircle, Plus } from "lucide-react";
 import {
-	githubService,
+	useGitHubConfig,
+	useConfigureGitHub,
+	useAnalyzeWorkspace,
+	useCreateGitHubRepository,
+	useDisconnectGitHub,
+	validateGitHubToken,
+	listGitHubBranches,
 	type GitHubRepoInfo,
 	type GitHubBranchInfo,
 	type GitHubConfigResponse,
 	type WorkspaceAnalysisResponse,
-} from "@/services/github";
+} from "@/hooks/useGitHub";
 
 export function GitHub() {
 	const [config, setConfig] = useState<GitHubConfigResponse | null>(null);
-	const [loading, setLoading] = useState(true);
 	const [saving, setSaving] = useState(false);
 	const [testingToken, setTestingToken] = useState(false);
 	const [analyzing, setAnalyzing] = useState(false);
@@ -66,31 +71,29 @@ export function GitHub() {
 	const [showDisconnectConfirm, setShowDisconnectConfirm] = useState(false);
 
 	// Load current GitHub configuration
-	useEffect(() => {
-		async function loadConfig() {
-			try {
-				const data = await githubService.getConfig();
-				setConfig(data);
+	const { data: configData, isLoading: configLoading } = useGitHubConfig();
 
-				// If token is saved, load repositories automatically
-				if (data.token_saved && !data.configured) {
-					setTokenValid(true);
-					try {
-						const repos = await githubService.listRepositories();
-						setRepositories(repos);
-					} catch (error) {
-						console.error("Failed to load repositories:", error);
-					}
-				}
-			} catch (error) {
-				console.error("Failed to load GitHub config:", error);
-			} finally {
-				setLoading(false);
+	// Mutations
+	const configureMutation = useConfigureGitHub();
+	const analyzeMutation = useAnalyzeWorkspace();
+	const createRepoMutation = useCreateGitHubRepository();
+	const disconnectMutation = useDisconnectGitHub();
+
+	// Track the saved token for use in configuration
+	const [savedToken, setSavedToken] = useState<string | null>(null);
+
+	// Update local state when config data loads
+	useEffect(() => {
+		if (configData) {
+			setConfig(configData);
+
+			// If token is saved, load repositories automatically
+			if (configData.token_saved && !configData.configured) {
+				setTokenValid(true);
+				// Repositories will be loaded via validateToken if needed
 			}
 		}
-
-		loadConfig();
-	}, []);
+	}, [configData]);
 
 	// Validate token and load repositories
 	const handleTokenValidation = async () => {
@@ -105,8 +108,9 @@ export function GitHub() {
 		setBranches([]);
 
 		try {
-			const response = await githubService.validate(token);
+			const response = await validateGitHubToken(token);
 			setRepositories(response.repositories);
+			setSavedToken(token); // Save token for later use in configure
 			setTokenValid(true);
 
 			// Auto-select detected repo if available
@@ -116,10 +120,10 @@ export function GitHub() {
 
 				// Load branches for detected repo
 				try {
-					const branches = await githubService.listBranches(
+					const branchList = await listGitHubBranches(
 						response.detected_repo.full_name,
 					);
-					setBranches(branches);
+					setBranches(branchList);
 				} catch (error) {
 					console.error(
 						"Failed to load branches for detected repo:",
@@ -135,10 +139,6 @@ export function GitHub() {
 					description: `Found ${response.repositories.length} accessible repositories`,
 				});
 			}
-
-			// Reload config to get updated token_saved status
-			const updatedConfig = await githubService.getConfig();
-			setConfig(updatedConfig);
 		} catch {
 			setTokenValid(false);
 			toast.error("Invalid token", {
@@ -160,7 +160,7 @@ export function GitHub() {
 
 		setLoadingBranches(true);
 		try {
-			const branchList = await githubService.listBranches(repoFullName);
+			const branchList = await listGitHubBranches(repoFullName);
 			setBranches(branchList);
 
 			// Auto-select main/master if available
@@ -186,20 +186,22 @@ export function GitHub() {
 
 		setCreatingRepo(true);
 		try {
-			const newRepo = await githubService.createRepository({
-				name: newRepoName,
-				description: newRepoDescription || null,
-				private: newRepoPrivate,
-				organization: null,
+			const newRepo = await createRepoMutation.mutateAsync({
+				body: {
+					name: newRepoName,
+					description: newRepoDescription || null,
+					private: newRepoPrivate,
+					organization: null,
+				},
 			});
 
 			toast.success("Repository created", {
 				description: `Created ${newRepo.full_name}`,
 			});
 
-			// Reload repositories and select the new one
-			const repos = await githubService.listRepositories();
-			setRepositories(repos);
+			// Update repositories list - refetch will happen automatically from mutation
+			// For now, we manually update the state for immediate feedback
+			setRepositories([...repositories, newRepo as unknown as GitHubRepoInfo]);
 			setSelectedRepo(newRepo.full_name);
 
 			// Load branches for new repo
@@ -223,7 +225,7 @@ export function GitHub() {
 	// Analyze workspace before saving
 	const handleAnalyzeAndConfigure = async () => {
 		// Token must be saved to configure
-		if (!config?.token_saved) {
+		if (!config?.token_saved && !savedToken) {
 			toast.error("Please validate your token first");
 			return;
 		}
@@ -235,9 +237,12 @@ export function GitHub() {
 
 		setAnalyzing(true);
 		try {
-			const analysis = await githubService.analyzeWorkspace({
-				repo_url: selectedRepo,
-				branch: selectedBranch,
+			const analysis = await analyzeMutation.mutateAsync({
+				body: {
+					repo_url: selectedRepo,
+					branch: selectedBranch,
+					auth_token: savedToken || "",
+				},
 			});
 
 			setAnalysisResult(analysis);
@@ -265,9 +270,12 @@ export function GitHub() {
 		setShowConflictModal(false);
 
 		try {
-			const updated = await githubService.configure({
-				repo_url: selectedRepo,
-				branch: selectedBranch,
+			const updated = await configureMutation.mutateAsync({
+				body: {
+					repo_url: selectedRepo,
+					branch: selectedBranch,
+					auth_token: savedToken || "",
+				},
 			});
 
 			setConfig(updated);
@@ -295,7 +303,7 @@ export function GitHub() {
 		setShowDisconnectConfirm(false);
 
 		try {
-			await githubService.disconnect();
+			await disconnectMutation.mutateAsync({});
 
 			// Reset all state
 			setConfig({
@@ -325,7 +333,7 @@ export function GitHub() {
 		}
 	};
 
-	if (loading) {
+	if (configLoading) {
 		return (
 			<div className="flex items-center justify-center py-12">
 				<Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />

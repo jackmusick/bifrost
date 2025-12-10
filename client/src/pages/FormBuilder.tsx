@@ -17,7 +17,7 @@ import {
 	useCreateForm,
 	useUpdateForm,
 } from "@/hooks/useForms";
-import { rolesService } from "@/services/roles";
+import { assignRolesToForm } from "@/hooks/useRoles";
 import { useWorkflowsMetadata } from "@/hooks/useWorkflows";
 import { FormInfoDialog } from "@/components/forms/FormInfoDialog";
 import { FieldsPanelDnD } from "@/components/forms/FieldsPanelDnD";
@@ -119,19 +119,19 @@ export function FormBuilder() {
 					default_launch_params: defaultLaunchParams,
 				};
 				await updateForm.mutateAsync({
-					formId,
-					request: updateRequest,
+					params: { path: { form_id: formId } },
+					body: updateRequest,
 				});
 
 				// Update role assignments if access level is role_based
 				if (accessLevel === "role_based") {
-					await rolesService.assignRolesToForm(
+					await assignRolesToForm(
 						formId,
 						selectedRoleIds,
 					);
 				} else {
 					// If not role-based, clear all role assignments
-					await rolesService.assignRolesToForm(formId, []);
+					await assignRolesToForm(formId, []);
 				}
 			} else {
 				const createRequest: FormCreate = {
@@ -148,7 +148,7 @@ export function FormBuilder() {
 							: null,
 					default_launch_params: defaultLaunchParams,
 				};
-				const createdForm = await createForm.mutateAsync(createRequest);
+				const createdForm = await createForm.mutateAsync({ body: createRequest });
 
 				// Assign roles if access level is role_based
 				if (
@@ -156,7 +156,7 @@ export function FormBuilder() {
 					createdForm?.id &&
 					selectedRoleIds.length > 0
 				) {
-					await rolesService.assignRolesToForm(
+					await assignRolesToForm(
 						createdForm.id,
 						selectedRoleIds,
 					);

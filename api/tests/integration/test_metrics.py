@@ -13,7 +13,8 @@ from uuid import uuid4
 from sqlalchemy import select, func, delete
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from src.models import ExecutionMetricsDaily, Organization
+from src.models import ExecutionMetricsDaily
+from src.models.orm import Organization
 from src.models.enums import ExecutionStatus
 from src.core.metrics import _upsert_daily_metrics
 

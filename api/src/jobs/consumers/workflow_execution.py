@@ -91,6 +91,7 @@ class WorkflowExecutionConsumer(BaseConsumer):
         user_name = pending["user_name"]
         user_email = pending["user_email"]
         form_id = pending.get("form_id")
+        api_key_id = pending.get("api_key_id")  # Workflow ID whose API key triggered this
         startup = pending.get("startup")  # Launch workflow results
 
         # Determine if this is a code or workflow execution
@@ -124,6 +125,7 @@ class WorkflowExecutionConsumer(BaseConsumer):
                     user_id=user_id,
                     user_name=user_name,
                     form_id=form_id,
+                    api_key_id=api_key_id,
                     status=ExecutionStatus.CANCELLED,
                 )
                 await update_execution(
@@ -166,6 +168,7 @@ class WorkflowExecutionConsumer(BaseConsumer):
                         user_id=user_id,
                         user_name=user_name,
                         form_id=form_id,
+                        api_key_id=api_key_id,
                         status=ExecutionStatus.FAILED,
                     )
                     await update_execution(
@@ -197,6 +200,7 @@ class WorkflowExecutionConsumer(BaseConsumer):
                         user_id=user_id,
                         user_name=user_name,
                         form_id=form_id,
+                        api_key_id=api_key_id,
                         status=ExecutionStatus.FAILED,
                     )
                     await update_execution(
@@ -226,6 +230,7 @@ class WorkflowExecutionConsumer(BaseConsumer):
                 user_id=user_id,
                 user_name=user_name,
                 form_id=form_id,
+                api_key_id=api_key_id,
                 status=ExecutionStatus.RUNNING,
             )
             await publish_execution_update(execution_id, "Running")

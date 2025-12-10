@@ -287,7 +287,7 @@ async def flush_logs_to_postgres(execution_id: str | UUID) -> int:
         Number of logs persisted
     """
     from src.core.database import get_session_factory
-    from src.models import ExecutionLog
+    from src.models.orm import ExecutionLog
 
     exec_id = str(execution_id)
     exec_uuid = UUID(exec_id)

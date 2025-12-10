@@ -1,25 +1,24 @@
 /**
- * React Query hooks for roles management
+ * React Query hooks for roles management using openapi-react-query pattern
  */
 
-import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { rolesService } from "@/services/roles";
+import { useQueryClient } from "@tanstack/react-query";
+import { $api, apiClient } from "@/lib/api-client";
 import type { components } from "@/lib/v1";
+import { toast } from "sonner";
+import { useScopeStore } from "@/stores/scopeStore";
+
 type RoleCreate = components["schemas"]["RoleCreate"];
-type RoleUpdate = components["schemas"]["RoleUpdate"];
 type AssignUsersToRoleRequest =
 	components["schemas"]["AssignUsersToRoleRequest"];
 type AssignFormsToRoleRequest =
 	components["schemas"]["AssignFormsToRoleRequest"];
-import { toast } from "sonner";
-import { useScopeStore } from "@/stores/scopeStore";
 
 export function useRoles() {
 	const orgId = useScopeStore((state) => state.scope.orgId);
 
-	return useQuery({
+	return $api.useQuery("get", "/api/roles", {}, {
 		queryKey: ["roles", orgId],
-		queryFn: () => rolesService.getRoles(),
 		// Don't use cached data from previous scope
 		staleTime: 0,
 		// Always refetch when component mounts (navigating to page)
@@ -30,17 +29,20 @@ export function useRoles() {
 export function useCreateRole() {
 	const queryClient = useQueryClient();
 
-	return useMutation({
-		mutationFn: (request: RoleCreate) => rolesService.createRole(request),
+	return $api.useMutation("post", "/api/roles", {
 		onSuccess: (_, variables) => {
 			queryClient.invalidateQueries({ queryKey: ["roles"] });
+			const name = (variables.body as RoleCreate)?.name || "Role";
 			toast.success("Role created", {
-				description: `Role "${variables.name}" has been created`,
+				description: `Role "${name}" has been created`,
 			});
 		},
-		onError: (error: Error) => {
+		onError: (error) => {
+			const message = typeof error === "object" && error && "detail" in error
+				? String(error.detail)
+				: "Failed to create role";
 			toast.error("Failed to create role", {
-				description: error.message,
+				description: message,
 			});
 		},
 	});
@@ -49,23 +51,19 @@ export function useCreateRole() {
 export function useUpdateRole() {
 	const queryClient = useQueryClient();
 
-	return useMutation({
-		mutationFn: ({
-			roleId,
-			request,
-		}: {
-			roleId: string;
-			request: RoleUpdate;
-		}) => rolesService.updateRole(roleId, request),
+	return $api.useMutation("patch", "/api/roles/{role_id}", {
 		onSuccess: () => {
 			queryClient.invalidateQueries({ queryKey: ["roles"] });
 			toast.success("Role updated", {
 				description: "The role has been updated successfully",
 			});
 		},
-		onError: (error: Error) => {
+		onError: (error) => {
+			const message = typeof error === "object" && error && "detail" in error
+				? String(error.detail)
+				: "Failed to update role";
 			toast.error("Failed to update role", {
-				description: error.message,
+				description: message,
 			});
 		},
 	});
@@ -74,52 +72,54 @@ export function useUpdateRole() {
 export function useDeleteRole() {
 	const queryClient = useQueryClient();
 
-	return useMutation({
-		mutationFn: (roleId: string) => rolesService.deleteRole(roleId),
+	return $api.useMutation("delete", "/api/roles/{role_id}", {
 		onSuccess: () => {
 			queryClient.invalidateQueries({ queryKey: ["roles"] });
 			toast.success("Role deleted", {
 				description: "The role has been removed",
 			});
 		},
-		onError: (error: Error) => {
+		onError: (error) => {
+			const message = typeof error === "object" && error && "detail" in error
+				? String(error.detail)
+				: "Failed to delete role";
 			toast.error("Failed to delete role", {
-				description: error.message,
+				description: message,
 			});
 		},
 	});
 }
 
 export function useRoleUsers(roleId: string | undefined) {
-	return useQuery({
-		queryKey: ["roles", roleId, "users"],
-		queryFn: () => rolesService.getRoleUsers(roleId!),
-		enabled: !!roleId,
-	});
+	return $api.useQuery("get", "/api/roles/{role_id}/users",
+		{ params: { path: { role_id: roleId ?? "" } } },
+		{
+			queryKey: ["roles", roleId, "users"],
+			enabled: !!roleId,
+		},
+	);
 }
 
 export function useAssignUsersToRole() {
 	const queryClient = useQueryClient();
 
-	return useMutation({
-		mutationFn: ({
-			roleId,
-			request,
-		}: {
-			roleId: string;
-			request: AssignUsersToRoleRequest;
-		}) => rolesService.assignUsersToRole(roleId, request),
+	return $api.useMutation("post", "/api/roles/{role_id}/users", {
 		onSuccess: (_, variables) => {
+			const roleId = variables.params?.path?.role_id;
+			const userIds = (variables.body as AssignUsersToRoleRequest)?.userIds || [];
 			queryClient.invalidateQueries({
-				queryKey: ["roles", variables.roleId, "users"],
+				queryKey: ["roles", roleId, "users"],
 			});
 			toast.success("Users assigned", {
-				description: `${variables.request.userIds.length} user(s) assigned to role`,
+				description: `${userIds.length} user(s) assigned to role`,
 			});
 		},
-		onError: (error: Error) => {
+		onError: (error) => {
+			const message = typeof error === "object" && error && "detail" in error
+				? String(error.detail)
+				: "Failed to assign users";
 			toast.error("Failed to assign users", {
-				description: error.message,
+				description: message,
 			});
 		},
 	});
@@ -128,58 +128,75 @@ export function useAssignUsersToRole() {
 export function useRemoveUserFromRole() {
 	const queryClient = useQueryClient();
 
-	return useMutation({
-		mutationFn: ({ roleId, userId }: { roleId: string; userId: string }) =>
-			rolesService.removeUserFromRole(roleId, userId),
+	return $api.useMutation("delete", "/api/roles/{role_id}/users/{user_id}", {
 		onSuccess: (_, variables) => {
+			const roleId = variables.params?.path?.role_id;
 			queryClient.invalidateQueries({
-				queryKey: ["roles", variables.roleId, "users"],
+				queryKey: ["roles", roleId, "users"],
 			});
 			toast.success("User removed", {
 				description: "User has been removed from the role",
 			});
 		},
-		onError: (error: Error) => {
+		onError: (error) => {
+			const message = typeof error === "object" && error && "detail" in error
+				? String(error.detail)
+				: "Failed to remove user";
 			toast.error("Failed to remove user", {
-				description: error.message,
+				description: message,
 			});
 		},
 	});
 }
 
 export function useRoleForms(roleId: string | undefined) {
-	return useQuery({
-		queryKey: ["roles", roleId, "forms"],
-		queryFn: () => rolesService.getRoleForms(roleId!),
-		enabled: !!roleId,
-	});
+	return $api.useQuery("get", "/api/roles/{role_id}/forms",
+		{ params: { path: { role_id: roleId ?? "" } } },
+		{
+			queryKey: ["roles", roleId, "forms"],
+			enabled: !!roleId,
+		},
+	);
 }
 
 export function useAssignFormsToRole() {
 	const queryClient = useQueryClient();
 
-	return useMutation({
-		mutationFn: ({
-			roleId,
-			request,
-		}: {
-			roleId: string;
-			request: AssignFormsToRoleRequest;
-		}) => rolesService.assignFormsToRole(roleId, request),
+	return $api.useMutation("post", "/api/roles/{role_id}/forms", {
 		onSuccess: (_, variables) => {
+			const roleId = variables.params?.path?.role_id;
+			const formIds = (variables.body as AssignFormsToRoleRequest)?.formIds || [];
 			queryClient.invalidateQueries({
-				queryKey: ["roles", variables.roleId, "forms"],
+				queryKey: ["roles", roleId, "forms"],
 			});
 			toast.success("Forms assigned", {
-				description: `${variables.request.formIds.length} form(s) assigned to role`,
+				description: `${formIds.length} form(s) assigned to role`,
 			});
 		},
-		onError: (error: Error) => {
+		onError: (error) => {
+			const message = typeof error === "object" && error && "detail" in error
+				? String(error.detail)
+				: "Failed to assign forms";
 			toast.error("Failed to assign forms", {
-				description: error.message,
+				description: message,
 			});
 		},
 	});
+}
+
+/**
+ * Assign roles to a form - imperative function using apiClient
+ * This handles the form->roles relationship by assigning each role to the form
+ */
+export async function assignRolesToForm(formId: string, roleIds: string[]): Promise<void> {
+	// Assign each role to this form
+	for (const roleId of roleIds) {
+		const { error } = await apiClient.POST("/api/roles/{role_id}/forms", {
+			params: { path: { role_id: roleId } },
+			body: { formIds: [formId] } as AssignFormsToRoleRequest,
+		});
+		if (error) throw new Error(`Failed to assign role to form: ${error}`);
+	}
 }
 
 /**

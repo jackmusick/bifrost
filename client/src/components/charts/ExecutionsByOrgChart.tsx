@@ -16,7 +16,7 @@ import {
 	CardDescription,
 } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
-import type { OrganizationMetricsSummary } from "@/services/metrics";
+import type { OrganizationMetricsSummary } from "@/hooks/useAdminMetrics";
 
 interface ExecutionsByOrgChartProps {
 	data: OrganizationMetricsSummary[];

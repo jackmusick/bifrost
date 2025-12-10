@@ -19,6 +19,7 @@ if TYPE_CHECKING:
     from src.models.orm.forms import Form
     from src.models.orm.organizations import Organization
     from src.models.orm.users import User
+    from src.models.orm.workflows import Workflow
 
 
 class Execution(Base):
@@ -59,12 +60,18 @@ class Execution(Base):
         ForeignKey("organizations.id"), default=None
     )
     form_id: Mapped[UUID | None] = mapped_column(ForeignKey("forms.id"), default=None)
+    api_key_id: Mapped[UUID | None] = mapped_column(
+        ForeignKey("workflows.id"), default=None
+    )  # Workflow whose API key triggered this execution (null for user-triggered)
     created_at: Mapped[datetime] = mapped_column(
         DateTime, default=datetime.utcnow, server_default=text("NOW()")
     )
 
     # Relationships
     executed_by_user: Mapped["User"] = relationship(back_populates="executions")
+    api_key_workflow: Mapped["Workflow | None"] = relationship(
+        foreign_keys=[api_key_id]
+    )  # The workflow whose API key triggered this execution
     organization: Mapped["Organization | None"] = relationship(
         back_populates="executions"
     )

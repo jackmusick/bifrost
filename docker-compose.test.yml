@@ -13,6 +13,8 @@
 #   ./test.sh --e2e                    # Run E2E tests against isolated API
 #   ./test.sh tests/e2e/ --e2e -v      # Run specific E2E tests
 
+name: bifrost-test
+
 services:
   # PostgreSQL Database (Test)
   # Uses tmpfs so data is NOT persisted between test runs - fresh database each time

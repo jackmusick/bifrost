@@ -22,9 +22,17 @@ import {
 } from "@/components/ui/alert-dialog";
 import { toast } from "sonner";
 import { Loader2, Upload, Palette, RotateCcw } from "lucide-react";
-import { brandingService } from "@/services/branding";
+import {
+	updateBranding,
+	uploadLogo,
+	resetLogo,
+	resetColor,
+	resetAllBranding,
+	getBranding,
+} from "@/hooks/useBranding";
 import { applyBrandingTheme, type BrandingSettings } from "@/lib/branding";
 import { useOrgScope } from "@/contexts/OrgScopeContext";
+import type { components } from "@/lib/v1";
 
 interface BrandingProps {
 	onActionsChange?: (actions: React.ReactNode) => void;
@@ -32,7 +40,9 @@ interface BrandingProps {
 
 export function Branding({ onActionsChange }: BrandingProps) {
 	const { refreshBranding } = useOrgScope();
-	const [branding, setBranding] = useState<BrandingSettings | null>(null);
+	const [branding, setBranding] = useState<components["schemas"]["BrandingSettings"] | null>(
+		null,
+	);
 	const [loading, setLoading] = useState(true);
 	const [saving, setSaving] = useState(false);
 	const [uploading, setUploading] = useState<"square" | "rectangle" | null>(
@@ -52,10 +62,12 @@ export function Branding({ onActionsChange }: BrandingProps) {
 	useEffect(() => {
 		async function loadBranding() {
 			try {
-				const data = await brandingService.getBranding();
-				setBranding(data);
-				if (data.primary_color) {
-					setPrimaryColor(data.primary_color);
+				const data = await getBranding();
+				if (data) {
+					setBranding(data);
+					if (data.primary_color) {
+						setPrimaryColor(data.primary_color);
+					}
 				}
 			} catch {
 				toast.error("Failed to load branding settings");
@@ -71,11 +83,11 @@ export function Branding({ onActionsChange }: BrandingProps) {
 	const handleColorUpdate = async () => {
 		setSaving(true);
 		try {
-			const updated = await brandingService.updateBranding({
+			const updated = await updateBranding({
 				primary_color: primaryColor,
 			});
 			setBranding(updated);
-			applyBrandingTheme(updated);
+			applyBrandingTheme(updated as BrandingSettings);
 			refreshBranding();
 
 			toast.success("Branding updated", {
@@ -115,13 +127,15 @@ export function Branding({ onActionsChange }: BrandingProps) {
 
 			setUploading(type);
 			try {
-				await brandingService.uploadLogo(type, file);
+				await uploadLogo(type, file);
 
 				// Reload branding to get updated logo URL
-				const updated = await brandingService.getBranding();
-				setBranding(updated);
-				applyBrandingTheme(updated);
-				refreshBranding();
+				const updated = await getBranding();
+				if (updated) {
+					setBranding(updated);
+					applyBrandingTheme(updated as BrandingSettings);
+					refreshBranding();
+				}
 
 				toast.success("Logo uploaded", {
 					description: `${
@@ -190,9 +204,9 @@ export function Branding({ onActionsChange }: BrandingProps) {
 		async (type: "square" | "rectangle") => {
 			setResetting(type);
 			try {
-				const updated = await brandingService.resetLogo(type);
+				const updated = await resetLogo(type);
 				setBranding(updated);
-				applyBrandingTheme(updated);
+				applyBrandingTheme(updated as BrandingSettings);
 				refreshBranding();
 
 				toast.success("Logo reset", {
@@ -217,10 +231,10 @@ export function Branding({ onActionsChange }: BrandingProps) {
 	const handleResetColor = useCallback(async () => {
 		setResetting("color");
 		try {
-			const updated = await brandingService.resetColor();
+			const updated = await resetColor();
 			setBranding(updated);
 			setPrimaryColor(updated.primary_color || "#0066CC");
-			applyBrandingTheme(updated);
+			applyBrandingTheme(updated as BrandingSettings);
 			refreshBranding();
 
 			toast.success("Color reset", {
@@ -241,10 +255,10 @@ export function Branding({ onActionsChange }: BrandingProps) {
 	const handleResetAll = useCallback(async () => {
 		setResetting("all");
 		try {
-			const updated = await brandingService.resetAll();
+			const updated = await resetAllBranding();
 			setBranding(updated);
 			setPrimaryColor(updated.primary_color || "#0066CC");
-			applyBrandingTheme(updated);
+			applyBrandingTheme(updated as BrandingSettings);
 			refreshBranding();
 
 			toast.success("Branding reset", {

@@ -10,12 +10,11 @@ from pydantic import ValidationError
 
 from src.models import (
     CreateFormRequest,
-    Form,
-    FormField,
     FormFieldType,
     FormSchema,
     UpdateFormRequest,
 )
+from src.models.contracts.forms import Form, FormField
 
 
 # Note: Models use snake_case (e.g., workflow_id, form_schema, is_global)

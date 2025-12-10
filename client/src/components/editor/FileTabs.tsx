@@ -1,6 +1,7 @@
 import { X, Cloud, Loader2, CloudCheck } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { useEditorStore } from "@/stores/editorStore";
+import { useEditorSession } from "@/hooks/useEditorSession";
 import { fileService } from "@/services/fileService";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
@@ -36,7 +37,7 @@ export function FileTabs() {
 		setLoadingFile,
 		reorderTabs,
 		setConflictState,
-	} = useEditorStore();
+	} = useEditorSession();
 
 	// Handle tab click - only load from server if content is empty
 	const handleTabClick = async (index: number) => {

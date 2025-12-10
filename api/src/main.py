@@ -80,6 +80,10 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     await workspace_sync.start()
     logger.info("Workspace sync service started")
 
+    # Register dynamic workflow endpoints for OpenAPI documentation
+    logger.info("Registering workflow endpoints...")
+    await register_dynamic_workflow_endpoints(app)
+
     # Create default admin user if configured via environment variables
     if settings.default_user_email and settings.default_user_password:
         await create_default_user()
@@ -95,6 +99,25 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     await pubsub_manager.close()
     await close_db()
     logger.info("Bifrost API shutdown complete")
+
+
+async def register_dynamic_workflow_endpoints(app: FastAPI) -> None:
+    """
+    Register dynamic routes for endpoint-enabled workflows.
+
+    This creates per-workflow OpenAPI documentation with proper parameter
+    schemas for each workflow that has endpoint_enabled=True.
+    """
+    from src.core.database import get_db_context
+    from src.services.openapi_endpoints import register_workflow_endpoints
+
+    try:
+        async with get_db_context() as db:
+            count = await register_workflow_endpoints(app, db)
+            logger.info(f"Registered {count} dynamic workflow endpoints")
+    except Exception as e:
+        # Don't fail startup if endpoint registration fails
+        logger.warning(f"Failed to register workflow endpoints: {e}")
 
 
 async def create_default_user() -> None:
@@ -149,9 +172,9 @@ def create_app() -> FastAPI:
         title="Bifrost API",
         description="MSP automation platform API",
         version="2.0.0",
-        docs_url="/docs" if settings.is_development else None,
-        redoc_url="/redoc" if settings.is_development else None,
-        openapi_url="/openapi.json" if settings.is_development else None,
+        docs_url="/docs",
+        redoc_url="/redoc",
+        openapi_url="/openapi.json",
         lifespan=lifespan,
     )
 
@@ -195,7 +218,7 @@ def create_app() -> FastAPI:
         return {
             "name": "Bifrost API",
             "version": "2.0.0",
-            "docs": "/docs" if settings.is_development else "disabled",
+            "docs": "/docs",
         }
 
     return app

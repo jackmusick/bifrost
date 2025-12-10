@@ -30,8 +30,7 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { Check, ChevronsUpDown, X } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useWorkflowsMetadata } from "@/hooks/useWorkflows";
-import { useQuery } from "@tanstack/react-query";
-import { rolesService } from "@/services/roles";
+import { useRoles } from "@/hooks/useRoles";
 import type { components } from "@/lib/v1";
 
 type FormAccessLevel = components["schemas"]["FormAccessLevel"];
@@ -76,11 +75,8 @@ export function FormInfoDialog({
 			isLoading: boolean;
 		};
 
-	// Fetch available roles
-	const { data: roles, isLoading: rolesLoading } = useQuery({
-		queryKey: ["roles"],
-		queryFn: () => rolesService.getRoles(),
-	}) as { data?: Role[]; isLoading: boolean };
+	// Fetch available roles using the hook
+	const { data: roles, isLoading: rolesLoading } = useRoles();
 
 	// Initialize form state from initialData
 	const [formName, setFormName] = useState(() => initialData?.formName || "");

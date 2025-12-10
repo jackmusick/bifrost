@@ -48,9 +48,8 @@ import {
 	DialogTitle,
 	DialogTrigger,
 } from "@/components/ui/dialog";
-import { useExecutions } from "@/hooks/useExecutions";
+import { useExecutions, cancelExecution } from "@/hooks/useExecutions";
 import { useExecutionHistory } from "@/hooks/useExecutionStream";
-import { executionsService } from "@/services/executions";
 import { useScopeStore } from "@/stores/scopeStore";
 import { formatDate } from "@/lib/utils";
 import { SearchBox } from "@/components/search/SearchBox";
@@ -260,7 +259,7 @@ export function ExecutionHistory() {
 		workflow_name: string,
 	) => {
 		try {
-			await executionsService.cancelExecution(execution_id);
+			await cancelExecution(execution_id);
 			toast.success(`Cancellation requested for ${workflow_name}`);
 			// Refetch to show updated status
 			refetch();

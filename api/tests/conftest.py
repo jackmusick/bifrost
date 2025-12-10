@@ -24,7 +24,10 @@ from sqlalchemy.pool import NullPool
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
 # Import fixture modules
-pytest_plugins = ["tests.fixtures.auth"]
+pytest_plugins = [
+    "tests.fixtures.auth",
+    "tests.e2e.fixtures.setup",  # E2E session fixtures
+]
 
 
 # ==================== CONFIGURATION ====================

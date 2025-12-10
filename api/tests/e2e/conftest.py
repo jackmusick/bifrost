@@ -5,13 +5,15 @@ E2E tests run against the full API stack (API + Jobs workers) with real
 PostgreSQL, RabbitMQ, and Redis services.
 
 These tests require:
-- docker-compose.test.yml services running (via ./test.sh --e2e)
+- docker-compose.test.yml services running (via ./test.sh)
 - API service accessible at TEST_API_URL
 
 Session-scoped fixtures provide shared state:
 - platform_admin: First registered user (superuser)
 - org1, org2: Test organizations
 - org1_user, org2_user: Org users with tokens
+
+Note: pytest_plugins moved to tests/conftest.py (root) as required by pytest.
 """
 
 import os
@@ -19,11 +21,6 @@ import os
 import pytest
 import httpx
 
-
-# Import session fixtures - automatically available to all e2e tests
-pytest_plugins = [
-    "tests.e2e.fixtures.setup",
-]
 
 # E2E test API URL (from docker-compose.test.yml)
 E2E_API_URL = os.getenv("TEST_API_URL", "http://localhost:18000")
@@ -82,15 +79,4 @@ def e2e_client():
     Provides a configured httpx client for making requests to the API.
     """
     with httpx.Client(base_url=E2E_API_URL, timeout=30.0) as client:
-        yield client
-
-
-@pytest.fixture(scope="session")
-async def e2e_async_client():
-    """
-    Async HTTP client for E2E tests.
-
-    Provides a configured async httpx client for making requests to the API.
-    """
-    async with httpx.AsyncClient(base_url=E2E_API_URL, timeout=30.0) as client:
         yield client

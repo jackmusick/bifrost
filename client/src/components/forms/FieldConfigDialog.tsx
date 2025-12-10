@@ -36,10 +36,9 @@ import type {
 } from "@/lib/client-types";
 
 import {
-	dataProvidersService,
+	useDataProviders,
 	type DataProvider,
 } from "@/services/dataProviders";
-import { useQuery } from "@tanstack/react-query";
 import { OptionsEditor } from "./OptionsEditor";
 import { DataProviderInputsConfig } from "./DataProviderInputsConfig";
 
@@ -77,11 +76,7 @@ export function FieldConfigDialog({
 }: FieldConfigDialogProps) {
 	// Fetch data providers from separate endpoint
 	const { data: dataProvidersResponse, isLoading: isLoadingDataProviders } =
-		useQuery({
-			queryKey: ["data-providers"],
-			queryFn: () => dataProvidersService.getAllProviders(),
-			staleTime: 10 * 60 * 1000, // 10 minutes
-		});
+		useDataProviders();
 	const dataProviders = Array.isArray(dataProvidersResponse)
 		? dataProvidersResponse
 		: [];

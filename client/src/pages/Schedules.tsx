@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import {
 	Clock,
@@ -39,50 +39,28 @@ import {
 	DialogTrigger,
 } from "@/components/ui/dialog";
 import { formatDate } from "@/lib/utils";
-import { apiClient } from "@/lib/api-client";
+import { useSchedules, useTriggerSchedule } from "@/hooks/useSchedules";
 import { CronTester } from "@/components/schedules/CronTester";
-import type { components } from "@/lib/v1";
-
-type ScheduleInfo = components["schemas"]["ScheduleInfo"];
 
 export function Schedules() {
 	const navigate = useNavigate();
-	const [schedules, setSchedules] = useState<ScheduleInfo[]>([]);
-	const [loading, setLoading] = useState(true);
-	const [refreshing, setRefreshing] = useState(false);
-	const [error, setError] = useState<string | null>(null);
 	const [searchQuery, setSearchQuery] = useState("");
 	const [triggeringWorkflows, setTriggeringWorkflows] = useState<Set<string>>(
 		new Set(),
 	);
 
-	const fetchSchedules = async (isRefresh = false) => {
-		try {
-			if (isRefresh) {
-				setRefreshing(true);
-			} else {
-				setLoading(true);
-			}
-			setError(null);
-			const { data, error } = await apiClient.GET("/api/schedules", {});
-			if (error) {
-				throw new Error(JSON.stringify(error));
-			}
-			setSchedules(data?.schedules || []);
-		} catch {
-			setError("Failed to load scheduled workflows");
-		} finally {
-			if (isRefresh) {
-				setRefreshing(false);
-			} else {
-				setLoading(false);
-			}
-		}
-	};
+	// Query hook for fetching schedules
+	const {
+		data: schedulesData,
+		isLoading,
+		error: queryError,
+		refetch,
+	} = useSchedules();
+	const schedules = schedulesData?.schedules || [];
+	const error = queryError ? "Failed to load scheduled workflows" : null;
 
-	useEffect(() => {
-		fetchSchedules();
-	}, []);
+	// Mutation hook for triggering schedules
+	const triggerMutation = useTriggerSchedule();
 
 	const filteredSchedules = schedules.filter((schedule) => {
 		const query = searchQuery.toLowerCase();
@@ -104,41 +82,45 @@ export function Schedules() {
 		try {
 			setTriggeringWorkflows((prev) => new Set(prev).add(workflowName));
 
-			// Use the standard workflow execute endpoint
-			const { data, error } = await apiClient.POST(
-				"/api/workflows/execute",
+			triggerMutation.mutate(
 				{
 					body: {
 						workflow_name: workflowName,
 						input_data: {},
 						form_id: null,
 						transient: false,
-						code: null,
-						scriptName: null,
+						script_name: null,
+					},
+				},
+				{
+					onSuccess: (data) => {
+						toast.success("Schedule triggered", {
+							description: `${workflowName} has been queued for execution`,
+						});
+
+						// Navigate to execution details if we got an execution ID
+						if (data?.execution_id) {
+							navigate(`/history/${data.execution_id}`);
+						}
+					},
+					onError: () => {
+						toast.error("Failed to trigger schedule", {
+							description: "An error occurred",
+						});
+					},
+					onSettled: () => {
+						setTriggeringWorkflows((prev) => {
+							const next = new Set(prev);
+							next.delete(workflowName);
+							return next;
+						});
 					},
 				},
 			);
-
-			if (error) {
-				throw new Error(JSON.stringify(error));
-			}
-
-			toast.success("Schedule triggered", {
-				description: `${workflowName} has been queued for execution`,
-			});
-
-			// Refresh schedules to show updated last run time
-			await fetchSchedules(true);
-
-			// Navigate to execution details if we got an execution ID
-			if (data?.execution_id) {
-				navigate(`/history/${data.execution_id}`);
-			}
 		} catch {
 			toast.error("Failed to trigger schedule", {
 				description: "An error occurred",
 			});
-		} finally {
 			setTriggeringWorkflows((prev) => {
 				const next = new Set(prev);
 				next.delete(workflowName);
@@ -147,7 +129,7 @@ export function Schedules() {
 		}
 	};
 
-	if (loading) {
+	if (isLoading) {
 		return (
 			<div className="space-y-4">
 				<div className="h-12 bg-muted rounded animate-pulse" />
@@ -292,13 +274,13 @@ async def my_scheduled_workflow(context):
 				<Button
 					variant="outline"
 					size="icon"
-					onClick={() => fetchSchedules(true)}
-					disabled={refreshing}
+					onClick={() => refetch()}
+					disabled={isLoading}
 					title="Refresh schedules"
 				>
 					<RefreshCw
 						className={`h-4 w-4 ${
-							refreshing ? "animate-spin" : ""
+							isLoading ? "animate-spin" : ""
 						}`}
 					/>
 				</Button>

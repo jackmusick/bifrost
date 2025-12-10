@@ -31,10 +31,9 @@ import {
 	AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 import { PageLoader } from "@/components/PageLoader";
-import { useExecution } from "@/hooks/useExecutions";
+import { useExecution, cancelExecution } from "@/hooks/useExecutions";
 import { useAuth } from "@/contexts/AuthContext";
-import { executionsService } from "@/services/executions";
-import { workflowsService } from "@/services/workflows";
+import { executeWorkflowWithContext } from "@/hooks/useWorkflows";
 import { useWorkflowsMetadata } from "@/hooks/useWorkflows";
 import { useEditorStore } from "@/stores/editorStore";
 import { fileService } from "@/services/fileService";
@@ -334,7 +333,7 @@ export function ExecutionDetails() {
 		if (!executionId || !execution) return;
 
 		try {
-			await executionsService.cancelExecution(executionId);
+			await cancelExecution(executionId);
 			toast.success(
 				`Cancellation requested for ${execution.workflow_name}`,
 			);
@@ -354,7 +353,7 @@ export function ExecutionDetails() {
 
 		setIsRerunning(true);
 		try {
-			const result = (await workflowsService.executeWorkflow(
+			const result = (await executeWorkflowWithContext(
 				execution.workflow_name,
 				execution.input_data as Record<string, unknown>,
 			)) as WorkflowExecutionResponse;

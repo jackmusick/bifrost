@@ -71,7 +71,9 @@ export function RoleDetailsDialog({
 
 	const handleConfirmRemoveUser = () => {
 		if (!userToRemove) return;
-		removeUser.mutate({ roleId: role.id, userId: userToRemove });
+		removeUser.mutate({
+			params: { path: { role_id: role.id, user_id: userToRemove } },
+		});
 		setIsRemoveUserDialogOpen(false);
 		setUserToRemove(undefined);
 	};

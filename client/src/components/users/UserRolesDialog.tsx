@@ -53,15 +53,17 @@ function UserRolesDialogContent({
 
 		try {
 			if (checked) {
-				// Assign role (useAssignUsersToRole expects { roleId, request: { userIds } })
+				// Assign role to user
 				await assignMutation.mutateAsync({
-					roleId,
-					request: { userIds: [user.id] },
+					params: { path: { role_id: roleId } },
+					body: { userIds: [user.id] },
 				});
 				setSelectedRoles((prev) => new Set([...prev, roleId]));
 			} else {
 				// Remove role
-				await removeMutation.mutateAsync({ roleId, userId: user.id });
+				await removeMutation.mutateAsync({
+					params: { path: { role_id: roleId, user_id: user.id } },
+				});
 				setSelectedRoles((prev) => {
 					const next = new Set(prev);
 					next.delete(roleId);

@@ -4,7 +4,7 @@
  */
 
 import { useEffect, useRef, useState } from "react";
-import { executionsService } from "@/services/executions";
+import { getExecution } from "@/hooks/useExecutions";
 import type { components } from "@/lib/v1";
 
 type WorkflowExecution = components["schemas"]["WorkflowExecution"];
@@ -85,9 +85,7 @@ export function useWorkflowPolling(options: WorkflowPollingOptions) {
 			try {
 				// Fetch all executions in parallel
 				const results = await Promise.allSettled(
-					executionIds.map((id) =>
-						executionsService.getExecution(id),
-					),
+					executionIds.map((id) => getExecution(id)),
 				);
 
 				const newExecutions = new Map<string, WorkflowExecution>();

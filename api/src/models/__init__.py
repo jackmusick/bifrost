@@ -48,7 +48,7 @@ from src.models.orm import (
 )
 
 # Pydantic schemas (API request/response) - from contracts/
-# Re-export everything from contracts
+# Re-export everything from contracts (conflicting names removed from contracts/__all__)
 from src.models.contracts import *  # noqa: F401, F403
 
 # Enums

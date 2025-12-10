@@ -12,10 +12,16 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { toast } from "sonner";
 import {
-	githubService,
+	useGitStatus,
+	useRefreshGitStatus,
+	useGitCommits,
+	useCommitChanges,
+	usePullFromGitHub,
+	usePushToGitHub,
+	useDiscardUnpushedCommits,
+	useDiscardCommit,
 	type FileChange,
-	type GitStatusResponse,
-} from "@/services/github";
+} from "@/hooks/useGitHub";
 import { useEditorStore } from "@/stores/editorStore";
 import { fileService } from "@/services/fileService";
 import { ChangesList } from "./ChangesList";
@@ -26,16 +32,7 @@ import { CommitsList } from "./CommitsList";
  * Shows changed files, allows commit/push, pull from GitHub, and conflict resolution
  */
 export function SourceControlPanel() {
-	const [status, setStatus] = useState<GitStatusResponse | null>(null);
 	const [commitMessage, setCommitMessage] = useState("");
-	const [isLoading, setIsLoading] = useState(false);
-	const [isCommitting, setIsCommitting] = useState(false);
-	const [isSyncing, setIsSyncing] = useState(false);
-
-	// Use ref to track loading state synchronously (prevents React 18 double-call race condition)
-	const isLoadingRef = useRef(false);
-
-	// Commits pagination state
 	const [commits, setCommits] = useState<
 		Array<{
 			sha: string;
@@ -47,7 +44,9 @@ export function SourceControlPanel() {
 	>([]);
 	const [totalCommits, setTotalCommits] = useState(0);
 	const [hasMoreCommits, setHasMoreCommits] = useState(false);
-	const [isLoadingCommits, setIsLoadingCommits] = useState(false);
+
+	// Use ref to track refresh loading state synchronously (prevents React 18 double-call race condition)
+	const isLoadingRef = useRef(false);
 
 	const openFileInTab = useEditorStore((state) => state.openFileInTab);
 	const sidebarPanel = useEditorStore((state) => state.sidebarPanel);
@@ -55,25 +54,31 @@ export function SourceControlPanel() {
 		(state) => state.appendTerminalOutput,
 	);
 
-	const loadCommits = async (offset: number = 0, append: boolean = false) => {
-		setIsLoadingCommits(true);
-		try {
-			const result = await githubService.getCommits(20, offset);
-			if (append) {
-				setCommits((prev) => [...prev, ...(result.commits || [])]);
-			} else {
-				setCommits(result.commits || []);
-			}
-			setTotalCommits(result.total_commits);
-			setHasMoreCommits(result.has_more);
-		} catch (error) {
-			console.error("Failed to load commits:", error);
-		} finally {
-			setIsLoadingCommits(false);
-		}
-	};
+	// Query hooks
+	const { data: status, isLoading } = useGitStatus();
+	const { data: commitsData, isLoading: isLoadingCommits } = useGitCommits(
+		20,
+		0,
+	);
 
-	const refreshStatus = useCallback(async () => {
+	// Mutation hooks
+	const refreshStatus = useRefreshGitStatus();
+	const commitMutation = useCommitChanges();
+	const pullMutation = usePullFromGitHub();
+	const pushMutation = usePushToGitHub();
+	const discardAllMutation = useDiscardUnpushedCommits();
+	const discardCommitMutation = useDiscardCommit();
+
+	// Update commits state when data loads
+	useEffect(() => {
+		if (commitsData) {
+			setCommits(commitsData.commits || []);
+			setTotalCommits(commitsData.total_commits);
+			setHasMoreCommits(commitsData.has_more);
+		}
+	}, [commitsData]);
+
+	const handleRefreshStatus = useCallback(async () => {
 		// Prevent duplicate fetches using ref (synchronous check)
 		// This prevents React 18 strict mode double-calls from making duplicate HTTP requests
 		if (isLoadingRef.current) {
@@ -81,28 +86,15 @@ export function SourceControlPanel() {
 		}
 
 		isLoadingRef.current = true;
-		setIsLoading(true);
 		try {
-			const result = await githubService.refreshStatus();
-			setStatus(result);
-
-			// Load commit history if available in status response
-			if (result.commit_history) {
-				setCommits(result.commit_history);
-				setHasMoreCommits(result.commit_history.length === 20);
-				setTotalCommits(result.commit_history.length);
-			} else {
-				// Fallback: fetch commits separately
-				await loadCommits();
-			}
+			await refreshStatus.mutateAsync({});
 		} catch (error) {
 			console.error("Failed to refresh Git status:", error);
 			toast.error("Failed to refresh Git status");
 		} finally {
 			isLoadingRef.current = false;
-			setIsLoading(false);
 		}
-	}, []);
+	}, [refreshStatus]);
 
 	// Load status when this tab becomes active, on visibility change, or when git status changes
 	useEffect(() => {
@@ -112,18 +104,18 @@ export function SourceControlPanel() {
 		}
 
 		// Initial load when panel becomes active
-		refreshStatus();
+		handleRefreshStatus();
 
 		// Set up event listeners for visibility and git status changes
 		const handleVisibilityChange = () => {
 			if (!document.hidden && sidebarPanel === "sourceControl") {
-				refreshStatus();
+				handleRefreshStatus();
 			}
 		};
 
 		const handleGitStatusChanged = () => {
 			if (sidebarPanel === "sourceControl") {
-				refreshStatus();
+				handleRefreshStatus();
 			}
 		};
 
@@ -140,7 +132,7 @@ export function SourceControlPanel() {
 				handleGitStatusChanged,
 			);
 		};
-	}, [sidebarPanel, refreshStatus]);
+	}, [sidebarPanel, handleRefreshStatus]);
 
 	const handleCommit = async () => {
 		if (!commitMessage.trim()) {
@@ -148,9 +140,10 @@ export function SourceControlPanel() {
 			return;
 		}
 
-		setIsCommitting(true);
 		try {
-			await githubService.commit(commitMessage);
+			await commitMutation.mutateAsync({
+				body: { message: commitMessage },
+			});
 
 			appendTerminalOutput({
 				loggerOutput: [
@@ -166,7 +159,7 @@ export function SourceControlPanel() {
 			});
 			toast.success("Changes committed");
 			setCommitMessage("");
-			await refreshStatus();
+			await handleRefreshStatus();
 		} catch (error) {
 			console.error("Failed to commit:", error);
 			toast.error("Failed to commit", {
@@ -185,13 +178,10 @@ export function SourceControlPanel() {
 				status: "error",
 				error: error instanceof Error ? error.message : String(error),
 			});
-		} finally {
-			setIsCommitting(false);
 		}
 	};
 
 	const handleSync = async () => {
-		setIsSyncing(true);
 		try {
 			// First pull changes from remote
 			appendTerminalOutput({
@@ -207,7 +197,7 @@ export function SourceControlPanel() {
 				error: undefined,
 			});
 
-			await githubService.pull();
+			await pullMutation.mutateAsync({});
 
 			appendTerminalOutput({
 				loggerOutput: [
@@ -237,7 +227,7 @@ export function SourceControlPanel() {
 					error: undefined,
 				});
 
-				await githubService.push();
+				await pushMutation.mutateAsync({ body: {} });
 
 				appendTerminalOutput({
 					loggerOutput: [
@@ -254,7 +244,7 @@ export function SourceControlPanel() {
 			}
 
 			toast.success("Synced with GitHub");
-			await refreshStatus();
+			await handleRefreshStatus();
 		} catch (error) {
 			console.error("Failed to sync:", error);
 			toast.error("Failed to sync with GitHub");
@@ -270,14 +260,12 @@ export function SourceControlPanel() {
 				status: "error",
 				error: error instanceof Error ? error.message : String(error),
 			});
-		} finally {
-			setIsSyncing(false);
 		}
 	};
 
 	const handleDiscardAll = async () => {
 		try {
-			const result = await githubService.discardUnpushed();
+			const result = await discardAllMutation.mutateAsync({});
 			if (result.success) {
 				appendTerminalOutput({
 					loggerOutput: [
@@ -291,7 +279,7 @@ export function SourceControlPanel() {
 					status: "success",
 					error: undefined,
 				});
-				await refreshStatus();
+				await handleRefreshStatus();
 			} else {
 				appendTerminalOutput({
 					loggerOutput: [
@@ -325,7 +313,9 @@ export function SourceControlPanel() {
 
 	const handleDiscardCommit = async (commitSha: string) => {
 		try {
-			const result = await githubService.discardCommit(commitSha);
+			const result = await discardCommitMutation.mutateAsync({
+				body: { commit_sha: commitSha },
+			});
 			if (result.success) {
 				appendTerminalOutput({
 					loggerOutput: [
@@ -339,7 +329,7 @@ export function SourceControlPanel() {
 					status: "success",
 					error: undefined,
 				});
-				await refreshStatus();
+				await handleRefreshStatus();
 			} else {
 				appendTerminalOutput({
 					loggerOutput: [
@@ -404,7 +394,7 @@ export function SourceControlPanel() {
 	};
 
 	// Show loading state while fetching initial status
-	if (isLoading && !status) {
+	if (isLoading || !status) {
 		return (
 			<div className="flex h-full flex-col p-4">
 				<div className="flex items-center gap-2 mb-4">
@@ -463,12 +453,12 @@ export function SourceControlPanel() {
 					</div>
 				</div>
 				<button
-					onClick={refreshStatus}
-					disabled={isLoading}
+					onClick={handleRefreshStatus}
+					disabled={refreshStatus.isPending}
 					className="p-1.5 rounded hover:bg-muted/50 transition-colors disabled:opacity-50"
 					title="Refresh status"
 				>
-					{isLoading ? (
+					{refreshStatus.isPending ? (
 						<Loader2 className="h-4 w-4 animate-spin" />
 					) : (
 						<RefreshCw className="h-4 w-4" />
@@ -482,12 +472,12 @@ export function SourceControlPanel() {
 					<div className="border-b">
 						<button
 							onClick={handleSync}
-							disabled={isSyncing || isLoading}
+							disabled={pullMutation.isPending || pushMutation.isPending || isLoading}
 							className="w-full px-4 py-3 flex flex-col items-start gap-1 hover:bg-muted/50 transition-colors disabled:opacity-50 disabled:cursor-not-allowed text-left"
 						>
 							<div className="flex items-center justify-between w-full">
 								<div className="flex items-center gap-2">
-									{isSyncing ? (
+									{pullMutation.isPending || pushMutation.isPending ? (
 										<Loader2 className="h-4 w-4 animate-spin" />
 									) : (
 										<RefreshCw className="h-4 w-4" />
@@ -545,10 +535,10 @@ export function SourceControlPanel() {
 						className="w-full"
 						onClick={handleCommit}
 						disabled={
-							!commitMessage.trim() || isCommitting || isLoading
+							!commitMessage.trim() || commitMutation.isPending || isLoading
 						}
 					>
-						{isCommitting ? (
+						{commitMutation.isPending ? (
 							<Loader2 className="h-4 w-4 mr-2 animate-spin" />
 						) : (
 							<Check className="h-4 w-4 mr-2" />
@@ -576,10 +566,9 @@ export function SourceControlPanel() {
 						commits={commits}
 						totalCommits={totalCommits}
 						hasMore={hasMoreCommits}
-						isLoading={isLoadingCommits}
+						isLoading={isLoadingCommits || discardAllMutation.isPending || discardCommitMutation.isPending}
 						onDiscardAll={handleDiscardAll}
 						onDiscardCommit={handleDiscardCommit}
-						onLoadMore={() => loadCommits(commits.length, true)}
 					/>
 				</div>
 			</div>

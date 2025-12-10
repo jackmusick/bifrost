@@ -69,17 +69,19 @@ export function RoleDialog({ role, open, onClose }: RoleDialogProps) {
 	const onSubmit = async (values: FormValues) => {
 		if (isEditing) {
 			await updateRole.mutateAsync({
-				roleId: role.id,
-				request: {
+				params: { path: { role_id: role.id } },
+				body: {
 					name: values.name,
 					description: values.description || null,
 				},
 			});
 		} else {
 			await createRole.mutateAsync({
-				name: values.name,
-				description: values.description || null,
-				is_active: true,
+				body: {
+					name: values.name,
+					description: values.description || null,
+					is_active: true,
+				},
 			});
 		}
 		onClose();

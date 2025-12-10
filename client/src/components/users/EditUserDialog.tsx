@@ -125,7 +125,7 @@ function EditUserDialogContent({
 
 		try {
 			await updateMutation.mutateAsync({
-				userId: user.id,
+				params: { path: { user_id: user.id } },
 				body,
 			});
 

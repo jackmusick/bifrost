@@ -122,7 +122,9 @@ export function Forms() {
 
 	const handleConfirmDelete = async () => {
 		if (!selectedForm) return;
-		await deleteForm.mutateAsync(selectedForm.id);
+		await deleteForm.mutateAsync({
+			params: { path: { form_id: selectedForm.id } },
+		});
 		setIsDeleteDialogOpen(false);
 		setSelectedForm(null);
 	};
@@ -143,8 +145,8 @@ export function Forms() {
 	const handleConfirmToggleActive = async () => {
 		if (!selectedForm) return;
 		await updateForm.mutateAsync({
-			formId: selectedForm.id,
-			request: {
+			params: { path: { form_id: selectedForm.id } },
+			body: {
 				name: null,
 				description: null,
 				linked_workflow: null,

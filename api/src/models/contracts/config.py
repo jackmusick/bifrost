@@ -18,8 +18,8 @@ if TYPE_CHECKING:
 # ==================== CONFIG MODELS ====================
 
 
-class Config(BaseModel):
-    """Configuration entity (global or org-specific)"""
+class ConfigResponse(BaseModel):
+    """Configuration entity response (global or org-specific)"""
     key: str
     value: Any = Field(..., description="Config value. For SECRET type, this will be '[SECRET]' in list responses.")
     type: ConfigType = ConfigType.STRING

@@ -81,7 +81,9 @@ export function Users() {
 		if (!selectedUser) return;
 
 		try {
-			await deleteMutation.mutateAsync(selectedUser.id);
+			await deleteMutation.mutateAsync({
+				params: { path: { user_id: selectedUser.id } },
+			});
 			toast.success("User deleted successfully", {
 				description: `${selectedUser.name || selectedUser.email} has been removed from the platform`,
 			});

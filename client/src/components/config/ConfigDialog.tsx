@@ -92,10 +92,12 @@ export function ConfigDialog({ config, open, onClose }: ConfigDialogProps) {
 
 	const onSubmit = async (values: FormValues) => {
 		await setConfig.mutateAsync({
-			key: values.key,
-			value: values.value,
-			type: values.type,
-			description: values.description ?? null,
+			body: {
+				key: values.key,
+				value: values.value,
+				type: values.type,
+				description: values.description ?? null,
+			},
 		});
 		onClose();
 	};

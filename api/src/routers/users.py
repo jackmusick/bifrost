@@ -41,7 +41,11 @@ async def list_users(
     orgId: UUID | None = Query(None, alias="orgId", description="Filter org users by organization ID"),
 ) -> list[UserPublic]:
     """List users with optional filtering."""
-    query = select(UserORM).where(UserORM.is_active)
+    # Filter out system users (used for API key executions)
+    query = select(UserORM).where(
+        UserORM.is_active,
+        UserORM.user_type != UserType.SYSTEM,
+    )
 
     if type:
         if type.lower() == "platform":

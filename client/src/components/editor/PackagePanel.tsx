@@ -5,10 +5,12 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { toast } from "sonner";
 import {
-	packagesService,
+	checkUpdates,
+	installPackage,
+	listPackages,
 	type InstalledPackage,
 	type PackageUpdate,
-} from "@/services/packages";
+} from "@/hooks/usePackages";
 import { webSocketService } from "@/services/websocket";
 import { useEditorStore } from "@/stores/editorStore";
 import { useExecutionStreamStore } from "@/stores/executionStreamStore";
@@ -85,7 +87,7 @@ export function PackagePanel() {
 	const loadPackages = useCallback(async () => {
 		setIsLoadingPackages(true);
 		try {
-			const data = await packagesService.listPackages();
+			const data = await listPackages();
 			setPackages(data?.packages || []);
 		} catch (error) {
 			console.error("Failed to load packages:", error);
@@ -203,10 +205,10 @@ export function PackagePanel() {
 		loadPackages,
 	]);
 
-	async function checkForUpdates() {
+	async function handleCheckForUpdates() {
 		setIsCheckingUpdates(true);
 		try {
-			const data = await packagesService.checkUpdates();
+			const data = await checkUpdates();
 			setUpdates(data?.updates || []);
 			if ((data?.updates?.length ?? 0) > 0) {
 				toast.info(`${data?.updates?.length} update(s) available`);
@@ -221,7 +223,7 @@ export function PackagePanel() {
 		}
 	}
 
-	async function installPackage() {
+	async function handleInstallPackage() {
 		if (!packageName.trim()) {
 			toast.error("Please enter a package name");
 			return;
@@ -243,7 +245,7 @@ export function PackagePanel() {
 			// Set execution ID to show in terminal
 			setCurrentStreamingExecutionId(installationId);
 
-			await packagesService.installPackage(
+			await installPackage(
 				pkgName,
 				pkgVersion || undefined,
 			);
@@ -288,7 +290,7 @@ export function PackagePanel() {
 		}
 	}
 
-	async function installFromRequirements() {
+	async function handleInstallFromRequirements() {
 		// Create a unique installation ID
 		const installationId = `package-install-${Date.now()}`;
 		setCurrentInstallationId(installationId);
@@ -302,7 +304,7 @@ export function PackagePanel() {
 			// Set execution ID to show in terminal
 			setCurrentStreamingExecutionId(installationId);
 
-			await packagesService.installPackage();
+			await installPackage();
 
 			// Add initial message
 			store.appendLog(installationId, {
@@ -358,7 +360,7 @@ export function PackagePanel() {
 				<Button
 					variant="ghost"
 					size="sm"
-					onClick={checkForUpdates}
+					onClick={handleCheckForUpdates}
 					disabled={isCheckingUpdates || isLoadingPackages}
 					className="h-7 px-2"
 				>
@@ -385,7 +387,7 @@ export function PackagePanel() {
 						className="h-8 text-sm"
 						onKeyDown={(e) => {
 							if (e.key === "Enter") {
-								installPackage();
+								handleInstallPackage();
 							}
 						}}
 					/>
@@ -403,13 +405,13 @@ export function PackagePanel() {
 						className="h-8 text-sm"
 						onKeyDown={(e) => {
 							if (e.key === "Enter") {
-								installPackage();
+								handleInstallPackage();
 							}
 						}}
 					/>
 				</div>
 				<Button
-					onClick={installPackage}
+					onClick={handleInstallPackage}
 					disabled={isInstalling || !packageName.trim()}
 					size="sm"
 					className="w-full h-8"
@@ -427,7 +429,7 @@ export function PackagePanel() {
 					)}
 				</Button>
 				<Button
-					onClick={installFromRequirements}
+					onClick={handleInstallFromRequirements}
 					disabled={isInstalling}
 					variant="outline"
 					size="sm"

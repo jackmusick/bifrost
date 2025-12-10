@@ -76,9 +76,11 @@ export function RefreshJobStatus({ className }: RefreshJobStatusProps) {
 						</Badge>
 					</div>
 					<CardDescription>
-						{formatDistanceToNow(new Date(jobStatus.updated_at), {
-							addSuffix: true,
-						})}
+						{jobStatus.updated_at
+							? formatDistanceToNow(new Date(jobStatus.updated_at), {
+									addSuffix: true,
+								})
+							: "Unknown time"}
 					</CardDescription>
 				</CardHeader>
 				<CardContent>
@@ -222,13 +224,7 @@ export function RefreshJobStatus({ className }: RefreshJobStatusProps) {
 										<div className="space-y-3">
 											{jobStatus.errors.map(
 												(
-													error: {
-														message: string;
-														details?: string;
-														connection_name?: string;
-														org_id?: string;
-														error?: string;
-													},
+													error: string,
 													index: number,
 												) => (
 													<div
@@ -237,27 +233,8 @@ export function RefreshJobStatus({ className }: RefreshJobStatusProps) {
 													>
 														<div className="flex items-start gap-2">
 															<div className="flex-1">
-																<p className="font-medium text-sm">
-																	{
-																		error.connection_name
-																	}
-																	{error.org_id &&
-																		error.org_id !==
-																			"GLOBAL" && (
-																			<span className="text-muted-foreground ml-2">
-																				(
-																				{
-																					error.org_id
-																				}
-
-																				)
-																			</span>
-																		)}
-																</p>
-																<p className="text-sm text-muted-foreground mt-1">
-																	{
-																		error.error
-																	}
+																<p className="text-sm text-muted-foreground">
+																	{error}
 																</p>
 															</div>
 														</div>

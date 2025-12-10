@@ -17,7 +17,7 @@ import {
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { ChevronRight } from "lucide-react";
-import type { WorkflowMetricsSummary } from "@/services/metrics";
+import type { WorkflowMetricsSummary } from "@/hooks/useAdminMetrics";
 
 interface HeaviestWorkflowsTableProps {
 	data: WorkflowMetricsSummary[];

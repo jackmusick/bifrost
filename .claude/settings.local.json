@@ -63,7 +63,9 @@
       "Bash(../venv/bin/ruff check --fix .)",
       "WebFetch(domain:docs.sqlalchemy.org)",
       "Bash(../venv/bin/pip show sqlalchemy)",
-      "Bash(../venv/bin/pip:*)"
+      "Bash(../venv/bin/pip:*)",
+      "WebFetch(domain:openapi-ts.dev)",
+      "Bash(/Users/jack/GitHub/bifrost-api/venv/bin/pyright:*)"
     ],
     "deny": [],
     "ask": [],

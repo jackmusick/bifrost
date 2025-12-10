@@ -9,7 +9,7 @@ import { SearchPanel } from "./SearchPanel";
 import { PackagePanel } from "./PackagePanel";
 import { SourceControlPanel } from "./SourceControlPanel";
 import { FileTabs } from "./FileTabs";
-import { useEditorStore } from "@/stores/editorStore";
+import { useEditorSession } from "@/hooks/useEditorSession";
 import { useCmdCtrlShortcut } from "@/contexts/KeyboardContext";
 import { UploadProgressProvider } from "@/hooks/useUploadProgress";
 import {
@@ -29,27 +29,19 @@ import { useAutoSave } from "@/hooks/useAutoSave";
  * State is persisted, so closing and reopening restores the previous session
  */
 export function EditorLayout() {
-	const tabs = useEditorStore((state) => state.tabs);
-	const activeTabIndex = useEditorStore((state) => state.activeTabIndex);
-	const sidebarPanel = useEditorStore((state) => state.sidebarPanel);
-	const closeEditor = useEditorStore((state) => state.closeEditor);
-	const minimizeEditor = useEditorStore((state) => state.minimizeEditor);
-	const restoreEditor = useEditorStore((state) => state.restoreEditor);
-	const layoutMode = useEditorStore((state) => state.layoutMode);
-	const terminalHeight = useEditorStore((state) => state.terminalHeight);
-	const setTerminalHeight = useEditorStore(
-		(state) => state.setTerminalHeight,
-	);
-	const setSidebarPanel = useEditorStore((state) => state.setSidebarPanel);
-
-	// Compute active tab from state
-	const activeTab =
-		activeTabIndex >= 0 && activeTabIndex < tabs.length
-			? tabs[activeTabIndex]
-			: null;
-	const openFile = activeTab?.file || null;
-	const unsavedChanges = activeTab?.unsavedChanges || false;
-	const saveState = activeTab?.saveState || "clean";
+	const {
+		openFile,
+		unsavedChanges,
+		saveState,
+		sidebarPanel,
+		layoutMode,
+		terminalHeight,
+		closeEditor,
+		minimizeEditor,
+		restoreEditor,
+		setTerminalHeight,
+		setSidebarPanel,
+	} = useEditorSession();
 
 	// Auto-save and manual save
 	const { manualSave } = useAutoSave();

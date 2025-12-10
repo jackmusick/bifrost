@@ -6,12 +6,18 @@
  */
 
 import { useState, useEffect, useCallback } from "react";
-import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { useQueryClient } from "@tanstack/react-query";
+import { $api, apiClient } from "@/lib/api-client";
 import {
 	initializeBranding,
 	applyBrandingTheme,
 	type BrandingSettings,
 } from "@/lib/branding";
+import type { components } from "@/lib/v1";
+
+// Re-export types for convenience
+export type BrandingSettings_API = components["schemas"]["BrandingSettings"];
+export type BrandingUpdateRequest = components["schemas"]["BrandingUpdateRequest"];
 
 export interface BrandingState {
 	/** Whether branding data has been loaded */
@@ -41,6 +47,133 @@ function preloadImage(url: string, timeout = 5000): Promise<void> {
 }
 
 /**
+ * Get current branding settings (public endpoint)
+ */
+export async function getBranding(): Promise<BrandingSettings_API | null> {
+	try {
+		const { data } = await apiClient.GET("/api/branding", {});
+		return data || null;
+	} catch {
+		return null;
+	}
+}
+
+/**
+ * Update branding settings (superuser only)
+ */
+export async function updateBranding(
+	settings: BrandingUpdateRequest,
+): Promise<BrandingSettings_API> {
+	const { data, error } = await apiClient.PUT("/api/branding", {
+		body: settings,
+	});
+
+	if (error) {
+		throw new Error(
+			typeof error === "object" && error !== null && "message" in error
+				? (error as { message?: string }).message ||
+						"Failed to update branding"
+				: "Failed to update branding",
+		);
+	}
+
+	return data;
+}
+
+/**
+ * Upload logo (superuser only)
+ */
+export async function uploadLogo(
+	type: "square" | "rectangle",
+	file: File,
+): Promise<void> {
+	const formData = new FormData();
+	formData.append("file", file);
+
+	const { error } = await apiClient.POST(
+		"/api/branding/logo/{logo_type}",
+		{
+			params: { path: { logo_type: type } },
+			body: formData as unknown as { file: string },
+		},
+	);
+
+	if (error) {
+		throw new Error(
+			`Failed to upload ${type} logo: ${
+				typeof error === "object" && error !== null && "message" in error
+					? (error as { message?: string }).message
+					: "Unknown error"
+			}`,
+		);
+	}
+}
+
+/**
+ * Reset logo to default (superuser only)
+ */
+export async function resetLogo(
+	type: "square" | "rectangle",
+): Promise<BrandingSettings_API> {
+	const { data, error } = await apiClient.DELETE(
+		"/api/branding/logo/{logo_type}",
+		{
+			params: { path: { logo_type: type } },
+		},
+	);
+
+	if (error) {
+		throw new Error(
+			`Failed to reset ${type} logo: ${
+				typeof error === "object" && error !== null && "message" in error
+					? (error as { message?: string }).message
+					: "Unknown error"
+			}`,
+		);
+	}
+
+	return data;
+}
+
+/**
+ * Reset primary color to default (superuser only)
+ */
+export async function resetColor(): Promise<BrandingSettings_API> {
+	const { data, error } = await apiClient.DELETE("/api/branding/color", {});
+
+	if (error) {
+		throw new Error(
+			`Failed to reset primary color: ${
+				typeof error === "object" && error !== null && "message" in error
+					? (error as { message?: string }).message
+					: "Unknown error"
+			}`,
+		);
+	}
+
+	return data;
+}
+
+/**
+ * Reset all branding to defaults (superuser only)
+ */
+export async function resetAllBranding(): Promise<BrandingSettings_API> {
+	const { data, error } = await apiClient.DELETE("/api/branding", {});
+
+	if (error) {
+		throw new Error(
+			`Failed to reset branding: ${
+				typeof error === "object" && error !== null && "message" in error
+					? (error as { message?: string }).message
+					: "Unknown error"
+			}`,
+		);
+	}
+
+	return data;
+}
+
+/**
  * Hook for loading and managing branding assets.
  *
  * @example
@@ -64,18 +197,16 @@ export function useBranding(): BrandingState {
 	const [brandingApplied, setBrandingApplied] = useState(false);
 
 	// Fetch branding data (public endpoint)
-	const { data: branding, isLoading } = useQuery<BrandingSettings | null>({
-		queryKey: ["branding"],
-		queryFn: async () => {
-			const response = await fetch("/api/branding");
-			if (!response.ok) {
-				return null;
-			}
-			return response.json();
+	const { data: branding, isLoading } = $api.useQuery(
+		"get",
+		"/api/branding",
+		{},
+		{
+			queryKey: ["branding"],
+			staleTime: 5 * 60 * 1000, // 5 minutes
+			retry: 1,
 		},
-		staleTime: 5 * 60 * 1000, // 5 minutes
-		retry: 1,
-	});
+	);
 
 	// Process branding data when it changes
 	useEffect(() => {
@@ -108,7 +239,7 @@ export function useBranding(): BrandingState {
 			setRectangleLogoUrl(branding.rectangle_logo_url || null);
 
 			// Apply theme colors
-			applyBrandingTheme(branding);
+			applyBrandingTheme(branding as BrandingSettings);
 			setBrandingApplied(true);
 
 			setLogoLoaded(true);

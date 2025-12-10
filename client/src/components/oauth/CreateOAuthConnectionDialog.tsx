@@ -183,16 +183,16 @@ export function CreateOAuthConnectionDialog({
 			};
 
 			await updateMutation.mutateAsync({
-				connectionName: formData.connection_name,
-				data: updateData,
+				params: { path: { connection_name: formData.connection_name } },
+				body: updateData,
 			});
 		} else {
 			// Create new connection
 			// For client_credentials, authorization_url can be empty/null
 			// The API will accept it as optional for this flow
-			await createMutation.mutateAsync(
-				formData as CreateOAuthConnectionRequest,
-			);
+			await createMutation.mutateAsync({
+				body: formData as CreateOAuthConnectionRequest,
+			});
 		}
 
 		// Reset form and close

@@ -1,4 +1,3 @@
-import { useState } from "react";
 import {
 	Plus,
 	Pencil,
@@ -27,6 +26,7 @@ import {
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { FieldConfigDialog } from "./FieldConfigDialog";
+import { useFieldManager } from "@/hooks/useFieldManager";
 import type { FormField } from "@/lib/client-types";
 
 interface FieldsPanelProps {
@@ -35,67 +35,21 @@ interface FieldsPanelProps {
 }
 
 export function FieldsPanel({ fields, setFields }: FieldsPanelProps) {
-	const [selectedField, setSelectedField] = useState<FormField | undefined>();
-	const [isDialogOpen, setIsDialogOpen] = useState(false);
-	const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false);
-	const [editingIndex, setEditingIndex] = useState<number | undefined>();
-	const [deletingIndex, setDeletingIndex] = useState<number | undefined>();
-
-	const handleAddField = () => {
-		setSelectedField(undefined);
-		setEditingIndex(undefined);
-		setIsDialogOpen(true);
-	};
-
-	const handleEditField = (index: number) => {
-		setSelectedField(fields[index]);
-		setEditingIndex(index);
-		setIsDialogOpen(true);
-	};
-
-	const handleSaveField = (field: FormField) => {
-		if (editingIndex !== undefined) {
-			// Update existing field
-			const newFields = [...fields];
-			newFields[editingIndex] = field;
-			setFields(newFields);
-		} else {
-			// Add new field
-			setFields([...fields, field]);
-		}
-		setIsDialogOpen(false);
-	};
-
-	const handleDeleteField = (index: number) => {
-		setDeletingIndex(index);
-		setIsDeleteDialogOpen(true);
-	};
-
-	const handleConfirmDelete = () => {
-		if (deletingIndex !== undefined) {
-			setFields(fields.filter((_, i) => i !== deletingIndex));
-		}
-		setIsDeleteDialogOpen(false);
-		setDeletingIndex(undefined);
-	};
-
-	const handleMoveUp = (index: number) => {
-		if (index === 0) return;
-		const newFields = [...fields];
-		const temp = newFields[index]!;
-		newFields[index] = newFields[index - 1]!;
-		newFields[index - 1] = temp;
-		setFields(newFields);
-	};
-
-	const handleMoveDown = (index: number) => {
-		if (index === fields.length - 1) return;
-		const newFields = [...fields];
-		const temp = newFields[index]!;
-		newFields[index] = newFields[index + 1]!;
-		newFields[index + 1] = temp;
-		setFields(newFields);
-	};
+	const {
+		selectedField,
+		isDialogOpen,
+		isDeleteDialogOpen,
+		deletingFieldLabel,
+		openAddDialog,
+		openEditDialog,
+		closeDialog,
+		saveField,
+		openDeleteDialog,
+		closeDeleteDialog,
+		confirmDelete,
+		moveUp,
+		moveDown,
+	} = useFieldManager({ fields, setFields });
 
 	const getFieldTypeBadge = (type: string) => {
 		const colors: Record<string, "default" | "secondary" | "outline"> = {
@@ -120,7 +74,7 @@ export function FieldsPanel({ fields, setFields }: FieldsPanelProps) {
 								Add and configure fields for your form
 							</CardDescription>
 						</div>
-						<Button onClick={handleAddField}>
+						<Button onClick={openAddDialog}>
 							<Plus className="mr-2 h-4 w-4" />
 							Add Field
 						</Button>
@@ -141,9 +95,7 @@ export function FieldsPanel({ fields, setFields }: FieldsPanelProps) {
 												variant="ghost"
 												size="icon"
 												className="h-6 w-6"
-												onClick={() =>
-													handleMoveUp(index)
-												}
+												onClick={() => moveUp(index)}
 												disabled={index === 0}
 											>
 												<ArrowUp className="h-3 w-3" />
@@ -152,9 +104,7 @@ export function FieldsPanel({ fields, setFields }: FieldsPanelProps) {
 												variant="ghost"
 												size="icon"
 												className="h-6 w-6"
-												onClick={() =>
-													handleMoveDown(index)
-												}
+												onClick={() => moveDown(index)}
 												disabled={
 													index === fields.length - 1
 												}
@@ -190,18 +140,14 @@ export function FieldsPanel({ fields, setFields }: FieldsPanelProps) {
 										<Button
 											variant="ghost"
 											size="icon"
-											onClick={() =>
-												handleEditField(index)
-											}
+											onClick={() => openEditDialog(index)}
 										>
 											<Pencil className="h-4 w-4" />
 										</Button>
 										<Button
 											variant="ghost"
 											size="icon"
-											onClick={() =>
-												handleDeleteField(index)
-											}
+											onClick={() => openDeleteDialog(index)}
 										>
 											<Trash2 className="h-4 w-4" />
 										</Button>
@@ -223,30 +169,28 @@ export function FieldsPanel({ fields, setFields }: FieldsPanelProps) {
 			<FieldConfigDialog
 				field={selectedField}
 				open={isDialogOpen}
-				onClose={() => setIsDialogOpen(false)}
-				onSave={handleSaveField}
+				onClose={closeDialog}
+				onSave={saveField}
 			/>
 
 			{/* Delete Confirmation Dialog */}
 			<AlertDialog
 				open={isDeleteDialogOpen}
-				onOpenChange={setIsDeleteDialogOpen}
+				onOpenChange={closeDeleteDialog}
 			>
 				<AlertDialogContent>
 					<AlertDialogHeader>
 						<AlertDialogTitle>Remove Field</AlertDialogTitle>
 						<AlertDialogDescription>
 							Are you sure you want to remove the field "
-							{deletingIndex !== undefined
-								? fields[deletingIndex]?.label
-								: ""}
-							"? This action cannot be undone.
+							{deletingFieldLabel ?? ""}"? This action cannot be
+							undone.
 						</AlertDialogDescription>
 					</AlertDialogHeader>
 					<AlertDialogFooter>
 						<AlertDialogCancel>Cancel</AlertDialogCancel>
 						<AlertDialogAction
-							onClick={handleConfirmDelete}
+							onClick={confirmDelete}
 							className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
 						>
 							Remove Field
