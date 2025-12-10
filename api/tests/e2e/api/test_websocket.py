@@ -60,7 +60,7 @@ class TestWebSocketConnection:
         """Connect to WebSocket with invalid token should be rejected."""
         try:
             from websockets.asyncio.client import connect
-            from websockets.exceptions import ConnectionClosedError, InvalidStatus
+            from websockets.exceptions import ConnectionClosedError
         except ImportError:
             pytest.skip("websockets library not installed")
 
@@ -94,7 +94,7 @@ class TestWebSocketConnection:
         """Connect to WebSocket without token should be rejected."""
         try:
             from websockets.asyncio.client import connect
-            from websockets.exceptions import ConnectionClosedError, InvalidStatus
+            from websockets.exceptions import ConnectionClosedError
         except ImportError:
             pytest.skip("websockets library not installed")
 

@@ -10,7 +10,7 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
 from typing import List
 
-from src.models.models import SearchRequest, SearchResponse, SearchResult
+from src.models import SearchRequest, SearchResponse, SearchResult
 from src.services.editor.file_operations import get_base_path, validate_and_resolve_path
 
 # Binary file extensions to skip

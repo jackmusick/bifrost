@@ -12,7 +12,7 @@ from uuid import UUID
 
 from sqlalchemy import desc, select, update
 
-from src.models.models import (
+from src.models import (
     ExecutionLog as ExecutionLogSchema,
     WorkflowExecution,
 )

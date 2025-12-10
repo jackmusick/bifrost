@@ -3,14 +3,13 @@ Unified Execution Engine
 Single source of truth for all code execution (workflows, scripts, data providers)
 """
 
-import asyncio
 import inspect
 import logging
 import os
 import sys
 from contextlib import redirect_stdout, redirect_stderr
 from dataclasses import dataclass, field
-from datetime import datetime, timedelta
+from datetime import datetime
 from io import StringIO
 from pathlib import Path
 from typing import Any
@@ -19,7 +18,6 @@ from src.sdk.context import Caller, ExecutionContext, Organization
 from src.sdk.error_handling import WorkflowError
 from src.sdk.errors import UserError, WorkflowExecutionException
 from src.models.enums import ExecutionStatus
-from src.repositories.execution_logs import get_execution_logs_repository
 from src.core.cache import prewarm_sdk_cache, cleanup_execution_cache, get_cached_data_provider, cache_data_provider_result
 
 logger = logging.getLogger(__name__)

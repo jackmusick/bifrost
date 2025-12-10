@@ -3,8 +3,7 @@ Unit tests for queue_tracker module.
 """
 
 import pytest
-from unittest.mock import AsyncMock, patch, MagicMock
-import time
+from unittest.mock import AsyncMock, patch
 
 from src.services.execution.queue_tracker import (
     add_to_queue,

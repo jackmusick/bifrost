@@ -1,0 +1,107 @@
+"""
+Config and SystemConfig ORM models.
+
+Represents configuration key-value storage for organizations and system settings.
+"""
+
+from datetime import datetime
+from typing import TYPE_CHECKING
+from uuid import UUID, uuid4
+
+from sqlalchemy import DateTime, Enum as SQLAlchemyEnum, ForeignKey, Index, LargeBinary, String, Text, text
+from sqlalchemy.dialects.postgresql import JSONB
+from sqlalchemy.orm import Mapped, mapped_column, relationship
+
+from src.models.enums import ConfigType
+from src.models.orm.base import Base
+
+if TYPE_CHECKING:
+    from src.models.orm.organizations import Organization
+
+
+class Config(Base):
+    """Configuration key-value store."""
+
+    __tablename__ = "configs"
+
+    id: Mapped[UUID] = mapped_column(primary_key=True, default=uuid4)
+    key: Mapped[str] = mapped_column(String(255))
+    value: Mapped[dict] = mapped_column(JSONB, nullable=False)
+    config_type: Mapped[ConfigType] = mapped_column(
+        SQLAlchemyEnum(
+            ConfigType,
+            name="config_type",
+            create_type=False,
+            values_callable=lambda x: [e.value for e in x],
+        ),
+        default=ConfigType.STRING,
+    )
+    description: Mapped[str | None] = mapped_column(Text, default=None)
+    organization_id: Mapped[UUID | None] = mapped_column(
+        ForeignKey("organizations.id"), default=None
+    )
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime, default=datetime.utcnow, server_default=text("NOW()")
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime,
+        default=datetime.utcnow,
+        server_default=text("NOW()"),
+        onupdate=datetime.utcnow,
+    )
+    updated_by: Mapped[str] = mapped_column(String(255))
+
+    # Relationships
+    organization: Mapped["Organization | None"] = relationship(back_populates="configs")
+
+    __table_args__ = (
+        Index("ix_configs_org_key", "organization_id", "key", unique=True),
+    )
+
+
+class SystemConfig(Base):
+    """
+    System-level configuration storage.
+
+    Stores system settings like GitHub integration, branding assets, etc.
+    Uses category+key for organization:
+    - GitHub: category='github', key='integration'
+    - Branding: category='branding', key='logo'
+
+    value_json: For JSON config data
+    value_bytes: For binary data (logos, files, etc.)
+
+    Services handle their own encryption as needed.
+    """
+
+    __tablename__ = "system_configs"
+    __table_args__ = (
+        Index("ix_system_configs_category", "category"),
+        Index("ix_system_configs_category_key", "category", "key"),
+        Index("ix_system_configs_org_id", "organization_id"),
+    )
+
+    id: Mapped[UUID] = mapped_column(primary_key=True, default=uuid4)
+    category: Mapped[str] = mapped_column(String(50), nullable=False)
+    key: Mapped[str] = mapped_column(String(100), nullable=False)
+    value_json: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
+    value_bytes: Mapped[bytes | None] = mapped_column(LargeBinary, nullable=True)
+    organization_id: Mapped[UUID | None] = mapped_column(
+        ForeignKey("organizations.id", ondelete="CASCADE"), nullable=True
+    )
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime, default=datetime.utcnow, server_default=text("NOW()")
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime,
+        default=datetime.utcnow,
+        server_default=text("NOW()"),
+        onupdate=datetime.utcnow,
+    )
+    created_by: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    updated_by: Mapped[str | None] = mapped_column(String(255), nullable=True)
+
+    # Relationships
+    organization: Mapped["Organization | None"] = relationship(
+        "Organization", back_populates="system_configs"
+    )

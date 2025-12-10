@@ -14,7 +14,7 @@ from datetime import datetime
 from typing import Any
 
 from src.core.cache import get_redis, org_key, orgs_list_key
-from src.models.models import Organization as OrganizationSchema
+from src.models import Organization as OrganizationSchema
 
 from ._internal import get_context, require_admin
 from ._write_buffer import get_write_buffer

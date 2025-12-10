@@ -16,7 +16,7 @@ from uuid import UUID
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from src.models.database import User
+from src.models import User
 from src.models.enums import UserType
 from src.repositories.organizations import OrganizationRepository
 from src.repositories.users import UserRepository
@@ -177,7 +177,7 @@ async def get_user_roles(
         List of role names
     """
     from sqlalchemy import select
-    from src.models.database import Role, UserRole
+    from src.models import Role, UserRole
 
     result = await db.execute(
         select(Role.name)

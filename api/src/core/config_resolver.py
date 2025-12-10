@@ -8,7 +8,7 @@ secret values stored in the Config table.
 import logging
 from typing import Any, TYPE_CHECKING
 
-from src.models.models import ConfigType
+from src.models import ConfigType
 
 if TYPE_CHECKING:
     from src.sdk.context import Organization
@@ -162,7 +162,7 @@ class ConfigResolver:
         from uuid import UUID
         from sqlalchemy import select
         from src.core.database import get_session_factory
-        from src.models.orm import Organization as OrgModel
+        from src.models import Organization as OrgModel
         from src.sdk.context import Organization
 
         # Parse org_id - may be "ORG:uuid" or just "uuid"
@@ -210,7 +210,7 @@ class ConfigResolver:
         from uuid import UUID
         from sqlalchemy import select
         from src.core.database import get_session_factory
-        from src.models.orm import Config
+        from src.models import Config
 
         session_factory = get_session_factory()
         config_dict: dict[str, Any] = {}

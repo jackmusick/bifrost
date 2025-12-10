@@ -13,8 +13,8 @@ from sqlalchemy import select
 
 from src.core.auth import CurrentSuperuser
 from src.core.database import DbSession
-from src.models.orm import Organization as OrganizationORM
-from src.models.models import OrganizationCreate, OrganizationPublic, OrganizationUpdate
+from src.models import Organization as OrganizationORM
+from src.models import OrganizationCreate, OrganizationPublic, OrganizationUpdate
 
 logger = logging.getLogger(__name__)
 

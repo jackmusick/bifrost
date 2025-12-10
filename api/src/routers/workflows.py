@@ -15,7 +15,7 @@ from fastapi import APIRouter, HTTPException, status
 from sqlalchemy import select
 
 # Import existing Pydantic models for API compatibility
-from src.models.models import (
+from src.models import (
     FileScanRequest,
     WorkflowExecutionRequest,
     WorkflowExecutionResponse,

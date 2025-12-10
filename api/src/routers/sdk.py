@@ -30,8 +30,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.core.auth import CurrentUser
 from src.core.database import get_db
-from src.models.orm import DeveloperApiKey, DeveloperContext, Organization, User
-from src.models.models import (
+from src.models import DeveloperApiKey, DeveloperContext, Organization, User
+from src.models import (
     SDKFileReadRequest,
     SDKFileWriteRequest,
     SDKFileListRequest,

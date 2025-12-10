@@ -6,7 +6,7 @@ Tests request/response validation for role management endpoints
 import pytest
 from pydantic import ValidationError
 
-from src.models.models import (
+from src.models import (
     AssignFormsToRoleRequest,
     AssignUsersToRoleRequest,
     CreateRoleRequest,

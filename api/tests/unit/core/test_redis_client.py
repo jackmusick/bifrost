@@ -6,7 +6,7 @@ Tests the BLPOP/RPUSH pattern for synchronous workflow execution.
 
 import pytest
 import json
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import AsyncMock
 
 
 class TestRedisClient:
@@ -126,7 +126,7 @@ class TestRedisClientSingleton:
 
     def test_get_redis_client_returns_singleton(self):
         """Test that get_redis_client returns same instance."""
-        from src.core.redis_client import get_redis_client, _redis_client
+        from src.core.redis_client import get_redis_client
 
         # Reset singleton
         import src.core.redis_client as module
@@ -145,7 +145,7 @@ class TestRedisClientSingleton:
         # Reset singleton
         module._redis_client = None
 
-        client = get_redis_client()
+        get_redis_client()  # Creates singleton
         assert module._redis_client is not None
 
         # Close without connecting

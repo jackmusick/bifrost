@@ -12,7 +12,7 @@ from uuid import UUID
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from src.models.database import ExecutionLog
+from src.models import ExecutionLog
 
 
 class ExecutionLogRepository:

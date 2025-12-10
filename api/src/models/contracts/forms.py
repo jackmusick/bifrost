@@ -1,0 +1,338 @@
+"""
+Form contract models for Bifrost.
+"""
+
+from datetime import datetime
+from typing import TYPE_CHECKING, Any
+from uuid import UUID
+
+from pydantic import BaseModel, ConfigDict, Field, field_serializer, field_validator, model_validator
+
+from src.models.enums import FormAccessLevel, FormFieldType
+from src.models.contracts.base import DataProviderInputMode
+
+if TYPE_CHECKING:
+    pass
+
+
+# ==================== FORM MODELS ====================
+
+
+class FormFieldValidation(BaseModel):
+    """Form field validation rules"""
+    pattern: str | None = None
+    min: float | None = None
+    max: float | None = None
+    message: str | None = None
+
+
+class DataProviderInputConfig(BaseModel):
+    """Configuration for a single data provider input parameter (T006)"""
+    mode: DataProviderInputMode
+    value: str | None = None
+    field_name: str | None = None
+    expression: str | None = None
+
+    @model_validator(mode='after')
+    def validate_mode_data(self):
+        """Ensure exactly one field is set based on mode"""
+        if self.mode == DataProviderInputMode.STATIC:
+            if not self.value:
+                raise ValueError("value required for static mode")
+            if self.field_name or self.expression:
+                raise ValueError("only value should be set for static mode")
+        elif self.mode == DataProviderInputMode.FIELD_REF:
+            if not self.field_name:
+                raise ValueError("field_name required for fieldRef mode")
+            if self.value or self.expression:
+                raise ValueError("only field_name should be set for fieldRef mode")
+        elif self.mode == DataProviderInputMode.EXPRESSION:
+            if not self.expression:
+                raise ValueError("expression required for expression mode")
+            if self.value or self.field_name:
+                raise ValueError("only expression should be set for expression mode")
+        return self
+
+
+class FormField(BaseModel):
+    """Form field definition"""
+    name: str = Field(..., description="Parameter name for workflow")
+    label: str | None = Field(
+        None, description="Display label (optional for markdown/html types)")
+    type: FormFieldType
+    required: bool = Field(default=False)
+    validation: dict[str, Any] | None = None
+    data_provider: str | None = Field(
+        None, description="Data provider name for dynamic options")
+    data_provider_inputs: dict[str, DataProviderInputConfig] | None = Field(
+        None, description="Input configurations for data provider parameters (T007)")
+    default_value: Any | None = None
+    placeholder: str | None = None
+    help_text: str | None = None
+
+    # NEW MVP fields (T012)
+    visibility_expression: str | None = Field(
+        None, description="JavaScript expression for conditional visibility (e.g., context.field.show === true)")
+    options: list[dict[str, str]] | None = Field(
+        None, description="Options for radio/select fields")
+    allowed_types: list[str] | None = Field(
+        None, description="Allowed MIME types for file uploads")
+    multiple: bool | None = Field(
+        None, description="Allow multiple file uploads")
+    max_size_mb: int | None = Field(
+        None, description="Maximum file size in MB")
+    content: str | None = Field(
+        None, description="Static content for markdown/HTML components")
+    allow_as_query_param: bool | None = Field(
+        None, description="Whether this field's value can be populated from URL query parameters")
+
+    @model_validator(mode='after')
+    def validate_field_requirements(self):
+        """Validate field-specific requirements"""
+        # data_provider_inputs requires data_provider (T007)
+        if self.data_provider_inputs and not self.data_provider:
+            raise ValueError("data_provider_inputs requires data_provider to be set")
+
+        # label is required for non-display fields (markdown/html use content instead)
+        display_only_types = {FormFieldType.MARKDOWN, FormFieldType.HTML}
+        if self.type not in display_only_types and not self.label:
+            raise ValueError(f"label is required for {self.type.value} fields")
+
+        # content is required for markdown/html fields
+        if self.type in display_only_types and not self.content:
+            raise ValueError(f"content is required for {self.type.value} fields")
+
+        return self
+
+
+class FormSchema(BaseModel):
+    """Form schema with field definitions"""
+    fields: list[FormField] = Field(..., max_length=50,
+                                    description="Max 50 fields per form")
+
+    @field_validator('fields')
+    @classmethod
+    def validate_unique_names(cls, v):
+        """Ensure field names are unique"""
+        names = [field.name for field in v]
+        if len(names) != len(set(names)):
+            raise ValueError("Field names must be unique")
+        return v
+
+
+class Form(BaseModel):
+    """Form entity (response model)"""
+    id: str
+    org_id: str = Field(..., description="Organization ID or 'GLOBAL'")
+    name: str = Field(..., min_length=1, max_length=200)
+    description: str | None = None
+    workflow_id: str | None = Field(None, description="Workflow ID (UUID) to execute when form is submitted")
+    form_schema: FormSchema
+    is_active: bool = Field(default=True)
+    is_global: bool = Field(default=False)
+    access_level: FormAccessLevel | None = Field(
+        default=None, description="Access control level. Defaults to 'role_based' if not set.")
+    created_by: str
+    created_at: datetime
+    updated_at: datetime
+
+    # Optional launch params
+    allowed_query_params: list[str] | None = Field(
+        None, description="List of allowed query parameter names to inject into form context")
+    default_launch_params: dict[str, Any] | None = Field(
+        None, description="Default parameter values for workflow execution")
+
+
+class CreateFormRequest(BaseModel):
+    """Request model for creating a form"""
+    name: str = Field(..., min_length=1, max_length=200)
+    description: str | None = None
+    workflow_id: str = Field(..., description="Workflow ID (UUID) to execute when form is submitted")
+    form_schema: FormSchema
+    is_global: bool = Field(default=False)
+    access_level: FormAccessLevel = Field(
+        default=FormAccessLevel.ROLE_BASED, description="Access control level")
+
+    # Optional launch params
+    allowed_query_params: list[str] | None = Field(
+        None, description="List of allowed query parameter names to inject into form context")
+    default_launch_params: dict[str, Any] | None = Field(
+        None, description="Default parameter values for workflow execution")
+
+
+class UpdateFormRequest(BaseModel):
+    """Request model for updating a form"""
+    name: str | None = Field(None, min_length=1, max_length=200)
+    description: str | None = None
+    workflow_id: str | None = Field(None, description="Workflow ID (UUID) to execute when form is submitted")
+    form_schema: FormSchema | None = None
+    is_active: bool | None = None
+    access_level: FormAccessLevel | None = None
+
+    # Optional launch params
+    allowed_query_params: list[str] | None = Field(
+        None, description="List of allowed query parameter names to inject into form context")
+    default_launch_params: dict[str, Any] | None = Field(
+        None, description="Default parameter values for workflow execution")
+
+
+class FormExecuteRequest(BaseModel):
+    """Request model for executing a form"""
+    form_data: dict[str, Any] = Field(default_factory=dict, description="Form field values")
+    startup_data: dict[str, Any] | None = Field(None, description="Results from /startup call (launch workflow)")
+
+
+class FormStartupResponse(BaseModel):
+    """Response model for form startup/launch workflow execution"""
+    result: dict[str, Any] | list[Any] | str | None = Field(None, description="Workflow execution result")
+
+
+# CRUD Pattern Models for Form
+class FormCreate(BaseModel):
+    """Input for creating a form."""
+    name: str
+    description: str | None = None
+    workflow_id: str | None = None
+    launch_workflow_id: str | None = None
+    default_launch_params: dict | None = None
+    allowed_query_params: list[str] | None = None
+    form_schema: dict | FormSchema
+    access_level: FormAccessLevel | None = FormAccessLevel.ROLE_BASED
+
+    @field_validator("form_schema", mode="before")
+    @classmethod
+    def validate_form_schema(cls, v):
+        """Validate and convert dict to FormSchema if needed."""
+        if v is None:
+            raise ValueError("form_schema is required")
+        if isinstance(v, dict):
+            # Validate the dict conforms to FormSchema structure
+            return FormSchema.model_validate(v)
+        return v
+
+
+class FormUpdate(BaseModel):
+    """Input for updating a form."""
+    name: str | None = None
+    description: str | None = None
+    workflow_id: str | None = None
+    launch_workflow_id: str | None = None
+    default_launch_params: dict | None = None
+    allowed_query_params: list[str] | None = None
+    form_schema: dict | FormSchema | None = None
+    is_active: bool | None = None
+    access_level: FormAccessLevel | None = None
+
+    @field_validator("form_schema", mode="before")
+    @classmethod
+    def validate_form_schema(cls, v):
+        """Validate and convert dict to FormSchema if needed."""
+        if v is None:
+            return None
+        if isinstance(v, dict):
+            # Validate the dict conforms to FormSchema structure
+            return FormSchema.model_validate(v)
+        return v
+
+
+class FormPublic(BaseModel):
+    """Form output for API responses."""
+    model_config = ConfigDict(from_attributes=True)
+
+    id: UUID
+    name: str
+    description: str | None = None
+    workflow_id: str | None = None
+    launch_workflow_id: str | None = None
+    default_launch_params: dict | None = None
+    allowed_query_params: list[str] | None = None
+    form_schema: dict | FormSchema | None = None
+    access_level: FormAccessLevel | None = None
+    organization_id: UUID | None = None
+    is_active: bool
+    file_path: str | None = Field(None, description="Workspace-relative file path (e.g., 'forms/my-form-abc123.form.json')")
+    created_at: datetime | None = None
+    updated_at: datetime | None = None
+
+    @model_validator(mode="before")
+    @classmethod
+    def compute_form_schema(cls, data):
+        """Compute form_schema from fields relationship if available."""
+        if isinstance(data, dict):
+            return data  # Already a dict, use as-is
+
+        # It's an ORM object
+        if hasattr(data, 'fields') and data.fields:
+            # Build form_schema from fields relationship
+            fields_data = []
+            for field in sorted(data.fields, key=lambda f: f.position):
+                field_dict = {
+                    "name": field.name,
+                    "type": field.type,
+                    "required": field.required,
+                }
+                # Add optional fields
+                if field.label:
+                    field_dict["label"] = field.label
+                if field.placeholder:
+                    field_dict["placeholder"] = field.placeholder
+                if field.help_text:
+                    field_dict["help_text"] = field.help_text
+                if field.default_value is not None:
+                    field_dict["default_value"] = field.default_value
+                if field.options:
+                    field_dict["options"] = field.options
+                if field.data_provider:
+                    field_dict["data_provider"] = field.data_provider
+                if field.data_provider_inputs:
+                    field_dict["data_provider_inputs"] = field.data_provider_inputs
+                if field.visibility_expression:
+                    field_dict["visibility_expression"] = field.visibility_expression
+                if field.validation:
+                    field_dict["validation"] = field.validation
+                if field.allowed_types:
+                    field_dict["allowed_types"] = field.allowed_types
+                if field.multiple is not None:
+                    field_dict["multiple"] = field.multiple
+                if field.max_size_mb:
+                    field_dict["max_size_mb"] = field.max_size_mb
+                if field.content:
+                    field_dict["content"] = field.content
+
+                fields_data.append(field_dict)
+
+            # Create a new dict with form_schema computed
+            data_dict = {
+                "id": data.id,
+                "name": data.name,
+                "description": data.description,
+                "workflow_id": data.workflow_id,
+                "launch_workflow_id": data.launch_workflow_id,
+                "default_launch_params": data.default_launch_params,
+                "allowed_query_params": data.allowed_query_params,
+                "form_schema": {"fields": fields_data},
+                "access_level": data.access_level,
+                "organization_id": data.organization_id,
+                "is_active": data.is_active,
+                "file_path": data.file_path,
+                "created_at": data.created_at,
+                "updated_at": data.updated_at,
+            }
+            return data_dict
+
+        return data
+
+    @field_validator("form_schema", mode="before")
+    @classmethod
+    def validate_form_schema(cls, v):
+        """Validate and convert dict to FormSchema if needed."""
+        if v is None:
+            return None
+        if isinstance(v, dict):
+            # Validate the dict conforms to FormSchema structure
+            return FormSchema.model_validate(v)
+        return v
+
+    @field_serializer("created_at", "updated_at")
+    def serialize_dt(self, dt: datetime | None) -> str | None:
+        return dt.isoformat() if dt else None

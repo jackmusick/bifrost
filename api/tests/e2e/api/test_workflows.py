@@ -80,7 +80,7 @@ class TestPlatformWorkflows:
 
         # Optionally check that platform workflows are in expected locations
         platform_workflows = [w for w in workflows if w.get("is_platform")]
-        non_platform_workflows = [w for w in workflows if not w.get("is_platform")]
+        # Non-platform workflows also available: [w for w in workflows if not w.get("is_platform")]
 
         # Platform workflows should be from platform directory
         for pw in platform_workflows:

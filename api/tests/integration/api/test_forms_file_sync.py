@@ -17,7 +17,7 @@ import pytest
 from httpx import AsyncClient
 from sqlalchemy import select
 
-from src.models.orm import Form as FormORM
+from src.models import Form as FormORM
 from tests.helpers.mock_auth import create_platform_admin_headers
 
 

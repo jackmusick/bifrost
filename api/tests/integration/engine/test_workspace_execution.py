@@ -6,8 +6,6 @@ and organization context isolation enforced.
 """
 
 import sys
-import tempfile
-from pathlib import Path
 
 import pytest
 
@@ -175,7 +173,7 @@ class TestWorkspacePublicAPI:
     def test_models_module_accessible(self):
         """Integration: Pydantic models are accessible"""
         try:
-            from src.models.models import WorkflowExecutionResponse
+            from src.models import WorkflowExecutionResponse
             from src.models.enums import ExecutionStatus
             # These should be importable
             assert WorkflowExecutionResponse is not None

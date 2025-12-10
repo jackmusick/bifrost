@@ -12,7 +12,6 @@ import jwt
 import pytest
 from uuid import uuid4
 
-from tests.e2e.fixtures.users import E2EUser
 from tests.helpers.totp import generate_totp_code
 
 

@@ -53,7 +53,7 @@ async def validate_workflow_key(
     """
     from sqlalchemy import select, or_
     from src.core.database import get_session_factory
-    from src.models.orm import Workflow
+    from src.models import Workflow
 
     # Compute hash of provided key
     hashed_key = hashlib.sha256(api_key.encode()).hexdigest()
@@ -111,7 +111,7 @@ async def revoke_workflow_key(
     """
     from sqlalchemy import select
     from src.core.database import get_session_factory
-    from src.models.orm import Workflow
+    from src.models import Workflow
 
     try:
         session_factory = get_session_factory()
@@ -157,7 +157,7 @@ async def list_workflow_keys(
     """
     from sqlalchemy import select
     from src.core.database import get_session_factory
-    from src.models.orm import Workflow
+    from src.models import Workflow
 
     try:
         session_factory = get_session_factory()

@@ -13,8 +13,8 @@ from sqlalchemy import select
 
 from src.core.auth import CurrentSuperuser
 from src.core.database import DbSession
-from src.models.orm import User as UserORM, UserRole as UserRoleORM, FormRole as FormRoleORM
-from src.models.models import (
+from src.models import User as UserORM, UserRole as UserRoleORM, FormRole as FormRoleORM
+from src.models import (
     UserCreate,
     UserPublic,
     UserUpdate,

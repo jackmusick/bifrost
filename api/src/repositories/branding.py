@@ -10,7 +10,7 @@ import logging
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from src.models.orm import GlobalBranding
+from src.models import GlobalBranding
 
 logger = logging.getLogger(__name__)
 

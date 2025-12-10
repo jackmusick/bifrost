@@ -16,7 +16,7 @@ from pydantic import BaseModel, Field
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from src.models.models import (
+from src.models import (
     CreateOAuthConnectionRequest,
     UpdateOAuthConnectionRequest,
     OAuthConnectionDetail,
@@ -884,7 +884,7 @@ async def get_credentials(
 ) -> OAuthCredentialsResponse:
     """Get OAuth credentials for use in workflows."""
     from src.core.security import decrypt_secret
-    from src.models.models import OAuthCredentialsModel
+    from src.models import OAuthCredentialsModel
 
     repo = OAuthConnectionRepository(ctx.db)
     org_id = ctx.org_id

@@ -4,13 +4,15 @@ Bifrost Models
 ORM models (database tables):
     from src.models import Organization, User, Form
     from src.models.orm import Organization, User, Form
+    from src.models.orm.users import User  # Granular access
 
-Pydantic schemas (API request/response):
+Pydantic contracts (API request/response):
     from src.models import OrganizationCreate, OrganizationPublic
-    from src.models.models import OrganizationCreate, OrganizationPublic
+    from src.models.contracts import OrganizationCreate, OrganizationPublic
+    from src.models.contracts.users import UserCreate  # Granular access
 
-Legacy API schemas (from shared/models.py, now in src/models/schemas.py):
-    from src.models.models import WorkflowExecution
+Enums:
+    from src.models import ExecutionStatus
     from src.models.enums import ExecutionStatus
 """
 
@@ -37,53 +39,17 @@ from src.models.orm import (
     TrustedDevice,
     UserOAuthAccount,
     SystemConfig,
+    GlobalBranding,
+    ExecutionMetricsDaily,
+    PlatformMetricsSnapshot,
+    WorkspaceFile,
+    DeveloperContext,
+    DeveloperApiKey,
 )
 
-# Pydantic schemas (API request/response)
-from src.models.models import (
-    # Organization
-    OrganizationBase,
-    OrganizationCreate,
-    OrganizationUpdate,
-    OrganizationPublic,
-    # User
-    UserBase,
-    UserCreate,
-    UserUpdate,
-    UserPublic,
-    # Role
-    RoleBase,
-    RoleCreate,
-    RoleUpdate,
-    RolePublic,
-    # Form
-    FormSchema,
-    FormCreate,
-    FormUpdate,
-    FormPublic,
-    # Execution
-    ExecutionBase,
-    ExecutionCreate,
-    ExecutionUpdate,
-    ExecutionPublic,
-    # Config
-    ConfigBase,
-    ConfigCreate,
-    ConfigUpdate,
-    ConfigPublic,
-    # OAuth
-    OAuthProviderBase,
-    OAuthProviderCreate,
-    OAuthProviderUpdate,
-    OAuthProviderPublic,
-    # Request/Response models
-    UserRolesResponse,
-    UserFormsResponse,
-    RoleUsersResponse,
-    RoleFormsResponse,
-    AssignUsersToRoleRequest,
-    AssignFormsToRoleRequest,
-)
+# Pydantic schemas (API request/response) - from contracts/
+# Re-export everything from contracts
+from src.models.contracts import *  # noqa: F401, F403
 
 # Enums
 from src.models.enums import (
@@ -96,6 +62,10 @@ from src.models.enums import (
     MFAMethodStatus,
 )
 
+# Import __all__ from contracts for completeness
+from src.models.contracts import __all__ as _contracts_all
+
+# Combine all exports
 __all__ = [
     # Base
     "Base",
@@ -105,6 +75,7 @@ __all__ = [
     "Role",
     "UserRole",
     "Form",
+    "FormField",
     "FormRole",
     "Execution",
     "ExecutionLog",
@@ -119,48 +90,12 @@ __all__ = [
     "TrustedDevice",
     "UserOAuthAccount",
     "SystemConfig",
-    # Organization schemas
-    "OrganizationBase",
-    "OrganizationCreate",
-    "OrganizationUpdate",
-    "OrganizationPublic",
-    # User schemas
-    "UserBase",
-    "UserCreate",
-    "UserUpdate",
-    "UserPublic",
-    # Role schemas
-    "RoleBase",
-    "RoleCreate",
-    "RoleUpdate",
-    "RolePublic",
-    # Form schemas
-    "FormSchema",
-    "FormCreate",
-    "FormUpdate",
-    "FormPublic",
-    # Execution schemas
-    "ExecutionBase",
-    "ExecutionCreate",
-    "ExecutionUpdate",
-    "ExecutionPublic",
-    # Config schemas
-    "ConfigBase",
-    "ConfigCreate",
-    "ConfigUpdate",
-    "ConfigPublic",
-    # OAuth schemas
-    "OAuthProviderBase",
-    "OAuthProviderCreate",
-    "OAuthProviderUpdate",
-    "OAuthProviderPublic",
-    # Request/Response models
-    "UserRolesResponse",
-    "UserFormsResponse",
-    "RoleUsersResponse",
-    "RoleFormsResponse",
-    "AssignUsersToRoleRequest",
-    "AssignFormsToRoleRequest",
+    "GlobalBranding",
+    "ExecutionMetricsDaily",
+    "PlatformMetricsSnapshot",
+    "WorkspaceFile",
+    "DeveloperContext",
+    "DeveloperApiKey",
     # Enums
     "ExecutionStatus",
     "UserType",
@@ -169,4 +104,4 @@ __all__ = [
     "ConfigType",
     "MFAMethodType",
     "MFAMethodStatus",
-]
+] + list(_contracts_all)

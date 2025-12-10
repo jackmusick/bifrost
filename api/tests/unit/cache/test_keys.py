@@ -4,7 +4,6 @@ Unit tests for cache key generation.
 Tests the Redis key generation functions to ensure consistent patterns.
 """
 
-import pytest
 
 from src.core.cache.keys import (
     TTL_CONFIG,

@@ -290,12 +290,11 @@ class TestFormFileSync:
             if isinstance(files, list):
                 file_names = [f.get("name", f.get("path", "")) for f in files]
                 # The form file might be named after the form ID or name
-                form_found = any(
+                # Soft check - file may be in a different location
+                _ = any(
                     form["id"] in name or "file_sync_test" in name.lower()
                     for name in file_names
                 )
-                # This is a soft check - file may be in a different location
-                # assert form_found, f"Form file not found in listing: {file_names}"
 
     def test_form_file_can_be_deleted_via_editor(
         self, e2e_client, platform_admin

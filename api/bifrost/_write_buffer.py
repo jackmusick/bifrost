@@ -17,7 +17,7 @@ import json
 import logging
 import threading
 from contextvars import ContextVar
-from dataclasses import asdict, dataclass, field
+from dataclasses import asdict, dataclass
 from datetime import datetime
 from typing import TYPE_CHECKING, Any
 from uuid import uuid4

@@ -14,7 +14,7 @@ from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.core.database import get_session_factory
-from src.models.orm import ExecutionMetricsDaily
+from src.models import ExecutionMetricsDaily
 from src.models.enums import ExecutionStatus
 
 logger = logging.getLogger(__name__)

@@ -14,7 +14,7 @@ from datetime import datetime, timezone
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from src.models.models import (
+from src.models import (
     FileContentRequest,
     FileContentResponse,
     FileMetadata,

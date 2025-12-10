@@ -104,7 +104,7 @@ async def _prewarm_configs(
 ) -> None:
     """Pre-warm all config values for the organization."""
     from src.core.security import decrypt_secret
-    from src.models.orm import Config
+    from src.models import Config
 
     # Query org-specific + global configs
     if org_uuid:
@@ -160,7 +160,7 @@ async def _prewarm_oauth(
 ) -> None:
     """Pre-warm OAuth providers and tokens for the organization."""
     from src.core.security import decrypt_secret
-    from src.models.orm import OAuthProvider, OAuthToken
+    from src.models import OAuthProvider, OAuthToken
 
     # Query providers (org-specific + global)
     if org_uuid:
@@ -252,7 +252,7 @@ async def _prewarm_forms(
     is_admin: bool,
 ) -> None:
     """Pre-warm forms accessible by the user."""
-    from src.models.orm import Form, FormRole, UserRole
+    from src.models import Form, FormRole, UserRole
 
     user_uuid = UUID(user_id)
 
@@ -326,7 +326,7 @@ async def _prewarm_roles(
     org_uuid: UUID | None,
 ) -> None:
     """Pre-warm roles for the organization."""
-    from src.models.orm import FormRole, Role, UserRole
+    from src.models import FormRole, Role, UserRole
 
     # Query roles
     if org_uuid:
@@ -393,7 +393,7 @@ async def _prewarm_organization(
     org_uuid: UUID,
 ) -> None:
     """Pre-warm organization data."""
-    from src.models.orm import Organization
+    from src.models import Organization
 
     query = select(Organization).where(Organization.id == org_uuid)
     result = await db.execute(query)

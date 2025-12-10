@@ -23,7 +23,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.config import get_settings
-from src.models.database import User, UserOAuthAccount
+from src.models import User, UserOAuthAccount
 
 logger = logging.getLogger(__name__)
 

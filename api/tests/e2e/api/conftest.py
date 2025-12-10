@@ -6,7 +6,6 @@ Minimal fixtures - the E2E tests build their own state sequentially.
 
 import os
 
-import pytest
 
 # API base URL - set by test.sh --e2e
 API_BASE_URL = os.environ.get("TEST_API_URL", "http://localhost:18000")

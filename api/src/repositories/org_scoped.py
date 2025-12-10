@@ -16,7 +16,7 @@ from uuid import UUID
 from sqlalchemy import Select, or_
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from src.models.orm import Base
+from src.models import Base
 from src.repositories.base import BaseRepository
 
 ModelT = TypeVar("ModelT", bound=Base)

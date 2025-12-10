@@ -6,11 +6,10 @@ Provides endpoints for connecting to repos, pulling, pushing, and syncing.
 """
 
 import logging
-from datetime import datetime
 
 from fastapi import APIRouter, HTTPException, Query, status
 
-from src.models.models import (
+from src.models import (
     ValidateTokenRequest,
     DetectedRepoInfo,
     GitHubConfigRequest,
@@ -74,7 +73,7 @@ async def get_github_status(
         # Use get_repo_info to get repository status
         status_dict = await git_service.get_repo_info(ctx, fetch=False)
 
-        logger.info(f"GitHub status retrieved")
+        logger.info("GitHub status retrieved")
 
         return GitRefreshStatusResponse(**status_dict)
 
@@ -147,7 +146,7 @@ async def pull_from_github(
         connection_id = request.connection_id if request else None
         result = await git_service.pull(ctx, connection_id)
 
-        logger.info(f"Pulled from GitHub")
+        logger.info("Pulled from GitHub")
 
         return PullFromGitHubResponse(**result)
 
@@ -229,7 +228,7 @@ async def get_changes(
         # Use get_repo_info to get complete status including changes
         status_dict = await git_service.get_repo_info(ctx, fetch=False)
 
-        logger.info(f"Retrieved local changes")
+        logger.info("Retrieved local changes")
 
         return GitRefreshStatusResponse(**status_dict)
 
@@ -265,7 +264,7 @@ async def init_repo(
             raise ValueError("auth_token is required to initialize repository")
 
         # Initialize repository with the provided config
-        result = await git_service.initialize_repo(
+        await git_service.initialize_repo(
             token=request.auth_token,
             repo_url=request.repo_url,
             branch=request.branch or "main",

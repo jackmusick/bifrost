@@ -23,7 +23,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.config import Settings, get_settings
 from src.models.enums import GitStatus
-from src.models.orm import WorkspaceFile
+from src.models import WorkspaceFile
 
 logger = logging.getLogger(__name__)
 
@@ -476,7 +476,7 @@ class FileStorageService:
         Uses AST-based parsing to extract metadata from @workflow and
         @data_provider decorators without importing the module.
         """
-        from src.models.orm import Workflow, DataProvider
+        from src.models import Workflow, DataProvider
 
         content_str = content.decode("utf-8", errors="replace")
 
@@ -795,7 +795,7 @@ class FileStorageService:
         """
         import json
         from uuid import UUID
-        from src.models.orm import Form
+        from src.models import Form
 
         try:
             form_data = json.loads(content.decode("utf-8"))
@@ -873,7 +873,7 @@ class FileStorageService:
 
     async def _remove_metadata(self, path: str) -> None:
         """Remove workflow/form metadata when file is deleted."""
-        from src.models.orm import Workflow, DataProvider, Form
+        from src.models import Workflow, DataProvider, Form
 
         # Mark workflows from this file as inactive
         await self.db.execute(

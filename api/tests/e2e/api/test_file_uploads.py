@@ -99,7 +99,7 @@ class TestFileUploads:
         assert response.status_code == 200, f"Generate upload URL failed: {response.text}"
         data = response.json()
         upload_url = data["upload_url"]
-        blob_uri = data["blob_uri"]
+        # blob_uri available in data["blob_uri"] if needed
 
         # Upload file content using presigned URL
         file_content = b"Test file content for E2E upload test.\nLine 2."

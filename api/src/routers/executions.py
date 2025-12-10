@@ -14,7 +14,7 @@ from sqlalchemy import select, and_, desc
 from sqlalchemy.ext.asyncio import AsyncSession
 
 # Import existing Pydantic models for API compatibility
-from src.models.models import (
+from src.models import (
     ExecutionStatus,
     ExecutionsListResponse,
     WorkflowExecution,

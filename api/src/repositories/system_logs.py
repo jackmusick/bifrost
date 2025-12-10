@@ -8,10 +8,10 @@ from datetime import datetime
 from typing import Any
 from uuid import UUID
 
-from sqlalchemy import select, func, or_
+from sqlalchemy import select, func
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from src.models.orm import SystemLog
+from src.models import SystemLog
 
 
 class SystemLogRepository:

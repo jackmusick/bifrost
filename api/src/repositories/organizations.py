@@ -8,7 +8,7 @@ Data access for organization entities.
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from src.models.database import Organization
+from src.models import Organization
 from src.repositories.base import BaseRepository
 
 

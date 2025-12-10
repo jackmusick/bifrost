@@ -4,7 +4,7 @@ Contract tests for branding API endpoints
 Tests branding configuration retrieval and updates with logo uploads and color validation.
 """
 
-from src.models.models import BrandingSettings
+from src.models import BrandingSettings
 
 
 class TestBrandingContracts:
@@ -77,8 +77,8 @@ class TestBrandingContracts:
 
     def test_partial_logo_reset(self):
         """Test that resetting one logo doesn't affect the other"""
-        # Start with both logos
-        branding = BrandingSettings(
+        # Start with both logos (verify construction works)
+        BrandingSettings(
             square_logo_url="/api/branding/logo/square",
             rectangle_logo_url="/api/branding/logo/rectangle",
             primary_color="#0066CC"

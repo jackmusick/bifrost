@@ -13,7 +13,7 @@ from fastapi import APIRouter, HTTPException, status
 from sqlalchemy import select
 
 # Import existing Pydantic models for API compatibility
-from src.models.models import DataProviderMetadata
+from src.models import DataProviderMetadata
 from src.models import DataProvider as DataProviderORM
 
 from src.core.auth import CurrentActiveUser

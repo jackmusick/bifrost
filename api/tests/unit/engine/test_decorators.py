@@ -8,10 +8,8 @@ read during dynamic discovery. Parameters are now automatically extracted from
 function signatures - no @param decorator needed.
 """
 
-import pytest
 
 from src.sdk.decorators import data_provider, workflow
-from src.services.execution.type_inference import extract_parameters_from_signature
 
 
 class TestWorkflowDecorator:

@@ -96,7 +96,7 @@ async def _apply_change(db: "AsyncSession", change: dict[str, Any]) -> None:
 async def _apply_config_change(db: "AsyncSession", change: dict[str, Any]) -> None:
     """Apply config change."""
     from src.models.enums import ConfigType
-    from src.models.orm import Config
+    from src.models import Config
 
     key = change.get("entity_key")
     org_id = change.get("org_id")
@@ -124,7 +124,7 @@ async def _apply_config_change(db: "AsyncSession", change: dict[str, Any]) -> No
 
 async def _apply_role_change(db: "AsyncSession", change: dict[str, Any]) -> None:
     """Apply role change."""
-    from src.models.orm import Role
+    from src.models import Role
 
     operation = change.get("operation")
     role_id = change.get("entity_id")
@@ -154,7 +154,7 @@ async def _apply_role_change(db: "AsyncSession", change: dict[str, Any]) -> None
 
 async def _apply_org_change(db: "AsyncSession", change: dict[str, Any]) -> None:
     """Apply organization change."""
-    from src.models.orm import Organization
+    from src.models import Organization
 
     operation = change.get("operation")
     org_id = change.get("entity_id")
@@ -182,7 +182,7 @@ async def _apply_org_change(db: "AsyncSession", change: dict[str, Any]) -> None:
 
 async def _apply_user_role_change(db: "AsyncSession", change: dict[str, Any]) -> None:
     """Apply user-role assignment."""
-    from src.models.orm import UserRole
+    from src.models import UserRole
 
     role_id = change.get("entity_id")
     data = change.get("data", {})
@@ -198,7 +198,7 @@ async def _apply_user_role_change(db: "AsyncSession", change: dict[str, Any]) ->
 
 async def _apply_form_role_change(db: "AsyncSession", change: dict[str, Any]) -> None:
     """Apply form-role assignment."""
-    from src.models.orm import FormRole
+    from src.models import FormRole
 
     role_id = change.get("entity_id")
     data = change.get("data", {})

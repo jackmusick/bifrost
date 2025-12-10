@@ -2,7 +2,6 @@
 Unit tests for memory_monitor module.
 """
 
-import pytest
 from unittest.mock import patch, mock_open
 
 from src.services.execution.memory_monitor import (

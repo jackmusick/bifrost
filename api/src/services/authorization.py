@@ -24,7 +24,7 @@ from sqlalchemy import select, or_
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.core.auth import ExecutionContext
-from src.models.database import Form, UserRole, Execution
+from src.models import Form, UserRole, Execution
 
 logger = logging.getLogger(__name__)
 

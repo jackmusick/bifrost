@@ -16,7 +16,7 @@ import logging
 from fastapi import APIRouter, HTTPException, status
 from sqlalchemy import select
 
-from src.models.models import ScheduleInfo, SchedulesListResponse
+from src.models import ScheduleInfo, SchedulesListResponse
 from src.models import Workflow as WorkflowORM
 from src.core.auth import Context, CurrentSuperuser
 from src.core.database import DbSession

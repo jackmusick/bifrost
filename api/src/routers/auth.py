@@ -28,7 +28,7 @@ from src.core.cache.keys import (
     user_refresh_tokens_pattern,
     TTL_REFRESH_TOKEN,
 )
-from src.models.models import OAuthProviderInfo, AuthStatusResponse
+from src.models import OAuthProviderInfo, AuthStatusResponse
 from src.config import get_settings
 from src.core.auth import CurrentActiveUser
 from src.core.database import DbSession
@@ -1013,7 +1013,7 @@ async def revoke_all_sessions(
     )
 
     return RevokeAllResponse(
-        message=f"All sessions have been revoked",
+        message="All sessions have been revoked",
         sessions_revoked=count,
     )
 

@@ -28,7 +28,6 @@ from .keys import (
     role_key,
     role_users_key,
     roles_hash_key,
-    user_forms_key,
 )
 from .redis_client import get_shared_redis
 

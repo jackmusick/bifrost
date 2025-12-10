@@ -5,7 +5,6 @@ Tests that user workflows can import and use the bifrost SDK.
 """
 
 import pytest
-from pathlib import Path
 
 # Import bifrost context functions directly
 # This ensures we use the same ContextVar instance that storage module uses

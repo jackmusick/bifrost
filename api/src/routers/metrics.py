@@ -18,7 +18,7 @@ from fastapi import APIRouter, HTTPException, Query, status
 from sqlalchemy import select, func, case, desc
 from datetime import datetime
 
-from src.models.models import (
+from src.models import (
     DashboardMetricsResponse,
     ExecutionStats,
     RecentFailure,
@@ -34,7 +34,7 @@ from src.models.models import (
 )
 from src.core.auth import Context, CurrentActiveUser, RequirePlatformAdmin
 from src.models import Execution as ExecutionModel
-from src.models.orm import (
+from src.models import (
     ExecutionMetricsDaily,
     PlatformMetricsSnapshot as PlatformMetricsSnapshotModel,
     Organization,

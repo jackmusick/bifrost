@@ -53,7 +53,7 @@ from src.sdk.context import ExecutionContext, Organization
 from ._context import context
 from src.sdk.errors import UserError, WorkflowError, ValidationError, IntegrationError, ConfigurationError
 from src.models.enums import ExecutionStatus, ConfigType, FormFieldType
-from src.models.models import (
+from src.models import (
     OAuthCredentials,
     IntegrationType,
     Role,

@@ -12,7 +12,7 @@ import uuid
 
 from fastapi import APIRouter, HTTPException, status
 
-from src.models.models import (
+from src.models import (
     InstallPackageRequest,
     InstalledPackage,
     InstalledPackagesResponse,

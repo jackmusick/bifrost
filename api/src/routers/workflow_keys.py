@@ -10,7 +10,6 @@ Each workflow can have ONE API key. No global keys - each key is workflow-specif
 
 import hashlib
 import logging
-import secrets
 from datetime import datetime, timedelta
 from uuid import UUID
 
@@ -19,8 +18,8 @@ from sqlalchemy import select, or_
 
 from src.core.auth import Context, CurrentSuperuser
 from src.core.database import DbSession
-from src.models.orm import Workflow
-from src.models.models import WorkflowKeyCreateRequest, WorkflowKeyResponse
+from src.models import Workflow
+from src.models import WorkflowKeyCreateRequest, WorkflowKeyResponse
 from src.services.workflow_keys import generate_workflow_key
 
 logger = logging.getLogger(__name__)

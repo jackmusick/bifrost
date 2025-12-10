@@ -8,7 +8,7 @@ from datetime import datetime
 import pytest
 from pydantic import ValidationError
 
-from src.models.models import (
+from src.models import (
     CreateFormRequest,
     Form,
     FormField,

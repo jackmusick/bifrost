@@ -4,8 +4,6 @@ Unit tests for the SDK write buffer.
 Tests the WriteBuffer class that buffers SDK writes to Redis during execution.
 """
 
-import json
-from datetime import datetime
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest

@@ -23,11 +23,11 @@ from sqlalchemy.orm import selectinload
 
 from src.core.auth import Context, CurrentActiveUser, CurrentSuperuser
 from src.core.database import DbSession
-from src.models.orm import Form as FormORM, FormField as FormFieldORM, FormRole as FormRoleORM, UserRole as UserRoleORM
-from src.models.models import FormCreate, FormUpdate, FormPublic
-from src.models.models import WorkflowExecutionResponse
-from src.models.models import FileUploadRequest, FileUploadResponse, UploadedFileMetadata
-from src.models.models import FormExecuteRequest, FormStartupResponse
+from src.models import Form as FormORM, FormField as FormFieldORM, FormRole as FormRoleORM, UserRole as UserRoleORM
+from src.models import FormCreate, FormUpdate, FormPublic
+from src.models import WorkflowExecutionResponse
+from src.models import FileUploadRequest, FileUploadResponse, UploadedFileMetadata
+from src.models import FormExecuteRequest, FormStartupResponse
 
 # Import cache invalidation
 try:
@@ -74,7 +74,7 @@ def _form_schema_to_fields(form_schema: dict, form_id: UUID) -> list[FormFieldOR
     Returns:
         List of FormField ORM objects
     """
-    from src.models.models import FormSchema
+    from src.models import FormSchema
 
     # Validate structure
     schema = FormSchema.model_validate(form_schema)

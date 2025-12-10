@@ -10,7 +10,7 @@ from uuid import UUID
 
 from cryptography.fernet import Fernet
 
-from src.models.models import CreateOAuthConnectionRequest, OAuthConnection, UpdateOAuthConnectionRequest
+from src.models import CreateOAuthConnectionRequest, OAuthConnection, UpdateOAuthConnectionRequest
 
 logger = logging.getLogger(__name__)
 

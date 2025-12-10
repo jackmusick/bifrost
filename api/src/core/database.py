@@ -18,7 +18,7 @@ from sqlalchemy.ext.asyncio import (
 )
 
 from src.config import Settings, get_settings
-from src.models.orm import Base  # noqa: F401 - imported for Alembic
+from src.models import Base  # noqa: F401 - imported for Alembic
 
 
 # Global engine and session factory (initialized on startup)

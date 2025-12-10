@@ -7,7 +7,7 @@ Tests request/response models for workflow execution endpoint
 import pytest
 from pydantic import ValidationError
 
-from src.models.models import ErrorResponse, WorkflowExecutionRequest, WorkflowExecutionResponse
+from src.models import ErrorResponse, WorkflowExecutionRequest, WorkflowExecutionResponse
 from src.models.enums import ExecutionStatus
 
 

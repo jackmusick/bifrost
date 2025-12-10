@@ -248,7 +248,6 @@ async def _download_workspace_from_s3(settings, local_path) -> bool:
         True if download successful, False otherwise
     """
     from pathlib import Path
-    import os
 
     if not settings.s3_configured:
         return False
@@ -299,7 +298,6 @@ async def worker_main(execution_id: str):
 
     Called by the pool manager when spawning a new worker.
     """
-    import os
     import tempfile
     from pathlib import Path
     import redis.asyncio as redis

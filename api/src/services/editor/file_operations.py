@@ -12,7 +12,7 @@ from datetime import datetime, UTC
 import aiofiles
 import aiofiles.os
 
-from src.models.models import FileMetadata, FileContentResponse, FileType
+from src.models import FileMetadata, FileContentResponse, FileType
 import logging
 
 logger = logging.getLogger(__name__)

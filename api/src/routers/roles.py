@@ -15,14 +15,14 @@ from sqlalchemy import select, delete
 
 from src.core.auth import CurrentSuperuser
 from src.core.database import DbSession
-from src.models.orm import (
+from src.models import (
     Role as RoleORM,
     UserRole as UserRoleORM,
     FormRole as FormRoleORM,
     Form as FormORM,
     User as UserORM,
 )
-from src.models.models import (
+from src.models import (
     RoleCreate,
     RolePublic,
     RoleUpdate,

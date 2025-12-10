@@ -15,7 +15,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import joinedload
 
 from src.core.database import get_session_factory
-from src.models.orm import Execution, ExecutionLog
+from src.models import Execution
 
 from ._internal import get_context
 

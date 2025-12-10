@@ -15,7 +15,7 @@ from sqlalchemy import select, and_
 
 from src.core.database import get_session_factory
 from src.core.pubsub import publish_execution_update
-from src.models.orm import Execution as ExecutionModel, ExecutionLog
+from src.models import Execution as ExecutionModel, ExecutionLog
 
 logger = logging.getLogger(__name__)
 
