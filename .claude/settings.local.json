@@ -73,7 +73,8 @@
       "Bash(else echo \"Log file not found\")",
       "Bash(fi)",
       "Bash(TEST_API_URL=http://localhost:8000 npx playwright test:*)",
-      "Bash(TEST_API_URL=http://localhost:8000 TEST_BASE_URL=http://localhost:3000 npx playwright test:*)"
+      "Bash(TEST_API_URL=http://localhost:8000 TEST_BASE_URL=http://localhost:3000 npx playwright test:*)",
+      "WebFetch(domain:docs.github.com)"
     ],
     "deny": [],
     "ask": [],

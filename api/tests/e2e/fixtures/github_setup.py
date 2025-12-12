@@ -32,11 +32,11 @@ def _get_github_client():
     (tests will skip gracefully).
     """
     try:
-        from github import Github
+        from github import Github, Auth
 
-        return Github
+        return Github, Auth
     except ImportError:
-        return None
+        return None, None
 
 
 @pytest.fixture(scope="session")
@@ -58,7 +58,7 @@ def github_test_config() -> dict[str, Any]:
             "Set it to a GitHub PAT with repo access to run these tests."
         )
 
-    Github = _get_github_client()
+    Github, Auth = _get_github_client()
     if Github is None:
         pytest.skip(
             "GitHub E2E tests require PyGithub package. "
@@ -92,11 +92,11 @@ def github_test_branch(
     Yields:
         dict with pat, repo, branch, base_branch, and repo_obj
     """
-    Github = _get_github_client()
+    Github, Auth = _get_github_client()
     if Github is None:
         pytest.skip("PyGithub not available")
 
-    g = Github(github_test_config["pat"])
+    g = Github(auth=Auth.Token(github_test_config["pat"]))
     repo = g.get_repo(github_test_config["repo"])
 
     # Create unique branch name with timestamp
