@@ -8,7 +8,7 @@ from datetime import datetime
 from typing import TYPE_CHECKING
 from uuid import UUID, uuid4
 
-from sqlalchemy import Boolean, DateTime, Enum as SQLAlchemyEnum, ForeignKey, Index, String, Text, text
+from sqlalchemy import Boolean, DateTime, Enum as SQLAlchemyEnum, ForeignKey, Index, LargeBinary, String, Text, text
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from src.models.enums import UserType
@@ -58,6 +58,10 @@ class User(Base):
         server_default=text("NOW()"),
         onupdate=datetime.utcnow,
     )
+
+    # Avatar
+    avatar_data: Mapped[bytes | None] = mapped_column(LargeBinary, default=None)
+    avatar_content_type: Mapped[str | None] = mapped_column(String(50), default=None)
 
     # Relationships
     organization: Mapped["Organization | None"] = relationship(back_populates="users")

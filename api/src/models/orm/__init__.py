@@ -10,6 +10,7 @@ For API schemas (Create/Update/Public), see schemas.py
 from src.models.orm.audit import AuditLog
 from src.models.orm.base import Base
 from src.models.orm.branding import GlobalBranding
+from src.models.orm.cli import CLISession
 from src.models.orm.config import Config, SystemConfig
 from src.models.orm.developer import DeveloperApiKey, DeveloperContext
 from src.models.orm.executions import Execution, ExecutionLog
@@ -38,6 +39,8 @@ __all__ = [
     # Executions
     "Execution",
     "ExecutionLog",
+    # CLI Sessions
+    "CLISession",
     # Config
     "Config",
     "SystemConfig",

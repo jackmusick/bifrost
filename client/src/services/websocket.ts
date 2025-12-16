@@ -74,6 +74,35 @@ export interface PackageComplete {
 	message: string;
 }
 
+export interface LocalRunnerStateUpdate {
+	file_path: string;
+	workflows: Array<{
+		name: string;
+		description: string;
+		parameters: Array<{
+			name: string;
+			type: string;
+			label: string | null;
+			required: boolean;
+			default_value: unknown;
+		}>;
+	}>;
+	selected_workflow: string | null;
+	pending: boolean;
+	execution_id: string | null;
+}
+
+// Backwards compatibility alias
+export type DevRunStateUpdate = LocalRunnerStateUpdate;
+
+// CLI Session state from backend - uses generated CLISessionResponse type
+import type { CLISessionResponse } from "@/services/cli";
+
+export interface CLISessionUpdate {
+	session_id: string;
+	state: CLISessionResponse | null;
+}
+
 // Message types from backend
 type WebSocketMessage =
 	| { type: "connected"; channels: string[]; userId: string }
@@ -87,7 +116,10 @@ type WebSocketMessage =
 	| { type: "notification_updated"; notification: NotificationPayload }
 	| { type: "notification_dismissed"; notification_id: string }
 	| { type: "log"; level: string; message: string }
-	| { type: "complete"; status: "success" | "error"; message: string };
+	| { type: "complete"; status: "success" | "error"; message: string }
+	| { type: "devrun_state_update"; state: DevRunStateUpdate | null }
+	| { type: "local_runner_state_update"; state: LocalRunnerStateUpdate | null }
+	| { type: "cli_session_update"; session_id: string; state: CLISessionUpdate["state"] };
 
 // Notification payload from backend (snake_case)
 interface NotificationPayload {
@@ -111,6 +143,10 @@ type NewExecutionCallback = (execution: NewExecution) => void;
 type HistoryUpdateCallback = (update: HistoryUpdate) => void;
 type PackageLogCallback = (log: PackageLog) => void;
 type PackageCompleteCallback = (complete: PackageComplete) => void;
+type LocalRunnerStateCallback = (state: LocalRunnerStateUpdate | null) => void;
+type CLISessionUpdateCallback = (update: CLISessionUpdate) => void;
+// Backwards compatibility alias
+type DevRunStateCallback = LocalRunnerStateCallback;
 
 class WebSocketService {
 	private ws: WebSocket | null = null;
@@ -135,6 +171,11 @@ class WebSocketService {
 	private historyUpdateCallbacks = new Set<HistoryUpdateCallback>();
 	private packageLogCallbacks = new Set<PackageLogCallback>();
 	private packageCompleteCallbacks = new Set<PackageCompleteCallback>();
+	private localRunnerStateCallbacks = new Set<LocalRunnerStateCallback>();
+	private cliSessionUpdateCallbacks = new Map<
+		string,
+		Set<CLISessionUpdateCallback>
+	>();
 
 	// Track subscribed channels
 	private subscribedChannels = new Set<string>();
@@ -351,7 +392,35 @@ class WebSocketService {
 					cb({ status: message.status, message: message.message }),
 				);
 				break;
+
+			case "devrun_state_update":
+				// Dev run state update from CLI (legacy)
+				this.localRunnerStateCallbacks.forEach((cb) => cb(message.state));
+				break;
+
+			case "local_runner_state_update":
+				// Local runner state update from CLI
+				this.localRunnerStateCallbacks.forEach((cb) => cb(message.state));
+				break;
+
+			case "cli_session_update":
+				// CLI session state update from backend
+				this.dispatchCLISessionUpdate(message);
+				break;
 		}
+	}
+
+	private dispatchCLISessionUpdate(
+		message: { type: "cli_session_update"; session_id: string; state: CLISessionUpdate["state"] },
+	) {
+		const update: CLISessionUpdate = {
+			session_id: message.session_id,
+			state: message.state,
+		};
+
+		// Dispatch to session-specific callbacks
+		const callbacks = this.cliSessionUpdateCallbacks.get(message.session_id);
+		callbacks?.forEach((cb) => cb(update));
 	}
 
 	private dispatchExecutionUpdate(
@@ -576,6 +645,44 @@ class WebSocketService {
 		this.packageCompleteCallbacks.add(callback);
 		return () => {
 			this.packageCompleteCallbacks.delete(callback);
+		};
+	}
+
+	/**
+	 * Subscribe to local runner state updates
+	 */
+	onLocalRunnerState(callback: LocalRunnerStateCallback): () => void {
+		this.localRunnerStateCallbacks.add(callback);
+		return () => {
+			this.localRunnerStateCallbacks.delete(callback);
+		};
+	}
+
+	/**
+	 * Subscribe to dev run state updates (backwards compatibility alias)
+	 */
+	onDevRunState(callback: DevRunStateCallback): () => void {
+		return this.onLocalRunnerState(callback);
+	}
+
+	/**
+	 * Subscribe to CLI session updates for a specific session
+	 */
+	onCLISessionUpdate(
+		sessionId: string,
+		callback: CLISessionUpdateCallback,
+	): () => void {
+		if (!this.cliSessionUpdateCallbacks.has(sessionId)) {
+			this.cliSessionUpdateCallbacks.set(sessionId, new Set());
+		}
+		this.cliSessionUpdateCallbacks.get(sessionId)!.add(callback);
+
+		// Return unsubscribe function
+		return () => {
+			this.cliSessionUpdateCallbacks.get(sessionId)?.delete(callback);
+			if (this.cliSessionUpdateCallbacks.get(sessionId)?.size === 0) {
+				this.cliSessionUpdateCallbacks.delete(sessionId);
+			}
 		};
 	}
 

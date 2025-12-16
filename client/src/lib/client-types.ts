@@ -20,6 +20,7 @@ export interface ExecutionFilters {
 	start_date?: string;
 	end_date?: string;
 	limit?: number;
+	excludeLocal?: boolean;
 }
 
 export interface ExecutionListResponse {

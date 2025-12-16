@@ -114,8 +114,6 @@ services:
       context: ./client
       dockerfile: Dockerfile.dev
       target: "" # Clear the production target from base compose file
-    ports:
-      - "3000:3000"
     volumes:
       - ./client/src:/app/src
       - ./client/public:/app/public

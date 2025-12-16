@@ -53,6 +53,7 @@ class ExecutionRepository:
         status_filter: str | None = None,
         start_date: str | None = None,
         end_date: str | None = None,
+        exclude_local: bool = True,
         limit: int = 25,
         offset: int = 0,
     ) -> tuple[list[WorkflowExecution], str | None]:
@@ -88,6 +89,10 @@ class ExecutionRepository:
             except ValueError:
                 pass
 
+        # Exclude local runner executions by default
+        if exclude_local:
+            query = query.where(ExecutionModel.is_local_execution == False)  # noqa: E712
+
         # Order by newest first
         query = query.order_by(desc(ExecutionModel.started_at))
 
@@ -107,7 +112,7 @@ class ExecutionRepository:
         if has_more:
             next_token = str(offset + limit)
 
-        return [self._to_pydantic(e) for e in executions], next_token
+        return [self._to_pydantic(e, user) for e in executions], next_token
 
     async def get_execution(
         self,
@@ -291,7 +296,7 @@ class ExecutionRepository:
 
         # Already cancelled or cancelling - idempotent success
         if execution.status in [ExecutionStatus.CANCELLING.value, ExecutionStatus.CANCELLED.value]:
-            return self._to_pydantic(execution), None
+            return self._to_pydantic(execution, user), None
 
         # Can only cancel pending or running executions
         if execution.status not in [ExecutionStatus.PENDING.value, ExecutionStatus.RUNNING.value]:
@@ -309,14 +314,22 @@ class ExecutionRepository:
             status=ExecutionStatus.CANCELLING.value,
         )
 
-        return self._to_pydantic(execution), None
+        return self._to_pydantic(execution, user), None
 
-    def _to_pydantic(self, execution: ExecutionModel) -> WorkflowExecution:
+    def _to_pydantic(
+        self, execution: ExecutionModel, user: UserPrincipal | None = None
+    ) -> WorkflowExecution:
         """Convert SQLAlchemy model to Pydantic model.
 
         Note: logs are NOT included here - they should be fetched separately
         via the /logs endpoint to avoid loading potentially large log data.
+
+        Args:
+            execution: The SQLAlchemy execution model
+            user: Optional user for permission checks. If provided, admin-only
+                  fields (variables) are gated based on is_superuser.
         """
+        is_admin = user.is_superuser if user else False
         return WorkflowExecution(
             execution_id=str(execution.id),
             workflow_name=execution.workflow_name,
@@ -333,7 +346,8 @@ class ExecutionRepository:
             started_at=execution.started_at,
             completed_at=execution.completed_at,
             logs=None,  # Fetched separately via /logs endpoint
-            variables=execution.variables,
+            variables=execution.variables if is_admin else None,
+            session_id=str(execution.session_id) if execution.session_id else None,
         )
 
 
@@ -354,6 +368,7 @@ async def list_executions(
     status: str | None = Query(None, description="Filter by execution status"),
     startDate: str | None = Query(None, description="Filter by start date (ISO format)"),
     endDate: str | None = Query(None, description="Filter by end date (ISO format)"),
+    excludeLocal: bool = Query(True, description="Exclude local runner executions"),
     limit: int = Query(25, ge=1, le=1000, description="Maximum number of results"),
     continuationToken: str | None = Query(None, description="Continuation token"),
 ) -> ExecutionsListResponse:
@@ -375,6 +390,7 @@ async def list_executions(
         status_filter=status,
         start_date=startDate,
         end_date=endDate,
+        exclude_local=excludeLocal,
         limit=limit,
         offset=offset,
     )
@@ -606,7 +622,7 @@ async def get_stuck_executions(
     executions = result.scalars().all()
 
     repo = ExecutionRepository(ctx.db)
-    stuck_executions = [repo._to_pydantic(e) for e in executions]
+    stuck_executions = [repo._to_pydantic(e, ctx.user) for e in executions]
 
     return StuckExecutionsResponse(
         executions=stuck_executions,

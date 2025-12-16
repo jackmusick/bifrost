@@ -33,7 +33,9 @@ import {
 	SelectTrigger,
 	SelectValue,
 } from "@/components/ui/select";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { toast } from "sonner";
+import { Alert, AlertDescription } from "@/components/ui/alert";
 import {
 	Loader2,
 	Key,
@@ -44,6 +46,8 @@ import {
 	Download,
 	ExternalLink,
 	AlertCircle,
+	Terminal,
+	FileText,
 } from "lucide-react";
 import {
 	sdkService,
@@ -61,6 +65,7 @@ export function DeveloperSettings() {
 	const [apiKeys, setApiKeys] = useState<DeveloperApiKey[]>([]);
 	const [organizations, setOrganizations] = useState<Organization[]>([]);
 	const [loading, setLoading] = useState(true);
+	const [error, setError] = useState<string | null>(null);
 	const [saving, setSaving] = useState(false);
 
 	// Create key dialog state
@@ -79,7 +84,7 @@ export function DeveloperSettings() {
 	const [revoking, setRevoking] = useState(false);
 
 	// Form state
-	const [selectedOrg, setSelectedOrg] = useState<string>("");
+	const [selectedOrg, setSelectedOrg] = useState<string>("__none__");
 	const [trackExecutions, setTrackExecutions] = useState(true);
 
 	// Load data
@@ -98,10 +103,11 @@ export function DeveloperSettings() {
 				setOrganizations(orgsData);
 
 				// Set form defaults
-				setSelectedOrg(contextData.organization?.id || "");
+				setSelectedOrg(contextData.organization?.id || "__none__");
 				setTrackExecutions(contextData.track_executions);
-			} catch (error) {
-				console.error("Failed to load developer settings:", error);
+			} catch (err) {
+				console.error("Failed to load developer settings:", err);
+				setError("Failed to load developer settings. Please try again.");
 				toast.error("Failed to load developer settings");
 			} finally {
 				setLoading(false);
@@ -116,7 +122,7 @@ export function DeveloperSettings() {
 		setSaving(true);
 		try {
 			const updated = await sdkService.updateContext({
-				default_org_id: selectedOrg || null,
+				default_org_id: selectedOrg === "__none__" ? null : selectedOrg,
 				track_executions: trackExecutions,
 			});
 			setContext(updated);
@@ -199,11 +205,35 @@ export function DeveloperSettings() {
 		setCreatedKey(null);
 	};
 
+	// Retry function for error state
+	const handleRetry = () => {
+		setError(null);
+		setLoading(true);
+		// Re-trigger useEffect by forcing a re-render (the useEffect will run again)
+		window.location.reload();
+	};
+
 	if (loading) {
 		return (
 			<div className="flex items-center justify-center py-12">
 				<Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
 			</div>
+		);
+	}
+
+	if (error) {
+		return (
+			<Card>
+				<CardContent className="p-6">
+					<Alert variant="destructive">
+						<AlertCircle className="h-4 w-4" />
+						<AlertDescription>{error}</AlertDescription>
+					</Alert>
+					<Button onClick={handleRetry} className="mt-4">
+						Retry
+					</Button>
+				</CardContent>
+			</Card>
 		);
 	}
 
@@ -235,7 +265,7 @@ export function DeveloperSettings() {
 									<p>Install the SDK:</p>
 									<code className="block mt-1 p-2 bg-background rounded text-xs">
 										pip install {window.location.origin}
-										/api/sdk/download
+										/api/cli/download
 									</code>
 								</div>
 							</div>
@@ -399,7 +429,7 @@ export function DeveloperSettings() {
 								<SelectValue placeholder="Select organization" />
 							</SelectTrigger>
 							<SelectContent>
-								<SelectItem value="">
+								<SelectItem value="__none__">
 									None (personal)
 								</SelectItem>
 								{organizations.map((org) => (
@@ -448,7 +478,7 @@ export function DeveloperSettings() {
 
 			{/* Create Key Dialog */}
 			<Dialog open={showCreateKey} onOpenChange={handleCloseCreateDialog}>
-				<DialogContent>
+				<DialogContent className="max-w-2xl">
 					<DialogHeader>
 						<DialogTitle>
 							{createdKey ? "API Key Created" : "Create API Key"}
@@ -497,13 +527,86 @@ export function DeveloperSettings() {
 								</div>
 							</div>
 
-							<div className="rounded-lg bg-muted p-3 space-y-2 text-sm">
-								<p className="font-medium">
-									Set in your environment:
+							<div className="space-y-2">
+								<p className="text-xs font-medium text-muted-foreground uppercase tracking-wide">
+									Set in your environment
 								</p>
-								<code className="block text-xs">
-									export BIFROST_DEV_KEY="{createdKey.key}"
-								</code>
+								<Tabs defaultValue="terminal" className="w-full">
+									<TabsList className="w-full">
+										<TabsTrigger
+											value="terminal"
+											className="flex-1"
+										>
+											<Terminal className="h-3.5 w-3.5 mr-1.5" />
+											Terminal
+										</TabsTrigger>
+										<TabsTrigger
+											value="dotenv"
+											className="flex-1"
+										>
+											<FileText className="h-3.5 w-3.5 mr-1.5" />
+											.env
+										</TabsTrigger>
+									</TabsList>
+									<TabsContent value="terminal">
+										<div className="relative rounded-md bg-muted overflow-hidden">
+											<pre className="p-3 pr-10 text-xs overflow-x-auto">
+												<code>{`export BIFROST_DEV_URL="${window.location.origin}"
+export BIFROST_DEV_KEY="${createdKey.key}"`}</code>
+											</pre>
+											<Button
+												variant="ghost"
+												size="icon"
+												className="absolute top-1.5 right-1.5 h-7 w-7"
+												onClick={() => {
+													navigator.clipboard.writeText(
+														`export BIFROST_DEV_URL="${window.location.origin}"\nexport BIFROST_DEV_KEY="${createdKey.key}"`,
+													);
+													toast.success(
+														"Copied to clipboard",
+													);
+												}}
+											>
+												<Copy className="h-3.5 w-3.5" />
+											</Button>
+										</div>
+										<p className="text-xs text-muted-foreground mt-2">
+											Run these commands in your terminal
+											session.
+										</p>
+									</TabsContent>
+									<TabsContent value="dotenv">
+										<div className="relative rounded-md bg-muted overflow-hidden">
+											<pre className="p-3 pr-10 text-xs overflow-x-auto">
+												<code>{`BIFROST_DEV_URL=${window.location.origin}
+BIFROST_DEV_KEY=${createdKey.key}`}</code>
+											</pre>
+											<Button
+												variant="ghost"
+												size="icon"
+												className="absolute top-1.5 right-1.5 h-7 w-7"
+												onClick={() => {
+													navigator.clipboard.writeText(
+														`BIFROST_DEV_URL=${window.location.origin}\nBIFROST_DEV_KEY=${createdKey.key}`,
+													);
+													toast.success(
+														"Copied to clipboard",
+													);
+												}}
+											>
+												<Copy className="h-3.5 w-3.5" />
+											</Button>
+										</div>
+										<p className="text-xs text-muted-foreground mt-2">
+											Add these lines to your{" "}
+											<code className="bg-muted px-1 rounded">
+												.env
+											</code>{" "}
+											file. The SDK loads it
+											automatically.
+										</p>
+									</TabsContent>
+								</Tabs>
 							</div>
 						</div>
 					) : (

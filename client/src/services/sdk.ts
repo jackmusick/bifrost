@@ -63,7 +63,7 @@ export interface UpdateContextRequest {
 // =============================================================================
 
 export async function getContext(): Promise<DeveloperContext> {
-	const response = await authFetch("/api/sdk/context");
+	const response = await authFetch("/api/cli/context");
 	if (!response.ok) {
 		throw new Error(`Failed to get context: ${response.statusText}`);
 	}
@@ -73,7 +73,7 @@ export async function getContext(): Promise<DeveloperContext> {
 export async function updateContext(
 	data: UpdateContextRequest,
 ): Promise<DeveloperContext> {
-	const response = await authFetch("/api/sdk/context", {
+	const response = await authFetch("/api/cli/context", {
 		method: "PUT",
 		body: JSON.stringify(data),
 	});
@@ -88,7 +88,7 @@ export async function updateContext(
 // =============================================================================
 
 export async function listApiKeys(): Promise<DeveloperApiKey[]> {
-	const response = await authFetch("/api/sdk/keys");
+	const response = await authFetch("/api/cli/keys");
 	if (!response.ok) {
 		throw new Error(`Failed to list API keys: ${response.statusText}`);
 	}
@@ -99,7 +99,7 @@ export async function listApiKeys(): Promise<DeveloperApiKey[]> {
 export async function createApiKey(
 	data: CreateApiKeyRequest,
 ): Promise<CreateApiKeyResponse> {
-	const response = await authFetch("/api/sdk/keys", {
+	const response = await authFetch("/api/cli/keys", {
 		method: "POST",
 		body: JSON.stringify(data),
 	});
@@ -110,7 +110,7 @@ export async function createApiKey(
 }
 
 export async function revokeApiKey(keyId: string): Promise<void> {
-	const response = await authFetch(`/api/sdk/keys/${keyId}`, {
+	const response = await authFetch(`/api/cli/keys/${keyId}`, {
 		method: "DELETE",
 	});
 	if (!response.ok) {
@@ -123,7 +123,7 @@ export async function revokeApiKey(keyId: string): Promise<void> {
 // =============================================================================
 
 export function getSdkDownloadUrl(): string {
-	return "/api/sdk/download";
+	return "/api/cli/download";
 }
 
 // =============================================================================

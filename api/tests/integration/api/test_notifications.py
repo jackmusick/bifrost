@@ -17,8 +17,6 @@ from src.services.notification_service import (
 )
 from src.core.locks import (
     DistributedLockService,
-    LOCK_KEY_PREFIX,
-    UPLOAD_LOCK_NAME,
 )
 from src.models.contracts.notifications import (
     NotificationCategory,

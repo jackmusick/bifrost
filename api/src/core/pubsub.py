@@ -69,17 +69,19 @@ class ConnectionManager:
     async def broadcast(self, channel: str, message: dict[str, Any]) -> None:
         """
         Broadcast message to all connections on a channel.
-        Also publishes to Redis for cross-instance delivery.
+        Publishes to Redis for cross-instance delivery (including this instance).
 
         Args:
             channel: Channel name
             message: Message payload
         """
-        # Publish to Redis for other instances
-        await self._publish_to_redis(channel, message)
+        # Publish to Redis - the Redis listener will deliver to local connections
+        # This avoids double-delivery (once here, once from Redis listener)
+        published = await self._publish_to_redis(channel, message)
 
-        # Send to local connections
-        await self._send_local(channel, message)
+        # Only send locally if Redis is unavailable (fallback mode)
+        if not published:
+            await self._send_local(channel, message)
 
     async def _send_local(self, channel: str, message: dict[str, Any]) -> None:
         """Send message to local WebSocket connections."""
@@ -99,8 +101,13 @@ class ConnectionManager:
         for ws in dead_connections:
             self.disconnect(ws)
 
-    async def _publish_to_redis(self, channel: str, message: dict[str, Any]) -> None:
-        """Publish message to Redis pub/sub."""
+    async def _publish_to_redis(self, channel: str, message: dict[str, Any]) -> bool:
+        """
+        Publish message to Redis pub/sub.
+
+        Returns:
+            bool: True if successfully published, False otherwise
+        """
         if not self._redis:
             await self._init_redis()
 
@@ -110,8 +117,11 @@ class ConnectionManager:
                     f"bifrost:{channel}",
                     json.dumps(message)
                 )
+                return True
             except Exception as e:
                 logger.warning(f"Failed to publish to Redis: {e}")
+                return False
+        return False
 
     async def _init_redis(self) -> None:
         """Initialize Redis connection and start listener."""
@@ -386,6 +396,60 @@ async def publish_workspace_file_rename(old_path: str, new_path: str) -> None:
         "new_path": new_path,
     }
     await manager._publish_to_redis("workspace:sync", message)
+
+
+# =============================================================================
+# Local Runner Pub/Sub (CLI<->Web Communication)
+# =============================================================================
+
+
+async def publish_local_runner_state_update(
+    user_id: str | UUID,
+    state: dict[str, Any] | None,
+) -> None:
+    """
+    Publish local runner state update.
+
+    Notifies the web UI when CLI registers workflows or state changes.
+
+    Args:
+        user_id: User ID
+        state: Current local runner state (None if no active session)
+    """
+    message = {
+        "type": "local_runner_state_update",
+        "state": state,
+    }
+    await manager.broadcast(f"local-runner:{user_id}", message)
+
+
+# Alias for backwards compatibility
+publish_devrun_state_update = publish_local_runner_state_update
+
+
+async def publish_cli_session_update(
+    user_id: str | UUID,
+    session_id: str,
+    state: dict[str, Any] | None,
+) -> None:
+    """
+    Publish CLI session state update.
+
+    Notifies the web UI when CLI session state changes.
+
+    Args:
+        user_id: User ID
+        session_id: CLI session ID
+        state: Current CLI session state (None if session deleted)
+    """
+    message = {
+        "type": "cli_session_update",
+        "session_id": session_id,
+        "state": state,
+    }
+    # Broadcast to both session-specific and user-level channels
+    await manager.broadcast(f"cli-session:{session_id}", message)
+    await manager.broadcast(f"cli-sessions:{user_id}", message)
 
 
 def publish_workspace_file_write_sync(

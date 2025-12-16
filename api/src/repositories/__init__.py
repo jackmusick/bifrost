@@ -1,5 +1,6 @@
 # Data access layer - PostgreSQL repositories
 from src.repositories.base import BaseRepository
+from src.repositories.cli_sessions import CLISessionRepository
 from src.repositories.data_providers import DataProviderRepository
 from src.repositories.execution_logs import ExecutionLogRepository
 from src.repositories.executions import (
@@ -14,6 +15,7 @@ from src.repositories.workflows import WorkflowRepository
 
 __all__ = [
     "BaseRepository",
+    "CLISessionRepository",
     "DataProviderRepository",
     "ExecutionLogRepository",
     "ExecutionRepository",

@@ -13,10 +13,10 @@ RUN npm ci
 # Don't copy source code - it comes from volume mounts in docker-compose.dev.yml
 # This prevents any risk of stale built code overwriting live source
 
-# Expose Vite dev server port
-EXPOSE 3000
+# Expose port 80 to match production nginx
+EXPOSE 80
 
 # Start Vite dev server with HMR
 # --host 0.0.0.0 allows external connections (needed for Docker)
-# --port 3000 for consistency
-CMD ["npm", "run", "dev", "--", "--host", "0.0.0.0", "--port", "3000"]
+# --port 80 to match production nginx port
+CMD ["npm", "run", "dev", "--", "--host", "0.0.0.0", "--port", "80"]

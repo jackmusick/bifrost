@@ -335,6 +335,8 @@ class WorkflowExecutionConsumer(BaseConsumer):
             status = ExecutionStatus(status_str) if status_str in [s.value for s in ExecutionStatus] else ExecutionStatus.FAILED
 
             # Update execution with result and metrics
+            # Note: logs are NOT passed here - they're persisted via flush_logs_to_postgres()
+            # in engine.py from the Redis Stream (single source of truth per _logging.py)
             await update_execution(
                 execution_id=execution_id,
                 status=status,
@@ -342,7 +344,6 @@ class WorkflowExecutionConsumer(BaseConsumer):
                 error_message=result.get("error_message"),
                 error_type=result.get("error_type"),
                 duration_ms=result.get("duration_ms", 0),
-                logs=result.get("logs", []),
                 variables=result.get("variables"),
                 metrics=result.get("metrics"),
             )

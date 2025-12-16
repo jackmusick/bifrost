@@ -81,6 +81,21 @@ async def websocket_connect(
         elif channel.startswith("history:"):
             # History channels for real-time updates
             allowed_channels.append(channel)
+        elif channel.startswith("local-runner:"):
+            # Local runner channels - users can subscribe to their own
+            if channel == f"local-runner:{user.user_id}":
+                allowed_channels.append(channel)
+        elif channel.startswith("devrun:"):
+            # Legacy dev run channels - users can subscribe to their own
+            if channel == f"devrun:{user.user_id}":
+                allowed_channels.append(channel)
+        elif channel.startswith("cli-session:"):
+            # CLI session channels - allow all (session ownership validated elsewhere)
+            allowed_channels.append(channel)
+        elif channel.startswith("cli-sessions:"):
+            # CLI sessions list channel - users can subscribe to their own
+            if channel == f"cli-sessions:{user.user_id}":
+                allowed_channels.append(channel)
         elif channel == "system":
             allowed_channels.append(channel)
 
@@ -109,7 +124,7 @@ async def websocket_connect(
                 new_channels = data.get("channels", [])
                 for channel in new_channels:
                     # Validate and add subscription
-                    if channel.startswith("execution:"):
+                    if channel.startswith("execution:") or channel.startswith("cli-session:"):
                         if channel not in manager.connections:
                             manager.connections[channel] = set()
                         manager.connections[channel].add(websocket)

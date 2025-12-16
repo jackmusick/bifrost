@@ -39,8 +39,9 @@ from src.routers import (
     github_router,
     oauth_connections_router,
     endpoints_router,
-    sdk_router,
+    cli_router,
     notifications_router,
+    profile_router,
 )
 
 # Configure logging
@@ -167,8 +168,6 @@ def create_app() -> FastAPI:
     Returns:
         Configured FastAPI application instance
     """
-    settings = get_settings()
-
     app = FastAPI(
         title="Bifrost API",
         description="MSP automation platform API",
@@ -211,8 +210,9 @@ def create_app() -> FastAPI:
     app.include_router(github_router)
     app.include_router(oauth_connections_router)
     app.include_router(endpoints_router)
-    app.include_router(sdk_router)
+    app.include_router(cli_router)
     app.include_router(notifications_router)
+    app.include_router(profile_router)
 
     # Root endpoint
     @app.get("/")

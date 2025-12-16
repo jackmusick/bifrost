@@ -179,7 +179,7 @@ class files:
             # API call (external mode)
             client = _get_client()
             response = await client.post(
-                "/api/sdk/files/read",
+                "/api/cli/files/read",
                 json={"path": path, "location": location}
             )
             response.raise_for_status()
@@ -222,7 +222,7 @@ class files:
             # API call (external mode)
             client = _get_client()
             response = await client.post(
-                "/api/sdk/files/read",
+                "/api/cli/files/read",
                 json={"path": path, "location": location}
             )
             response.raise_for_status()
@@ -256,7 +256,7 @@ class files:
             # API call (external mode)
             client = _get_client()
             response = await client.post(
-                "/api/sdk/files/write",
+                "/api/cli/files/write",
                 json={"path": path, "content": content, "location": location}
             )
             response.raise_for_status()
@@ -290,7 +290,7 @@ class files:
             import base64
             client = _get_client()
             response = await client.post(
-                "/api/sdk/files/write",
+                "/api/cli/files/write",
                 json={"path": path, "content": base64.b64encode(content).decode(), "location": location}
             )
             response.raise_for_status()
@@ -330,7 +330,7 @@ class files:
             # API call (external mode)
             client = _get_client()
             response = await client.post(
-                "/api/sdk/files/list",
+                "/api/cli/files/list",
                 json={"directory": directory, "location": location}
             )
             response.raise_for_status()
@@ -367,7 +367,7 @@ class files:
             # API call (external mode)
             client = _get_client()
             response = await client.post(
-                "/api/sdk/files/delete",
+                "/api/cli/files/delete",
                 json={"path": path, "location": location}
             )
             response.raise_for_status()
@@ -405,7 +405,7 @@ class files:
             try:
                 client = _get_client()
                 response = await client.post(
-                    "/api/sdk/files/read",
+                    "/api/cli/files/read",
                     json={"path": path, "location": location}
                 )
                 return response.status_code == 200

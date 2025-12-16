@@ -41,14 +41,16 @@ class TestSDKContextProtection:
                 await config.get("test_key")
 
     async def test_oauth_requires_context(self):
-        """Test that oauth SDK requires execution context"""
+        """Test that oauth SDK requires execution context in external mode (no API key)"""
         from bifrost import oauth
+        from unittest.mock import patch
 
         clear_execution_context()
 
-        # Without execution context, should raise RuntimeError
-        with pytest.raises(RuntimeError, match="No execution context found"):
-            await oauth.get("microsoft")
+        # In external mode without API key configured, should raise RuntimeError
+        with patch.dict('os.environ', {'BIFROST_DEV_URL': '', 'BIFROST_DEV_KEY': ''}, clear=False):
+            with pytest.raises(RuntimeError, match="BIFROST_DEV_URL and BIFROST_DEV_KEY"):
+                await oauth.get("microsoft")
 
 
 class TestDefaultOrgScoping:
@@ -286,8 +288,8 @@ class TestCrossOrgParameterUsage:
         set_execution_context(context)
 
         try:
-            # Mock get_redis - oauth imports it at module level, so patch where imported
-            with patch('bifrost.oauth.get_redis') as mock_get_redis:
+            # Mock get_redis - oauth imports it inside the function, so patch at source
+            with patch('src.core.cache.get_redis') as mock_get_redis:
                 mock_redis = AsyncMock()
 
                 # Create cached OAuth data as JSON

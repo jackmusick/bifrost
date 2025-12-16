@@ -13,6 +13,7 @@ import {
 	AlertCircle,
 	Info,
 	Eye,
+	Terminal,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
@@ -31,6 +32,8 @@ import {
 	TableRow,
 } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
+import { Checkbox } from "@/components/ui/checkbox";
+import { Label } from "@/components/ui/label";
 import {
 	Tooltip,
 	TooltipContent,
@@ -104,6 +107,7 @@ export function ExecutionHistory() {
 	);
 	const [loadingStuck, setLoadingStuck] = useState(false);
 	const [cleaningUp, setCleaningUp] = useState(false);
+	const [showLocal, setShowLocal] = useState(false);
 	const isGlobalScope = useScopeStore((state) => state.isGlobalScope);
 	const orgId = useScopeStore((state) => state.scope.orgId);
 
@@ -118,10 +122,13 @@ export function ExecutionHistory() {
 	// const { data: organization } = useOrganizations()
 	// const organizations = organization ? [organization] : []
 
-	// Build filters including date range
+	// Build filters including date range and local executions toggle
 	const filters = useMemo(() => {
-		const baseFilters =
+		const baseFilters: Record<string, string | boolean> =
 			statusFilter !== "all" ? { status: statusFilter as string } : {};
+
+		// Add excludeLocal filter (inverse of showLocal)
+		baseFilters.excludeLocal = !showLocal;
 
 		if (dateRange?.from) {
 			// Set start to beginning of day (00:00:00)
@@ -141,7 +148,7 @@ export function ExecutionHistory() {
 		}
 
 		return baseFilters;
-	}, [statusFilter, dateRange]);
+	}, [statusFilter, dateRange, showLocal]);
 
 	const {
 		data: response,
@@ -342,7 +349,7 @@ export function ExecutionHistory() {
 	useEffect(() => {
 		setPageStack([]);
 		setCurrentToken(undefined);
-	}, [statusFilter, dateRange]);
+	}, [statusFilter, dateRange, showLocal]);
 
 	return (
 		<div className="flex flex-col h-[calc(100vh-8rem)] space-y-6">
@@ -564,6 +571,23 @@ export function ExecutionHistory() {
 									dateRange={dateRange}
 									onDateRangeChange={setDateRange}
 								/>
+
+								{/* Show Local Executions Toggle */}
+								<div className="flex items-center gap-2">
+									<Checkbox
+										id="show-local"
+										checked={showLocal}
+										onCheckedChange={(checked) =>
+											setShowLocal(checked === true)
+										}
+									/>
+									<Label
+										htmlFor="show-local"
+										className="text-sm font-normal cursor-pointer whitespace-nowrap"
+									>
+										Show Local Executions
+									</Label>
+								</div>
 							</div>
 
 							{/* Filter Tabs */}
@@ -679,9 +703,41 @@ export function ExecutionHistory() {
 																	</TableCell>
 																)}
 																<TableCell className="font-mono text-sm">
-																	{
-																		execution.workflow_name
-																	}
+																	<div className="flex items-center gap-2">
+																		{
+																			execution.workflow_name
+																		}
+																		{execution.session_id && (
+																			<TooltipProvider>
+																				<Tooltip>
+																					<TooltipTrigger
+																						asChild
+																					>
+																						<Button
+																							variant="ghost"
+																							size="icon"
+																							className="h-6 w-6 text-muted-foreground hover:text-primary"
+																							onClick={(
+																								e,
+																							) => {
+																								e.stopPropagation();
+																								navigate(
+																									`/cli/${execution.session_id}`,
+																								);
+																							}}
+																						>
+																							<Terminal className="h-4 w-4" />
+																						</Button>
+																					</TooltipTrigger>
+																					<TooltipContent side="right">
+																						<p className="text-sm">
+																							Dev run - Click to view session
+																						</p>
+																					</TooltipContent>
+																				</Tooltip>
+																			</TooltipProvider>
+																		)}
+																	</div>
 																</TableCell>
 																<TableCell>
 																	<div className="flex items-center gap-2">

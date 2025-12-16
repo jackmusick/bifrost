@@ -74,7 +74,14 @@
       "Bash(fi)",
       "Bash(TEST_API_URL=http://localhost:8000 npx playwright test:*)",
       "Bash(TEST_API_URL=http://localhost:8000 TEST_BASE_URL=http://localhost:3000 npx playwright test:*)",
-      "WebFetch(domain:docs.github.com)"
+      "WebFetch(domain:docs.github.com)",
+      "WebFetch(domain:1password.community)",
+      "WebFetch(domain:www.1password.community)",
+      "Bash(for:*)",
+      "Bash(do if curl -s http://localhost:8000/health)",
+      "Bash(then echo \"API is ready\")",
+      "Bash(break)",
+      "Bash(done)"
     ],
     "deny": [],
     "ask": [],

@@ -76,6 +76,9 @@ const Schedules = lazy(() =>
 const Settings = lazy(() =>
 	import("@/pages/Settings").then((m) => ({ default: m.Settings })),
 );
+const UserSettings = lazy(() =>
+	import("@/pages/UserSettings").then((m) => ({ default: m.UserSettings })),
+);
 const SystemLogs = lazy(() => import("@/pages/SystemLogs"));
 const Login = lazy(() =>
 	import("@/pages/Login").then((m) => ({ default: m.Login })),
@@ -88,6 +91,15 @@ const MFASetup = lazy(() =>
 );
 const AuthCallback = lazy(() =>
 	import("@/pages/AuthCallback").then((m) => ({ default: m.AuthCallback })),
+);
+const DevRun = lazy(() =>
+	import("@/pages/DevRun").then((m) => ({ default: m.DevRun })),
+);
+const CLI = lazy(() =>
+	import("@/pages/CLI").then((m) => ({ default: m.CLI })),
+);
+const Workbench = lazy(() =>
+	import("@/pages/Workbench").then((m) => ({ default: m.Workbench })),
 );
 
 function AppRoutes() {
@@ -310,10 +322,58 @@ function AppRoutes() {
 								</ProtectedRoute>
 							}
 						/>
+
+						{/* User Settings - All authenticated users */}
+						<Route
+							path="user-settings"
+							element={
+								<ProtectedRoute>
+									<UserSettings />
+								</ProtectedRoute>
+							}
+						/>
+						<Route
+							path="user-settings/:tab"
+							element={
+								<ProtectedRoute>
+									<UserSettings />
+								</ProtectedRoute>
+							}
+						/>
+
+						{/* Dev Run - PlatformAdmin only (CLI<->Web workflow execution) */}
+						{/* Legacy route - kept for backwards compatibility */}
+						<Route
+							path="dev/run"
+							element={
+								<ProtectedRoute requirePlatformAdmin>
+									<DevRun />
+								</ProtectedRoute>
+							}
+						/>
+
+						{/* CLI Sessions - PlatformAdmin only */}
+						<Route
+							path="cli"
+							element={
+								<ProtectedRoute requirePlatformAdmin>
+									<CLI />
+								</ProtectedRoute>
+							}
+						/>
 					</Route>
 
 					{/* ContentLayout - Pages without default padding */}
 					<Route path="/" element={<ContentLayout />}>
+						{/* Workbench (CLI Session Detail) - PlatformAdmin only */}
+						<Route
+							path="cli/:sessionId"
+							element={
+								<ProtectedRoute requirePlatformAdmin>
+									<Workbench />
+								</ProtectedRoute>
+							}
+						/>
 						{/* Execution Details - PlatformAdmin or OrgUser */}
 						<Route
 							path="history/:executionId"

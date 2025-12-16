@@ -2,13 +2,21 @@
 Bifrost SDK Client
 
 HTTP client for Bifrost API communication.
-Auto-initializes from environment variables.
+Auto-initializes from environment variables or .env file.
 """
 
 import os
 from typing import Any
 
 import httpx
+
+# Auto-load .env file if present (for local development)
+try:
+    from dotenv import load_dotenv
+
+    load_dotenv()
+except ImportError:
+    pass  # dotenv not installed, rely on environment variables
 
 
 class BifrostClient:
@@ -76,7 +84,7 @@ class BifrostClient:
     def _fetch_context_sync(self) -> dict[str, Any]:
         """Fetch development context synchronously."""
         if self._context is None:
-            response = self._sync_http.get("/api/sdk/context")
+            response = self._sync_http.get("/api/cli/context")
             response.raise_for_status()
             self._context = response.json()
         return self._context or {}
@@ -84,7 +92,7 @@ class BifrostClient:
     async def _fetch_context(self) -> dict[str, Any]:
         """Fetch development context."""
         if self._context is None:
-            response = await self._http.get("/api/sdk/context")
+            response = await self._http.get("/api/cli/context")
             response.raise_for_status()
             self._context = response.json()
         return self._context or {}

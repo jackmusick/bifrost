@@ -21,7 +21,6 @@ import redis.asyncio as redis
 from src.config import get_settings
 from src.core.pubsub import manager as pubsub_manager
 from src.models.contracts.notifications import (
-    NotificationCategory,
     NotificationCreate,
     NotificationPublic,
     NotificationStatus,

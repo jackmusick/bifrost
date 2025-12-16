@@ -22,8 +22,9 @@ from src.routers.packages import router as packages_router
 from src.routers.github import router as github_router
 from src.routers.oauth_connections import router as oauth_connections_router
 from src.routers.endpoints import router as endpoints_router
-from src.routers.sdk import router as sdk_router
+from src.routers.cli import router as cli_router
 from src.routers.notifications import router as notifications_router
+from src.routers.profile import router as profile_router
 
 __all__ = [
     "auth_router",
@@ -49,6 +50,7 @@ __all__ = [
     "github_router",
     "oauth_connections_router",
     "endpoints_router",
-    "sdk_router",
+    "cli_router",
     "notifications_router",
+    "profile_router",
 ]

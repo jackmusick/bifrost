@@ -78,8 +78,19 @@ interface ExecutionLogEntry {
 	data?: Record<string, unknown>;
 }
 
-export function ExecutionDetails() {
-	const { executionId } = useParams();
+interface ExecutionDetailsProps {
+	/** Execution ID - if not provided, uses URL param */
+	executionId?: string;
+	/** Embedded mode - hides navigation header for use in panels */
+	embedded?: boolean;
+}
+
+export function ExecutionDetails({
+	executionId: propExecutionId,
+	embedded = false,
+}: ExecutionDetailsProps = {}) {
+	const { executionId: urlExecutionId } = useParams();
+	const executionId = propExecutionId || urlExecutionId;
 	const navigate = useNavigate();
 	const { isPlatformAdmin } = useAuth();
 	const queryClient = useQueryClient();
@@ -171,8 +182,13 @@ export function ExecutionDetails() {
 	// Wrap onComplete in useCallback to prevent infinite loop
 	const handleStreamComplete = useCallback(() => {
 		// Refetch full execution data when complete
+		// Use openapi-react-query's query key format
 		queryClient.invalidateQueries({
-			queryKey: ["executions", executionId],
+			queryKey: [
+				"get",
+				"/api/executions/{execution_id}",
+				{ params: { path: { execution_id: executionId } } },
+			],
 		});
 	}, [queryClient, executionId]);
 
@@ -186,8 +202,13 @@ export function ExecutionDetails() {
 	// Update execution status optimistically from stream
 	useEffect(() => {
 		if (streamState && executionId) {
+			// Use openapi-react-query's query key format
 			queryClient.setQueryData(
-				["executions", executionId],
+				[
+					"get",
+					"/api/executions/{execution_id}",
+					{ params: { path: { execution_id: executionId } } },
+				],
 				(old: unknown) => {
 					if (!old || typeof old !== "object") return old;
 					return {
@@ -348,9 +369,13 @@ export function ExecutionDetails() {
 				`Cancellation requested for ${execution.workflow_name}`,
 			);
 			setShowCancelDialog(false);
-			// Refetch to show updated status
+			// Refetch to show updated status - use openapi-react-query's query key format
 			queryClient.invalidateQueries({
-				queryKey: ["executions", executionId],
+				queryKey: [
+					"get",
+					"/api/executions/{execution_id}",
+					{ params: { path: { execution_id: executionId } } },
+				],
 			});
 		} catch (error) {
 			toast.error(`Failed to cancel execution: ${error}`);
@@ -461,6 +486,13 @@ export function ExecutionDetails() {
 	};
 
 	if (isLoading) {
+		if (embedded) {
+			return (
+				<div className="flex items-center justify-center h-full p-8">
+					<Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
+				</div>
+			);
+		}
 		return <PageLoader message="Loading execution details..." />;
 	}
 
@@ -468,6 +500,16 @@ export function ExecutionDetails() {
 	// The execution may be in Redis pending but not yet in PostgreSQL
 	// Show a waiting state instead of immediate error
 	if (!execution && !error) {
+		if (embedded) {
+			return (
+				<div className="flex flex-col items-center justify-center h-full p-8 text-center">
+					<Loader2 className="h-12 w-12 text-muted-foreground animate-spin" />
+					<p className="text-sm text-muted-foreground mt-4">
+						Waiting for execution to start...
+					</p>
+				</div>
+			);
+		}
 		return (
 			<div className="flex items-center justify-center min-h-[60vh] p-6">
 				<motion.div
@@ -494,6 +536,18 @@ export function ExecutionDetails() {
 	}
 
 	if (error || !execution) {
+		if (embedded) {
+			return (
+				<div className="flex flex-col items-center justify-center h-full p-8 text-center">
+					<XCircle className="h-12 w-12 text-destructive" />
+					<p className="text-sm text-destructive mt-4">
+						{error
+							? "Failed to load execution"
+							: "Execution not found"}
+					</p>
+				</div>
+			);
+		}
 		return (
 			<div className="flex items-center justify-center min-h-[60vh] p-6">
 				<motion.div
@@ -529,77 +583,79 @@ export function ExecutionDetails() {
 	}
 
 	return (
-		<div className="h-full overflow-y-auto">
-			{/* Page Header */}
-			<div className="sticky top-0 bg-background/80 backdrop-blur-sm py-6 border-b flex items-center gap-4 px-6 lg:px-8 z-10">
-				<Button
-					variant="ghost"
-					size="icon"
-					onClick={() => navigate("/history")}
-				>
-					<ArrowLeft className="h-4 w-4" />
-				</Button>
-				<div className="flex-1">
-					<h1 className="text-4xl font-extrabold tracking-tight">
-						Execution Details
-					</h1>
-					<p className="mt-2 text-muted-foreground">
-						Execution ID:{" "}
-						<span className="font-mono">
-							{execution.execution_id}
-						</span>
-					</p>
+		<div className={embedded ? "h-full overflow-y-auto" : "h-full overflow-y-auto"}>
+			{/* Page Header - hidden in embedded mode */}
+			{!embedded && (
+				<div className="sticky top-0 bg-background/80 backdrop-blur-sm py-6 border-b flex items-center gap-4 px-6 lg:px-8 z-10">
+					<Button
+						variant="ghost"
+						size="icon"
+						onClick={() => navigate("/history")}
+					>
+						<ArrowLeft className="h-4 w-4" />
+					</Button>
+					<div className="flex-1">
+						<h1 className="text-4xl font-extrabold tracking-tight">
+							Execution Details
+						</h1>
+						<p className="mt-2 text-muted-foreground">
+							Execution ID:{" "}
+							<span className="font-mono">
+								{execution.execution_id}
+							</span>
+						</p>
+					</div>
+					<div className="flex gap-2">
+						{/* Open in Editor button - show for workflows with source files */}
+						{metadata?.workflows?.find(
+							(w: WorkflowMetadata) =>
+								w.name === execution.workflow_name,
+						)?.source_file_path && (
+							<Button
+								variant="outline"
+								onClick={handleOpenInEditor}
+								disabled={isOpeningInEditor}
+							>
+								{isOpeningInEditor ? (
+									<Loader2 className="mr-2 h-4 w-4 animate-spin" />
+								) : (
+									<Code2 className="mr-2 h-4 w-4" />
+								)}
+								Open in Editor
+							</Button>
+						)}
+						{/* Rerun button - show when complete */}
+						{isComplete && (
+							<Button
+								variant="outline"
+								onClick={() => setShowRerunDialog(true)}
+								disabled={isRerunning}
+							>
+								{isRerunning ? (
+									<Loader2 className="mr-2 h-4 w-4 animate-spin" />
+								) : (
+									<RefreshCw className="mr-2 h-4 w-4" />
+								)}
+								Rerun
+							</Button>
+						)}
+						{/* Cancel button - show when running/pending */}
+						{(execution.status === "Running" ||
+							execution.status === "Pending") && (
+							<Button
+								variant="outline"
+								onClick={() => setShowCancelDialog(true)}
+							>
+								<XCircle className="mr-2 h-4 w-4" />
+								Cancel
+							</Button>
+						)}
+					</div>
 				</div>
-				<div className="flex gap-2">
-					{/* Open in Editor button - show for workflows with source files */}
-					{metadata?.workflows?.find(
-						(w: WorkflowMetadata) =>
-							w.name === execution.workflow_name,
-					)?.source_file_path && (
-						<Button
-							variant="outline"
-							onClick={handleOpenInEditor}
-							disabled={isOpeningInEditor}
-						>
-							{isOpeningInEditor ? (
-								<Loader2 className="mr-2 h-4 w-4 animate-spin" />
-							) : (
-								<Code2 className="mr-2 h-4 w-4" />
-							)}
-							Open in Editor
-						</Button>
-					)}
-					{/* Rerun button - show when complete */}
-					{isComplete && (
-						<Button
-							variant="outline"
-							onClick={() => setShowRerunDialog(true)}
-							disabled={isRerunning}
-						>
-							{isRerunning ? (
-								<Loader2 className="mr-2 h-4 w-4 animate-spin" />
-							) : (
-								<RefreshCw className="mr-2 h-4 w-4" />
-							)}
-							Rerun
-						</Button>
-					)}
-					{/* Cancel button - show when running/pending */}
-					{(execution.status === "Running" ||
-						execution.status === "Pending") && (
-						<Button
-							variant="outline"
-							onClick={() => setShowCancelDialog(true)}
-						>
-							<XCircle className="mr-2 h-4 w-4" />
-							Cancel
-						</Button>
-					)}
-				</div>
-			</div>
+			)}
 
 			{/* Two-column layout: Content on left, Sidebar on right */}
-			<div className="p-6 lg:p-8">
+			<div className={embedded ? "p-4" : "p-6 lg:p-8"}>
 				<div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
 					{/* Left Column - Main Content (2/3 width) */}
 					<div className="lg:col-span-2 space-y-6">
@@ -801,10 +857,9 @@ export function ExecutionDetails() {
 											executionStatus === "Pending" ||
 											executionStatus === "Cancelling"
 										) {
-											// Combine existing logs with streaming updates
+											// Combine API logs with real-time streaming logs
 											const existingLogs =
-												(logsData as ExecutionLogEntry[]) ||
-												[];
+												(logsData as ExecutionLogEntry[]) || [];
 											const logsToDisplay = [
 												...existingLogs,
 												...streamingLogs,
@@ -823,7 +878,7 @@ export function ExecutionDetails() {
 
 											if (
 												isLoadingLogs &&
-												existingLogs.length === 0
+												logsToDisplay.length === 0
 											) {
 												return (
 													<div className="text-center text-muted-foreground py-8">

@@ -22,6 +22,8 @@ export function useExecutions(
 	if (filters?.start_date) queryParams["start_date"] = filters.start_date;
 	if (filters?.end_date) queryParams["end_date"] = filters.end_date;
 	if (filters?.limit) queryParams["limit"] = filters.limit.toString();
+	if (filters?.excludeLocal !== undefined)
+		queryParams["excludeLocal"] = filters.excludeLocal.toString();
 	if (continuationToken)
 		queryParams["continuation_token"] = continuationToken;
 
@@ -40,6 +42,9 @@ export function useExecution(
 		{ params: { path: { execution_id: executionId! } } },
 		{
 			enabled: !!executionId,
+			// Keep data fresh for 5 seconds to avoid duplicate requests
+			// (e.g., from React Strict Mode double-mounting)
+			staleTime: 5000,
 			// Retry on 404 for a short period (Redis-first architecture)
 			// The execution may be in Redis pending but not yet in PostgreSQL
 			retry: (failureCount, error) => {
@@ -97,7 +102,11 @@ export function useExecutionLogs(
 		"get",
 		"/api/executions/{execution_id}/logs",
 		{ params: { path: { execution_id: executionId! } } },
-		{ enabled: !!executionId && enabled },
+		{
+			enabled: !!executionId && enabled,
+			// Logs don't change once execution is complete
+			staleTime: 30000,
+		},
 	);
 }
 

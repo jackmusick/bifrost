@@ -2314,7 +2314,7 @@ export interface paths {
         put?: never;
         /**
          * Configure GitHub integration
-         * @description Save GitHub repository configuration and initialize sync
+         * @description Queue GitHub repository setup job. Watch notification channel for progress.
          */
         post: operations["configure_github_api_github_configure_post"];
         delete?: never;
@@ -2626,28 +2626,28 @@ export interface paths {
          * Execute workflow via API key
          * @description Execute an endpoint-enabled workflow using an API key for authentication
          */
-        get: operations["execute_endpoint_api_endpoints__workflow_name__post"];
+        get: operations["execute_endpoint_api_endpoints__workflow_name__get"];
         /**
          * Execute workflow via API key
          * @description Execute an endpoint-enabled workflow using an API key for authentication
          */
-        put: operations["execute_endpoint_api_endpoints__workflow_name__post"];
+        put: operations["execute_endpoint_api_endpoints__workflow_name__get"];
         /**
          * Execute workflow via API key
          * @description Execute an endpoint-enabled workflow using an API key for authentication
          */
-        post: operations["execute_endpoint_api_endpoints__workflow_name__post"];
+        post: operations["execute_endpoint_api_endpoints__workflow_name__get"];
         /**
          * Execute workflow via API key
          * @description Execute an endpoint-enabled workflow using an API key for authentication
          */
-        delete: operations["execute_endpoint_api_endpoints__workflow_name__post"];
+        delete: operations["execute_endpoint_api_endpoints__workflow_name__get"];
         options?: never;
         head?: never;
         patch?: never;
         trace?: never;
     };
-    "/api/sdk/context": {
+    "/api/cli/context": {
         parameters: {
             query?: never;
             header?: never;
@@ -2656,14 +2656,14 @@ export interface paths {
         };
         /**
          * Get developer context
-         * @description Get development context for SDK initialization (requires API key)
+         * @description Get development context for CLI initialization.
          */
-        get: operations["get_dev_context_api_sdk_context_get"];
+        get: operations["get_dev_context_api_cli_context_get"];
         /**
          * Update developer context
-         * @description Update development context settings
+         * @description Update developer context settings.
          */
-        put: operations["update_dev_context_api_sdk_context_put"];
+        put: operations["update_dev_context_api_cli_context_put"];
         post?: never;
         delete?: never;
         options?: never;
@@ -2671,7 +2671,7 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/api/sdk/keys": {
+    "/api/cli/keys": {
         parameters: {
             query?: never;
             header?: never;
@@ -2680,22 +2680,22 @@ export interface paths {
         };
         /**
          * List API keys
-         * @description List all API keys for the current user
+         * @description List all API keys for the current user.
          */
-        get: operations["list_api_keys_api_sdk_keys_get"];
+        get: operations["list_api_keys_api_cli_keys_get"];
         put?: never;
         /**
          * Create API key
-         * @description Create a new API key for SDK authentication
+         * @description Create a new API key.
          */
-        post: operations["create_api_key_api_sdk_keys_post"];
+        post: operations["create_api_key_api_cli_keys_post"];
         delete?: never;
         options?: never;
         head?: never;
         patch?: never;
         trace?: never;
     };
-    "/api/sdk/keys/{key_id}": {
+    "/api/cli/keys/{key_id}": {
         parameters: {
             query?: never;
             header?: never;
@@ -2707,15 +2707,15 @@ export interface paths {
         post?: never;
         /**
          * Delete API key
-         * @description Delete an API key
+         * @description Delete an API key.
          */
-        delete: operations["delete_api_key_api_sdk_keys__key_id__delete"];
+        delete: operations["delete_api_key_api_cli_keys__key_id__delete"];
         options?: never;
         head?: never;
         patch?: never;
         trace?: never;
     };
-    "/api/sdk/keys/{key_id}/revoke": {
+    "/api/cli/keys/{key_id}/revoke": {
         parameters: {
             query?: never;
             header?: never;
@@ -2730,12 +2730,12 @@ export interface paths {
         head?: never;
         /**
          * Revoke API key
-         * @description Revoke (deactivate) an API key without deleting it
+         * @description Revoke an API key (set is_active to False).
          */
-        patch: operations["revoke_api_key_api_sdk_keys__key_id__revoke_patch"];
+        patch: operations["revoke_api_key_api_cli_keys__key_id__revoke_patch"];
         trace?: never;
     };
-    "/api/sdk/files/read": {
+    "/api/cli/files/read": {
         parameters: {
             query?: never;
             header?: never;
@@ -2746,16 +2746,16 @@ export interface paths {
         put?: never;
         /**
          * Read file content
-         * @description Read a file from workspace or temp storage (requires API key)
+         * @description Read a file via CLI API.
          */
-        post: operations["sdk_read_file_api_sdk_files_read_post"];
+        post: operations["cli_read_file_api_cli_files_read_post"];
         delete?: never;
         options?: never;
         head?: never;
         patch?: never;
         trace?: never;
     };
-    "/api/sdk/files/write": {
+    "/api/cli/files/write": {
         parameters: {
             query?: never;
             header?: never;
@@ -2766,16 +2766,16 @@ export interface paths {
         put?: never;
         /**
          * Write file content
-         * @description Write content to a file in workspace or temp storage (requires API key)
+         * @description Write a file via CLI API.
          */
-        post: operations["sdk_write_file_api_sdk_files_write_post"];
+        post: operations["cli_write_file_api_cli_files_write_post"];
         delete?: never;
         options?: never;
         head?: never;
         patch?: never;
         trace?: never;
     };
-    "/api/sdk/files/list": {
+    "/api/cli/files/list": {
         parameters: {
             query?: never;
             header?: never;
@@ -2786,16 +2786,16 @@ export interface paths {
         put?: never;
         /**
          * List files in directory
-         * @description List files in a directory (requires API key)
+         * @description List files in a directory via CLI API.
          */
-        post: operations["sdk_list_files_api_sdk_files_list_post"];
+        post: operations["cli_list_files_api_cli_files_list_post"];
         delete?: never;
         options?: never;
         head?: never;
         patch?: never;
         trace?: never;
     };
-    "/api/sdk/files/delete": {
+    "/api/cli/files/delete": {
         parameters: {
             query?: never;
             header?: never;
@@ -2806,16 +2806,16 @@ export interface paths {
         put?: never;
         /**
          * Delete file or directory
-         * @description Delete a file or directory (requires API key)
+         * @description Delete a file or directory via CLI API.
          */
-        post: operations["sdk_delete_file_api_sdk_files_delete_post"];
+        post: operations["cli_delete_file_api_cli_files_delete_post"];
         delete?: never;
         options?: never;
         head?: never;
         patch?: never;
         trace?: never;
     };
-    "/api/sdk/config/get": {
+    "/api/cli/config/get": {
         parameters: {
             query?: never;
             header?: never;
@@ -2826,16 +2826,16 @@ export interface paths {
         put?: never;
         /**
          * Get config value
-         * @description Get a configuration value from Redis cache (requires API key)
+         * @description Get a config value via CLI API.
          */
-        post: operations["sdk_get_config_api_sdk_config_get_post"];
+        post: operations["cli_get_config_api_cli_config_get_post"];
         delete?: never;
         options?: never;
         head?: never;
         patch?: never;
         trace?: never;
     };
-    "/api/sdk/config/set": {
+    "/api/cli/config/set": {
         parameters: {
             query?: never;
             header?: never;
@@ -2846,16 +2846,16 @@ export interface paths {
         put?: never;
         /**
          * Set config value
-         * @description Set a configuration value (requires API key). Note: For security, this writes directly to the database and invalidates cache.
+         * @description Set a config value via CLI API.
          */
-        post: operations["sdk_set_config_api_sdk_config_set_post"];
+        post: operations["cli_set_config_api_cli_config_set_post"];
         delete?: never;
         options?: never;
         head?: never;
         patch?: never;
         trace?: never;
     };
-    "/api/sdk/config/list": {
+    "/api/cli/config/list": {
         parameters: {
             query?: never;
             header?: never;
@@ -2866,16 +2866,16 @@ export interface paths {
         put?: never;
         /**
          * List config values
-         * @description List all configuration values for an organization (requires API key)
+         * @description List all config values via CLI API.
          */
-        post: operations["sdk_list_config_api_sdk_config_list_post"];
+        post: operations["cli_list_config_api_cli_config_list_post"];
         delete?: never;
         options?: never;
         head?: never;
         patch?: never;
         trace?: never;
     };
-    "/api/sdk/config/delete": {
+    "/api/cli/config/delete": {
         parameters: {
             query?: never;
             header?: never;
@@ -2886,16 +2886,36 @@ export interface paths {
         put?: never;
         /**
          * Delete config value
-         * @description Delete a configuration value (requires API key)
+         * @description Delete a config value via CLI API.
          */
-        post: operations["sdk_delete_config_api_sdk_config_delete_post"];
+        post: operations["cli_delete_config_api_cli_config_delete_post"];
         delete?: never;
         options?: never;
         head?: never;
         patch?: never;
         trace?: never;
     };
-    "/api/sdk/download": {
+    "/api/cli/oauth/get": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Get OAuth connection data
+         * @description Get OAuth connection data via CLI API.
+         */
+        post: operations["cli_get_oauth_api_cli_oauth_get_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/cli/sessions": {
         parameters: {
             query?: never;
             header?: never;
@@ -2903,12 +2923,341 @@ export interface paths {
             cookie?: never;
         };
         /**
-         * Download SDK package
-         * @description Download the Bifrost SDK as a pip-installable tarball
+         * List user's CLI sessions
+         * @description List all CLI sessions for the current user.
          */
-        get: operations["download_sdk_api_sdk_download_get"];
+        get: operations["list_cli_sessions_api_cli_sessions_get"];
+        put?: never;
+        /**
+         * Register/create a CLI session
+         * @description Register workflows discovered by CLI for web UI.
+         *
+         *     Called by `bifrost run <file>` to register workflows before
+         *     opening the browser to the CLI session page.
+         */
+        post: operations["register_cli_session_api_cli_sessions_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/cli/sessions/{session_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get CLI session state
+         * @description Get current CLI session state for web UI.
+         */
+        get: operations["get_cli_session_api_cli_sessions__session_id__get"];
         put?: never;
         post?: never;
+        /**
+         * Delete CLI session
+         * @description Delete a CLI session.
+         */
+        delete: operations["delete_cli_session_api_cli_sessions__session_id__delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/cli/sessions/{session_id}/continue": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Continue workflow execution
+         * @description Submit parameters to continue workflow execution.
+         *
+         *     Called by web UI when user clicks "Continue".
+         *     Creates a real Execution record and sets pending=True so CLI can pick up.
+         */
+        post: operations["continue_cli_session_api_cli_sessions__session_id__continue_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/cli/sessions/{session_id}/pending": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Poll for pending execution
+         * @description Poll for pending workflow execution.
+         *
+         *     Returns 204 No Content if no execution pending.
+         *     Returns execution_id, params and clears pending flag when execution is ready.
+         */
+        get: operations["get_pending_execution_api_cli_sessions__session_id__pending_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/cli/sessions/{session_id}/heartbeat": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Update session heartbeat
+         * @description Update session's last_seen timestamp (CLI heartbeat).
+         */
+        post: operations["session_heartbeat_api_cli_sessions__session_id__heartbeat_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/cli/sessions/{session_id}/executions/{execution_id}/log": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Stream log entry from CLI
+         * @description Stream a log entry from CLI to the execution.
+         */
+        post: operations["post_cli_log_api_cli_sessions__session_id__executions__execution_id__log_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/cli/sessions/{session_id}/executions/{execution_id}/result": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Post execution result from CLI
+         * @description Post execution result from CLI.
+         */
+        post: operations["post_cli_result_api_cli_sessions__session_id__executions__execution_id__result_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/cli/download": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Download CLI package
+         * @description Download the Bifrost CLI as a pip-installable tarball
+         */
+        get: operations["download_cli_api_cli_download_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/notifications": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Notifications
+         * @description Get all notifications for the current user.
+         *
+         *     Platform admins also receive admin-scoped notifications.
+         *
+         *     Returns:
+         *         List of active notifications
+         */
+        get: operations["list_notifications_api_notifications_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/notifications/{notification_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Notification
+         * @description Get a specific notification by ID.
+         *
+         *     Args:
+         *         notification_id: Notification ID
+         *
+         *     Returns:
+         *         Notification details
+         *
+         *     Raises:
+         *         404 if not found or not owned by user
+         */
+        get: operations["get_notification_api_notifications__notification_id__get"];
+        put?: never;
+        post?: never;
+        /**
+         * Dismiss Notification
+         * @description Dismiss (delete) a notification.
+         *
+         *     Only the owner can dismiss their notification.
+         *
+         *     Args:
+         *         notification_id: Notification ID to dismiss
+         *
+         *     Raises:
+         *         404 if not found or not owned by user
+         */
+        delete: operations["dismiss_notification_api_notifications__notification_id__delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/notifications/locks/upload": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Upload Lock Status
+         * @description Check the current upload lock status (admin only).
+         *
+         *     Used by admins to monitor file uploads and manage locks.
+         *
+         *     Returns:
+         *         Upload lock information
+         */
+        get: operations["get_upload_lock_status_api_notifications_locks_upload_get"];
+        put?: never;
+        post?: never;
+        /**
+         * Force Release Upload Lock
+         * @description Force release the upload lock (admin only).
+         *
+         *     Use this only for stuck locks that didn't release properly.
+         *
+         *     Raises:
+         *         404 if no lock exists
+         */
+        delete: operations["force_release_upload_lock_api_notifications_locks_upload_delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/profile": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get current user profile
+         * @description Get the authenticated user's profile information
+         */
+        get: operations["get_profile_api_profile_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        /**
+         * Update user profile
+         * @description Update the authenticated user's profile information
+         */
+        patch: operations["update_profile_api_profile_patch"];
+        trace?: never;
+    };
+    "/api/profile/avatar": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get user avatar
+         * @description Get the authenticated user's avatar image
+         */
+        get: operations["get_avatar_api_profile_avatar_get"];
+        put?: never;
+        /**
+         * Upload avatar
+         * @description Upload a new avatar image (PNG or JPEG, max 2MB)
+         */
+        post: operations["upload_avatar_api_profile_avatar_post"];
+        /**
+         * Delete avatar
+         * @description Remove the user's avatar
+         */
+        delete: operations["delete_avatar_api_profile_avatar_delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/profile/password": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Change password
+         * @description Change the authenticated user's password
+         */
+        post: operations["change_password_api_profile_password_post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -3116,6 +3465,14 @@ export interface components {
              */
             client_secret?: string | null;
         };
+        /** Body_upload_avatar_api_profile_avatar_post */
+        Body_upload_avatar_api_profile_avatar_post: {
+            /**
+             * File
+             * Format: binary
+             */
+            file: string;
+        };
         /** Body_upload_logo_api_branding_logo__logo_type__post */
         Body_upload_logo_api_branding_logo__logo_type__post: {
             /**
@@ -3156,6 +3513,440 @@ export interface components {
              * @description Primary color (hex code, e.g., #0066CC)
              */
             primary_color?: string | null;
+        };
+        /**
+         * CLIConfigDeleteRequest
+         * @description Request to delete a config value via CLI.
+         */
+        CLIConfigDeleteRequest: {
+            /**
+             * Key
+             * @description Configuration key
+             */
+            key: string;
+            /**
+             * Org Id
+             * @description Organization ID (optional, uses context default)
+             */
+            org_id?: string | null;
+        };
+        /**
+         * CLIConfigGetRequest
+         * @description Request to get a config value via CLI.
+         */
+        CLIConfigGetRequest: {
+            /**
+             * Key
+             * @description Configuration key
+             */
+            key: string;
+            /**
+             * Org Id
+             * @description Organization ID (optional, uses context default)
+             */
+            org_id?: string | null;
+        };
+        /**
+         * CLIConfigListRequest
+         * @description Request to list config values via CLI.
+         */
+        CLIConfigListRequest: {
+            /**
+             * Org Id
+             * @description Organization ID (optional, uses context default)
+             */
+            org_id?: string | null;
+        };
+        /**
+         * CLIConfigSetRequest
+         * @description Request to set a config value via CLI.
+         */
+        CLIConfigSetRequest: {
+            /**
+             * Key
+             * @description Configuration key
+             */
+            key: string;
+            /**
+             * Value
+             * @description Configuration value
+             */
+            value: unknown;
+            /**
+             * Org Id
+             * @description Organization ID (optional, uses context default)
+             */
+            org_id?: string | null;
+            /**
+             * Is Secret
+             * @description Whether to encrypt the value
+             * @default false
+             */
+            is_secret: boolean;
+        };
+        /**
+         * CLIConfigValue
+         * @description Config value response from CLI.
+         */
+        CLIConfigValue: {
+            /**
+             * Key
+             * @description Configuration key
+             */
+            key: string;
+            /**
+             * Value
+             * @description Configuration value
+             */
+            value: unknown;
+            /**
+             * Config Type
+             * @description Type of the config (string, int, bool, json, secret)
+             */
+            config_type: string;
+        };
+        /**
+         * CLIFileDeleteRequest
+         * @description Request to delete a file or directory via CLI.
+         */
+        CLIFileDeleteRequest: {
+            /**
+             * Path
+             * @description Path to file or directory
+             */
+            path: string;
+            /**
+             * Location
+             * @description Storage location
+             * @default workspace
+             * @enum {string}
+             */
+            location: "temp" | "workspace";
+        };
+        /**
+         * CLIFileListRequest
+         * @description Request to list files in a directory via CLI.
+         */
+        CLIFileListRequest: {
+            /**
+             * Directory
+             * @description Directory path (relative)
+             * @default
+             */
+            directory: string;
+            /**
+             * Location
+             * @description Storage location
+             * @default workspace
+             * @enum {string}
+             */
+            location: "temp" | "workspace";
+        };
+        /**
+         * CLIFileReadRequest
+         * @description Request to read a file via CLI.
+         */
+        CLIFileReadRequest: {
+            /**
+             * Path
+             * @description Relative path to file
+             */
+            path: string;
+            /**
+             * Location
+             * @description Storage location
+             * @default workspace
+             * @enum {string}
+             */
+            location: "temp" | "workspace";
+        };
+        /**
+         * CLIFileWriteRequest
+         * @description Request to write a file via CLI.
+         */
+        CLIFileWriteRequest: {
+            /**
+             * Path
+             * @description Relative path to file
+             */
+            path: string;
+            /**
+             * Content
+             * @description File content (text)
+             */
+            content: string;
+            /**
+             * Location
+             * @description Storage location
+             * @default workspace
+             * @enum {string}
+             */
+            location: "temp" | "workspace";
+        };
+        /**
+         * CLIOAuthGetRequest
+         * @description Request to get OAuth connection data via CLI.
+         */
+        CLIOAuthGetRequest: {
+            /**
+             * Provider
+             * @description OAuth provider/connection name
+             */
+            provider: string;
+            /**
+             * Org Id
+             * @description Organization ID (optional, uses context default)
+             */
+            org_id?: string | null;
+        };
+        /**
+         * CLIOAuthGetResponse
+         * @description OAuth connection data response from CLI.
+         */
+        CLIOAuthGetResponse: {
+            /**
+             * Connection Name
+             * @description Connection/provider name
+             */
+            connection_name: string;
+            /**
+             * Client Id
+             * @description OAuth client ID
+             */
+            client_id: string;
+            /**
+             * Client Secret
+             * @description OAuth client secret (decrypted)
+             */
+            client_secret?: string | null;
+            /**
+             * Authorization Url
+             * @description OAuth authorization URL
+             */
+            authorization_url?: string | null;
+            /**
+             * Token Url
+             * @description OAuth token URL
+             */
+            token_url?: string | null;
+            /**
+             * Scopes
+             * @description OAuth scopes
+             */
+            scopes?: string[];
+            /**
+             * Access Token
+             * @description Current access token (decrypted)
+             */
+            access_token?: string | null;
+            /**
+             * Refresh Token
+             * @description Refresh token (decrypted)
+             */
+            refresh_token?: string | null;
+            /**
+             * Expires At
+             * @description Token expiration (ISO format)
+             */
+            expires_at?: string | null;
+        };
+        /**
+         * CLIRegisteredWorkflow
+         * @description Workflow registered by CLI.
+         */
+        CLIRegisteredWorkflow: {
+            /** Name */
+            name: string;
+            /** Description */
+            description: string;
+            /** Parameters */
+            parameters: components["schemas"]["WorkflowParameter"][];
+        };
+        /**
+         * CLISessionContinueRequest
+         * @description Request to continue workflow execution.
+         */
+        CLISessionContinueRequest: {
+            /** Workflow Name */
+            workflow_name: string;
+            /** Params */
+            params: {
+                [key: string]: unknown;
+            };
+        };
+        /**
+         * CLISessionContinueResponse
+         * @description Response when continuing workflow execution.
+         */
+        CLISessionContinueResponse: {
+            /** Status */
+            status: string;
+            /** Execution Id */
+            execution_id: string;
+            /** Workflow */
+            workflow: string;
+        };
+        /**
+         * CLISessionExecutionSummary
+         * @description Summary of an execution within a session.
+         */
+        CLISessionExecutionSummary: {
+            /** Id */
+            id: string;
+            /** Workflow Name */
+            workflow_name: string;
+            /** Status */
+            status: string;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /** Duration Ms */
+            duration_ms?: number | null;
+        };
+        /**
+         * CLISessionListResponse
+         * @description Response for listing CLI sessions.
+         */
+        CLISessionListResponse: {
+            /** Sessions */
+            sessions: components["schemas"]["CLISessionResponse"][];
+        };
+        /**
+         * CLISessionLogRequest
+         * @description Log entry from CLI.
+         */
+        CLISessionLogRequest: {
+            /**
+             * Level
+             * @description Log level: DEBUG, INFO, WARNING, ERROR
+             */
+            level: string;
+            /**
+             * Message
+             * @description Log message
+             */
+            message: string;
+            /**
+             * Timestamp
+             * @description ISO timestamp
+             */
+            timestamp?: string | null;
+            /**
+             * Metadata
+             * @description Additional metadata
+             */
+            metadata?: {
+                [key: string]: unknown;
+            } | null;
+        };
+        /**
+         * CLISessionPendingResponse
+         * @description Response for CLI polling (when execution is pending).
+         */
+        CLISessionPendingResponse: {
+            /** Execution Id */
+            execution_id: string;
+            /** Workflow Name */
+            workflow_name: string;
+            /** Params */
+            params: {
+                [key: string]: unknown;
+            };
+        };
+        /**
+         * CLISessionRegisterRequest
+         * @description Request to register/create a CLI session.
+         */
+        CLISessionRegisterRequest: {
+            /**
+             * Session Id
+             * @description UUID generated by CLI
+             */
+            session_id: string;
+            /**
+             * File Path
+             * @description Absolute path to workflow file
+             */
+            file_path: string;
+            /** Workflows */
+            workflows: components["schemas"]["CLIRegisteredWorkflow"][];
+            /**
+             * Selected Workflow
+             * @description Pre-selected workflow name
+             */
+            selected_workflow?: string | null;
+        };
+        /**
+         * CLISessionResponse
+         * @description Response for a CLI session.
+         */
+        CLISessionResponse: {
+            /** Id */
+            id: string;
+            /** User Id */
+            user_id: string;
+            /** File Path */
+            file_path: string;
+            /** Workflows */
+            workflows: components["schemas"]["CLIRegisteredWorkflow"][];
+            /** Selected Workflow */
+            selected_workflow?: string | null;
+            /** Params */
+            params?: {
+                [key: string]: unknown;
+            } | null;
+            /**
+             * Pending
+             * @default false
+             */
+            pending: boolean;
+            /** Last Seen */
+            last_seen?: string | null;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /**
+             * Is Connected
+             * @description True if CLI is actively connected (last_seen within 10s)
+             */
+            is_connected: boolean;
+            /** Executions */
+            executions?: components["schemas"]["CLISessionExecutionSummary"][];
+        };
+        /**
+         * CLISessionResultRequest
+         * @description Result from CLI execution.
+         */
+        CLISessionResultRequest: {
+            /**
+             * Status
+             * @description Success or Failed
+             */
+            status: string;
+            /**
+             * Result
+             * @description Return value from workflow
+             */
+            result?: unknown | null;
+            /**
+             * Error Message
+             * @description Error message if failed
+             */
+            error_message?: string | null;
+            /**
+             * Duration Ms
+             * @description Execution duration in ms
+             */
+            duration_ms?: number | null;
+            /**
+             * Logs
+             * @description All logs from execution (sent together to avoid race conditions)
+             */
+            logs?: components["schemas"]["CLISessionLogRequest"][];
         };
         /**
          * CleanupTriggeredResponse
@@ -3564,7 +4355,7 @@ export interface components {
         };
         /**
          * DeveloperContextResponse
-         * @description Developer context for SDK initialization.
+         * @description Developer context for CLI initialization.
          */
         DeveloperContextResponse: {
             /**
@@ -4376,6 +5167,28 @@ export interface components {
             detected_repo?: components["schemas"]["DetectedRepoInfo"] | null;
         };
         /**
+         * GitHubSetupResponse
+         * @description Response after queueing GitHub setup job
+         */
+        GitHubSetupResponse: {
+            /**
+             * Job Id
+             * @description Job ID for tracking the setup operation
+             */
+            job_id: string;
+            /**
+             * Notification Id
+             * @description Notification ID for watching progress via WebSocket
+             */
+            notification_id: string;
+            /**
+             * Status
+             * @description Job status (queued)
+             * @default queued
+             */
+            status: string;
+        };
+        /**
          * GitRefreshStatusResponse
          * @description Unified response after fetching and getting complete Git status.
          *     This combines fetch + status + commit history into a single response.
@@ -4646,6 +5459,95 @@ export interface components {
             token_type: string;
         };
         /**
+         * NotificationCategory
+         * @description Categories for grouping notifications.
+         * @enum {string}
+         */
+        NotificationCategory: "github_setup" | "github_sync" | "file_upload" | "package_install" | "system";
+        /**
+         * NotificationListResponse
+         * @description Response containing list of notifications.
+         */
+        NotificationListResponse: {
+            /**
+             * Notifications
+             * @description Active notifications
+             */
+            notifications?: components["schemas"]["NotificationPublic"][];
+        };
+        /**
+         * NotificationPublic
+         * @description Public representation of a notification.
+         */
+        NotificationPublic: {
+            /**
+             * Id
+             * @description Unique notification ID
+             */
+            id: string;
+            /** @description Notification category */
+            category: components["schemas"]["NotificationCategory"];
+            /**
+             * Title
+             * @description Notification title
+             */
+            title: string;
+            /**
+             * Description
+             * @description Current status message
+             */
+            description?: string | null;
+            /** @description Current status */
+            status: components["schemas"]["NotificationStatus"];
+            /**
+             * Percent
+             * @description Progress percentage. None = indeterminate, 0-100 = determinate.
+             */
+            percent?: number | null;
+            /**
+             * Error
+             * @description Error message if failed
+             */
+            error?: string | null;
+            /**
+             * Result
+             * @description Result data on completion
+             */
+            result?: {
+                [key: string]: unknown;
+            } | null;
+            /**
+             * Metadata
+             * @description Additional metadata
+             */
+            metadata?: {
+                [key: string]: unknown;
+            } | null;
+            /**
+             * Created At
+             * Format: date-time
+             * @description When notification was created
+             */
+            created_at: string;
+            /**
+             * Updated At
+             * Format: date-time
+             * @description When notification was last updated
+             */
+            updated_at: string;
+            /**
+             * User Id
+             * @description User who owns this notification
+             */
+            user_id: string;
+        };
+        /**
+         * NotificationStatus
+         * @description Status of a notification/operation.
+         * @enum {string}
+         */
+        NotificationStatus: "pending" | "running" | "completed" | "failed" | "cancelled";
+        /**
          * OAuthCallbackResponse
          * @description Response model for OAuth callback endpoint
          */
@@ -4722,11 +5624,6 @@ export interface components {
             token_url: string;
             /** Scopes */
             scopes: string;
-            /**
-             * Redirect Uri
-             * @description Callback URL for OAuth authorization
-             */
-            redirect_uri: string;
             /**
              * Status
              * @enum {string}
@@ -5058,6 +5955,22 @@ export interface components {
             total_count: number;
         };
         /**
+         * PasswordChange
+         * @description Request model for changing password.
+         */
+        PasswordChange: {
+            /**
+             * Current Password
+             * @description Current password
+             */
+            current_password: string;
+            /**
+             * New Password
+             * @description New password (minimum 8 characters)
+             */
+            new_password: string;
+        };
+        /**
          * PlatformMetricsResponse
          * @description Platform metrics snapshot response.
          *
@@ -5103,6 +6016,40 @@ export interface components {
             success_rate_24h: number;
             /** Refreshed At */
             refreshed_at: string;
+        };
+        /**
+         * ProfileResponse
+         * @description Response model for user profile.
+         */
+        ProfileResponse: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Email */
+            email: string;
+            /** Name */
+            name: string | null;
+            /** Has Avatar */
+            has_avatar: boolean;
+            /** User Type */
+            user_type: string;
+            /** Organization Id */
+            organization_id: string | null;
+            /** Is Superuser */
+            is_superuser: boolean;
+        };
+        /**
+         * ProfileUpdate
+         * @description Request model for updating user profile.
+         */
+        ProfileUpdate: {
+            /**
+             * Name
+             * @description Display name
+             */
+            name?: string | null;
         };
         /**
          * PullFromGitHubRequest
@@ -5454,175 +6401,6 @@ export interface components {
              * @description List of user IDs assigned to the role
              */
             user_ids: string[];
-        };
-        /**
-         * SDKConfigDeleteRequest
-         * @description Request to delete a config value via SDK.
-         */
-        SDKConfigDeleteRequest: {
-            /**
-             * Key
-             * @description Configuration key
-             */
-            key: string;
-            /**
-             * Org Id
-             * @description Organization ID (optional, uses context default)
-             */
-            org_id?: string | null;
-        };
-        /**
-         * SDKConfigGetRequest
-         * @description Request to get a config value via SDK.
-         */
-        SDKConfigGetRequest: {
-            /**
-             * Key
-             * @description Configuration key
-             */
-            key: string;
-            /**
-             * Org Id
-             * @description Organization ID (optional, uses context default)
-             */
-            org_id?: string | null;
-        };
-        /**
-         * SDKConfigListRequest
-         * @description Request to list config values via SDK.
-         */
-        SDKConfigListRequest: {
-            /**
-             * Org Id
-             * @description Organization ID (optional, uses context default)
-             */
-            org_id?: string | null;
-        };
-        /**
-         * SDKConfigSetRequest
-         * @description Request to set a config value via SDK.
-         */
-        SDKConfigSetRequest: {
-            /**
-             * Key
-             * @description Configuration key
-             */
-            key: string;
-            /**
-             * Value
-             * @description Configuration value
-             */
-            value: unknown;
-            /**
-             * Org Id
-             * @description Organization ID (optional, uses context default)
-             */
-            org_id?: string | null;
-            /**
-             * Is Secret
-             * @description Whether to encrypt the value
-             * @default false
-             */
-            is_secret: boolean;
-        };
-        /**
-         * SDKConfigValue
-         * @description Config value response from SDK.
-         */
-        SDKConfigValue: {
-            /**
-             * Key
-             * @description Configuration key
-             */
-            key: string;
-            /**
-             * Value
-             * @description Configuration value
-             */
-            value: unknown;
-            /**
-             * Config Type
-             * @description Type of the config (string, int, bool, json, secret)
-             */
-            config_type: string;
-        };
-        /**
-         * SDKFileDeleteRequest
-         * @description Request to delete a file or directory via SDK.
-         */
-        SDKFileDeleteRequest: {
-            /**
-             * Path
-             * @description Path to file or directory
-             */
-            path: string;
-            /**
-             * Location
-             * @description Storage location
-             * @default workspace
-             * @enum {string}
-             */
-            location: "temp" | "workspace";
-        };
-        /**
-         * SDKFileListRequest
-         * @description Request to list files in a directory via SDK.
-         */
-        SDKFileListRequest: {
-            /**
-             * Directory
-             * @description Directory path (relative)
-             * @default
-             */
-            directory: string;
-            /**
-             * Location
-             * @description Storage location
-             * @default workspace
-             * @enum {string}
-             */
-            location: "temp" | "workspace";
-        };
-        /**
-         * SDKFileReadRequest
-         * @description Request to read a file via SDK.
-         */
-        SDKFileReadRequest: {
-            /**
-             * Path
-             * @description Relative path to file
-             */
-            path: string;
-            /**
-             * Location
-             * @description Storage location
-             * @default workspace
-             * @enum {string}
-             */
-            location: "temp" | "workspace";
-        };
-        /**
-         * SDKFileWriteRequest
-         * @description Request to write a file via SDK.
-         */
-        SDKFileWriteRequest: {
-            /**
-             * Path
-             * @description Relative path to file
-             */
-            path: string;
-            /**
-             * Content
-             * @description File content (text)
-             */
-            content: string;
-            /**
-             * Location
-             * @description Storage location
-             * @default workspace
-             * @enum {string}
-             */
-            location: "temp" | "workspace";
         };
         /**
          * ScheduleMetadata
@@ -6003,6 +6781,42 @@ export interface components {
             scopes?: string[] | null;
         };
         /**
+         * UploadLockInfo
+         * @description Information about an active upload lock.
+         */
+        UploadLockInfo: {
+            /**
+             * Locked
+             * @description Whether upload is currently locked
+             */
+            locked: boolean;
+            /**
+             * Owner User Id
+             * @description User ID holding the lock
+             */
+            owner_user_id?: string | null;
+            /**
+             * Owner Email
+             * @description Email of user holding the lock
+             */
+            owner_email?: string | null;
+            /**
+             * Operation
+             * @description Description of the operation
+             */
+            operation?: string | null;
+            /**
+             * Locked At
+             * @description When lock was acquired
+             */
+            locked_at?: string | null;
+            /**
+             * Expires At
+             * @description When lock expires
+             */
+            expires_at?: string | null;
+        };
+        /**
          * UploadedFileMetadata
          * @description Metadata for uploaded file that workflows can use to access the file
          */
@@ -6256,6 +7070,8 @@ export interface components {
             variables?: {
                 [key: string]: unknown;
             } | null;
+            /** Session Id */
+            session_id?: string | null;
             /** Peak Memory Bytes */
             peak_memory_bytes?: number | null;
             /** Cpu Total Seconds */
@@ -6699,6 +7515,11 @@ export interface components {
              * @description State parameter for CSRF protection
              */
             state?: string | null;
+            /**
+             * Redirect Uri
+             * @description Redirect URI used in authorization request
+             */
+            redirect_uri?: string | null;
         };
         /**
          * UserCreate
@@ -8251,6 +9072,8 @@ export interface operations {
                 startDate?: string | null;
                 /** @description Filter by end date (ISO format) */
                 endDate?: string | null;
+                /** @description Exclude local runner executions */
+                excludeLocal?: boolean;
                 /** @description Maximum number of results */
                 limit?: number;
                 /** @description Continuation token */
@@ -10261,7 +11084,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["GitHubConfigResponse"];
+                    "application/json": components["schemas"]["GitHubSetupResponse"];
                 };
             };
             /** @description Validation Error */
@@ -10565,7 +11388,10 @@ export interface operations {
     };
     authorize_connection_api_oauth_connections__connection_name__authorize_post: {
         parameters: {
-            query?: never;
+            query: {
+                /** @description Frontend callback URL for OAuth redirect */
+                redirect_uri: string;
+            };
             header?: never;
             path: {
                 connection_name: string;
@@ -10762,7 +11588,7 @@ export interface operations {
             };
         };
     };
-    execute_endpoint_api_endpoints__workflow_name__post: {
+    execute_endpoint_api_endpoints__workflow_name__get: {
         parameters: {
             query?: never;
             header: {
@@ -10795,7 +11621,7 @@ export interface operations {
             };
         };
     };
-    execute_endpoint_api_endpoints__workflow_name__post: {
+    execute_endpoint_api_endpoints__workflow_name__get: {
         parameters: {
             query?: never;
             header: {
@@ -10828,7 +11654,7 @@ export interface operations {
             };
         };
     };
-    execute_endpoint_api_endpoints__workflow_name__post: {
+    execute_endpoint_api_endpoints__workflow_name__get: {
         parameters: {
             query?: never;
             header: {
@@ -10861,7 +11687,7 @@ export interface operations {
             };
         };
     };
-    execute_endpoint_api_endpoints__workflow_name__post: {
+    execute_endpoint_api_endpoints__workflow_name__get: {
         parameters: {
             query?: never;
             header: {
@@ -10894,7 +11720,7 @@ export interface operations {
             };
         };
     };
-    get_dev_context_api_sdk_context_get: {
+    get_dev_context_api_cli_context_get: {
         parameters: {
             query?: never;
             header?: {
@@ -10925,7 +11751,7 @@ export interface operations {
             };
         };
     };
-    update_dev_context_api_sdk_context_put: {
+    update_dev_context_api_cli_context_put: {
         parameters: {
             query?: never;
             header?: never;
@@ -10958,7 +11784,7 @@ export interface operations {
             };
         };
     };
-    list_api_keys_api_sdk_keys_get: {
+    list_api_keys_api_cli_keys_get: {
         parameters: {
             query?: never;
             header?: never;
@@ -10978,7 +11804,7 @@ export interface operations {
             };
         };
     };
-    create_api_key_api_sdk_keys_post: {
+    create_api_key_api_cli_keys_post: {
         parameters: {
             query?: never;
             header?: never;
@@ -11011,7 +11837,7 @@ export interface operations {
             };
         };
     };
-    delete_api_key_api_sdk_keys__key_id__delete: {
+    delete_api_key_api_cli_keys__key_id__delete: {
         parameters: {
             query?: never;
             header?: never;
@@ -11040,7 +11866,7 @@ export interface operations {
             };
         };
     };
-    revoke_api_key_api_sdk_keys__key_id__revoke_patch: {
+    revoke_api_key_api_cli_keys__key_id__revoke_patch: {
         parameters: {
             query?: never;
             header?: never;
@@ -11071,7 +11897,7 @@ export interface operations {
             };
         };
     };
-    sdk_read_file_api_sdk_files_read_post: {
+    cli_read_file_api_cli_files_read_post: {
         parameters: {
             query?: never;
             header?: {
@@ -11082,7 +11908,7 @@ export interface operations {
         };
         requestBody: {
             content: {
-                "application/json": components["schemas"]["SDKFileReadRequest"];
+                "application/json": components["schemas"]["CLIFileReadRequest"];
             };
         };
         responses: {
@@ -11106,7 +11932,7 @@ export interface operations {
             };
         };
     };
-    sdk_write_file_api_sdk_files_write_post: {
+    cli_write_file_api_cli_files_write_post: {
         parameters: {
             query?: never;
             header?: {
@@ -11117,7 +11943,7 @@ export interface operations {
         };
         requestBody: {
             content: {
-                "application/json": components["schemas"]["SDKFileWriteRequest"];
+                "application/json": components["schemas"]["CLIFileWriteRequest"];
             };
         };
         responses: {
@@ -11139,7 +11965,7 @@ export interface operations {
             };
         };
     };
-    sdk_list_files_api_sdk_files_list_post: {
+    cli_list_files_api_cli_files_list_post: {
         parameters: {
             query?: never;
             header?: {
@@ -11150,7 +11976,7 @@ export interface operations {
         };
         requestBody: {
             content: {
-                "application/json": components["schemas"]["SDKFileListRequest"];
+                "application/json": components["schemas"]["CLIFileListRequest"];
             };
         };
         responses: {
@@ -11174,7 +12000,7 @@ export interface operations {
             };
         };
     };
-    sdk_delete_file_api_sdk_files_delete_post: {
+    cli_delete_file_api_cli_files_delete_post: {
         parameters: {
             query?: never;
             header?: {
@@ -11185,7 +12011,7 @@ export interface operations {
         };
         requestBody: {
             content: {
-                "application/json": components["schemas"]["SDKFileDeleteRequest"];
+                "application/json": components["schemas"]["CLIFileDeleteRequest"];
             };
         };
         responses: {
@@ -11207,7 +12033,7 @@ export interface operations {
             };
         };
     };
-    sdk_get_config_api_sdk_config_get_post: {
+    cli_get_config_api_cli_config_get_post: {
         parameters: {
             query?: never;
             header?: {
@@ -11218,7 +12044,7 @@ export interface operations {
         };
         requestBody: {
             content: {
-                "application/json": components["schemas"]["SDKConfigGetRequest"];
+                "application/json": components["schemas"]["CLIConfigGetRequest"];
             };
         };
         responses: {
@@ -11228,7 +12054,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["SDKConfigValue"] | null;
+                    "application/json": components["schemas"]["CLIConfigValue"] | null;
                 };
             };
             /** @description Validation Error */
@@ -11242,7 +12068,7 @@ export interface operations {
             };
         };
     };
-    sdk_set_config_api_sdk_config_set_post: {
+    cli_set_config_api_cli_config_set_post: {
         parameters: {
             query?: never;
             header?: {
@@ -11253,7 +12079,7 @@ export interface operations {
         };
         requestBody: {
             content: {
-                "application/json": components["schemas"]["SDKConfigSetRequest"];
+                "application/json": components["schemas"]["CLIConfigSetRequest"];
             };
         };
         responses: {
@@ -11275,7 +12101,7 @@ export interface operations {
             };
         };
     };
-    sdk_list_config_api_sdk_config_list_post: {
+    cli_list_config_api_cli_config_list_post: {
         parameters: {
             query?: never;
             header?: {
@@ -11286,7 +12112,7 @@ export interface operations {
         };
         requestBody: {
             content: {
-                "application/json": components["schemas"]["SDKConfigListRequest"];
+                "application/json": components["schemas"]["CLIConfigListRequest"];
             };
         };
         responses: {
@@ -11312,7 +12138,7 @@ export interface operations {
             };
         };
     };
-    sdk_delete_config_api_sdk_config_delete_post: {
+    cli_delete_config_api_cli_config_delete_post: {
         parameters: {
             query?: never;
             header?: {
@@ -11323,7 +12149,7 @@ export interface operations {
         };
         requestBody: {
             content: {
-                "application/json": components["schemas"]["SDKConfigDeleteRequest"];
+                "application/json": components["schemas"]["CLIConfigDeleteRequest"];
             };
         };
         responses: {
@@ -11347,7 +12173,332 @@ export interface operations {
             };
         };
     };
-    download_sdk_api_sdk_download_get: {
+    cli_get_oauth_api_cli_oauth_get_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CLIOAuthGetRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CLIOAuthGetResponse"] | null;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_cli_sessions_api_cli_sessions_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CLISessionListResponse"];
+                };
+            };
+        };
+    };
+    register_cli_session_api_cli_sessions_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CLISessionRegisterRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CLISessionResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_cli_session_api_cli_sessions__session_id__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                session_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CLISessionResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    delete_cli_session_api_cli_sessions__session_id__delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                session_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    continue_cli_session_api_cli_sessions__session_id__continue_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                session_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CLISessionContinueRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CLISessionContinueResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_pending_execution_api_cli_sessions__session_id__pending_get: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string | null;
+            };
+            path: {
+                session_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CLISessionPendingResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    session_heartbeat_api_cli_sessions__session_id__heartbeat_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string | null;
+            };
+            path: {
+                session_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    post_cli_log_api_cli_sessions__session_id__executions__execution_id__log_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string | null;
+            };
+            path: {
+                session_id: string;
+                execution_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CLISessionLogRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    post_cli_result_api_cli_sessions__session_id__executions__execution_id__result_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string | null;
+            };
+            path: {
+                session_id: string;
+                execution_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CLISessionResultRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    download_cli_api_cli_download_get: {
         parameters: {
             query?: never;
             header?: never;
@@ -11363,6 +12514,290 @@ export interface operations {
                 };
                 content: {
                     "application/json": unknown;
+                };
+            };
+        };
+    };
+    list_notifications_api_notifications_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["NotificationListResponse"];
+                };
+            };
+        };
+    };
+    get_notification_api_notifications__notification_id__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                notification_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["NotificationPublic"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    dismiss_notification_api_notifications__notification_id__delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                notification_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_upload_lock_status_api_notifications_locks_upload_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["UploadLockInfo"];
+                };
+            };
+        };
+    };
+    force_release_upload_lock_api_notifications_locks_upload_delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    get_profile_api_profile_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProfileResponse"];
+                };
+            };
+        };
+    };
+    update_profile_api_profile_patch: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ProfileUpdate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProfileResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_avatar_api_profile_avatar_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                    "image/png": unknown;
+                    "image/jpeg": unknown;
+                };
+            };
+            /** @description No avatar set */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    upload_avatar_api_profile_avatar_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "multipart/form-data": components["schemas"]["Body_upload_avatar_api_profile_avatar_post"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProfileResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    delete_avatar_api_profile_avatar_delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProfileResponse"];
+                };
+            };
+        };
+    };
+    change_password_api_profile_password_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PasswordChange"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
                 };
             };
         };

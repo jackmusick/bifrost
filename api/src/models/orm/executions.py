@@ -8,7 +8,7 @@ from datetime import datetime
 from typing import TYPE_CHECKING
 from uuid import UUID, uuid4
 
-from sqlalchemy import BigInteger, DateTime, Enum as SQLAlchemyEnum, Float, ForeignKey, Index, Integer, String, Text, text
+from sqlalchemy import BigInteger, Boolean, DateTime, Enum as SQLAlchemyEnum, Float, ForeignKey, Index, Integer, String, Text, text
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -16,6 +16,7 @@ from src.models.enums import ExecutionStatus
 from src.models.orm.base import Base
 
 if TYPE_CHECKING:
+    from src.models.orm.cli import CLISession
     from src.models.orm.forms import Form
     from src.models.orm.organizations import Organization
     from src.models.orm.users import User
@@ -63,12 +64,17 @@ class Execution(Base):
     api_key_id: Mapped[UUID | None] = mapped_column(
         ForeignKey("workflows.id"), default=None
     )  # Workflow whose API key triggered this execution (null for user-triggered)
+    is_local_execution: Mapped[bool] = mapped_column(Boolean, default=False, server_default="false")
+    session_id: Mapped[UUID | None] = mapped_column(
+        ForeignKey("cli_sessions.id", ondelete="SET NULL"), default=None
+    )
     created_at: Mapped[datetime] = mapped_column(
         DateTime, default=datetime.utcnow, server_default=text("NOW()")
     )
 
     # Relationships
     executed_by_user: Mapped["User"] = relationship(back_populates="executions")
+    cli_session: Mapped["CLISession | None"] = relationship(back_populates="executions")
     api_key_workflow: Mapped["Workflow | None"] = relationship(
         foreign_keys=[api_key_id]
     )  # The workflow whose API key triggered this execution
@@ -83,6 +89,8 @@ class Execution(Base):
         Index("ix_executions_created", "created_at"),
         Index("ix_executions_user", "executed_by"),
         Index("ix_executions_workflow", "workflow_name"),
+        Index("ix_executions_is_local_execution", "is_local_execution"),
+        Index("ix_executions_session_id", "session_id"),
     )
 
 

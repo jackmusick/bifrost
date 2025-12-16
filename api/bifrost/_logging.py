@@ -29,6 +29,28 @@ logger = logging.getLogger(__name__)
 _local = threading.local()
 
 
+def _serialize_metadata(metadata: dict[str, Any] | None) -> dict[str, Any] | None:
+    """
+    Ensure metadata is JSON-serializable by converting datetime to ISO strings.
+
+    This prevents "Object of type datetime is not JSON serializable" errors
+    when metadata contains datetime objects (e.g., from workflow code).
+    """
+    if metadata is None:
+        return None
+
+    def convert(obj: Any) -> Any:
+        if isinstance(obj, datetime):
+            return obj.isoformat()
+        elif isinstance(obj, dict):
+            return {k: convert(v) for k, v in obj.items()}
+        elif isinstance(obj, list):
+            return [convert(item) for item in obj]
+        return obj
+
+    return convert(metadata)
+
+
 def _get_sync_redis() -> redis_sync.Redis:
     """Get thread-local sync Redis connection."""
     if not hasattr(_local, "redis") or _local.redis is None:
@@ -69,11 +91,12 @@ def append_log_to_stream(
     ts = timestamp or datetime.utcnow()
     stream_key = execution_logs_stream_key(exec_id)
 
+    safe_metadata = _serialize_metadata(metadata)
     entry = {
         "execution_id": exec_id,
         "level": level.upper(),
         "message": message,
-        "metadata": json.dumps(metadata) if metadata else "{}",
+        "metadata": json.dumps(safe_metadata) if safe_metadata else "{}",
         "timestamp": ts.isoformat(),
     }
 
@@ -113,12 +136,13 @@ def publish_log_to_pubsub(
     exec_id = str(execution_id)
     ts = timestamp or datetime.utcnow()
 
+    safe_metadata = _serialize_metadata(metadata)
     log_entry = {
         "type": "execution_log",
         "executionId": exec_id,
         "level": level.upper(),
         "message": message,
-        "metadata": metadata,
+        "metadata": safe_metadata,
         "timestamp": ts.isoformat(),
     }
 
@@ -199,11 +223,12 @@ async def append_log_to_stream_async(
     ts = timestamp or datetime.utcnow()
     stream_key = execution_logs_stream_key(exec_id)
 
+    safe_metadata = _serialize_metadata(metadata)
     entry = {
         "execution_id": exec_id,
         "level": level.upper(),
         "message": message,
-        "metadata": json.dumps(metadata) if metadata else "{}",
+        "metadata": json.dumps(safe_metadata) if safe_metadata else "{}",
         "timestamp": ts.isoformat(),
     }
 
@@ -258,6 +283,94 @@ async def read_logs_from_stream(
         return []
 
 
+async def publish_log_to_pubsub_async(
+    execution_id: str | UUID,
+    level: str,
+    message: str,
+    metadata: dict[str, Any] | None = None,
+    timestamp: datetime | None = None,
+) -> None:
+    """
+    Async version of publish_log_to_pubsub.
+
+    Publish log entry directly to PubSub for immediate WebSocket delivery.
+    Use this in async contexts (API routes, background tasks).
+
+    Args:
+        execution_id: Execution UUID
+        level: Log level
+        message: Log message
+        metadata: Optional metadata
+        timestamp: Optional timestamp
+    """
+    from src.core.cache import get_redis
+
+    exec_id = str(execution_id)
+    ts = timestamp or datetime.utcnow()
+
+    safe_metadata = _serialize_metadata(metadata)
+    log_entry = {
+        "type": "execution_log",
+        "executionId": exec_id,
+        "level": level.upper(),
+        "message": message,
+        "metadata": safe_metadata,
+        "timestamp": ts.isoformat(),
+    }
+
+    try:
+        async with get_redis() as r:
+            await r.publish(f"bifrost:execution:{exec_id}", json.dumps(log_entry))
+    except Exception as e:
+        logger.warning(f"Failed to publish log to PubSub (async): {e}")
+
+
+async def log_and_broadcast_async(
+    execution_id: str | UUID,
+    level: str,
+    message: str,
+    metadata: dict[str, Any] | None = None,
+    timestamp: datetime | None = None,
+) -> str | None:
+    """
+    Async version of log_and_broadcast.
+
+    Write log to stream AND publish to PubSub in one call.
+    Use this in async contexts (API routes) to match workflow engine behavior.
+
+    Args:
+        execution_id: Execution UUID
+        level: Log level
+        message: Log message
+        metadata: Optional metadata
+        timestamp: Optional timestamp
+
+    Returns:
+        Stream entry ID if successful, None on error
+    """
+    ts = timestamp or datetime.utcnow()
+
+    # Write to stream (source of truth for persistence)
+    entry_id = await append_log_to_stream_async(
+        execution_id=execution_id,
+        level=level,
+        message=message,
+        metadata=metadata,
+        timestamp=ts,
+    )
+
+    # Publish to PubSub (immediate WebSocket delivery)
+    await publish_log_to_pubsub_async(
+        execution_id=execution_id,
+        level=level,
+        message=message,
+        metadata=metadata,
+        timestamp=ts,
+    )
+
+    return entry_id
+
+
 def close_thread_redis() -> None:
     """Close the thread-local Redis connection. Call on thread cleanup."""
     if hasattr(_local, "redis") and _local.redis is not None:
@@ -307,12 +420,18 @@ async def flush_logs_to_postgres(execution_id: str | UUID) -> int:
             logs_to_insert = []
             for seq, (entry_id, data) in enumerate(entries):
                 try:
+                    # Parse timestamp and strip timezone (DB uses TIMESTAMP WITHOUT TIME ZONE)
+                    ts_str = data.get("timestamp", datetime.utcnow().isoformat())
+                    ts = datetime.fromisoformat(ts_str)
+                    if ts.tzinfo is not None:
+                        ts = ts.replace(tzinfo=None)
+
                     log_entry = ExecutionLog(
                         execution_id=exec_uuid,
                         level=data.get("level", "INFO"),
                         message=data.get("message", ""),
                         log_metadata=json.loads(data.get("metadata", "{}")),
-                        timestamp=datetime.fromisoformat(data.get("timestamp", datetime.utcnow().isoformat())),
+                        timestamp=ts,
                         sequence=seq,
                     )
                     logs_to_insert.append(log_entry)

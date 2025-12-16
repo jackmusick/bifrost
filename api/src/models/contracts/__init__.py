@@ -17,7 +17,6 @@ from src.models.contracts.base import (
 # Organizations
 from src.models.contracts.organizations import (
     CreateOrganizationRequest,
-    Organization,
     OrganizationBase,
     OrganizationCreate,
     OrganizationPublic,
@@ -31,10 +30,8 @@ from src.models.contracts.users import (
     AssignUsersToRoleRequest,
     CreateRoleRequest,
     CreateUserRequest,
-    FormRole,
     GrantPermissionsRequest,
     PermissionsData,
-    Role,
     RoleBase,
     RoleCreate,
     RoleFormsResponse,
@@ -43,14 +40,12 @@ from src.models.contracts.users import (
     RoleUsersResponse,
     UpdateRoleRequest,
     UpdateUserRequest,
-    User,
     UserBase,
     UserCreate,
     UserFormsResponse,
     UserPermission,
     UserPublic,
     UserResponse,
-    UserRole,
     UserRolesResponse,
     UserUpdate,
 )
@@ -75,10 +70,8 @@ from src.models.contracts.auth import (
 from src.models.contracts.forms import (
     CreateFormRequest,
     DataProviderInputConfig,
-    Form,
     FormCreate,
     FormExecuteRequest,
-    FormField,
     FormFieldValidation,
     FormPublic,
     FormSchema,
@@ -270,17 +263,36 @@ from src.models.contracts.github import (
     WorkspaceAnalysisResponse,
 )
 
-# SDK Models
-from src.models.contracts.sdk import (
-    SDKConfigDeleteRequest,
-    SDKConfigGetRequest,
-    SDKConfigListRequest,
-    SDKConfigSetRequest,
-    SDKConfigValue,
-    SDKFileDeleteRequest,
-    SDKFileListRequest,
-    SDKFileReadRequest,
-    SDKFileWriteRequest,
+# CLI Models
+from src.models.contracts.cli import (
+    CLIConfigDeleteRequest,
+    CLIConfigGetRequest,
+    CLIConfigListRequest,
+    CLIConfigSetRequest,
+    CLIConfigValue,
+    CLIFileDeleteRequest,
+    CLIFileListRequest,
+    CLIFileReadRequest,
+    CLIFileWriteRequest,
+    CLIOAuthGetRequest,
+    CLIOAuthGetResponse,
+    CLIRegisteredWorkflow,
+    CLISessionContinueRequest,
+    CLISessionContinueResponse,
+    CLISessionExecutionSummary,
+    CLISessionListResponse,
+    CLISessionLogRequest,
+    CLISessionPendingResponse,
+    CLISessionRegisterRequest,
+    CLISessionResponse,
+    CLISessionResultRequest,
+)
+
+# Profile
+from src.models.contracts.profile import (
+    PasswordChange,
+    ProfileResponse,
+    ProfileUpdate,
 )
 
 # Notifications
@@ -493,15 +505,29 @@ __all__ = [
     "CommitInfo",
     "DetectedRepoInfo",
     "GitHubConfigEntity",
-    "SDKFileReadRequest",
-    "SDKFileWriteRequest",
-    "SDKFileListRequest",
-    "SDKFileDeleteRequest",
-    "SDKConfigGetRequest",
-    "SDKConfigSetRequest",
-    "SDKConfigListRequest",
-    "SDKConfigDeleteRequest",
-    "SDKConfigValue",
+    # CLI Models
+    "CLIFileReadRequest",
+    "CLIFileWriteRequest",
+    "CLIFileListRequest",
+    "CLIFileDeleteRequest",
+    "CLIConfigGetRequest",
+    "CLIConfigSetRequest",
+    "CLIConfigListRequest",
+    "CLIConfigDeleteRequest",
+    "CLIConfigValue",
+    "CLIOAuthGetRequest",
+    "CLIOAuthGetResponse",
+    # CLI Session Models
+    "CLIRegisteredWorkflow",
+    "CLISessionRegisterRequest",
+    "CLISessionResponse",
+    "CLISessionListResponse",
+    "CLISessionContinueRequest",
+    "CLISessionContinueResponse",
+    "CLISessionPendingResponse",
+    "CLISessionLogRequest",
+    "CLISessionResultRequest",
+    "CLISessionExecutionSummary",
     "ErrorResponse",
     "WorkflowParameter",
     "WorkflowMetadata",
@@ -523,4 +549,8 @@ __all__ = [
     "NotificationListResponse",
     "JobDispatchResponse",
     "UploadLockInfo",
+    # Profile
+    "ProfileUpdate",
+    "PasswordChange",
+    "ProfileResponse",
 ]

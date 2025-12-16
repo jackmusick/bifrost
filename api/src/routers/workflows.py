@@ -9,7 +9,6 @@ fast O(1) lookups instead of file system scanning.
 """
 
 import logging
-import os
 
 from fastapi import APIRouter, HTTPException, status
 from sqlalchemy import select

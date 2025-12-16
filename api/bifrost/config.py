@@ -129,7 +129,7 @@ class config:
             # API call (external mode)
             client = _get_client()
             response = await client.post(
-                "/api/sdk/config/get",
+                "/api/cli/config/get",
                 json={"key": key, "org_id": org_id}
             )
 
@@ -202,7 +202,7 @@ class config:
             # API call (external mode)
             client = _get_client()
             response = await client.post(
-                "/api/sdk/config/set",
+                "/api/cli/config/set",
                 json={"key": key, "value": value, "org_id": org_id, "is_secret": is_secret}
             )
             response.raise_for_status()
@@ -276,7 +276,7 @@ class config:
             # API call (external mode)
             client = _get_client()
             response = await client.post(
-                "/api/sdk/config/list",
+                "/api/cli/config/list",
                 json={"org_id": org_id}
             )
             response.raise_for_status()
@@ -323,7 +323,7 @@ class config:
             # API call (external mode)
             client = _get_client()
             response = await client.post(
-                "/api/sdk/config/delete",
+                "/api/cli/config/delete",
                 json={"key": key, "org_id": org_id}
             )
             response.raise_for_status()

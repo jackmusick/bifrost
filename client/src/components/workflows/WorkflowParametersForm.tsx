@@ -14,6 +14,9 @@ interface WorkflowParametersFormProps {
 	showExecuteButton?: boolean;
 	executeButtonText?: string;
 	className?: string;
+	// Controlled mode: pass values and onChange to lift state up
+	values?: Record<string, unknown>;
+	onChange?: (values: Record<string, unknown>) => void;
 }
 
 /**
@@ -27,8 +30,25 @@ export function WorkflowParametersForm({
 	showExecuteButton = true,
 	executeButtonText = "Execute Workflow",
 	className,
+	values: controlledValues,
+	onChange,
 }: WorkflowParametersFormProps) {
-	const [paramValues, setParamValues] = useState<Record<string, unknown>>({});
+	// Initialize internal state with default values (used when uncontrolled)
+	const [internalValues, setInternalValues] = useState<Record<string, unknown>>(() =>
+		parameters.reduce(
+			(acc: Record<string, unknown>, param) => {
+				acc[param.name] =
+					param.default_value ??
+					(param.type === "bool" ? false : "");
+				return acc;
+			},
+			{} as Record<string, unknown>,
+		)
+	);
+
+	// Use controlled values if provided, otherwise use internal state
+	const isControlled = controlledValues !== undefined && onChange !== undefined;
+	const paramValues = isControlled ? controlledValues : internalValues;
 
 	const handleSubmit = async (e: React.FormEvent) => {
 		e.preventDefault();
@@ -36,19 +56,41 @@ export function WorkflowParametersForm({
 	};
 
 	const handleParameterChange = (paramName: string, value: unknown) => {
-		setParamValues((prev) => ({
-			...prev,
+		const newValues = {
+			...paramValues,
 			[paramName]: value,
-		}));
+		};
+		if (isControlled) {
+			onChange(newValues);
+		} else {
+			setInternalValues(newValues);
+		}
 	};
 
 	const renderParameterInput = (param: WorkflowParameter) => {
 		const value = paramValues[param.name ?? ""];
+		const displayName = param.label || param.name;
 
 		switch (param.type) {
 			case "bool":
 				return (
-					<div className="flex items-center space-x-2">
+					<div className="flex flex-row items-center justify-between rounded-lg border p-3">
+						<div className="space-y-0.5">
+							<Label
+								htmlFor={param.name ?? "checkbox"}
+								className="font-medium"
+							>
+								{displayName}
+								{param.required && (
+									<span className="text-destructive ml-1">*</span>
+								)}
+							</Label>
+							{param.description && (
+								<p className="text-xs text-muted-foreground">
+									{param.description}
+								</p>
+							)}
+						</div>
 						<Checkbox
 							id={param.name ?? "checkbox"}
 							checked={!!value}
@@ -57,17 +99,6 @@ export function WorkflowParametersForm({
 							}
 							disabled={isExecuting}
 						/>
-						<Label
-							htmlFor={param.name ?? "checkbox"}
-							className="text-sm font-normal"
-						>
-							{param.name}
-							{param.description && (
-								<span className="block text-xs text-muted-foreground mt-1">
-									{param.description}
-								</span>
-							)}
-						</Label>
 					</div>
 				);
 
@@ -76,25 +107,75 @@ export function WorkflowParametersForm({
 				return (
 					<div className="space-y-2">
 						<Label htmlFor={param.name ?? "number"}>
-							{param.name}
+							{displayName}
 							{param.required && (
-								<span className="text-destructive">*</span>
+								<span className="text-destructive ml-1">*</span>
 							)}
 						</Label>
 						<Input
 							id={param.name ?? "number"}
 							type="number"
-							step={param.type === "float" ? "0.1" : "1"}
+							step={param.type === "float" ? "any" : "1"}
 							value={(value as string | number | undefined) ?? ""}
 							onChange={(e) =>
 								handleParameterChange(
 									param.name ?? "",
-									param.type === "int"
-										? parseInt(e.target.value)
-										: parseFloat(e.target.value),
+									e.target.value === ""
+										? undefined
+										: param.type === "int"
+											? parseInt(e.target.value)
+											: parseFloat(e.target.value),
 								)
 							}
+							placeholder={
+								param.default_value != null
+									? `Default: ${param.default_value}`
+									: undefined
+							}
 							required={param.required}
+							disabled={isExecuting}
+						/>
+						{param.description && (
+							<p className="text-xs text-muted-foreground">
+								{param.description}
+							</p>
+						)}
+					</div>
+				);
+
+			case "json":
+			case "dict":
+				return (
+					<div className="space-y-2">
+						<Label htmlFor={param.name ?? "json"}>
+							{displayName}{" "}
+							<span className="text-muted-foreground text-xs">
+								({param.type})
+							</span>
+							{param.required && (
+								<span className="text-destructive ml-1">*</span>
+							)}
+						</Label>
+						<textarea
+							id={param.name ?? "json"}
+							className="flex min-h-[80px] w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50 font-mono"
+							value={
+								typeof value === "string"
+									? value
+									: JSON.stringify(value, null, 2) || ""
+							}
+							onChange={(e) => {
+								try {
+									handleParameterChange(
+										param.name ?? "",
+										JSON.parse(e.target.value),
+									);
+								} catch {
+									// Keep as string if not valid JSON yet
+									handleParameterChange(param.name ?? "", e.target.value);
+								}
+							}}
+							placeholder={param.type === "dict" ? '{"key": "value"}' : "{}"}
 							disabled={isExecuting}
 						/>
 						{param.description && (
@@ -109,29 +190,34 @@ export function WorkflowParametersForm({
 				return (
 					<div className="space-y-2">
 						<Label htmlFor={param.name ?? "list"}>
-							{param.name ?? ""}
+							{displayName}{" "}
+							<span className="text-muted-foreground text-xs">
+								(list)
+							</span>
 							{param.required && (
-								<span className="text-destructive">*</span>
+								<span className="text-destructive ml-1">*</span>
 							)}
 						</Label>
-						<Input
+						<textarea
 							id={param.name ?? "list"}
-							type="text"
+							className="flex min-h-[80px] w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50 font-mono"
 							value={
-								Array.isArray(value)
-									? value.join(", ")
-									: ((value as string) ?? "")
+								typeof value === "string"
+									? value
+									: JSON.stringify(value, null, 2) || ""
 							}
-							onChange={(e) =>
-								handleParameterChange(
-									param.name ?? "",
-									e.target.value
-										.split(",")
-										.map((v) => v.trim()),
-								)
-							}
-							placeholder="Comma-separated values"
-							required={param.required}
+							onChange={(e) => {
+								try {
+									handleParameterChange(
+										param.name ?? "",
+										JSON.parse(e.target.value),
+									);
+								} catch {
+									// Keep as string if not valid JSON yet
+									handleParameterChange(param.name ?? "", e.target.value);
+								}
+							}}
+							placeholder='["item1", "item2"]'
 							disabled={isExecuting}
 						/>
 						{param.description && (
@@ -143,13 +229,13 @@ export function WorkflowParametersForm({
 				);
 
 			default:
-				// string, email, json
+				// string, email
 				return (
 					<div className="space-y-2">
 						<Label htmlFor={param.name ?? "text"}>
-							{param.name ?? ""}
+							{displayName}
 							{param.required && (
-								<span className="text-destructive">*</span>
+								<span className="text-destructive ml-1">*</span>
 							)}
 						</Label>
 						<Input
@@ -159,8 +245,13 @@ export function WorkflowParametersForm({
 							onChange={(e) =>
 								handleParameterChange(
 									param.name ?? "",
-									e.target.value,
+									e.target.value || undefined,
 								)
+							}
+							placeholder={
+								param.default_value != null
+									? `Default: ${param.default_value}`
+									: undefined
 							}
 							required={param.required}
 							disabled={isExecuting}
