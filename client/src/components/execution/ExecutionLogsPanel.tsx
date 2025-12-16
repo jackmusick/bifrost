@@ -1,7 +1,13 @@
 import { useRef, useEffect, useCallback, useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { Loader2 } from "lucide-react";
-import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
+import {
+	Card,
+	CardContent,
+	CardHeader,
+	CardTitle,
+	CardDescription,
+} from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import type { components } from "@/lib/v1";
@@ -58,8 +64,14 @@ export function ExecutionLogsPanel({
 	const logsContainerRef = useRef<HTMLDivElement>(null);
 	const [autoScroll, setAutoScroll] = useState(true);
 
-	const isRunning = status === "Running" || status === "Pending" || status === "Cancelling";
-	const isComplete = status === "Success" || status === "Failed" || status === "CompletedWithErrors" || status === "Timeout" || status === "Cancelled";
+	const isRunning =
+		status === "Running" || status === "Pending" || status === "Cancelling";
+	const isComplete =
+		status === "Success" ||
+		status === "Failed" ||
+		status === "CompletedWithErrors" ||
+		status === "Timeout" ||
+		status === "Cancelled";
 
 	// Combine API logs with streaming logs for display during execution
 	const displayLogs = isRunning ? [...logs, ...streamingLogs] : logs;
@@ -77,7 +89,11 @@ export function ExecutionLogsPanel({
 		if (!container) return;
 
 		// Check if scrolled to bottom (with 50px threshold)
-		const isAtBottom = container.scrollHeight - container.scrollTop - container.clientHeight < 50;
+		const isAtBottom =
+			container.scrollHeight -
+				container.scrollTop -
+				container.clientHeight <
+			50;
 		setAutoScroll(isAtBottom);
 	}, []);
 
@@ -88,17 +104,28 @@ export function ExecutionLogsPanel({
 		const data = "data" in log ? log.data : undefined;
 
 		return (
-			<div key={index} className="flex gap-3 text-sm font-mono border-b pb-2 last:border-0">
+			<div
+				key={index}
+				className="flex gap-3 text-sm font-mono border-b pb-2 last:border-0"
+			>
 				<span className="text-muted-foreground whitespace-nowrap">
-					{log.timestamp ? new Date(log.timestamp).toLocaleTimeString() : ""}
+					{log.timestamp
+						? new Date(log.timestamp).toLocaleTimeString()
+						: ""}
 				</span>
-				<span className={`font-semibold uppercase min-w-[60px] ${levelColor}`}>
+				<span
+					className={`font-semibold uppercase min-w-[60px] ${levelColor}`}
+				>
 					{log.level}
 				</span>
-				<span className="flex-1 whitespace-pre-wrap">{log.message}</span>
+				<span className="flex-1 whitespace-pre-wrap">
+					{log.message}
+				</span>
 				{data && Object.keys(data).length > 0 && (
 					<details className="text-xs">
-						<summary className="cursor-pointer text-muted-foreground">data</summary>
+						<summary className="cursor-pointer text-muted-foreground">
+							data
+						</summary>
 						<pre className="mt-1 p-2 bg-muted rounded">
 							{JSON.stringify(data, null, 2)}
 						</pre>
@@ -113,7 +140,11 @@ export function ExecutionLogsPanel({
 		const logsContent =
 			displayLogs.length === 0 && !isLoading ? (
 				<div className="text-center text-muted-foreground py-8">
-					{isRunning ? "Waiting for logs..." : isComplete ? "No logs captured" : "No execution in progress"}
+					{isRunning
+						? "Waiting for logs..."
+						: isComplete
+							? "No logs captured"
+							: "No execution in progress"}
 				</div>
 			) : isLoading && displayLogs.length === 0 ? (
 				<div className="text-center text-muted-foreground py-8">
@@ -146,7 +177,8 @@ export function ExecutionLogsPanel({
 						)}
 					</div>
 					<p className="text-xs text-muted-foreground">
-						Python logger output{!isPlatformAdmin && " (INFO, WARNING, ERROR only)"}
+						Python logger output
+						{!isPlatformAdmin && " (INFO, WARNING, ERROR only)"}
 					</p>
 				</div>
 				{/* Content */}

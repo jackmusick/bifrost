@@ -273,7 +273,7 @@ export function GitHub() {
 		setShowConflictModal(false);
 
 		try {
-			const updated = await configureMutation.mutateAsync({
+			const setupResponse = await configureMutation.mutateAsync({
 				body: {
 					repo_url: selectedRepo,
 					branch: selectedBranch,
@@ -281,14 +281,9 @@ export function GitHub() {
 				},
 			});
 
-			setConfig(updated);
-
-			const successMessage = updated.backup_path
-				? `Workspace replaced with repository content. Backup saved to: ${updated.backup_path}`
-				: "GitHub integration configured successfully";
-
-			toast.success("GitHub integration configured", {
-				description: successMessage,
+			// Configuration is now async - show job queued message
+			toast.success("GitHub configuration started", {
+				description: `Job ${setupResponse.job_id} queued. Watch for notifications for progress.`,
 			});
 		} catch (error) {
 			toast.error("Failed to save configuration", {

@@ -20,13 +20,23 @@ import {
 } from "lucide-react";
 import { useAuth } from "@/contexts/AuthContext";
 import { webSocketService } from "@/services/websocket";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import {
+	Card,
+	CardContent,
+	CardDescription,
+	CardHeader,
+	CardTitle,
+} from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Badge } from "@/components/ui/badge";
 import { toast } from "sonner";
-import { getCLISessions, deleteCLISession, type CLISessionResponse } from "@/services/cli";
+import {
+	getCLISessions,
+	deleteCLISession,
+	type CLISessionResponse,
+} from "@/services/cli";
 import {
 	Table,
 	TableBody,
@@ -64,7 +74,9 @@ function SessionsList() {
 			setSessions(response.sessions);
 			setError(null);
 		} catch (err) {
-			setError(err instanceof Error ? err.message : "Failed to load sessions");
+			setError(
+				err instanceof Error ? err.message : "Failed to load sessions",
+			);
 		} finally {
 			setIsLoading(false);
 		}
@@ -110,7 +122,9 @@ function SessionsList() {
 			toast.success("Session deleted");
 			setSessions((prev) => prev.filter((s) => s.id !== sessionId));
 		} catch (err) {
-			toast.error(err instanceof Error ? err.message : "Failed to delete session");
+			toast.error(
+				err instanceof Error ? err.message : "Failed to delete session",
+			);
 		} finally {
 			setDeletingId(null);
 		}
@@ -144,10 +158,16 @@ function SessionsList() {
 				<CardContent className="pt-6">
 					<div className="flex flex-col items-center justify-center py-12 text-center">
 						<Terminal className="h-16 w-16 text-muted-foreground mb-4" />
-						<h3 className="text-lg font-semibold mb-2">No CLI Sessions</h3>
+						<h3 className="text-lg font-semibold mb-2">
+							No CLI Sessions
+						</h3>
 						<p className="text-muted-foreground mb-4 max-w-md">
-							Run <code className="bg-muted px-2 py-1 rounded text-sm">bifrost run &lt;file&gt;</code> in
-							your terminal to start a workflow execution session.
+							Run{" "}
+							<code className="bg-muted px-2 py-1 rounded text-sm">
+								bifrost run &lt;file&gt;
+							</code>{" "}
+							in your terminal to start a workflow execution
+							session.
 						</p>
 						<pre className="bg-muted p-4 rounded-lg text-sm text-left overflow-x-auto max-w-full">
 							<code>
@@ -169,7 +189,9 @@ bifrost run my_workflows.py --workflow onboard_user`}
 			<CardHeader className="flex flex-row items-center justify-between">
 				<div>
 					<CardTitle>CLI Sessions</CardTitle>
-					<CardDescription>Active and recent debugging sessions</CardDescription>
+					<CardDescription>
+						Active and recent debugging sessions
+					</CardDescription>
 				</div>
 				<Button variant="outline" size="sm" onClick={fetchSessions}>
 					<RefreshCw className="mr-2 h-4 w-4" />
@@ -204,24 +226,38 @@ bifrost run my_workflows.py --workflow onboard_user`}
 								</TableCell>
 								<TableCell>
 									<div className="flex flex-wrap gap-1">
-										{session.workflows.slice(0, 3).map((w) => (
-											<Badge key={w.name} variant="secondary" className="text-xs">
-												{w.name}
-											</Badge>
-										))}
+										{session.workflows
+											.slice(0, 3)
+											.map((w) => (
+												<Badge
+													key={w.name}
+													variant="secondary"
+													className="text-xs"
+												>
+													{w.name}
+												</Badge>
+											))}
 										{session.workflows.length > 3 && (
-											<Badge variant="outline" className="text-xs">
+											<Badge
+												variant="outline"
+												className="text-xs"
+											>
 												+{session.workflows.length - 3}
 											</Badge>
 										)}
 									</div>
 								</TableCell>
 								<TableCell>
-									<Badge variant="outline">{session.executions.length}</Badge>
+									<Badge variant="outline">
+										{session.executions.length}
+									</Badge>
 								</TableCell>
 								<TableCell>
 									{session.is_connected ? (
-										<Badge variant="default" className="bg-green-500">
+										<Badge
+											variant="default"
+											className="bg-green-500"
+										>
 											<Wifi className="mr-1 h-3 w-3" />
 											Connected
 										</Badge>
@@ -235,12 +271,18 @@ bifrost run my_workflows.py --workflow onboard_user`}
 								<TableCell className="text-sm text-muted-foreground">
 									<div className="flex items-center gap-1">
 										<Clock className="h-3 w-3" />
-										{new Date(session.created_at).toLocaleString()}
+										{new Date(
+											session.created_at,
+										).toLocaleString()}
 									</div>
 								</TableCell>
 								<TableCell>
 									<div className="flex items-center gap-2">
-										<Button variant="ghost" size="sm" asChild>
+										<Button
+											variant="ghost"
+											size="sm"
+											asChild
+										>
 											<Link to={`/cli/${session.id}`}>
 												<ExternalLink className="h-4 w-4" />
 											</Link>
@@ -250,9 +292,13 @@ bifrost run my_workflows.py --workflow onboard_user`}
 												<Button
 													variant="ghost"
 													size="sm"
-													disabled={deletingId === session.id}
+													disabled={
+														deletingId ===
+														session.id
+													}
 												>
-													{deletingId === session.id ? (
+													{deletingId ===
+													session.id ? (
 														<Loader2 className="h-4 w-4 animate-spin" />
 													) : (
 														<Trash2 className="h-4 w-4 text-destructive" />
@@ -261,15 +307,27 @@ bifrost run my_workflows.py --workflow onboard_user`}
 											</AlertDialogTrigger>
 											<AlertDialogContent>
 												<AlertDialogHeader>
-													<AlertDialogTitle>Delete Session?</AlertDialogTitle>
+													<AlertDialogTitle>
+														Delete Session?
+													</AlertDialogTitle>
 													<AlertDialogDescription>
-														This will permanently delete this CLI session and its history.
-														This action cannot be undone.
+														This will permanently
+														delete this CLI session
+														and its history. This
+														action cannot be undone.
 													</AlertDialogDescription>
 												</AlertDialogHeader>
 												<AlertDialogFooter>
-													<AlertDialogCancel>Cancel</AlertDialogCancel>
-													<AlertDialogAction onClick={() => handleDelete(session.id)}>
+													<AlertDialogCancel>
+														Cancel
+													</AlertDialogCancel>
+													<AlertDialogAction
+														onClick={() =>
+															handleDelete(
+																session.id,
+															)
+														}
+													>
 														Delete
 													</AlertDialogAction>
 												</AlertDialogFooter>
@@ -293,7 +351,9 @@ export function CLI() {
 	return (
 		<div className="space-y-6">
 			<div>
-				<h1 className="scroll-m-20 text-4xl font-extrabold tracking-tight lg:text-5xl">Local Sessions</h1>
+				<h1 className="scroll-m-20 text-4xl font-extrabold tracking-tight lg:text-5xl">
+					Local Sessions
+				</h1>
 				<p className="leading-7 mt-2 text-muted-foreground">
 					CLI debugging sessions with web-based parameter input
 				</p>

@@ -19,7 +19,9 @@ export function useTriggerSchedule() {
 	return $api.useMutation("post", "/api/workflows/execute", {
 		onSuccess: () => {
 			// Invalidate schedules list to refresh last run times
-			queryClient.invalidateQueries({ queryKey: ["get", "/api/schedules"] });
+			queryClient.invalidateQueries({
+				queryKey: ["get", "/api/schedules"],
+			});
 		},
 	});
 }

@@ -42,7 +42,10 @@ export async function getDevRunState(): Promise<DevRunStateResponse | null> {
 	}
 	if (!response.ok) {
 		const error = await response.json().catch(() => ({}));
-		throw new Error(error.detail || `Failed to get dev run state: ${response.statusText}`);
+		throw new Error(
+			error.detail ||
+				`Failed to get dev run state: ${response.statusText}`,
+		);
 	}
 	return response.json();
 }
@@ -50,7 +53,9 @@ export async function getDevRunState(): Promise<DevRunStateResponse | null> {
 /**
  * Submit parameters to continue workflow execution
  */
-export async function continueDevRun(request: DevRunContinueRequest): Promise<{ status: string; workflow: string }> {
+export async function continueDevRun(
+	request: DevRunContinueRequest,
+): Promise<{ status: string; workflow: string }> {
 	const response = await authFetch("/api/sdk/run/continue", {
 		method: "POST",
 		headers: { "Content-Type": "application/json" },
@@ -58,7 +63,10 @@ export async function continueDevRun(request: DevRunContinueRequest): Promise<{ 
 	});
 	if (!response.ok) {
 		const error = await response.json().catch(() => ({}));
-		throw new Error(error.detail || `Failed to continue dev run: ${response.statusText}`);
+		throw new Error(
+			error.detail ||
+				`Failed to continue dev run: ${response.statusText}`,
+		);
 	}
 	return response.json();
 }

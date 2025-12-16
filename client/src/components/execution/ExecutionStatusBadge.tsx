@@ -33,7 +33,10 @@ export function ExecutionStatusBadge({
 	switch (status) {
 		case "Success":
 			return (
-				<Badge variant="default" className={`bg-green-500 ${className ?? ""}`}>
+				<Badge
+					variant="default"
+					className={`bg-green-500 ${className ?? ""}`}
+				>
 					<CheckCircle className="mr-1 h-3 w-3" />
 					Completed
 				</Badge>
@@ -62,9 +65,13 @@ export function ExecutionStatusBadge({
 				);
 			} else if (waitReason === "memory_pressure") {
 				return (
-					<Badge variant="outline" className={`border-orange-500 ${className ?? ""}`}>
+					<Badge
+						variant="outline"
+						className={`border-orange-500 ${className ?? ""}`}
+					>
 						<Loader2 className="mr-1 h-3 w-3 animate-spin" />
-						Heavy Load ({availableMemoryMb ?? "?"}MB / {requiredMemoryMb ?? "?"}MB)
+						Heavy Load ({availableMemoryMb ?? "?"}MB /{" "}
+						{requiredMemoryMb ?? "?"}MB)
 					</Badge>
 				);
 			}
@@ -77,7 +84,10 @@ export function ExecutionStatusBadge({
 		}
 		case "Cancelling":
 			return (
-				<Badge variant="secondary" className={`bg-orange-500 text-white ${className ?? ""}`}>
+				<Badge
+					variant="secondary"
+					className={`bg-orange-500 text-white ${className ?? ""}`}
+				>
 					<Loader2 className="mr-1 h-3 w-3 animate-spin" />
 					Cancelling
 				</Badge>
@@ -94,7 +104,10 @@ export function ExecutionStatusBadge({
 			);
 		case "CompletedWithErrors":
 			return (
-				<Badge variant="secondary" className={`bg-yellow-500 ${className ?? ""}`}>
+				<Badge
+					variant="secondary"
+					className={`bg-yellow-500 ${className ?? ""}`}
+				>
 					<XCircle className="mr-1 h-3 w-3" />
 					Completed with Errors
 				</Badge>
@@ -139,11 +152,19 @@ export function ExecutionStatusIcon({
 		case "Failed":
 			return <XCircle className={`${baseClasses} text-red-500`} />;
 		case "Running":
-			return <Loader2 className={`${baseClasses} text-blue-500 animate-spin`} />;
+			return (
+				<Loader2
+					className={`${baseClasses} text-blue-500 animate-spin`}
+				/>
+			);
 		case "Pending":
 			return <Clock className={`${baseClasses} text-gray-500`} />;
 		case "Cancelling":
-			return <Loader2 className={`${baseClasses} text-orange-500 animate-spin`} />;
+			return (
+				<Loader2
+					className={`${baseClasses} text-orange-500 animate-spin`}
+				/>
+			);
 		case "Cancelled":
 			return <XCircle className={`${baseClasses} text-gray-500`} />;
 		case "CompletedWithErrors":
@@ -172,5 +193,7 @@ export function isExecutionComplete(status: ExecutionStatus | string): boolean {
  * Check if a status represents a running/in-progress execution
  */
 export function isExecutionRunning(status: ExecutionStatus | string): boolean {
-	return status === "Running" || status === "Pending" || status === "Cancelling";
+	return (
+		status === "Running" || status === "Pending" || status === "Cancelling"
+	);
 }

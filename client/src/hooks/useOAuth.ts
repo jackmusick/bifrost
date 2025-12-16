@@ -149,7 +149,11 @@ export function useAuthorizeOAuthConnection() {
 					queryKey: [
 						"get",
 						"/api/oauth/connections/{connection_name}",
-						{ params: { path: { connection_name: connectionName } } },
+						{
+							params: {
+								path: { connection_name: connectionName },
+							},
+						},
 					],
 				});
 
@@ -199,7 +203,11 @@ export function useCancelOAuthAuthorization() {
 					queryKey: [
 						"get",
 						"/api/oauth/connections/{connection_name}",
-						{ params: { path: { connection_name: connectionName } } },
+						{
+							params: {
+								path: { connection_name: connectionName },
+							},
+						},
 					],
 				});
 				toast.success("Authorization canceled");
@@ -237,7 +245,11 @@ export function useRefreshOAuthToken() {
 					queryKey: [
 						"get",
 						"/api/oauth/connections/{connection_name}",
-						{ params: { path: { connection_name: connectionName } } },
+						{
+							params: {
+								path: { connection_name: connectionName },
+							},
+						},
 					],
 				});
 				toast.success("OAuth token refreshed successfully");

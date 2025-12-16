@@ -14,7 +14,9 @@ test.describe("Form Access for Org Users", () => {
 		await page.goto("/forms");
 
 		// Should see forms heading
-		await expect(page.getByRole("heading", { name: /forms/i }).first()).toBeVisible({
+		await expect(
+			page.getByRole("heading", { name: /forms/i }).first(),
+		).toBeVisible({
 			timeout: 10000,
 		});
 	});
@@ -22,7 +24,9 @@ test.describe("Form Access for Org Users", () => {
 	test("should NOT show create form button", async ({ page }) => {
 		await page.goto("/forms");
 
-		await expect(page.getByRole("heading", { name: /forms/i }).first()).toBeVisible({
+		await expect(
+			page.getByRole("heading", { name: /forms/i }).first(),
+		).toBeVisible({
 			timeout: 10000,
 		});
 
@@ -35,7 +39,9 @@ test.describe("Form Access for Org Users", () => {
 	test("should only see assigned forms", async ({ page }) => {
 		await page.goto("/forms");
 
-		await expect(page.getByRole("heading", { name: /forms/i }).first()).toBeVisible({
+		await expect(
+			page.getByRole("heading", { name: /forms/i }).first(),
+		).toBeVisible({
 			timeout: 10000,
 		});
 
@@ -46,7 +52,9 @@ test.describe("Form Access for Org Users", () => {
 	test("should NOT show edit button for forms", async ({ page }) => {
 		await page.goto("/forms");
 
-		await expect(page.getByRole("heading", { name: /forms/i }).first()).toBeVisible({
+		await expect(
+			page.getByRole("heading", { name: /forms/i }).first(),
+		).toBeVisible({
 			timeout: 10000,
 		});
 
@@ -59,7 +67,9 @@ test.describe("Form Access for Org Users", () => {
 	test("should NOT show delete button for forms", async ({ page }) => {
 		await page.goto("/forms");
 
-		await expect(page.getByRole("heading", { name: /forms/i }).first()).toBeVisible({
+		await expect(
+			page.getByRole("heading", { name: /forms/i }).first(),
+		).toBeVisible({
 			timeout: 10000,
 		});
 
@@ -74,7 +84,9 @@ test.describe("Form Submission for Org Users", () => {
 	test("should be able to view assigned form details", async ({ page }) => {
 		await page.goto("/forms");
 
-		await expect(page.getByRole("heading", { name: /forms/i }).first()).toBeVisible({
+		await expect(
+			page.getByRole("heading", { name: /forms/i }).first(),
+		).toBeVisible({
 			timeout: 10000,
 		});
 
@@ -97,7 +109,9 @@ test.describe("Form Submission for Org Users", () => {
 	test("should be able to submit assigned forms", async ({ page }) => {
 		await page.goto("/forms");
 
-		await expect(page.getByRole("heading", { name: /forms/i }).first()).toBeVisible({
+		await expect(
+			page.getByRole("heading", { name: /forms/i }).first(),
+		).toBeVisible({
 			timeout: 10000,
 		});
 
@@ -135,7 +149,9 @@ test.describe("Form Permission Boundaries", () => {
 	test("should not see role assignment options", async ({ page }) => {
 		await page.goto("/forms");
 
-		await expect(page.getByRole("heading", { name: /forms/i }).first()).toBeVisible({
+		await expect(
+			page.getByRole("heading", { name: /forms/i }).first(),
+		).toBeVisible({
 			timeout: 10000,
 		});
 

@@ -112,9 +112,9 @@ test.describe("Execution Details", () => {
 			await page.waitForURL(/\/history\/[a-f0-9-]+/, { timeout: 5000 });
 
 			// Should show output section
-			await expect(
-				page.getByText(/output|result|response/i),
-			).toBeVisible({ timeout: 5000 });
+			await expect(page.getByText(/output|result|response/i)).toBeVisible(
+				{ timeout: 5000 },
+			);
 		}
 	});
 
@@ -210,7 +210,9 @@ test.describe("Execution Actions", () => {
 
 		if (await runningStatus.isVisible().catch(() => false)) {
 			// Running executions should have cancel button
-			const cancelButton = page.getByRole("button", { name: /cancel|stop/i });
+			const cancelButton = page.getByRole("button", {
+				name: /cancel|stop/i,
+			});
 			await expect(cancelButton).toBeVisible();
 		}
 	});
@@ -237,7 +239,7 @@ test.describe("Execution Actions", () => {
 				.first();
 
 			// Re-run functionality may or may not be implemented
-			const hasRerun = await rerunButton.isVisible().catch(() => false);
+			const _hasRerun = await rerunButton.isVisible().catch(() => false);
 			// Just checking the page works, not requiring re-run feature
 			expect(true).toBe(true);
 		}

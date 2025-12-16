@@ -30,17 +30,27 @@ test.describe("Org User Restrictions", () => {
 		await page.goto("/organizations");
 
 		// Should either redirect away or show access denied
-		const accessDenied = page.getByText(/access denied|forbidden|unauthorized|not found/i);
+		const accessDenied = page.getByText(
+			/access denied|forbidden|unauthorized|not found/i,
+		);
 		const notOnPage = async () => !page.url().includes("/organizations");
 
 		// Wait for either condition
 		await Promise.race([
-			accessDenied.waitFor({ state: "visible", timeout: 5000 }).catch(() => {}),
-			page.waitForURL((url) => !url.pathname.includes("/organizations"), { timeout: 5000 }).catch(() => {}),
+			accessDenied
+				.waitFor({ state: "visible", timeout: 5000 })
+				.catch(() => {}),
+			page
+				.waitForURL((url) => !url.pathname.includes("/organizations"), {
+					timeout: 5000,
+				})
+				.catch(() => {}),
 		]);
 
 		// Verify one of the conditions is true
-		const isAccessDenied = await accessDenied.isVisible().catch(() => false);
+		const isAccessDenied = await accessDenied
+			.isVisible()
+			.catch(() => false);
 		const isRedirected = await notOnPage();
 		expect(isAccessDenied || isRedirected).toBe(true);
 	});
@@ -108,7 +118,9 @@ test.describe("Org User Restrictions", () => {
 		await page.goto("/forms");
 
 		// Should see forms page (filtered to assigned forms)
-		await expect(page.getByRole("heading", { name: /forms/i }).first()).toBeVisible({
+		await expect(
+			page.getByRole("heading", { name: /forms/i }).first(),
+		).toBeVisible({
 			timeout: 10000,
 		});
 

@@ -143,7 +143,9 @@ export function useCancelExecution() {
 				],
 			});
 			// Also invalidate the executions list
-			queryClient.invalidateQueries({ queryKey: ["get", "/api/executions"] });
+			queryClient.invalidateQueries({
+				queryKey: ["get", "/api/executions"],
+			});
 		},
 	});
 }

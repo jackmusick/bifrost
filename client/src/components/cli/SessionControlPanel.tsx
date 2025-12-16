@@ -4,7 +4,7 @@
  * Provides workflow selection, parameter input, and run controls for CLI sessions.
  */
 
-import { useCallback, useMemo, useState, useEffect } from "react";
+import { useCallback, useMemo, useState } from "react";
 import { Loader2, Wifi, WifiOff, FileCode } from "lucide-react";
 import { Label } from "@/components/ui/label";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
@@ -50,25 +50,32 @@ export function SessionControlPanel({
 		[session.workflows, selectedWorkflow],
 	);
 
-	// Form state lifted from WorkflowParametersForm to prevent reset on session updates
-	// This ensures form values persist even if the form component remounts
-	const [formValues, setFormValues] = useState<Record<string, unknown>>({});
+	// Compute initial form values for current workflow
+	const initialFormValues = useMemo(() => {
+		const params = currentWorkflow?.parameters;
+		if (!params) return {};
+		return params.reduce(
+			(acc: Record<string, unknown>, param) => {
+				acc[param.name] =
+					param.default_value ?? (param.type === "bool" ? false : "");
+				return acc;
+			},
+			{} as Record<string, unknown>,
+		);
+	}, [currentWorkflow]);
 
-	// Initialize form values when workflow changes
-	useEffect(() => {
-		if (currentWorkflow?.parameters) {
-			setFormValues(
-				currentWorkflow.parameters.reduce(
-					(acc: Record<string, unknown>, param) => {
-						acc[param.name] =
-							param.default_value ?? (param.type === "bool" ? false : "");
-						return acc;
-					},
-					{} as Record<string, unknown>,
-				),
-			);
-		}
-	}, [selectedWorkflow]); // Only reset when workflow changes, not on every session update
+	// Form state lifted from WorkflowParametersForm to prevent reset on session updates
+	// Key-based reset: formKey changes when workflow changes, triggering state reset
+	const formKey = `${selectedWorkflow}-${JSON.stringify(initialFormValues)}`;
+	const [formValues, setFormValues] =
+		useState<Record<string, unknown>>(initialFormValues);
+
+	// Reset form values when workflow changes by tracking the key
+	const [lastFormKey, setLastFormKey] = useState(formKey);
+	if (formKey !== lastFormKey) {
+		setFormValues(initialFormValues);
+		setLastFormKey(formKey);
+	}
 
 	// Handle workflow selection
 	const handleWorkflowSelect = useCallback(
@@ -107,11 +114,19 @@ export function SessionControlPanel({
 							<TooltipTrigger asChild>
 								<div className="flex items-center gap-2 min-w-0 cursor-default">
 									<FileCode className="h-4 w-4 flex-shrink-0 text-muted-foreground" />
-									<span className="text-sm font-medium truncate">{fileName}</span>
+									<span className="text-sm font-medium truncate">
+										{fileName}
+									</span>
 								</div>
 							</TooltipTrigger>
-							<TooltipContent side="bottom" align="start" className="max-w-md">
-								<p className="font-mono text-xs break-all">{session.file_path}</p>
+							<TooltipContent
+								side="bottom"
+								align="start"
+								className="max-w-md"
+							>
+								<p className="font-mono text-xs break-all">
+									{session.file_path}
+								</p>
 							</TooltipContent>
 						</Tooltip>
 					</TooltipProvider>
@@ -162,11 +177,12 @@ export function SessionControlPanel({
 					</div>
 
 					{/* Workflow description */}
-					{currentWorkflow?.description && session.workflows.length > 1 && (
-						<p className="text-sm text-muted-foreground">
-							{currentWorkflow.description}
-						</p>
-					)}
+					{currentWorkflow?.description &&
+						session.workflows.length > 1 && (
+							<p className="text-sm text-muted-foreground">
+								{currentWorkflow.description}
+							</p>
+						)}
 
 					{/* Pending state indicator */}
 					{session.pending && (
@@ -185,7 +201,8 @@ export function SessionControlPanel({
 							<WifiOff className="h-4 w-4" />
 							<AlertTitle>CLI Disconnected</AlertTitle>
 							<AlertDescription>
-								The CLI is not running. Start the CLI to execute workflows.
+								The CLI is not running. Start the CLI to execute
+								workflows.
 							</AlertDescription>
 						</Alert>
 					)}

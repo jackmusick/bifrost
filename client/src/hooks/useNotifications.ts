@@ -83,7 +83,9 @@ export function useNotifications() {
 
 	// Auto-dismiss completed notifications after delay
 	useEffect(() => {
-		const completedNotifications = notifications.filter(isCompleteNotification);
+		const completedNotifications = notifications.filter(
+			isCompleteNotification,
+		);
 
 		const timers = completedNotifications.map((notification) => {
 			// Calculate time since completion

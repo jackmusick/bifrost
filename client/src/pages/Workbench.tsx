@@ -7,14 +7,23 @@
 
 import { useState, useEffect, useCallback, useRef } from "react";
 import { useNavigate, useParams, Link } from "react-router-dom";
-import { AlertCircle, ArrowLeft, PanelLeftClose, PanelLeft } from "lucide-react";
+import {
+	AlertCircle,
+	ArrowLeft,
+	PanelLeftClose,
+	PanelLeft,
+} from "lucide-react";
 import { useAuth } from "@/contexts/AuthContext";
 import { webSocketService } from "@/services/websocket";
 import { Button } from "@/components/ui/button";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Skeleton } from "@/components/ui/skeleton";
 import { toast } from "sonner";
-import { getCLISession, continueCLISession, type CLISessionResponse } from "@/services/cli";
+import {
+	getCLISession,
+	continueCLISession,
+	type CLISessionResponse,
+} from "@/services/cli";
 import { SessionControlPanel } from "@/components/cli/SessionControlPanel";
 import { ExecutionDetails } from "@/pages/ExecutionDetails";
 
@@ -34,9 +43,13 @@ export function Workbench() {
 	const [error, setError] = useState<string | null>(null);
 
 	// UI state
-	const [selectedWorkflow, setSelectedWorkflow] = useState<string | null>(null);
+	const [selectedWorkflow, setSelectedWorkflow] = useState<string | null>(
+		null,
+	);
 	const [isSubmitting, setIsSubmitting] = useState(false);
-	const [currentExecutionId, setCurrentExecutionId] = useState<string | null>(null);
+	const [currentExecutionId, setCurrentExecutionId] = useState<string | null>(
+		null,
+	);
 
 	// Resizable sidebar state
 	const [sidebarWidth, setSidebarWidth] = useState(DEFAULT_SIDEBAR_WIDTH);
@@ -75,7 +88,9 @@ export function Workbench() {
 				return null;
 			});
 		} catch (err) {
-			setError(err instanceof Error ? err.message : "Failed to load session");
+			setError(
+				err instanceof Error ? err.message : "Failed to load session",
+			);
 		} finally {
 			setIsLoading(false);
 		}
@@ -94,19 +109,25 @@ export function Workbench() {
 
 		// Subscribe to CLI session updates using proper callback mechanism
 		// This survives WebSocket reconnections unlike raw message listeners
-		const unsubscribe = webSocketService.onCLISessionUpdate(sessionId, (update) => {
-			if (update.state) {
-				setSession(update.state);
-				// Update current execution if new one started
-				if (update.state.executions?.length > 0) {
-					const latestExecution = update.state.executions[0];
-					// Only auto-switch if the new execution is running/pending
-					if (latestExecution.status === "Running" || latestExecution.status === "Pending") {
-						setCurrentExecutionId(latestExecution.id);
+		const unsubscribe = webSocketService.onCLISessionUpdate(
+			sessionId,
+			(update) => {
+				if (update.state) {
+					setSession(update.state);
+					// Update current execution if new one started
+					if (update.state.executions?.length > 0) {
+						const latestExecution = update.state.executions[0];
+						// Only auto-switch if the new execution is running/pending
+						if (
+							latestExecution.status === "Running" ||
+							latestExecution.status === "Pending"
+						) {
+							setCurrentExecutionId(latestExecution.id);
+						}
 					}
 				}
-			}
-		});
+			},
+		);
 
 		return () => {
 			unsubscribe();
@@ -132,12 +153,18 @@ export function Workbench() {
 				// Subscribe to execution channel BEFORE mounting ExecutionDetails
 				// This ensures we receive completion events even for fast CLI executions
 				// (CLI polls for pending executions and can complete very quickly)
-				await webSocketService.connect([`execution:${response.execution_id}`]);
+				await webSocketService.connect([
+					`execution:${response.execution_id}`,
+				]);
 
 				setCurrentExecutionId(response.execution_id);
 				toast.success("Workflow execution started");
 			} catch (err) {
-				toast.error(err instanceof Error ? err.message : "Failed to start execution");
+				toast.error(
+					err instanceof Error
+						? err.message
+						: "Failed to start execution",
+				);
 			} finally {
 				setIsSubmitting(false);
 			}
@@ -157,7 +184,10 @@ export function Workbench() {
 
 			const containerRect = containerRef.current.getBoundingClientRect();
 			const newWidth = e.clientX - containerRect.left;
-			const constrainedWidth = Math.max(MIN_SIDEBAR_WIDTH, Math.min(MAX_SIDEBAR_WIDTH, newWidth));
+			const constrainedWidth = Math.max(
+				MIN_SIDEBAR_WIDTH,
+				Math.min(MAX_SIDEBAR_WIDTH, newWidth),
+			);
 			setSidebarWidth(constrainedWidth);
 		},
 		[isResizing],
@@ -202,7 +232,9 @@ export function Workbench() {
 				<Alert variant="destructive">
 					<AlertCircle className="h-4 w-4" />
 					<AlertTitle>Error</AlertTitle>
-					<AlertDescription>{error || "Session not found"}</AlertDescription>
+					<AlertDescription>
+						{error || "Session not found"}
+					</AlertDescription>
 				</Alert>
 				<Button onClick={() => navigate("/cli")} variant="outline">
 					<ArrowLeft className="mr-2 h-4 w-4" />
@@ -225,7 +257,11 @@ export function Workbench() {
 					size="icon"
 					onClick={() => setSidebarVisible(!sidebarVisible)}
 				>
-					{sidebarVisible ? <PanelLeftClose className="h-4 w-4" /> : <PanelLeft className="h-4 w-4" />}
+					{sidebarVisible ? (
+						<PanelLeftClose className="h-4 w-4" />
+					) : (
+						<PanelLeft className="h-4 w-4" />
+					)}
 				</Button>
 			</div>
 
@@ -288,9 +324,12 @@ export function Workbench() {
 				) : (
 					<div className="flex flex-col items-center justify-center h-full text-center p-8">
 						<div className="text-muted-foreground space-y-2">
-							<h3 className="text-lg font-medium">No Execution Selected</h3>
+							<h3 className="text-lg font-medium">
+								No Execution Selected
+							</h3>
 							<p className="text-sm">
-								Select a workflow and click Run to start an execution,
+								Select a workflow and click Run to start an
+								execution,
 								<br />
 								or select a previous execution from the history.
 							</p>

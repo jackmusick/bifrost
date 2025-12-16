@@ -69,7 +69,10 @@ test.describe("Workflow Listing", () => {
 			// Check if we're on a detail page or showing details
 			const hasDetails =
 				page.url().includes("/workflows/") ||
-				(await page.getByText(/parameters|inputs|description/i).isVisible().catch(() => false));
+				(await page
+					.getByText(/parameters|inputs|description/i)
+					.isVisible()
+					.catch(() => false));
 
 			expect(hasDetails).toBe(true);
 		}
@@ -86,7 +89,9 @@ test.describe("Workflow Execution", () => {
 		).toBeVisible({ timeout: 10000 });
 
 		// Look for execute buttons
-		const executeButton = page.getByRole("button", { name: /execute|run/i }).first();
+		const executeButton = page
+			.getByRole("button", { name: /execute|run/i })
+			.first();
 
 		// Either we have execute buttons or no workflows
 		const hasButton = await executeButton.isVisible().catch(() => false);
@@ -109,7 +114,9 @@ test.describe("Workflow Execution", () => {
 		).toBeVisible({ timeout: 10000 });
 
 		// Find execute button
-		const executeButton = page.getByRole("button", { name: /execute|run/i }).first();
+		const executeButton = page
+			.getByRole("button", { name: /execute|run/i })
+			.first();
 
 		if (await executeButton.isVisible().catch(() => false)) {
 			await executeButton.click();
@@ -136,7 +143,9 @@ test.describe("Workflow Execution", () => {
 		).toBeVisible({ timeout: 10000 });
 
 		// Find and click execute button
-		const executeButton = page.getByRole("button", { name: /execute|run/i }).first();
+		const executeButton = page
+			.getByRole("button", { name: /execute|run/i })
+			.first();
 
 		if (!(await executeButton.isVisible().catch(() => false))) {
 			test.skip();
@@ -157,13 +166,17 @@ test.describe("Workflow Execution", () => {
 			await runButton.click();
 
 			// Should show execution progress or redirect to execution detail
-			await page.waitForURL(/\/history\/[a-f0-9-]+|\/executions/, {
-				timeout: 15000,
-			}).catch(() => {});
+			await page
+				.waitForURL(/\/history\/[a-f0-9-]+|\/executions/, {
+					timeout: 15000,
+				})
+				.catch(() => {});
 
 			// Should see execution status
 			await expect(
-				page.getByText(/pending|running|queued|success|completed|failed/i),
+				page.getByText(
+					/pending|running|queued|success|completed|failed/i,
+				),
 			).toBeVisible({ timeout: 30000 });
 		}
 	});

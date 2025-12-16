@@ -129,10 +129,14 @@ export function OAuthConnections() {
 	const handleAuthorize = async (
 		connectionName: string,
 	): Promise<string | void> => {
+		const redirectUri = `${window.location.origin}/oauth/callback/${connectionName}`;
 		return new Promise((resolve) => {
 			authorizeMutation.mutate(
 				{
-					params: { path: { connection_name: connectionName } },
+					params: {
+						path: { connection_name: connectionName },
+						query: { redirect_uri: redirectUri },
+					},
 				},
 				{
 					onSuccess: (response) => {

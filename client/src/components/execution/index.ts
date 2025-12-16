@@ -1,6 +1,10 @@
 // Execution display components
 export { ExecutionLogsPanel } from "./ExecutionLogsPanel";
-export type { ExecutionStatus, ExecutionLogPublic, LogEntry } from "./ExecutionLogsPanel";
+export type {
+	ExecutionStatus,
+	ExecutionLogPublic,
+	LogEntry,
+} from "./ExecutionLogsPanel";
 
 export { ExecutionResultPanel } from "./ExecutionResultPanel";
 

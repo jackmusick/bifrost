@@ -30,8 +30,11 @@ test.describe("User Listing", () => {
 		await page.waitForTimeout(1000);
 
 		// Either we see users in the table or an empty state message
-		const hasUsers = await page.locator("table tbody tr").count() > 0;
-		const hasEmptyState = await page.getByText(/no users/i).isVisible().catch(() => false);
+		const hasUsers = (await page.locator("table tbody tr").count()) > 0;
+		const hasEmptyState = await page
+			.getByText(/no users/i)
+			.isVisible()
+			.catch(() => false);
 
 		expect(hasUsers || hasEmptyState).toBe(true);
 	});
@@ -86,9 +89,16 @@ test.describe("User Details", () => {
 		await page.waitForTimeout(1000);
 
 		// Either we see organization info or an empty state
-		const hasOrgInfo = await page.getByText(/organization/i).first().isVisible().catch(() => false);
-		const hasUsers = await page.locator("table tbody tr").count() > 0;
-		const hasEmptyState = await page.getByText(/no users/i).isVisible().catch(() => false);
+		const hasOrgInfo = await page
+			.getByText(/organization/i)
+			.first()
+			.isVisible()
+			.catch(() => false);
+		const hasUsers = (await page.locator("table tbody tr").count()) > 0;
+		const hasEmptyState = await page
+			.getByText(/no users/i)
+			.isVisible()
+			.catch(() => false);
 
 		// Test passes if we see org info, have users, or have empty state
 		expect(hasOrgInfo || hasUsers || hasEmptyState).toBe(true);
@@ -104,9 +114,11 @@ test.describe("User Invitation", () => {
 		).toBeVisible({ timeout: 10000 });
 
 		// Click invite button (use first() for multiple matches)
-		const inviteButton = page.getByRole("button", {
-			name: /invite|create|add/i,
-		}).first();
+		const inviteButton = page
+			.getByRole("button", {
+				name: /invite|create|add/i,
+			})
+			.first();
 
 		try {
 			await inviteButton.waitFor({ state: "visible", timeout: 3000 });
@@ -114,7 +126,10 @@ test.describe("User Invitation", () => {
 
 			// Should show invite form
 			await expect(
-				page.getByLabel(/email/i).or(page.getByPlaceholder(/email/i)).first(),
+				page
+					.getByLabel(/email/i)
+					.or(page.getByPlaceholder(/email/i))
+					.first(),
 			).toBeVisible({ timeout: 5000 });
 		} catch {
 			// Button not found - page may not have invite functionality visible
@@ -130,19 +145,26 @@ test.describe("User Invitation", () => {
 		).toBeVisible({ timeout: 10000 });
 
 		// Click invite button
-		const inviteButton = page.getByRole("button", {
-			name: /invite|create|add/i,
-		}).first();
+		const inviteButton = page
+			.getByRole("button", {
+				name: /invite|create|add/i,
+			})
+			.first();
 		await inviteButton.click();
 
 		// Enter invalid email
-		const emailInput = page.getByLabel(/email/i).or(page.getByPlaceholder(/email/i)).first();
+		const emailInput = page
+			.getByLabel(/email/i)
+			.or(page.getByPlaceholder(/email/i))
+			.first();
 		await emailInput.fill("invalid-email");
 
 		// Try to submit
-		const submitButton = page.getByRole("button", {
-			name: /invite|create|submit|save/i,
-		}).first();
+		const submitButton = page
+			.getByRole("button", {
+				name: /invite|create|submit|save/i,
+			})
+			.first();
 		if (await submitButton.isVisible().catch(() => false)) {
 			await submitButton.click();
 

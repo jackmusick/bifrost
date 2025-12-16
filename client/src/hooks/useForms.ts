@@ -150,7 +150,11 @@ export function useUpdateForm() {
 				.path.form_id;
 			queryClient.invalidateQueries({ queryKey: ["get", "/api/forms"] });
 			queryClient.invalidateQueries({
-				queryKey: ["get", "/api/forms/{form_id}", { params: { path: { form_id: formId } } }],
+				queryKey: [
+					"get",
+					"/api/forms/{form_id}",
+					{ params: { path: { form_id: formId } } },
+				],
 			});
 			toast.success("Form updated", {
 				description: "The form has been updated successfully",

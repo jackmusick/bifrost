@@ -15,7 +15,11 @@ test.describe("Configuration Listing", () => {
 
 		// Should see config heading or settings page
 		await expect(
-			page.getByRole("heading", { name: /config|settings|configuration/i }).first(),
+			page
+				.getByRole("heading", {
+					name: /config|settings|configuration/i,
+				})
+				.first(),
 		).toBeVisible({ timeout: 10000 });
 	});
 
@@ -81,7 +85,9 @@ test.describe("Configuration Types", () => {
 			await addButton.click();
 
 			// Should show secret type option
-			await expect(page.getByText(/secret|password|sensitive/i)).toBeVisible({
+			await expect(
+				page.getByText(/secret|password|sensitive/i),
+			).toBeVisible({
 				timeout: 5000,
 			});
 		}
@@ -121,7 +127,7 @@ test.describe("Configuration Editing", () => {
 
 		// Secret values should be masked (shown as dots or asterisks)
 		// This depends on having secret config items in the system
-		const secretField = page.locator(
+		const _secretField = page.locator(
 			"[type='password'], [data-testid='secret-value'], .secret-value",
 		);
 
@@ -139,7 +145,7 @@ test.describe("Organization-Scoped Config", () => {
 		).toBeVisible({ timeout: 10000 });
 
 		// Look for organization context
-		const orgSelector = page
+		const _orgSelector = page
 			.getByRole("combobox", { name: /organization/i })
 			.or(page.getByLabel(/organization/i))
 			.or(page.getByText(/global|organization/i));

@@ -63,7 +63,7 @@ test.describe("Data Provider Configuration", () => {
 		).toBeVisible({ timeout: 10000 });
 
 		// Look for configure button
-		const configureButton = page.getByRole("button", {
+		const _configureButton = page.getByRole("button", {
 			name: /configure|setup|connect/i,
 		});
 

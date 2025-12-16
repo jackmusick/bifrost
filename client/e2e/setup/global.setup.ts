@@ -1,3 +1,4 @@
+/* eslint-disable no-console */
 /**
  * Global Setup for Playwright E2E Tests
  *
@@ -16,7 +17,12 @@ import * as fs from "fs";
 import * as path from "path";
 import { fileURLToPath } from "url";
 import { createTestUsers, authenticateInBrowser } from "./auth-helpers";
-import { USERS, AUTH_STATE_DIR, getAuthStatePath, getCredentialsPath } from "../fixtures/users";
+import {
+	USERS,
+	AUTH_STATE_DIR,
+	getAuthStatePath,
+	getCredentialsPath,
+} from "../fixtures/users";
 
 // ESM equivalent of __dirname
 const __filename = fileURLToPath(import.meta.url);
@@ -54,7 +60,8 @@ setup("create users and authenticate", async ({ browser }) => {
 	console.log("\n=== Authenticating users in browser ===\n");
 
 	for (const userKey of Object.keys(USERS)) {
-		const userCredentials = credentials[userKey as keyof typeof credentials];
+		const userCredentials =
+			credentials[userKey as keyof typeof credentials];
 
 		// Skip org entries (they're not users)
 		if (!userCredentials || !("email" in userCredentials)) {
@@ -72,7 +79,11 @@ setup("create users and authenticate", async ({ browser }) => {
 			await authenticateInBrowser(page, userCredentials);
 
 			// Save storage state
-			const statePath = path.resolve(__dirname, "..", getAuthStatePath(userKey));
+			const statePath = path.resolve(
+				__dirname,
+				"..",
+				getAuthStatePath(userKey),
+			);
 			await context.storageState({ path: statePath });
 			console.log(`  Saved auth state to ${statePath}`);
 		} catch (error) {

@@ -95,9 +95,7 @@ const AuthCallback = lazy(() =>
 const DevRun = lazy(() =>
 	import("@/pages/DevRun").then((m) => ({ default: m.DevRun })),
 );
-const CLI = lazy(() =>
-	import("@/pages/CLI").then((m) => ({ default: m.CLI })),
-);
+const CLI = lazy(() => import("@/pages/CLI").then((m) => ({ default: m.CLI })));
 const Workbench = lazy(() =>
 	import("@/pages/Workbench").then((m) => ({ default: m.Workbench })),
 );

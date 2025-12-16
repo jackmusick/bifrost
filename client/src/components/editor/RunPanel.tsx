@@ -268,7 +268,10 @@ export function RunPanel() {
 					dp.source_file_path?.endsWith(openFile.path),
 			);
 			if (dataProvider) {
-				setDetectedItem({ type: "data_provider", metadata: dataProvider });
+				setDetectedItem({
+					type: "data_provider",
+					metadata: dataProvider,
+				});
 				return;
 			}
 		}
@@ -727,88 +730,87 @@ export function RunPanel() {
 				)}
 
 				{detectedItem.type === "data_provider" && (
-						<>
-							<div className="border-b px-3 py-2">
-								<div className="flex items-center gap-2">
-									<Database className="h-4 w-4 text-primary" />
-									<div className="flex-1">
-										<h3 className="text-sm font-semibold">
-											Data Provider
-										</h3>
-										<p className="text-xs text-muted-foreground">
-											{detectedItem.metadata?.name || openFile.name}
+					<>
+						<div className="border-b px-3 py-2">
+							<div className="flex items-center gap-2">
+								<Database className="h-4 w-4 text-primary" />
+								<div className="flex-1">
+									<h3 className="text-sm font-semibold">
+										Data Provider
+									</h3>
+									<p className="text-xs text-muted-foreground">
+										{detectedItem.metadata?.name ||
+											openFile.name}
+									</p>
+								</div>
+							</div>
+							{detectedItem.metadata?.description && (
+								<p className="text-xs text-muted-foreground mt-2">
+									{detectedItem.metadata.description}
+								</p>
+							)}
+						</div>
+						<div className="p-3 space-y-3">
+							<div className="rounded-lg border border-border/50 bg-muted/30 p-3">
+								<div className="flex items-start gap-2">
+									<Database className="h-4 w-4 text-muted-foreground mt-0.5 flex-shrink-0" />
+									<div className="flex-1 min-w-0 text-xs text-muted-foreground">
+										<p className="font-medium mb-1">
+											Test via Forms
+										</p>
+										<p>
+											Data providers can be tested through
+											the Forms interface where they're
+											used as dynamic dropdown options.
 										</p>
 									</div>
 								</div>
-								{detectedItem.metadata?.description && (
-									<p className="text-xs text-muted-foreground mt-2">
-										{detectedItem.metadata.description}
-									</p>
-								)}
 							</div>
-							<div className="p-3 space-y-3">
-								<div className="rounded-lg border border-border/50 bg-muted/30 p-3">
-									<div className="flex items-start gap-2">
-										<Database className="h-4 w-4 text-muted-foreground mt-0.5 flex-shrink-0" />
-										<div className="flex-1 min-w-0 text-xs text-muted-foreground">
-											<p className="font-medium mb-1">
-												Test via Forms
-											</p>
-											<p>
-												Data providers can be tested
-												through the Forms interface
-												where they're used as dynamic
-												dropdown options.
-											</p>
+
+							{/* Show parameters if any */}
+							{detectedItem.metadata?.parameters &&
+								detectedItem.metadata.parameters.length > 0 && (
+									<div className="space-y-2">
+										<p className="text-xs font-medium text-muted-foreground">
+											Parameters:
+										</p>
+										<div className="space-y-1.5">
+											{detectedItem.metadata.parameters.map(
+												(param) => (
+													<div
+														key={
+															param.name ??
+															"param"
+														}
+														className="text-xs pl-3 border-l-2 border-border"
+													>
+														<span className="font-mono font-medium">
+															{param.name}
+														</span>
+														<span className="text-muted-foreground ml-2">
+															({param.type})
+														</span>
+														{param.required && (
+															<span className="text-destructive ml-1">
+																*
+															</span>
+														)}
+														{param.description && (
+															<p className="text-muted-foreground mt-0.5">
+																{
+																	param.description
+																}
+															</p>
+														)}
+													</div>
+												),
+											)}
 										</div>
 									</div>
-								</div>
-
-								{/* Show parameters if any */}
-								{detectedItem.metadata?.parameters &&
-									detectedItem.metadata.parameters.length >
-										0 && (
-										<div className="space-y-2">
-											<p className="text-xs font-medium text-muted-foreground">
-												Parameters:
-											</p>
-											<div className="space-y-1.5">
-												{detectedItem.metadata.parameters.map(
-													(param) => (
-														<div
-															key={
-																param.name ??
-																"param"
-															}
-															className="text-xs pl-3 border-l-2 border-border"
-														>
-															<span className="font-mono font-medium">
-																{param.name}
-															</span>
-															<span className="text-muted-foreground ml-2">
-																({param.type})
-															</span>
-															{param.required && (
-																<span className="text-destructive ml-1">
-																	*
-																</span>
-															)}
-															{param.description && (
-																<p className="text-muted-foreground mt-0.5">
-																	{
-																		param.description
-																	}
-																</p>
-															)}
-														</div>
-													),
-												)}
-											</div>
-										</div>
-									)}
-							</div>
-						</>
-					)}
+								)}
+						</div>
+					</>
+				)}
 
 				{detectedItem.type === "script" && (
 					<>

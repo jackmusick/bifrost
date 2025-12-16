@@ -53,10 +53,16 @@ export function SessionHistoryList({
 								{execution.workflow_name}
 							</div>
 							<div className="text-xs text-muted-foreground">
-								{formatDistanceToNow(createdAt, { addSuffix: true })}
+								{formatDistanceToNow(createdAt, {
+									addSuffix: true,
+								})}
 								{execution.duration_ms != null && (
 									<span className="ml-2">
-										({(execution.duration_ms / 1000).toFixed(1)}s)
+										(
+										{(execution.duration_ms / 1000).toFixed(
+											1,
+										)}
+										s)
 									</span>
 								)}
 							</div>

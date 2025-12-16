@@ -1,3 +1,4 @@
+/* eslint-disable no-console */
 /**
  * Full Journey E2E Test Suite
  *
@@ -20,11 +21,15 @@
  */
 
 import { test, expect, BrowserContext } from "@playwright/test";
-import { ensureAuthenticated, getCredentials, type AllCredentials } from "../fixtures/auth-fixture";
+import {
+	ensureAuthenticated,
+	getCredentials,
+	type AllCredentials,
+} from "../fixtures/auth-fixture";
 
 // Shared state across tests in the same worker
 let authContext: BrowserContext;
-let credentials: AllCredentials;
+let _credentials: AllCredentials;
 
 // Shared test data context - populated during tests, used for cleanup
 interface TestDataContext {
@@ -51,7 +56,7 @@ test.beforeAll(async ({ browser }) => {
 	console.log("Setting up authentication...");
 	const result = await ensureAuthenticated(browser, "platform_admin");
 	authContext = result.context;
-	credentials = result.credentials;
+	_credentials = result.credentials;
 	console.log("Authentication setup complete");
 });
 
@@ -64,14 +69,15 @@ test.afterAll(async () => {
 // Use the authenticated context for all tests
 test.use({
 	// This tells Playwright to use our pre-authenticated context
-	storageState: async ({}, use) => {
+	// eslint-disable-next-line no-empty-pattern
+	storageState: async ({}, callback) => {
 		// If we have credentials, use the stored auth state path
 		const creds = getCredentials();
 		if (creds) {
-			await use("e2e/.auth/platform_admin.json");
+			await callback("e2e/.auth/platform_admin.json");
 		} else {
 			// No credentials yet - will be created in beforeAll
-			await use(undefined as unknown as string);
+			await callback(undefined as unknown as string);
 		}
 	},
 });
@@ -93,7 +99,9 @@ test.describe.serial("Section 1: Health & Auth", () => {
 
 		if (isOnLogin) {
 			// If on login, verify the page loads correctly
-			await expect(page.getByRole("heading", { name: /bifrost/i })).toBeVisible({ timeout: 10000 });
+			await expect(
+				page.getByRole("heading", { name: /bifrost/i }),
+			).toBeVisible({ timeout: 10000 });
 			await expect(page.getByLabel("Email")).toBeVisible();
 		} else {
 			// We're authenticated - should see main content
@@ -187,7 +195,9 @@ test.describe.serial("Section 1: Health & Auth", () => {
 		await page.goto("/workflows");
 
 		// Should see workflows heading
-		await expect(page.getByRole("heading", { name: /workflows/i }).first()).toBeVisible({
+		await expect(
+			page.getByRole("heading", { name: /workflows/i }).first(),
+		).toBeVisible({
 			timeout: 10000,
 		});
 	});
@@ -196,7 +206,9 @@ test.describe.serial("Section 1: Health & Auth", () => {
 		await page.goto("/forms");
 
 		// Should see forms heading
-		await expect(page.getByRole("heading", { name: /forms/i }).first()).toBeVisible({
+		await expect(
+			page.getByRole("heading", { name: /forms/i }).first(),
+		).toBeVisible({
 			timeout: 10000,
 		});
 	});
@@ -205,7 +217,9 @@ test.describe.serial("Section 1: Health & Auth", () => {
 		await page.goto("/history");
 
 		// Should see history/executions heading
-		await expect(page.getByRole("heading", { name: /history|executions/i }).first()).toBeVisible({
+		await expect(
+			page.getByRole("heading", { name: /history|executions/i }).first(),
+		).toBeVisible({
 			timeout: 10000,
 		});
 	});
@@ -241,7 +255,9 @@ test.describe.serial("Section 1: Health & Auth", () => {
 		// Should see user menu or profile button (indicates logged in)
 		const hasUserMenu =
 			(await page
-				.getByRole("button", { name: /Platform Admin|user|account|profile/i })
+				.getByRole("button", {
+					name: /Platform Admin|user|account|profile/i,
+				})
 				.isVisible()
 				.catch(() => false)) ||
 			(await page
@@ -251,7 +267,11 @@ test.describe.serial("Section 1: Health & Auth", () => {
 			// Also accept avatar buttons
 			(await page
 				.locator("button")
-				.filter({ has: page.locator("img[alt*='avatar'], span[class*='avatar']") })
+				.filter({
+					has: page.locator(
+						"img[alt*='avatar'], span[class*='avatar']",
+					),
+				})
 				.first()
 				.isVisible()
 				.catch(() => false));
@@ -269,13 +289,18 @@ test.describe.serial("Section 2: Organizations", () => {
 		await page.goto("/organizations");
 
 		// Should see organizations heading
-		await expect(page.getByRole("heading", { name: /organizations/i }).first()).toBeVisible({
+		await expect(
+			page.getByRole("heading", { name: /organizations/i }).first(),
+		).toBeVisible({
 			timeout: 10000,
 		});
 
 		// Should see the orgs created in setup (Bifrost Dev Org, Second Test Org)
 		const hasOrgContent =
-			(await page.locator("table").isVisible().catch(() => false)) ||
+			(await page
+				.locator("table")
+				.isVisible()
+				.catch(() => false)) ||
 			(await page
 				.getByText(/bifrost|gobifrost/i)
 				.first()
@@ -287,17 +312,23 @@ test.describe.serial("Section 2: Organizations", () => {
 
 	test("test_12_create_test_org", async ({ page }) => {
 		await page.goto("/organizations");
-		await expect(page.getByRole("heading", { name: /organizations/i }).first()).toBeVisible({
+		await expect(
+			page.getByRole("heading", { name: /organizations/i }).first(),
+		).toBeVisible({
 			timeout: 10000,
 		});
 
 		// Click create button
-		const createButton = page.getByRole("button", { name: /create|add|new/i }).first();
+		const createButton = page
+			.getByRole("button", { name: /create|add|new/i })
+			.first();
 		await expect(createButton).toBeVisible({ timeout: 5000 });
 		await createButton.click();
 
 		// Fill the create org form
-		await expect(page.getByLabel(/name/i).first()).toBeVisible({ timeout: 5000 });
+		await expect(page.getByLabel(/name/i).first()).toBeVisible({
+			timeout: 5000,
+		});
 
 		const orgName = `E2E Test Org ${Date.now()}`;
 		testData.testOrgName = orgName;
@@ -311,7 +342,9 @@ test.describe.serial("Section 2: Organizations", () => {
 		}
 
 		// Submit
-		const submitButton = page.getByRole("button", { name: /create|save|submit/i }).last();
+		const submitButton = page
+			.getByRole("button", { name: /create|save|submit/i })
+			.last();
 		await submitButton.click();
 
 		// Wait and verify
@@ -321,7 +354,9 @@ test.describe.serial("Section 2: Organizations", () => {
 
 	test("test_13_view_org_details", async ({ page }) => {
 		await page.goto("/organizations");
-		await expect(page.getByRole("heading", { name: /organizations/i }).first()).toBeVisible({
+		await expect(
+			page.getByRole("heading", { name: /organizations/i }).first(),
+		).toBeVisible({
 			timeout: 10000,
 		});
 
@@ -351,7 +386,9 @@ test.describe.serial("Section 2: Organizations", () => {
 
 	test("test_14_edit_org", async ({ page }) => {
 		await page.goto("/organizations");
-		await expect(page.getByRole("heading", { name: /organizations/i }).first()).toBeVisible({
+		await expect(
+			page.getByRole("heading", { name: /organizations/i }).first(),
+		).toBeVisible({
 			timeout: 10000,
 		});
 
@@ -367,7 +404,9 @@ test.describe.serial("Section 2: Organizations", () => {
 			} else {
 				await orgRow.click();
 				await page.waitForTimeout(500);
-				const editBtn = page.getByRole("button", { name: /edit/i }).first();
+				const editBtn = page
+					.getByRole("button", { name: /edit/i })
+					.first();
 				if (await editBtn.isVisible().catch(() => false)) {
 					await editBtn.click();
 				}
@@ -381,11 +420,15 @@ test.describe.serial("Section 2: Organizations", () => {
 				await nameInput.fill(updatedName);
 				testData.testOrgName = updatedName;
 
-				const saveButton = page.getByRole("button", { name: /save|update|submit/i }).last();
+				const saveButton = page
+					.getByRole("button", { name: /save|update|submit/i })
+					.last();
 				await saveButton.click();
 
 				await page.waitForTimeout(1000);
-				await expect(page.getByText(updatedName)).toBeVisible({ timeout: 5000 });
+				await expect(page.getByText(updatedName)).toBeVisible({
+					timeout: 5000,
+				});
 			}
 		}
 	});
@@ -424,13 +467,18 @@ test.describe.serial("Section 3: Users", () => {
 	test("test_21_user_list_visible", async ({ page }) => {
 		await page.goto("/users");
 
-		await expect(page.getByRole("heading", { name: /users/i }).first()).toBeVisible({
+		await expect(
+			page.getByRole("heading", { name: /users/i }).first(),
+		).toBeVisible({
 			timeout: 10000,
 		});
 
 		// Should see users
 		const hasUsers =
-			(await page.locator("table").isVisible().catch(() => false)) ||
+			(await page
+				.locator("table")
+				.isVisible()
+				.catch(() => false)) ||
 			(await page
 				.getByText(/admin|alice|bob|@/i)
 				.first()
@@ -442,15 +490,21 @@ test.describe.serial("Section 3: Users", () => {
 
 	test("test_22_create_test_user", async ({ page }) => {
 		await page.goto("/users");
-		await expect(page.getByRole("heading", { name: /users/i }).first()).toBeVisible({
+		await expect(
+			page.getByRole("heading", { name: /users/i }).first(),
+		).toBeVisible({
 			timeout: 10000,
 		});
 
-		const createButton = page.getByRole("button", { name: /create|add|invite|new/i }).first();
+		const createButton = page
+			.getByRole("button", { name: /create|add|invite|new/i })
+			.first();
 		await expect(createButton).toBeVisible({ timeout: 5000 });
 		await createButton.click();
 
-		await expect(page.getByLabel(/email/i).first()).toBeVisible({ timeout: 5000 });
+		await expect(page.getByLabel(/email/i).first()).toBeVisible({
+			timeout: 5000,
+		});
 
 		const testEmail = `e2e-test-${Date.now()}@test.local`;
 		testData.testUserEmail = testEmail;
@@ -472,7 +526,9 @@ test.describe.serial("Section 3: Users", () => {
 			}
 		}
 
-		const submitButton = page.getByRole("button", { name: /create|save|invite|submit/i }).last();
+		const submitButton = page
+			.getByRole("button", { name: /create|save|invite|submit/i })
+			.last();
 		await submitButton.click();
 
 		// Wait for either success toast or the user appearing in table
@@ -493,7 +549,9 @@ test.describe.serial("Section 3: Users", () => {
 
 	test("test_23_view_user_details", async ({ page }) => {
 		await page.goto("/users");
-		await expect(page.getByRole("heading", { name: /users/i }).first()).toBeVisible({
+		await expect(
+			page.getByRole("heading", { name: /users/i }).first(),
+		).toBeVisible({
 			timeout: 10000,
 		});
 
@@ -520,7 +578,9 @@ test.describe.serial("Section 3: Users", () => {
 
 	test("test_24_edit_user", async ({ page }) => {
 		await page.goto("/users");
-		await expect(page.getByRole("heading", { name: /users/i }).first()).toBeVisible({
+		await expect(
+			page.getByRole("heading", { name: /users/i }).first(),
+		).toBeVisible({
 			timeout: 10000,
 		});
 
@@ -535,7 +595,9 @@ test.describe.serial("Section 3: Users", () => {
 			} else {
 				await userRow.click();
 				await page.waitForTimeout(500);
-				const editBtn = page.getByRole("button", { name: /edit/i }).first();
+				const editBtn = page
+					.getByRole("button", { name: /edit/i })
+					.first();
 				if (await editBtn.isVisible().catch(() => false)) {
 					await editBtn.click();
 				}
@@ -547,7 +609,9 @@ test.describe.serial("Section 3: Users", () => {
 			if (await nameInput.isVisible().catch(() => false)) {
 				await nameInput.fill("E2E Test User Updated");
 
-				const saveButton = page.getByRole("button", { name: /save|update|submit/i }).last();
+				const saveButton = page
+					.getByRole("button", { name: /save|update|submit/i })
+					.last();
 				await saveButton.click();
 
 				await page.waitForTimeout(1000);
@@ -566,28 +630,42 @@ test.describe.serial("Section 4: Roles", () => {
 	test("test_31_role_list_visible", async ({ page }) => {
 		await page.goto("/roles");
 
-		await expect(page.getByRole("heading", { name: /roles/i }).first()).toBeVisible({
+		await expect(
+			page.getByRole("heading", { name: /roles/i }).first(),
+		).toBeVisible({
 			timeout: 10000,
 		});
 
 		const hasRoles =
-			(await page.locator("table").isVisible().catch(() => false)) ||
-			(await page.locator("main").isVisible().catch(() => false));
+			(await page
+				.locator("table")
+				.isVisible()
+				.catch(() => false)) ||
+			(await page
+				.locator("main")
+				.isVisible()
+				.catch(() => false));
 
 		expect(hasRoles).toBe(true);
 	});
 
 	test("test_32_create_test_role", async ({ page }) => {
 		await page.goto("/roles");
-		await expect(page.getByRole("heading", { name: /roles/i }).first()).toBeVisible({
+		await expect(
+			page.getByRole("heading", { name: /roles/i }).first(),
+		).toBeVisible({
 			timeout: 10000,
 		});
 
-		const createButton = page.getByRole("button", { name: /create|add|new/i }).first();
+		const createButton = page
+			.getByRole("button", { name: /create|add|new/i })
+			.first();
 		await expect(createButton).toBeVisible({ timeout: 5000 });
 		await createButton.click();
 
-		await expect(page.getByLabel(/name/i).first()).toBeVisible({ timeout: 5000 });
+		await expect(page.getByLabel(/name/i).first()).toBeVisible({
+			timeout: 5000,
+		});
 
 		const roleName = `E2E Test Role ${Date.now()}`;
 		testData.testRoleName = roleName;
@@ -599,17 +677,23 @@ test.describe.serial("Section 4: Roles", () => {
 			await descInput.fill("Test role created by E2E tests");
 		}
 
-		const submitButton = page.getByRole("button", { name: /create|save|submit/i }).last();
+		const submitButton = page
+			.getByRole("button", { name: /create|save|submit/i })
+			.last();
 		await submitButton.click();
 
 		await page.waitForTimeout(1000);
 		// Use table cell specifically to avoid matching the toast notification
-		await expect(page.getByRole("cell", { name: roleName })).toBeVisible({ timeout: 5000 });
+		await expect(page.getByRole("cell", { name: roleName })).toBeVisible({
+			timeout: 5000,
+		});
 	});
 
 	test("test_33_view_role_details", async ({ page }) => {
 		await page.goto("/roles");
-		await expect(page.getByRole("heading", { name: /roles/i }).first()).toBeVisible({
+		await expect(
+			page.getByRole("heading", { name: /roles/i }).first(),
+		).toBeVisible({
 			timeout: 10000,
 		});
 
@@ -636,7 +720,9 @@ test.describe.serial("Section 4: Roles", () => {
 
 	test("test_34_edit_role", async ({ page }) => {
 		await page.goto("/roles");
-		await expect(page.getByRole("heading", { name: /roles/i }).first()).toBeVisible({
+		await expect(
+			page.getByRole("heading", { name: /roles/i }).first(),
+		).toBeVisible({
 			timeout: 10000,
 		});
 
@@ -651,7 +737,9 @@ test.describe.serial("Section 4: Roles", () => {
 			} else {
 				await roleRow.click();
 				await page.waitForTimeout(500);
-				const editBtn = page.getByRole("button", { name: /edit/i }).first();
+				const editBtn = page
+					.getByRole("button", { name: /edit/i })
+					.first();
 				if (await editBtn.isVisible().catch(() => false)) {
 					await editBtn.click();
 				}
@@ -663,7 +751,9 @@ test.describe.serial("Section 4: Roles", () => {
 			if (await descInput.isVisible().catch(() => false)) {
 				await descInput.fill("Updated E2E test role description");
 
-				const saveButton = page.getByRole("button", { name: /save|update|submit/i }).last();
+				const saveButton = page
+					.getByRole("button", { name: /save|update|submit/i })
+					.last();
 				await saveButton.click();
 
 				await page.waitForTimeout(1000);
@@ -705,7 +795,9 @@ test.describe.serial("Section 5: Configuration", () => {
 		await page.goto("/settings/config");
 		await page.waitForTimeout(2000);
 
-		const createButton = page.getByRole("button", { name: /create|add|new/i }).first();
+		const createButton = page
+			.getByRole("button", { name: /create|add|new/i })
+			.first();
 
 		if (await createButton.isVisible().catch(() => false)) {
 			await createButton.click();
@@ -724,11 +816,15 @@ test.describe.serial("Section 5: Configuration", () => {
 					await valueInput.fill("test value");
 				}
 
-				const submitButton = page.getByRole("button", { name: /create|save|submit/i }).last();
+				const submitButton = page
+					.getByRole("button", { name: /create|save|submit/i })
+					.last();
 				await submitButton.click();
 
 				await page.waitForTimeout(1000);
-				await expect(page.getByText(configKey)).toBeVisible({ timeout: 5000 });
+				await expect(page.getByText(configKey)).toBeVisible({
+					timeout: 5000,
+				});
 			}
 		}
 	});
@@ -737,7 +833,9 @@ test.describe.serial("Section 5: Configuration", () => {
 		await page.goto("/settings/config");
 		await page.waitForTimeout(2000);
 
-		const createButton = page.getByRole("button", { name: /create|add|new/i }).first();
+		const createButton = page
+			.getByRole("button", { name: /create|add|new/i })
+			.first();
 
 		if (await createButton.isVisible().catch(() => false)) {
 			await createButton.click();
@@ -760,7 +858,9 @@ test.describe.serial("Section 5: Configuration", () => {
 				const typeSelect = page.getByLabel(/type/i);
 				if (await typeSelect.isVisible().catch(() => false)) {
 					await typeSelect.click();
-					const secretOption = page.getByRole("option", { name: /secret/i });
+					const secretOption = page.getByRole("option", {
+						name: /secret/i,
+					});
 					if (await secretOption.isVisible().catch(() => false)) {
 						await secretOption.click();
 					}
@@ -771,11 +871,15 @@ test.describe.serial("Section 5: Configuration", () => {
 					await secretCheckbox.check();
 				}
 
-				const submitButton = page.getByRole("button", { name: /create|save|submit/i }).last();
+				const submitButton = page
+					.getByRole("button", { name: /create|save|submit/i })
+					.last();
 				await submitButton.click();
 
 				await page.waitForTimeout(1000);
-				await expect(page.getByText(configKey)).toBeVisible({ timeout: 5000 });
+				await expect(page.getByText(configKey)).toBeVisible({
+					timeout: 5000,
+				});
 			}
 		}
 	});
@@ -795,7 +899,9 @@ test.describe.serial("Section 5: Configuration", () => {
 			} else {
 				await configRow.click();
 				await page.waitForTimeout(500);
-				const editBtn = page.getByRole("button", { name: /edit/i }).first();
+				const editBtn = page
+					.getByRole("button", { name: /edit/i })
+					.first();
 				if (await editBtn.isVisible().catch(() => false)) {
 					await editBtn.click();
 				}
@@ -806,7 +912,9 @@ test.describe.serial("Section 5: Configuration", () => {
 			if (await valueInput.isVisible().catch(() => false)) {
 				await valueInput.fill("updated test value");
 
-				const saveButton = page.getByRole("button", { name: /save|update|submit/i }).last();
+				const saveButton = page
+					.getByRole("button", { name: /save|update|submit/i })
+					.last();
 				await saveButton.click();
 
 				await page.waitForTimeout(1000);

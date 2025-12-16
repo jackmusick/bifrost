@@ -66,7 +66,10 @@ export async function getCLISessions(): Promise<CLISessionListResponse> {
 	const response = await authFetch("/api/cli/sessions");
 	if (!response.ok) {
 		const error = await response.json().catch(() => ({}));
-		throw new Error(error.detail || `Failed to get CLI sessions: ${response.statusText}`);
+		throw new Error(
+			error.detail ||
+				`Failed to get CLI sessions: ${response.statusText}`,
+		);
 	}
 	return response.json();
 }
@@ -75,14 +78,18 @@ export async function getCLISessions(): Promise<CLISessionListResponse> {
  * Get a specific CLI session by ID
  * Returns null if session not found
  */
-export async function getCLISession(sessionId: string): Promise<CLISessionResponse | null> {
+export async function getCLISession(
+	sessionId: string,
+): Promise<CLISessionResponse | null> {
 	const response = await authFetch(`/api/cli/sessions/${sessionId}`);
 	if (response.status === 204 || response.status === 404) {
 		return null;
 	}
 	if (!response.ok) {
 		const error = await response.json().catch(() => ({}));
-		throw new Error(error.detail || `Failed to get CLI session: ${response.statusText}`);
+		throw new Error(
+			error.detail || `Failed to get CLI session: ${response.statusText}`,
+		);
 	}
 	return response.json();
 }
@@ -96,7 +103,10 @@ export async function deleteCLISession(sessionId: string): Promise<void> {
 	});
 	if (!response.ok && response.status !== 204) {
 		const error = await response.json().catch(() => ({}));
-		throw new Error(error.detail || `Failed to delete CLI session: ${response.statusText}`);
+		throw new Error(
+			error.detail ||
+				`Failed to delete CLI session: ${response.statusText}`,
+		);
 	}
 }
 
@@ -105,16 +115,22 @@ export async function deleteCLISession(sessionId: string): Promise<void> {
  */
 export async function continueCLISession(
 	sessionId: string,
-	request: CLISessionContinueRequest
+	request: CLISessionContinueRequest,
 ): Promise<CLISessionContinueResponse> {
-	const response = await authFetch(`/api/cli/sessions/${sessionId}/continue`, {
-		method: "POST",
-		headers: { "Content-Type": "application/json" },
-		body: JSON.stringify(request),
-	});
+	const response = await authFetch(
+		`/api/cli/sessions/${sessionId}/continue`,
+		{
+			method: "POST",
+			headers: { "Content-Type": "application/json" },
+			body: JSON.stringify(request),
+		},
+	);
 	if (!response.ok) {
 		const error = await response.json().catch(() => ({}));
-		throw new Error(error.detail || `Failed to continue CLI session: ${response.statusText}`);
+		throw new Error(
+			error.detail ||
+				`Failed to continue CLI session: ${response.statusText}`,
+		);
 	}
 	return response.json();
 }

@@ -38,7 +38,9 @@ interface UploadLockInfo {
 /**
  * Convert API response to frontend notification format
  */
-function toNotification(data: NotificationListResponse["notifications"][0]): Notification {
+function toNotification(
+	data: NotificationListResponse["notifications"][0],
+): Notification {
 	return {
 		id: data.id,
 		category: data.category as Notification["category"],
@@ -70,7 +72,9 @@ export async function getNotifications(): Promise<Notification[]> {
 /**
  * Dismiss (delete) a notification
  */
-export async function dismissNotification(notificationId: string): Promise<void> {
+export async function dismissNotification(
+	notificationId: string,
+): Promise<void> {
 	const response = await authFetch(`/api/notifications/${notificationId}`, {
 		method: "DELETE",
 	});

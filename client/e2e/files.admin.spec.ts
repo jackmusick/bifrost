@@ -80,7 +80,9 @@ test.describe("File Operations", () => {
 
 			// Should show file content in editor
 			await expect(
-				page.locator(".monaco-editor").or(page.locator("[data-testid='editor']")),
+				page
+					.locator(".monaco-editor")
+					.or(page.locator("[data-testid='editor']")),
 			).toBeVisible({ timeout: 5000 });
 		}
 	});
@@ -119,7 +121,7 @@ test.describe("File Upload", () => {
 		await page.waitForTimeout(2000);
 
 		// Look for upload button
-		const uploadButton = page.getByRole("button", { name: /upload/i });
+		const _uploadButton = page.getByRole("button", { name: /upload/i });
 
 		// Upload might be available
 		await expect(page.locator("main")).toBeVisible();

@@ -1,5 +1,11 @@
 import { motion, AnimatePresence } from "framer-motion";
-import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
+import {
+	Card,
+	CardContent,
+	CardHeader,
+	CardTitle,
+	CardDescription,
+} from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { PrettyInputDisplay } from "./PrettyInputDisplay";
 import { SafeHTMLRenderer } from "./SafeHTMLRenderer";
@@ -26,7 +32,11 @@ export function ExecutionResultPanel({
 }: ExecutionResultPanelProps) {
 	const renderResult = () => {
 		// JSON result type
-		if (resultType === "json" && typeof result === "object" && result !== null) {
+		if (
+			resultType === "json" &&
+			typeof result === "object" &&
+			result !== null
+		) {
 			return (
 				<PrettyInputDisplay
 					inputData={result as Record<string, unknown>}
@@ -41,7 +51,11 @@ export function ExecutionResultPanel({
 			return (
 				<SafeHTMLRenderer
 					html={result}
-					title={workflowName ? `${workflowName} - Execution Result` : "Execution Result"}
+					title={
+						workflowName
+							? `${workflowName} - Execution Result`
+							: "Execution Result"
+					}
 				/>
 			);
 		}

@@ -107,7 +107,9 @@ export function DeveloperSettings() {
 				setTrackExecutions(contextData.track_executions);
 			} catch (err) {
 				console.error("Failed to load developer settings:", err);
-				setError("Failed to load developer settings. Please try again.");
+				setError(
+					"Failed to load developer settings. Please try again.",
+				);
 				toast.error("Failed to load developer settings");
 			} finally {
 				setLoading(false);
@@ -531,7 +533,10 @@ export function DeveloperSettings() {
 								<p className="text-xs font-medium text-muted-foreground uppercase tracking-wide">
 									Set in your environment
 								</p>
-								<Tabs defaultValue="terminal" className="w-full">
+								<Tabs
+									defaultValue="terminal"
+									className="w-full"
+								>
 									<TabsList className="w-full">
 										<TabsTrigger
 											value="terminal"

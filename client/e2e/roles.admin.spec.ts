@@ -15,10 +15,16 @@ test.describe("Role Listing", () => {
 		await page.goto("/settings/roles");
 
 		// Check if we're on roles page
-		const rolesHeading = page.getByRole("heading", { name: /roles/i }).first();
+		const rolesHeading = page
+			.getByRole("heading", { name: /roles/i })
+			.first();
 
 		// If not on roles page, try /roles directly
-		if (!(await rolesHeading.isVisible({ timeout: 5000 }).catch(() => false))) {
+		if (
+			!(await rolesHeading
+				.isVisible({ timeout: 5000 })
+				.catch(() => false))
+		) {
 			await page.goto("/roles");
 		}
 
@@ -33,7 +39,9 @@ test.describe("Role Listing", () => {
 		await page.waitForTimeout(2000);
 
 		// If roles page exists, should have create button
-		const createButton = page.getByRole("button", { name: /create|new|add/i });
+		const createButton = page.getByRole("button", {
+			name: /create|new|add/i,
+		});
 
 		// Either we see create button or we're not on roles page
 		const hasButton = await createButton.isVisible().catch(() => false);
@@ -47,7 +55,7 @@ test.describe("Role Listing", () => {
 		await page.waitForTimeout(2000);
 
 		// Look for role list
-		const roleContent = page.locator(
+		const _roleContent = page.locator(
 			"table tbody tr, [data-testid='role-row'], [data-testid='role-card']",
 		);
 
@@ -64,7 +72,9 @@ test.describe("Role Creation", () => {
 		await page.waitForTimeout(2000);
 
 		// Try to click create button
-		const createButton = page.getByRole("button", { name: /create|new|add/i });
+		const createButton = page.getByRole("button", {
+			name: /create|new|add/i,
+		});
 
 		if (await createButton.isVisible().catch(() => false)) {
 			await createButton.click();

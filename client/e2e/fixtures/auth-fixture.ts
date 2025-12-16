@@ -1,3 +1,4 @@
+/* eslint-disable no-console */
 /**
  * Self-Healing Auth Fixture
  *
@@ -58,7 +59,11 @@ export async function ensureAuthenticated(
 ): Promise<{ context: BrowserContext; credentials: AllCredentials }> {
 	const authDir = path.resolve(__dirname, "..", AUTH_STATE_DIR);
 	const credentialsPath = path.resolve(__dirname, "..", getCredentialsPath());
-	const authStatePath = path.resolve(__dirname, "..", getAuthStatePath(userKey));
+	const authStatePath = path.resolve(
+		__dirname,
+		"..",
+		getAuthStatePath(userKey),
+	);
 
 	// Ensure auth directory exists
 	if (!fs.existsSync(authDir)) {
@@ -67,10 +72,14 @@ export async function ensureAuthenticated(
 
 	// Try to use existing auth state
 	if (fs.existsSync(authStatePath) && fs.existsSync(credentialsPath)) {
-		const credentials = JSON.parse(fs.readFileSync(credentialsPath, "utf-8")) as AllCredentials;
+		const credentials = JSON.parse(
+			fs.readFileSync(credentialsPath, "utf-8"),
+		) as AllCredentials;
 
 		// Verify the auth state is still valid
-		const context = await browser.newContext({ storageState: authStatePath });
+		const context = await browser.newContext({
+			storageState: authStatePath,
+		});
 		const page = await context.newPage();
 
 		try {
@@ -102,7 +111,9 @@ export async function ensureAuthenticated(
 	await page.close();
 
 	// Return a fresh context with the saved state
-	const freshContext = await browser.newContext({ storageState: authStatePath });
+	const freshContext = await browser.newContext({
+		storageState: authStatePath,
+	});
 	return { context: freshContext, credentials };
 }
 
@@ -110,9 +121,12 @@ export async function ensureAuthenticated(
  * Verify that the current auth state is valid by checking if we can access
  * a protected page without being redirected to login.
  */
-async function verifyAuthState(page: Page, userKey: string): Promise<boolean> {
+async function verifyAuthState(page: Page, _userKey: string): Promise<boolean> {
 	try {
-		await page.goto(`${BASE_URL}/`, { waitUntil: "domcontentloaded", timeout: 10000 });
+		await page.goto(`${BASE_URL}/`, {
+			waitUntil: "domcontentloaded",
+			timeout: 10000,
+		});
 
 		// Wait a moment for any redirects
 		await page.waitForTimeout(2000);
@@ -124,7 +138,9 @@ async function verifyAuthState(page: Page, userKey: string): Promise<boolean> {
 
 		// Check for the Sign In button (means not logged in)
 		const signInButton = page.getByRole("button", { name: "Sign In" });
-		const isSignInVisible = await signInButton.isVisible().catch(() => false);
+		const isSignInVisible = await signInButton
+			.isVisible()
+			.catch(() => false);
 
 		if (isSignInVisible) {
 			return false;
@@ -132,7 +148,9 @@ async function verifyAuthState(page: Page, userKey: string): Promise<boolean> {
 
 		// Additional check: verify we can see the main content
 		const mainContent = page.locator("main");
-		const hasMain = await mainContent.isVisible({ timeout: 5000 }).catch(() => false);
+		const hasMain = await mainContent
+			.isVisible({ timeout: 5000 })
+			.catch(() => false);
 
 		return hasMain;
 	} catch (e) {
@@ -150,11 +168,13 @@ async function ensureUsersExist(): Promise<AllCredentials> {
 
 	// Check system status
 	const statusRes = await fetch(`${API_URL}/auth/status`);
-	const status = await statusRes.json();
+	const _status = await statusRes.json();
 
 	// If we have credentials file, try to use them
 	if (fs.existsSync(credentialsPath)) {
-		const credentials = JSON.parse(fs.readFileSync(credentialsPath, "utf-8")) as AllCredentials;
+		const credentials = JSON.parse(
+			fs.readFileSync(credentialsPath, "utf-8"),
+		) as AllCredentials;
 
 		// Verify credentials work by trying to login
 		try {
@@ -187,17 +207,31 @@ async function createTestUsers(): Promise<AllCredentials> {
 	console.log(`  Created platform admin: ${platformAdmin.email}`);
 
 	// 2. Create organizations
-	const org1 = await createOrganization(platformAdmin.accessToken, ORGANIZATIONS.org1);
+	const org1 = await createOrganization(
+		platformAdmin.accessToken,
+		ORGANIZATIONS.org1,
+	);
 	console.log(`  Created org1: ${org1.name}`);
 
-	const org2 = await createOrganization(platformAdmin.accessToken, ORGANIZATIONS.org2);
+	const org2 = await createOrganization(
+		platformAdmin.accessToken,
+		ORGANIZATIONS.org2,
+	);
 	console.log(`  Created org2: ${org2.name}`);
 
 	// 3. Create org users
-	const org1User = await createOrgUser(platformAdmin.accessToken, USERS.org1_user, org1.id);
+	const org1User = await createOrgUser(
+		platformAdmin.accessToken,
+		USERS.org1_user,
+		org1.id,
+	);
 	console.log(`  Created org1 user: ${org1User.email}`);
 
-	const org2User = await createOrgUser(platformAdmin.accessToken, USERS.org2_user, org2.id);
+	const org2User = await createOrgUser(
+		platformAdmin.accessToken,
+		USERS.org2_user,
+		org2.id,
+	);
 	console.log(`  Created org2 user: ${org2User.email}`);
 
 	return {
@@ -212,7 +246,11 @@ async function createTestUsers(): Promise<AllCredentials> {
 /**
  * Register a user and complete MFA setup via API.
  */
-async function registerAndSetupMFA(user: { email: string; password: string; name: string }): Promise<UserCredentials> {
+async function registerAndSetupMFA(user: {
+	email: string;
+	password: string;
+	name: string;
+}): Promise<UserCredentials> {
 	// Register
 	const registerRes = await fetch(`${API_URL}/auth/register`, {
 		method: "POST",
@@ -356,7 +394,9 @@ async function createOrgUser(
 /**
  * Login an existing user with MFA via API.
  */
-async function loginUserViaAPI(credentials: UserCredentials): Promise<UserCredentials> {
+async function loginUserViaAPI(
+	credentials: UserCredentials,
+): Promise<UserCredentials> {
 	// Login
 	const loginRes = await fetch(`${API_URL}/auth/login`, {
 		method: "POST",
@@ -387,7 +427,9 @@ async function loginUserViaAPI(credentials: UserCredentials): Promise<UserCreden
 
 		if (!mfaRes.ok) {
 			const error = await mfaRes.text();
-			throw new Error(`MFA login failed for ${credentials.email}: ${error}`);
+			throw new Error(
+				`MFA login failed for ${credentials.email}: ${error}`,
+			);
 		}
 
 		const tokens = await mfaRes.json();
@@ -408,7 +450,10 @@ async function loginUserViaAPI(credentials: UserCredentials): Promise<UserCreden
 /**
  * Authenticate a user in the browser (login page + MFA).
  */
-async function authenticateInBrowser(page: Page, credentials: UserCredentials): Promise<void> {
+async function authenticateInBrowser(
+	page: Page,
+	credentials: UserCredentials,
+): Promise<void> {
 	console.log(`Navigating to ${BASE_URL}/login...`);
 	await page.goto(`${BASE_URL}/login`, { waitUntil: "domcontentloaded" });
 
@@ -436,7 +481,9 @@ async function authenticateInBrowser(page: Page, credentials: UserCredentials): 
 		const totpCode = generateTOTP(credentials.totpSecret);
 		await mfaInput.fill(totpCode);
 
-		const verifyButton = page.getByRole("button", { name: /verify|submit|continue/i });
+		const verifyButton = page.getByRole("button", {
+			name: /verify|submit|continue/i,
+		});
 		await verifyButton.click();
 		console.log("Clicked MFA verify button");
 	} catch {
@@ -444,13 +491,17 @@ async function authenticateInBrowser(page: Page, credentials: UserCredentials): 
 	}
 
 	// Wait for redirect away from login page
-	await page.waitForURL((url) => !url.pathname.startsWith("/login"), { timeout: 15000 });
+	await page.waitForURL((url) => !url.pathname.startsWith("/login"), {
+		timeout: 15000,
+	});
 
 	// Give the page a moment to settle
 	await page.waitForLoadState("networkidle");
 
 	// Verify we're logged in
-	await expect(page.getByRole("button", { name: "Sign In" })).not.toBeVisible({ timeout: 5000 });
+	await expect(page.getByRole("button", { name: "Sign In" })).not.toBeVisible(
+		{ timeout: 5000 },
+	);
 }
 
 /**
@@ -464,5 +515,7 @@ export function getCredentials(): AllCredentials | null {
 		return null;
 	}
 
-	return JSON.parse(fs.readFileSync(credentialsPath, "utf-8")) as AllCredentials;
+	return JSON.parse(
+		fs.readFileSync(credentialsPath, "utf-8"),
+	) as AllCredentials;
 }

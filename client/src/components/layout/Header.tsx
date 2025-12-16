@@ -85,7 +85,9 @@ export function Header({
 				const data = await profileService.getProfile();
 				setProfile(data);
 				if (data.has_avatar) {
-					setAvatarUrl(`${profileService.getAvatarUrl()}?t=${Date.now()}`);
+					setAvatarUrl(
+						`${profileService.getAvatarUrl()}?t=${Date.now()}`,
+					);
 				}
 			} catch (err) {
 				console.error("Failed to load profile:", err);
@@ -218,10 +220,16 @@ export function Header({
 						size="icon"
 						className={cn(
 							"mr-4 relative",
-							hasActiveCLISession && !isOnCLIPage && "animate-pulse"
+							hasActiveCLISession &&
+								!isOnCLIPage &&
+								"animate-pulse",
 						)}
 						onClick={() => navigate("/cli")}
-						title={hasActiveCLISession ? "CLI Sessions (Active)" : "CLI Sessions"}
+						title={
+							hasActiveCLISession
+								? "CLI Sessions (Active)"
+								: "CLI Sessions"
+						}
 					>
 						<Play className="h-4 w-4" />
 						{hasActiveCLISession && !isOnCLIPage && (
@@ -261,7 +269,9 @@ export function Header({
 							<div className="flex items-center gap-3">
 								<Avatar className="h-10 w-10">
 									<AvatarImage src={avatarUrl || undefined} />
-									<AvatarFallback>{getInitials()}</AvatarFallback>
+									<AvatarFallback>
+										{getInitials()}
+									</AvatarFallback>
 								</Avatar>
 								<div className="flex flex-col space-y-1">
 									<p className="text-sm font-medium">
@@ -274,7 +284,9 @@ export function Header({
 							</div>
 						</DropdownMenuLabel>
 						<DropdownMenuSeparator />
-						<DropdownMenuItem onClick={() => navigate("/user-settings")}>
+						<DropdownMenuItem
+							onClick={() => navigate("/user-settings")}
+						>
 							<Settings className="mr-2 h-4 w-4" />
 							Settings
 						</DropdownMenuItem>

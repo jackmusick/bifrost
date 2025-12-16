@@ -583,7 +583,11 @@ export function ExecutionDetails({
 	}
 
 	return (
-		<div className={embedded ? "h-full overflow-y-auto" : "h-full overflow-y-auto"}>
+		<div
+			className={
+				embedded ? "h-full overflow-y-auto" : "h-full overflow-y-auto"
+			}
+		>
 			{/* Page Header - hidden in embedded mode */}
 			{!embedded && (
 				<div className="sticky top-0 bg-background/80 backdrop-blur-sm py-6 border-b flex items-center gap-4 px-6 lg:px-8 z-10">
@@ -859,7 +863,8 @@ export function ExecutionDetails({
 										) {
 											// Combine API logs with real-time streaming logs
 											const existingLogs =
-												(logsData as ExecutionLogEntry[]) || [];
+												(logsData as ExecutionLogEntry[]) ||
+												[];
 											const logsToDisplay = [
 												...existingLogs,
 												...streamingLogs,

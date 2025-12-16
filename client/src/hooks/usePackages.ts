@@ -40,7 +40,9 @@ export function useInstallPackage() {
 	return $api.useMutation("post", "/api/packages/install", {
 		onSuccess: () => {
 			// Invalidate packages query to refresh list after installation
-			queryClient.invalidateQueries({ queryKey: ["get", "/api/packages"] });
+			queryClient.invalidateQueries({
+				queryKey: ["get", "/api/packages"],
+			});
 		},
 	});
 }

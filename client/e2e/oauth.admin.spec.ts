@@ -19,7 +19,11 @@ test.describe("OAuth Connection Listing", () => {
 			name: /oauth|connections|integrations/i,
 		});
 
-		if (!(await oauthHeading.isVisible({ timeout: 5000 }).catch(() => false))) {
+		if (
+			!(await oauthHeading
+				.isVisible({ timeout: 5000 })
+				.catch(() => false))
+		) {
 			await page.goto("/integrations");
 		}
 
@@ -44,7 +48,7 @@ test.describe("OAuth Connection Listing", () => {
 		await page.waitForTimeout(2000);
 
 		// Look for add button
-		const addButton = page.getByRole("button", {
+		const _addButton = page.getByRole("button", {
 			name: /add|create|connect|new/i,
 		});
 

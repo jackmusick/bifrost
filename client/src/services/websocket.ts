@@ -118,8 +118,15 @@ type WebSocketMessage =
 	| { type: "log"; level: string; message: string }
 	| { type: "complete"; status: "success" | "error"; message: string }
 	| { type: "devrun_state_update"; state: DevRunStateUpdate | null }
-	| { type: "local_runner_state_update"; state: LocalRunnerStateUpdate | null }
-	| { type: "cli_session_update"; session_id: string; state: CLISessionUpdate["state"] };
+	| {
+			type: "local_runner_state_update";
+			state: LocalRunnerStateUpdate | null;
+	  }
+	| {
+			type: "cli_session_update";
+			session_id: string;
+			state: CLISessionUpdate["state"];
+	  };
 
 // Notification payload from backend (snake_case)
 interface NotificationPayload {
@@ -395,12 +402,16 @@ class WebSocketService {
 
 			case "devrun_state_update":
 				// Dev run state update from CLI (legacy)
-				this.localRunnerStateCallbacks.forEach((cb) => cb(message.state));
+				this.localRunnerStateCallbacks.forEach((cb) =>
+					cb(message.state),
+				);
 				break;
 
 			case "local_runner_state_update":
 				// Local runner state update from CLI
-				this.localRunnerStateCallbacks.forEach((cb) => cb(message.state));
+				this.localRunnerStateCallbacks.forEach((cb) =>
+					cb(message.state),
+				);
 				break;
 
 			case "cli_session_update":
@@ -410,16 +421,20 @@ class WebSocketService {
 		}
 	}
 
-	private dispatchCLISessionUpdate(
-		message: { type: "cli_session_update"; session_id: string; state: CLISessionUpdate["state"] },
-	) {
+	private dispatchCLISessionUpdate(message: {
+		type: "cli_session_update";
+		session_id: string;
+		state: CLISessionUpdate["state"];
+	}) {
 		const update: CLISessionUpdate = {
 			session_id: message.session_id,
 			state: message.state,
 		};
 
 		// Dispatch to session-specific callbacks
-		const callbacks = this.cliSessionUpdateCallbacks.get(message.session_id);
+		const callbacks = this.cliSessionUpdateCallbacks.get(
+			message.session_id,
+		);
 		callbacks?.forEach((cb) => cb(update));
 	}
 

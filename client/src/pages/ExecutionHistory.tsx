@@ -731,7 +731,13 @@ export function ExecutionHistory() {
 																					</TooltipTrigger>
 																					<TooltipContent side="right">
 																						<p className="text-sm">
-																							Dev run - Click to view session
+																							Dev
+																							run
+																							-
+																							Click
+																							to
+																							view
+																							session
 																						</p>
 																					</TooltipContent>
 																				</Tooltip>

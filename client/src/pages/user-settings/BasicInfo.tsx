@@ -21,10 +21,7 @@ import {
 	Eye,
 	EyeOff,
 } from "lucide-react";
-import {
-	profileService,
-	type ProfileResponse,
-} from "@/services/profile";
+import { profileService, type ProfileResponse } from "@/services/profile";
 import { useAuth } from "@/contexts/AuthContext";
 
 export function BasicInfo() {
@@ -64,7 +61,9 @@ export function BasicInfo() {
 				setName(data.name || "");
 				if (data.has_avatar) {
 					// Add cache-busting timestamp
-					setAvatarUrl(`${profileService.getAvatarUrl()}?t=${Date.now()}`);
+					setAvatarUrl(
+						`${profileService.getAvatarUrl()}?t=${Date.now()}`,
+					);
 				}
 			} catch (err) {
 				console.error("Failed to load profile:", err);
@@ -204,7 +203,9 @@ export function BasicInfo() {
 		} catch (err) {
 			console.error("Failed to change password:", err);
 			const errorMessage =
-				err instanceof Error ? err.message : "Failed to change password";
+				err instanceof Error
+					? err.message
+					: "Failed to change password";
 			setPasswordError(errorMessage);
 		} finally {
 			setChangingPassword(false);
@@ -299,8 +300,14 @@ export function BasicInfo() {
 						{/* Upload Instructions & Actions */}
 						<div className="flex-1 space-y-3">
 							<div className="text-sm text-muted-foreground">
-								<p>Click on the avatar or drag and drop an image.</p>
-								<p className="mt-1">Recommended: Square image, at least 128x128px.</p>
+								<p>
+									Click on the avatar or drag and drop an
+									image.
+								</p>
+								<p className="mt-1">
+									Recommended: Square image, at least
+									128x128px.
+								</p>
 							</div>
 							{profile?.has_avatar && (
 								<Button
@@ -402,13 +409,17 @@ export function BasicInfo() {
 					)}
 
 					<div className="space-y-2">
-						<Label htmlFor="current-password">Current Password</Label>
+						<Label htmlFor="current-password">
+							Current Password
+						</Label>
 						<div className="relative">
 							<Input
 								id="current-password"
 								type={showCurrentPassword ? "text" : "password"}
 								value={currentPassword}
-								onChange={(e) => setCurrentPassword(e.target.value)}
+								onChange={(e) =>
+									setCurrentPassword(e.target.value)
+								}
 								placeholder="Enter current password"
 							/>
 							<Button
@@ -416,7 +427,9 @@ export function BasicInfo() {
 								variant="ghost"
 								size="icon"
 								className="absolute right-0 top-0 h-full px-3 hover:bg-transparent"
-								onClick={() => setShowCurrentPassword(!showCurrentPassword)}
+								onClick={() =>
+									setShowCurrentPassword(!showCurrentPassword)
+								}
 							>
 								{showCurrentPassword ? (
 									<EyeOff className="h-4 w-4 text-muted-foreground" />
@@ -442,7 +455,9 @@ export function BasicInfo() {
 								variant="ghost"
 								size="icon"
 								className="absolute right-0 top-0 h-full px-3 hover:bg-transparent"
-								onClick={() => setShowNewPassword(!showNewPassword)}
+								onClick={() =>
+									setShowNewPassword(!showNewPassword)
+								}
 							>
 								{showNewPassword ? (
 									<EyeOff className="h-4 w-4 text-muted-foreground" />
@@ -457,13 +472,17 @@ export function BasicInfo() {
 					</div>
 
 					<div className="space-y-2">
-						<Label htmlFor="confirm-password">Confirm New Password</Label>
+						<Label htmlFor="confirm-password">
+							Confirm New Password
+						</Label>
 						<div className="relative">
 							<Input
 								id="confirm-password"
 								type={showConfirmPassword ? "text" : "password"}
 								value={confirmPassword}
-								onChange={(e) => setConfirmPassword(e.target.value)}
+								onChange={(e) =>
+									setConfirmPassword(e.target.value)
+								}
 								placeholder="Confirm new password"
 							/>
 							<Button
@@ -471,7 +490,9 @@ export function BasicInfo() {
 								variant="ghost"
 								size="icon"
 								className="absolute right-0 top-0 h-full px-3 hover:bg-transparent"
-								onClick={() => setShowConfirmPassword(!showConfirmPassword)}
+								onClick={() =>
+									setShowConfirmPassword(!showConfirmPassword)
+								}
 							>
 								{showConfirmPassword ? (
 									<EyeOff className="h-4 w-4 text-muted-foreground" />

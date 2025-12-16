@@ -64,10 +64,7 @@ interface NotificationState {
 
 	// Actions for WebSocket notifications
 	setNotification: (notification: Notification) => void;
-	updateNotification: (
-		id: string,
-		updates: Partial<Notification>,
-	) => void;
+	updateNotification: (id: string, updates: Partial<Notification>) => void;
 	removeNotification: (id: string) => void;
 	clearNotifications: () => void;
 
@@ -160,9 +157,7 @@ export const isCompleteNotification = (notification: Notification): boolean => {
 export const getNotificationCounts = (notifications: Notification[]) => {
 	return {
 		active: notifications.filter(isActiveNotification).length,
-		completed: notifications.filter(
-			(n) => n.status === "completed",
-		).length,
+		completed: notifications.filter((n) => n.status === "completed").length,
 		failed: notifications.filter((n) => n.status === "failed").length,
 		total: notifications.length,
 	};

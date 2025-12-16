@@ -30,7 +30,9 @@ export async function getProfile(): Promise<ProfileResponse> {
 	const response = await authFetch("/api/profile");
 	if (!response.ok) {
 		const error = await response.json().catch(() => ({}));
-		throw new Error(error.detail || `Failed to get profile: ${response.statusText}`);
+		throw new Error(
+			error.detail || `Failed to get profile: ${response.statusText}`,
+		);
 	}
 	return response.json();
 }
@@ -38,7 +40,9 @@ export async function getProfile(): Promise<ProfileResponse> {
 /**
  * Update the current user's profile
  */
-export async function updateProfile(data: ProfileUpdate): Promise<ProfileResponse> {
+export async function updateProfile(
+	data: ProfileUpdate,
+): Promise<ProfileResponse> {
 	const response = await authFetch("/api/profile", {
 		method: "PATCH",
 		headers: { "Content-Type": "application/json" },
@@ -46,7 +50,9 @@ export async function updateProfile(data: ProfileUpdate): Promise<ProfileRespons
 	});
 	if (!response.ok) {
 		const error = await response.json().catch(() => ({}));
-		throw new Error(error.detail || `Failed to update profile: ${response.statusText}`);
+		throw new Error(
+			error.detail || `Failed to update profile: ${response.statusText}`,
+		);
 	}
 	return response.json();
 }
@@ -64,7 +70,9 @@ export async function uploadAvatar(file: File): Promise<ProfileResponse> {
 	});
 	if (!response.ok) {
 		const error = await response.json().catch(() => ({}));
-		throw new Error(error.detail || `Failed to upload avatar: ${response.statusText}`);
+		throw new Error(
+			error.detail || `Failed to upload avatar: ${response.statusText}`,
+		);
 	}
 	return response.json();
 }
@@ -78,7 +86,9 @@ export async function deleteAvatar(): Promise<ProfileResponse> {
 	});
 	if (!response.ok) {
 		const error = await response.json().catch(() => ({}));
-		throw new Error(error.detail || `Failed to delete avatar: ${response.statusText}`);
+		throw new Error(
+			error.detail || `Failed to delete avatar: ${response.statusText}`,
+		);
 	}
 	return response.json();
 }
@@ -93,7 +103,10 @@ export function getAvatarUrl(): string {
 /**
  * Change password
  */
-export async function changePassword(currentPassword: string, newPassword: string): Promise<void> {
+export async function changePassword(
+	currentPassword: string,
+	newPassword: string,
+): Promise<void> {
 	const response = await authFetch("/api/profile/password", {
 		method: "POST",
 		headers: { "Content-Type": "application/json" },
@@ -104,7 +117,9 @@ export async function changePassword(currentPassword: string, newPassword: strin
 	});
 	if (!response.ok) {
 		const error = await response.json().catch(() => ({}));
-		throw new Error(error.detail || `Failed to change password: ${response.statusText}`);
+		throw new Error(
+			error.detail || `Failed to change password: ${response.statusText}`,
+		);
 	}
 }
 

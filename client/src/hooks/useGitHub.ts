@@ -120,7 +120,9 @@ export function useRefreshGitStatus() {
 	return $api.useMutation("post", "/api/github/refresh", {
 		onSuccess: () => {
 			// Invalidate status cache after refresh
-			queryClient.invalidateQueries({ queryKey: ["get", "/api/github/status"] });
+			queryClient.invalidateQueries({
+				queryKey: ["get", "/api/github/status"],
+			});
 		},
 	});
 }
@@ -148,8 +150,12 @@ export function useConfigureGitHub() {
 	return $api.useMutation("post", "/api/github/configure", {
 		onSuccess: () => {
 			// Invalidate related queries after configuration
-			queryClient.invalidateQueries({ queryKey: ["get", "/api/github/config"] });
-			queryClient.invalidateQueries({ queryKey: ["get", "/api/github/status"] });
+			queryClient.invalidateQueries({
+				queryKey: ["get", "/api/github/config"],
+			});
+			queryClient.invalidateQueries({
+				queryKey: ["get", "/api/github/status"],
+			});
 		},
 	});
 }
@@ -207,7 +213,9 @@ export function useInitRepo() {
 	const queryClient = useQueryClient();
 	return $api.useMutation("post", "/api/github/init", {
 		onSuccess: () => {
-			queryClient.invalidateQueries({ queryKey: ["get", "/api/github/status"] });
+			queryClient.invalidateQueries({
+				queryKey: ["get", "/api/github/status"],
+			});
 		},
 	});
 }
@@ -219,9 +227,15 @@ export function usePullFromGitHub() {
 	const queryClient = useQueryClient();
 	return $api.useMutation("post", "/api/github/pull", {
 		onSuccess: () => {
-			queryClient.invalidateQueries({ queryKey: ["get", "/api/github/status"] });
-			queryClient.invalidateQueries({ queryKey: ["get", "/api/github/changes"] });
-			queryClient.invalidateQueries({ queryKey: ["get", "/api/github/commits"] });
+			queryClient.invalidateQueries({
+				queryKey: ["get", "/api/github/status"],
+			});
+			queryClient.invalidateQueries({
+				queryKey: ["get", "/api/github/changes"],
+			});
+			queryClient.invalidateQueries({
+				queryKey: ["get", "/api/github/commits"],
+			});
 		},
 	});
 }
@@ -233,9 +247,15 @@ export function useCommitChanges() {
 	const queryClient = useQueryClient();
 	return $api.useMutation("post", "/api/github/commit", {
 		onSuccess: () => {
-			queryClient.invalidateQueries({ queryKey: ["get", "/api/github/status"] });
-			queryClient.invalidateQueries({ queryKey: ["get", "/api/github/changes"] });
-			queryClient.invalidateQueries({ queryKey: ["get", "/api/github/commits"] });
+			queryClient.invalidateQueries({
+				queryKey: ["get", "/api/github/status"],
+			});
+			queryClient.invalidateQueries({
+				queryKey: ["get", "/api/github/changes"],
+			});
+			queryClient.invalidateQueries({
+				queryKey: ["get", "/api/github/commits"],
+			});
 		},
 	});
 }
@@ -247,8 +267,12 @@ export function usePushToGitHub() {
 	const queryClient = useQueryClient();
 	return $api.useMutation("post", "/api/github/push", {
 		onSuccess: () => {
-			queryClient.invalidateQueries({ queryKey: ["get", "/api/github/status"] });
-			queryClient.invalidateQueries({ queryKey: ["get", "/api/github/commits"] });
+			queryClient.invalidateQueries({
+				queryKey: ["get", "/api/github/status"],
+			});
+			queryClient.invalidateQueries({
+				queryKey: ["get", "/api/github/commits"],
+			});
 		},
 	});
 }
@@ -260,8 +284,12 @@ export function useDiscardUnpushedCommits() {
 	const queryClient = useQueryClient();
 	return $api.useMutation("post", "/api/github/discard-unpushed", {
 		onSuccess: () => {
-			queryClient.invalidateQueries({ queryKey: ["get", "/api/github/status"] });
-			queryClient.invalidateQueries({ queryKey: ["get", "/api/github/commits"] });
+			queryClient.invalidateQueries({
+				queryKey: ["get", "/api/github/status"],
+			});
+			queryClient.invalidateQueries({
+				queryKey: ["get", "/api/github/commits"],
+			});
 		},
 	});
 }
@@ -273,8 +301,12 @@ export function useDiscardCommit() {
 	const queryClient = useQueryClient();
 	return $api.useMutation("post", "/api/github/discard-commit", {
 		onSuccess: () => {
-			queryClient.invalidateQueries({ queryKey: ["get", "/api/github/status"] });
-			queryClient.invalidateQueries({ queryKey: ["get", "/api/github/commits"] });
+			queryClient.invalidateQueries({
+				queryKey: ["get", "/api/github/status"],
+			});
+			queryClient.invalidateQueries({
+				queryKey: ["get", "/api/github/commits"],
+			});
 		},
 	});
 }
@@ -286,8 +318,12 @@ export function useAbortMerge() {
 	const queryClient = useQueryClient();
 	return $api.useMutation("post", "/api/github/abort-merge", {
 		onSuccess: () => {
-			queryClient.invalidateQueries({ queryKey: ["get", "/api/github/status"] });
-			queryClient.invalidateQueries({ queryKey: ["get", "/api/github/conflicts"] });
+			queryClient.invalidateQueries({
+				queryKey: ["get", "/api/github/status"],
+			});
+			queryClient.invalidateQueries({
+				queryKey: ["get", "/api/github/conflicts"],
+			});
 		},
 	});
 }

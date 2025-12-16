@@ -34,20 +34,22 @@ export function WorkflowParametersForm({
 	onChange,
 }: WorkflowParametersFormProps) {
 	// Initialize internal state with default values (used when uncontrolled)
-	const [internalValues, setInternalValues] = useState<Record<string, unknown>>(() =>
+	const [internalValues, setInternalValues] = useState<
+		Record<string, unknown>
+	>(() =>
 		parameters.reduce(
 			(acc: Record<string, unknown>, param) => {
 				acc[param.name] =
-					param.default_value ??
-					(param.type === "bool" ? false : "");
+					param.default_value ?? (param.type === "bool" ? false : "");
 				return acc;
 			},
 			{} as Record<string, unknown>,
-		)
+		),
 	);
 
 	// Use controlled values if provided, otherwise use internal state
-	const isControlled = controlledValues !== undefined && onChange !== undefined;
+	const isControlled =
+		controlledValues !== undefined && onChange !== undefined;
 	const paramValues = isControlled ? controlledValues : internalValues;
 
 	const handleSubmit = async (e: React.FormEvent) => {
@@ -82,7 +84,9 @@ export function WorkflowParametersForm({
 							>
 								{displayName}
 								{param.required && (
-									<span className="text-destructive ml-1">*</span>
+									<span className="text-destructive ml-1">
+										*
+									</span>
 								)}
 							</Label>
 							{param.description && (
@@ -172,10 +176,17 @@ export function WorkflowParametersForm({
 									);
 								} catch {
 									// Keep as string if not valid JSON yet
-									handleParameterChange(param.name ?? "", e.target.value);
+									handleParameterChange(
+										param.name ?? "",
+										e.target.value,
+									);
 								}
 							}}
-							placeholder={param.type === "dict" ? '{"key": "value"}' : "{}"}
+							placeholder={
+								param.type === "dict"
+									? '{"key": "value"}'
+									: "{}"
+							}
 							disabled={isExecuting}
 						/>
 						{param.description && (
@@ -214,7 +225,10 @@ export function WorkflowParametersForm({
 									);
 								} catch {
 									// Keep as string if not valid JSON yet
-									handleParameterChange(param.name ?? "", e.target.value);
+									handleParameterChange(
+										param.name ?? "",
+										e.target.value,
+									);
 								}
 							}}
 							placeholder='["item1", "item2"]'

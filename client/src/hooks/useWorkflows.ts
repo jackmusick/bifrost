@@ -103,7 +103,9 @@ export function useReloadWorkflowFile() {
 					setWorkflows(data);
 				}
 				// Also invalidate the query cache
-				queryClient.invalidateQueries({ queryKey: ["get", "/api/workflows"] });
+				queryClient.invalidateQueries({
+					queryKey: ["get", "/api/workflows"],
+				});
 			} catch (error) {
 				console.error("Failed to reload workflow file:", error);
 				// Silent failure - don't show toast for background operations

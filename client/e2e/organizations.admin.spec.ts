@@ -22,9 +22,14 @@ test.describe("Organization Management", () => {
 		await page.waitForTimeout(1000);
 
 		// Should see some organization content or empty state
-		const hasOrgs = await page.locator("table tbody tr").count() > 0;
-		const hasCards = await page.locator("[data-testid='org-card']").count() > 0;
-		const hasContent = await page.getByText(/bifrost|gobifrost|organization/i).first().isVisible().catch(() => false);
+		const hasOrgs = (await page.locator("table tbody tr").count()) > 0;
+		const hasCards =
+			(await page.locator("[data-testid='org-card']").count()) > 0;
+		const hasContent = await page
+			.getByText(/bifrost|gobifrost|organization/i)
+			.first()
+			.isVisible()
+			.catch(() => false);
 
 		expect(hasOrgs || hasCards || hasContent).toBe(true);
 	});
@@ -39,7 +44,9 @@ test.describe("Organization Management", () => {
 
 		// Click on first organization
 		const orgRow = page
-			.locator("table tbody tr, [data-testid='org-row'], [data-testid='org-card']")
+			.locator(
+				"table tbody tr, [data-testid='org-row'], [data-testid='org-card']",
+			)
 			.first();
 
 		if (await orgRow.isVisible().catch(() => false)) {
@@ -79,7 +86,9 @@ test.describe("Organization Management", () => {
 		).toBeVisible({ timeout: 10000 });
 
 		// Look for members link/tab
-		const membersLink = page.getByRole("link", { name: /members/i }).first();
+		const membersLink = page
+			.getByRole("link", { name: /members/i })
+			.first();
 		const membersTab = page.getByRole("tab", { name: /members/i }).first();
 
 		if (await membersLink.isVisible().catch(() => false)) {

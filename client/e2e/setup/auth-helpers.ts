@@ -1,3 +1,4 @@
+/* eslint-disable no-console */
 /**
  * Auth Helpers for E2E Testing
  *
@@ -255,7 +256,9 @@ export async function authenticateInBrowser(
 	const baseURL = process.env.TEST_BASE_URL || "http://client:3000";
 
 	console.log(`Navigating to ${baseURL}/login...`);
-	const response = await page.goto(`${baseURL}/login`, { waitUntil: "domcontentloaded" });
+	const response = await page.goto(`${baseURL}/login`, {
+		waitUntil: "domcontentloaded",
+	});
 	console.log(`Navigation response status: ${response?.status()}`);
 
 	// Give React time to render
@@ -285,15 +288,27 @@ export async function authenticateInBrowser(
 
 	// Debug: Check for error messages after login attempt
 	const bodyTextAfterLogin = await page.locator("body").textContent();
-	console.log(`Page body after login click (first 500 chars): ${bodyTextAfterLogin?.substring(0, 500)}`);
+	console.log(
+		`Page body after login click (first 500 chars): ${bodyTextAfterLogin?.substring(0, 500)}`,
+	);
 	console.log(`Current URL after login click: ${page.url()}`);
 
 	// Check for error messages (alert, toast, or inline)
 	const errorAlert = page.getByRole("alert");
-	const errorText = page.getByText(/error|invalid|failed|too many|rate limit/i);
-	const hasError = await errorAlert.or(errorText).first().isVisible().catch(() => false);
+	const errorText = page.getByText(
+		/error|invalid|failed|too many|rate limit/i,
+	);
+	const hasError = await errorAlert
+		.or(errorText)
+		.first()
+		.isVisible()
+		.catch(() => false);
 	if (hasError) {
-		const errorContent = await errorAlert.or(errorText).first().textContent().catch(() => "unknown error");
+		const errorContent = await errorAlert
+			.or(errorText)
+			.first()
+			.textContent()
+			.catch(() => "unknown error");
 		console.log(`Login error detected: ${errorContent}`);
 	}
 
@@ -322,7 +337,9 @@ export async function authenticateInBrowser(
 
 	// Wait for redirect away from login page (authenticated)
 	// Could be / (dashboard), /forms (org users), or other authenticated routes
-	console.log(`Waiting for redirect from login page (current URL: ${page.url()})...`);
+	console.log(
+		`Waiting for redirect from login page (current URL: ${page.url()})...`,
+	);
 	await page.waitForURL((url) => !url.pathname.startsWith("/login"), {
 		timeout: 15000,
 	});
@@ -331,9 +348,11 @@ export async function authenticateInBrowser(
 	await page.waitForLoadState("networkidle");
 
 	// Verify we're logged in (Sign In button should not be visible)
-	await expect(page.getByRole("button", { name: "Sign In" })).not.toBeVisible({
-		timeout: 5000,
-	});
+	await expect(page.getByRole("button", { name: "Sign In" })).not.toBeVisible(
+		{
+			timeout: 5000,
+		},
+	);
 }
 
 /**
@@ -372,7 +391,9 @@ export async function loginUserViaAPI(
 
 		if (!mfaRes.ok) {
 			const error = await mfaRes.text();
-			throw new Error(`MFA login failed for ${credentials.email}: ${error}`);
+			throw new Error(
+				`MFA login failed for ${credentials.email}: ${error}`,
+			);
 		}
 
 		const tokens = await mfaRes.json();

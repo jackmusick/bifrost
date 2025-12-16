@@ -45,7 +45,9 @@ test.describe("Login Flow", () => {
 		await page.goto("/login");
 
 		// Check for login form elements
-		await expect(page.getByRole("heading", { name: /bifrost/i })).toBeVisible();
+		await expect(
+			page.getByRole("heading", { name: /bifrost/i }),
+		).toBeVisible();
 		await expect(page.getByLabel("Email")).toBeVisible();
 		await expect(page.getByLabel("Password")).toBeVisible();
 		await expect(
@@ -96,7 +98,9 @@ test.describe("Login Flow", () => {
 			// Enter TOTP code
 			const totpCode = generateTOTP(user.totpSecret);
 			await mfaInput.fill(totpCode);
-			await page.getByRole("button", { name: /verify|submit|continue/i }).click();
+			await page
+				.getByRole("button", { name: /verify|submit|continue/i })
+				.click();
 		} catch {
 			// MFA might not be required in test environment
 		}
@@ -133,7 +137,9 @@ test.describe("Login Flow", () => {
 			await mfaInput.waitFor({ state: "visible", timeout: 5000 });
 			const totpCode = generateTOTP(user.totpSecret);
 			await mfaInput.fill(totpCode);
-			await page.getByRole("button", { name: /verify|submit|continue/i }).click();
+			await page
+				.getByRole("button", { name: /verify|submit|continue/i })
+				.click();
 		} catch {
 			// MFA might not be required
 		}
@@ -152,7 +158,9 @@ test.describe("Access Control", () => {
 		await page.evaluate(() => localStorage.clear());
 	});
 
-	test("should deny access to API endpoints without auth", async ({ page }) => {
+	test("should deny access to API endpoints without auth", async ({
+		page,
+	}) => {
 		// Try to access an API endpoint directly
 		const response = await page.request.get("/api/organizations");
 		expect(response.status()).toBe(401);

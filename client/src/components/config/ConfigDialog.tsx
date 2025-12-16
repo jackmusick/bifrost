@@ -1,5 +1,5 @@
 import { useEffect } from "react";
-import { useForm } from "react-hook-form";
+import { useForm, useWatch } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import * as z from "zod";
 import { Loader2 } from "lucide-react";
@@ -68,7 +68,7 @@ export function ConfigDialog({ config, open, onClose }: ConfigDialogProps) {
 	});
 
 	// Watch the type field to conditionally render input type
-	const selectedType = form.watch("type");
+	const selectedType = useWatch({ control: form.control, name: "type" });
 
 	useEffect(() => {
 		if (config) {
