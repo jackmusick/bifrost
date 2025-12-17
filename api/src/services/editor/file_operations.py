@@ -4,48 +4,19 @@ Provides safe file I/O with path validation.
 Platform admin resource - no org scoping.
 """
 
+import hashlib
+import logging
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import List
-import hashlib
-from datetime import datetime, UTC
+
 import aiofiles
 import aiofiles.os
 
-from src.models import FileMetadata, FileContentResponse, FileType
-import logging
+from src.models import FileContentResponse, FileMetadata, FileType
+from src.services.editor.file_filter import is_allowed_path
 
 logger = logging.getLogger(__name__)
-
-# Directories to hide from Code Editor file listings
-HIDDEN_DIRECTORIES = {
-    '.git',
-    '__pycache__',
-    '.vscode',
-    '.idea',
-    'node_modules',
-    '.venv',
-    'venv',
-    'env',
-    '.pytest_cache',
-    '.mypy_cache',
-    '.ruff_cache',
-    'htmlcov',
-}
-
-# Files to hide from Code Editor file listings
-HIDDEN_FILES = {
-    '.DS_Store',
-    'Thumbs.db',
-    'desktop.ini',
-    'bifrost.pyi',
-    '.coverage',
-}
-
-# File extensions to hide
-HIDDEN_EXTENSIONS = {'.pyc', '.pyo'}
-
-# Prefixes that indicate hidden/metadata files
-HIDDEN_PREFIXES = ('._',)  # AppleDouble metadata files
 
 
 def _is_real_file(path: Path) -> bool:
@@ -65,30 +36,7 @@ def _is_real_file(path: Path) -> bool:
     Returns:
         False if this file/directory should be hidden, True otherwise
     """
-    name = path.name
-
-    # Check hidden prefixes (AppleDouble files)
-    for prefix in HIDDEN_PREFIXES:
-        if name.startswith(prefix):
-            logger.debug(f"Skipping file with hidden prefix: {name}")
-            return False
-
-    # Check exact file matches
-    if name in HIDDEN_FILES:
-        logger.debug(f"Skipping hidden file: {name}")
-        return False
-
-    # Check directory names
-    if path.is_dir() and name in HIDDEN_DIRECTORIES:
-        logger.debug(f"Skipping hidden directory: {name}")
-        return False
-
-    # Check file extensions
-    if path.is_file() and path.suffix.lower() in HIDDEN_EXTENSIONS:
-        logger.debug(f"Skipping file with hidden extension: {name}")
-        return False
-
-    return True
+    return is_allowed_path(path)
 
 
 # Hardcoded workspace path - kept in sync with S3 by WorkspaceSyncService

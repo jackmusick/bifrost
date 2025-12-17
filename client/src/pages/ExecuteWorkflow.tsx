@@ -11,8 +11,10 @@ import {
 	CardTitle,
 } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
+import { toast } from "sonner";
 import { useWorkflowsMetadata, useExecuteWorkflow } from "@/hooks/useWorkflows";
 import { WorkflowParametersForm } from "@/components/workflows/WorkflowParametersForm";
+import { getErrorMessage } from "@/lib/api-error";
 
 export function ExecuteWorkflow() {
 	const { workflowName } = useParams();
@@ -45,8 +47,11 @@ export function ExecuteWorkflow() {
 			// Redirect directly to execution details page
 			navigate(`/history/${result.execution_id}`);
 			// Don't reset isNavigating - component will unmount on navigation
-		} catch {
+		} catch (error) {
 			setIsNavigating(false); // Only re-enable button on error
+			toast.error("Failed to execute workflow", {
+				description: getErrorMessage(error, "Unknown error occurred"),
+			});
 		}
 	};
 

@@ -67,11 +67,14 @@ class WorkspaceSyncService:
             self._pubsub = self._redis.pubsub()
             if self._pubsub:
                 await self._pubsub.subscribe("bifrost:workspace:sync")
+                logger.info("Subscribed to Redis channel: bifrost:workspace:sync")
                 self._running = True
                 self._listener_task = asyncio.create_task(self._listen())
                 logger.info("Workspace sync service started")
+            else:
+                logger.warning("Failed to create Redis pubsub connection")
         except Exception as e:
-            logger.warning(f"Failed to start workspace sync: {e}")
+            logger.warning(f"Failed to start workspace sync: {e}", exc_info=True)
 
     async def stop(self) -> None:
         """Stop the workspace sync service."""
@@ -133,6 +136,7 @@ class WorkspaceSyncService:
     async def _handle_event(self, data: dict) -> None:
         """Handle a workspace sync event."""
         event_type = data.get("type")
+        logger.info(f"Received workspace sync event: {event_type}")
 
         if event_type == "workspace_file_write":
             await self._handle_write(data)
@@ -140,6 +144,10 @@ class WorkspaceSyncService:
             await self._handle_delete(data)
         elif event_type == "workspace_file_rename":
             await self._handle_rename(data)
+        elif event_type == "workspace_folder_create":
+            await self._handle_folder_create(data)
+        elif event_type == "workspace_folder_delete":
+            await self._handle_folder_delete(data)
         else:
             logger.warning(f"Unknown workspace sync event type: {event_type}")
 
@@ -149,7 +157,9 @@ class WorkspaceSyncService:
         content_b64 = data.get("content")
         expected_hash = data.get("content_hash")
 
-        if not path or not content_b64:
+        # Check path exists - content can be empty string for empty files
+        if not path or content_b64 is None:
+            logger.warning(f"Missing path or content in write event: path={path}, has_content={content_b64 is not None}")
             return
 
         try:
@@ -158,7 +168,7 @@ class WorkspaceSyncService:
             # Verify hash
             actual_hash = hashlib.sha256(content).hexdigest()
             if expected_hash and actual_hash != expected_hash:
-                logger.warning(f"Hash mismatch for {path}, skipping")
+                logger.warning(f"Hash mismatch for {path}: expected={expected_hash}, actual={actual_hash}")
                 return
 
             # Write to local workspace
@@ -166,15 +176,16 @@ class WorkspaceSyncService:
             file_path.parent.mkdir(parents=True, exist_ok=True)
             file_path.write_bytes(content)
 
-            logger.debug(f"Synced file write: {path}")
+            logger.info(f"Synced file write: {path} ({len(content)} bytes)")
 
         except Exception as e:
-            logger.error(f"Failed to sync file write {path}: {e}")
+            logger.error(f"Failed to sync file write {path}: {e}", exc_info=True)
 
     async def _handle_delete(self, data: dict) -> None:
         """Handle file delete event."""
         path = data.get("path")
         if not path:
+            logger.warning("Missing path in delete event")
             return
 
         try:
@@ -182,13 +193,15 @@ class WorkspaceSyncService:
 
             if file_path.is_dir():
                 shutil.rmtree(file_path, ignore_errors=True)
+                logger.info(f"Synced directory delete: {path}")
             elif file_path.exists():
                 file_path.unlink()
-
-            logger.debug(f"Synced file delete: {path}")
+                logger.info(f"Synced file delete: {path}")
+            else:
+                logger.info(f"File already deleted or not found: {path}")
 
         except Exception as e:
-            logger.error(f"Failed to sync file delete {path}: {e}")
+            logger.error(f"Failed to sync file delete {path}: {e}", exc_info=True)
 
     async def _handle_rename(self, data: dict) -> None:
         """Handle file rename event."""
@@ -196,6 +209,7 @@ class WorkspaceSyncService:
         new_path = data.get("new_path")
 
         if not old_path or not new_path:
+            logger.warning(f"Missing path in rename event: old={old_path}, new={new_path}")
             return
 
         try:
@@ -205,10 +219,48 @@ class WorkspaceSyncService:
             if old_file.exists():
                 new_file.parent.mkdir(parents=True, exist_ok=True)
                 old_file.rename(new_file)
-                logger.debug(f"Synced file rename: {old_path} -> {new_path}")
+                logger.info(f"Synced file rename: {old_path} -> {new_path}")
+            else:
+                logger.warning(f"Source file not found for rename: {old_path}")
 
         except Exception as e:
-            logger.error(f"Failed to sync file rename {old_path} -> {new_path}: {e}")
+            logger.error(f"Failed to sync file rename {old_path} -> {new_path}: {e}", exc_info=True)
+
+    async def _handle_folder_create(self, data: dict) -> None:
+        """Handle folder create event."""
+        path = data.get("path")
+        if not path:
+            logger.warning("Missing path in folder create event")
+            return
+
+        try:
+            # Remove trailing slash for filesystem
+            folder_path = WORKSPACE_PATH / path.rstrip("/")
+            folder_path.mkdir(parents=True, exist_ok=True)
+            logger.info(f"Synced folder create: {path}")
+
+        except Exception as e:
+            logger.error(f"Failed to sync folder create {path}: {e}", exc_info=True)
+
+    async def _handle_folder_delete(self, data: dict) -> None:
+        """Handle folder delete event."""
+        path = data.get("path")
+        if not path:
+            logger.warning("Missing path in folder delete event")
+            return
+
+        try:
+            # Remove trailing slash for filesystem
+            folder_path = WORKSPACE_PATH / path.rstrip("/")
+
+            if folder_path.exists() and folder_path.is_dir():
+                shutil.rmtree(folder_path, ignore_errors=True)
+                logger.info(f"Synced folder delete: {path}")
+            else:
+                logger.info(f"Folder already deleted or not found: {path}")
+
+        except Exception as e:
+            logger.error(f"Failed to sync folder delete {path}: {e}", exc_info=True)
 
 
 # Global instance

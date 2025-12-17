@@ -178,7 +178,15 @@ class FileStorageService:
 
         Returns:
             Updated WorkspaceFile record
+
+        Raises:
+            ValueError: If path is excluded (system files, caches, etc.)
         """
+        # Check if path is excluded (system files, caches, metadata, etc.)
+        from src.services.editor.file_filter import is_excluded_path
+        if is_excluded_path(path):
+            raise ValueError(f"Path is excluded from workspace: {path}")
+
         content_hash = self._compute_hash(content)
         content_type = self._guess_content_type(path)
         size_bytes = len(content)
@@ -267,33 +275,175 @@ class FileStorageService:
 
         logger.info(f"File deleted: {path}")
 
+    async def create_folder(
+        self,
+        path: str,
+        updated_by: str = "system",
+    ) -> WorkspaceFile:
+        """
+        Create a folder record explicitly.
+
+        Folders are represented by paths ending with '/'. This enables:
+        - Reliable folder listing (no need to synthesize from file paths)
+        - Explicit folder metadata (created_at, updated_by)
+        - Simpler deletion (just delete the folder record + children)
+
+        Args:
+            path: Folder path (will be normalized to end with '/')
+            updated_by: User who created the folder
+
+        Returns:
+            WorkspaceFile record for the folder
+        """
+        # Normalize to trailing slash
+        folder_path = path.rstrip("/") + "/"
+
+        now = datetime.utcnow()
+
+        # Insert folder record - use on_conflict_do_nothing for silent indexing
+        stmt = insert(WorkspaceFile).values(
+            path=folder_path,
+            content_hash="",  # Empty hash for folders
+            size_bytes=0,
+            content_type="inode/directory",  # MIME type for directories
+            git_status=GitStatus.UNTRACKED,
+            is_deleted=False,
+            created_at=now,
+            updated_at=now,
+        ).on_conflict_do_update(
+            index_elements=[WorkspaceFile.path],
+            set_={
+                "is_deleted": False,  # Reactivate if was deleted
+                "updated_at": now,
+            },
+        ).returning(WorkspaceFile)
+
+        result = await self.db.execute(stmt)
+        folder_record = result.scalar_one()
+
+        # Create on local filesystem too
+        try:
+            from src.core.workspace_sync import WORKSPACE_PATH
+            local_folder = WORKSPACE_PATH / path.rstrip("/")
+            local_folder.mkdir(parents=True, exist_ok=True)
+        except Exception as e:
+            logger.warning(f"Failed to create local folder: {e}")
+
+        # Publish sync event for other containers
+        try:
+            from src.core.pubsub import publish_workspace_folder_create
+            await publish_workspace_folder_create(folder_path)
+        except Exception as e:
+            logger.warning(f"Failed to publish workspace folder create event: {e}")
+
+        logger.info(f"Folder created: {folder_path} by {updated_by}")
+        return folder_record
+
+    async def delete_folder(self, path: str) -> None:
+        """
+        Delete a folder and all its contents.
+
+        Args:
+            path: Folder path (with or without trailing slash)
+        """
+        folder_path = path.rstrip("/") + "/"
+
+        # Find all files/folders under this path (recursive)
+        stmt = select(WorkspaceFile).where(
+            WorkspaceFile.path.startswith(folder_path),
+            WorkspaceFile.is_deleted == False,  # noqa: E712
+        )
+        result = await self.db.execute(stmt)
+        children = result.scalars().all()
+
+        # Delete children from S3 and soft-delete in DB
+        async with self._get_s3_client() as s3:
+            for child in children:
+                # Skip folder records (no S3 object) but delete files
+                if not child.path.endswith("/"):
+                    try:
+                        await s3.delete_object(
+                            Bucket=self.settings.s3_bucket,
+                            Key=child.path,
+                        )
+                    except Exception as e:
+                        logger.warning(f"Failed to delete S3 object {child.path}: {e}")
+
+                # Clean up metadata for files
+                if not child.path.endswith("/"):
+                    await self._remove_metadata(child.path)
+
+        # Soft delete all children and the folder itself
+        now = datetime.utcnow()
+        stmt = update(WorkspaceFile).where(
+            WorkspaceFile.path.startswith(folder_path),
+        ).values(
+            is_deleted=True,
+            git_status=GitStatus.DELETED,
+            updated_at=now,
+        )
+        await self.db.execute(stmt)
+
+        # Also soft delete the folder record itself
+        stmt = update(WorkspaceFile).where(
+            WorkspaceFile.path == folder_path,
+        ).values(
+            is_deleted=True,
+            git_status=GitStatus.DELETED,
+            updated_at=now,
+        )
+        await self.db.execute(stmt)
+
+        # Delete from local filesystem
+        try:
+            from src.core.workspace_sync import WORKSPACE_PATH
+            import shutil
+            local_folder = WORKSPACE_PATH / path.rstrip("/")
+            if local_folder.exists():
+                shutil.rmtree(local_folder)
+        except Exception as e:
+            logger.warning(f"Failed to delete local folder: {e}")
+
+        # Publish sync event for other containers
+        try:
+            from src.core.pubsub import publish_workspace_folder_delete
+            await publish_workspace_folder_delete(folder_path)
+        except Exception as e:
+            logger.warning(f"Failed to publish workspace folder delete event: {e}")
+
+        logger.info(f"Folder deleted: {folder_path}")
+
     async def list_files(
         self,
         directory: str = "",
         include_deleted: bool = False,
     ) -> list[WorkspaceFile]:
         """
-        List files in a directory.
+        List files and folders in a directory (direct children only).
+
+        Works like S3 - synthesizes folders from file path prefixes.
+        Returns both:
+        - Files (actual records)
+        - Folders (explicit records OR synthesized from nested file paths)
 
         Args:
             directory: Directory path (empty for root)
             include_deleted: Whether to include soft-deleted files
 
         Returns:
-            List of WorkspaceFile records
+            List of WorkspaceFile records (files and folders)
         """
-        # Normalize directory path
-        if directory and not directory.endswith("/"):
-            directory = directory + "/"
+        from src.services.editor.file_filter import is_excluded_path
 
+        # Normalize directory path
+        prefix = directory.rstrip("/") + "/" if directory else ""
+
+        # Query all files under this prefix
         stmt = select(WorkspaceFile)
 
-        if directory:
-            # Match files that start with directory but aren't in subdirectories
-            stmt = stmt.where(
-                WorkspaceFile.path.like(f"{directory}%"),
-                ~WorkspaceFile.path.like(f"{directory}%/%"),
-            )
+        if prefix:
+            # Get all files that start with this prefix
+            stmt = stmt.where(WorkspaceFile.path.startswith(prefix))
 
         if not include_deleted:
             stmt = stmt.where(WorkspaceFile.is_deleted == False)  # noqa: E712
@@ -301,7 +451,55 @@ class FileStorageService:
         stmt = stmt.order_by(WorkspaceFile.path)
 
         result = await self.db.execute(stmt)
-        return list(result.scalars().all())
+        all_files = list(result.scalars().all())
+
+        # Synthesize direct children (like S3 ListObjectsV2 with delimiter)
+        direct_children: dict[str, WorkspaceFile] = {}
+        seen_folders: set[str] = set()
+
+        for file in all_files:
+            # Skip excluded paths
+            if is_excluded_path(file.path):
+                continue
+
+            # Get the part after the prefix
+            relative_path = file.path[len(prefix):] if prefix else file.path
+
+            # Skip empty (shouldn't happen, but safety)
+            if not relative_path:
+                continue
+
+            # Check if this is a direct child or nested
+            slash_idx = relative_path.find("/")
+
+            if slash_idx == -1:
+                # Direct child file (no slash in relative path)
+                direct_children[file.path] = file
+            elif slash_idx == len(relative_path) - 1:
+                # This is an explicit folder record (ends with /)
+                folder_name = relative_path.rstrip("/")
+                direct_children[file.path] = file
+                seen_folders.add(folder_name)
+            else:
+                # Nested file - extract the immediate folder name
+                folder_name = relative_path[:slash_idx]
+                folder_path = f"{prefix}{folder_name}/"
+
+                if folder_name not in seen_folders:
+                    seen_folders.add(folder_name)
+                    # Check if we already have an explicit folder record
+                    if folder_path not in direct_children:
+                        # Synthesize a folder record
+                        direct_children[folder_path] = WorkspaceFile(
+                            path=folder_path,
+                            content_hash="",
+                            size_bytes=0,
+                            content_type="inode/directory",
+                            git_status=GitStatus.UNTRACKED,
+                            is_deleted=False,
+                        )
+
+        return sorted(direct_children.values(), key=lambda f: f.path)
 
     async def list_all_files(
         self,
@@ -330,11 +528,17 @@ class FileStorageService:
         """
         Download entire workspace to local directory.
 
+        Clears existing content first to ensure clean state.
         Used by workers before execution.
 
         Args:
             local_path: Local directory to download to
         """
+        import shutil
+
+        # Clear existing workspace to remove stale files
+        if local_path.exists():
+            shutil.rmtree(local_path)
         local_path.mkdir(parents=True, exist_ok=True)
 
         async with self._get_s3_client() as s3:

@@ -14,9 +14,9 @@ import createQueryClient from "openapi-react-query";
 import type { paths } from "./v1";
 import { parseApiError, ApiError, RateLimitError } from "./api-error";
 
-// Token storage keys (shared with AuthContext)
+// Token storage key (shared with AuthContext)
+// Note: Refresh token is stored in HttpOnly cookie only (more secure)
 const ACCESS_TOKEN_KEY = "bifrost_access_token";
-const REFRESH_TOKEN_KEY = "bifrost_refresh_token";
 
 // Buffer time before expiration to trigger refresh (60 seconds)
 const TOKEN_REFRESH_BUFFER_SECONDS = 60;
@@ -68,40 +68,60 @@ function isTokenExpiringSoon(token: string): boolean {
 let refreshPromise: Promise<boolean> | null = null;
 
 /**
- * Refresh the access token using the refresh token
+ * Refresh the access token using the refresh token cookie
+ * Uses HttpOnly cookie for refresh token (more secure than localStorage)
  * Returns true if successful, false if refresh failed
  */
 async function refreshAccessToken(): Promise<boolean> {
-	const refreshToken = localStorage.getItem(REFRESH_TOKEN_KEY);
-	if (!refreshToken) return false;
+	// Use lock to prevent concurrent refresh attempts
+	if (refreshPromise) {
+		return refreshPromise;
+	}
 
-	try {
-		const res = await fetch("/api/auth/refresh", {
-			method: "POST",
-			headers: { "Content-Type": "application/json" },
-			body: JSON.stringify({ refresh_token: refreshToken }),
-			credentials: "same-origin",
-		});
+	refreshPromise = (async () => {
+		try {
+			// POST to refresh endpoint - browser sends refresh_token cookie automatically
+			const res = await fetch("/api/auth/refresh", {
+				method: "POST",
+				credentials: "same-origin",
+			});
 
-		if (!res.ok) return false;
+			if (!res.ok) return false;
 
-		const data = await res.json();
-		if (data.access_token) {
-			localStorage.setItem(ACCESS_TOKEN_KEY, data.access_token);
-			if (data.refresh_token) {
-				localStorage.setItem(REFRESH_TOKEN_KEY, data.refresh_token);
+			const data = await res.json();
+			if (data.access_token) {
+				// Store access token in localStorage for proactive expiry checking
+				localStorage.setItem(ACCESS_TOKEN_KEY, data.access_token);
+				return true;
 			}
-			return true;
+			return false;
+		} catch {
+			return false;
 		}
-		return false;
-	} catch {
-		return false;
+	})().finally(() => {
+		refreshPromise = null;
+	});
+
+	return refreshPromise;
+}
+
+/**
+ * Handle authentication failure - clear session and redirect to login
+ */
+function handleAuthFailure(): void {
+	sessionStorage.removeItem("userId");
+	sessionStorage.removeItem("current_org_id");
+	localStorage.removeItem(ACCESS_TOKEN_KEY);
+
+	const currentPath = window.location.pathname;
+	if (currentPath !== "/login" && currentPath !== "/setup") {
+		window.location.href = `/login?returnTo=${encodeURIComponent(currentPath)}`;
 	}
 }
 
 /**
  * Ensure we have a valid (non-expiring) access token before making a request
- * Uses a lock to prevent concurrent refresh attempts
+ * Proactively refreshes token before it expires
  */
 async function ensureValidToken(): Promise<boolean> {
 	const token = localStorage.getItem(ACCESS_TOKEN_KEY);
@@ -112,17 +132,9 @@ async function ensureValidToken(): Promise<boolean> {
 	// Token is still valid - proceed
 	if (!isTokenExpiringSoon(token)) return true;
 
-	// Token is expiring soon - need to refresh
-	// Use lock to prevent concurrent refresh attempts
-	if (refreshPromise) {
-		return refreshPromise;
-	}
-
-	refreshPromise = refreshAccessToken().finally(() => {
-		refreshPromise = null;
-	});
-
-	return refreshPromise;
+	// Token is expiring soon - refresh it
+	// Lock is handled inside refreshAccessToken
+	return refreshAccessToken();
 }
 
 /**
@@ -196,7 +208,7 @@ baseClient.use({
 
 		return request;
 	},
-	async onResponse({ response }) {
+	async onResponse({ request, response }) {
 		// Handle 429 Too Many Requests - rate limited
 		if (response.status === 429) {
 			const retryAfter = parseInt(
@@ -206,18 +218,24 @@ baseClient.use({
 			throw new RateLimitError(retryAfter);
 		}
 
-		// Handle 401 Unauthorized - token expired or invalid
-		// Only redirect if it's a true authentication failure, not a permission issue
+		// Handle 401 Unauthorized - attempt token refresh and retry
 		if (response.status === 401) {
-			// Clear session storage (cookies are HttpOnly and handled by backend)
-			sessionStorage.removeItem("userId");
-			sessionStorage.removeItem("current_org_id");
-
-			// Redirect to login, preserving the current path for return
-			const currentPath = window.location.pathname;
-			if (currentPath !== "/login" && currentPath !== "/setup") {
-				window.location.href = `/login?returnTo=${encodeURIComponent(currentPath)}`;
+			// Skip retry for auth endpoints to prevent infinite loops
+			const url = request.url;
+			if (AUTH_ENDPOINTS.some((ep) => url.includes(ep))) {
+				handleAuthFailure();
+				return response;
 			}
+
+			// Attempt token refresh via cookie
+			const refreshed = await refreshAccessToken();
+			if (refreshed) {
+				// Retry original request with fresh credentials
+				return fetch(request.clone());
+			}
+
+			// Refresh failed - redirect to login
+			handleAuthFailure();
 		}
 		// 403 Forbidden = permission issue, don't redirect (user is authenticated)
 		// Let the calling code handle displaying an appropriate error message
@@ -254,9 +272,12 @@ export const $api = createQueryClient(baseClient);
 
 /**
  * Shared response handler for all clients
- * Handles 429 rate limiting and 401 authentication errors
+ * Handles 429 rate limiting and 401 authentication errors with retry
  */
-function handleAuthResponse(response: Response): Response {
+async function handleAuthResponse(
+	request: Request,
+	response: Response,
+): Promise<Response> {
 	// Handle 429 Too Many Requests - rate limited
 	if (response.status === 429) {
 		const retryAfter = parseInt(
@@ -266,18 +287,19 @@ function handleAuthResponse(response: Response): Response {
 		throw new RateLimitError(retryAfter);
 	}
 
-	// Handle 401 Unauthorized - token expired or invalid
+	// Handle 401 Unauthorized - attempt token refresh and retry
 	if (response.status === 401) {
-		// Clear session storage (cookies are HttpOnly and handled by backend)
-		sessionStorage.removeItem("userId");
-		sessionStorage.removeItem("current_org_id");
-
-		// Redirect to login, preserving the current path for return
-		const currentPath = window.location.pathname;
-		if (currentPath !== "/login" && currentPath !== "/setup") {
-			window.location.href = `/login?returnTo=${encodeURIComponent(currentPath)}`;
+		const url = request.url;
+		if (!AUTH_ENDPOINTS.some((ep) => url.includes(ep))) {
+			const refreshed = await refreshAccessToken();
+			if (refreshed) {
+				// Retry original request with fresh credentials
+				return fetch(request.clone());
+			}
 		}
+		handleAuthFailure();
 	}
+
 	return response;
 }
 
@@ -318,8 +340,8 @@ export function withOrgContext(orgId: string) {
 
 			return request;
 		},
-		async onResponse({ response }) {
-			return handleAuthResponse(response);
+		async onResponse({ request, response }) {
+			return handleAuthResponse(request, response);
 		},
 	});
 
@@ -363,8 +385,8 @@ export function withUserContext(userId: string) {
 
 			return request;
 		},
-		async onResponse({ response }) {
-			return handleAuthResponse(response);
+		async onResponse({ request, response }) {
+			return handleAuthResponse(request, response);
 		},
 	});
 
@@ -404,8 +426,8 @@ export function withContext(orgId: string, userId: string) {
 
 			return request;
 		},
-		async onResponse({ response }) {
-			return handleAuthResponse(response);
+		async onResponse({ request, response }) {
+			return handleAuthResponse(request, response);
 		},
 	});
 
@@ -439,10 +461,7 @@ export async function authFetch(
 	if (!isAuthEndpoint) {
 		const hasValidToken = await ensureValidToken();
 		if (!hasValidToken) {
-			const currentPath = window.location.pathname;
-			if (currentPath !== "/login" && currentPath !== "/setup") {
-				window.location.href = `/login?returnTo=${encodeURIComponent(currentPath)}`;
-			}
+			handleAuthFailure();
 			throw new Error("Authentication required");
 		}
 	}
@@ -483,13 +502,15 @@ export async function authFetch(
 		headers.set("Content-Type", "application/json");
 	}
 
-	// Ensure credentials are sent (required for cookies in cross-origin scenarios)
-	const response = await fetch(url, {
+	// Build request for retry support
+	const request = new Request(url, {
 		...options,
 		headers,
-		credentials: "same-origin", // Send cookies for same-origin requests
+		credentials: "same-origin",
 	});
 
-	// Handle 429 and 401 the same way as apiClient
-	return handleAuthResponse(response);
+	const response = await fetch(request.clone());
+
+	// Handle 429 and 401 with retry support
+	return handleAuthResponse(request, response);
 }

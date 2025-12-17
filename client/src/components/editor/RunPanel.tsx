@@ -21,6 +21,7 @@ import { VariablesTreeView } from "@/components/ui/variables-tree-view";
 import { toast } from "sonner";
 import { getExecutionVariables } from "@/hooks/useExecutions";
 import { validateWorkflow } from "@/hooks/useWorkflows";
+import { getErrorMessage } from "@/lib/api-error";
 import type { components } from "@/lib/v1";
 
 type WorkflowMetadata = components["schemas"]["WorkflowMetadata"];
@@ -361,9 +362,24 @@ export function RunPanel() {
 				setCurrentStreamingExecutionId(result.execution_id);
 			}
 		} catch (error) {
-			// On error, clear executing state
+			// On error, clear executing state and show in terminal
 			setIsExecuting(false);
-			throw error;
+
+			// Push error to terminal (no toast - terminal is the primary feedback)
+			const errorMessage = getErrorMessage(error, "Unknown error occurred");
+			appendTerminalOutput({
+				loggerOutput: [
+					{
+						level: "ERROR",
+						message: `Failed to execute workflow: ${errorMessage}`,
+						source: "system",
+						timestamp: new Date().toISOString(),
+					},
+				],
+				variables: {},
+				status: "Failed",
+				error: undefined,
+			});
 		}
 	};
 
@@ -453,11 +469,23 @@ export function RunPanel() {
 				setCurrentStreamingExecutionId(result.execution_id);
 			}
 		} catch (error) {
-			// On error, clear executing state
+			// On error, clear executing state and show in terminal
 			setIsExecuting(false);
-			toast.error("Failed to execute script", {
-				description:
-					error instanceof Error ? error.message : String(error),
+
+			// Push error to terminal (no toast - terminal is the primary feedback)
+			const errorMessage = getErrorMessage(error, "Unknown error occurred");
+			appendTerminalOutput({
+				loggerOutput: [
+					{
+						level: "ERROR",
+						message: `Failed to execute script: ${errorMessage}`,
+						source: "system",
+						timestamp: new Date().toISOString(),
+					},
+				],
+				variables: {},
+				status: "Failed",
+				error: undefined,
 			});
 		}
 	}, [

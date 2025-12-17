@@ -16,6 +16,7 @@ import { useEditorStore } from "@/stores/editorStore";
 import { fileService, type FileMetadata } from "@/services/fileService";
 import { useUploadProgress } from "@/stores/uploadStore";
 import { cn } from "@/lib/utils";
+import { isExcludedPath } from "@/lib/file-filter";
 import { Button } from "@/components/ui/button";
 import { toast } from "sonner";
 
@@ -636,6 +637,24 @@ export function FileTree() {
 
 				if (allFiles.length === 0) return;
 
+				// Filter out excluded files (system files, caches, metadata, etc.)
+				const filteredFiles = allFiles.filter(({ relativePath }) => {
+					const fullPath = targetPath
+						? `${targetPath}/${relativePath}`
+						: relativePath;
+					return !isExcludedPath(fullPath);
+				});
+
+				// Note: Silently filter excluded files (system files, caches, etc.)
+				// No need to log - this is expected behavior
+
+				// Use filtered list from here on
+				const filesToUpload = filteredFiles;
+				if (filesToUpload.length === 0) {
+					toast.info("No files to upload (all files were filtered out)");
+					return;
+				}
+
 				// Check for existing files that would be overwritten
 				try {
 					// Get all existing files recursively from the target path
@@ -648,7 +667,7 @@ export function FileTree() {
 					);
 
 					// Find files that already exist
-					const conflictCount = allFiles.filter(
+					const conflictCount = filesToUpload.filter(
 						({ relativePath }) => {
 							const fullPath = targetPath
 								? `${targetPath}/${relativePath}`
@@ -685,19 +704,19 @@ export function FileTree() {
 				}
 
 				// Start upload progress tracking
-				startUpload(allFiles.length);
+				startUpload(filesToUpload.length);
 				const uploadedFiles: FileMetadata[] = [];
 
-				for (let i = 0; i < allFiles.length; i++) {
+				for (let i = 0; i < filesToUpload.length; i++) {
 					// Check for cancellation before each file
 					if (!shouldContinueUpload()) {
 						toast.info(
-							`Upload cancelled (${i} of ${allFiles.length} files uploaded)`,
+							`Upload cancelled (${i} of ${filesToUpload.length} files uploaded)`,
 						);
 						break;
 					}
 
-					const { file, relativePath } = allFiles[i];
+					const { file, relativePath } = filesToUpload[i];
 					const filePath = targetPath
 						? `${targetPath}/${relativePath}`
 						: relativePath;

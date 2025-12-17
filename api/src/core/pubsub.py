@@ -361,6 +361,7 @@ async def publish_workspace_file_write(
         "content": base64.b64encode(content).decode("utf-8"),
         "content_hash": content_hash,
     }
+    logger.info(f"Publishing workspace file write: {path}")
     await manager._publish_to_redis("workspace:sync", message)
 
 
@@ -394,6 +395,38 @@ async def publish_workspace_file_rename(old_path: str, new_path: str) -> None:
         "type": "workspace_file_rename",
         "old_path": old_path,
         "new_path": new_path,
+    }
+    await manager._publish_to_redis("workspace:sync", message)
+
+
+async def publish_workspace_folder_create(path: str) -> None:
+    """
+    Publish workspace folder create event.
+
+    All containers listening will create this folder in their local workspace.
+
+    Args:
+        path: Folder path relative to workspace root (with trailing slash)
+    """
+    message = {
+        "type": "workspace_folder_create",
+        "path": path,
+    }
+    await manager._publish_to_redis("workspace:sync", message)
+
+
+async def publish_workspace_folder_delete(path: str) -> None:
+    """
+    Publish workspace folder delete event.
+
+    All containers listening will delete this folder from their local workspace.
+
+    Args:
+        path: Folder path relative to workspace root (with trailing slash)
+    """
+    message = {
+        "type": "workspace_folder_delete",
+        "path": path,
     }
     await manager._publish_to_redis("workspace:sync", message)
 

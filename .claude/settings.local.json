@@ -81,7 +81,9 @@
       "Bash(do if curl -s http://localhost:8000/health)",
       "Bash(then echo \"API is ready\")",
       "Bash(break)",
-      "Bash(done)"
+      "Bash(done)",
+      "mcp__context7__resolve-library-id",
+      "mcp__context7__get-library-docs"
     ],
     "deny": [],
     "ask": [],

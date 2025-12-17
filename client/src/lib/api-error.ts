@@ -220,5 +220,14 @@ export function getErrorMessage(error: unknown, fallback: string): string {
 	if (error && typeof error === "object" && "message" in error) {
 		return String((error as { message: unknown }).message);
 	}
+	// Handle FastAPI HTTPException format: { detail: "error message" }
+	if (
+		error &&
+		typeof error === "object" &&
+		"detail" in error &&
+		typeof (error as { detail: unknown }).detail === "string"
+	) {
+		return (error as { detail: string }).detail;
+	}
 	return fallback;
 }

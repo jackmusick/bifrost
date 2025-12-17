@@ -67,9 +67,11 @@ async def list_files(
         for wf in workspace_files:
             # Determine if this is a file or folder based on path structure
             is_folder = wf.path.endswith("/")
+            # Remove trailing slash from folder paths for frontend consistency
+            clean_path = wf.path.rstrip("/") if is_folder else wf.path
             files.append(FileMetadata(
-                path=wf.path,
-                name=wf.path.split("/")[-1] if not is_folder else wf.path.split("/")[-2],
+                path=clean_path,
+                name=clean_path.split("/")[-1],
                 type=FileType.FOLDER if is_folder else FileType.FILE,
                 size=wf.size_bytes if not is_folder else None,
                 extension=wf.path.split(".")[-1] if "." in wf.path and not is_folder else None,
@@ -280,8 +282,8 @@ async def create_new_folder(
     """
     Create a new folder.
 
-    Note: In S3-based storage, folders are virtual (represented by trailing slash).
-    We create an empty marker file for the folder.
+    Creates an explicit folder record in the database with trailing slash convention.
+    If folder already exists, silently returns success (idempotent).
 
     Args:
         path: Folder path relative to workspace root
@@ -290,29 +292,21 @@ async def create_new_folder(
         Folder metadata
     """
     try:
-        # S3 doesn't have real folders - create a marker file
         storage = FileStorageService(db)
-        folder_path = path.rstrip("/") + "/.gitkeep"
-
-        # Check if folder already has files
-        existing = await storage.list_files(path)
-        if existing:
-            raise HTTPException(
-                status_code=status.HTTP_409_CONFLICT,
-                detail=f"Folder already exists: {path}",
-            )
-
-        # Create marker file
         updated_by = user.email if user else "system"
-        await storage.write_file(folder_path, b"", updated_by)
 
+        # Create folder record (silent indexing - will return existing if already exists)
+        folder_record = await storage.create_folder(path, updated_by)
+
+        # Return path without trailing slash for frontend consistency
+        clean_path = path.rstrip("/")
         folder_meta = FileMetadata(
-            path=path,
-            name=path.split("/")[-1],
+            path=clean_path,
+            name=clean_path.split("/")[-1],
             type=FileType.FOLDER,
             size=None,
             extension=None,
-            modified=datetime.now(timezone.utc).isoformat(),
+            modified=folder_record.updated_at.isoformat() if folder_record.updated_at else datetime.now(timezone.utc).isoformat(),
         )
         logger.info(f"Created folder: {path}")
         return folder_meta
@@ -322,11 +316,6 @@ async def create_new_folder(
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail=str(e),
-        )
-    except FileExistsError:
-        raise HTTPException(
-            status_code=status.HTTP_409_CONFLICT,
-            detail=f"Folder already exists: {path}",
         )
     except Exception as e:
         logger.error(f"Error creating folder {path}: {str(e)}", exc_info=True)
@@ -351,26 +340,38 @@ async def delete_file_or_directory(
     """
     Delete a file or folder.
 
+    Detects whether path is a folder (by checking for folder record with trailing slash)
+    and uses appropriate deletion method.
+
     Args:
         path: File or folder path relative to workspace root
 
     Returns:
         No content on success (204)
     """
+    from sqlalchemy import select
+    from src.models import WorkspaceFile
+
     try:
         storage = FileStorageService(db)
 
-        # Check if it's a folder (has children)
-        children = await storage.list_files(path)
-        if children:
-            # Delete all children first
-            for child in children:
-                await storage.delete_file(child.path)
+        # Check if this is a folder record (path with trailing slash)
+        folder_path = path.rstrip("/") + "/"
+        stmt = select(WorkspaceFile).where(
+            WorkspaceFile.path == folder_path,
+            WorkspaceFile.is_deleted == False,  # noqa: E712
+        )
+        result = await db.execute(stmt)
+        folder_record = result.scalar_one_or_none()
 
-        # Delete the path itself
-        await storage.delete_file(path)
+        if folder_record:
+            # It's a folder - use delete_folder for recursive deletion
+            await storage.delete_folder(path)
+        else:
+            # It's a file - use delete_file
+            await storage.delete_file(path)
+
         logger.info(f"Deleted: {path}")
-
         return None
     except ValueError as e:
         raise HTTPException(

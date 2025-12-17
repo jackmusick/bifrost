@@ -6,8 +6,6 @@
 import { useEffect, useMemo } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { $api, apiClient, withContext } from "@/lib/api-client";
-import { getErrorMessage } from "@/lib/api-error";
-import { toast } from "sonner";
 import { useWorkflowsStore } from "@/stores/workflowsStore";
 import type { components } from "@/lib/v1";
 
@@ -67,13 +65,7 @@ export function useWorkflowsMetadata() {
 
 export function useExecuteWorkflow() {
 	return $api.useMutation("post", "/api/workflows/execute", {
-		// Note: onSuccess toast removed - let caller handle toasts based on sync vs async
-		// RunPanel shows different toasts for sync (immediate success) vs async (started)
-		onError: (error) => {
-			toast.error("Failed to execute workflow", {
-				description: getErrorMessage(error, "Unknown error occurred"),
-			});
-		},
+		// Note: Error handling moved to RunPanel.tsx - errors shown in terminal
 	});
 }
 
