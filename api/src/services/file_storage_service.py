@@ -230,12 +230,9 @@ class FileStorageService:
         # Extract metadata for workflows/forms
         await self._extract_metadata(path, content)
 
-        # Publish sync event for other containers
-        try:
-            from src.core.pubsub import publish_workspace_file_write
-            await publish_workspace_file_write(path, content, content_hash)
-        except Exception as e:
-            logger.warning(f"Failed to publish workspace sync event: {e}")
+        # Note: Redis sync events are published by workspace_watcher, not here.
+        # The watcher detects local filesystem changes and decides whether to
+        # publish based on DB state (to avoid re-publishing received events).
 
         logger.info(f"File written: {path} ({size_bytes} bytes) by {updated_by}")
         return file_record
@@ -266,12 +263,7 @@ class FileStorageService:
         # Clean up related metadata
         await self._remove_metadata(path)
 
-        # Publish sync event for other containers
-        try:
-            from src.core.pubsub import publish_workspace_file_delete
-            await publish_workspace_file_delete(path)
-        except Exception as e:
-            logger.warning(f"Failed to publish workspace delete event: {e}")
+        # Note: Redis sync events are published by workspace_watcher, not here.
 
         logger.info(f"File deleted: {path}")
 
@@ -329,12 +321,7 @@ class FileStorageService:
         except Exception as e:
             logger.warning(f"Failed to create local folder: {e}")
 
-        # Publish sync event for other containers
-        try:
-            from src.core.pubsub import publish_workspace_folder_create
-            await publish_workspace_folder_create(folder_path)
-        except Exception as e:
-            logger.warning(f"Failed to publish workspace folder create event: {e}")
+        # Note: Redis sync events are published by workspace_watcher, not here.
 
         logger.info(f"Folder created: {folder_path} by {updated_by}")
         return folder_record
@@ -404,12 +391,7 @@ class FileStorageService:
         except Exception as e:
             logger.warning(f"Failed to delete local folder: {e}")
 
-        # Publish sync event for other containers
-        try:
-            from src.core.pubsub import publish_workspace_folder_delete
-            await publish_workspace_folder_delete(folder_path)
-        except Exception as e:
-            logger.warning(f"Failed to publish workspace folder delete event: {e}")
+        # Note: Redis sync events are published by workspace_watcher, not here.
 
         logger.info(f"Folder deleted: {folder_path}")
 

@@ -1487,7 +1487,7 @@ async def post_cli_result(
     await repo.update_execution(
         execution_id=execution_id,
         status=status_enum,
-        result={"value": request.result} if request.result is not None else None,
+        result=request.result,
         error_message=request.error_message,
         duration_ms=request.duration_ms,  # completed_at is set automatically when duration_ms is provided
     )

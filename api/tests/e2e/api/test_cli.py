@@ -1569,10 +1569,10 @@ class TestCLIExecutionFlow:
         execution = execution_response.json()
         assert execution["status"] == "Success"
         assert execution["duration_ms"] == 1500
-        # Result is wrapped in {"value": ...}
-        assert execution["result"]["value"]["status"] == "success"
-        assert execution["result"]["value"]["user_name"] == "TestUser"
-        assert execution["result"]["value"]["steps_completed"] == 3
+        # Result is stored directly (no wrapper)
+        assert execution["result"]["status"] == "success"
+        assert execution["result"]["user_name"] == "TestUser"
+        assert execution["result"]["steps_completed"] == 3
 
         # 7. Validate logs were persisted
         logs_response = e2e_client.get(
@@ -1889,11 +1889,11 @@ class TestCLIExecutionFlow:
         assert execution["status"] == "Success"
         assert execution["duration_ms"] == 2500
 
-        # Validate result (wrapped in {value: ...})
+        # Validate result (stored directly, no wrapper)
         assert "result" in execution
-        assert execution["result"]["value"] == complex_result
-        assert execution["result"]["value"]["users_created"] == ["user1", "user2", "user3"]
-        assert execution["result"]["value"]["total"] == 3
+        assert execution["result"] == complex_result
+        assert execution["result"]["users_created"] == ["user1", "user2", "user3"]
+        assert execution["result"]["total"] == 3
 
         # Cleanup
         e2e_client.delete(f"/api/cli/sessions/{session_id}", headers=headers)

@@ -22,6 +22,7 @@ import sys
 from src.config import get_settings
 from src.core.database import init_db, close_db
 from src.core.workspace_sync import workspace_sync
+from src.core.workspace_watcher import workspace_watcher
 from src.jobs.rabbitmq import rabbitmq
 from src.jobs.consumers.workflow_execution import WorkflowExecutionConsumer
 from src.jobs.consumers.git_sync import GitSyncConsumer
@@ -79,6 +80,11 @@ class Worker:
         logger.info("Initializing workspace sync...")
         await workspace_sync.start()
         logger.info("Workspace sync initialized")
+
+        # Start workspace watcher (detects local changes from SDK writes)
+        logger.info("Starting workspace watcher...")
+        await workspace_watcher.start()
+        logger.info("Workspace watcher started")
 
         # Initialize and start RabbitMQ consumers
         logger.info("Starting RabbitMQ consumers...")
