@@ -109,8 +109,7 @@ class Settings(BaseSettings):
     # Security
     # ==========================================================================
     secret_key: str = Field(
-        default="dev-secret-key-change-in-production-must-be-32-chars",
-        description="Secret key for JWT signing and encryption",
+        description="Secret key for JWT signing and encryption (BIFROST_SECRET_KEY env var required)",
         min_length=32
     )
 

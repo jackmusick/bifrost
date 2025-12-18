@@ -97,7 +97,7 @@ class WorkspaceSyncService:
         logger.info("Workspace sync service stopped")
 
     async def _download_initial_workspace(self) -> None:
-        """Download workspace from S3 on startup."""
+        """Download workspace from S3 on startup and reindex."""
         from src.services.file_storage_service import FileStorageService
         from src.core.database import get_session_factory
 
@@ -105,8 +105,15 @@ class WorkspaceSyncService:
             session_factory = get_session_factory()
             async with session_factory() as db:
                 storage = FileStorageService(db)
+
+                # Download all files from S3 to local workspace
                 await storage.download_workspace(WORKSPACE_PATH)
-                logger.info(f"Downloaded workspace from S3 to {WORKSPACE_PATH}")
+
+                # Reindex workspace_files and reconcile orphaned workflows
+                await storage.reindex_workspace_files(WORKSPACE_PATH)
+
+                await db.commit()
+                logger.info(f"Downloaded and reindexed workspace from S3 to {WORKSPACE_PATH}")
         except Exception as e:
             logger.warning(f"Failed to download workspace from S3: {e}")
 

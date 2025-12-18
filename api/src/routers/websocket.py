@@ -7,13 +7,51 @@ Replaces Azure Web PubSub with native FastAPI WebSockets.
 
 import logging
 from typing import Annotated
+from uuid import UUID
 
 from fastapi import APIRouter, Query, WebSocket, WebSocketDisconnect
+from sqlalchemy import select
 
-from src.core.auth import get_current_user_ws
+from src.core.auth import UserPrincipal, get_current_user_ws
+from src.core.database import get_db_context
 from src.core.pubsub import manager
+from src.models import Execution
 
 logger = logging.getLogger(__name__)
+
+
+async def can_access_execution(user: UserPrincipal, execution_id: str) -> bool:
+    """
+    Check if user can access an execution (owner or superuser).
+
+    Args:
+        user: The authenticated user
+        execution_id: The execution ID to check access for
+
+    Returns:
+        True if user can access, False otherwise
+    """
+    # Superusers can access any execution
+    if user.is_superuser:
+        return True
+
+    try:
+        execution_uuid = UUID(execution_id)
+    except ValueError:
+        return False
+
+    async with get_db_context() as db:
+        result = await db.execute(
+            select(Execution.executed_by).where(Execution.id == execution_uuid)
+        )
+        row = result.scalar_one_or_none()
+
+        if row is None:
+            # Execution doesn't exist - allow subscription anyway
+            # (they won't receive anything, and this avoids timing attacks)
+            return True
+
+        return row == user.user_id
 
 router = APIRouter(prefix="/ws", tags=["WebSocket"])
 
@@ -61,8 +99,10 @@ async def websocket_connect(
             if channel == f"user:{user.user_id}":
                 allowed_channels.append(channel)
         elif channel.startswith("execution:"):
-            # TODO: Validate user has access to this execution
-            allowed_channels.append(channel)
+            # Validate user has access to this execution
+            execution_id = channel.split(":", 1)[1]
+            if await can_access_execution(user, execution_id):
+                allowed_channels.append(channel)
         elif channel.startswith("package:"):
             # Package installation channels - users can subscribe to their own
             if channel == f"package:{user.user_id}":
@@ -124,7 +164,24 @@ async def websocket_connect(
                 new_channels = data.get("channels", [])
                 for channel in new_channels:
                     # Validate and add subscription
-                    if channel.startswith("execution:") or channel.startswith("cli-session:"):
+                    if channel.startswith("execution:"):
+                        # Validate execution access before subscribing
+                        execution_id = channel.split(":", 1)[1]
+                        if not await can_access_execution(user, execution_id):
+                            await websocket.send_json({
+                                "type": "error",
+                                "channel": channel,
+                                "message": "Access denied"
+                            })
+                            continue
+                        if channel not in manager.connections:
+                            manager.connections[channel] = set()
+                        manager.connections[channel].add(websocket)
+                        await websocket.send_json({
+                            "type": "subscribed",
+                            "channel": channel
+                        })
+                    elif channel.startswith("cli-session:"):
                         if channel not in manager.connections:
                             manager.connections[channel] = set()
                         manager.connections[channel].add(websocket)
@@ -167,6 +224,11 @@ async def websocket_execution(
 
     if not user:
         await websocket.close(code=4001, reason="Unauthorized")
+        return
+
+    # Validate user has access to this execution
+    if not await can_access_execution(user, execution_id):
+        await websocket.close(code=4003, reason="Access denied")
         return
 
     channel = f"execution:{execution_id}"

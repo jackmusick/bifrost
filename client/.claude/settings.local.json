@@ -1,0 +1,8 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(pyright:*)",
+      "Bash(./test.sh:*)"
+    ]
+  }
+}

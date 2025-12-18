@@ -682,6 +682,142 @@ class FileStorageService:
         logger.info(f"Indexed {count} files from S3")
         return count
 
+    async def reindex_workspace_files(self, local_path: Path) -> dict[str, int]:
+        """
+        Reindex workspace_files table from local filesystem.
+
+        Called after download_workspace() to ensure DB matches actual files.
+        Also reconciles orphaned workflows/data_providers.
+
+        Args:
+            local_path: Local workspace directory (e.g., /tmp/bifrost/workspace)
+
+        Returns:
+            Dict with counts: files_indexed, files_removed, workflows_deactivated,
+            data_providers_deactivated
+        """
+        from src.models import Workflow, DataProvider
+        from src.services.editor.file_filter import is_excluded_path
+
+        counts = {
+            "files_indexed": 0,
+            "files_removed": 0,
+            "workflows_deactivated": 0,
+            "data_providers_deactivated": 0,
+        }
+
+        # 1. Collect all file paths from local filesystem
+        existing_paths: set[str] = set()
+        for file_path in local_path.rglob("*"):
+            if file_path.is_file():
+                rel_path = str(file_path.relative_to(local_path))
+                # Skip excluded paths (system files, caches, etc.)
+                if not is_excluded_path(rel_path):
+                    existing_paths.add(rel_path)
+
+        # 2. Update workspace_files: mark missing files as deleted
+        stmt = update(WorkspaceFile).where(
+            WorkspaceFile.is_deleted == False,  # noqa: E712
+            ~WorkspaceFile.path.in_(existing_paths) if existing_paths else True,
+            ~WorkspaceFile.path.endswith("/"),  # Skip folder records
+        ).values(
+            is_deleted=True,
+            git_status=GitStatus.DELETED,
+            updated_at=datetime.utcnow(),
+        )
+        result = await self.db.execute(stmt)
+        counts["files_removed"] = result.rowcount if result.rowcount > 0 else 0
+
+        # 3. For each existing file, ensure it's in workspace_files
+        now = datetime.utcnow()
+        cache = get_workspace_cache()
+
+        for rel_path in existing_paths:
+            file_path = local_path / rel_path
+            try:
+                content = file_path.read_bytes()
+            except OSError as e:
+                logger.warning(f"Failed to read {rel_path}: {e}")
+                continue
+
+            content_hash = self._compute_hash(content)
+            content_type = self._guess_content_type(rel_path)
+            size_bytes = len(content)
+
+            # Upsert workspace_files record
+            stmt = insert(WorkspaceFile).values(
+                path=rel_path,
+                content_hash=content_hash,
+                size_bytes=size_bytes,
+                content_type=content_type,
+                git_status=GitStatus.SYNCED,
+                is_deleted=False,
+                created_at=now,
+                updated_at=now,
+            ).on_conflict_do_update(
+                index_elements=[WorkspaceFile.path],
+                set_={
+                    "content_hash": content_hash,
+                    "size_bytes": size_bytes,
+                    "content_type": content_type,
+                    "is_deleted": False,
+                    "updated_at": now,
+                },
+            )
+            await self.db.execute(stmt)
+
+            # Update Redis cache so watcher has correct state
+            await cache.set_file_state(rel_path, content_hash, is_deleted=False)
+
+            # Extract metadata (workflows/data_providers)
+            await self._extract_metadata(rel_path, content)
+
+            counts["files_indexed"] += 1
+
+        # 4. Clean up endpoints for orphaned endpoint-enabled workflows
+        result = await self.db.execute(
+            select(Workflow).where(
+                Workflow.is_active == True,  # noqa: E712
+                Workflow.endpoint_enabled == True,  # noqa: E712
+                ~Workflow.file_path.in_(existing_paths) if existing_paths else True,
+            )
+        )
+        orphaned_endpoint_workflows = result.scalars().all()
+
+        for workflow in orphaned_endpoint_workflows:
+            try:
+                from src.services.openapi_endpoints import remove_workflow_endpoint
+                from src.main import app
+
+                remove_workflow_endpoint(app, workflow.name)
+            except Exception as e:
+                logger.warning(
+                    f"Failed to remove endpoint for orphaned workflow {workflow.name}: {e}"
+                )
+
+        # 5. Mark orphaned workflows as inactive
+        stmt = update(Workflow).where(
+            Workflow.is_active == True,  # noqa: E712
+            ~Workflow.file_path.in_(existing_paths) if existing_paths else True,
+        ).values(is_active=False)
+        result = await self.db.execute(stmt)
+        counts["workflows_deactivated"] = result.rowcount if result.rowcount > 0 else 0
+
+        # 6. Mark orphaned data providers as inactive
+        stmt = update(DataProvider).where(
+            DataProvider.is_active == True,  # noqa: E712
+            ~DataProvider.file_path.in_(existing_paths) if existing_paths else True,
+        ).values(is_active=False)
+        result = await self.db.execute(stmt)
+        counts["data_providers_deactivated"] = (
+            result.rowcount if result.rowcount > 0 else 0
+        )
+
+        if any(counts.values()):
+            logger.info(f"Reindexed workspace: {counts}")
+
+        return counts
+
     async def _extract_metadata(self, path: str, content: bytes) -> None:
         """
         Extract workflow/form metadata from file content.
