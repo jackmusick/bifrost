@@ -34,6 +34,7 @@ pwdlib[bcrypt]  # Modern password hashing
 python-jose[cryptography]  # Alternative JWT (compatibility)
 cryptography  # Encryption utilities
 pyotp  # TOTP/HOTP for MFA
+webauthn>=2.0.0  # WebAuthn/Passkeys support
 
 # =============================================================================
 # Configuration

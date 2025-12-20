@@ -5,6 +5,7 @@ import { Sidebar } from "./Sidebar";
 import { useAuth } from "@/contexts/AuthContext";
 import { NoAccess } from "@/components/NoAccess";
 import { Skeleton } from "@/components/ui/skeleton";
+import { PasskeySetupBanner } from "@/components/PasskeySetupBanner";
 
 export function Layout() {
 	const { isLoading, isPlatformAdmin, isOrgUser } = useAuth();
@@ -65,6 +66,7 @@ export function Layout() {
 					isSidebarCollapsed={isSidebarCollapsed}
 				/>
 				<main className="flex-1 overflow-auto p-6 lg:p-8">
+					<PasskeySetupBanner />
 					<Outlet />
 				</main>
 			</div>

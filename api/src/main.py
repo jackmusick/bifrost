@@ -20,6 +20,7 @@ from src.routers import (
     auth_router,
     mfa_router,
     oauth_router,
+    passkeys_router,
     health_router,
     organizations_router,
     users_router,
@@ -203,6 +204,7 @@ def create_app() -> FastAPI:
     app.include_router(auth_router)
     app.include_router(mfa_router)
     app.include_router(oauth_router)
+    app.include_router(passkeys_router)
     app.include_router(organizations_router)
     app.include_router(users_router)
     app.include_router(roles_router)

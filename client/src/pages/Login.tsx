@@ -1,13 +1,14 @@
 /**
  * Login Page
  *
- * Handles email/password login with MFA flow and OAuth options.
+ * Handles email/password login with MFA flow, OAuth, and passkey options.
  */
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { useNavigate, useLocation } from "react-router-dom";
 import { useAuth } from "@/contexts/AuthContext";
 import { getOAuthProviders, initOAuth } from "@/services/auth";
+import { supportsPasskeys } from "@/services/passkeys";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -18,7 +19,14 @@ import {
 	CardHeader,
 } from "@/components/ui/card";
 import { Alert, AlertDescription } from "@/components/ui/alert";
-import { Loader2, KeyRound, Mail, Lock, ExternalLink } from "lucide-react";
+import {
+	Loader2,
+	KeyRound,
+	Mail,
+	Lock,
+	ExternalLink,
+	Fingerprint,
+} from "lucide-react";
 import { motion } from "framer-motion";
 import type { OAuthProvider } from "@/services/auth";
 import { Logo } from "@/components/branding/Logo";
@@ -37,6 +45,7 @@ export function Login() {
 	const {
 		login,
 		loginWithMfa,
+		loginWithPasskey,
 		isAuthenticated,
 		isLoading: authLoading,
 	} = useAuth();
@@ -52,11 +61,42 @@ export function Login() {
 
 	// UI state
 	const [isLoading, setIsLoading] = useState(false);
+	const [isPasskeyLoading, setIsPasskeyLoading] = useState(false);
 	const [error, setError] = useState<string | null>(null);
 	const [oauthProviders, setOAuthProviders] = useState<OAuthProvider[]>([]);
+	const [passkeySupported, setPasskeySupported] = useState(false);
 
 	// Redirect path from location state
 	const from = (location.state as { from?: string })?.from || "/";
+
+	// Passkey login handler (defined early for use in auto-trigger effect)
+	const handlePasskeyLogin = useCallback(async () => {
+		setError(null);
+		setIsPasskeyLoading(true);
+
+		try {
+			// Pass email if user has entered one (helps target specific credentials)
+			await loginWithPasskey(email || undefined);
+			navigate(from, { replace: true });
+		} catch (err) {
+			// Don't show error for user cancellation
+			if (err instanceof Error) {
+				if (
+					err.message.includes("cancelled") ||
+					err.message.includes("not allowed")
+				) {
+					// User cancelled, just reset loading state
+					setIsPasskeyLoading(false);
+					return;
+				}
+				setError(err.message);
+			} else {
+				setError("Passkey authentication failed");
+			}
+		} finally {
+			setIsPasskeyLoading(false);
+		}
+	}, [email, from, loginWithPasskey, navigate]);
 
 	// Load OAuth providers
 	useEffect(() => {
@@ -66,6 +106,45 @@ export function Login() {
 				// OAuth not configured, that's fine
 			});
 	}, []);
+
+	// Check passkey support and auto-trigger passkey auth
+	useEffect(() => {
+		const supported = supportsPasskeys();
+		setPasskeySupported(supported);
+
+		// Auto-trigger passkey authentication if:
+		// - Browser supports passkeys
+		// - Not already authenticated
+		// - Haven't already attempted this session
+		// - Not in MFA step
+		const hasAttempted = sessionStorage.getItem("passkey_auto_attempted");
+		if (
+			supported &&
+			!authLoading &&
+			!isAuthenticated &&
+			!hasAttempted &&
+			step === "credentials"
+		) {
+			sessionStorage.setItem("passkey_auto_attempted", "true");
+			// Slight delay to let the page render first
+			const timer = setTimeout(() => {
+				handlePasskeyLogin();
+			}, 300);
+			return () => clearTimeout(timer);
+		}
+		return undefined;
+	}, [authLoading, isAuthenticated, step, handlePasskeyLogin]);
+
+	// Clear the auto-attempt flag when user logs out and returns
+	useEffect(() => {
+		// If user navigates away from login, clear the flag so it triggers next time
+		return () => {
+			// Don't clear if we're navigating due to successful auth
+			if (!isAuthenticated) {
+				sessionStorage.removeItem("passkey_auto_attempted");
+			}
+		};
+	}, [isAuthenticated]);
 
 	// Redirect if already authenticated
 	useEffect(() => {
@@ -271,6 +350,39 @@ export function Login() {
 
 						{step === "credentials" && (
 							<>
+								{/* Passkey login (if supported) */}
+								{passkeySupported && (
+									<>
+										<Button
+											type="button"
+											variant="outline"
+											className="w-full mb-4"
+											onClick={handlePasskeyLogin}
+											disabled={
+												isLoading || isPasskeyLoading
+											}
+										>
+											{isPasskeyLoading ? (
+												<Loader2 className="h-4 w-4 animate-spin mr-2" />
+											) : (
+												<Fingerprint className="h-4 w-4 mr-2" />
+											)}
+											Sign in with passkey
+										</Button>
+
+										<div className="relative mb-4">
+											<div className="absolute inset-0 flex items-center">
+												<span className="w-full border-t" />
+											</div>
+											<div className="relative flex justify-center text-xs uppercase">
+												<span className="bg-background px-2 text-muted-foreground">
+													Or use email
+												</span>
+											</div>
+										</div>
+									</>
+								)}
+
 								<form
 									onSubmit={handleCredentialsSubmit}
 									className="space-y-4"

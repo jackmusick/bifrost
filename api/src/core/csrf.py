@@ -34,6 +34,8 @@ CSRF_EXEMPT_PATHS = {
     "/auth/mfa/login",
     "/auth/mfa/login/setup",
     "/auth/mfa/login/verify",
+    "/auth/passkeys/authenticate/options",
+    "/auth/passkeys/authenticate/verify",
     "/health",
     "/ready",
     "/",

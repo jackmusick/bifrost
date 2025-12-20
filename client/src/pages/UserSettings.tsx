@@ -2,6 +2,7 @@ import { useEffect } from "react";
 import { useNavigate, useLocation } from "react-router-dom";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { BasicInfo } from "@/pages/user-settings/BasicInfo";
+import { Security } from "@/pages/user-settings/Security";
 import { DeveloperSettings } from "@/pages/user-settings/Developer";
 
 export function UserSettings() {
@@ -30,18 +31,23 @@ export function UserSettings() {
 					User Settings
 				</h1>
 				<p className="mt-2 text-muted-foreground">
-					Manage your profile and developer settings
+					Manage your profile, security, and developer settings
 				</p>
 			</div>
 
 			<Tabs value={currentTab} onValueChange={handleTabChange}>
 				<TabsList>
 					<TabsTrigger value="basic-info">Basic Info</TabsTrigger>
+					<TabsTrigger value="security">Security</TabsTrigger>
 					<TabsTrigger value="developer">Developer</TabsTrigger>
 				</TabsList>
 
 				<TabsContent value="basic-info" className="mt-6">
 					<BasicInfo />
+				</TabsContent>
+
+				<TabsContent value="security" className="mt-6">
+					<Security />
 				</TabsContent>
 
 				<TabsContent value="developer" className="mt-6">

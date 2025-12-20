@@ -123,7 +123,7 @@ cleanup() {
     # Export logs before cleanup
     export_docker_logs
     echo "Cleaning up test environment..."
-    docker compose -f "$COMPOSE_FILE" --profile e2e --profile test --profile client down -v 2>/dev/null || true
+    docker compose -f "$COMPOSE_FILE" --profile e2e --profile test --profile client --profile zitadel down -v 2>/dev/null || true
     echo "Cleanup complete"
 }
 

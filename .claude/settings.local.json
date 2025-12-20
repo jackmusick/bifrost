@@ -84,7 +84,8 @@
       "Bash(done)",
       "mcp__context7__resolve-library-id",
       "mcp__context7__get-library-docs",
-      "Bash(./venv/bin/pyright:*)"
+      "Bash(./venv/bin/pyright:*)",
+      "WebFetch(domain:pypi.org)"
     ],
     "deny": [],
     "ask": [],

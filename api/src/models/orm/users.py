@@ -18,7 +18,7 @@ if TYPE_CHECKING:
     from src.models.orm.agents import Agent
     from src.models.orm.developer import DeveloperApiKey, DeveloperContext
     from src.models.orm.executions import Execution
-    from src.models.orm.mfa import MFARecoveryCode, TrustedDevice, UserMFAMethod, UserOAuthAccount
+    from src.models.orm.mfa import MFARecoveryCode, TrustedDevice, UserMFAMethod, UserOAuthAccount, UserPasskey
     from src.models.orm.organizations import Organization
 
 
@@ -64,6 +64,9 @@ class User(Base):
     avatar_data: Mapped[bytes | None] = mapped_column(LargeBinary, default=None)
     avatar_content_type: Mapped[str | None] = mapped_column(String(50), default=None)
 
+    # WebAuthn/Passkeys
+    webauthn_user_id: Mapped[bytes | None] = mapped_column(LargeBinary(64), default=None)
+
     # Relationships
     organization: Mapped["Organization | None"] = relationship(back_populates="users")
     roles: Mapped[list["UserRole"]] = relationship(back_populates="user")
@@ -78,6 +81,7 @@ class User(Base):
     oauth_accounts: Mapped[list["UserOAuthAccount"]] = relationship(
         back_populates="user"
     )
+    passkeys: Mapped[list["UserPasskey"]] = relationship(back_populates="user")
     developer_context: Mapped["DeveloperContext | None"] = relationship(
         back_populates="user", uselist=False
     )

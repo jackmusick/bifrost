@@ -66,6 +66,20 @@ from src.models.contracts.auth import (
     TokenRefresh,
 )
 
+# Passkeys/WebAuthn
+from src.models.contracts.passkeys import (
+    PasskeyAuthOptionsRequest,
+    PasskeyAuthOptionsResponse,
+    PasskeyAuthVerifyRequest,
+    PasskeyDeleteResponse,
+    PasskeyListResponse,
+    PasskeyPublic,
+    PasskeyRegistrationOptionsRequest,
+    PasskeyRegistrationOptionsResponse,
+    PasskeyRegistrationVerifyRequest,
+    PasskeyRegistrationVerifyResponse,
+)
+
 # Forms
 from src.models.contracts.forms import (
     CreateFormRequest,
@@ -394,6 +408,17 @@ __all__ = [
     "MFAEnrollVerifyRequest",
     "MFAEnrollVerifyResponse",
     "OAuthLoginRequest",
+    # Passkeys/WebAuthn
+    "PasskeyRegistrationOptionsRequest",
+    "PasskeyRegistrationOptionsResponse",
+    "PasskeyRegistrationVerifyRequest",
+    "PasskeyRegistrationVerifyResponse",
+    "PasskeyAuthOptionsRequest",
+    "PasskeyAuthOptionsResponse",
+    "PasskeyAuthVerifyRequest",
+    "PasskeyPublic",
+    "PasskeyListResponse",
+    "PasskeyDeleteResponse",
     # Forms - use FormPublic for responses
     "FormFieldValidation",
     "DataProviderInputConfig",

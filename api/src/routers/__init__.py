@@ -2,6 +2,7 @@
 from src.routers.auth import router as auth_router
 from src.routers.mfa import router as mfa_router
 from src.routers.oauth_sso import router as oauth_router
+from src.routers.passkeys import router as passkeys_router
 from src.routers.health import router as health_router
 from src.routers.organizations import router as organizations_router
 from src.routers.users import router as users_router
@@ -33,6 +34,7 @@ __all__ = [
     "auth_router",
     "mfa_router",
     "oauth_router",
+    "passkeys_router",
     "health_router",
     "organizations_router",
     "users_router",

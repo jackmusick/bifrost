@@ -241,6 +241,24 @@ class Settings(BaseSettings):
     )
 
     # ==========================================================================
+    # WebAuthn/Passkeys
+    # ==========================================================================
+    webauthn_rp_id: str = Field(
+        default="localhost",
+        description="WebAuthn Relying Party ID (must match origin domain)"
+    )
+
+    webauthn_rp_name: str = Field(
+        default="Bifrost",
+        description="WebAuthn Relying Party display name"
+    )
+
+    webauthn_origin: str = Field(
+        default="http://localhost:3000",
+        description="WebAuthn expected origin URL"
+    )
+
+    # ==========================================================================
     # OAuth SSO (Single Sign-On)
     # ==========================================================================
     # Microsoft Entra ID (Azure AD)

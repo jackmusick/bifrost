@@ -1,0 +1,19 @@
+Collecting webauthn
+  Downloading webauthn-2.7.0-py3-none-any.whl.metadata (5.7 kB)
+Collecting asn1crypto>=1.5.1 (from webauthn)
+  Downloading asn1crypto-1.5.1-py2.py3-none-any.whl.metadata (13 kB)
+Collecting cbor2>=5.6.5 (from webauthn)
+  Downloading cbor2-5.7.1-cp311-cp311-macosx_11_0_arm64.whl.metadata (5.4 kB)
+Requirement already satisfied: cryptography>=44.0.2 in ./venv/lib/python3.11/site-packages (from webauthn) (46.0.3)
+Collecting pyOpenSSL>=25.0.0 (from webauthn)
+  Downloading pyopenssl-25.3.0-py3-none-any.whl.metadata (17 kB)
+Requirement already satisfied: cffi>=2.0.0 in ./venv/lib/python3.11/site-packages (from cryptography>=44.0.2->webauthn) (2.0.0)
+Requirement already satisfied: pycparser in ./venv/lib/python3.11/site-packages (from cffi>=2.0.0->cryptography>=44.0.2->webauthn) (2.23)
+Requirement already satisfied: typing-extensions>=4.9 in ./venv/lib/python3.11/site-packages (from pyOpenSSL>=25.0.0->webauthn) (4.15.0)
+Downloading webauthn-2.7.0-py3-none-any.whl (71 kB)
+Downloading asn1crypto-1.5.1-py2.py3-none-any.whl (105 kB)
+Downloading cbor2-5.7.1-cp311-cp311-macosx_11_0_arm64.whl (68 kB)
+Downloading pyopenssl-25.3.0-py3-none-any.whl (57 kB)
+Installing collected packages: asn1crypto, cbor2, pyOpenSSL, webauthn
+
+Successfully installed asn1crypto-1.5.1 cbor2-5.7.1 pyOpenSSL-25.3.0 webauthn-2.7.0
