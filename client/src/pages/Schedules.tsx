@@ -19,13 +19,13 @@ import {
 	CardTitle,
 } from "@/components/ui/card";
 import {
-	Table,
-	TableBody,
-	TableCell,
-	TableHead,
-	TableHeader,
-	TableRow,
-} from "@/components/ui/table";
+	DataTable,
+	DataTableBody,
+	DataTableCell,
+	DataTableHead,
+	DataTableHeader,
+	DataTableRow,
+} from "@/components/ui/data-table";
 import { Badge } from "@/components/ui/badge";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Input } from "@/components/ui/input";
@@ -335,25 +335,25 @@ async def my_scheduled_workflow(context):
 				</CardHeader>
 				<CardContent>
 					<div className="overflow-x-auto">
-						<Table>
-							<TableHeader>
-								<TableRow>
-									<TableHead>Workflow</TableHead>
-									<TableHead>Schedule</TableHead>
-									<TableHead>Next Run</TableHead>
-									<TableHead>Last Run</TableHead>
-									<TableHead className="text-right">
+						<DataTable>
+							<DataTableHeader>
+								<DataTableRow>
+									<DataTableHead>Workflow</DataTableHead>
+									<DataTableHead>Schedule</DataTableHead>
+									<DataTableHead>Next Run</DataTableHead>
+									<DataTableHead>Last Run</DataTableHead>
+									<DataTableHead className="text-right">
 										Executions
-									</TableHead>
-									<TableHead className="text-right">
+									</DataTableHead>
+									<DataTableHead className="text-right">
 										Action
-									</TableHead>
-								</TableRow>
-							</TableHeader>
-							<TableBody>
+									</DataTableHead>
+								</DataTableRow>
+							</DataTableHeader>
+							<DataTableBody>
 								{filteredSchedules.map((schedule) => (
-									<TableRow key={schedule.name}>
-										<TableCell className="font-medium">
+									<DataTableRow key={schedule.name}>
+										<DataTableCell className="font-medium">
 											<div>
 												<p className="font-semibold">
 													{schedule.description ||
@@ -363,8 +363,8 @@ async def my_scheduled_workflow(context):
 													{schedule.name}
 												</p>
 											</div>
-										</TableCell>
-										<TableCell>
+										</DataTableCell>
+										<DataTableCell>
 											<div className="space-y-1">
 												<p className="font-mono text-sm">
 													{schedule.schedule}
@@ -386,8 +386,8 @@ async def my_scheduled_workflow(context):
 														</p>
 													)}
 											</div>
-										</TableCell>
-										<TableCell>
+										</DataTableCell>
+										<DataTableCell>
 											{schedule.validation_status ===
 											"error" ? (
 												<Badge variant="destructive">
@@ -414,8 +414,8 @@ async def my_scheduled_workflow(context):
 													Not scheduled
 												</span>
 											)}
-										</TableCell>
-										<TableCell>
+										</DataTableCell>
+										<DataTableCell>
 											{schedule.last_run_at ? (
 												<div className="flex items-center gap-2">
 													<span>
@@ -444,13 +444,13 @@ async def my_scheduled_workflow(context):
 													Never
 												</span>
 											)}
-										</TableCell>
-										<TableCell className="text-right">
+										</DataTableCell>
+										<DataTableCell className="text-right">
 											<Badge variant="secondary">
 												{schedule.execution_count}
 											</Badge>
-										</TableCell>
-										<TableCell className="text-right">
+										</DataTableCell>
+										<DataTableCell className="text-right">
 											<div className="flex items-center justify-end gap-0.5">
 												<Button
 													variant="outline"
@@ -492,11 +492,11 @@ async def my_scheduled_workflow(context):
 													<Eye className="h-3.5 w-3.5" />
 												</Button>
 											</div>
-										</TableCell>
-									</TableRow>
+										</DataTableCell>
+									</DataTableRow>
 								))}
-							</TableBody>
-						</Table>
+							</DataTableBody>
+						</DataTable>
 					</div>
 					{filteredSchedules.length === 0 &&
 						scheduleList.length > 0 && (

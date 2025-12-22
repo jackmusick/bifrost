@@ -5,12 +5,13 @@ import { useSystemLogs } from "@/hooks/useSystemLogs";
 import { getErrorMessage } from "@/lib/api-error";
 import { LogDetailsDialog } from "@/components/logs/LogDetailsDialog";
 import {
-	TableBody,
-	TableCell,
-	TableHead,
-	TableHeader,
-	TableRow,
-} from "@/components/ui/table";
+	DataTable,
+	DataTableBody,
+	DataTableCell,
+	DataTableHead,
+	DataTableHeader,
+	DataTableRow,
+} from "@/components/ui/data-table";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -311,45 +312,45 @@ export default function SystemLogs() {
 							) : filteredLogs.length > 0 ? (
 								<div className="border rounded-lg overflow-hidden h-full">
 									<div className="h-full overflow-auto">
-										<table className="relative w-full caption-bottom text-sm">
-											<TableHeader className="sticky top-0 bg-background/80 backdrop-blur-sm z-10">
-												<TableRow>
-													<TableHead>
+										<DataTable className="relative w-full caption-bottom text-sm">
+											<DataTableHeader className="sticky top-0 bg-background/80 backdrop-blur-sm z-10">
+												<DataTableRow>
+													<DataTableHead>
 														Timestamp
-													</TableHead>
-													<TableHead>Level</TableHead>
-													<TableHead>
+													</DataTableHead>
+													<DataTableHead>Level</DataTableHead>
+													<DataTableHead>
 														Category
-													</TableHead>
-													<TableHead>
+													</DataTableHead>
+													<DataTableHead>
 														Summary
-													</TableHead>
-													<TableHead>
+													</DataTableHead>
+													<DataTableHead>
 														Executed By
-													</TableHead>
-												</TableRow>
-											</TableHeader>
-											<TableBody>
+													</DataTableHead>
+												</DataTableRow>
+											</DataTableHeader>
+											<DataTableBody>
 												{filteredLogs.map(
 													(
 														log: SystemLog,
 														index: number,
 													) => (
-														<TableRow
+														<DataTableRow
 															key={`${log.category}_${log.event_id}_${index}`}
-															className="cursor-pointer hover:bg-muted/50"
+															clickable
 															onClick={() =>
 																handleRowClick(
 																	log,
 																)
 															}
 														>
-															<TableCell className="font-mono text-sm">
+															<DataTableCell className="font-mono text-sm">
 																{new Date(
 																	log.timestamp,
 																).toLocaleString()}
-															</TableCell>
-															<TableCell>
+															</DataTableCell>
+															<DataTableCell>
 																<Badge
 																	variant={getLevelBadgeVariant(
 																		log.level,
@@ -358,8 +359,8 @@ export default function SystemLogs() {
 																>
 																	{log.level}
 																</Badge>
-															</TableCell>
-															<TableCell>
+															</DataTableCell>
+															<DataTableCell>
 																<Badge
 																	variant="secondary"
 																	className="capitalize"
@@ -368,22 +369,22 @@ export default function SystemLogs() {
 																		log.category
 																	}
 																</Badge>
-															</TableCell>
-															<TableCell className="max-w-md">
+															</DataTableCell>
+															<DataTableCell className="max-w-md">
 																{truncateMessage(
 																	log.message,
 																)}
-															</TableCell>
-															<TableCell className="text-sm text-muted-foreground">
+															</DataTableCell>
+															<DataTableCell className="text-sm text-muted-foreground">
 																{log.executed_by_name ||
 																	log.executed_by ||
 																	"-"}
-															</TableCell>
-														</TableRow>
+															</DataTableCell>
+														</DataTableRow>
 													),
 												)}
-											</TableBody>
-										</table>
+											</DataTableBody>
+										</DataTable>
 									</div>
 
 									{/* Pagination */}

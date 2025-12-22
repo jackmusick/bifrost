@@ -30,6 +30,7 @@ class NotificationStatus(str, Enum):
 
     PENDING = "pending"  # Queued, not yet started
     RUNNING = "running"  # In progress
+    AWAITING_ACTION = "awaiting_action"  # Waiting for user action (no spinner)
     COMPLETED = "completed"  # Successfully completed
     FAILED = "failed"  # Failed with error
     CANCELLED = "cancelled"  # User cancelled

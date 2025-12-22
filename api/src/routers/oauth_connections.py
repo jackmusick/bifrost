@@ -49,13 +49,6 @@ router = APIRouter(prefix="/api/oauth", tags=["OAuth Connections"])
 # =============================================================================
 
 
-class OAuthConnectionListResponse(BaseModel):
-    """Response for listing OAuth connections."""
-    connections: list[OAuthConnectionSummary] = Field(
-        ..., description="List of OAuth connections"
-    )
-
-
 class AuthorizeResponse(BaseModel):
     """Response for initiating OAuth authorization."""
     authorization_url: str = Field(..., description="URL to redirect user for authorization")
@@ -339,6 +332,7 @@ class OAuthConnectionRepository:
             oauth_flow_type=oauth_flow_type,
             status=status,
             status_message=provider.status_message,
+            integration_id=str(provider.integration_id) if provider.integration_id else None,
             expires_at=expires_at,
             last_refresh_at=provider.last_token_refresh,
             created_at=provider.created_at,
@@ -372,6 +366,7 @@ class OAuthConnectionRepository:
             scopes=scopes_str,
             status=status,
             status_message=provider.status_message,
+            integration_id=str(provider.integration_id) if provider.integration_id else None,
             expires_at=expires_at,
             last_refresh_at=provider.last_token_refresh,
             last_test_at=None,
@@ -384,24 +379,6 @@ class OAuthConnectionRepository:
 # =============================================================================
 # HTTP Endpoints
 # =============================================================================
-
-
-@router.get(
-    "/connections",
-    response_model=OAuthConnectionListResponse,
-    summary="List OAuth connections",
-    description="List all OAuth connections (Platform admin only)",
-)
-async def list_connections(
-    ctx: Context,
-    user: CurrentSuperuser,
-) -> OAuthConnectionListResponse:
-    """List all OAuth connections."""
-    repo = OAuthConnectionRepository(ctx.db)
-    org_id = ctx.org_id
-    connections = await repo.list_connections(org_id)
-
-    return OAuthConnectionListResponse(connections=connections)
 
 
 @router.get(
@@ -442,29 +419,66 @@ async def create_connection(
     user: CurrentSuperuser,
 ) -> OAuthConnectionDetail:
     """Create a new OAuth connection."""
+    from uuid import UUID
+    from src.models.orm.integrations import Integration
+
     repo = OAuthConnectionRepository(ctx.db)
     org_id = ctx.org_id
 
+    # Look up integration by ID to get provider name
+    integration_id = UUID(request.integration_id)
+    query = select(Integration).where(Integration.id == integration_id)
+    result = await ctx.db.execute(query)
+    integration = result.scalar_one_or_none()
+
+    if not integration:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Integration '{request.integration_id}' not found",
+        )
+
+    provider_name = integration.name
+
     # Check for existing connection
-    existing = await repo.get_connection(request.connection_name, org_id)
+    existing = await repo.get_connection(provider_name, org_id)
     if existing:
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
-            detail=f"OAuth connection '{request.connection_name}' already exists",
+            detail=f"OAuth connection for integration '{integration.name}' already exists",
         )
 
-    provider = await repo.create_connection(
-        request=request,
-        org_id=org_id,
+    # Create OAuth provider with integration_id
+    encrypted_secret = b""
+    if request.client_secret:
+        from src.core.security import encrypt_secret
+        encrypted_secret = encrypt_secret(request.client_secret).encode()
+
+    provider = OAuthProvider(
+        organization_id=org_id,
+        provider_name=provider_name,
+        display_name=integration.name,
+        description=request.description,
+        oauth_flow_type=request.oauth_flow_type,
+        client_id=request.client_id,
+        encrypted_client_secret=encrypted_secret,
+        authorization_url=request.authorization_url,
+        token_url=request.token_url,
+        scopes=request.scopes.split(",") if request.scopes else [],
+        status="not_connected",
         created_by=ctx.user.email,
+        integration_id=integration_id,
     )
 
-    logger.info(f"Created OAuth connection: {request.connection_name}")
+    ctx.db.add(provider)
+    await ctx.db.flush()
+    await ctx.db.refresh(provider)
+
+    logger.info(f"Created OAuth connection for integration: {integration.name}")
 
     # Invalidate cache
     if CACHE_INVALIDATION_AVAILABLE and invalidate_oauth:
         org_id_str = str(org_id) if org_id else None
-        await invalidate_oauth(org_id_str, request.connection_name)
+        await invalidate_oauth(org_id_str, provider_name)
 
     return await repo._to_detail(provider)
 
@@ -904,6 +918,7 @@ async def get_credentials(
             connection_name=connection_name,
             credentials=None,
             status=status_val,
+            integration_id=str(provider.integration_id) if provider.integration_id else None,
             expires_at=None,
         )
 
@@ -930,6 +945,7 @@ async def get_credentials(
         expires_at=expires_at_str or "",
         refresh_token=refresh_token,
         scopes=scopes,
+        integration_id=str(provider.integration_id) if provider.integration_id else None,
     )
 
     status_val: OAuthStatus = provider.status or "completed"  # type: ignore[assignment]
@@ -937,6 +953,7 @@ async def get_credentials(
         connection_name=connection_name,
         credentials=credentials,
         status=status_val,
+        integration_id=str(provider.integration_id) if provider.integration_id else None,
         expires_at=expires_at_str,
     )
 

@@ -229,7 +229,7 @@ export function SessionControlPanel({
 			</div>
 
 			{/* History section (sticky at bottom) */}
-			{session.executions.length > 0 && (
+			{session.executions && session.executions.length > 0 && (
 				<div className="flex-none border-t max-h-[200px] overflow-hidden flex flex-col">
 					<div className="px-4 py-2 bg-muted/30 border-b">
 						<h4 className="text-sm font-medium">

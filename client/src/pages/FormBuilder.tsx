@@ -16,6 +16,7 @@ import {
 	useForm as useFormQuery,
 	useCreateForm,
 	useUpdateForm,
+	executeFormStartup,
 } from "@/hooks/useForms";
 import { assignRolesToForm } from "@/hooks/useRoles";
 import { useWorkflowsMetadata } from "@/hooks/useWorkflows";
@@ -90,7 +91,8 @@ export function FormBuilder() {
 		useState(false);
 	const [workflowParamsDialogOpen, setWorkflowParamsDialogOpen] =
 		useState(false);
-	const [workflowResults] = useState<Record<string, unknown> | null>(null);
+	const [workflowResults, setWorkflowResults] = useState<Record<string, unknown> | null>(null);
+	const [isTestingWorkflow, setIsTestingWorkflow] = useState(false);
 
 	// Note: Opening info dialog for new forms is handled by checking
 	// isEditing and formName state at render time to avoid effect loops
@@ -254,10 +256,30 @@ export function FormBuilder() {
 			return;
 		}
 
-		// TODO: Implement when form startup endpoint is available
-		toast.error(
-			"Launch workflow testing is not yet implemented. The form startup endpoint is not available in the API.",
-		);
+		try {
+			setIsTestingWorkflow(true);
+
+			// Prepare input data (merge default params if available)
+			const inputData = defaultLaunchParams || {};
+
+			// Call the startup endpoint
+			const response = await executeFormStartup(formId, inputData);
+
+			// Extract result from response and update workflow results
+			if (response.result) {
+				setWorkflowResults(response.result as Record<string, unknown>);
+				setWorkflowResultsDialogOpen(true);
+				toast.success("Launch workflow executed successfully");
+			} else {
+				setWorkflowResults({});
+				toast.info("Launch workflow completed with no results");
+			}
+		} catch (error) {
+			const errorMessage = error instanceof Error ? error.message : "Failed to execute launch workflow";
+			toast.error(errorMessage);
+		} finally {
+			setIsTestingWorkflow(false);
+		}
 	};
 
 	// Get workflow metadata for launch workflow
@@ -358,7 +380,7 @@ export function FormBuilder() {
 										handleTestLaunchWorkflow();
 									}
 								}}
-								disabled={!formId}
+								disabled={!formId || isTestingWorkflow}
 								title="Test Launch Workflow"
 								className="rounded-none border-l-0"
 							>
@@ -495,7 +517,7 @@ export function FormBuilder() {
 							await handleTestLaunchWorkflow();
 							setWorkflowParamsDialogOpen(false);
 						}}
-						isExecuting={false}
+						isExecuting={isTestingWorkflow}
 						executeButtonText="Run & View Results"
 					/>
 				</DialogContent>

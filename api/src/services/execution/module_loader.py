@@ -97,6 +97,9 @@ class DataProviderMetadata:
     function: Any = None  # The actual Python function
     parameters: list[WorkflowParameter] = field(default_factory=list)
 
+    # Identity - persistent UUID (written by discovery watcher)
+    id: str | None = None
+
     # Source tracking (home, platform, workspace)
     source: Literal["home", "platform", "workspace"] | None = None
     source_file_path: str | None = None

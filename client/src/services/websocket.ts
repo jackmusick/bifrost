@@ -529,6 +529,13 @@ class WebSocketService {
 	 * Handle notification message from backend
 	 */
 	private handleNotification(payload: NotificationPayload) {
+		console.log(
+			"[WS] Notification received:",
+			payload.status,
+			payload.id,
+			payload,
+		);
+
 		// Convert snake_case to camelCase for frontend
 		const notification: Notification = {
 			id: payload.id,

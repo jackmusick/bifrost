@@ -59,8 +59,6 @@ async def detailed_health_check(
 
     Checks:
     - Database connectivity
-    - Redis connectivity (TODO)
-    - RabbitMQ connectivity (TODO)
 
     Returns:
         Detailed health status with component information
@@ -82,13 +80,11 @@ async def detailed_health_check(
             "error": str(e),
         }
 
-    # TODO: Check Redis
     components["redis"] = {
         "status": "not_configured",
         "type": "redis",
     }
 
-    # TODO: Check RabbitMQ
     components["rabbitmq"] = {
         "status": "not_configured",
         "type": "rabbitmq",

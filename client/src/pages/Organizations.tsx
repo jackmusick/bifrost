@@ -9,13 +9,13 @@ import {
 	CardTitle,
 } from "@/components/ui/card";
 import {
-	Table,
-	TableBody,
-	TableCell,
-	TableHead,
-	TableHeader,
-	TableRow,
-} from "@/components/ui/table";
+	DataTable,
+	DataTableBody,
+	DataTableCell,
+	DataTableHead,
+	DataTableHeader,
+	DataTableRow,
+} from "@/components/ui/data-table";
 import {
 	Dialog,
 	DialogContent,
@@ -201,33 +201,32 @@ export function Organizations() {
 						</div>
 					) : filteredOrgs && filteredOrgs.length > 0 ? (
 						<div className="max-h-[calc(100vh-28rem)] overflow-auto rounded-md border">
-							<Table>
-								<TableHeader className="sticky top-0 bg-background z-10">
-									<TableRow>
-										<TableHead>Name</TableHead>
-										<TableHead>Domain</TableHead>
-										<TableHead>Organization ID</TableHead>
-										<TableHead>Status</TableHead>
-										<TableHead>Created</TableHead>
-										<TableHead className="text-right"></TableHead>
-									</TableRow>
-								</TableHeader>
-								<TableBody>
+							<DataTable>
+								<DataTableHeader className="sticky top-0 bg-background z-10">
+									<DataTableRow>
+										<DataTableHead>Name</DataTableHead>
+										<DataTableHead>Domain</DataTableHead>
+										<DataTableHead>Organization ID</DataTableHead>
+										<DataTableHead>Status</DataTableHead>
+										<DataTableHead>Created</DataTableHead>
+										<DataTableHead className="text-right"></DataTableHead>
+									</DataTableRow>
+								</DataTableHeader>
+								<DataTableBody>
 									{filteredOrgs.map((org) => (
-										<TableRow
+										<DataTableRow
 											key={org.id}
-											className="hover:bg-muted/50"
 										>
-											<TableCell className="font-medium">
+											<DataTableCell className="font-medium">
 												{org.name}
-											</TableCell>
-											<TableCell className="text-sm text-muted-foreground">
+											</DataTableCell>
+											<DataTableCell className="text-sm text-muted-foreground">
 												{org.domain || "-"}
-											</TableCell>
-											<TableCell className="font-mono text-xs text-muted-foreground">
+											</DataTableCell>
+											<DataTableCell className="font-mono text-xs text-muted-foreground">
 												{org.id}
-											</TableCell>
-											<TableCell>
+											</DataTableCell>
+											<DataTableCell>
 												<Badge
 													variant={
 														org.is_active
@@ -239,15 +238,15 @@ export function Organizations() {
 														? "Active"
 														: "Inactive"}
 												</Badge>
-											</TableCell>
-											<TableCell className="text-sm">
+											</DataTableCell>
+											<DataTableCell className="text-sm">
 												{org.created_at
 													? new Date(
 															org.created_at,
 														).toLocaleDateString()
 													: "N/A"}
-											</TableCell>
-											<TableCell className="text-right">
+											</DataTableCell>
+											<DataTableCell className="text-right">
 												<div className="flex items-center justify-end gap-2">
 													<Button
 														variant="ghost"
@@ -270,11 +269,11 @@ export function Organizations() {
 														<Trash2 className="h-4 w-4" />
 													</Button>
 												</div>
-											</TableCell>
-										</TableRow>
+											</DataTableCell>
+										</DataTableRow>
 									))}
-								</TableBody>
-							</Table>
+								</DataTableBody>
+							</DataTable>
 						</div>
 					) : (
 						<div className="flex flex-col items-center justify-center py-12 text-center">

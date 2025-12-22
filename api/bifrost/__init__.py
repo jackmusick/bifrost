@@ -40,6 +40,7 @@ from .config import config
 from .executions import executions
 from .files import files
 from .forms import forms
+from .integrations import integrations
 from .oauth import oauth
 from .organizations import organizations
 from .roles import roles
@@ -77,6 +78,7 @@ __all__ = [
     'roles',
     'config',
     'oauth',
+    'integrations',
     'workflow',
     'data_provider',
     'context',

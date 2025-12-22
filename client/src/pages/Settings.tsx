@@ -6,6 +6,7 @@ import { WorkflowKeys } from "@/pages/WorkflowKeys";
 import { Branding } from "@/pages/settings/Branding";
 import { GitHub } from "@/pages/settings/GitHub";
 import { LLMConfig } from "@/pages/settings/LLMConfig";
+import { Maintenance } from "@/pages/settings/Maintenance";
 
 export function Settings() {
 	const navigate = useNavigate();
@@ -47,6 +48,7 @@ export function Settings() {
 						<TabsTrigger value="github">GitHub</TabsTrigger>
 						<TabsTrigger value="branding">Branding</TabsTrigger>
 						<TabsTrigger value="ai">AI</TabsTrigger>
+						<TabsTrigger value="maintenance">Maintenance</TabsTrigger>
 					</TabsList>
 
 					{tabActions && <TabActions>{tabActions}</TabActions>}
@@ -66,6 +68,10 @@ export function Settings() {
 
 				<TabsContent value="ai" className="mt-6">
 					<LLMConfig />
+				</TabsContent>
+
+				<TabsContent value="maintenance" className="mt-6">
+					<Maintenance />
 				</TabsContent>
 			</Tabs>
 		</div>

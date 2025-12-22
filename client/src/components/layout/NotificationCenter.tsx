@@ -12,6 +12,7 @@ import {
 	Upload,
 	Package,
 	Cog,
+	Play,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -27,6 +28,7 @@ import {
 	type NotificationCategory,
 	type NotificationStatus,
 	isActiveNotification,
+	isAwaitingActionNotification,
 	getNotificationCounts,
 	useNotificationStore,
 	type OneOffNotification,
@@ -34,6 +36,8 @@ import {
 	getAlertCounts,
 } from "@/stores/notificationStore";
 import { cn } from "@/lib/utils";
+import { authFetch } from "@/lib/api-client";
+import { toast } from "sonner";
 
 /**
  * Notification Center component for the header
@@ -86,10 +90,41 @@ const notificationStatusConfig: Record<
 > = {
 	pending: { color: "text-blue-500", bgColor: "bg-blue-500/10" },
 	running: { color: "text-blue-500", bgColor: "bg-blue-500/10" },
+	awaiting_action: { color: "text-amber-500", bgColor: "bg-amber-500/10" },
 	completed: { color: "text-green-500", bgColor: "bg-green-500/10" },
 	failed: { color: "text-red-500", bgColor: "bg-red-500/10" },
 	cancelled: { color: "text-muted-foreground", bgColor: "bg-muted/50" },
 };
+
+// Action handler for notification actions
+async function handleNotificationAction(notification: Notification) {
+	const action = notification.metadata?.action as string | undefined;
+
+	if (action === "run_maintenance") {
+		try {
+			const response = await authFetch("/api/maintenance/reindex", {
+				method: "POST",
+				body: JSON.stringify({
+					inject_ids: true,
+					notification_id: notification.id,
+				}),
+			});
+
+			if (!response.ok) {
+				const errorData = await response.json().catch(() => ({}));
+				toast.error("Failed to start maintenance", {
+					description: errorData.detail || "Unknown error",
+				});
+			}
+			// Backend updates notification status via WebSocket - no need to handle success here
+		} catch (error) {
+			toast.error("Failed to start maintenance", {
+				description:
+					error instanceof Error ? error.message : "Unknown error",
+			});
+		}
+	}
+}
 
 function ProgressNotificationItem({
 	notification,
@@ -98,9 +133,25 @@ function ProgressNotificationItem({
 	notification: Notification;
 	onDismiss: () => void;
 }) {
+	const [isActionLoading, setIsActionLoading] = useState(false);
 	const Icon = categoryIcons[notification.category] || Cog;
 	const statusConfig = notificationStatusConfig[notification.status];
 	const isActive = isActiveNotification(notification);
+	const isAwaitingAction = isAwaitingActionNotification(notification);
+
+	// Check if notification has an action button
+	const hasAction = isAwaitingAction && !!notification.metadata?.action;
+	const actionLabel =
+		(notification.metadata?.action_label as string) || "Run";
+
+	const handleAction = async () => {
+		setIsActionLoading(true);
+		try {
+			await handleNotificationAction(notification);
+		} finally {
+			setIsActionLoading(false);
+		}
+	};
 
 	return (
 		<div
@@ -116,6 +167,8 @@ function ProgressNotificationItem({
 					<CheckCircle className="h-5 w-5" />
 				) : notification.status === "failed" ? (
 					<AlertCircle className="h-5 w-5" />
+				) : isAwaitingAction ? (
+					<AlertTriangle className="h-5 w-5" />
 				) : (
 					<Icon className="h-5 w-5" />
 				)}
@@ -141,10 +194,27 @@ function ProgressNotificationItem({
 						className="h-1.5 mt-2"
 					/>
 				)}
+				{/* Action button for awaiting_action notifications */}
+				{hasAction && (
+					<Button
+						size="sm"
+						className="mt-2 h-7 text-xs"
+						onClick={handleAction}
+						disabled={isActionLoading}
+					>
+						{isActionLoading ? (
+							<Loader2 className="h-3 w-3 mr-1 animate-spin" />
+						) : (
+							<Play className="h-3 w-3 mr-1" />
+						)}
+						{actionLabel}
+					</Button>
+				)}
 				<p className="text-xs text-muted-foreground/60 mt-1">
 					{new Date(notification.updatedAt).toLocaleString()}
 				</p>
 			</div>
+			{/* Dismiss button - show for non-active states (completed, failed, awaiting_action) */}
 			{!isActive && (
 				<Button
 					variant="ghost"
@@ -212,9 +282,10 @@ export function NotificationCenter() {
 	const notificationCounts = getNotificationCounts(notifications);
 	const alertCounts = getAlertCounts(alerts);
 
-	// Total count for badge
+	// Total count for badge - includes awaiting_action as they need user attention
 	const totalCount =
 		notificationCounts.active +
+		notificationCounts.awaitingAction +
 		notificationCounts.failed +
 		alertCounts.error +
 		alertCounts.warning;
@@ -223,17 +294,23 @@ export function NotificationCenter() {
 	const getBadgeVariant = () => {
 		if (notificationCounts.failed > 0 || alertCounts.error > 0)
 			return "destructive";
-		if (alertCounts.warning > 0) return "default";
+		if (alertCounts.warning > 0 || notificationCounts.awaitingAction > 0)
+			return "default";
 		if (notificationCounts.active > 0) return "secondary";
 		return "secondary";
 	};
 
-	// Sort notifications: active first, then by date
+	// Sort notifications: active first, then awaiting_action, then by date
 	const sortedNotifications = [...notifications].sort((a, b) => {
-		// Active notifications first
-		const aActive = isActiveNotification(a) ? 0 : 1;
-		const bActive = isActiveNotification(b) ? 0 : 1;
-		if (aActive !== bActive) return aActive - bActive;
+		// Priority: active (0) > awaiting_action (1) > completed/failed (2)
+		const getPriority = (n: Notification) => {
+			if (isActiveNotification(n)) return 0;
+			if (isAwaitingActionNotification(n)) return 1;
+			return 2;
+		};
+		const aPriority = getPriority(a);
+		const bPriority = getPriority(b);
+		if (aPriority !== bPriority) return aPriority - bPriority;
 
 		// Then by date (newest first)
 		return (

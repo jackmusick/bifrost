@@ -225,15 +225,12 @@ class WorkspaceWatcher:
         # Hash differs or file is new - we originated this change
         logger.info(f"Watcher: originating file write {path} ({len(content)} bytes)")
 
-        # Sync to S3/DB (this also updates Redis cache via dual-write)
+        # Sync to S3/DB (this also updates Redis cache via dual-write and publishes to Redis)
         storage = FileStorageService(db)
-        await storage.write_file(path, content, updated_by="watcher")
+        write_result = await storage.write_file(path, content, updated_by="watcher")
 
-        # Publish to Redis so other containers sync
-        try:
-            await publish_workspace_file_write(path, content, local_hash)
-        except Exception as e:
-            logger.warning(f"Failed to publish workspace write event: {e}")
+        if write_result.content_modified:
+            logger.info(f"Watcher: IDs injected into {path}")
 
     async def _handle_delete(self, db, path: str) -> None:
         """

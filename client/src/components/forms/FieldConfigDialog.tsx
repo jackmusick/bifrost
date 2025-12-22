@@ -143,7 +143,7 @@ function FieldConfigDialogContent({
 	);
 	const [dataProvider, setDataProvider] = useState<string | undefined>(
 		() =>
-			field?.data_provider ??
+			field?.data_provider_id ??
 			workflowInputData?.dataProvider ??
 			undefined,
 	);
@@ -307,7 +307,7 @@ function FieldConfigDialogContent({
 			type,
 			required,
 			validation: null,
-			data_provider: dataProvider ?? null,
+			data_provider_id: dataProvider ?? null,
 			default_value: defaultValue || null,
 			placeholder: placeholder || null,
 			help_text: helpText || null,

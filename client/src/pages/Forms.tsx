@@ -37,13 +37,13 @@ import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 import {
-	Table,
-	TableBody,
-	TableCell,
-	TableHead,
-	TableHeader,
-	TableRow,
-} from "@/components/ui/table";
+	DataTable,
+	DataTableBody,
+	DataTableCell,
+	DataTableHead,
+	DataTableHeader,
+	DataTableRow,
+} from "@/components/ui/data-table";
 import { useForms, useDeleteForm, useUpdateForm } from "@/hooks/useForms";
 import { useOrgScope } from "@/contexts/OrgScopeContext";
 import { useAuth } from "@/contexts/AuthContext";
@@ -83,7 +83,6 @@ export function Forms() {
 	} | null>(null);
 
 	// For now, only platform admins can manage forms
-	// TODO: Add organization-specific permission check via API
 	const canManageForms = isPlatformAdmin;
 
 	// Build validation map from backend-provided missingRequiredParams
@@ -204,7 +203,7 @@ export function Forms() {
 	]);
 
 	return (
-		<div className="space-y-6">
+		<div className="h-[calc(100vh-8rem)] flex flex-col space-y-6">
 			<div className="flex items-center justify-between">
 				<div>
 					<div className="flex items-center gap-3">
@@ -447,168 +446,168 @@ export function Forms() {
 						))}
 					</div>
 				) : (
-					<div className="overflow-x-auto">
-						<Table>
-							<TableHeader>
-								<TableRow>
-									<TableHead>Name</TableHead>
-									<TableHead>Description</TableHead>
-									<TableHead>Workflow</TableHead>
-									<TableHead className="text-right">
-										Fields
-									</TableHead>
-									<TableHead>Validation</TableHead>
-									<TableHead>Status</TableHead>
-									<TableHead className="text-right">
-										Actions
-									</TableHead>
-								</TableRow>
-							</TableHeader>
-							<TableBody>
-								{filteredForms.map((form) => {
-									const validation = formValidation.get(
-										form.id,
-									);
-									return (
-										<TableRow key={form.id}>
-											<TableCell className="font-medium break-all max-w-xs">
-												{form.name}
-											</TableCell>
-											<TableCell className="max-w-xs break-words text-muted-foreground">
-												{form.description || (
-													<span className="italic">
-														No description
-													</span>
-												)}
-											</TableCell>
-											<TableCell className="font-mono text-xs">
-												{form.workflow_id || "-"}
-											</TableCell>
-											<TableCell className="text-right">
-												{isFormSchema(form.form_schema)
-													? form.form_schema.fields
-															.length
-													: 0}
-											</TableCell>
-											<TableCell>
-												{!validation?.valid ? (
-													<Badge
-														variant="destructive"
-														className="gap-1 cursor-help"
-														title={`Missing: ${validation?.missingParams.join(", ")}`}
-													>
-														<AlertTriangle className="h-3 w-3" />
-														Invalid
-													</Badge>
-												) : (
-													<Badge
-														variant="outline"
-														className="gap-1"
-													>
-														Valid
-													</Badge>
-												)}
-											</TableCell>
-											<TableCell>
-												{canManageForms ? (
-													<div className="flex items-center gap-2">
-														<Switch
-															checked={
-																form.is_active
-															}
-															onCheckedChange={() =>
-																handleToggleActive(
-																	form.id,
-																	form.name,
-																	form.is_active,
-																)
-															}
-															id={`form-active-table-${form.id}`}
-														/>
-														<Label
-															htmlFor={`form-active-table-${form.id}`}
-															className="text-xs text-muted-foreground cursor-pointer"
-														>
-															{form.is_active
-																? "Enabled"
-																: "Disabled"}
-														</Label>
-													</div>
-												) : (
-													<Badge
-														variant={
+					<div className="flex-1 min-h-0">
+						<DataTable className="max-h-full">
+						<DataTableHeader>
+							<DataTableRow>
+								<DataTableHead>Name</DataTableHead>
+								<DataTableHead>Description</DataTableHead>
+								<DataTableHead>Workflow</DataTableHead>
+								<DataTableHead className="text-right">
+									Fields
+								</DataTableHead>
+								<DataTableHead>Validation</DataTableHead>
+								<DataTableHead>Status</DataTableHead>
+								<DataTableHead className="text-right">
+									Actions
+								</DataTableHead>
+							</DataTableRow>
+						</DataTableHeader>
+						<DataTableBody>
+							{filteredForms.map((form) => {
+								const validation = formValidation.get(
+									form.id,
+								);
+								return (
+									<DataTableRow key={form.id}>
+										<DataTableCell className="font-medium break-all max-w-xs">
+											{form.name}
+										</DataTableCell>
+										<DataTableCell className="max-w-xs break-words text-muted-foreground">
+											{form.description || (
+												<span className="italic">
+													No description
+												</span>
+											)}
+										</DataTableCell>
+										<DataTableCell className="font-mono text-xs">
+											{form.workflow_id || "-"}
+										</DataTableCell>
+										<DataTableCell className="text-right">
+											{isFormSchema(form.form_schema)
+												? form.form_schema.fields
+														.length
+												: 0}
+										</DataTableCell>
+										<DataTableCell>
+											{!validation?.valid ? (
+												<Badge
+													variant="destructive"
+													className="gap-1 cursor-help"
+													title={`Missing: ${validation?.missingParams.join(", ")}`}
+												>
+													<AlertTriangle className="h-3 w-3" />
+													Invalid
+												</Badge>
+											) : (
+												<Badge
+													variant="outline"
+													className="gap-1"
+												>
+													Valid
+												</Badge>
+											)}
+										</DataTableCell>
+										<DataTableCell>
+											{canManageForms ? (
+												<div className="flex items-center gap-2">
+													<Switch
+														checked={
 															form.is_active
-																? "default"
-																: "secondary"
 														}
+														onCheckedChange={() =>
+															handleToggleActive(
+																form.id,
+																form.name,
+																form.is_active,
+															)
+														}
+														id={`form-active-table-${form.id}`}
+													/>
+													<Label
+														htmlFor={`form-active-table-${form.id}`}
+														className="text-xs text-muted-foreground cursor-pointer"
 													>
 														{form.is_active
 															? "Enabled"
-															: "Inactive"}
-													</Badge>
-												)}
-											</TableCell>
-											<TableCell className="text-right">
-												<div className="flex gap-1 justify-end">
-													<Button
-														size="sm"
-														onClick={() =>
-															handleLaunch(
-																form.id,
-															)
-														}
-														disabled={
-															(!form.is_active &&
-																!canManageForms) ||
-															!validation?.valid
-														}
-														title={
-															!validation?.valid
-																? `Cannot launch: Missing ${validation?.missingParams.join(", ")}`
-																: !form.is_active &&
-																	  !canManageForms
-																	? "Form is disabled"
-																	: "Launch form"
-														}
-													>
-														<PlayCircle className="h-4 w-4" />
-													</Button>
-													{canManageForms && (
-														<>
-															<Button
-																variant="ghost"
-																size="sm"
-																onClick={() =>
-																	handleEdit(
-																		form.id,
-																	)
-																}
-																title="Edit form"
-															>
-																<Pencil className="h-4 w-4" />
-															</Button>
-															<Button
-																variant="ghost"
-																size="sm"
-																onClick={() =>
-																	handleDelete(
-																		form.id,
-																		form.name,
-																	)
-																}
-																title="Delete form"
-															>
-																<Trash2 className="h-4 w-4" />
-															</Button>
-														</>
-													)}
+															: "Disabled"}
+													</Label>
 												</div>
-											</TableCell>
-										</TableRow>
-									);
-								})}
-							</TableBody>
-						</Table>
+											) : (
+												<Badge
+													variant={
+														form.is_active
+															? "default"
+															: "secondary"
+													}
+												>
+													{form.is_active
+														? "Enabled"
+														: "Inactive"}
+												</Badge>
+											)}
+										</DataTableCell>
+										<DataTableCell className="text-right">
+											<div className="flex gap-1 justify-end">
+												<Button
+													size="sm"
+													onClick={() =>
+														handleLaunch(
+															form.id,
+														)
+													}
+													disabled={
+														(!form.is_active &&
+															!canManageForms) ||
+														!validation?.valid
+													}
+													title={
+														!validation?.valid
+															? `Cannot launch: Missing ${validation?.missingParams.join(", ")}`
+															: !form.is_active &&
+																  !canManageForms
+																? "Form is disabled"
+																: "Launch form"
+													}
+												>
+													<PlayCircle className="h-4 w-4" />
+												</Button>
+												{canManageForms && (
+													<>
+														<Button
+															variant="ghost"
+															size="sm"
+															onClick={() =>
+																handleEdit(
+																	form.id,
+																)
+															}
+															title="Edit form"
+														>
+															<Pencil className="h-4 w-4" />
+														</Button>
+														<Button
+															variant="ghost"
+															size="sm"
+															onClick={() =>
+																handleDelete(
+																	form.id,
+																	form.name,
+																)
+															}
+															title="Delete form"
+														>
+															<Trash2 className="h-4 w-4" />
+														</Button>
+													</>
+												)}
+											</div>
+										</DataTableCell>
+									</DataTableRow>
+								);
+							})}
+						</DataTableBody>
+					</DataTable>
 					</div>
 				)
 			) : (

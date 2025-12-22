@@ -22,13 +22,13 @@ import {
 	CardTitle,
 } from "@/components/ui/card";
 import {
-	Table,
-	TableBody,
-	TableCell,
-	TableHead,
-	TableHeader,
-	TableRow,
-} from "@/components/ui/table";
+	DataTable,
+	DataTableBody,
+	DataTableCell,
+	DataTableHead,
+	DataTableHeader,
+	DataTableRow,
+} from "@/components/ui/data-table";
 import {
 	Dialog,
 	DialogContent,
@@ -296,29 +296,26 @@ export function WorkflowKeys() {
 					) : sortedKeys && sortedKeys.length > 0 ? (
 						<div className="border rounded-lg overflow-hidden flex-1">
 							<div className="overflow-auto max-h-full">
-								<Table>
-									<TableHeader className="sticky top-0 bg-background z-10">
-										<TableRow>
-											<TableHead>Scope</TableHead>
-											<TableHead>Description</TableHead>
-											<TableHead>Key</TableHead>
-											<TableHead>Created</TableHead>
-											<TableHead>Last Used</TableHead>
-											<TableHead>Expires</TableHead>
-											<TableHead className="text-right">
+								<DataTable>
+									<DataTableHeader className="sticky top-0 bg-background z-10">
+										<DataTableRow>
+											<DataTableHead>Scope</DataTableHead>
+											<DataTableHead>Description</DataTableHead>
+											<DataTableHead>Key</DataTableHead>
+											<DataTableHead>Created</DataTableHead>
+											<DataTableHead>Last Used</DataTableHead>
+											<DataTableHead>Expires</DataTableHead>
+											<DataTableHead className="text-right">
 												Actions
-											</TableHead>
-										</TableRow>
-									</TableHeader>
-									<TableBody>
+											</DataTableHead>
+										</DataTableRow>
+									</DataTableHeader>
+									<DataTableBody>
 										{sortedKeys.map((key) => {
 											const orphaned = isOrphaned(key);
 											return (
-												<TableRow
-													key={key.id}
-													className="hover:bg-muted/50"
-												>
-													<TableCell>
+												<DataTableRow key={key.id}>
+													<DataTableCell>
 														{!key.workflow_name ? (
 															<Badge
 																variant="default"
@@ -348,8 +345,8 @@ export function WorkflowKeys() {
 																}
 															</Badge>
 														)}
-													</TableCell>
-													<TableCell className="max-w-xs">
+													</DataTableCell>
+													<DataTableCell className="max-w-xs">
 														<div className="flex flex-col gap-1">
 															<span className="text-sm">
 																{key.description || (
@@ -368,16 +365,16 @@ export function WorkflowKeys() {
 																</span>
 															)}
 														</div>
-													</TableCell>
-													<TableCell className="font-mono text-sm">
+													</DataTableCell>
+													<DataTableCell className="font-mono text-sm">
 														{key.masked_key}
-													</TableCell>
-													<TableCell className="text-sm text-muted-foreground">
+													</DataTableCell>
+													<DataTableCell className="text-sm text-muted-foreground">
 														{formatDate(
 															key.created_at,
 														)}
-													</TableCell>
-													<TableCell className="text-sm text-muted-foreground">
+													</DataTableCell>
+													<DataTableCell className="text-sm text-muted-foreground">
 														{key.last_used_at ? (
 															<div className="flex items-center gap-1">
 																<Clock className="h-3 w-3" />
@@ -390,8 +387,8 @@ export function WorkflowKeys() {
 																Never
 															</span>
 														)}
-													</TableCell>
-													<TableCell className="text-sm">
+													</DataTableCell>
+													<DataTableCell className="text-sm">
 														{key.expires_at ? (
 															isExpired(
 																key.expires_at,
@@ -416,8 +413,8 @@ export function WorkflowKeys() {
 																Never
 															</span>
 														)}
-													</TableCell>
-													<TableCell className="text-right">
+													</DataTableCell>
+													<DataTableCell className="text-right">
 														<Button
 															variant="ghost"
 															size="icon"
@@ -430,12 +427,12 @@ export function WorkflowKeys() {
 														>
 															<Trash2 className="h-4 w-4" />
 														</Button>
-													</TableCell>
-												</TableRow>
+													</DataTableCell>
+												</DataTableRow>
 											);
 										})}
-									</TableBody>
-								</Table>
+									</DataTableBody>
+								</DataTable>
 							</div>
 						</div>
 					) : (

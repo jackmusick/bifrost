@@ -40,6 +40,9 @@ class Config(Base):
     organization_id: Mapped[UUID | None] = mapped_column(
         ForeignKey("organizations.id"), default=None
     )
+    integration_id: Mapped[UUID | None] = mapped_column(
+        ForeignKey("integrations.id"), default=None
+    )
     created_at: Mapped[datetime] = mapped_column(
         DateTime, default=datetime.utcnow, server_default=text("NOW()")
     )
@@ -56,6 +59,7 @@ class Config(Base):
 
     __table_args__ = (
         Index("ix_configs_org_key", "organization_id", "key", unique=True),
+        Index("ix_configs_integration_id", "integration_id"),
     )
 
 

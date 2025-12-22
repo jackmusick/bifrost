@@ -9,21 +9,6 @@ import { toast } from "sonner";
 import { $api, apiClient } from "@/lib/api-client";
 
 /**
- * List OAuth connections
- * Organization context is handled automatically by the api client
- * Always includes GLOBAL connections as fallback
- */
-export function useOAuthConnections() {
-	const query = $api.useQuery("get", "/api/oauth/connections", {});
-
-	// Extract connections array from response
-	return {
-		...query,
-		data: query.data?.connections ?? [],
-	};
-}
-
-/**
  * Get OAuth connection details
  * Organization context is handled automatically by the api client
  */
@@ -44,13 +29,11 @@ export function useCreateOAuthConnection() {
 	const queryClient = useQueryClient();
 
 	return $api.useMutation("post", "/api/oauth/connections", {
-		onSuccess: (_, variables) => {
+		onSuccess: () => {
 			queryClient.invalidateQueries({
-				queryKey: ["get", "/api/oauth/connections"],
+				queryKey: ["get", "/api/integrations"],
 			});
-			toast.success(
-				`Connection "${variables.body?.connection_name}" created successfully`,
-			);
+			toast.success("OAuth connection configured successfully");
 		},
 		onError: (error) => {
 			const message =
@@ -73,7 +56,7 @@ export function useUpdateOAuthConnection() {
 		onSuccess: (_, variables) => {
 			const connectionName = variables.params?.path?.connection_name;
 			queryClient.invalidateQueries({
-				queryKey: ["get", "/api/oauth/connections"],
+				queryKey: ["get", "/api/integrations"],
 			});
 			queryClient.invalidateQueries({
 				queryKey: [
@@ -110,7 +93,7 @@ export function useDeleteOAuthConnection() {
 			onSuccess: (_, variables) => {
 				const connectionName = variables.params?.path?.connection_name;
 				queryClient.invalidateQueries({
-					queryKey: ["get", "/api/oauth/connections"],
+					queryKey: ["get", "/api/integrations"],
 				});
 				toast.success(
 					`Connection "${connectionName}" deleted successfully`,
@@ -143,7 +126,7 @@ export function useAuthorizeOAuthConnection() {
 			onSuccess: (response, variables) => {
 				const connectionName = variables.params?.path?.connection_name;
 				queryClient.invalidateQueries({
-					queryKey: ["get", "/api/oauth/connections"],
+					queryKey: ["get", "/api/integrations"],
 				});
 				queryClient.invalidateQueries({
 					queryKey: [
@@ -197,7 +180,7 @@ export function useCancelOAuthAuthorization() {
 			onSuccess: (_, variables) => {
 				const connectionName = variables.params?.path?.connection_name;
 				queryClient.invalidateQueries({
-					queryKey: ["get", "/api/oauth/connections"],
+					queryKey: ["get", "/api/integrations"],
 				});
 				queryClient.invalidateQueries({
 					queryKey: [
@@ -239,7 +222,7 @@ export function useRefreshOAuthToken() {
 			onSuccess: (_, variables) => {
 				const connectionName = variables.params?.path?.connection_name;
 				queryClient.invalidateQueries({
-					queryKey: ["get", "/api/oauth/connections"],
+					queryKey: ["get", "/api/integrations"],
 				});
 				queryClient.invalidateQueries({
 					queryKey: [
@@ -320,7 +303,7 @@ export function useTriggerOAuthRefreshJob() {
 		onSuccess: (data) => {
 			// Invalidate all OAuth queries to refresh the UI
 			queryClient.invalidateQueries({
-				queryKey: ["get", "/api/oauth/connections"],
+				queryKey: ["get", "/api/integrations"],
 			});
 			queryClient.invalidateQueries({
 				queryKey: ["get", "/api/oauth/refresh_job_status"],

@@ -9,13 +9,13 @@ import {
 	CardTitle,
 } from "@/components/ui/card";
 import {
-	Table,
-	TableBody,
-	TableCell,
-	TableHead,
-	TableHeader,
-	TableRow,
-} from "@/components/ui/table";
+	DataTable,
+	DataTableBody,
+	DataTableCell,
+	DataTableHead,
+	DataTableHeader,
+	DataTableRow,
+} from "@/components/ui/data-table";
 import {
 	AlertDialog,
 	AlertDialogAction,
@@ -151,28 +151,28 @@ export function Roles() {
 						</div>
 					) : filteredRoles && filteredRoles.length > 0 ? (
 						<div className="max-h-[calc(100vh-28rem)] overflow-auto rounded-md border">
-							<Table>
-								<TableHeader className="sticky top-0 bg-background z-10">
-									<TableRow>
-										<TableHead>Name</TableHead>
-										<TableHead>Description</TableHead>
-										<TableHead>Status</TableHead>
-										<TableHead>Created</TableHead>
-										<TableHead className="text-right">
+							<DataTable>
+								<DataTableHeader className="sticky top-0 bg-background z-10">
+									<DataTableRow>
+										<DataTableHead>Name</DataTableHead>
+										<DataTableHead>Description</DataTableHead>
+										<DataTableHead>Status</DataTableHead>
+										<DataTableHead>Created</DataTableHead>
+										<DataTableHead className="text-right">
 											Actions
-										</TableHead>
-									</TableRow>
-								</TableHeader>
-								<TableBody>
+										</DataTableHead>
+									</DataTableRow>
+								</DataTableHeader>
+								<DataTableBody>
 									{filteredRoles.map((role) => (
-										<TableRow key={role.id}>
-											<TableCell className="font-medium">
+										<DataTableRow key={role.id}>
+											<DataTableCell className="font-medium">
 												{role.name}
-											</TableCell>
-											<TableCell className="max-w-xs truncate text-muted-foreground">
+											</DataTableCell>
+											<DataTableCell className="max-w-xs truncate text-muted-foreground">
 												{role.description || "-"}
-											</TableCell>
-											<TableCell>
+											</DataTableCell>
+											<DataTableCell>
 												<Badge
 													variant={
 														role.is_active
@@ -184,15 +184,15 @@ export function Roles() {
 														? "Active"
 														: "Inactive"}
 												</Badge>
-											</TableCell>
-											<TableCell className="text-sm text-muted-foreground">
+											</DataTableCell>
+											<DataTableCell className="text-sm text-muted-foreground">
 												{role.created_at
 													? new Date(
 															role.created_at,
 														).toLocaleDateString()
 													: "N/A"}
-											</TableCell>
-											<TableCell className="text-right">
+											</DataTableCell>
+											<DataTableCell className="text-right">
 												<div className="flex justify-end gap-2">
 													<Button
 														variant="ghost"
@@ -225,11 +225,11 @@ export function Roles() {
 														<Trash2 className="h-4 w-4" />
 													</Button>
 												</div>
-											</TableCell>
-										</TableRow>
+											</DataTableCell>
+										</DataTableRow>
 									))}
-								</TableBody>
-							</Table>
+								</DataTableBody>
+							</DataTable>
 						</div>
 					) : (
 						<div className="flex flex-col items-center justify-center py-12 text-center">

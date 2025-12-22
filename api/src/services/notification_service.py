@@ -21,6 +21,7 @@ import redis.asyncio as redis
 from src.config import get_settings
 from src.core.pubsub import manager as pubsub_manager
 from src.models.contracts.notifications import (
+    NotificationCategory,
     NotificationCreate,
     NotificationPublic,
     NotificationStatus,
@@ -71,6 +72,7 @@ class NotificationService:
         user_id: str,
         request: NotificationCreate,
         for_admins: bool = False,
+        initial_status: NotificationStatus = NotificationStatus.PENDING,
     ) -> NotificationPublic:
         """
         Create a new notification.
@@ -79,6 +81,7 @@ class NotificationService:
             user_id: User ID who owns the notification
             request: Notification creation request
             for_admins: If True, notify all platform admins
+            initial_status: Initial status (defaults to PENDING)
 
         Returns:
             Created notification
@@ -92,7 +95,7 @@ class NotificationService:
             category=request.category,
             title=request.title,
             description=request.description,
-            status=NotificationStatus.PENDING,
+            status=initial_status,
             percent=request.percent,
             error=None,
             result=None,
@@ -191,11 +194,17 @@ class NotificationService:
         # Parse and publish
         notification = NotificationPublic.model_validate(notification_dict)
 
+        for_admins = await self._is_admin_notification(notification_id)
+        logger.info(
+            f"Publishing notification update: {notification_id} "
+            f"status={notification.status} user_id={notification.user_id} for_admins={for_admins}"
+        )
+
         await self._publish_notification(
             user_id=notification.user_id,
             notification=notification,
             event_type="notification_updated",
-            for_admins=await self._is_admin_notification(notification_id),
+            for_admins=for_admins,
         )
 
         logger.debug(f"Updated notification: {notification_id}")
@@ -261,6 +270,44 @@ class NotificationService:
 
         logger.info(f"Dismissed notification: {notification_id}")
         return True
+
+    async def find_admin_notification_by_title(
+        self,
+        title: str,
+        category: NotificationCategory | None = None,
+    ) -> NotificationPublic | None:
+        """
+        Find existing admin notification by title (and optionally category).
+
+        Used for deduplication - prevents creating duplicate notifications
+        for the same event (e.g., maintenance required).
+
+        Args:
+            title: Notification title to search for
+            category: Optional category to filter by
+
+        Returns:
+            Matching notification or None if not found
+        """
+        redis_client = await self._get_redis()
+        admin_ids: set[str] = await cast(
+            Awaitable[set[str]], redis_client.smembers(ADMIN_NOTIFICATIONS_KEY)
+        )
+
+        for notification_id in admin_ids:
+            key = f"{NOTIFICATION_KEY_PREFIX}{notification_id}"
+            data = await redis_client.get(key)
+            if data is None:
+                continue
+            try:
+                notification = NotificationPublic.model_validate_json(data)
+                if notification.title == title:
+                    if category is None or notification.category == category:
+                        return notification
+            except Exception:
+                continue
+
+        return None
 
     # =========================================================================
     # Query Methods

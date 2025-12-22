@@ -255,10 +255,3 @@ async def delete_config(
     if CACHE_INVALIDATION_AVAILABLE and invalidate_config:
         org_id = str(ctx.org_id) if ctx.org_id else None
         await invalidate_config(org_id, key)
-
-
-# =============================================================================
-# Integration Config Endpoints
-# TODO: Migrate integrations to dedicated IntegrationConfiguration table with
-#       PostgreSQL storage.
-# =============================================================================

@@ -62,10 +62,10 @@ class FormField(BaseModel):
     type: FormFieldType
     required: bool = Field(default=False)
     validation: dict[str, Any] | None = None
-    data_provider: str | None = Field(
-        default=None, description="Data provider name for dynamic options")
+    data_provider_id: UUID | None = Field(
+        default=None, description="Data provider ID for dynamic options")
     data_provider_inputs: dict[str, DataProviderInputConfig] | None = Field(
-        default=None, description="Input configurations for data provider parameters (T007)")
+        default=None, description="Input configurations for data provider parameters")
     default_value: Any | None = None
     placeholder: str | None = None
     help_text: str | None = None
@@ -89,9 +89,9 @@ class FormField(BaseModel):
     @model_validator(mode='after')
     def validate_field_requirements(self):
         """Validate field-specific requirements"""
-        # data_provider_inputs requires data_provider (T007)
-        if self.data_provider_inputs and not self.data_provider:
-            raise ValueError("data_provider_inputs requires data_provider to be set")
+        # data_provider_inputs requires data_provider_id
+        if self.data_provider_inputs and not self.data_provider_id:
+            raise ValueError("data_provider_inputs requires data_provider_id to be set")
 
         # label is required for non-display fields (markdown/html use content instead)
         display_only_types = {FormFieldType.MARKDOWN, FormFieldType.HTML}
@@ -282,8 +282,8 @@ class FormPublic(BaseModel):
                     field_dict["default_value"] = field.default_value
                 if field.options:
                     field_dict["options"] = field.options
-                if field.data_provider:
-                    field_dict["data_provider"] = field.data_provider
+                if field.data_provider_id:
+                    field_dict["data_provider_id"] = str(field.data_provider_id)
                 if field.data_provider_inputs:
                     field_dict["data_provider_inputs"] = field.data_provider_inputs
                 if field.visibility_expression:

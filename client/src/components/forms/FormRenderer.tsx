@@ -180,15 +180,15 @@ function FormRendererInner({ form }: FormRendererProps) {
 	// Function to load data providers (called on mount and blur events)
 	const loadDataProviders = useCallback(async () => {
 		const selectFields = fields.filter(
-			(field: FormField) => field.data_provider,
+			(field: FormField) => field.data_provider_id,
 		);
 
 		for (const field of selectFields) {
-			if (!field.data_provider || typeof field.data_provider !== "string")
+			if (!field.data_provider_id || typeof field.data_provider_id !== "string")
 				continue;
 
-			const providerName = field.data_provider as string;
-			const cacheKey = `${providerName}_${field.name}`;
+			const providerId = field.data_provider_id as string;
+			const cacheKey = `${providerId}_${field.name}`;
 
 			// Evaluate inputs to check if all required fields are available
 			const { inputs, hasAllRequired } =
@@ -236,8 +236,7 @@ function FormRendererInner({ form }: FormRendererProps) {
 				}));
 
 				const options = await getDataProviderOptions(
-					form.id,
-					providerName,
+					providerId,
 					inputs || undefined,
 				);
 
@@ -273,7 +272,6 @@ function FormRendererInner({ form }: FormRendererProps) {
 			}
 		}
 	}, [
-		form.id,
 		fields,
 		evaluateDataProviderInputs,
 		dataProviderState.loading,
@@ -336,9 +334,9 @@ function FormRendererInner({ form }: FormRendererProps) {
 			}
 
 			// Add validation for data provider fields with required inputs
-			if (field.data_provider && field.data_provider_inputs) {
-				const providerName = field.data_provider as string;
-				const cacheKey = `${providerName}_${field.name}`;
+			if (field.data_provider_id && field.data_provider_inputs) {
+				const providerId = field.data_provider_id as string;
+				const cacheKey = `${providerId}_${field.name}`;
 
 				// Check if any inputs are required
 				const hasRequiredInputs = Object.values(
@@ -427,7 +425,7 @@ function FormRendererInner({ form }: FormRendererProps) {
 		if (changedFields.length > 0) {
 			const fieldsWithProviders = fields.filter(
 				(field: FormField) =>
-					field.data_provider && field.data_provider_inputs,
+					field.data_provider_id && field.data_provider_inputs,
 			);
 
 			const fieldsToClear: string[] = [];
@@ -443,9 +441,9 @@ function FormRendererInner({ form }: FormRendererProps) {
 							if (
 								changedFields.includes(inputConfig.field_name)
 							) {
-								const providerName =
-									field.data_provider as string;
-								const cacheKey = `${providerName}_${field.name}`;
+								const providerId =
+									field.data_provider_id as string;
+								const cacheKey = `${providerId}_${field.name}`;
 								fieldsToClear.push(cacheKey);
 							}
 						}
@@ -596,13 +594,13 @@ function FormRendererInner({ form }: FormRendererProps) {
 		const error = errors[field.name];
 
 		// If field has a data provider, render it as a dropdown regardless of type
-		if (field.data_provider) {
-			const providerName =
-				typeof field.data_provider === "string"
-					? field.data_provider
+		if (field.data_provider_id) {
+			const providerId =
+				typeof field.data_provider_id === "string"
+					? field.data_provider_id
 					: undefined;
-			const cacheKey = providerName
-				? `${providerName}_${field.name}`
+			const cacheKey = providerId
+				? `${providerId}_${field.name}`
 				: undefined;
 			const options = cacheKey ? dataProviderState.options[cacheKey] : [];
 			const isLoadingOptions = cacheKey
@@ -700,12 +698,12 @@ function FormRendererInner({ form }: FormRendererProps) {
 				);
 
 			case "select": {
-				const providerName =
-					typeof field.data_provider === "string"
-						? field.data_provider
+				const providerId =
+					typeof field.data_provider_id === "string"
+						? field.data_provider_id
 						: undefined;
-				const cacheKey = providerName
-					? `${providerName}_${field.name}`
+				const cacheKey = providerId
+					? `${providerId}_${field.name}`
 					: undefined;
 				const staticOptions = (field.options || []) as Array<{
 					label: string;
@@ -714,7 +712,7 @@ function FormRendererInner({ form }: FormRendererProps) {
 				const dynamicOptions = cacheKey
 					? dataProviderState.options[cacheKey]
 					: [];
-				const options = providerName ? dynamicOptions : staticOptions;
+				const options = providerId ? dynamicOptions : staticOptions;
 				const isLoadingOptions = cacheKey
 					? dataProviderState.loading[cacheKey]
 					: false;
@@ -751,7 +749,7 @@ function FormRendererInner({ form }: FormRendererProps) {
 							isLoading={!!isLoadingOptions}
 							disabled={
 								!!isLoadingOptions ||
-								(!!providerName && !hasSuccessfullyLoaded)
+								(!!providerId && !hasSuccessfullyLoaded)
 							}
 						/>
 						{providerError && (

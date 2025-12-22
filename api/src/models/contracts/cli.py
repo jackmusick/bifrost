@@ -224,3 +224,55 @@ class CLIOAuthGetResponse(BaseModel):
     expires_at: str | None = Field(None, description="Token expiration (ISO format)")
 
     model_config = ConfigDict(from_attributes=True)
+
+
+# ==================== SDK INTEGRATIONS MODELS ====================
+
+
+class SDKIntegrationsGetRequest(BaseModel):
+    """Request to get integration configuration via SDK."""
+    name: str = Field(..., description="Integration name")
+    org_id: str | None = Field(
+        default=None, description="Organization ID (optional, uses context default)")
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+class SDKIntegrationsGetResponse(BaseModel):
+    """Integration data response from SDK."""
+    integration_id: str = Field(..., description="Integration UUID")
+    entity_id: str = Field(..., description="Mapped external entity ID (e.g., tenant ID)")
+    entity_name: str | None = Field(None, description="Display name for the mapped entity")
+    config: dict[str, Any] = Field(
+        default_factory=dict,
+        description="Merged configuration (schema defaults + org overrides)"
+    )
+    oauth_client_id: str | None = Field(None, description="OAuth client ID")
+    oauth_token_url: str | None = Field(None, description="OAuth token URL (with {entity_id} resolved)")
+    oauth_scopes: str | None = Field(None, description="OAuth scopes (space-separated or None)")
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+class SDKIntegrationsListMappingsRequest(BaseModel):
+    """Request to list integration mappings via SDK."""
+    name: str = Field(..., description="Integration name")
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+class SDKIntegrationsMappingItem(BaseModel):
+    """Single integration mapping in list response."""
+    organization_id: str = Field(..., description="Organization UUID")
+    entity_id: str = Field(..., description="External entity ID")
+    entity_name: str | None = Field(None, description="Display name")
+    config: dict[str, Any] | None = Field(None, description="Organization-specific config")
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+class SDKIntegrationsListMappingsResponse(BaseModel):
+    """Response for listing integration mappings."""
+    items: list[SDKIntegrationsMappingItem] = Field(..., description="List of mappings")
+
+    model_config = ConfigDict(from_attributes=True)

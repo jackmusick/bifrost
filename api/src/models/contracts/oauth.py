@@ -25,17 +25,9 @@ class CreateOAuthConnectionRequest(BaseModel):
     Request model for creating a new OAuth connection
     POST /api/oauth/connections
     """
-    connection_name: str = Field(
+    integration_id: str = Field(
         ...,
-        pattern=r"^[a-zA-Z0-9_-]+$",
-        min_length=1,
-        max_length=100,
-        description="Unique connection identifier (alphanumeric, underscores, hyphens)"
-    )
-    name: str | None = Field(
-        None,
-        max_length=255,
-        description="Display name for the connection (defaults to connection_name)"
+        description="ID of the integration this OAuth connection belongs to"
     )
     description: str | None = Field(
         None,
@@ -63,7 +55,11 @@ class CreateOAuthConnectionRequest(BaseModel):
     token_url: str = Field(
         ...,
         pattern=r"^https://",
-        description="OAuth token endpoint URL (must be HTTPS)"
+        description="OAuth token endpoint URL (must be HTTPS, may include {placeholders} for templating)"
+    )
+    token_url_defaults: dict[str, str] | None = Field(
+        None,
+        description="Default values for token_url placeholders (e.g., {'entity_id': 'common'})"
     )
     scopes: str = Field(
         default="",
@@ -113,6 +109,10 @@ class UpdateOAuthConnectionRequest(BaseModel):
     client_secret: str | None = Field(default=None, min_length=1)
     authorization_url: str | None = Field(default=None, pattern=r"^https://")
     token_url: str | None = Field(default=None, pattern=r"^https://")
+    token_url_defaults: dict[str, str] | None = Field(
+        default=None,
+        description="Default values for token_url placeholders"
+    )
     scopes: list[str] | None = Field(default=None, description="List of OAuth scopes")
 
     @field_validator('scopes', mode='before')
@@ -144,6 +144,10 @@ class OAuthConnectionSummary(BaseModel):
     oauth_flow_type: OAuthFlowType
     status: OAuthStatus
     status_message: str | None = None
+    integration_id: str | None = Field(
+        default=None,
+        description="ID of the integration this OAuth connection belongs to"
+    )
     expires_at: datetime | None = Field(
         default=None,
         description="When the current access token expires"
@@ -184,6 +188,10 @@ class OAuthConnectionDetail(BaseModel):
     # Status information
     status: OAuthStatus
     status_message: str | None = None
+    integration_id: str | None = Field(
+        default=None,
+        description="ID of the integration this OAuth connection belongs to"
+    )
     expires_at: datetime | None = None
     last_refresh_at: datetime | None = None
     last_test_at: datetime | None = None
@@ -214,6 +222,10 @@ class OAuthConnection(BaseModel):
         min_length=1,
         max_length=100
     )
+    integration_id: str | None = Field(
+        default=None,
+        description="ID of the integration this OAuth connection belongs to"
+    )
 
     # OAuth Configuration
     description: str | None = Field(default=None, max_length=500)
@@ -233,6 +245,10 @@ class OAuthConnection(BaseModel):
         description="OAuth authorization endpoint (required for authorization_code, not used for client_credentials)"
     )
     token_url: str = Field(..., pattern=r"^https://")
+    token_url_defaults: dict[str, str] = Field(
+        default_factory=dict,
+        description="Default values for token_url placeholders (e.g., {'entity_id': 'common'})"
+    )
     scopes: str = ""
     redirect_uri: str = Field(
         ...,
@@ -295,6 +311,7 @@ class OAuthConnection(BaseModel):
             oauth_flow_type=self.oauth_flow_type,
             status=self.status,
             status_message=self.status_message,
+            integration_id=self.integration_id,
             expires_at=self.expires_at,
             last_refresh_at=self.last_refresh_at,
             created_at=self.created_at,
@@ -313,9 +330,9 @@ class OAuthConnection(BaseModel):
             authorization_url=self.authorization_url,
             token_url=self.token_url,
             scopes=self.scopes,
-            redirect_uri=self.redirect_uri,
             status=self.status,
             status_message=self.status_message,
+            integration_id=self.integration_id,
             expires_at=self.expires_at,
             last_refresh_at=self.last_refresh_at,
             last_test_at=self.last_test_at,
@@ -364,6 +381,10 @@ class OAuthCredentialsModel(BaseModel):
         default="",
         description="Space-separated list of granted scopes"
     )
+    integration_id: str | None = Field(
+        default=None,
+        description="ID of the integration this OAuth connection belongs to"
+    )
 
     model_config = ConfigDict(from_attributes=True)
 
@@ -381,6 +402,10 @@ class OAuthCredentialsResponse(BaseModel):
     status: OAuthStatus = Field(
         ...,
         description="Current connection status"
+    )
+    integration_id: str | None = Field(
+        default=None,
+        description="ID of the integration this OAuth connection belongs to"
     )
     expires_at: str | None = Field(
         default=None,

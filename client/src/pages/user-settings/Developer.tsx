@@ -19,13 +19,13 @@ import {
 	DialogTitle,
 } from "@/components/ui/dialog";
 import {
-	Table,
-	TableBody,
-	TableCell,
-	TableHead,
-	TableHeader,
-	TableRow,
-} from "@/components/ui/table";
+	DataTable,
+	DataTableBody,
+	DataTableCell,
+	DataTableHead,
+	DataTableHeader,
+	DataTableRow,
+} from "@/components/ui/data-table";
 import {
 	Select,
 	SelectContent,
@@ -350,48 +350,48 @@ export function DeveloperSettings() {
 							</p>
 						</div>
 					) : (
-						<Table>
-							<TableHeader>
-								<TableRow>
-									<TableHead>Name</TableHead>
-									<TableHead>Key</TableHead>
-									<TableHead>Created</TableHead>
-									<TableHead>Last Used</TableHead>
-									<TableHead>Expires</TableHead>
-									<TableHead className="w-[50px]"></TableHead>
-								</TableRow>
-							</TableHeader>
-							<TableBody>
+						<DataTable>
+							<DataTableHeader>
+								<DataTableRow>
+									<DataTableHead>Name</DataTableHead>
+									<DataTableHead>Key</DataTableHead>
+									<DataTableHead>Created</DataTableHead>
+									<DataTableHead>Last Used</DataTableHead>
+									<DataTableHead>Expires</DataTableHead>
+									<DataTableHead className="w-[50px]"></DataTableHead>
+								</DataTableRow>
+							</DataTableHeader>
+							<DataTableBody>
 								{apiKeys.map((key) => (
-									<TableRow key={key.id}>
-										<TableCell className="font-medium">
+									<DataTableRow key={key.id}>
+										<DataTableCell className="font-medium">
 											{key.name}
-										</TableCell>
-										<TableCell>
+										</DataTableCell>
+										<DataTableCell>
 											<code className="text-xs bg-muted px-2 py-1 rounded">
 												{key.key_prefix}...
 											</code>
-										</TableCell>
-										<TableCell className="text-muted-foreground">
+										</DataTableCell>
+										<DataTableCell className="text-muted-foreground">
 											{new Date(
 												key.created_at,
 											).toLocaleDateString()}
-										</TableCell>
-										<TableCell className="text-muted-foreground">
+										</DataTableCell>
+										<DataTableCell className="text-muted-foreground">
 											{key.last_used_at
 												? new Date(
 														key.last_used_at,
 													).toLocaleDateString()
 												: "Never"}
-										</TableCell>
-										<TableCell className="text-muted-foreground">
+										</DataTableCell>
+										<DataTableCell className="text-muted-foreground">
 											{key.expires_at
 												? new Date(
 														key.expires_at,
 													).toLocaleDateString()
 												: "Never"}
-										</TableCell>
-										<TableCell>
+										</DataTableCell>
+										<DataTableCell>
 											<Button
 												variant="ghost"
 												size="icon"
@@ -401,11 +401,11 @@ export function DeveloperSettings() {
 											>
 												<Trash2 className="h-4 w-4 text-destructive" />
 											</Button>
-										</TableCell>
-									</TableRow>
+										</DataTableCell>
+									</DataTableRow>
 								))}
-							</TableBody>
-						</Table>
+							</DataTableBody>
+						</DataTable>
 					)}
 				</CardContent>
 			</Card>

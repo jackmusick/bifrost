@@ -37,10 +37,11 @@ import {
 import { toast } from "sonner";
 import type { components } from "@/lib/v1";
 import { getStatusLabel, isExpired, expiresSoon } from "@/lib/client-types";
-type OAuthConnectionSummary = components["schemas"]["OAuthConnectionSummary"];
+
+type OAuthConnectionDetail = components["schemas"]["OAuthConnectionDetail"];
 
 interface OAuthConnectionCardProps {
-	connection: OAuthConnectionSummary;
+	connection: OAuthConnectionDetail;
 	onAuthorize: (connectionName: string) => Promise<string | void>;
 	onEdit: (connectionName: string) => void;
 	onRefresh: (connectionName: string) => void;

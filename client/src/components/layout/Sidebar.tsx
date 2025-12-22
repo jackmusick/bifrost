@@ -9,13 +9,13 @@ import {
 	Key,
 	UserCog,
 	BookOpen,
-	Link2,
 	Clock,
 	Settings as SettingsIcon,
 	X,
 	FileText,
 	MessageSquare,
 	Bot,
+	Plug,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useAuth } from "@/contexts/AuthContext";
@@ -99,9 +99,9 @@ const navSections: NavSection[] = [
 				requiresPlatformAdmin: true,
 			},
 			{
-				title: "OAuth",
-				href: "/oauth",
-				icon: Link2,
+				title: "Integrations",
+				href: "/integrations",
+				icon: Plug,
 				requiresPlatformAdmin: true,
 			},
 			{

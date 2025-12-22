@@ -8,8 +8,11 @@ interface SaveQueueEntry {
 	encoding: "utf-8" | "base64";
 	timestamp: number;
 	currentEtag?: string | undefined; // Expected etag for conflict detection
+	index?: boolean | undefined; // If true, inject IDs into decorators
 	debounceTimer?: NodeJS.Timeout | undefined;
-	onComplete?: ((newEtag: string) => void) | undefined;
+	onComplete?:
+		| ((newEtag: string, newContent?: string, needsIndexing?: boolean) => void)
+		| undefined;
 	onConflict?: ((reason: ConflictReason) => void) | undefined;
 }
 
@@ -30,16 +33,29 @@ export function useSaveQueue() {
 	const executeSave = useCallback(
 		async (
 			entry: SaveQueueEntry,
-		): Promise<{ success: boolean; etag?: string }> => {
+		): Promise<{
+			success: boolean;
+			etag?: string;
+			content?: string;
+			contentModified?: boolean;
+			needsIndexing?: boolean;
+		}> => {
 			try {
-				// Pass etag for conflict detection
+				// Pass etag for conflict detection and index flag
 				const response = await fileService.writeFile(
 					entry.filePath,
 					entry.content,
 					entry.encoding,
 					entry.currentEtag,
+					entry.index ?? false,
 				);
-				return { success: true, etag: response.etag };
+				return {
+					success: true,
+					etag: response.etag,
+					content: response.content,
+					contentModified: response.content_modified ?? false,
+					needsIndexing: response.needs_indexing ?? false,
+				};
 			} catch (error) {
 				// Handle conflict errors specially
 				if (error instanceof FileConflictError) {
@@ -86,8 +102,14 @@ export function useSaveQueue() {
 				const result = await executeSave(entry);
 
 				// Call completion callback if provided
+				// If content was modified (e.g., IDs injected), pass new content
+				// Also pass needsIndexing flag for deferred indexing flow
 				if (result.success && entry.onComplete && result.etag) {
-					entry.onComplete(result.etag);
+					entry.onComplete(
+						result.etag,
+						result.contentModified ? result.content : undefined,
+						result.needsIndexing,
+					);
 				}
 
 				// Remove from queue after processing (success or failure)
@@ -109,6 +131,11 @@ export function useSaveQueue() {
 
 	/**
 	 * Enqueue a save with 1-second debounce
+	 *
+	 * @param onComplete - Called when save completes. If server modified content
+	 *                     (e.g., injected IDs), newContent will be provided.
+	 *                     Also receives needsIndexing flag for deferred indexing.
+	 * @param index - If true, inject IDs into decorators. If false (default), detect only.
 	 */
 	const enqueueSave = useCallback(
 		(
@@ -116,8 +143,13 @@ export function useSaveQueue() {
 			content: string,
 			encoding: "utf-8" | "base64" = "utf-8",
 			currentEtag?: string,
-			onComplete?: (newEtag: string) => void,
+			onComplete?: (
+				newEtag: string,
+				newContent?: string,
+				needsIndexing?: boolean,
+			) => void,
 			onConflict?: (reason: ConflictReason) => void,
+			index: boolean = false,
 		) => {
 			const queue = saveQueueRef.current;
 			const existing = queue.get(filePath);
@@ -133,6 +165,7 @@ export function useSaveQueue() {
 				content,
 				encoding,
 				currentEtag,
+				index,
 				timestamp: Date.now(),
 				onComplete,
 				onConflict,
@@ -200,10 +233,28 @@ export function useSaveQueue() {
 		return saveQueueRef.current.size;
 	}, []);
 
+	/**
+	 * Wait for all pending saves to complete
+	 * Polls every 50ms until queue is empty
+	 */
+	const waitForPendingSaves = useCallback(async (): Promise<void> => {
+		const maxWaitTime = 10000; // 10 second max wait
+		const startTime = Date.now();
+
+		while (saveQueueRef.current.size > 0 || savingRef.current) {
+			if (Date.now() - startTime > maxWaitTime) {
+				console.warn("[SaveQueue] Timeout waiting for pending saves");
+				break;
+			}
+			await new Promise((resolve) => setTimeout(resolve, 50));
+		}
+	}, []);
+
 	return {
 		enqueueSave,
 		forceSave,
 		hasPendingSave,
 		getPendingCount,
+		waitForPendingSaves,
 	};
 }

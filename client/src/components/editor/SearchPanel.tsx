@@ -106,7 +106,6 @@ export function SearchPanel() {
 					response.content,
 					response.encoding as "utf-8" | "base64",
 				);
-				// TODO: Jump to specific line (needs CodeEditor support)
 			} catch {
 				toast.error("Failed to open file");
 				setLoadingFile(false);

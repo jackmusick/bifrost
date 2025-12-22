@@ -72,6 +72,7 @@ class WorkflowMetadata(BaseModel):
 
 class DataProviderMetadata(BaseModel):
     """Data provider metadata from @data_provider decorator (T008)"""
+    id: str | None = Field(default=None, description="Data provider UUID (when loaded from database)")
     name: str
     description: str | None = None
     category: str = "General"

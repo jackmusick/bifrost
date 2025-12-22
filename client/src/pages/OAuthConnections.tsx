@@ -31,24 +31,24 @@ import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 import {
-	Table,
-	TableBody,
-	TableCell,
-	TableHead,
-	TableHeader,
-	TableRow,
-} from "@/components/ui/table";
+	DataTable,
+	DataTableBody,
+	DataTableCell,
+	DataTableHead,
+	DataTableHeader,
+	DataTableRow,
+} from "@/components/ui/data-table";
 import { SearchBox } from "@/components/search/SearchBox";
 import { useSearch } from "@/hooks/useSearch";
 import { cn } from "@/lib/utils";
 import {
-	useOAuthConnections,
 	useDeleteOAuthConnection,
 	useAuthorizeOAuthConnection,
 	useCancelOAuthAuthorization,
 	useRefreshOAuthToken,
 	useTriggerOAuthRefreshJob,
 } from "@/hooks/useOAuth";
+import { useIntegrations } from "@/services/integrations";
 import { CreateOAuthConnectionDialog } from "@/components/oauth/CreateOAuthConnectionDialog";
 import { OAuthConnectionCard } from "@/components/oauth/OAuthConnectionCard";
 import { RefreshJobStatus } from "@/components/oauth/RefreshJobStatus";
@@ -67,19 +67,62 @@ export function OAuthConnections() {
 	const [searchTerm, setSearchTerm] = useState("");
 	const [viewMode, setViewMode] = useState<"grid" | "table">("grid");
 
-	const { data: connections, isLoading, refetch } = useOAuthConnections();
+	const { data: integrationsData, isLoading, refetch } = useIntegrations();
 	const deleteMutation = useDeleteOAuthConnection();
 	const authorizeMutation = useAuthorizeOAuthConnection();
 	const cancelMutation = useCancelOAuthAuthorization();
 	const refreshMutation = useRefreshOAuthToken();
 	const triggerRefreshJobMutation = useTriggerOAuthRefreshJob();
 
+	// Derive OAuth connections from integrations that have OAuth configured
+	const integrationsWithOAuth = (integrationsData?.items || []).filter(
+		(integration) => integration.has_oauth_config,
+	);
+
+	// Map integrations to connection-like objects for UI compatibility
+	type OAuthStatus = "completed" | "failed" | "connected" | "not_connected" | "waiting_callback" | "testing";
+	type ConnectionLike = {
+		connection_name: string;
+		name: string;
+		oauth_flow_type: "authorization_code" | "client_credentials" | "refresh_token";
+		status: OAuthStatus;
+		status_message?: string | null;
+		expires_at?: string | null;
+		last_refresh_at?: string | null;
+		created_at: string;
+		updated_at: string;
+		// Required fields for OAuthConnectionDetail compatibility
+		client_id: string;
+		token_url: string;
+		scopes: string;
+		created_by: string;
+	};
+
+	const connections: ConnectionLike[] = integrationsWithOAuth.map(
+		(integration) => ({
+			connection_name: integration.name,
+			name: integration.name,
+			oauth_flow_type: "authorization_code" as const, // Default, actual value would come from detail
+			status: "not_connected" as const, // Default, actual status would come from detail
+			status_message: null,
+			expires_at: null,
+			last_refresh_at: null,
+			created_at: integration.created_at ?? new Date().toISOString(),
+			updated_at: integration.updated_at ?? new Date().toISOString(),
+			// Default values for required fields
+			client_id: "",
+			token_url: "",
+			scopes: "",
+			created_by: "",
+		}),
+	);
+
 	// Apply search filter
-	const filteredConnections = useSearch(connections || [], searchTerm, [
+	const filteredConnections = useSearch(connections, searchTerm, [
 		"connection_name",
 		"oauth_flow_type",
 		"status",
-		(item) => item.status_message || "",
+		(item: ConnectionLike) => item.status_message || "",
 	]);
 
 	// Listen for OAuth success messages from popup window
@@ -426,25 +469,25 @@ export function OAuthConnections() {
 							</div>
 						) : (
 							<div className="max-h-[calc(100vh-32rem)] overflow-auto rounded-md border">
-								<Table>
-									<TableHeader className="sticky top-0 bg-background z-10">
-										<TableRow>
-											<TableHead className="w-auto">
+								<DataTable>
+									<DataTableHeader className="sticky top-0 bg-background z-10">
+										<DataTableRow>
+											<DataTableHead className="w-auto">
 												Name
-											</TableHead>
-											<TableHead className="w-auto">
+											</DataTableHead>
+											<DataTableHead className="w-auto">
 												Flow Type
-											</TableHead>
-											<TableHead className="w-auto">
+											</DataTableHead>
+											<DataTableHead className="w-auto">
 												Status
-											</TableHead>
-											<TableHead className="w-auto">
+											</DataTableHead>
+											<DataTableHead className="w-auto">
 												Last Refreshed
-											</TableHead>
-											<TableHead className="w-auto text-right"></TableHead>
-										</TableRow>
-									</TableHeader>
-									<TableBody>
+											</DataTableHead>
+											<DataTableHead className="w-auto text-right"></DataTableHead>
+										</DataTableRow>
+									</DataTableHeader>
+									<DataTableBody>
 										{filteredConnections.map(
 											(connection) => {
 												const expirationWarning =
@@ -467,23 +510,23 @@ export function OAuthConnections() {
 														"failed";
 
 												return (
-													<TableRow
+													<DataTableRow
 														key={
 															connection.connection_name
 														}
 													>
-														<TableCell className="font-medium w-auto">
+														<DataTableCell className="font-medium w-auto">
 															{
 																connection.connection_name
 															}
-														</TableCell>
-														<TableCell className="text-sm w-auto whitespace-nowrap">
+														</DataTableCell>
+														<DataTableCell className="text-sm w-auto whitespace-nowrap">
 															{connection.oauth_flow_type.replace(
 																"_",
 																" ",
 															)}
-														</TableCell>
-														<TableCell className="w-auto">
+														</DataTableCell>
+														<DataTableCell className="w-auto">
 															<div className="flex items-center gap-2">
 																<Badge
 																	variant={
@@ -525,8 +568,8 @@ export function OAuthConnections() {
 																		</span>
 																	)}
 															</div>
-														</TableCell>
-														<TableCell className="text-sm text-muted-foreground w-auto whitespace-nowrap">
+														</DataTableCell>
+														<DataTableCell className="text-sm text-muted-foreground w-auto whitespace-nowrap">
 															{connection.last_refresh_at ? (
 																new Date(
 																	connection.last_refresh_at.endsWith(
@@ -540,8 +583,8 @@ export function OAuthConnections() {
 																	Never
 																</span>
 															)}
-														</TableCell>
-														<TableCell className="text-right w-auto">
+														</DataTableCell>
+														<DataTableCell className="text-right w-auto">
 															<div className="flex gap-1 justify-end whitespace-nowrap">
 																{needsReconnection &&
 																	canConnect && (
@@ -647,13 +690,13 @@ export function OAuthConnections() {
 																	✕
 																</Button>
 															</div>
-														</TableCell>
-													</TableRow>
+														</DataTableCell>
+													</DataTableRow>
 												);
 											},
 										)}
-									</TableBody>
-								</Table>
+									</DataTableBody>
+								</DataTable>
 							</div>
 						)
 					) : (
@@ -687,7 +730,7 @@ export function OAuthConnections() {
 			<CreateOAuthConnectionDialog
 				open={isCreateDialogOpen}
 				onOpenChange={setIsCreateDialogOpen}
-				orgId={selectedOrgId || undefined}
+				integrationId={selectedOrgId || ""}
 				editConnectionName={editConnectionName}
 			/>
 

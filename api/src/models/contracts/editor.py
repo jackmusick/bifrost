@@ -56,6 +56,14 @@ class FileContentResponse(BaseModel):
     size: int = Field(..., description="Content size in bytes")
     etag: str = Field(..., description="ETag for change detection")
     modified: str = Field(..., description="Last modified timestamp (ISO 8601)")
+    content_modified: bool = Field(
+        default=False,
+        description="True if server modified content (e.g., injected IDs). Client should update editor buffer."
+    )
+    needs_indexing: bool = Field(
+        default=False,
+        description="True if file has decorators that need ID injection. Client should trigger indexing."
+    )
 
     model_config = ConfigDict(from_attributes=True)
 

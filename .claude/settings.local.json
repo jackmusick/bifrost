@@ -86,7 +86,9 @@
       "mcp__context7__get-library-docs",
       "Bash(./venv/bin/pyright:*)",
       "WebFetch(domain:pypi.org)",
-      "WebFetch(domain:docs.immy.bot)"
+      "WebFetch(domain:docs.immy.bot)",
+      "Bash(./venv/bin/python:*)",
+      "Bash(/Users/jack/GitHub/bifrost-api/api/.venv/bin/python:*)"
     ],
     "deny": [],
     "ask": [],

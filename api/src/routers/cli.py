@@ -53,6 +53,10 @@ from src.models.contracts.cli import (
     CLISessionRegisterRequest,
     CLISessionResponse,
     CLISessionResultRequest,
+    SDKIntegrationsGetRequest,
+    SDKIntegrationsGetResponse,
+    SDKIntegrationsListMappingsRequest,
+    SDKIntegrationsListMappingsResponse,
 )
 from src.core.cache import config_hash_key, get_redis
 from src.core.pubsub import publish_cli_session_update, publish_execution_log, publish_execution_update
@@ -1011,6 +1015,122 @@ async def cli_get_oauth(
         refresh_token=refresh_token,
         expires_at=expires_at,
     )
+
+
+# =============================================================================
+# SDK Integrations Endpoints
+# =============================================================================
+
+
+@router.post(
+    "/integrations/get",
+    response_model=SDKIntegrationsGetResponse | None,
+    summary="Get integration data for an organization",
+)
+async def sdk_integrations_get(
+    request: SDKIntegrationsGetRequest,
+    current_user: User = Depends(get_current_user_from_api_key),
+    db: AsyncSession = Depends(get_db),
+) -> SDKIntegrationsGetResponse | None:
+    """Get integration mapping data for an organization via SDK."""
+    from src.repositories.integrations import IntegrationsRepository
+    from src.services.oauth_provider import resolve_url_template
+
+    org_id = await _get_cli_org_id(current_user, request.org_id, db)
+    org_uuid = UUID(org_id) if org_id else None
+
+    if not org_uuid:
+        logger.warning("SDK integrations.get: No organization ID provided or in context")
+        return None
+
+    try:
+        repo = IntegrationsRepository(db)
+        mapping = await repo.get_integration_for_org(request.name, org_uuid)
+
+        if not mapping:
+            logger.debug(f"SDK integrations.get('{request.name}'): mapping not found for org '{org_uuid}'")
+            return None
+
+        # Get merged configuration
+        config = await repo.get_config_for_mapping(mapping.integration_id, org_uuid)
+
+        # Build the response
+        response_data = {
+            "integration_id": str(mapping.integration_id),
+            "entity_id": mapping.entity_id,
+            "entity_name": mapping.entity_name,
+            "config": config or {},
+            "oauth_client_id": None,
+            "oauth_token_url": None,
+            "oauth_scopes": None,
+        }
+
+        # Add OAuth details if provider is configured
+        if mapping.integration and mapping.integration.oauth_provider:
+            provider = mapping.integration.oauth_provider
+            response_data["oauth_client_id"] = provider.client_id
+
+            # Format scopes as space-separated string
+            if provider.scopes:
+                response_data["oauth_scopes"] = " ".join(provider.scopes)
+
+            # Resolve OAuth token URL with entity_id
+            if provider.token_url:
+                resolved_url = resolve_url_template(
+                    url=provider.token_url,
+                    entity_id=mapping.entity_id,
+                    defaults=provider.token_url_defaults,
+                )
+                response_data["oauth_token_url"] = resolved_url
+
+        logger.info(f"SDK retrieved integration '{request.name}' for user {current_user.email}")
+        return SDKIntegrationsGetResponse(**response_data)
+
+    except Exception as e:
+        logger.error(f"SDK integrations.get failed: {e}")
+        return None
+
+
+@router.post(
+    "/integrations/list_mappings",
+    response_model=SDKIntegrationsListMappingsResponse | None,
+    summary="List all mappings for an integration",
+)
+async def sdk_integrations_list_mappings(
+    request: SDKIntegrationsListMappingsRequest,
+    current_user: User = Depends(get_current_user_from_api_key),
+    db: AsyncSession = Depends(get_db),
+) -> SDKIntegrationsListMappingsResponse | None:
+    """List all mappings for an integration via SDK."""
+    from src.repositories.integrations import IntegrationsRepository
+
+    try:
+        repo = IntegrationsRepository(db)
+        integration = await repo.get_integration_by_name(request.name)
+
+        if not integration:
+            logger.warning(f"SDK integrations.list_mappings: integration '{request.name}' not found")
+            return None
+
+        mappings = await repo.list_mappings(integration.id)
+
+        logger.info(f"SDK listed {len(mappings)} mappings for integration '{request.name}' for user {current_user.email}")
+
+        items = [
+            {
+                "organization_id": str(mapping.organization_id),
+                "entity_id": mapping.entity_id,
+                "entity_name": mapping.entity_name,
+                "config": mapping.config,
+            }
+            for mapping in mappings
+        ]
+
+        return SDKIntegrationsListMappingsResponse(items=items)
+
+    except Exception as e:
+        logger.error(f"SDK integrations.list_mappings failed: {e}")
+        return None
 
 
 # =============================================================================

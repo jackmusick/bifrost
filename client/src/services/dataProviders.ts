@@ -8,44 +8,70 @@ import type { components } from "@/lib/v1";
 // Auto-generated types from OpenAPI spec
 export type DataProvider = components["schemas"]["DataProviderMetadata"];
 
-// TODO: These types will be added when the data provider options endpoint is implemented
+// Types for data provider options
 export type DataProviderOption = {
 	label: string;
 	value: string;
 	description?: string;
 };
 
+// Response type for invoke endpoint
+interface DataProviderInvokeResponse {
+	options: Array<{
+		value: string;
+		label: string;
+		description?: string | null;
+	}>;
+}
+
 /**
  * Hook to fetch all available data providers
  */
 export function useDataProviders() {
-	return $api.useQuery(
-		"get",
-		"/api/data-providers",
-		{},
-		{
-			queryKey: ["data-providers"],
-			staleTime: 10 * 60 * 1000, // 10 minutes
-		},
-	);
+	return $api.useQuery("get", "/api/data-providers");
 }
 
 /**
- * Standalone async function to get options from a data provider in the context of a form
+ * Standalone async function to get options from a data provider
  *
- * NOTE: This endpoint is currently not implemented in the API.
- * This function is a placeholder for when it becomes available.
- *
- * @param _formId - Form ID (UUID)
- * @param _providerName - Data provider name
- * @param _inputs - Optional input parameters for the data provider
+ * @param providerId - Data provider UUID
+ * @param inputs - Optional input parameters for the data provider
  */
 export async function getDataProviderOptions(
-	_formId: string,
-	_providerName: string,
-	_inputs?: Record<string, unknown>,
+	providerId: string,
+	inputs?: Record<string, unknown>,
 ): Promise<DataProviderOption[]> {
-	// TODO: Implement when endpoint /api/forms/{form_id}/data-providers/{provider_name} is available
-	// For now, return empty options
-	return [];
+	try {
+		// Use fetch directly since the generated types may not include this endpoint yet
+		const response = await fetch(
+			`/api/data-providers/${providerId}/invoke`,
+			{
+				method: "POST",
+				headers: {
+					"Content-Type": "application/json",
+				},
+				credentials: "include",
+				body: JSON.stringify({ inputs: inputs || {} }),
+			},
+		);
+
+		if (!response.ok) {
+			console.error(
+				"Failed to invoke data provider:",
+				response.statusText,
+			);
+			return [];
+		}
+
+		const data: DataProviderInvokeResponse = await response.json();
+
+		return (data.options || []).map((opt) => ({
+			value: opt.value,
+			label: opt.label,
+			description: opt.description ?? undefined,
+		}));
+	} catch (error) {
+		console.error("Error invoking data provider:", error);
+		return [];
+	}
 }

@@ -5,11 +5,83 @@ Handles HTTP communication with OAuth providers for token exchange and refresh
 
 import asyncio
 import logging
+import re
 from datetime import datetime, timedelta
 
 import aiohttp
 
 logger = logging.getLogger(__name__)
+
+
+def resolve_url_template(
+    url: str,
+    entity_id: str | None = None,
+    defaults: dict[str, str] | None = None
+) -> str:
+    """
+    Replace {placeholders} in URL with values.
+    Falls back to defaults if value not provided.
+
+    Args:
+        url: URL template with {placeholder} syntax
+        entity_id: Value for {entity_id} placeholder
+        defaults: Default values for placeholders when not provided
+                 Example: {"entity_id": "common"}
+
+    Returns:
+        URL with placeholders resolved
+
+    Examples:
+        >>> resolve_url_template(
+        ...     "https://login.microsoftonline.com/{entity_id}/oauth2/v2.0/token",
+        ...     entity_id="tenant-123"
+        ... )
+        'https://login.microsoftonline.com/tenant-123/oauth2/v2.0/token'
+
+        >>> resolve_url_template(
+        ...     "https://login.microsoftonline.com/{entity_id}/oauth2/v2.0/token",
+        ...     defaults={"entity_id": "common"}
+        ... )
+        'https://login.microsoftonline.com/common/oauth2/v2.0/token'
+    """
+    if not url:
+        return url
+
+    # Check if URL contains any placeholders
+    if "{" not in url:
+        logger.debug(f"URL has no placeholders: {url}")
+        return url
+
+    result = url
+    defaults = defaults or {}
+
+    # Find all placeholders in the URL
+    placeholders = re.findall(r"\{(\w+)\}", url)
+
+    for placeholder in placeholders:
+        # Determine the replacement value
+        replacement = None
+
+        if placeholder == "entity_id" and entity_id:
+            replacement = entity_id
+            logger.debug(
+                f"Resolving {{entity_id}} in URL with provided entity_id: {entity_id}"
+            )
+        elif placeholder in defaults:
+            replacement = defaults[placeholder]
+            logger.debug(
+                f"Resolving {{{placeholder}}} in URL with default value: {replacement}"
+            )
+        else:
+            logger.warning(
+                f"URL placeholder {{{placeholder}}} has no value or default, leaving unresolved"
+            )
+            continue
+
+        # Replace the placeholder
+        result = result.replace(f"{{{placeholder}}}", replacement)
+
+    return result
 
 
 class OAuthProviderClient:

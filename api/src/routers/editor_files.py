@@ -15,6 +15,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.models import (
+    FileConflictResponse,
     FileContentRequest,
     FileContentResponse,
     FileMetadata,
@@ -171,11 +172,21 @@ async def get_file_content(
     response_model=FileContentResponse,
     summary="Write file content",
     description="Write content to a file (Platform admin only)",
+    responses={
+        409: {
+            "model": FileConflictResponse,
+            "description": "File conflict - content was modified or file was deleted"
+        }
+    }
 )
 async def put_file_content(
     request: FileContentRequest,
     ctx: Context,
     user: CurrentSuperuser,
+    index: bool = Query(
+        default=False,
+        description="If true, inject IDs into decorators. If false (default), detect if IDs needed and return needs_indexing=true."
+    ),
     db: AsyncSession = Depends(get_db),
 ) -> FileContentResponse:
     """
@@ -219,21 +230,34 @@ async def put_file_content(
 
         # Write file
         updated_by = user.email if user else "system"
-        file_record = await storage.write_file(request.path, content, updated_by)
+        write_result = await storage.write_file(request.path, content, updated_by, index=index)
 
-        # Compute new etag
+        # Compute etag from final content (may have been modified by ID injection)
         import hashlib
-        etag = hashlib.md5(content).hexdigest()
+        etag = hashlib.md5(write_result.final_content).hexdigest()
+
+        # If content was modified (e.g., IDs injected), return the modified content
+        # so the editor can update its buffer
+        if write_result.content_modified:
+            response_content = write_result.final_content.decode("utf-8")
+            response_encoding = "utf-8"
+            response_size = len(write_result.final_content)
+        else:
+            response_content = request.content
+            response_encoding = request.encoding
+            response_size = len(content)
 
         result = FileContentResponse(
             path=request.path,
-            content=request.content,
-            encoding=request.encoding,
-            size=len(content),
+            content=response_content,
+            encoding=response_encoding,
+            size=response_size,
             etag=etag,
-            modified=file_record.updated_at.isoformat(),
+            modified=write_result.file_record.updated_at.isoformat(),
+            content_modified=write_result.content_modified,
+            needs_indexing=write_result.needs_indexing,
         )
-        logger.info(f"Wrote file: {request.path} ({result.size} bytes, etag: {result.etag})")
+        logger.info(f"Wrote file: {request.path} ({result.size} bytes, etag: {result.etag}, modified: {result.content_modified}, needs_indexing: {result.needs_indexing})")
         return result
 
     except HTTPException:
@@ -423,7 +447,7 @@ async def rename_or_move(
 
         # Write to new location
         updated_by = user.email if user else "system"
-        file_record = await storage.write_file(new_path, content, updated_by)
+        write_result = await storage.write_file(new_path, content, updated_by)
 
         # Delete old file
         await storage.delete_file(old_path)
@@ -435,9 +459,9 @@ async def rename_or_move(
             path=new_path,
             name=new_path.split("/")[-1] if not is_folder else new_path.split("/")[-2],
             type=FileType.FOLDER if is_folder else FileType.FILE,
-            size=file_record.size_bytes if not is_folder else None,
+            size=write_result.file_record.size_bytes if not is_folder else None,
             extension=new_path.split(".")[-1] if "." in new_path and not is_folder else None,
-            modified=file_record.updated_at.isoformat(),
+            modified=write_result.file_record.updated_at.isoformat(),
         )
         logger.info(f"Renamed: {old_path} -> {new_path}")
         return file_meta
@@ -479,8 +503,8 @@ async def search_file_contents(
     """
     Search file contents for text or regex patterns.
 
-    Note: For S3 storage, this downloads files to search. For large workspaces,
-    consider using database-indexed search instead.
+    Note: Search uses the local workspace cache at /tmp/bifrost/workspace which is
+    automatically synchronized from S3 by the WorkspaceSyncService.
 
     Args:
         request: Search request with query and options
@@ -489,8 +513,7 @@ async def search_file_contents(
         Search results with matches and metadata
     """
     try:
-        # For now, search always uses filesystem (either direct or via downloaded workspace)
-        # TODO: Implement S3-aware search that downloads files on demand
+        # Search uses the local workspace cache synced from S3
         results = search_files(request, root_path="")
         logger.info(f"Search complete: {results.total_matches} matches in {len(results.results)} files")
         return results

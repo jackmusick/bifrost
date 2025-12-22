@@ -1,0 +1,387 @@
+"""
+Integrations contract models for Bifrost.
+
+Defines request/response models for integration management and mapping.
+"""
+
+from datetime import datetime
+from typing import TYPE_CHECKING, Any, Literal
+from uuid import UUID
+
+from pydantic import BaseModel, ConfigDict, Field
+
+if TYPE_CHECKING:
+    pass
+
+
+# ==================== TYPE DEFINITIONS ====================
+
+ConfigItemType = Literal["string", "int", "bool", "json", "secret"]
+
+
+# ==================== CONFIG SCHEMA MODELS ====================
+
+
+class ConfigSchemaItem(BaseModel):
+    """
+    Metadata for a single configuration item.
+    Defines what configuration keys are available for an integration.
+    """
+
+    key: str = Field(
+        ...,
+        min_length=1,
+        max_length=255,
+        pattern=r"^[a-zA-Z0-9_]+$",
+        description="Configuration key (alphanumeric, underscores)",
+    )
+    type: ConfigItemType = Field(
+        ..., description="Configuration value type"
+    )
+    required: bool = Field(
+        default=False, description="Whether this configuration is required"
+    )
+    default: Any = Field(
+        default=None,
+        description="Default value if not provided",
+    )
+    description: str | None = Field(
+        default=None,
+        max_length=500,
+        description="Human-readable description of this config item",
+    )
+    options: list[str] | None = Field(
+        default=None,
+        description="List of valid string options for dropdown UI",
+    )
+
+
+# ==================== INTEGRATION REQUEST MODELS ====================
+
+
+class IntegrationCreate(BaseModel):
+    """
+    Request model for creating a new integration.
+    POST /api/integrations
+    """
+
+    name: str = Field(
+        ...,
+        min_length=1,
+        max_length=255,
+        description="Unique integration name (e.g., 'Microsoft Partner', 'QuickBooks Online')",
+    )
+    config_schema: list[ConfigSchemaItem] | None = Field(
+        default=None,
+        description="Optional schema defining available configuration for this integration",
+    )
+    entity_id: str | None = Field(
+        default=None,
+        min_length=1,
+        max_length=255,
+        description="Optional global entity ID for token URL templating (e.g., tenant ID, partner tenant ID)",
+    )
+    entity_id_name: str | None = Field(
+        default=None,
+        max_length=255,
+        description="Optional display name for the global entity ID",
+    )
+
+
+class IntegrationUpdate(BaseModel):
+    """
+    Request model for updating an integration.
+    PUT /api/integrations/{integration_id}
+    """
+
+    name: str | None = Field(
+        default=None,
+        min_length=1,
+        max_length=255,
+        description="Integration name",
+    )
+    list_entities_data_provider_id: UUID | None = Field(
+        default=None,
+        description="Data provider ID for listing entities",
+    )
+    config_schema: list[ConfigSchemaItem] | None = Field(
+        default=None,
+        description="Configuration schema",
+    )
+    entity_id: str | None = Field(
+        default=None,
+        min_length=1,
+        max_length=255,
+        description="Global entity ID for token URL templating",
+    )
+    entity_id_name: str | None = Field(
+        default=None,
+        max_length=255,
+        description="Display name for the global entity ID",
+    )
+
+
+class IntegrationMappingCreate(BaseModel):
+    """
+    Request model for creating an integration mapping.
+    POST /api/integrations/{integration_id}/mappings
+    """
+
+    organization_id: UUID = Field(
+        ...,
+        description="Organization ID to map to this integration",
+    )
+    entity_id: str = Field(
+        ...,
+        min_length=1,
+        max_length=255,
+        description="External entity ID (e.g., tenant ID, company ID)",
+    )
+    entity_name: str | None = Field(
+        default=None,
+        max_length=255,
+        description="Display name for the external entity",
+    )
+    oauth_token_id: UUID | None = Field(
+        default=None,
+        description="Optional per-organization OAuth token override",
+    )
+    config: dict[str, Any] | None = Field(
+        default=None,
+        description="Per-organization integration configuration values",
+    )
+
+
+class IntegrationMappingUpdate(BaseModel):
+    """
+    Request model for updating an integration mapping.
+    PUT /api/integrations/{integration_id}/mappings/{mapping_id}
+    """
+
+    entity_id: str | None = Field(
+        default=None,
+        min_length=1,
+        max_length=255,
+        description="External entity ID",
+    )
+    entity_name: str | None = Field(
+        default=None,
+        max_length=255,
+        description="Display name for the external entity",
+    )
+    oauth_token_id: UUID | None = Field(
+        default=None,
+        description="Per-organization OAuth token override",
+    )
+    config: dict[str, Any] | None = Field(
+        default=None,
+        description="Per-organization integration configuration",
+    )
+
+
+# ==================== INTEGRATION RESPONSE MODELS ====================
+
+
+class IntegrationResponse(BaseModel):
+    """
+    Response model for a single integration.
+    GET /api/integrations/{integration_id}
+    """
+
+    model_config = ConfigDict(from_attributes=True)
+
+    id: UUID = Field(..., description="Integration ID")
+    name: str = Field(..., description="Integration name")
+    list_entities_data_provider_id: UUID | None = Field(
+        default=None,
+        description="Associated data provider ID for listing entities",
+    )
+    config_schema: list[ConfigSchemaItem] | None = Field(
+        default=None,
+        description="Configuration schema for this integration",
+    )
+    entity_id: str | None = Field(
+        default=None,
+        description="Global entity ID for token URL templating",
+    )
+    entity_id_name: str | None = Field(
+        default=None,
+        description="Display name for the global entity ID",
+    )
+    has_oauth_config: bool = Field(
+        default=False,
+        description="Whether OAuth configuration is set up for this integration",
+    )
+    is_deleted: bool = Field(
+        default=False,
+        description="Soft delete flag",
+    )
+    created_at: datetime = Field(..., description="Creation timestamp")
+    updated_at: datetime = Field(..., description="Last update timestamp")
+
+
+class IntegrationMappingResponse(BaseModel):
+    """
+    Response model for a single integration mapping.
+    GET /api/integrations/{integration_id}/mappings/{mapping_id}
+    """
+
+    model_config = ConfigDict(from_attributes=True)
+
+    id: UUID = Field(..., description="Mapping ID")
+    integration_id: UUID = Field(..., description="Associated integration ID")
+    organization_id: UUID = Field(..., description="Associated organization ID")
+    entity_id: str = Field(..., description="External entity ID")
+    entity_name: str | None = Field(
+        default=None,
+        description="Display name for the external entity",
+    )
+    oauth_token_id: UUID | None = Field(
+        default=None,
+        description="Per-organization OAuth token override ID",
+    )
+    config: dict[str, Any] | None = Field(
+        default=None,
+        description="Per-organization integration configuration",
+    )
+    created_at: datetime = Field(..., description="Creation timestamp")
+    updated_at: datetime = Field(..., description="Last update timestamp")
+
+
+class IntegrationListResponse(BaseModel):
+    """
+    Response model for listing integrations.
+    GET /api/integrations
+    """
+
+    items: list[IntegrationResponse] = Field(
+        ..., description="List of integrations"
+    )
+    total: int = Field(..., description="Total number of integrations")
+
+
+class IntegrationMappingListResponse(BaseModel):
+    """
+    Response model for listing integration mappings.
+    GET /api/integrations/{integration_id}/mappings
+    """
+
+    items: list[IntegrationMappingResponse] = Field(
+        ..., description="List of integration mappings"
+    )
+    total: int = Field(..., description="Total number of mappings")
+
+
+# ==================== DETAILED RESPONSE MODELS ====================
+
+
+class OAuthConfigSummary(BaseModel):
+    """
+    OAuth configuration summary for integration detail response.
+    Includes provider config and connection status.
+    """
+
+    model_config = ConfigDict(from_attributes=True)
+
+    # Provider configuration
+    provider_name: str = Field(..., description="OAuth provider name")
+    oauth_flow_type: str = Field(..., description="OAuth flow type (authorization_code, client_credentials)")
+    client_id: str = Field(..., description="OAuth client ID")
+    authorization_url: str | None = Field(default=None, description="Authorization URL")
+    token_url: str = Field(..., description="Token URL")
+    scopes: list[str] = Field(default_factory=list, description="OAuth scopes")
+
+    # Connection status
+    status: str = Field(default="not_connected", description="Connection status")
+    status_message: str | None = Field(default=None, description="Status message")
+    expires_at: datetime | None = Field(default=None, description="Token expiration time")
+    last_refresh_at: datetime | None = Field(default=None, description="Last token refresh time")
+
+
+class IntegrationDetailResponse(BaseModel):
+    """
+    Detailed response model for a single integration.
+    Includes mappings and OAuth configuration in a single response.
+    GET /api/integrations/{integration_id}
+    """
+
+    model_config = ConfigDict(from_attributes=True)
+
+    # Core integration fields
+    id: UUID = Field(..., description="Integration ID")
+    name: str = Field(..., description="Integration name")
+    list_entities_data_provider_id: UUID | None = Field(
+        default=None,
+        description="Associated data provider ID for listing entities",
+    )
+    config_schema: list[ConfigSchemaItem] | None = Field(
+        default=None,
+        description="Configuration schema for this integration",
+    )
+    entity_id: str | None = Field(
+        default=None,
+        description="Global entity ID for token URL templating",
+    )
+    entity_id_name: str | None = Field(
+        default=None,
+        description="Display name for the global entity ID",
+    )
+    has_oauth_config: bool = Field(
+        default=False,
+        description="Whether OAuth configuration is set up for this integration",
+    )
+    is_deleted: bool = Field(
+        default=False,
+        description="Soft delete flag",
+    )
+    created_at: datetime = Field(..., description="Creation timestamp")
+    updated_at: datetime = Field(..., description="Last update timestamp")
+
+    # Nested data
+    mappings: list["IntegrationMappingResponse"] = Field(
+        default_factory=list,
+        description="All organization mappings for this integration",
+    )
+    oauth_config: OAuthConfigSummary | None = Field(
+        default=None,
+        description="OAuth provider configuration and connection status",
+    )
+
+
+# ==================== SDK RESPONSE MODELS ====================
+
+
+class IntegrationData(BaseModel):
+    """
+    Integration data for SDK consumption.
+    Returned by bifrost.integrations.get() in workflows.
+    """
+
+    model_config = ConfigDict(from_attributes=True)
+
+    integration_id: UUID = Field(
+        ..., description="Integration ID"
+    )
+    entity_id: str = Field(
+        ..., description="Mapped external entity ID"
+    )
+    entity_name: str | None = Field(
+        default=None,
+        description="Display name for the mapped entity",
+    )
+    config: dict[str, Any] = Field(
+        default_factory=dict,
+        description="Merged configuration (schema defaults + org overrides)",
+    )
+    oauth_client_id: str | None = Field(
+        default=None,
+        description="OAuth client ID (from provider or override)",
+    )
+    oauth_token_url: str | None = Field(
+        default=None,
+        description="OAuth token URL (with {entity_id} placeholder if applicable)",
+    )
+    oauth_scopes: str | None = Field(
+        default=None,
+        description="OAuth scopes for this integration",
+    )

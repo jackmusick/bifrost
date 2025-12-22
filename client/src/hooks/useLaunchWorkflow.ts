@@ -9,6 +9,7 @@
 
 import { useEffect, useMemo } from "react";
 import { useFormContext } from "@/contexts/FormContext";
+import { executeFormStartup } from "@/hooks/useForms";
 import type { components } from "@/lib/v1";
 
 type Form = components["schemas"]["FormPublic"];
@@ -21,9 +22,6 @@ interface UseLaunchWorkflowOptions {
 
 /**
  * Execute launch workflow if form has launchWorkflowId
- *
- * NOTE: The form startup endpoint is currently not implemented in the API.
- * This hook is a placeholder for when that endpoint is available.
  */
 export function useLaunchWorkflow({
 	form,
@@ -48,14 +46,39 @@ export function useLaunchWorkflow({
 			return;
 		}
 
-		// TODO: Implement form startup endpoint when available
-		// For now, set empty results so form fields work
-		setWorkflowResults({});
+		const executeLaunchWorkflow = async () => {
+			try {
+				setIsLoadingLaunchWorkflow(true);
+
+				// Merge default launch params with provided params
+				// Using workflowParams from closure (serializedParams ensures correct deps)
+				const inputData = {
+					...(form.default_launch_params || {}),
+					...workflowParams,
+				};
+
+				// Execute the startup workflow
+				const response = await executeFormStartup(form.id, inputData);
+
+				// Set workflow results in context (or empty object if no result)
+				setWorkflowResults((response.result as Record<string, unknown>) || {});
+			} catch (error) {
+				console.error("Failed to execute launch workflow:", error);
+				// Set empty results on error so form still works
+				setWorkflowResults({});
+			} finally {
+				setIsLoadingLaunchWorkflow(false);
+			}
+		};
+
+		executeLaunchWorkflow();
+		// eslint-disable-next-line react-hooks/exhaustive-deps
 	}, [
 		form.id,
 		form.launch_workflow_id,
+		form.default_launch_params,
 		serializedQuery,
-		serializedParams,
+		serializedParams, // Serialized to track changes without object identity issues
 		setWorkflowResults,
 		setIsLoadingLaunchWorkflow,
 	]);

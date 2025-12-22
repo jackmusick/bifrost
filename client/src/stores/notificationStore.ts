@@ -23,6 +23,7 @@ export type NotificationCategory =
 export type NotificationStatus =
 	| "pending"
 	| "running"
+	| "awaiting_action" // Waiting for user action (no spinner, shows action button)
 	| "completed"
 	| "failed"
 	| "cancelled";
@@ -144,7 +145,7 @@ export const isActiveNotification = (notification: Notification): boolean => {
 	);
 };
 
-// Helper to check if notification is complete
+// Helper to check if notification is complete (terminal state)
 export const isCompleteNotification = (notification: Notification): boolean => {
 	return (
 		notification.status === "completed" ||
@@ -153,10 +154,18 @@ export const isCompleteNotification = (notification: Notification): boolean => {
 	);
 };
 
+// Helper to check if notification is awaiting user action
+export const isAwaitingActionNotification = (
+	notification: Notification,
+): boolean => {
+	return notification.status === "awaiting_action";
+};
+
 // Helper to get counts for badges
 export const getNotificationCounts = (notifications: Notification[]) => {
 	return {
 		active: notifications.filter(isActiveNotification).length,
+		awaitingAction: notifications.filter(isAwaitingActionNotification).length,
 		completed: notifications.filter((n) => n.status === "completed").length,
 		failed: notifications.filter((n) => n.status === "failed").length,
 		total: notifications.length,

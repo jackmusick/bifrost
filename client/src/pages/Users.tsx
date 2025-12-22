@@ -17,13 +17,13 @@ import {
 	CardTitle,
 } from "@/components/ui/card";
 import {
-	Table,
-	TableBody,
-	TableCell,
-	TableHead,
-	TableHeader,
-	TableRow,
-} from "@/components/ui/table";
+	DataTable,
+	DataTableBody,
+	DataTableCell,
+	DataTableHead,
+	DataTableHeader,
+	DataTableRow,
+} from "@/components/ui/data-table";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import {
@@ -176,33 +176,33 @@ export function Users() {
 						</div>
 					) : filteredUsers && filteredUsers.length > 0 ? (
 						<div className="max-h-[calc(100vh-28rem)] overflow-auto rounded-md border">
-							<Table>
-								<TableHeader className="sticky top-0 bg-background z-10">
-									<TableRow>
-										<TableHead>Name</TableHead>
-										<TableHead>Email</TableHead>
-										<TableHead>Type</TableHead>
-										<TableHead>Status</TableHead>
-										<TableHead>Created</TableHead>
-										<TableHead>Last Login</TableHead>
-										<TableHead className="text-right"></TableHead>
-									</TableRow>
-								</TableHeader>
-								<TableBody>
+							<DataTable>
+								<DataTableHeader className="sticky top-0 bg-background z-10">
+									<DataTableRow>
+										<DataTableHead>Name</DataTableHead>
+										<DataTableHead>Email</DataTableHead>
+										<DataTableHead>Type</DataTableHead>
+										<DataTableHead>Status</DataTableHead>
+										<DataTableHead>Created</DataTableHead>
+										<DataTableHead>Last Login</DataTableHead>
+										<DataTableHead className="text-right"></DataTableHead>
+									</DataTableRow>
+								</DataTableHeader>
+								<DataTableBody>
 									{filteredUsers.map((user) => (
-										<TableRow key={user.id}>
-											<TableCell className="font-medium">
+										<DataTableRow key={user.id}>
+											<DataTableCell className="font-medium">
 												{user.name || user.email}
-											</TableCell>
-											<TableCell className="text-muted-foreground">
+											</DataTableCell>
+											<DataTableCell className="text-muted-foreground">
 												{user.email}
-											</TableCell>
-											<TableCell>
+											</DataTableCell>
+											<DataTableCell>
 												{getUserTypeBadge(
 													user.user_type,
 												)}
-											</TableCell>
-											<TableCell>
+											</DataTableCell>
+											<DataTableCell>
 												<Badge
 													variant={
 														user.is_active
@@ -214,22 +214,22 @@ export function Users() {
 														? "Active"
 														: "Inactive"}
 												</Badge>
-											</TableCell>
-											<TableCell className="text-sm text-muted-foreground">
+											</DataTableCell>
+											<DataTableCell className="text-sm text-muted-foreground">
 												{user.created_at
 													? new Date(
 															user.created_at,
 														).toLocaleDateString()
 													: "N/A"}
-											</TableCell>
-											<TableCell className="text-sm text-muted-foreground">
+											</DataTableCell>
+											<DataTableCell className="text-sm text-muted-foreground">
 												{user.last_login
 													? new Date(
 															user.last_login,
 														).toLocaleDateString()
 													: "Never"}
-											</TableCell>
-											<TableCell className="text-right">
+											</DataTableCell>
+											<DataTableCell className="text-right">
 												<div className="flex items-center justify-end gap-2">
 													<Button
 														variant="ghost"
@@ -261,11 +261,11 @@ export function Users() {
 														<Trash2 className="h-4 w-4" />
 													</Button>
 												</div>
-											</TableCell>
-										</TableRow>
+											</DataTableCell>
+										</DataTableRow>
 									))}
-								</TableBody>
-							</Table>
+								</DataTableBody>
+							</DataTable>
 						</div>
 					) : (
 						<div className="flex flex-col items-center justify-center py-12 text-center">

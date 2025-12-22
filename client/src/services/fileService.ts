@@ -10,12 +10,7 @@ import { authFetch } from "@/lib/api-client";
 export type FileMetadata = components["schemas"]["FileMetadata"];
 export type FileContentRequest = components["schemas"]["FileContentRequest"];
 export type FileContentResponse = components["schemas"]["FileContentResponse"];
-
-// TODO: Add FileConflictResponse to OpenAPI spec when file conflict endpoint is implemented
-export type FileConflictResponse = {
-	reason: "content_changed" | "path_not_found";
-	message: string;
-};
+export type FileConflictResponse = components["schemas"]["FileConflictResponse"];
 
 // Custom error for file conflicts
 export class FileConflictError extends Error {
@@ -58,12 +53,15 @@ export const fileService = {
 
 	/**
 	 * Write file content
+	 *
+	 * @param index - If true, inject IDs into decorators. If false (default), detect if IDs needed.
 	 */
 	async writeFile(
 		path: string,
 		content: string,
 		encoding: "utf-8" | "base64" = "utf-8",
 		expectedEtag?: string,
+		index: boolean = false,
 	): Promise<FileContentResponse> {
 		const body: FileContentRequest = {
 			path,
@@ -72,7 +70,11 @@ export const fileService = {
 			expected_etag: expectedEtag ?? null,
 		};
 
-		const response = await authFetch("/api/editor/files/content", {
+		const url = index
+			? "/api/editor/files/content?index=true"
+			: "/api/editor/files/content";
+
+		const response = await authFetch(url, {
 			method: "PUT",
 			body: JSON.stringify(body),
 		});

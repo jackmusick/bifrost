@@ -12,6 +12,7 @@ import { toast } from "sonner";
 import type * as Monaco from "monaco-editor";
 import { initializeMonaco } from "@/lib/monaco-setup";
 import { ConflictDiffView } from "./ConflictDiffView";
+import { IndexingOverlay } from "./IndexingOverlay";
 
 /**
  * Monaco editor component wrapper
@@ -38,6 +39,9 @@ export function CodeEditor() {
 	const editorRef = useRef<Monaco.editor.IStandaloneCodeEditor | null>(null);
 	const monacoInitializedRef = useRef<boolean>(false);
 	const conflictDisposableRef = useRef<Monaco.IDisposable | null>(null);
+
+	// Indexing state for blocking overlay during ID injection
+	const isIndexing = useEditorStore((state) => state.isIndexing);
 
 	// Check for conflicts by comparing etags
 	const checkForConflict = useCallback(async () => {
@@ -362,7 +366,7 @@ export function CodeEditor() {
 
 	return (
 		<div className="h-full w-full flex flex-col" onKeyDown={handleKeyDown}>
-			<div className="flex-1">
+			<div className="flex-1 relative">
 				<Editor
 					height="100%"
 					language={language}
@@ -428,6 +432,9 @@ export function CodeEditor() {
 
 						// Code lens (for conflict resolution buttons)
 						codeLens: true,
+
+						// Read-only during indexing (prevents typing)
+						readOnly: isIndexing,
 					}}
 					loading={
 						<div className="flex h-full items-center justify-center">
@@ -437,6 +444,8 @@ export function CodeEditor() {
 						</div>
 					}
 				/>
+				{/* Indexing overlay blocks editor during ID injection */}
+				<IndexingOverlay />
 			</div>
 		</div>
 	);

@@ -5,6 +5,7 @@ Represents OAuth provider configurations and user OAuth tokens for integrations.
 """
 
 from datetime import datetime
+from typing import TYPE_CHECKING
 from uuid import UUID, uuid4
 
 from sqlalchemy import DateTime, ForeignKey, Index, LargeBinary, String, Text, text
@@ -12,6 +13,9 @@ from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from src.models.orm.base import Base
+
+if TYPE_CHECKING:
+    from src.models.orm.integrations import Integration
 
 
 class OAuthProvider(Base):
@@ -30,6 +34,11 @@ class OAuthProvider(Base):
     encrypted_client_secret: Mapped[bytes] = mapped_column(LargeBinary)
     authorization_url: Mapped[str | None] = mapped_column(String(500), default=None)
     token_url: Mapped[str | None] = mapped_column(String(500), default=None)
+    token_url_defaults: Mapped[dict] = mapped_column(
+        JSONB,
+        default={},
+        comment="Default values for URL template placeholders (e.g., {'entity_id': 'common'})"
+    )
     scopes: Mapped[list] = mapped_column(JSONB, default=[])
     redirect_uri: Mapped[str | None] = mapped_column(String(500), default=None)
     status: Mapped[str] = mapped_column(String(50), default="not_connected")
@@ -38,6 +47,9 @@ class OAuthProvider(Base):
     provider_metadata: Mapped[dict] = mapped_column(JSONB, default={})
     organization_id: Mapped[UUID | None] = mapped_column(
         ForeignKey("organizations.id"), default=None
+    )
+    integration_id: Mapped[UUID | None] = mapped_column(
+        ForeignKey("integrations.id"), default=None
     )
     created_by: Mapped[str | None] = mapped_column(String(255), default=None)
     created_at: Mapped[datetime] = mapped_column(
@@ -52,6 +64,9 @@ class OAuthProvider(Base):
 
     # Relationships
     tokens: Mapped[list["OAuthToken"]] = relationship(back_populates="provider")
+    integration: Mapped["Integration"] = relationship(
+        "Integration", back_populates="oauth_provider"
+    )
 
     __table_args__ = (
         Index(

@@ -7,13 +7,13 @@ import {
 	CardDescription,
 } from "@/components/ui/card";
 import {
-	Table,
-	TableBody,
-	TableCell,
-	TableHead,
-	TableHeader,
-	TableRow,
-} from "@/components/ui/table";
+	DataTable,
+	DataTableBody,
+	DataTableCell,
+	DataTableHead,
+	DataTableHeader,
+	DataTableRow,
+} from "@/components/ui/data-table";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { ChevronRight } from "lucide-react";
@@ -133,45 +133,45 @@ export function HeaviestWorkflowsTable({
 				</div>
 			</CardHeader>
 			<CardContent>
-				<Table>
-					<TableHeader>
-						<TableRow>
-							<TableHead>Workflow</TableHead>
-							<TableHead className="text-right">Runs</TableHead>
-							<TableHead className="text-right">
+				<DataTable>
+					<DataTableHeader>
+						<DataTableRow>
+							<DataTableHead>Workflow</DataTableHead>
+							<DataTableHead className="text-right">Runs</DataTableHead>
+							<DataTableHead className="text-right">
 								Avg Memory
-							</TableHead>
-							<TableHead className="text-right">
+							</DataTableHead>
+							<DataTableHead className="text-right">
 								Avg Duration
-							</TableHead>
-							<TableHead className="text-right">
+							</DataTableHead>
+							<DataTableHead className="text-right">
 								Success
-							</TableHead>
-							<TableHead className="w-8"></TableHead>
-						</TableRow>
-					</TableHeader>
-					<TableBody>
+							</DataTableHead>
+							<DataTableHead className="w-8"></DataTableHead>
+						</DataTableRow>
+					</DataTableHeader>
+					<DataTableBody>
 						{data.slice(0, 10).map((workflow) => (
-							<TableRow
+							<DataTableRow
 								key={workflow.workflow_name}
-								className="cursor-pointer hover:bg-muted/50"
+								clickable
 								onClick={() =>
 									handleRowClick(workflow.workflow_name)
 								}
 							>
-								<TableCell className="font-mono text-sm max-w-[200px] truncate">
+								<DataTableCell className="font-mono text-sm max-w-[200px] truncate">
 									{workflow.workflow_name}
-								</TableCell>
-								<TableCell className="text-right">
+								</DataTableCell>
+								<DataTableCell className="text-right">
 									{workflow.total_executions.toLocaleString()}
-								</TableCell>
-								<TableCell className="text-right">
+								</DataTableCell>
+								<DataTableCell className="text-right">
 									{formatBytes(workflow.avg_memory_bytes)}
-								</TableCell>
-								<TableCell className="text-right">
+								</DataTableCell>
+								<DataTableCell className="text-right">
 									{formatDuration(workflow.avg_duration_ms)}
-								</TableCell>
-								<TableCell className="text-right">
+								</DataTableCell>
+								<DataTableCell className="text-right">
 									<Badge
 										variant={
 											workflow.success_rate >= 90
@@ -181,14 +181,14 @@ export function HeaviestWorkflowsTable({
 									>
 										{workflow.success_rate.toFixed(0)}%
 									</Badge>
-								</TableCell>
-								<TableCell>
+								</DataTableCell>
+								<DataTableCell>
 									<ChevronRight className="h-4 w-4 text-muted-foreground" />
-								</TableCell>
-							</TableRow>
+								</DataTableCell>
+							</DataTableRow>
 						))}
-					</TableBody>
-				</Table>
+					</DataTableBody>
+				</DataTable>
 			</CardContent>
 		</Card>
 	);

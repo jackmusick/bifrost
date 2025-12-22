@@ -31,13 +31,13 @@ import {
 } from "@/components/ui/alert-dialog";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import {
-	Table,
-	TableBody,
-	TableCell,
-	TableHead,
-	TableHeader,
-	TableRow,
-} from "@/components/ui/table";
+	DataTable,
+	DataTableBody,
+	DataTableCell,
+	DataTableHead,
+	DataTableHeader,
+	DataTableRow,
+} from "@/components/ui/data-table";
 import { Badge } from "@/components/ui/badge";
 import { SearchBox } from "@/components/search/SearchBox";
 import { useSearch } from "@/hooks/useSearch";
@@ -230,28 +230,28 @@ export function Config() {
 						</div>
 					) : filteredConfigs && filteredConfigs.length > 0 ? (
 						<div className="max-h-[calc(100vh-28rem)] overflow-auto rounded-md border">
-							<Table>
-								<TableHeader className="sticky top-0 bg-background z-10">
-									<TableRow>
+							<DataTable>
+								<DataTableHeader className="sticky top-0 bg-background z-10">
+									<DataTableRow>
 										{isGlobalScope && (
-											<TableHead>Scope</TableHead>
+											<DataTableHead>Scope</DataTableHead>
 										)}
-										<TableHead>Key</TableHead>
-										<TableHead>Value</TableHead>
-										<TableHead>Type</TableHead>
-										<TableHead>Description</TableHead>
-										<TableHead className="text-right">
+										<DataTableHead>Key</DataTableHead>
+										<DataTableHead>Value</DataTableHead>
+										<DataTableHead>Type</DataTableHead>
+										<DataTableHead>Description</DataTableHead>
+										<DataTableHead className="text-right">
 											Actions
-										</TableHead>
-									</TableRow>
-								</TableHeader>
-								<TableBody>
+										</DataTableHead>
+									</DataTableRow>
+								</DataTableHeader>
+								<DataTableBody>
 									{filteredConfigs.map((config) => (
-										<TableRow
+										<DataTableRow
 											key={`${config.scope}-${config.key}`}
 										>
 											{isGlobalScope && (
-												<TableCell>
+												<DataTableCell>
 													<Badge
 														variant="default"
 														className="text-xs"
@@ -259,24 +259,24 @@ export function Config() {
 														<Globe className="mr-1 h-3 w-3" />
 														Global
 													</Badge>
-												</TableCell>
+												</DataTableCell>
 											)}
-											<TableCell className="font-mono">
+											<DataTableCell className="font-mono">
 												{config.key}
-											</TableCell>
-											<TableCell className="max-w-xs truncate">
+											</DataTableCell>
+											<DataTableCell className="max-w-xs truncate">
 												{maskValue(
 													config.value,
 													config.type,
 												)}
-											</TableCell>
-											<TableCell>
+											</DataTableCell>
+											<DataTableCell>
 												{getTypeBadge(config.type)}
-											</TableCell>
-											<TableCell className="max-w-xs truncate text-muted-foreground">
+											</DataTableCell>
+											<DataTableCell className="max-w-xs truncate text-muted-foreground">
 												{config.description || "-"}
-											</TableCell>
-											<TableCell className="text-right">
+											</DataTableCell>
+											<DataTableCell className="text-right">
 												<div className="flex justify-end gap-2">
 													<Button
 														variant="ghost"
@@ -297,11 +297,11 @@ export function Config() {
 														<Trash2 className="h-4 w-4" />
 													</Button>
 												</div>
-											</TableCell>
-										</TableRow>
+											</DataTableCell>
+										</DataTableRow>
 									))}
-								</TableBody>
-							</Table>
+								</DataTableBody>
+							</DataTable>
 						</div>
 					) : (
 						<div className="flex flex-col items-center justify-center py-12 text-center">

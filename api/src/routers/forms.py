@@ -92,7 +92,7 @@ def _form_schema_to_fields(form_schema: dict, form_id: UUID) -> list[FormFieldOR
             help_text=field.help_text,
             default_value=field.default_value,
             options=field.options,
-            data_provider=field.data_provider,
+            data_provider_id=field.data_provider_id,
             data_provider_inputs=field.data_provider_inputs,
             visibility_expression=field.visibility_expression,
             validation=field.validation,
@@ -135,8 +135,8 @@ def _fields_to_form_schema(fields: list[FormFieldORM]) -> dict:
             field_data["default_value"] = field.default_value
         if field.options:
             field_data["options"] = field.options
-        if field.data_provider:
-            field_data["data_provider"] = field.data_provider
+        if field.data_provider_id:
+            field_data["data_provider_id"] = str(field.data_provider_id)
         if field.data_provider_inputs:
             field_data["data_provider_inputs"] = field.data_provider_inputs
         if field.visibility_expression:

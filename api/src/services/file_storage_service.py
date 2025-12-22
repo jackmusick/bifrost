@@ -13,6 +13,7 @@ import logging
 import mimetypes
 import re
 from contextlib import asynccontextmanager
+from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
 from typing import Any, TYPE_CHECKING
@@ -30,6 +31,16 @@ if TYPE_CHECKING:
     from src.models import Workflow
 
 logger = logging.getLogger(__name__)
+
+
+@dataclass
+class WriteResult:
+    """Result of a file write operation."""
+
+    file_record: WorkspaceFile
+    final_content: bytes
+    content_modified: bool  # True if server modified content (e.g., injected IDs)
+    needs_indexing: bool = False  # True if file has decorators that need ID injection
 
 
 class FileStorageService:
@@ -166,7 +177,8 @@ class FileStorageService:
         path: str,
         content: bytes,
         updated_by: str = "system",
-    ) -> WorkspaceFile:
+        index: bool = True,
+    ) -> WriteResult:
         """
         Write file content to storage and update index.
 
@@ -176,9 +188,12 @@ class FileStorageService:
             path: Relative path within workspace
             content: File content as bytes
             updated_by: User who made the change
+            index: If True (default), inject IDs into decorators when needed.
+                   If False, detect if IDs needed and return needs_indexing=True.
 
         Returns:
-            Updated WorkspaceFile record
+            WriteResult containing file record, final content, modification flag,
+            and needs_indexing flag (True if IDs needed but index=False)
 
         Raises:
             ValueError: If path is excluded (system files, caches, etc.)
@@ -232,19 +247,98 @@ class FileStorageService:
         cache = get_workspace_cache()
         await cache.set_file_state(path, content_hash, is_deleted=False)
 
-        # Extract metadata for workflows/forms
-        await self._extract_metadata(path, content)
+        # Extract metadata for workflows/forms (may inject IDs and modify content)
+        # When index=False, skip ID injection and just detect if indexing is needed
+        final_content, content_modified, needs_indexing = await self._extract_metadata(
+            path, content, skip_id_injection=not index
+        )
 
         # Publish to Redis pub/sub so other containers sync
         # This notifies workers and other API instances about the file change
+        # Use final_content (with injected IDs if any) for sync
+        try:
+            from src.core.pubsub import publish_workspace_file_write
+            publish_content = final_content if content_modified else content
+            publish_hash = self._compute_hash(publish_content) if content_modified else content_hash
+            await publish_workspace_file_write(path, publish_content, publish_hash)
+        except Exception as e:
+            logger.warning(f"Failed to publish workspace file write event: {e}")
+
+        logger.info(f"File written: {path} ({size_bytes} bytes) by {updated_by}")
+        return WriteResult(
+            file_record=file_record,
+            final_content=final_content,
+            content_modified=content_modified,
+            needs_indexing=needs_indexing,
+        )
+
+    async def _write_file_for_id_injection(
+        self,
+        path: str,
+        content: bytes,
+    ) -> None:
+        """
+        Internal method to write file content during ID injection.
+
+        This is a simplified write that:
+        - Updates S3 and the database index
+        - Publishes to Redis for container sync
+        - Does NOT call _extract_metadata to avoid infinite recursion
+        - Does NOT trigger another ID injection cycle
+
+        Args:
+            path: Relative path within workspace
+            content: File content as bytes (with IDs injected)
+        """
+        content_hash = self._compute_hash(content)
+        content_type = self._guess_content_type(path)
+        size_bytes = len(content)
+
+        # Write to S3
+        async with self._get_s3_client() as s3:
+            await s3.put_object(
+                Bucket=self.settings.s3_bucket,
+                Key=path,
+                Body=content,
+                ContentType=content_type,
+            )
+
+        # Upsert index record
+        now = datetime.utcnow()
+        stmt = insert(WorkspaceFile).values(
+            path=path,
+            content_hash=content_hash,
+            size_bytes=size_bytes,
+            content_type=content_type,
+            git_status=GitStatus.MODIFIED,
+            is_deleted=False,
+            created_at=now,
+            updated_at=now,
+        ).on_conflict_do_update(
+            index_elements=[WorkspaceFile.path],
+            set_={
+                "content_hash": content_hash,
+                "size_bytes": size_bytes,
+                "content_type": content_type,
+                "git_status": GitStatus.MODIFIED,
+                "is_deleted": False,
+                "updated_at": now,
+            },
+        )
+        await self.db.execute(stmt)
+
+        # Dual-write: Update Redis cache
+        cache = get_workspace_cache()
+        await cache.set_file_state(path, content_hash, is_deleted=False)
+
+        # Publish to Redis pub/sub so other containers sync
         try:
             from src.core.pubsub import publish_workspace_file_write
             await publish_workspace_file_write(path, content, content_hash)
         except Exception as e:
             logger.warning(f"Failed to publish workspace file write event: {e}")
 
-        logger.info(f"File written: {path} ({size_bytes} bytes) by {updated_by}")
-        return file_record
+        logger.debug(f"ID injection write complete: {path} ({size_bytes} bytes)")
 
     async def delete_file(self, path: str) -> None:
         """
@@ -614,8 +708,8 @@ class FileStorageService:
                 rel_path = str(file_path.relative_to(local_path))
                 content = file_path.read_bytes()
 
-                file_record = await self.write_file(rel_path, content, updated_by)
-                uploaded.append(file_record)
+                write_result = await self.write_file(rel_path, content, updated_by)
+                uploaded.append(write_result.file_record)
 
         logger.info(f"Uploaded {len(uploaded)} files from {local_path}")
         return uploaded
@@ -682,7 +776,9 @@ class FileStorageService:
         logger.info(f"Indexed {count} files from S3")
         return count
 
-    async def reindex_workspace_files(self, local_path: Path) -> dict[str, int]:
+    async def reindex_workspace_files(
+        self, local_path: Path, inject_ids: bool = False
+    ) -> dict[str, int | list[str]]:
         """
         Reindex workspace_files table from local filesystem.
 
@@ -691,19 +787,22 @@ class FileStorageService:
 
         Args:
             local_path: Local workspace directory (e.g., /tmp/bifrost/workspace)
+            inject_ids: If True, inject IDs into decorators (for maintenance).
+                       If False (default), only detect files needing IDs.
 
         Returns:
             Dict with counts: files_indexed, files_removed, workflows_deactivated,
-            data_providers_deactivated
+            data_providers_deactivated, files_needing_ids (list of paths)
         """
         from src.models import Workflow, DataProvider
         from src.services.editor.file_filter import is_excluded_path
 
-        counts = {
+        counts: dict[str, int | list[str]] = {
             "files_indexed": 0,
             "files_removed": 0,
             "workflows_deactivated": 0,
             "data_providers_deactivated": 0,
+            "files_needing_ids": [],  # Python files with decorators missing IDs
         }
 
         # 1. Collect all file paths from local filesystem
@@ -770,7 +869,25 @@ class FileStorageService:
             await cache.set_file_state(rel_path, content_hash, is_deleted=False)
 
             # Extract metadata (workflows/data_providers)
-            await self._extract_metadata(rel_path, content)
+            # Use inject_ids parameter to control whether to inject or just detect
+            await self._extract_metadata(rel_path, content, skip_id_injection=not inject_ids)
+
+            # Detect Python files with decorators missing IDs
+            if rel_path.endswith(".py") and not inject_ids:
+                try:
+                    from src.services.decorator_property_service import DecoratorPropertyService
+
+                    content_str = content.decode("utf-8", errors="replace")
+                    decorator_service = DecoratorPropertyService()
+                    inject_result = decorator_service.inject_ids_if_missing(content_str)
+
+                    if inject_result.modified:
+                        # This file has decorators without IDs
+                        files_needing_ids = counts["files_needing_ids"]
+                        if isinstance(files_needing_ids, list):
+                            files_needing_ids.append(rel_path)
+                except Exception as e:
+                    logger.warning(f"Failed to check {rel_path} for missing IDs: {e}")
 
             counts["files_indexed"] += 1
 
@@ -818,15 +935,28 @@ class FileStorageService:
 
         return counts
 
-    async def _extract_metadata(self, path: str, content: bytes) -> None:
+    async def _extract_metadata(
+        self, path: str, content: bytes, skip_id_injection: bool = False
+    ) -> tuple[bytes, bool, bool]:
         """
         Extract workflow/form/agent metadata from file content.
 
         Called at write time to keep registry in sync.
+
+        Args:
+            path: Relative file path
+            content: File content bytes
+            skip_id_injection: If True, don't inject IDs into decorators (detect only)
+
+        Returns:
+            Tuple of (final_content, content_modified, needs_indexing) where:
+            - final_content: The content after any modifications (e.g., ID injection)
+            - content_modified: True if the content was modified by the server
+            - needs_indexing: True if IDs are needed but skip_id_injection was True
         """
         try:
             if path.endswith(".py"):
-                await self._index_python_file(path, content)
+                return await self._index_python_file(path, content, skip_id_injection)
             elif path.endswith(".form.json"):
                 await self._index_form(path, content)
             elif path.endswith(".agent.json"):
@@ -835,23 +965,67 @@ class FileStorageService:
             # Log but don't fail the write
             logger.warning(f"Failed to extract metadata from {path}: {e}")
 
-    async def _index_python_file(self, path: str, content: bytes) -> None:
+        return content, False, False
+
+    async def _index_python_file(
+        self, path: str, content: bytes, skip_id_injection: bool = False
+    ) -> tuple[bytes, bool, bool]:
         """
         Extract and index workflows/providers from Python file.
 
         Uses AST-based parsing to extract metadata from @workflow and
         @data_provider decorators without importing the module.
         Also updates workspace_files.is_workflow/is_data_provider flags.
+
+        Automatically injects stable UUIDs into decorators that don't have them
+        (unless skip_id_injection is True, in which case it just detects).
+
+        Returns:
+            Tuple of (final_content, content_modified, needs_indexing) where:
+            - final_content: The content after any modifications (e.g., ID injection)
+            - content_modified: True if IDs were injected into decorators
+            - needs_indexing: True if IDs are needed but skip_id_injection was True
         """
         from src.models import Workflow, DataProvider
 
         content_str = content.decode("utf-8", errors="replace")
+        final_content = content
+        content_modified = False
+        needs_indexing = False
+
+        # Check if decorators need IDs
+        try:
+            from src.services.decorator_property_service import DecoratorPropertyService
+
+            decorator_service = DecoratorPropertyService()
+            inject_result = decorator_service.inject_ids_if_missing(content_str)
+
+            if inject_result.modified:
+                if skip_id_injection:
+                    # Just detect - don't actually inject
+                    needs_indexing = True
+                    logger.debug(f"File {path} needs indexing (decorators without IDs)")
+                else:
+                    # Write back the modified content with IDs injected
+                    logger.info(f"Injecting IDs into decorators in {path}: {inject_result.changes}")
+                    modified_content = inject_result.new_content.encode("utf-8")
+
+                    # Use internal write to avoid infinite recursion
+                    await self._write_file_for_id_injection(path, modified_content)
+
+                    # Continue indexing with the modified content
+                    content_str = inject_result.new_content
+                    final_content = modified_content
+                    content_modified = True
+        except Exception as e:
+            # Log but don't fail indexing if ID injection/detection fails
+            logger.warning(f"Failed to process IDs for {path}: {e}")
 
         try:
             tree = ast.parse(content_str, filename=path)
         except SyntaxError as e:
             logger.warning(f"Syntax error parsing {path}: {e}")
-            return
+            return final_content, content_modified, needs_indexing
 
         now = datetime.utcnow()
 
@@ -977,6 +1151,8 @@ class FileStorageService:
             is_data_provider=found_data_provider,
         )
         await self.db.execute(stmt)
+
+        return final_content, content_modified, needs_indexing
 
     def _parse_decorator(self, decorator: ast.AST) -> tuple[str, dict[str, Any]] | None:
         """

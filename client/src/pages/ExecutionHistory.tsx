@@ -24,13 +24,14 @@ import {
 	CardTitle,
 } from "@/components/ui/card";
 import {
-	Table,
-	TableBody,
-	TableCell,
-	TableHead,
-	TableHeader,
-	TableRow,
-} from "@/components/ui/table";
+	DataTable,
+	DataTableBody,
+	DataTableCell,
+	DataTableHead,
+	DataTableHeader,
+	DataTableRow,
+	DataTableFooter,
+} from "@/components/ui/data-table";
 import { Badge } from "@/components/ui/badge";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Label } from "@/components/ui/label";
@@ -439,69 +440,67 @@ export function ExecutionHistory() {
 											</p>
 										</div>
 									) : (
-										<div className="border rounded-lg">
-											<Table>
-												<TableHeader>
-													<TableRow>
-														<TableHead>
-															Workflow
-														</TableHead>
-														<TableHead>
-															Status
-														</TableHead>
-														<TableHead>
-															Executed By
-														</TableHead>
-														<TableHead>
-															Started At
-														</TableHead>
-													</TableRow>
-												</TableHeader>
-												<TableBody>
-													{stuckExecutions.map(
-														(execution) => (
-															<TableRow
-																key={
-																	execution.execution_id
+										<DataTable>
+											<DataTableHeader>
+												<DataTableRow>
+													<DataTableHead>
+														Workflow
+													</DataTableHead>
+													<DataTableHead>
+														Status
+													</DataTableHead>
+													<DataTableHead>
+														Executed By
+													</DataTableHead>
+													<DataTableHead>
+														Started At
+													</DataTableHead>
+												</DataTableRow>
+											</DataTableHeader>
+											<DataTableBody>
+												{stuckExecutions.map(
+													(execution) => (
+														<DataTableRow
+															key={
+																execution.execution_id
+															}
+														>
+															<DataTableCell className="font-mono text-sm">
+																{
+																	execution.workflow_name
 																}
-															>
-																<TableCell className="font-mono text-sm">
-																	{
-																		execution.workflow_name
+															</DataTableCell>
+															<DataTableCell>
+																<Badge
+																	variant={
+																		execution.status ===
+																		"Pending"
+																			? "outline"
+																			: "secondary"
 																	}
-																</TableCell>
-																<TableCell>
-																	<Badge
-																		variant={
-																			execution.status ===
-																			"Pending"
-																				? "outline"
-																				: "secondary"
-																		}
-																	>
-																		{
-																			execution.status
-																		}
-																	</Badge>
-																</TableCell>
-																<TableCell>
+																>
 																	{
-																		execution.executed_by_name
+																		execution.status
 																	}
-																</TableCell>
-																<TableCell className="text-sm">
-																	{execution.started_at
-																		? formatDate(
-																				execution.started_at,
-																			)
-																		: "-"}
-																</TableCell>
-															</TableRow>
-														),
-													)}
-												</TableBody>
-											</Table>
-										</div>
+																</Badge>
+															</DataTableCell>
+															<DataTableCell>
+																{
+																	execution.executed_by_name
+																}
+															</DataTableCell>
+															<DataTableCell className="text-sm">
+																{execution.started_at
+																	? formatDate(
+																			execution.started_at,
+																		)
+																	: "-"}
+															</DataTableCell>
+														</DataTableRow>
+													),
+												)}
+											</DataTableBody>
+										</DataTable>
 									)}
 
 									<DialogFooter>
@@ -615,38 +614,36 @@ export function ExecutionHistory() {
 									<Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
 								</div>
 							) : filteredExecutions.length > 0 ? (
-								<div className="border rounded-lg overflow-hidden h-full">
-									<div className="h-full overflow-auto">
-										<table className="relative w-full caption-bottom text-sm">
-											<TableHeader className="sticky top-0 bg-background/80 backdrop-blur-sm z-10">
-												<TableRow>
-													{isGlobalScope && (
-														<TableHead>
-															Scope
-														</TableHead>
-													)}
-													<TableHead>
-														Workflow
-													</TableHead>
-													<TableHead>
-														Status
-													</TableHead>
-													<TableHead>
-														Executed By
-													</TableHead>
-													<TableHead>
-														Started At
-													</TableHead>
-													<TableHead>
-														Completed At
-													</TableHead>
-													<TableHead>
-														Duration
-													</TableHead>
-													<TableHead className="text-right"></TableHead>
-												</TableRow>
-											</TableHeader>
-											<TableBody>
+								<DataTable fixedHeight>
+									<DataTableHeader>
+										<DataTableRow>
+											{isGlobalScope && (
+												<DataTableHead>
+													Scope
+												</DataTableHead>
+											)}
+											<DataTableHead>
+												Workflow
+											</DataTableHead>
+											<DataTableHead>
+												Status
+											</DataTableHead>
+											<DataTableHead>
+												Executed By
+											</DataTableHead>
+											<DataTableHead>
+												Started At
+											</DataTableHead>
+											<DataTableHead>
+												Completed At
+											</DataTableHead>
+											<DataTableHead>
+												Duration
+											</DataTableHead>
+											<DataTableHead className="text-right"></DataTableHead>
+										</DataTableRow>
+									</DataTableHeader>
+									<DataTableBody>
 												{filteredExecutions.map(
 													(execution) => {
 														const duration =
@@ -667,11 +664,11 @@ export function ExecutionHistory() {
 														const isGlobalExecution = true;
 
 														return (
-															<TableRow
+															<DataTableRow
 																key={
 																	execution.execution_id
 																}
-																className="cursor-pointer hover:bg-muted/50"
+																clickable
 																onClick={() =>
 																	handleViewDetails(
 																		execution.execution_id,
@@ -679,7 +676,7 @@ export function ExecutionHistory() {
 																}
 															>
 																{isGlobalScope && (
-																	<TableCell>
+																	<DataTableCell>
 																		<Badge
 																			variant={
 																				isGlobalExecution
@@ -700,9 +697,9 @@ export function ExecutionHistory() {
 																				</>
 																			)}
 																		</Badge>
-																	</TableCell>
+																	</DataTableCell>
 																)}
-																<TableCell className="font-mono text-sm">
+																<DataTableCell className="font-mono text-sm">
 																	<div className="flex items-center gap-2">
 																		{
 																			execution.workflow_name
@@ -744,8 +741,8 @@ export function ExecutionHistory() {
 																			</TooltipProvider>
 																		)}
 																	</div>
-																</TableCell>
-																<TableCell>
+																</DataTableCell>
+																<DataTableCell>
 																	<div className="flex items-center gap-2">
 																		{getStatusBadge(
 																			execution.status,
@@ -772,33 +769,33 @@ export function ExecutionHistory() {
 																			</TooltipProvider>
 																		)}
 																	</div>
-																</TableCell>
-																<TableCell>
+																</DataTableCell>
+																<DataTableCell>
 																	{
 																		execution.executed_by_name
 																	}
-																</TableCell>
-																<TableCell className="text-sm">
+																</DataTableCell>
+																<DataTableCell className="text-sm">
 																	{execution.started_at
 																		? formatDate(
 																				execution.started_at,
 																			)
 																		: "-"}
-																</TableCell>
-																<TableCell className="text-sm">
+																</DataTableCell>
+																<DataTableCell className="text-sm">
 																	{execution.completed_at
 																		? formatDate(
 																				execution.completed_at,
 																			)
 																		: "-"}
-																</TableCell>
-																<TableCell className="text-sm text-muted-foreground">
+																</DataTableCell>
+																<DataTableCell className="text-sm text-muted-foreground">
 																	{duration !==
 																	null
 																		? `${duration}s`
 																		: "-"}
-																</TableCell>
-																<TableCell className="text-right">
+																</DataTableCell>
+																<DataTableCell className="text-right">
 																	<div className="flex items-center justify-end gap-1">
 																		{(execution.status ===
 																			"Running" ||
@@ -837,69 +834,74 @@ export function ExecutionHistory() {
 																			<Eye className="h-4 w-4" />
 																		</Button>
 																	</div>
-																</TableCell>
-															</TableRow>
+																</DataTableCell>
+															</DataTableRow>
 														);
 													},
 												)}
-											</TableBody>
-										</table>
-
-										{/* Pagination - Always Visible */}
-										<div className="sticky bottom-0 px-6 py-4 border-t bg-background/80 backdrop-blur-sm flex items-center justify-center z-10">
-											<Pagination>
-												<PaginationContent>
-													<PaginationItem>
-														<PaginationPrevious
-															onClick={(e) => {
-																e.preventDefault();
-																handlePreviousPage();
-															}}
-															className={
-																pageStack.length ===
-																	0 ||
-																isFetching
-																	? "pointer-events-none opacity-50"
-																	: "cursor-pointer"
-															}
-															aria-disabled={
-																pageStack.length ===
-																	0 ||
-																isFetching
-															}
-														/>
-													</PaginationItem>
-													<PaginationItem>
-														<PaginationLink
-															isActive
-														>
-															{pageStack.length +
-																1}
-														</PaginationLink>
-													</PaginationItem>
-													<PaginationItem>
-														<PaginationNext
-															onClick={(e) => {
-																e.preventDefault();
-																handleNextPage();
-															}}
-															className={
-																!hasMore ||
-																isFetching
-																	? "pointer-events-none opacity-50"
-																	: "cursor-pointer"
-															}
-															aria-disabled={
-																!hasMore ||
-																isFetching
-															}
-														/>
-													</PaginationItem>
-												</PaginationContent>
-											</Pagination>
-										</div>
-									</div>
-								</div>
+									</DataTableBody>
+									<DataTableFooter>
+										<DataTableRow>
+											<DataTableCell
+												colSpan={isGlobalScope ? 8 : 7}
+												className="p-0"
+											>
+												<div className="px-6 py-4 flex items-center justify-center">
+													<Pagination>
+														<PaginationContent>
+															<PaginationItem>
+																<PaginationPrevious
+																	onClick={(e) => {
+																		e.preventDefault();
+																		handlePreviousPage();
+																	}}
+																	className={
+																		pageStack.length ===
+																			0 ||
+																		isFetching
+																			? "pointer-events-none opacity-50"
+																			: "cursor-pointer"
+																	}
+																	aria-disabled={
+																		pageStack.length ===
+																			0 ||
+																		isFetching
+																	}
+																/>
+															</PaginationItem>
+															<PaginationItem>
+																<PaginationLink
+																	isActive
+																>
+																	{pageStack.length +
+																		1}
+																</PaginationLink>
+															</PaginationItem>
+															<PaginationItem>
+																<PaginationNext
+																	onClick={(e) => {
+																		e.preventDefault();
+																		handleNextPage();
+																	}}
+																	className={
+																		!hasMore ||
+																		isFetching
+																			? "pointer-events-none opacity-50"
+																			: "cursor-pointer"
+																	}
+																	aria-disabled={
+																		!hasMore ||
+																		isFetching
+																	}
+																/>
+															</PaginationItem>
+														</PaginationContent>
+													</Pagination>
+												</div>
+											</DataTableCell>
+										</DataTableRow>
+									</DataTableFooter>
+								</DataTable>
 							) : (
 								<div className="flex flex-col items-center justify-center py-12 text-center">
 									<HistoryIcon className="h-12 w-12 text-muted-foreground" />

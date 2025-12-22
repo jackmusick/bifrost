@@ -82,7 +82,7 @@ export interface FormField {
 	type: FormFieldType;
 	required?: boolean;
 	validation?: FormFieldValidation | null;
-	data_provider?: string | null;
+	data_provider_id?: string | null;
 	data_provider_inputs?: Record<string, DataProviderInputConfig> | null;
 	default_value?: unknown;
 	placeholder?: string | null;

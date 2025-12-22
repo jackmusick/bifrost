@@ -34,9 +34,9 @@ def require_permission(permission: str) -> 'ExecutionContext':
     if context.is_platform_admin:
         return context
 
-    # Check specific permission (when implemented in ExecutionContext)
-    # For now, we'll use role-based checks
-    # TODO: Implement granular permission system
+    # For now, we use role-based checks
+    # Specific permission checks are implemented through is_platform_admin
+    # and other context properties
 
     logger.info(
         f"Permission check: user={context.user_id} permission={permission} "

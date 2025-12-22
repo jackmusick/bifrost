@@ -248,6 +248,7 @@ def data_provider(
     _func: Callable | None = None,
     *,
     # Identity
+    id: str | None = None,
     name: str | None = None,
     description: str | None = None,
     category: str = "General",
@@ -273,6 +274,7 @@ def data_provider(
             ...
 
     Args:
+        id: Persistent UUID (written by discovery watcher)
         name: Data provider name (defaults to function name)
         description: Human-readable description (defaults to first line of docstring)
         category: Category for organization (default: "General")
@@ -321,6 +323,7 @@ def data_provider(
 
         # Create metadata
         metadata = DataProviderMetadata(
+            id=id,
             name=provider_name,
             description=provider_description,
             category=category,

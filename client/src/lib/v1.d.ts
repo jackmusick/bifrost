@@ -40,8 +40,6 @@ export interface paths {
          *
          *     Checks:
          *     - Database connectivity
-         *     - Redis connectivity (TODO)
-         *     - RabbitMQ connectivity (TODO)
          *
          *     Returns:
          *         Detailed health status with component information
@@ -835,6 +833,126 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/auth/passkeys/register/options": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Get passkey registration options
+         * @description Generate WebAuthn registration options for creating a new passkey. Returns a challenge and options that should be passed to navigator.credentials.create().
+         */
+        post: operations["get_registration_options_auth_passkeys_register_options_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/auth/passkeys/register/verify": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Verify passkey registration
+         * @description Verify the passkey registration response from the browser. This completes the passkey enrollment process.
+         */
+        post: operations["verify_registration_auth_passkeys_register_verify_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/auth/passkeys/authenticate/options": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Get passkey authentication options
+         * @description Generate WebAuthn authentication options for passwordless login. Returns a challenge that should be passed to navigator.credentials.get(). If email is provided, limits credentials to that user. If email is omitted, uses discoverable credentials (passkey autofill).
+         */
+        post: operations["get_authentication_options_auth_passkeys_authenticate_options_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/auth/passkeys/authenticate/verify": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Verify passkey authentication
+         * @description Verify the passkey authentication response and return JWT tokens. This is the passwordless login endpoint - no password required.
+         */
+        post: operations["verify_authentication_auth_passkeys_authenticate_verify_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/auth/passkeys": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List user's passkeys
+         * @description Get a list of all passkeys registered for the current user.
+         */
+        get: operations["list_passkeys_auth_passkeys_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/auth/passkeys/{passkey_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /**
+         * Delete a passkey
+         * @description Delete a passkey by ID. Users can only delete their own passkeys.
+         */
+        delete: operations["delete_passkey_auth_passkeys__passkey_id__delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/organizations": {
         parameters: {
             query?: never;
@@ -1573,6 +1691,26 @@ export interface paths {
         get: operations["list_data_providers_api_data_providers_get"];
         put?: never;
         post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/data-providers/{provider_id}/invoke": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Invoke a data provider
+         * @description Execute a data provider and return its options. User must have access via form or integration.
+         */
+        post: operations["invoke_data_provider_api_data_providers__provider_id__invoke_post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -2467,30 +2605,6 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/api/oauth/connections": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /**
-         * List OAuth connections
-         * @description List all OAuth connections (Platform admin only)
-         */
-        get: operations["list_connections_api_oauth_connections_get"];
-        put?: never;
-        /**
-         * Create OAuth connection
-         * @description Create a new OAuth connection (Platform admin only)
-         */
-        post: operations["create_connection_api_oauth_connections_post"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
     "/api/oauth/connections/{connection_name}": {
         parameters: {
             query?: never;
@@ -2514,6 +2628,26 @@ export interface paths {
          * @description Delete an OAuth connection (Platform admin only)
          */
         delete: operations["delete_connection_api_oauth_connections__connection_name__delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/oauth/connections": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Create OAuth connection
+         * @description Create a new OAuth connection (Platform admin only)
+         */
+        post: operations["create_connection_api_oauth_connections_post"];
+        delete?: never;
         options?: never;
         head?: never;
         patch?: never;
@@ -2670,22 +2804,22 @@ export interface paths {
          * Execute workflow via API key
          * @description Execute an endpoint-enabled workflow using an API key for authentication
          */
-        get: operations["execute_endpoint_api_endpoints__workflow_name__get"];
+        get: operations["execute_endpoint_api_endpoints__workflow_name__post"];
         /**
          * Execute workflow via API key
          * @description Execute an endpoint-enabled workflow using an API key for authentication
          */
-        put: operations["execute_endpoint_api_endpoints__workflow_name__get"];
+        put: operations["execute_endpoint_api_endpoints__workflow_name__post"];
         /**
          * Execute workflow via API key
          * @description Execute an endpoint-enabled workflow using an API key for authentication
          */
-        post: operations["execute_endpoint_api_endpoints__workflow_name__get"];
+        post: operations["execute_endpoint_api_endpoints__workflow_name__post"];
         /**
          * Execute workflow via API key
          * @description Execute an endpoint-enabled workflow using an API key for authentication
          */
-        delete: operations["execute_endpoint_api_endpoints__workflow_name__get"];
+        delete: operations["execute_endpoint_api_endpoints__workflow_name__post"];
         options?: never;
         head?: never;
         patch?: never;
@@ -2953,6 +3087,46 @@ export interface paths {
          * @description Get OAuth connection data via CLI API.
          */
         post: operations["cli_get_oauth_api_cli_oauth_get_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/cli/integrations/get": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Get integration data for an organization
+         * @description Get integration mapping data for an organization via SDK.
+         */
+        post: operations["sdk_integrations_get_api_cli_integrations_get_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/cli/integrations/list_mappings": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * List all mappings for an integration
+         * @description List all mappings for an integration via SDK.
+         */
+        post: operations["sdk_integrations_list_mappings_api_cli_integrations_list_mappings_post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -3627,6 +3801,274 @@ export interface paths {
         get: operations["list_llm_models_api_admin_llm_models_get"];
         put?: never;
         post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/integrations": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List integrations
+         * @description List all integrations (Platform admin only)
+         */
+        get: operations["list_integrations_api_integrations_get"];
+        put?: never;
+        /**
+         * Create integration
+         * @description Create a new integration (Platform admin only)
+         */
+        post: operations["create_integration_api_integrations_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/integrations/{integration_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get integration by ID
+         * @description Get a specific integration by ID with mappings and OAuth config (Platform admin only)
+         */
+        get: operations["get_integration_api_integrations__integration_id__get"];
+        /**
+         * Update integration
+         * @description Update an existing integration (Platform admin only)
+         */
+        put: operations["update_integration_api_integrations__integration_id__put"];
+        post?: never;
+        /**
+         * Delete integration
+         * @description Soft delete an integration (Platform admin only)
+         */
+        delete: operations["delete_integration_api_integrations__integration_id__delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/integrations/by-name/{name}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get integration by name
+         * @description Get a specific integration by name (Platform admin only)
+         */
+        get: operations["get_integration_by_name_api_integrations_by_name__name__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/integrations/{integration_id}/mappings": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List mappings for integration
+         * @description List all mappings for a specific integration (Platform admin only)
+         */
+        get: operations["list_mappings_api_integrations__integration_id__mappings_get"];
+        put?: never;
+        /**
+         * Create integration mapping
+         * @description Create a new mapping between an integration and organization (Platform admin only)
+         */
+        post: operations["create_mapping_api_integrations__integration_id__mappings_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/integrations/{integration_id}/mappings/{mapping_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get integration mapping
+         * @description Get a specific mapping by ID (Platform admin only)
+         */
+        get: operations["get_mapping_api_integrations__integration_id__mappings__mapping_id__get"];
+        /**
+         * Update integration mapping
+         * @description Update an existing mapping (Platform admin only)
+         */
+        put: operations["update_mapping_api_integrations__integration_id__mappings__mapping_id__put"];
+        post?: never;
+        /**
+         * Delete integration mapping
+         * @description Delete an integration mapping (Platform admin only)
+         */
+        delete: operations["delete_mapping_api_integrations__integration_id__mappings__mapping_id__delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/integrations/{integration_id}/mappings/by-org/{org_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get mapping by organization
+         * @description Get the mapping for an integration in a specific organization (Platform admin only)
+         */
+        get: operations["get_mapping_by_org_api_integrations__integration_id__mappings_by_org__org_id__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/integrations/{integration_id}/oauth": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get OAuth provider config
+         * @description Get the OAuth provider configuration for this integration (Platform admin only)
+         */
+        get: operations["get_oauth_config_api_integrations__integration_id__oauth_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/integrations/{integration_id}/oauth/authorize": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get OAuth authorization URL
+         * @description Get the authorization URL for this integration's OAuth flow (Platform admin only)
+         */
+        get: operations["get_oauth_authorization_url_api_integrations__integration_id__oauth_authorize_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/integrations/sdk/{name}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get integration data for SDK
+         * @description Get integration data with resolved OAuth and merged config for SDK consumption
+         */
+        get: operations["get_integration_sdk_data_api_integrations_sdk__name__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/decorator-properties": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Read decorator properties from a file
+         * @description Read all workflow/data_provider/tool decorator properties from a Python file
+         */
+        get: operations["get_decorator_properties_api_decorator_properties_get"];
+        /**
+         * Update decorator properties
+         * @description Update properties on a decorator in a Python file
+         */
+        put: operations["update_decorator_properties_api_decorator_properties_put"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/maintenance/status": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get maintenance status
+         * @description Get current workspace maintenance status (Platform admin only)
+         */
+        get: operations["get_maintenance_status_api_maintenance_status_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/maintenance/reindex": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Run workspace reindex
+         * @description Reindex workspace files, optionally injecting IDs (Platform admin only)
+         */
+        post: operations["run_reindex_api_maintenance_reindex_post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -4611,6 +5053,45 @@ export interface components {
             updated_by?: string | null;
         };
         /**
+         * ConfigSchemaItem
+         * @description Metadata for a single configuration item.
+         *     Defines what configuration keys are available for an integration.
+         */
+        ConfigSchemaItem: {
+            /**
+             * Key
+             * @description Configuration key (alphanumeric, underscores)
+             */
+            key: string;
+            /**
+             * Type
+             * @description Configuration value type
+             * @enum {string}
+             */
+            type: "string" | "int" | "bool" | "json" | "secret";
+            /**
+             * Required
+             * @description Whether this configuration is required
+             * @default false
+             */
+            required: boolean;
+            /**
+             * Default
+             * @description Default value if not provided
+             */
+            default?: unknown;
+            /**
+             * Description
+             * @description Human-readable description of this config item
+             */
+            description?: string | null;
+            /**
+             * Options
+             * @description List of valid string options for dropdown UI
+             */
+            options?: string[] | null;
+        };
+        /**
          * ConfigType
          * @description Configuration value types
          * @enum {string}
@@ -4710,15 +5191,10 @@ export interface components {
          */
         CreateOAuthConnectionRequest: {
             /**
-             * Connection Name
-             * @description Unique connection identifier (alphanumeric, underscores, hyphens)
+             * Integration Id
+             * @description ID of the integration this OAuth connection belongs to
              */
-            connection_name: string;
-            /**
-             * Name
-             * @description Display name for the connection (defaults to connection_name)
-             */
-            name?: string | null;
+            integration_id: string;
             /**
              * Description
              * @description Optional description of this OAuth connection
@@ -4747,9 +5223,16 @@ export interface components {
             authorization_url?: string | null;
             /**
              * Token Url
-             * @description OAuth token endpoint URL (must be HTTPS)
+             * @description OAuth token endpoint URL (must be HTTPS, may include {placeholders} for templating)
              */
             token_url: string;
+            /**
+             * Token Url Defaults
+             * @description Default values for token_url placeholders (e.g., {'entity_id': 'common'})
+             */
+            token_url_defaults?: {
+                [key: string]: string;
+            } | null;
             /**
              * Scopes
              * @description Comma-separated list of OAuth scopes to request
@@ -4889,10 +5372,39 @@ export interface components {
          */
         DataProviderInputMode: "static" | "fieldRef" | "expression";
         /**
+         * DataProviderInvokeRequest
+         * @description Request to invoke a data provider.
+         */
+        DataProviderInvokeRequest: {
+            /**
+             * Inputs
+             * @description Input parameters for the data provider
+             */
+            inputs?: {
+                [key: string]: unknown;
+            };
+        };
+        /**
+         * DataProviderInvokeResponse
+         * @description Response from invoking a data provider.
+         */
+        DataProviderInvokeResponse: {
+            /**
+             * Options
+             * @description List of options from the provider
+             */
+            options?: components["schemas"]["DataProviderOption"][];
+        };
+        /**
          * DataProviderMetadata
          * @description Data provider metadata from @data_provider decorator (T008)
          */
         DataProviderMetadata: {
+            /**
+             * Id
+             * @description Data provider UUID (when loaded from database)
+             */
+            id?: string | null;
             /** Name */
             name: string;
             /** Description */
@@ -4922,6 +5434,70 @@ export interface components {
              * @description Workspace-relative file path with /workspace/ prefix (e.g., '/workspace/data_providers/my_provider.py')
              */
             relative_file_path?: string | null;
+        };
+        /**
+         * DataProviderOption
+         * @description A single option from a data provider.
+         */
+        DataProviderOption: {
+            /**
+             * Value
+             * @description Option value
+             */
+            value: string;
+            /**
+             * Label
+             * @description Option display label
+             */
+            label: string;
+            /**
+             * Description
+             * @description Optional description
+             */
+            description?: string | null;
+        };
+        /**
+         * DecoratorInfo
+         * @description Information about a discovered decorator in a source file.
+         */
+        DecoratorInfo: {
+            /**
+             * Decorator Type
+             * @enum {string}
+             */
+            decorator_type: "workflow" | "data_provider" | "tool";
+            /** Function Name */
+            function_name: string;
+            /**
+             * Line Number
+             * @default 0
+             */
+            line_number: number;
+            /** Properties */
+            properties: {
+                [key: string]: unknown;
+            };
+            /**
+             * Has Parentheses
+             * @description True if decorator uses parentheses syntax: @workflow(...)
+             */
+            has_parentheses: boolean;
+        };
+        /**
+         * DecoratorPropertiesResponse
+         * @description Response containing all decorators found in a file.
+         */
+        DecoratorPropertiesResponse: {
+            /**
+             * Path
+             * @description File path
+             */
+            path: string;
+            /**
+             * Decorators
+             * @description List of discovered decorators
+             */
+            decorators: components["schemas"]["DecoratorInfo"][];
         };
         /**
          * DetailedHealthCheck
@@ -5159,6 +5735,23 @@ export interface components {
             deletions?: number | null;
         };
         /**
+         * FileConflictResponse
+         * @description Response when file write encounters a conflict
+         */
+        FileConflictResponse: {
+            /**
+             * Reason
+             * @description Type of conflict
+             * @enum {string}
+             */
+            reason: "content_changed" | "path_not_found";
+            /**
+             * Message
+             * @description Human-readable conflict description
+             */
+            message: string;
+        };
+        /**
          * FileContentRequest
          * @description Request to write file content
          */
@@ -5220,6 +5813,18 @@ export interface components {
              * @description Last modified timestamp (ISO 8601)
              */
             modified: string;
+            /**
+             * Content Modified
+             * @description True if server modified content (e.g., injected IDs). Client should update editor buffer.
+             * @default false
+             */
+            content_modified: boolean;
+            /**
+             * Needs Indexing
+             * @description True if file has decorators that need ID injection. Client should trigger indexing.
+             * @default false
+             */
+            needs_indexing: boolean;
         };
         /**
          * FileMetadata
@@ -5395,13 +6000,13 @@ export interface components {
                 [key: string]: unknown;
             } | null;
             /**
-             * Data Provider
-             * @description Data provider name for dynamic options
+             * Data Provider Id
+             * @description Data provider ID for dynamic options
              */
-            data_provider?: string | null;
+            data_provider_id?: string | null;
             /**
              * Data Provider Inputs
-             * @description Input configurations for data provider parameters (T007)
+             * @description Input configurations for data provider parameters
              */
             data_provider_inputs?: {
                 [key: string]: components["schemas"]["DataProviderInputConfig"];
@@ -5476,13 +6081,13 @@ export interface components {
                 [key: string]: unknown;
             } | null;
             /**
-             * Data Provider
-             * @description Data provider name for dynamic options
+             * Data Provider Id
+             * @description Data provider ID for dynamic options
              */
-            data_provider?: string | null;
+            data_provider_id?: string | null;
             /**
              * Data Provider Inputs
-             * @description Input configurations for data provider parameters (T007)
+             * @description Input configurations for data provider parameters
              */
             data_provider_inputs?: {
                 [key: string]: components["schemas"]["DataProviderInputConfig"];
@@ -5932,6 +6537,399 @@ export interface components {
             total_count: number;
         };
         /**
+         * IntegrationCreate
+         * @description Request model for creating a new integration.
+         *     POST /api/integrations
+         */
+        IntegrationCreate: {
+            /**
+             * Name
+             * @description Unique integration name (e.g., 'Microsoft Partner', 'QuickBooks Online')
+             */
+            name: string;
+            /**
+             * Config Schema
+             * @description Optional schema defining available configuration for this integration
+             */
+            config_schema?: components["schemas"]["ConfigSchemaItem"][] | null;
+            /**
+             * Entity Id
+             * @description Optional global entity ID for token URL templating (e.g., tenant ID, partner tenant ID)
+             */
+            entity_id?: string | null;
+            /**
+             * Entity Id Name
+             * @description Optional display name for the global entity ID
+             */
+            entity_id_name?: string | null;
+        };
+        /**
+         * IntegrationData
+         * @description Integration data for SDK consumption.
+         *     Returned by bifrost.integrations.get() in workflows.
+         */
+        IntegrationData: {
+            /**
+             * Integration Id
+             * Format: uuid
+             * @description Integration ID
+             */
+            integration_id: string;
+            /**
+             * Entity Id
+             * @description Mapped external entity ID
+             */
+            entity_id: string;
+            /**
+             * Entity Name
+             * @description Display name for the mapped entity
+             */
+            entity_name?: string | null;
+            /**
+             * Config
+             * @description Merged configuration (schema defaults + org overrides)
+             */
+            config?: {
+                [key: string]: unknown;
+            };
+            /**
+             * Oauth Client Id
+             * @description OAuth client ID (from provider or override)
+             */
+            oauth_client_id?: string | null;
+            /**
+             * Oauth Token Url
+             * @description OAuth token URL (with {entity_id} placeholder if applicable)
+             */
+            oauth_token_url?: string | null;
+            /**
+             * Oauth Scopes
+             * @description OAuth scopes for this integration
+             */
+            oauth_scopes?: string | null;
+        };
+        /**
+         * IntegrationDetailResponse
+         * @description Detailed response model for a single integration.
+         *     Includes mappings and OAuth configuration in a single response.
+         *     GET /api/integrations/{integration_id}
+         */
+        IntegrationDetailResponse: {
+            /**
+             * Id
+             * Format: uuid
+             * @description Integration ID
+             */
+            id: string;
+            /**
+             * Name
+             * @description Integration name
+             */
+            name: string;
+            /**
+             * List Entities Data Provider Id
+             * @description Associated data provider ID for listing entities
+             */
+            list_entities_data_provider_id?: string | null;
+            /**
+             * Config Schema
+             * @description Configuration schema for this integration
+             */
+            config_schema?: components["schemas"]["ConfigSchemaItem"][] | null;
+            /**
+             * Entity Id
+             * @description Global entity ID for token URL templating
+             */
+            entity_id?: string | null;
+            /**
+             * Entity Id Name
+             * @description Display name for the global entity ID
+             */
+            entity_id_name?: string | null;
+            /**
+             * Has Oauth Config
+             * @description Whether OAuth configuration is set up for this integration
+             * @default false
+             */
+            has_oauth_config: boolean;
+            /**
+             * Is Deleted
+             * @description Soft delete flag
+             * @default false
+             */
+            is_deleted: boolean;
+            /**
+             * Created At
+             * Format: date-time
+             * @description Creation timestamp
+             */
+            created_at: string;
+            /**
+             * Updated At
+             * Format: date-time
+             * @description Last update timestamp
+             */
+            updated_at: string;
+            /**
+             * Mappings
+             * @description All organization mappings for this integration
+             */
+            mappings?: components["schemas"]["IntegrationMappingResponse"][];
+            /** @description OAuth provider configuration and connection status */
+            oauth_config?: components["schemas"]["OAuthConfigSummary"] | null;
+        };
+        /**
+         * IntegrationListResponse
+         * @description Response model for listing integrations.
+         *     GET /api/integrations
+         */
+        IntegrationListResponse: {
+            /**
+             * Items
+             * @description List of integrations
+             */
+            items: components["schemas"]["IntegrationResponse"][];
+            /**
+             * Total
+             * @description Total number of integrations
+             */
+            total: number;
+        };
+        /**
+         * IntegrationMappingCreate
+         * @description Request model for creating an integration mapping.
+         *     POST /api/integrations/{integration_id}/mappings
+         */
+        IntegrationMappingCreate: {
+            /**
+             * Organization Id
+             * Format: uuid
+             * @description Organization ID to map to this integration
+             */
+            organization_id: string;
+            /**
+             * Entity Id
+             * @description External entity ID (e.g., tenant ID, company ID)
+             */
+            entity_id: string;
+            /**
+             * Entity Name
+             * @description Display name for the external entity
+             */
+            entity_name?: string | null;
+            /**
+             * Oauth Token Id
+             * @description Optional per-organization OAuth token override
+             */
+            oauth_token_id?: string | null;
+            /**
+             * Config
+             * @description Per-organization integration configuration values
+             */
+            config?: {
+                [key: string]: unknown;
+            } | null;
+        };
+        /**
+         * IntegrationMappingListResponse
+         * @description Response model for listing integration mappings.
+         *     GET /api/integrations/{integration_id}/mappings
+         */
+        IntegrationMappingListResponse: {
+            /**
+             * Items
+             * @description List of integration mappings
+             */
+            items: components["schemas"]["IntegrationMappingResponse"][];
+            /**
+             * Total
+             * @description Total number of mappings
+             */
+            total: number;
+        };
+        /**
+         * IntegrationMappingResponse
+         * @description Response model for a single integration mapping.
+         *     GET /api/integrations/{integration_id}/mappings/{mapping_id}
+         */
+        IntegrationMappingResponse: {
+            /**
+             * Id
+             * Format: uuid
+             * @description Mapping ID
+             */
+            id: string;
+            /**
+             * Integration Id
+             * Format: uuid
+             * @description Associated integration ID
+             */
+            integration_id: string;
+            /**
+             * Organization Id
+             * Format: uuid
+             * @description Associated organization ID
+             */
+            organization_id: string;
+            /**
+             * Entity Id
+             * @description External entity ID
+             */
+            entity_id: string;
+            /**
+             * Entity Name
+             * @description Display name for the external entity
+             */
+            entity_name?: string | null;
+            /**
+             * Oauth Token Id
+             * @description Per-organization OAuth token override ID
+             */
+            oauth_token_id?: string | null;
+            /**
+             * Config
+             * @description Per-organization integration configuration
+             */
+            config?: {
+                [key: string]: unknown;
+            } | null;
+            /**
+             * Created At
+             * Format: date-time
+             * @description Creation timestamp
+             */
+            created_at: string;
+            /**
+             * Updated At
+             * Format: date-time
+             * @description Last update timestamp
+             */
+            updated_at: string;
+        };
+        /**
+         * IntegrationMappingUpdate
+         * @description Request model for updating an integration mapping.
+         *     PUT /api/integrations/{integration_id}/mappings/{mapping_id}
+         */
+        IntegrationMappingUpdate: {
+            /**
+             * Entity Id
+             * @description External entity ID
+             */
+            entity_id?: string | null;
+            /**
+             * Entity Name
+             * @description Display name for the external entity
+             */
+            entity_name?: string | null;
+            /**
+             * Oauth Token Id
+             * @description Per-organization OAuth token override
+             */
+            oauth_token_id?: string | null;
+            /**
+             * Config
+             * @description Per-organization integration configuration
+             */
+            config?: {
+                [key: string]: unknown;
+            } | null;
+        };
+        /**
+         * IntegrationResponse
+         * @description Response model for a single integration.
+         *     GET /api/integrations/{integration_id}
+         */
+        IntegrationResponse: {
+            /**
+             * Id
+             * Format: uuid
+             * @description Integration ID
+             */
+            id: string;
+            /**
+             * Name
+             * @description Integration name
+             */
+            name: string;
+            /**
+             * List Entities Data Provider Id
+             * @description Associated data provider ID for listing entities
+             */
+            list_entities_data_provider_id?: string | null;
+            /**
+             * Config Schema
+             * @description Configuration schema for this integration
+             */
+            config_schema?: components["schemas"]["ConfigSchemaItem"][] | null;
+            /**
+             * Entity Id
+             * @description Global entity ID for token URL templating
+             */
+            entity_id?: string | null;
+            /**
+             * Entity Id Name
+             * @description Display name for the global entity ID
+             */
+            entity_id_name?: string | null;
+            /**
+             * Has Oauth Config
+             * @description Whether OAuth configuration is set up for this integration
+             * @default false
+             */
+            has_oauth_config: boolean;
+            /**
+             * Is Deleted
+             * @description Soft delete flag
+             * @default false
+             */
+            is_deleted: boolean;
+            /**
+             * Created At
+             * Format: date-time
+             * @description Creation timestamp
+             */
+            created_at: string;
+            /**
+             * Updated At
+             * Format: date-time
+             * @description Last update timestamp
+             */
+            updated_at: string;
+        };
+        /**
+         * IntegrationUpdate
+         * @description Request model for updating an integration.
+         *     PUT /api/integrations/{integration_id}
+         */
+        IntegrationUpdate: {
+            /**
+             * Name
+             * @description Integration name
+             */
+            name?: string | null;
+            /**
+             * List Entities Data Provider Id
+             * @description Data provider ID for listing entities
+             */
+            list_entities_data_provider_id?: string | null;
+            /**
+             * Config Schema
+             * @description Configuration schema
+             */
+            config_schema?: components["schemas"]["ConfigSchemaItem"][] | null;
+            /**
+             * Entity Id
+             * @description Global entity ID for token URL templating
+             */
+            entity_id?: string | null;
+            /**
+             * Entity Id Name
+             * @description Display name for the global entity ID
+             */
+            entity_id_name?: string | null;
+        };
+        /**
          * LLMConfigRequest
          * @description Request to set LLM configuration.
          */
@@ -6201,6 +7199,28 @@ export interface components {
             token_type: string;
         };
         /**
+         * MaintenanceStatus
+         * @description Current maintenance status of the workspace.
+         */
+        MaintenanceStatus: {
+            /**
+             * Files Needing Ids
+             * @description List of Python files with decorators missing IDs
+             */
+            files_needing_ids?: string[];
+            /**
+             * Total Files
+             * @description Total number of files in workspace
+             * @default 0
+             */
+            total_files: number;
+            /**
+             * Last Reindex
+             * @description Timestamp of last reindex operation
+             */
+            last_reindex?: string | null;
+        };
+        /**
          * MessagePublic
          * @description Message output for API responses.
          */
@@ -6218,6 +7238,11 @@ export interface components {
             tool_call_id?: string | null;
             /** Tool Name */
             tool_name?: string | null;
+            /**
+             * Execution Id
+             * @description Execution ID for tool results (for fetching logs)
+             */
+            execution_id?: string | null;
             /** Token Count Input */
             token_count_input?: number | null;
             /** Token Count Output */
@@ -6325,7 +7350,28 @@ export interface components {
          * @description Status of a notification/operation.
          * @enum {string}
          */
-        NotificationStatus: "pending" | "running" | "completed" | "failed" | "cancelled";
+        NotificationStatus: "pending" | "running" | "awaiting_action" | "completed" | "failed" | "cancelled";
+        /**
+         * OAuthAuthorizeResponse
+         * @description Response model for OAuth authorization URL.
+         */
+        OAuthAuthorizeResponse: {
+            /**
+             * Authorization Url
+             * @description URL to redirect user for authorization
+             */
+            authorization_url: string;
+            /**
+             * State
+             * @description State parameter for CSRF protection
+             */
+            state: string;
+            /**
+             * Message
+             * @default Redirect user to authorization_url to complete OAuth flow
+             */
+            message: string;
+        };
         /**
          * OAuthCallbackResponse
          * @description Response model for OAuth callback endpoint
@@ -6361,6 +7407,123 @@ export interface components {
              * @description Error message displayed to user
              */
             error_message?: string | null;
+        };
+        /**
+         * OAuthConfigResponse
+         * @description Response model for OAuth provider configuration.
+         */
+        OAuthConfigResponse: {
+            /**
+             * Id
+             * Format: uuid
+             * @description OAuth provider ID
+             */
+            id: string;
+            /**
+             * Provider Name
+             * @description Provider name
+             */
+            provider_name: string;
+            /**
+             * Display Name
+             * @description Display name
+             */
+            display_name?: string | null;
+            /**
+             * Oauth Flow Type
+             * @description OAuth flow type (authorization_code or client_credentials)
+             */
+            oauth_flow_type: string;
+            /**
+             * Client Id
+             * @description OAuth client ID
+             */
+            client_id: string;
+            /**
+             * Authorization Url
+             * @description OAuth authorization endpoint URL (only for authorization_code flow)
+             */
+            authorization_url?: string | null;
+            /**
+             * Token Url
+             * @description OAuth token endpoint URL
+             */
+            token_url: string | null;
+            /**
+             * Scopes
+             * @description OAuth scopes
+             */
+            scopes?: string[];
+            /**
+             * Created At
+             * Format: date-time
+             * @description Creation timestamp
+             */
+            created_at: string;
+            /**
+             * Updated At
+             * Format: date-time
+             * @description Last update timestamp
+             */
+            updated_at: string;
+        };
+        /**
+         * OAuthConfigSummary
+         * @description OAuth configuration summary for integration detail response.
+         *     Includes provider config and connection status.
+         */
+        OAuthConfigSummary: {
+            /**
+             * Provider Name
+             * @description OAuth provider name
+             */
+            provider_name: string;
+            /**
+             * Oauth Flow Type
+             * @description OAuth flow type (authorization_code, client_credentials)
+             */
+            oauth_flow_type: string;
+            /**
+             * Client Id
+             * @description OAuth client ID
+             */
+            client_id: string;
+            /**
+             * Authorization Url
+             * @description Authorization URL
+             */
+            authorization_url?: string | null;
+            /**
+             * Token Url
+             * @description Token URL
+             */
+            token_url: string;
+            /**
+             * Scopes
+             * @description OAuth scopes
+             */
+            scopes?: string[];
+            /**
+             * Status
+             * @description Connection status
+             * @default not_connected
+             */
+            status: string;
+            /**
+             * Status Message
+             * @description Status message
+             */
+            status_message?: string | null;
+            /**
+             * Expires At
+             * @description Token expiration time
+             */
+            expires_at?: string | null;
+            /**
+             * Last Refresh At
+             * @description Last token refresh time
+             */
+            last_refresh_at?: string | null;
         };
         /**
          * OAuthConnectionDetail
@@ -6410,6 +7573,11 @@ export interface components {
             status: "not_connected" | "waiting_callback" | "testing" | "connected" | "completed" | "failed";
             /** Status Message */
             status_message?: string | null;
+            /**
+             * Integration Id
+             * @description ID of the integration this OAuth connection belongs to
+             */
+            integration_id?: string | null;
             /** Expires At */
             expires_at?: string | null;
             /** Last Refresh At */
@@ -6428,69 +7596,6 @@ export interface components {
              * Format: date-time
              */
             updated_at: string;
-        };
-        /**
-         * OAuthConnectionListResponse
-         * @description Response for listing OAuth connections.
-         */
-        OAuthConnectionListResponse: {
-            /**
-             * Connections
-             * @description List of OAuth connections
-             */
-            connections: components["schemas"]["OAuthConnectionSummary"][];
-        };
-        /**
-         * OAuthConnectionSummary
-         * @description Summary model for OAuth connections (used in list responses)
-         *     GET /api/oauth/connections
-         *
-         *     Does not include sensitive fields or detailed configuration
-         */
-        OAuthConnectionSummary: {
-            /** Connection Name */
-            connection_name: string;
-            /**
-             * Name
-             * @description Display name for the connection
-             */
-            name?: string | null;
-            /**
-             * Provider
-             * @description Provider identifier (same as connection_name)
-             */
-            provider?: string | null;
-            /** Description */
-            description?: string | null;
-            /**
-             * Oauth Flow Type
-             * @enum {string}
-             */
-            oauth_flow_type: "authorization_code" | "client_credentials" | "refresh_token";
-            /**
-             * Status
-             * @enum {string}
-             */
-            status: "not_connected" | "waiting_callback" | "testing" | "connected" | "completed" | "failed";
-            /** Status Message */
-            status_message?: string | null;
-            /**
-             * Expires At
-             * @description When the current access token expires
-             */
-            expires_at?: string | null;
-            /**
-             * Last Refresh At
-             * @description Last successful token refresh
-             */
-            last_refresh_at?: string | null;
-            /**
-             * Created At
-             * Format: date-time
-             */
-            created_at: string;
-            /** Updated At */
-            updated_at?: string | null;
         };
         /**
          * OAuthCredentialsModel
@@ -6536,6 +7641,11 @@ export interface components {
              * @default
              */
             scopes: string;
+            /**
+             * Integration Id
+             * @description ID of the integration this OAuth connection belongs to
+             */
+            integration_id?: string | null;
         };
         /**
          * OAuthCredentialsResponse
@@ -6553,6 +7663,11 @@ export interface components {
              * @enum {string}
              */
             status: "not_connected" | "waiting_callback" | "testing" | "connected" | "completed" | "failed";
+            /**
+             * Integration Id
+             * @description ID of the integration this OAuth connection belongs to
+             */
+            integration_id?: string | null;
             /**
              * Expires At
              * @description ISO 8601 timestamp when token expires
@@ -6732,6 +7847,188 @@ export interface components {
             updates_available: components["schemas"]["PackageUpdate"][];
             /** Total Count */
             total_count: number;
+        };
+        /**
+         * PasskeyAuthOptionsRequest
+         * @description Request to generate passkey authentication options.
+         */
+        PasskeyAuthOptionsRequest: {
+            /**
+             * Email
+             * @description Optional email to target specific user's credentials. If None, uses discoverable credentials (passkey autofill).
+             */
+            email?: string | null;
+        };
+        /**
+         * PasskeyAuthOptionsResponse
+         * @description Response with WebAuthn authentication options for the browser.
+         */
+        PasskeyAuthOptionsResponse: {
+            /**
+             * Challenge Id
+             * @description Challenge ID to include in the verify request
+             */
+            challenge_id: string;
+            /**
+             * Options
+             * @description WebAuthn authentication options JSON for navigator.credentials.get()
+             */
+            options: {
+                [key: string]: unknown;
+            };
+        };
+        /**
+         * PasskeyAuthVerifyRequest
+         * @description Request to verify passkey authentication.
+         */
+        PasskeyAuthVerifyRequest: {
+            /**
+             * Challenge Id
+             * @description Challenge ID from the options response
+             */
+            challenge_id: string;
+            /**
+             * Credential
+             * @description WebAuthn authentication credential JSON from navigator.credentials.get()
+             */
+            credential: {
+                [key: string]: unknown;
+            };
+        };
+        /**
+         * PasskeyDeleteResponse
+         * @description Response after deleting a passkey.
+         */
+        PasskeyDeleteResponse: {
+            /**
+             * Deleted
+             * @description Whether the passkey was deleted
+             */
+            deleted: boolean;
+            /**
+             * Passkey Id
+             * Format: uuid
+             * @description ID of the deleted passkey
+             */
+            passkey_id: string;
+        };
+        /**
+         * PasskeyListResponse
+         * @description Response with list of user's passkeys.
+         */
+        PasskeyListResponse: {
+            /**
+             * Passkeys
+             * @description List of user's passkeys
+             */
+            passkeys: components["schemas"]["PasskeyPublic"][];
+            /**
+             * Count
+             * @description Total number of passkeys
+             */
+            count: number;
+        };
+        /**
+         * PasskeyPublic
+         * @description Public representation of a user's passkey.
+         */
+        PasskeyPublic: {
+            /**
+             * Id
+             * Format: uuid
+             * @description Passkey ID
+             */
+            id: string;
+            /**
+             * Name
+             * @description User-friendly name for the passkey
+             */
+            name: string;
+            /**
+             * Device Type
+             * @description Device type: 'singleDevice' or 'multiDevice'
+             */
+            device_type: string;
+            /**
+             * Backed Up
+             * @description Whether the passkey is synced to cloud (iCloud Keychain, Google Password Manager, etc.)
+             */
+            backed_up: boolean;
+            /**
+             * Created At
+             * Format: date-time
+             * @description When the passkey was registered
+             */
+            created_at: string;
+            /**
+             * Last Used At
+             * @description When the passkey was last used for authentication
+             */
+            last_used_at: string | null;
+        };
+        /**
+         * PasskeyRegistrationOptionsRequest
+         * @description Request to generate passkey registration options.
+         */
+        PasskeyRegistrationOptionsRequest: {
+            /**
+             * Device Name
+             * @description Optional friendly name for the passkey (e.g., 'MacBook Pro Touch ID')
+             */
+            device_name?: string | null;
+        };
+        /**
+         * PasskeyRegistrationOptionsResponse
+         * @description Response with WebAuthn registration options for the browser.
+         */
+        PasskeyRegistrationOptionsResponse: {
+            /**
+             * Options
+             * @description WebAuthn registration options JSON for navigator.credentials.create()
+             */
+            options: {
+                [key: string]: unknown;
+            };
+        };
+        /**
+         * PasskeyRegistrationVerifyRequest
+         * @description Request to verify passkey registration.
+         */
+        PasskeyRegistrationVerifyRequest: {
+            /**
+             * Credential
+             * @description WebAuthn registration credential JSON from navigator.credentials.create()
+             */
+            credential: {
+                [key: string]: unknown;
+            };
+            /**
+             * Device Name
+             * @description Optional friendly name for the passkey
+             */
+            device_name?: string | null;
+        };
+        /**
+         * PasskeyRegistrationVerifyResponse
+         * @description Response after successful passkey registration.
+         */
+        PasskeyRegistrationVerifyResponse: {
+            /**
+             * Verified
+             * @description Whether registration was successful
+             */
+            verified: boolean;
+            /**
+             * Passkey Id
+             * Format: uuid
+             * @description ID of the newly created passkey
+             */
+            passkey_id: string;
+            /**
+             * Name
+             * @description Name of the passkey
+             */
+            name: string;
         };
         /**
          * PasswordChange
@@ -7037,6 +8334,56 @@ export interface components {
             mfa_code: string;
         };
         /**
+         * ReindexRequest
+         * @description Request to start a workspace reindex operation.
+         */
+        ReindexRequest: {
+            /**
+             * Inject Ids
+             * @description Whether to inject IDs into decorators that don't have them
+             * @default true
+             */
+            inject_ids: boolean;
+            /**
+             * Notification Id
+             * @description Optional notification ID to update with progress
+             */
+            notification_id?: string | null;
+        };
+        /**
+         * ReindexResponse
+         * @description Response from starting or completing a reindex operation.
+         */
+        ReindexResponse: {
+            /**
+             * Status
+             * @description Operation status: started, completed, failed
+             */
+            status: string;
+            /**
+             * Files Indexed
+             * @description Number of files indexed
+             * @default 0
+             */
+            files_indexed: number;
+            /**
+             * Files Needing Ids
+             * @description Files that needed ID injection (for detection mode)
+             */
+            files_needing_ids?: string[];
+            /**
+             * Ids Injected
+             * @description Number of files that had IDs injected (for inject mode)
+             * @default 0
+             */
+            ids_injected: number;
+            /**
+             * Message
+             * @description Human-readable status message
+             */
+            message?: string | null;
+        };
+        /**
          * ResourceMetricsEntry
          * @description Resource usage metrics for a time period.
          */
@@ -7188,6 +8535,115 @@ export interface components {
              * @description List of user IDs assigned to the role
              */
             user_ids: string[];
+        };
+        /**
+         * SDKIntegrationsGetRequest
+         * @description Request to get integration configuration via SDK.
+         */
+        SDKIntegrationsGetRequest: {
+            /**
+             * Name
+             * @description Integration name
+             */
+            name: string;
+            /**
+             * Org Id
+             * @description Organization ID (optional, uses context default)
+             */
+            org_id?: string | null;
+        };
+        /**
+         * SDKIntegrationsGetResponse
+         * @description Integration data response from SDK.
+         */
+        SDKIntegrationsGetResponse: {
+            /**
+             * Integration Id
+             * @description Integration UUID
+             */
+            integration_id: string;
+            /**
+             * Entity Id
+             * @description Mapped external entity ID (e.g., tenant ID)
+             */
+            entity_id: string;
+            /**
+             * Entity Name
+             * @description Display name for the mapped entity
+             */
+            entity_name?: string | null;
+            /**
+             * Config
+             * @description Merged configuration (schema defaults + org overrides)
+             */
+            config?: {
+                [key: string]: unknown;
+            };
+            /**
+             * Oauth Client Id
+             * @description OAuth client ID
+             */
+            oauth_client_id?: string | null;
+            /**
+             * Oauth Token Url
+             * @description OAuth token URL (with {entity_id} resolved)
+             */
+            oauth_token_url?: string | null;
+            /**
+             * Oauth Scopes
+             * @description OAuth scopes (space-separated or None)
+             */
+            oauth_scopes?: string | null;
+        };
+        /**
+         * SDKIntegrationsListMappingsRequest
+         * @description Request to list integration mappings via SDK.
+         */
+        SDKIntegrationsListMappingsRequest: {
+            /**
+             * Name
+             * @description Integration name
+             */
+            name: string;
+        };
+        /**
+         * SDKIntegrationsListMappingsResponse
+         * @description Response for listing integration mappings.
+         */
+        SDKIntegrationsListMappingsResponse: {
+            /**
+             * Items
+             * @description List of mappings
+             */
+            items: components["schemas"]["SDKIntegrationsMappingItem"][];
+        };
+        /**
+         * SDKIntegrationsMappingItem
+         * @description Single integration mapping in list response.
+         */
+        SDKIntegrationsMappingItem: {
+            /**
+             * Organization Id
+             * @description Organization UUID
+             */
+            organization_id: string;
+            /**
+             * Entity Id
+             * @description External entity ID
+             */
+            entity_id: string;
+            /**
+             * Entity Name
+             * @description Display name
+             */
+            entity_name?: string | null;
+            /**
+             * Config
+             * @description Organization-specific config
+             */
+            config?: {
+                [key: string]: unknown;
+            } | null;
         };
         /**
          * ScheduleMetadata
@@ -7585,10 +9041,66 @@ export interface components {
             /** Token Url */
             token_url?: string | null;
             /**
+             * Token Url Defaults
+             * @description Default values for token_url placeholders
+             */
+            token_url_defaults?: {
+                [key: string]: string;
+            } | null;
+            /**
              * Scopes
              * @description List of OAuth scopes
              */
             scopes?: string[] | null;
+        };
+        /**
+         * UpdatePropertiesRequest
+         * @description Request to update properties on a decorator.
+         */
+        UpdatePropertiesRequest: {
+            /**
+             * Path
+             * @description File path
+             */
+            path: string;
+            /**
+             * Function Name
+             * @description Target function name
+             */
+            function_name: string;
+            /**
+             * Properties
+             * @description Properties to set/update
+             */
+            properties: {
+                [key: string]: unknown;
+            };
+            /**
+             * Expected Etag
+             * @description ETag for optimistic concurrency control with Monaco editor
+             */
+            expected_etag?: string | null;
+        };
+        /**
+         * UpdatePropertiesResponse
+         * @description Response after updating decorator properties.
+         */
+        UpdatePropertiesResponse: {
+            /**
+             * Modified
+             * @description Whether any changes were made
+             */
+            modified: boolean;
+            /**
+             * Changes
+             * @description Human-readable list of changes made
+             */
+            changes: string[];
+            /**
+             * New Etag
+             * @description New ETag after modification
+             */
+            new_etag: string;
         };
         /**
          * UploadLockInfo
@@ -8241,11 +9753,10 @@ export interface components {
             default_value?: unknown | null;
             /** Description */
             description?: string | null;
-            /**
-             * Options
-             * @description For Literal types - dropdown options
-             */
-            options?: { label: string; value: string }[] | null;
+            /** Options */
+            options?: {
+                [key: string]: string;
+            }[] | null;
         };
         /**
          * WorkflowValidationRequest
@@ -9166,6 +10677,189 @@ export interface operations {
                     "application/json": {
                         [key: string]: unknown;
                     };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_registration_options_auth_passkeys_register_options_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PasskeyRegistrationOptionsRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PasskeyRegistrationOptionsResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    verify_registration_auth_passkeys_register_verify_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PasskeyRegistrationVerifyRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PasskeyRegistrationVerifyResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_authentication_options_auth_passkeys_authenticate_options_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PasskeyAuthOptionsRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PasskeyAuthOptionsResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    verify_authentication_auth_passkeys_authenticate_verify_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PasskeyAuthVerifyRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LoginResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_passkeys_auth_passkeys_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PasskeyListResponse"];
+                };
+            };
+        };
+    };
+    delete_passkey_auth_passkeys__passkey_id__delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                passkey_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PasskeyDeleteResponse"];
                 };
             };
             /** @description Validation Error */
@@ -10736,6 +12430,41 @@ export interface operations {
             };
         };
     };
+    invoke_data_provider_api_data_providers__provider_id__invoke_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                provider_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["DataProviderInvokeRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DataProviderInvokeResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     get_branding_api_branding_get: {
         parameters: {
             query?: never;
@@ -11032,7 +12761,10 @@ export interface operations {
     };
     put_file_content_api_editor_files_content_put: {
         parameters: {
-            query?: never;
+            query?: {
+                /** @description If true, inject IDs into decorators. If false (default), detect if IDs needed and return needs_indexing=true. */
+                index?: boolean;
+            };
             header?: never;
             path?: never;
             cookie?: never;
@@ -11050,6 +12782,15 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["FileContentResponse"];
+                };
+            };
+            /** @description File conflict - content was modified or file was deleted */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["FileConflictResponse"];
                 };
             };
             /** @description Validation Error */
@@ -12169,59 +13910,6 @@ export interface operations {
             };
         };
     };
-    list_connections_api_oauth_connections_get: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["OAuthConnectionListResponse"];
-                };
-            };
-        };
-    };
-    create_connection_api_oauth_connections_post: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["CreateOAuthConnectionRequest"];
-            };
-        };
-        responses: {
-            /** @description Successful Response */
-            201: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["OAuthConnectionDetail"];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
     get_connection_api_oauth_connections__connection_name__get: {
         parameters: {
             query?: never;
@@ -12305,6 +13993,39 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    create_connection_api_oauth_connections_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CreateOAuthConnectionRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OAuthConnectionDetail"];
+                };
             };
             /** @description Validation Error */
             422: {
@@ -12519,7 +14240,7 @@ export interface operations {
             };
         };
     };
-    execute_endpoint_api_endpoints__workflow_name__get: {
+    execute_endpoint_api_endpoints__workflow_name__post: {
         parameters: {
             query?: never;
             header: {
@@ -12552,7 +14273,7 @@ export interface operations {
             };
         };
     };
-    execute_endpoint_api_endpoints__workflow_name__get: {
+    execute_endpoint_api_endpoints__workflow_name__post: {
         parameters: {
             query?: never;
             header: {
@@ -12585,7 +14306,7 @@ export interface operations {
             };
         };
     };
-    execute_endpoint_api_endpoints__workflow_name__get: {
+    execute_endpoint_api_endpoints__workflow_name__post: {
         parameters: {
             query?: never;
             header: {
@@ -12618,7 +14339,7 @@ export interface operations {
             };
         };
     };
-    execute_endpoint_api_endpoints__workflow_name__get: {
+    execute_endpoint_api_endpoints__workflow_name__post: {
         parameters: {
             query?: never;
             header: {
@@ -13126,6 +14847,76 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["CLIOAuthGetResponse"] | null;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    sdk_integrations_get_api_cli_integrations_get_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SDKIntegrationsGetRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SDKIntegrationsGetResponse"] | null;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    sdk_integrations_list_mappings_api_cli_integrations_list_mappings_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SDKIntegrationsListMappingsRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SDKIntegrationsListMappingsResponse"] | null;
                 };
             };
             /** @description Validation Error */
@@ -14425,6 +16216,598 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["LLMModelsResponse"];
+                };
+            };
+        };
+    };
+    list_integrations_api_integrations_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["IntegrationListResponse"];
+                };
+            };
+        };
+    };
+    create_integration_api_integrations_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["IntegrationCreate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["IntegrationResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_integration_api_integrations__integration_id__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                integration_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["IntegrationDetailResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    update_integration_api_integrations__integration_id__put: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                integration_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["IntegrationUpdate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["IntegrationResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    delete_integration_api_integrations__integration_id__delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                integration_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_integration_by_name_api_integrations_by_name__name__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                name: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["IntegrationResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_mappings_api_integrations__integration_id__mappings_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                integration_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["IntegrationMappingListResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    create_mapping_api_integrations__integration_id__mappings_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                integration_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["IntegrationMappingCreate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["IntegrationMappingResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_mapping_api_integrations__integration_id__mappings__mapping_id__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                integration_id: string;
+                mapping_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["IntegrationMappingResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    update_mapping_api_integrations__integration_id__mappings__mapping_id__put: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                integration_id: string;
+                mapping_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["IntegrationMappingUpdate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["IntegrationMappingResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    delete_mapping_api_integrations__integration_id__mappings__mapping_id__delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                integration_id: string;
+                mapping_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_mapping_by_org_api_integrations__integration_id__mappings_by_org__org_id__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                integration_id: string;
+                org_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["IntegrationMappingResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_oauth_config_api_integrations__integration_id__oauth_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                integration_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OAuthConfigResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_oauth_authorization_url_api_integrations__integration_id__oauth_authorize_get: {
+        parameters: {
+            query: {
+                /** @description Frontend callback URL for OAuth redirect */
+                redirect_uri: string;
+            };
+            header?: never;
+            path: {
+                integration_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OAuthAuthorizeResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_integration_sdk_data_api_integrations_sdk__name__get: {
+        parameters: {
+            query: {
+                /** @description Organization ID for resolving mapping */
+                org_id: string;
+            };
+            header?: never;
+            path: {
+                name: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["IntegrationData"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_decorator_properties_api_decorator_properties_get: {
+        parameters: {
+            query: {
+                /** @description File path relative to workspace root */
+                path: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DecoratorPropertiesResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    update_decorator_properties_api_decorator_properties_put: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["UpdatePropertiesRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["UpdatePropertiesResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_maintenance_status_api_maintenance_status_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MaintenanceStatus"];
+                };
+            };
+        };
+    };
+    run_reindex_api_maintenance_reindex_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ReindexRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ReindexResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
                 };
             };
         };

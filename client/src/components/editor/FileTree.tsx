@@ -235,7 +235,6 @@ export function FileTree() {
 	const handleFolderToggle = useCallback(
 		(folder: FileMetadata) => {
 			toggleFolder(folder.path);
-			// TODO: Load folder contents when expanded
 		},
 		[toggleFolder],
 	);

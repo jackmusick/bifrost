@@ -13,6 +13,7 @@ import { toast } from "sonner";
 type FormCreate = components["schemas"]["FormCreate"];
 type FormUpdate = components["schemas"]["FormUpdate"];
 type FormPublic = components["schemas"]["FormPublic"];
+type FormStartupResponse = components["schemas"]["FormStartupResponse"];
 
 /** Helper to extract error message from API error response */
 function getErrorMessage(error: unknown, fallback: string): string {
@@ -95,6 +96,27 @@ export async function submitForm(
 		throw new Error(getErrorMessage(error, "Failed to submit form"));
 	}
 	return data as FormExecutionResponse;
+}
+
+/**
+ * Execute form startup workflow
+ * Runs the launch workflow before the form is displayed to populate initial context
+ */
+export async function executeFormStartup(
+	formId: string,
+	inputData: Record<string, unknown> = {},
+): Promise<FormStartupResponse> {
+	const { data, error } = await apiClient.POST(
+		"/api/forms/{form_id}/startup",
+		{
+			params: { path: { form_id: formId } },
+			body: inputData,
+		},
+	);
+	if (error || !data) {
+		throw new Error(getErrorMessage(error, "Failed to execute startup workflow"));
+	}
+	return data;
 }
 
 /**

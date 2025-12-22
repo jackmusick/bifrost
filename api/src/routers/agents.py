@@ -109,6 +109,7 @@ async def _write_agent_to_file(
         path=file_path,
         content=json.dumps(agent_data, indent=2).encode("utf-8"),
     )
+    # Result not used - agent JSON files don't need ID injection
 
     return file_path
 

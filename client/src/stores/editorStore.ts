@@ -76,6 +76,10 @@ interface EditorState {
 	activeTabIndex: number;
 	isLoadingFile: boolean;
 
+	// Indexing state (blocks editor during ID injection)
+	isIndexing: boolean;
+	indexingMessage: string | null;
+
 	// Layout state
 	sidebarPanel: SidebarPanel;
 	terminalHeight: number;
@@ -143,6 +147,16 @@ interface EditorState {
 	appendTerminalOutput: (result: Omit<ExecutionResult, "timestamp">) => void;
 	clearTerminalOutput: () => void;
 	setCurrentStreamingExecutionId: (executionId: string | null) => void;
+
+	// Indexing state (blocks editor during ID injection)
+	setIndexing: (isIndexing: boolean, message?: string | null) => void;
+
+	// Update tab content from server (for ID injection)
+	updateTabContent: (
+		tabIndex: number,
+		content: string,
+		etag: string,
+	) => void;
 }
 
 export const useEditorStore = create<EditorState>()(
@@ -155,6 +169,10 @@ export const useEditorStore = create<EditorState>()(
 			tabs: [],
 			activeTabIndex: -1,
 			isLoadingFile: false,
+
+			// Indexing state (blocks editor during ID injection)
+			isIndexing: false,
+			indexingMessage: null,
 
 			sidebarPanel: "files",
 			terminalHeight: 300,
@@ -556,6 +574,29 @@ export const useEditorStore = create<EditorState>()(
 
 			setCurrentStreamingExecutionId: (executionId) =>
 				set({ currentStreamingExecutionId: executionId }),
+
+			// Indexing state (blocks editor during ID injection)
+			setIndexing: (isIndexing, message = null) =>
+				set({ isIndexing, indexingMessage: message }),
+
+			// Update tab content from server (for ID injection)
+			updateTabContent: (tabIndex, content, etag) => {
+				const state = get();
+				if (tabIndex < 0 || tabIndex >= state.tabs.length) return;
+
+				const newTabs = [...state.tabs];
+				const tab = newTabs[tabIndex];
+				if (tab) {
+					newTabs[tabIndex] = {
+						...tab,
+						content,
+						etag,
+						unsavedChanges: false,
+						saveState: "saved",
+					};
+					set({ tabs: newTabs });
+				}
+			},
 
 			// Update tab path after file/folder rename
 			updateTabPath: (oldPath, newPath) => {

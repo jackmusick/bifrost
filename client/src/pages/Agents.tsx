@@ -41,13 +41,13 @@ import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 import {
-	Table,
-	TableBody,
-	TableCell,
-	TableHead,
-	TableHeader,
-	TableRow,
-} from "@/components/ui/table";
+	DataTable,
+	DataTableBody,
+	DataTableCell,
+	DataTableHead,
+	DataTableHeader,
+	DataTableRow,
+} from "@/components/ui/data-table";
 import {
 	useAgents,
 	useDeleteAgent,
@@ -127,7 +127,7 @@ export function Agents() {
 	};
 
 	return (
-		<div className="space-y-6">
+		<div className="h-[calc(100vh-8rem)] flex flex-col space-y-6">
 			{/* Header */}
 			<div className="flex items-center justify-between">
 				<div>
@@ -294,30 +294,30 @@ export function Agents() {
 					</div>
 				) : (
 					// Table View
-					<div className="border rounded-lg">
-						<Table>
-							<TableHeader>
-								<TableRow>
-									<TableHead>Name</TableHead>
-									<TableHead>Description</TableHead>
-									<TableHead>Channels</TableHead>
-									<TableHead>Status</TableHead>
-									<TableHead className="text-right">Actions</TableHead>
-								</TableRow>
-							</TableHeader>
-							<TableBody>
+					<div className="flex-1 min-h-0">
+						<DataTable className="max-h-full">
+						<DataTableHeader>
+							<DataTableRow>
+								<DataTableHead>Name</DataTableHead>
+								<DataTableHead>Description</DataTableHead>
+								<DataTableHead>Channels</DataTableHead>
+								<DataTableHead>Status</DataTableHead>
+								<DataTableHead className="text-right">Actions</DataTableHead>
+							</DataTableRow>
+						</DataTableHeader>
+							<DataTableBody>
 								{filteredAgents.map((agent) => (
-									<TableRow key={agent.id}>
-										<TableCell className="font-medium">
+									<DataTableRow key={agent.id}>
+										<DataTableCell className="font-medium">
 											<div className="flex items-center gap-2">
 												<Bot className="h-4 w-4 text-muted-foreground" />
 												{agent.name}
 											</div>
-										</TableCell>
-										<TableCell className="max-w-xs truncate text-muted-foreground">
+										</DataTableCell>
+										<DataTableCell className="max-w-xs truncate text-muted-foreground">
 											{agent.description || "No description"}
-										</TableCell>
-										<TableCell>
+										</DataTableCell>
+										<DataTableCell>
 											<div className="flex flex-wrap gap-1">
 												{agent.channels?.map((channel) => (
 													<Badge
@@ -329,15 +329,15 @@ export function Agents() {
 													</Badge>
 												))}
 											</div>
-										</TableCell>
-										<TableCell>
+										</DataTableCell>
+										<DataTableCell>
 											<Switch
 												checked={agent.is_active}
 												onCheckedChange={() => handleToggleActive(agent)}
 												disabled={updateAgent.isPending}
 											/>
-										</TableCell>
-										<TableCell className="text-right">
+										</DataTableCell>
+										<DataTableCell className="text-right">
 											<div className="flex justify-end gap-2">
 												<Button
 													variant="ghost"
@@ -354,11 +354,11 @@ export function Agents() {
 													<Trash2 className="h-4 w-4" />
 												</Button>
 											</div>
-										</TableCell>
-									</TableRow>
+										</DataTableCell>
+									</DataTableRow>
 								))}
-							</TableBody>
-						</Table>
+							</DataTableBody>
+						</DataTable>
 					</div>
 				)
 			) : (

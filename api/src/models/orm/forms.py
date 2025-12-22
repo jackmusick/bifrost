@@ -44,7 +44,9 @@ class FormField(Base):
     options: Mapped[dict | None] = mapped_column(JSONB, default=None)
 
     # For data provider integration
-    data_provider: Mapped[str | None] = mapped_column(String(100), default=None)
+    data_provider_id: Mapped[UUID | None] = mapped_column(
+        ForeignKey("data_providers.id", ondelete="SET NULL"), default=None
+    )
     data_provider_inputs: Mapped[dict | None] = mapped_column(JSONB, default=None)
 
     # Advanced features

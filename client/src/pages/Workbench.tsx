@@ -84,7 +84,7 @@ export function Workbench() {
 			// Track latest execution (use functional update to avoid stale closure)
 			setCurrentExecutionId((current) => {
 				if (current) return current; // Already set, don't override
-				if (data.executions.length > 0) return data.executions[0].id;
+				if (data.executions && data.executions.length > 0) return data.executions[0].id;
 				return null;
 			});
 		} catch (err) {
@@ -115,7 +115,7 @@ export function Workbench() {
 				if (update.state) {
 					setSession(update.state);
 					// Update current execution if new one started
-					if (update.state.executions?.length > 0) {
+					if (update.state.executions && update.state.executions.length > 0) {
 						const latestExecution = update.state.executions[0];
 						// Only auto-switch if the new execution is running/pending
 						if (

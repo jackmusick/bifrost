@@ -38,13 +38,13 @@ import {
 	type CLISessionResponse,
 } from "@/services/cli";
 import {
-	Table,
-	TableBody,
-	TableCell,
-	TableHead,
-	TableHeader,
-	TableRow,
-} from "@/components/ui/table";
+	DataTable,
+	DataTableBody,
+	DataTableCell,
+	DataTableHead,
+	DataTableHeader,
+	DataTableRow,
+} from "@/components/ui/data-table";
 import {
 	AlertDialog,
 	AlertDialogAction,
@@ -199,21 +199,21 @@ bifrost run my_workflows.py --workflow onboard_user`}
 				</Button>
 			</CardHeader>
 			<CardContent>
-				<Table>
-					<TableHeader>
-						<TableRow>
-							<TableHead>File</TableHead>
-							<TableHead>Workflows</TableHead>
-							<TableHead>Executions</TableHead>
-							<TableHead>Status</TableHead>
-							<TableHead>Created</TableHead>
-							<TableHead className="w-[100px]">Actions</TableHead>
-						</TableRow>
-					</TableHeader>
-					<TableBody>
+				<DataTable>
+					<DataTableHeader>
+						<DataTableRow>
+							<DataTableHead>File</DataTableHead>
+							<DataTableHead>Workflows</DataTableHead>
+							<DataTableHead>Executions</DataTableHead>
+							<DataTableHead>Status</DataTableHead>
+							<DataTableHead>Created</DataTableHead>
+							<DataTableHead className="w-[100px]">Actions</DataTableHead>
+						</DataTableRow>
+					</DataTableHeader>
+					<DataTableBody>
 						{sessions.map((session) => (
-							<TableRow key={session.id}>
-								<TableCell>
+							<DataTableRow key={session.id}>
+								<DataTableCell>
 									<Link
 										to={`/cli/${session.id}`}
 										className="font-mono text-sm hover:underline text-primary"
@@ -223,8 +223,8 @@ bifrost run my_workflows.py --workflow onboard_user`}
 									<p className="text-xs text-muted-foreground truncate max-w-[200px]">
 										{session.file_path}
 									</p>
-								</TableCell>
-								<TableCell>
+								</DataTableCell>
+								<DataTableCell>
 									<div className="flex flex-wrap gap-1">
 										{session.workflows
 											.slice(0, 3)
@@ -246,13 +246,13 @@ bifrost run my_workflows.py --workflow onboard_user`}
 											</Badge>
 										)}
 									</div>
-								</TableCell>
-								<TableCell>
+								</DataTableCell>
+								<DataTableCell>
 									<Badge variant="outline">
-										{session.executions.length}
+										{session.executions?.length ?? 0}
 									</Badge>
-								</TableCell>
-								<TableCell>
+								</DataTableCell>
+								<DataTableCell>
 									{session.is_connected ? (
 										<Badge
 											variant="default"
@@ -267,16 +267,16 @@ bifrost run my_workflows.py --workflow onboard_user`}
 											Disconnected
 										</Badge>
 									)}
-								</TableCell>
-								<TableCell className="text-sm text-muted-foreground">
+								</DataTableCell>
+								<DataTableCell className="text-sm text-muted-foreground">
 									<div className="flex items-center gap-1">
 										<Clock className="h-3 w-3" />
 										{new Date(
 											session.created_at,
 										).toLocaleString()}
 									</div>
-								</TableCell>
-								<TableCell>
+								</DataTableCell>
+								<DataTableCell>
 									<div className="flex items-center gap-2">
 										<Button
 											variant="ghost"
@@ -334,11 +334,11 @@ bifrost run my_workflows.py --workflow onboard_user`}
 											</AlertDialogContent>
 										</AlertDialog>
 									</div>
-								</TableCell>
-							</TableRow>
+								</DataTableCell>
+							</DataTableRow>
 						))}
-					</TableBody>
-				</Table>
+					</DataTableBody>
+				</DataTable>
 			</CardContent>
 		</Card>
 	);

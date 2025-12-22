@@ -70,6 +70,14 @@ const OAuthConnections = lazy(() =>
 const OAuthCallback = lazy(() =>
 	import("@/pages/OAuthCallback").then((m) => ({ default: m.OAuthCallback })),
 );
+const Integrations = lazy(() =>
+	import("@/pages/Integrations").then((m) => ({ default: m.Integrations })),
+);
+const IntegrationDetail = lazy(() =>
+	import("@/pages/IntegrationDetail").then((m) => ({
+		default: m.IntegrationDetail,
+	})),
+);
 const Docs = lazy(() =>
 	import("@/pages/Docs").then((m) => ({ default: m.Docs })),
 );
@@ -285,6 +293,24 @@ function AppRoutes() {
 							element={
 								<ProtectedRoute requirePlatformAdmin>
 									<OAuthConnections />
+								</ProtectedRoute>
+							}
+						/>
+
+						{/* Integrations - PlatformAdmin only */}
+						<Route
+							path="integrations"
+							element={
+								<ProtectedRoute requirePlatformAdmin>
+									<Integrations />
+								</ProtectedRoute>
+							}
+						/>
+						<Route
+							path="integrations/:id"
+							element={
+								<ProtectedRoute requirePlatformAdmin>
+									<IntegrationDetail />
 								</ProtectedRoute>
 							}
 						/>

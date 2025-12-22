@@ -351,6 +351,40 @@ from src.models.contracts.llm import (
     LLMTestResponse,
 )
 
+# Integrations
+from src.models.contracts.integrations import (
+    ConfigSchemaItem,
+    ConfigItemType,
+    IntegrationCreate,
+    IntegrationUpdate,
+    IntegrationResponse,
+    IntegrationDetailResponse,
+    IntegrationListResponse,
+    IntegrationMappingCreate,
+    IntegrationMappingUpdate,
+    IntegrationMappingResponse,
+    IntegrationMappingListResponse,
+    IntegrationData,
+    OAuthConfigSummary,
+)
+
+# Decorator Properties
+from src.models.contracts.decorators import (
+    DecoratorInfo,
+    DecoratorPropertiesResponse,
+    DecoratorType,
+    UpdatePropertiesRequest,
+    UpdatePropertiesResponse,
+)
+
+# Maintenance
+from src.models.contracts.maintenance import (
+    MaintenanceStatus,
+    ReindexProgress,
+    ReindexRequest,
+    ReindexResponse,
+)
+
 __all__ = [
     # Re-export everything defined above
     # NOTE: Bare names like User, Organization, Role, Form, Config, ExecutionLog
@@ -632,4 +666,29 @@ __all__ = [
     "LLMTestRequest",
     "LLMTestResponse",
     "LLMModelsResponse",
+    # Integrations
+    "ConfigItemType",
+    "ConfigSchemaItem",
+    "IntegrationCreate",
+    "IntegrationUpdate",
+    "IntegrationResponse",
+    "IntegrationDetailResponse",
+    "IntegrationListResponse",
+    "IntegrationMappingCreate",
+    "IntegrationMappingUpdate",
+    "IntegrationMappingResponse",
+    "IntegrationMappingListResponse",
+    "IntegrationData",
+    "OAuthConfigSummary",
+    # Decorator Properties
+    "DecoratorType",
+    "DecoratorInfo",
+    "DecoratorPropertiesResponse",
+    "UpdatePropertiesRequest",
+    "UpdatePropertiesResponse",
+    # Maintenance
+    "MaintenanceStatus",
+    "ReindexRequest",
+    "ReindexProgress",
+    "ReindexResponse",
 ]

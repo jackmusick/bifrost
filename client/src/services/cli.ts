@@ -2,10 +2,6 @@
  * CLI Sessions service for CLI<->Web workflow execution communication
  *
  * Replaces local-runner.ts with session-based API endpoints.
- *
- * TODO: Once types are regenerated, replace manual interfaces with:
- * export type CLISessionResponse = components["schemas"]["CLISessionResponse"];
- * etc.
  */
 
 import { authFetch } from "@/lib/api-client";
@@ -13,51 +9,12 @@ import type { components } from "@/lib/v1";
 
 // Re-export types from generated API
 export type WorkflowParameter = components["schemas"]["WorkflowParameter"];
-
-// Manual type definitions until types are regenerated
-// These match the Pydantic models in api/src/models/contracts/cli.py
-export interface CLIRegisteredWorkflow {
-	name: string;
-	description: string;
-	parameters: WorkflowParameter[];
-}
-
-export interface CLISessionExecutionSummary {
-	id: string;
-	workflow_name: string;
-	status: string;
-	created_at: string;
-	duration_ms: number | null;
-}
-
-export interface CLISessionResponse {
-	id: string;
-	user_id: string;
-	file_path: string;
-	workflows: CLIRegisteredWorkflow[];
-	selected_workflow: string | null;
-	params: Record<string, unknown> | null;
-	pending: boolean;
-	last_seen: string | null;
-	created_at: string;
-	is_connected: boolean;
-	executions: CLISessionExecutionSummary[];
-}
-
-export interface CLISessionListResponse {
-	sessions: CLISessionResponse[];
-}
-
-export interface CLISessionContinueRequest {
-	workflow_name: string;
-	params: Record<string, unknown>;
-}
-
-export interface CLISessionContinueResponse {
-	status: string;
-	execution_id: string;
-	workflow: string;
-}
+export type CLIRegisteredWorkflow = components["schemas"]["CLIRegisteredWorkflow"];
+export type CLISessionExecutionSummary = components["schemas"]["CLISessionExecutionSummary"];
+export type CLISessionResponse = components["schemas"]["CLISessionResponse"];
+export type CLISessionListResponse = components["schemas"]["CLISessionListResponse"];
+export type CLISessionContinueRequest = components["schemas"]["CLISessionContinueRequest"];
+export type CLISessionContinueResponse = components["schemas"]["CLISessionContinueResponse"];
 
 /**
  * Get list of all CLI sessions for current user

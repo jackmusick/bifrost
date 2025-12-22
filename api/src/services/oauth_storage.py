@@ -106,6 +106,7 @@ class OAuthStorageService:
                 client_id=request.client_id,
                 encrypted_client_secret=encrypted_secret,
                 scopes=request.scopes.split(",") if request.scopes else [],
+                token_url_defaults=request.token_url_defaults or {},
                 provider_metadata={
                     "authorization_url": request.authorization_url,
                     "token_url": request.token_url,
@@ -165,6 +166,36 @@ class OAuthStorageService:
                 return self._to_connection_model(provider)
             return None
 
+    async def get_by_integration_id(
+        self,
+        integration_id: str | UUID
+    ) -> OAuthConnection | None:
+        """
+        Get OAuth connection by integration ID.
+
+        Args:
+            integration_id: UUID of the integration
+
+        Returns:
+            OAuthConnection or None if not found
+        """
+        from sqlalchemy import select
+        from src.models import OAuthProvider
+
+        async with self._get_session_context() as db:
+            integration_uuid = UUID(integration_id) if isinstance(integration_id, str) else integration_id
+
+            query = select(OAuthProvider).where(
+                OAuthProvider.integration_id == integration_uuid
+            )
+
+            result = await db.execute(query)
+            provider = result.scalars().first()
+
+            if provider:
+                return self._to_connection_model(provider)
+            return None
+
     async def update_connection(
         self,
         org_id: str | None,
@@ -216,6 +247,10 @@ class OAuthStorageService:
                 metadata["token_url"] = request.token_url
             metadata["updated_by"] = updated_by
             provider.provider_metadata = metadata
+
+            # Update token_url_defaults if provided
+            if request.token_url_defaults is not None:
+                provider.token_url_defaults = request.token_url_defaults
 
             await db.commit()
             await db.refresh(provider)
@@ -450,6 +485,7 @@ class OAuthStorageService:
             oauth_response_config_key=f"oauth_{provider.provider_name}_oauth_response",
             authorization_url=metadata.get("authorization_url"),
             token_url=metadata.get("token_url", "https://oauth.example.com/token"),
+            token_url_defaults=provider.token_url_defaults or {},
             scopes=",".join(provider.scopes) if provider.scopes else "",
             redirect_uri=metadata.get("redirect_uri", f"/oauth/callback/{provider.provider_name}"),
             expires_at=None,
