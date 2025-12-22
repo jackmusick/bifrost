@@ -131,7 +131,7 @@ async def get_installed_packages() -> list[InstalledPackage]:
 )
 async def list_packages(
     ctx: Context,
-    user: CurrentActiveUser,
+    user: CurrentSuperuser,
 ) -> InstalledPackagesResponse:
     """
     List all installed Python packages.
@@ -163,7 +163,7 @@ async def list_packages(
 )
 async def check_updates(
     ctx: Context,
-    user: CurrentActiveUser,
+    user: CurrentSuperuser,
 ) -> PackageUpdatesResponse:
     """
     Check for available package updates.

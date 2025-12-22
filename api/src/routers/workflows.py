@@ -87,7 +87,7 @@ def _convert_workflow_orm_to_schema(workflow: WorkflowORM) -> WorkflowMetadata:
     description="Returns metadata for all registered workflows in the system",
 )
 async def list_workflows(
-    user: CurrentActiveUser,
+    user: CurrentSuperuser,
     db: DbSession,
     is_tool: bool | None = None,
 ) -> list[WorkflowMetadata]:
