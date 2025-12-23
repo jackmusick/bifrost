@@ -13,7 +13,7 @@ import { handleOAuthCallback } from "@/hooks/useOAuth";
 
 export function OAuthCallback() {
 	const navigate = useNavigate();
-	const { connectionName } = useParams<{ connectionName: string }>();
+	const { integrationId } = useParams<{ integrationId: string }>();
 	const [searchParams] = useSearchParams();
 	const [status, setStatus] = useState<
 		"processing" | "success" | "error" | "warning"
@@ -29,9 +29,9 @@ export function OAuthCallback() {
 				return;
 			}
 			hasProcessed.current = true;
-			if (!connectionName) {
+			if (!integrationId) {
 				setStatus("error");
-				setMessage("Missing connection name in URL");
+				setMessage("Missing integration ID in URL");
 				return;
 			}
 
@@ -59,10 +59,13 @@ export function OAuthCallback() {
 
 			try {
 				// Send the authorization code to the API for token exchange
+				// Include redirect_uri - must match what was sent during authorization
+				const redirectUri = `${window.location.origin}/oauth/callback/${integrationId}`;
 				const response = await handleOAuthCallback(
-					connectionName,
+					integrationId,
 					code,
 					state,
+					redirectUri,
 				);
 				// eslint-disable-next-line @typescript-eslint/no-explicit-any
 				const responseData = response as any; // Response may include error_message or warning_message
@@ -96,7 +99,7 @@ export function OAuthCallback() {
 						window.opener.postMessage(
 							{
 								type: "oauth_success",
-								connectionName,
+								integrationId,
 							},
 							window.location.origin,
 						);
@@ -115,7 +118,7 @@ export function OAuthCallback() {
 					window.opener.postMessage(
 						{
 							type: "oauth_success",
-							connectionName,
+							integrationId,
 						},
 						window.location.origin,
 					);
@@ -153,7 +156,7 @@ export function OAuthCallback() {
 		};
 
 		handleCallback();
-	}, [connectionName, searchParams, navigate]);
+	}, [integrationId, searchParams, navigate]);
 
 	return (
 		<div className="flex items-center justify-center min-h-screen bg-background p-4">
@@ -181,8 +184,8 @@ export function OAuthCallback() {
 						</CardTitle>
 					</div>
 					<CardDescription>
-						Connection:{" "}
-						<code className="font-mono">{connectionName}</code>
+						Integration:{" "}
+						<code className="font-mono">{integrationId}</code>
 					</CardDescription>
 				</CardHeader>
 				<CardContent>

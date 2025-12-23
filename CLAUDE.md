@@ -9,6 +9,51 @@ MSP automation platform built with FastAPI and React.
 -   **Storage**: PostgreSQL (data), Redis (cache/sessions), RabbitMQ (message queue)
 -   **Infrastructure**: Docker, Docker Compose, GitHub Actions for CI/CD
 
+## Development Environment (CRITICAL - READ FIRST)
+
+### Everything Runs in Docker
+
+**Development happens inside Docker containers, not on the host machine.**
+
+Start the development stack:
+```bash
+./debug.sh  # Starts all services with hot reload enabled
+```
+
+This launches: PostgreSQL, RabbitMQ, Redis, MinIO, API (port 8000), Client (port 3000), Scheduler, Workers
+
+### Hot Reload is Automatic
+
+All services have hot reload - **DO NOT restart containers for code changes**:
+- **API**: Uvicorn watches `/app/src` and `/app/shared` - restarts automatically
+- **Client**: Vite HMR - updates instantly in browser
+- **Scheduler/Worker**: watchmedo monitors Python files - restarts automatically
+
+### Vite Proxies All API Requests
+
+The client at `localhost:3000` proxies `/api/*` to the API container. This means:
+- Access the app at `http://localhost:3000` (not 8000)
+- Type generation works from `client/` directory while stack is running
+- No CORS issues - everything goes through Vite
+
+### Container Management Rules
+
+| Scenario | Correct Action | Wrong Action |
+|----------|---------------|--------------|
+| Code changes | Do nothing (hot reload) | Restart containers |
+| New Python dependency | `docker compose restart api` | Rebuild everything |
+| Database migration | `docker compose restart api` | Restart entire stack |
+| Schema changes | Restart api, then `npm run generate:types` | Manual type updates |
+| Something broken | Check logs first: `docker compose logs api` | Nuke and restart |
+
+### DO NOT
+
+- ❌ Run `docker compose up` if containers are already running
+- ❌ Run pytest directly on host - use `./test.sh`
+- ❌ Start a separate uvicorn/vite process outside Docker
+- ❌ Restart the entire stack for single-service changes
+- ❌ Manually write TypeScript types for API responses
+
 ## Project Structure
 
 ```
@@ -83,28 +128,49 @@ export async function getDataProviders() {
 ### Commands
 
 ```bash
-# Backend Testing (ALWAYS USE test.sh from repo root!)
-./test.sh                                              # Run all tests with dependencies
-./test.sh tests/unit/                                  # Run unit tests only
-./test.sh tests/integration/                           # Run integration tests only
-./test.sh tests/integration/platform/test_sdk.py      # Run specific file
-./test.sh --coverage                                   # Run with coverage report
-./test.sh --e2e                                        # Run E2E tests (starts full API stack)
+# Start Development (run from repo root)
+./debug.sh                                # Start full stack with hot reload
 
-# Backend Quality Checks
-cd api
-ruff check .                          # Lint Python
-pyright                               # Type check Python
+# Testing (ALWAYS use test.sh - it manages Docker dependencies)
+./test.sh                                 # Run all backend tests
+./test.sh tests/unit/                     # Run unit tests only
+./test.sh tests/integration/              # Run integration tests
+./test.sh tests/integration/platform/test_sdk.py  # Run specific file
+./test.sh --e2e                           # Run E2E tests (API + workers)
+./test.sh --client                        # Run backend + Playwright E2E tests
+./test.sh --client-dev                    # Fast Playwright iteration (keeps stack)
+./test.sh --coverage                      # Run with coverage report
 
-# Frontend
-cd client
-npm run generate:types                # Generate types from API (requires API running)
-npm run tsc                           # Type check
-npm run lint                          # Lint and format
-npm run dev                           # Dev server
+# Type Generation (requires dev stack running via ./debug.sh)
+cd client && npm run generate:types       # Regenerate TypeScript types from API
 
-# Local development
-docker compose up                     # Start PostgreSQL, RabbitMQ, Redis, API, Client
-docker compose up -d postgres rabbitmq redis  # Start just infrastructure
-cd api && uvicorn src.main:app --reload      # Start API with hot reload
+# Individual Container Operations (when needed)
+docker compose restart api                # Restart API (for migrations, new deps)
+docker compose restart scheduler          # Restart scheduler
+docker compose logs -f api                # Follow API logs
+docker compose logs -f worker             # Follow worker logs
+
+# Quality Checks
+cd api && pyright                         # Type check Python
+cd api && ruff check .                    # Lint Python
+cd client && npm run tsc                  # Type check TypeScript
+cd client && npm run lint                 # Lint TypeScript
 ```
+
+### Common Workflows
+
+**After adding/modifying Pydantic models:**
+1. Make changes to `api/shared/models.py`
+2. Hot reload updates API automatically
+3. Run `cd client && npm run generate:types`
+4. TypeScript types updated in `client/src/lib/v1.d.ts`
+
+**After creating a new migration:**
+1. Create migration: `cd api && alembic revision -m "description"`
+2. Edit the migration file
+3. Restart API to apply: `docker compose restart api`
+4. Migration runs automatically on container start
+
+**After adding a Python dependency:**
+1. Add to `api/requirements.txt`
+2. Rebuild and restart: `docker compose up --build api`

@@ -238,18 +238,32 @@ class SDKIntegrationsGetRequest(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
 
+class SDKIntegrationsOAuthData(BaseModel):
+    """OAuth data nested in integration response."""
+    connection_name: str = Field(..., description="OAuth connection/provider name")
+    client_id: str = Field(..., description="OAuth client ID")
+    client_secret: str | None = Field(None, description="OAuth client secret (decrypted)")
+    authorization_url: str | None = Field(None, description="OAuth authorization URL")
+    token_url: str | None = Field(None, description="OAuth token URL (with {entity_id} resolved)")
+    scopes: list[str] = Field(default_factory=list, description="OAuth scopes")
+    access_token: str | None = Field(None, description="Current access token (decrypted)")
+    refresh_token: str | None = Field(None, description="Refresh token (decrypted)")
+    expires_at: str | None = Field(None, description="Token expiration (ISO format)")
+
+    model_config = ConfigDict(from_attributes=True)
+
+
 class SDKIntegrationsGetResponse(BaseModel):
     """Integration data response from SDK."""
     integration_id: str = Field(..., description="Integration UUID")
-    entity_id: str = Field(..., description="Mapped external entity ID (e.g., tenant ID)")
+    entity_id: str | None = Field(None, description="Mapped external entity ID (e.g., tenant ID)")
     entity_name: str | None = Field(None, description="Display name for the mapped entity")
     config: dict[str, Any] = Field(
         default_factory=dict,
         description="Merged configuration (schema defaults + org overrides)"
     )
-    oauth_client_id: str | None = Field(None, description="OAuth client ID")
-    oauth_token_url: str | None = Field(None, description="OAuth token URL (with {entity_id} resolved)")
-    oauth_scopes: str | None = Field(None, description="OAuth scopes (space-separated or None)")
+    oauth: SDKIntegrationsOAuthData | None = Field(
+        None, description="Full OAuth credentials and configuration")
 
     model_config = ConfigDict(from_attributes=True)
 

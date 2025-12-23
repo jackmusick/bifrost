@@ -13,6 +13,8 @@ import {
 	RotateCw,
 	Settings,
 	Pencil,
+	MoreVertical,
+	Trash2,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
@@ -58,6 +60,12 @@ import {
 } from "@/components/ui/alert-dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import {
+	DropdownMenu,
+	DropdownMenuContent,
+	DropdownMenuItem,
+	DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import { toast } from "sonner";
 import {
 	useIntegration,
@@ -72,6 +80,7 @@ import { $api } from "@/lib/api-client";
 import {
 	useAuthorizeOAuthConnection,
 	useRefreshOAuthToken,
+	useDeleteOAuthConnection,
 } from "@/hooks/useOAuth";
 import { getStatusLabel, isExpired, expiresSoon } from "@/lib/client-types";
 import { CreateOAuthConnectionDialog } from "@/components/oauth/CreateOAuthConnectionDialog";
@@ -83,6 +92,58 @@ import { useAutoMatch } from "@/hooks/useAutoMatch";
 import { EntitySelector } from "@/components/integrations/EntitySelector";
 import { AutoMatchControls } from "@/components/integrations/AutoMatchControls";
 import { MatchSuggestionBadge } from "@/components/integrations/MatchSuggestionBadge";
+
+// Format datetime with relative time for dates within 7 days
+const formatDateTime = (dateStr?: string | null) => {
+	if (!dateStr) return "Never";
+
+	// Parse the date - backend sends UTC timestamps without 'Z' suffix
+	// Add 'Z' to explicitly mark it as UTC, then JavaScript will convert to local time
+	const utcDateStr = dateStr.endsWith("Z") ? dateStr : `${dateStr}Z`;
+	const date = new Date(utcDateStr);
+	const now = new Date();
+	const diffMs = date.getTime() - now.getTime();
+	const diffMins = Math.floor(Math.abs(diffMs) / 60000);
+	const diffHours = Math.floor(Math.abs(diffMs) / 3600000);
+	const diffDays = Math.floor(Math.abs(diffMs) / 86400000);
+
+	// For dates within 7 days, show relative time
+	if (diffDays < 7) {
+		// Past dates (negative diffMs) - show "X ago"
+		if (diffMs < 0) {
+			if (diffMins < 60) {
+				return `${diffMins} minute${diffMins !== 1 ? "s" : ""} ago`;
+			} else if (diffHours < 24) {
+				return `${diffHours} hour${diffHours !== 1 ? "s" : ""} ago`;
+			} else {
+				return `${diffDays} day${diffDays !== 1 ? "s" : ""} ago`;
+			}
+		}
+
+		// Future dates (positive diffMs) - show "in X"
+		if (diffMs > 0) {
+			if (diffMins < 60) {
+				return `in ${diffMins} minute${diffMins !== 1 ? "s" : ""}`;
+			} else if (diffHours < 24) {
+				return `in ${diffHours} hour${diffHours !== 1 ? "s" : ""}`;
+			} else {
+				return `in ${diffDays} day${diffDays !== 1 ? "s" : ""}`;
+			}
+		}
+
+		// Exactly now
+		return "just now";
+	}
+
+	// Absolute dates for far past/future (converts to user's local timezone)
+	return date.toLocaleString(undefined, {
+		month: "short",
+		day: "numeric",
+		year: "numeric",
+		hour: "numeric",
+		minute: "2-digit",
+	});
+};
 
 interface MappingFormData {
 	organization_id: string;
@@ -114,6 +175,9 @@ export function IntegrationDetail() {
 	const [deleteMappingConfirm, setDeleteMappingConfirm] = useState<
 		OrgWithMapping | null
 	>(null);
+	const [isSavingAll, setIsSavingAll] = useState(false);
+	const [editingOAuthConfig, setEditingOAuthConfig] = useState(false);
+	const [deleteOAuthDialogOpen, setDeleteOAuthDialogOpen] = useState(false);
 
 	// Fetch integration details (includes mappings and OAuth config)
 	const {
@@ -135,6 +199,7 @@ export function IntegrationDetail() {
 	const updateConfigMutation = useUpdateIntegrationConfig();
 	const authorizeMutation = useAuthorizeOAuthConnection();
 	const refreshMutation = useRefreshOAuthToken();
+	const deleteOAuthMutation = useDeleteOAuthConnection();
 
 	// Memoize to stabilize references for the useEffect that combines them
 	const organizations = useMemo(
@@ -184,7 +249,7 @@ export function IntegrationDetail() {
 	const isOAuthExpiringSoon =
 		oauthConfig?.expires_at &&
 		!isOAuthExpired &&
-		expiresSoon(oauthConfig.expires_at);
+		expiresSoon(oauthConfig.expires_at, 15); // 15 minutes matches the refresh scheduler interval
 	const canUseAuthCodeFlow =
 		oauthConfig && oauthConfig.oauth_flow_type !== "client_credentials";
 
@@ -266,6 +331,28 @@ export function IntegrationDetail() {
 			window.removeEventListener("message", handleMessage);
 		};
 	}, [refetchIntegration]);
+
+	// Warn about unsaved changes when navigating away
+	useEffect(() => {
+		const dirtyCount = orgsWithMappings.filter((org) => org.isDirty).length;
+
+		if (dirtyCount > 0) {
+			const handleBeforeUnload = (e: BeforeUnloadEvent) => {
+				e.preventDefault();
+				// Modern browsers require returnValue to be set
+				e.returnValue = '';
+			};
+
+			window.addEventListener('beforeunload', handleBeforeUnload);
+
+			return () => {
+				window.removeEventListener('beforeunload', handleBeforeUnload);
+			};
+		}
+
+		// Return cleanup function for the case when dirtyCount is 0
+		return () => {};
+	}, [orgsWithMappings]);
 
 	const updateOrgMapping = (
 		orgId: string,
@@ -369,15 +456,14 @@ export function IntegrationDetail() {
 
 	// Handle main integration OAuth connect
 	const handleIntegrationOAuthConnect = async () => {
-		if (!integration?.has_oauth_config) return;
+		if (!integration?.has_oauth_config || !integrationId) return;
 
-		const connectionName = integration.name;
-		const redirectUri = `${window.location.origin}/oauth/callback/${connectionName}`;
+		const redirectUri = `${window.location.origin}/oauth/callback/${integrationId}`;
 
 		authorizeMutation.mutate(
 			{
 				params: {
-					path: { connection_name: connectionName },
+					path: { connection_name: integrationId },
 					query: { redirect_uri: redirectUri },
 				},
 			},
@@ -399,14 +485,29 @@ export function IntegrationDetail() {
 
 	// Handle main integration OAuth refresh
 	const handleIntegrationOAuthRefresh = async () => {
-		if (!integration?.has_oauth_config) return;
+		if (!integration?.has_oauth_config || !integrationId) return;
 
 		try {
 			await refreshMutation.mutateAsync({
-				params: { path: { connection_name: integration.name } },
+				params: { path: { connection_name: integrationId } },
 			});
 			refetchIntegration();
 			toast.success("Token refreshed successfully");
+		} catch {
+			// Error is already handled by the mutation's onError
+		}
+	};
+
+	// Handle OAuth config deletion
+	const handleDeleteOAuthConfig = async () => {
+		if (!integrationId) return;
+
+		try {
+			await deleteOAuthMutation.mutateAsync({
+				params: { path: { connection_name: integrationId } },
+			});
+			setDeleteOAuthDialogOpen(false);
+			// The mutation's onSuccess already handles cache invalidation and toast
 		} catch {
 			// Error is already handled by the mutation's onError
 		}
@@ -422,24 +523,29 @@ export function IntegrationDetail() {
 			return;
 		}
 
-		let successCount = 0;
-		let errorCount = 0;
+		setIsSavingAll(true);
+		try {
+			let successCount = 0;
+			let errorCount = 0;
 
-		for (const org of dirtyMappings) {
-			try {
-				await handleSaveMapping(org);
-				successCount++;
-			} catch {
-				errorCount++;
+			for (const org of dirtyMappings) {
+				try {
+					await handleSaveMapping(org);
+					successCount++;
+				} catch {
+					errorCount++;
+				}
 			}
-		}
 
-		if (errorCount === 0) {
-			toast.success(`Saved ${successCount} mapping(s)`);
-		} else {
-			toast.warning(
-				`Saved ${successCount} mapping(s), ${errorCount} failed`,
-			);
+			if (errorCount === 0) {
+				toast.success(`Saved ${successCount} mapping(s)`);
+			} else {
+				toast.warning(
+					`Saved ${successCount} mapping(s), ${errorCount} failed`,
+				);
+			}
+		} finally {
+			setIsSavingAll(false);
 		}
 	};
 
@@ -513,6 +619,41 @@ export function IntegrationDetail() {
 
 	const handleSaveDefaults = async () => {
 		if (!integrationId || !integration?.config_schema) return;
+
+		// Validate form values before save
+		const validationErrors: string[] = [];
+		for (const field of integration.config_schema) {
+			const value = defaultsFormValues[field.key];
+
+			// Skip empty values (they're allowed)
+			if (value === "" || value === null || value === undefined) {
+				continue;
+			}
+
+			// Validate int fields
+			if (field.type === "int") {
+				const numValue = typeof value === "string" ? parseInt(value) : value;
+				if (isNaN(numValue as number)) {
+					validationErrors.push(`${field.key} must be a valid integer`);
+				}
+			}
+
+			// Validate JSON fields
+			if (field.type === "json") {
+				if (typeof value === "string") {
+					try {
+						JSON.parse(value);
+					} catch {
+						validationErrors.push(`${field.key} must be valid JSON`);
+					}
+				}
+			}
+		}
+
+		if (validationErrors.length > 0) {
+			toast.error(validationErrors.join(", "));
+			return;
+		}
 
 		try {
 			// Build config object from form values
@@ -627,10 +768,14 @@ export function IntegrationDetail() {
 							variant="outline"
 							size="icon"
 							onClick={handleSaveAll}
-							disabled={dirtyCount === 0}
+							disabled={dirtyCount === 0 || isSavingAll}
 							title={`Save All${dirtyCount > 0 ? ` (${dirtyCount})` : ""}`}
 						>
-							<Save className="h-4 w-4" />
+							{isSavingAll ? (
+								<Loader2 className="h-4 w-4 animate-spin" />
+							) : (
+								<Save className="h-4 w-4" />
+							)}
 						</Button>
 					</div>
 				</div>
@@ -663,6 +808,34 @@ export function IntegrationDetail() {
 						</div>
 					</CardHeader>
 					<CardContent>
+						{/* Default Entity ID section */}
+						<div className="mb-4">
+							<div className="flex items-center justify-between text-sm">
+								<div className="flex flex-col">
+									<span className="text-muted-foreground">
+										Default {integration.entity_id_name || "Entity ID"}
+									</span>
+									<span className="text-xs text-muted-foreground/70">
+										Used when org mapping is not set
+									</span>
+								</div>
+								<div className="flex items-center gap-2">
+									<span className="font-mono text-xs bg-muted px-2 py-0.5 rounded">
+										{integration.default_entity_id || "—"}
+									</span>
+									<Button
+										variant="ghost"
+										size="sm"
+										className="h-6 w-6 p-0"
+										onClick={() => setEditDialogOpen(true)}
+										title="Edit integration settings"
+									>
+										<Pencil className="h-3 w-3" />
+									</Button>
+								</div>
+							</div>
+						</div>
+
 						{integration.config_schema &&
 						integration.config_schema.length > 0 ? (
 							<div className="space-y-2">
@@ -693,23 +866,7 @@ export function IntegrationDetail() {
 									);
 								})}
 							</div>
-						) : (
-							<div className="text-center py-4">
-								<Settings className="h-8 w-8 text-muted-foreground mx-auto" />
-								<p className="mt-2 text-sm text-muted-foreground">
-									No configuration schema defined
-								</p>
-								<Button
-									variant="outline"
-									size="sm"
-									className="mt-3"
-									onClick={() => setEditDialogOpen(true)}
-								>
-									<Pencil className="h-3 w-3 mr-2" />
-									Edit Integration
-								</Button>
-							</div>
-						)}
+						) : null}
 					</CardContent>
 				</Card>
 
@@ -736,6 +893,28 @@ export function IntegrationDetail() {
 								) : integration.has_oauth_config ? (
 									<AlertCircle className="h-4 w-4 text-yellow-600" />
 								) : null}
+								{integration.has_oauth_config && (
+									<DropdownMenu>
+										<DropdownMenuTrigger asChild>
+											<Button variant="ghost" size="icon" className="h-8 w-8">
+												<MoreVertical className="h-4 w-4" />
+											</Button>
+										</DropdownMenuTrigger>
+										<DropdownMenuContent align="end">
+											<DropdownMenuItem onClick={() => setEditingOAuthConfig(true)}>
+												<Pencil className="h-4 w-4 mr-2" />
+												Edit Configuration
+											</DropdownMenuItem>
+											<DropdownMenuItem
+												onClick={() => setDeleteOAuthDialogOpen(true)}
+												className="text-destructive focus:text-destructive"
+											>
+												<Trash2 className="h-4 w-4 mr-2" />
+												Delete Configuration
+											</DropdownMenuItem>
+										</DropdownMenuContent>
+									</DropdownMenu>
+								)}
 							</div>
 						</div>
 					</CardHeader>
@@ -753,6 +932,14 @@ export function IntegrationDetail() {
 									<div className="flex items-center gap-2 p-2 rounded bg-yellow-50 dark:bg-yellow-950 text-yellow-700 dark:text-yellow-300 text-sm">
 										<Clock className="h-4 w-4" />
 										Token expires soon - consider refreshing
+									</div>
+								)}
+
+								{/* No refresh token warning */}
+								{isOAuthConnected && oauthConfig && oauthConfig.has_refresh_token === false && (
+									<div className="flex items-center gap-2 p-2 rounded bg-yellow-50 dark:bg-yellow-950 text-yellow-700 dark:text-yellow-300 text-sm">
+										<AlertCircle className="h-4 w-4" />
+										No refresh token - manual reconnection required when token expires
 									</div>
 								)}
 
@@ -778,9 +965,7 @@ export function IntegrationDetail() {
 											Expires
 										</span>
 										<span className="text-sm font-mono">
-											{new Date(
-												oauthConfig.expires_at,
-											).toLocaleDateString()}
+											{formatDateTime(oauthConfig.expires_at)}
 										</span>
 									</div>
 								)}
@@ -819,9 +1004,15 @@ export function IntegrationDetail() {
 											disabled={refreshMutation.isPending}
 										>
 											{refreshMutation.isPending ? (
-												<Loader2 className="h-3 w-3 animate-spin" />
+												<>
+													<Loader2 className="mr-2 h-3 w-3 animate-spin" />
+													Refreshing...
+												</>
 											) : (
-												<RotateCw className="h-3 w-3" />
+												<>
+													<RotateCw className="mr-2 h-3 w-3" />
+													Refresh Token
+												</>
 											)}
 										</Button>
 									)}
@@ -1062,12 +1253,22 @@ export function IntegrationDetail() {
 				</TabsContent>
 			</Tabs>
 
-			{/* OAuth Configuration Dialog */}
+			{/* OAuth Configuration Dialog (Create) */}
 			{integrationId && (
 				<CreateOAuthConnectionDialog
 					open={oauthConfigDialogOpen}
 					onOpenChange={setOAuthConfigDialogOpen}
 					integrationId={integrationId}
+				/>
+			)}
+
+			{/* OAuth Configuration Dialog (Edit) */}
+			{integrationId && (
+				<CreateOAuthConnectionDialog
+					open={editingOAuthConfig}
+					onOpenChange={setEditingOAuthConfig}
+					integrationId={integrationId}
+					editConnectionName={integrationId}
 				/>
 			)}
 
@@ -1095,80 +1296,87 @@ export function IntegrationDetail() {
 			{/* Configuration Defaults Dialog */}
 			<Dialog open={defaultsDialogOpen} onOpenChange={setDefaultsDialogOpen}>
 				<DialogContent className="max-w-md">
-					<DialogHeader>
-						<DialogTitle>Edit Configuration Defaults</DialogTitle>
-						<DialogDescription>
-							Set default values for new organization mappings
-						</DialogDescription>
-					</DialogHeader>
-					<div className="space-y-4 py-4">
-						{integration?.config_schema?.map((field) => (
-							<div key={field.key} className="space-y-2">
-								<Label htmlFor={`default-${field.key}`}>
-									{field.key}
-									{field.required && (
-										<span className="text-destructive ml-1">*</span>
+					<form onSubmit={(e) => {
+						e.preventDefault();
+						handleSaveDefaults();
+					}}>
+						<DialogHeader>
+							<DialogTitle>Edit Configuration Defaults</DialogTitle>
+							<DialogDescription>
+								Set default values for new organization mappings
+							</DialogDescription>
+						</DialogHeader>
+						<div className="space-y-4 py-4">
+							{integration?.config_schema?.map((field) => (
+								<div key={field.key} className="space-y-2">
+									<Label htmlFor={`default-${field.key}`}>
+										{field.key}
+										{field.required && (
+											<span className="text-destructive ml-1">*</span>
+										)}
+										<span className="text-muted-foreground text-xs ml-2">
+											({field.type})
+										</span>
+									</Label>
+									{field.type === "bool" ? (
+										<select
+											id={`default-${field.key}`}
+											value={String(defaultsFormValues[field.key] ?? "")}
+											onChange={(e) =>
+												setDefaultsFormValues((prev) => ({
+													...prev,
+													[field.key]: e.target.value === "true",
+												}))
+											}
+											className="flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm transition-colors"
+										>
+											<option value="">— Not set —</option>
+											<option value="true">True</option>
+											<option value="false">False</option>
+										</select>
+									) : (
+										<Input
+											id={`default-${field.key}`}
+											type={field.type === "secret" ? "password" : "text"}
+											placeholder={`Default ${field.key}`}
+											value={String(defaultsFormValues[field.key] ?? "")}
+											onChange={(e) =>
+												setDefaultsFormValues((prev) => ({
+													...prev,
+													[field.key]: field.type === "int"
+														? parseInt(e.target.value) || ""
+														: e.target.value,
+												}))
+											}
+										/>
 									)}
-									<span className="text-muted-foreground text-xs ml-2">
-										({field.type})
-									</span>
-								</Label>
-								{field.type === "bool" ? (
-									<select
-										id={`default-${field.key}`}
-										value={String(defaultsFormValues[field.key] ?? "")}
-										onChange={(e) =>
-											setDefaultsFormValues((prev) => ({
-												...prev,
-												[field.key]: e.target.value === "true",
-											}))
-										}
-										className="flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm transition-colors"
-									>
-										<option value="">— Not set —</option>
-										<option value="true">True</option>
-										<option value="false">False</option>
-									</select>
+								</div>
+							))}
+						</div>
+						<DialogFooter>
+							<Button
+								type="button"
+								variant="outline"
+								onClick={() => setDefaultsDialogOpen(false)}
+								disabled={updateIntegrationMutation.isPending}
+							>
+								Cancel
+							</Button>
+							<Button
+								type="submit"
+								disabled={updateIntegrationMutation.isPending}
+							>
+								{updateIntegrationMutation.isPending ? (
+									<>
+										<Loader2 className="h-4 w-4 mr-2 animate-spin" />
+										Saving...
+									</>
 								) : (
-									<Input
-										id={`default-${field.key}`}
-										type={field.type === "secret" ? "password" : "text"}
-										placeholder={`Default ${field.key}`}
-										value={String(defaultsFormValues[field.key] ?? "")}
-										onChange={(e) =>
-											setDefaultsFormValues((prev) => ({
-												...prev,
-												[field.key]: field.type === "int"
-													? parseInt(e.target.value) || ""
-													: e.target.value,
-											}))
-										}
-									/>
+									"Save Defaults"
 								)}
-							</div>
-						))}
-					</div>
-					<DialogFooter>
-						<Button
-							variant="outline"
-							onClick={() => setDefaultsDialogOpen(false)}
-						>
-							Cancel
-						</Button>
-						<Button
-							onClick={handleSaveDefaults}
-							disabled={updateIntegrationMutation.isPending}
-						>
-							{updateIntegrationMutation.isPending ? (
-								<>
-									<Loader2 className="h-4 w-4 mr-2 animate-spin" />
-									Saving...
-								</>
-							) : (
-								"Save Defaults"
-							)}
-						</Button>
-					</DialogFooter>
+							</Button>
+						</DialogFooter>
+					</form>
 				</DialogContent>
 			</Dialog>
 
@@ -1196,6 +1404,43 @@ export function IntegrationDetail() {
 							className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
 						>
 							Delete
+						</AlertDialogAction>
+					</AlertDialogFooter>
+				</AlertDialogContent>
+			</AlertDialog>
+
+			{/* Delete OAuth Configuration Confirmation Dialog */}
+			<AlertDialog
+				open={deleteOAuthDialogOpen}
+				onOpenChange={setDeleteOAuthDialogOpen}
+			>
+				<AlertDialogContent>
+					<AlertDialogHeader>
+						<AlertDialogTitle>Delete OAuth Configuration</AlertDialogTitle>
+						<AlertDialogDescription>
+							Are you sure you want to delete the OAuth configuration for{" "}
+							<span className="font-semibold">{integration?.name}</span>?
+							This will remove the OAuth connection and any stored tokens.
+							This action cannot be undone.
+						</AlertDialogDescription>
+					</AlertDialogHeader>
+					<AlertDialogFooter>
+						<AlertDialogCancel disabled={deleteOAuthMutation.isPending}>
+							Cancel
+						</AlertDialogCancel>
+						<AlertDialogAction
+							onClick={handleDeleteOAuthConfig}
+							disabled={deleteOAuthMutation.isPending}
+							className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+						>
+							{deleteOAuthMutation.isPending ? (
+								<>
+									<Loader2 className="h-4 w-4 mr-2 animate-spin" />
+									Deleting...
+								</>
+							) : (
+								"Delete"
+							)}
 						</AlertDialogAction>
 					</AlertDialogFooter>
 				</AlertDialogContent>

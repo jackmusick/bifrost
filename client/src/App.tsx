@@ -165,7 +165,7 @@ function AppRoutes() {
 
 					{/* OAuth Callback - Public (no auth, no layout) */}
 					<Route
-						path="oauth/callback/:connectionName"
+						path="oauth/callback/:integrationId"
 						element={<OAuthCallback />}
 					/>
 

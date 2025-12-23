@@ -55,6 +55,7 @@ from src.models.contracts.cli import (
     CLISessionResultRequest,
     SDKIntegrationsGetRequest,
     SDKIntegrationsGetResponse,
+    SDKIntegrationsOAuthData,
     SDKIntegrationsListMappingsRequest,
     SDKIntegrationsListMappingsResponse,
 )
@@ -1032,63 +1033,145 @@ async def sdk_integrations_get(
     current_user: User = Depends(get_current_user_from_api_key),
     db: AsyncSession = Depends(get_db),
 ) -> SDKIntegrationsGetResponse | None:
-    """Get integration mapping data for an organization via SDK."""
+    """Get integration mapping data for an organization via SDK.
+
+    Supports two modes:
+    1. Org-specific mapping: Returns mapping entity_id, config, and OAuth data
+    2. Fallback to integration defaults: When no org mapping exists, returns
+       integration.default_entity_id, integration-level config, and OAuth data
+    """
     from src.repositories.integrations import IntegrationsRepository
     from src.services.oauth_provider import resolve_url_template
+    from src.core.security import decrypt_secret
 
     org_id = await _get_cli_org_id(current_user, request.org_id, db)
     org_uuid = UUID(org_id) if org_id else None
 
-    if not org_uuid:
-        logger.warning("SDK integrations.get: No organization ID provided or in context")
-        return None
-
     try:
         repo = IntegrationsRepository(db)
-        mapping = await repo.get_integration_for_org(request.name, org_uuid)
 
-        if not mapping:
-            logger.debug(f"SDK integrations.get('{request.name}'): mapping not found for org '{org_uuid}'")
+        # Try to get org-specific mapping first
+        mapping = None
+        if org_uuid:
+            mapping = await repo.get_integration_for_org(request.name, org_uuid)
+
+        if mapping:
+            # Org-specific mapping found
+            config = await repo.get_config_for_mapping(mapping.integration_id, org_uuid)
+            integration = mapping.integration
+            entity_id = mapping.entity_id or (integration.default_entity_id if integration else None)
+
+            response_data: dict[str, Any] = {
+                "integration_id": str(mapping.integration_id),
+                "entity_id": entity_id,
+                "entity_name": mapping.entity_name,
+                "config": config or {},
+                "oauth": None,
+            }
+
+            # Build OAuth data if provider exists
+            if integration and integration.oauth_provider:
+                token = mapping.oauth_token
+                if not token:
+                    token = await repo.get_provider_org_token(integration.oauth_provider.id)
+                response_data["oauth"] = _build_oauth_data(
+                    integration.oauth_provider, token, entity_id, resolve_url_template, decrypt_secret
+                )
+
+            logger.info(f"SDK retrieved integration '{request.name}' (org mapping) for user {current_user.email}")
+            return SDKIntegrationsGetResponse(**response_data)
+
+        # Fall back to integration defaults
+        integration = await repo.get_integration_by_name(request.name)
+        if not integration:
+            logger.debug(f"SDK integrations.get('{request.name}'): integration not found")
             return None
 
-        # Get merged configuration
-        config = await repo.get_config_for_mapping(mapping.integration_id, org_uuid)
+        entity_id = integration.default_entity_id or integration.entity_id
+        config = await repo.get_integration_defaults(integration.id)
 
-        # Build the response
         response_data = {
-            "integration_id": str(mapping.integration_id),
-            "entity_id": mapping.entity_id,
-            "entity_name": mapping.entity_name,
+            "integration_id": str(integration.id),
+            "entity_id": entity_id,
+            "entity_name": None,  # No mapping = no entity name
             "config": config or {},
-            "oauth_client_id": None,
-            "oauth_token_url": None,
-            "oauth_scopes": None,
+            "oauth": None,
         }
 
-        # Add OAuth details if provider is configured
-        if mapping.integration and mapping.integration.oauth_provider:
-            provider = mapping.integration.oauth_provider
-            response_data["oauth_client_id"] = provider.client_id
+        # Build OAuth data if provider exists
+        if integration.oauth_provider:
+            token = await repo.get_provider_org_token(integration.oauth_provider.id)
+            response_data["oauth"] = _build_oauth_data(
+                integration.oauth_provider, token, entity_id, resolve_url_template, decrypt_secret
+            )
 
-            # Format scopes as space-separated string
-            if provider.scopes:
-                response_data["oauth_scopes"] = " ".join(provider.scopes)
-
-            # Resolve OAuth token URL with entity_id
-            if provider.token_url:
-                resolved_url = resolve_url_template(
-                    url=provider.token_url,
-                    entity_id=mapping.entity_id,
-                    defaults=provider.token_url_defaults,
-                )
-                response_data["oauth_token_url"] = resolved_url
-
-        logger.info(f"SDK retrieved integration '{request.name}' for user {current_user.email}")
+        logger.info(f"SDK retrieved integration '{request.name}' (defaults) for user {current_user.email}")
         return SDKIntegrationsGetResponse(**response_data)
 
     except Exception as e:
         logger.error(f"SDK integrations.get failed: {e}")
         return None
+
+
+def _build_oauth_data(
+    provider: Any,
+    token: Any,
+    entity_id: str | None,
+    resolve_url_template: Any,
+    decrypt_secret: Any,
+) -> SDKIntegrationsOAuthData:
+    """Build OAuth data dict from provider and token for CLI response."""
+    # Decrypt secrets
+    client_secret = None
+    if provider.encrypted_client_secret:
+        try:
+            raw = provider.encrypted_client_secret
+            client_secret = decrypt_secret(raw.decode() if isinstance(raw, bytes) else raw)
+        except Exception:
+            logger.warning("Failed to decrypt client_secret")
+
+    access_token = None
+    refresh_token = None
+    expires_at = None
+
+    if token:
+        if token.encrypted_access_token:
+            try:
+                raw = token.encrypted_access_token
+                access_token = decrypt_secret(raw.decode() if isinstance(raw, bytes) else raw)
+            except Exception:
+                logger.warning("Failed to decrypt access_token")
+
+        if token.encrypted_refresh_token:
+            try:
+                raw = token.encrypted_refresh_token
+                refresh_token = decrypt_secret(raw.decode() if isinstance(raw, bytes) else raw)
+            except Exception:
+                logger.warning("Failed to decrypt refresh_token")
+
+        if token.expires_at:
+            expires_at = token.expires_at.isoformat()
+
+    # Resolve token_url with entity_id
+    resolved_token_url = None
+    if provider.token_url and entity_id:
+        resolved_token_url = resolve_url_template(
+            url=provider.token_url,
+            entity_id=entity_id,
+            defaults=provider.token_url_defaults,
+        )
+
+    return SDKIntegrationsOAuthData(
+        connection_name=provider.provider_name,
+        client_id=provider.client_id,
+        client_secret=client_secret,
+        authorization_url=provider.authorization_url,
+        token_url=resolved_token_url,
+        scopes=provider.scopes or [],
+        access_token=access_token,
+        refresh_token=refresh_token,
+        expires_at=expires_at,
+    )
 
 
 @router.post(
@@ -1116,15 +1199,16 @@ async def sdk_integrations_list_mappings(
 
         logger.info(f"SDK listed {len(mappings)} mappings for integration '{request.name}' for user {current_user.email}")
 
-        items = [
-            {
+        items = []
+        for mapping in mappings:
+            # Get merged config (integration defaults + org overrides)
+            config = await repo.get_config_for_mapping(integration.id, mapping.organization_id)
+            items.append({
                 "organization_id": str(mapping.organization_id),
                 "entity_id": mapping.entity_id,
                 "entity_name": mapping.entity_name,
-                "config": mapping.config,
-            }
-            for mapping in mappings
-        ]
+                "config": config,
+            })
 
         return SDKIntegrationsListMappingsResponse(items=items)
 

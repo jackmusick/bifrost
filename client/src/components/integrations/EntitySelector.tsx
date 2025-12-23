@@ -6,7 +6,9 @@
 
 import { Skeleton } from "@/components/ui/skeleton";
 import { Input } from "@/components/ui/input";
+import { Button } from "@/components/ui/button";
 import { Combobox, type ComboboxOption } from "@/components/ui/combobox";
+import { AlertCircle, RotateCw } from "lucide-react";
 import type { DataProviderOption } from "@/services/dataProviders";
 
 interface EntitySelectorProps {
@@ -16,6 +18,8 @@ interface EntitySelectorProps {
 	disabled?: boolean;
 	placeholder?: string;
 	isLoading?: boolean;
+	isError?: boolean;
+	onRetry?: () => void;
 }
 
 export function EntitySelector({
@@ -25,22 +29,52 @@ export function EntitySelector({
 	disabled = false,
 	placeholder = "Select entity...",
 	isLoading = false,
+	isError = false,
+	onRetry,
 }: EntitySelectorProps) {
 	// Show loading skeleton
 	if (isLoading) {
 		return <Skeleton className="h-8 w-full" />;
 	}
 
+	// Show error state
+	if (isError) {
+		return (
+			<div className="flex items-center gap-2">
+				<div className="flex items-center gap-1 text-sm text-destructive flex-1">
+					<AlertCircle className="h-4 w-4" />
+					<span>Error loading entities</span>
+				</div>
+				{onRetry && (
+					<Button
+						variant="outline"
+						size="sm"
+						onClick={onRetry}
+						className="h-8"
+					>
+						<RotateCw className="h-3 w-3 mr-1" />
+						Retry
+					</Button>
+				)}
+			</div>
+		);
+	}
+
 	// Fall back to text input if no entities available
 	if (!entities || entities.length === 0) {
 		return (
-			<Input
-				placeholder="entity-id"
-				value={value}
-				onChange={(e) => onChange(e.target.value, e.target.value)}
-				disabled={disabled}
-				className="h-8 text-sm"
-			/>
+			<div className="space-y-1">
+				<Input
+					placeholder="entity-id"
+					value={value}
+					onChange={(e) => onChange(e.target.value, e.target.value)}
+					disabled={disabled}
+					className="h-8 text-sm"
+				/>
+				<p className="text-xs text-muted-foreground">
+					No entities available from data provider. Enter ID manually.
+				</p>
+			</div>
 		);
 	}
 

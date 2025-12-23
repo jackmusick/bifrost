@@ -87,6 +87,11 @@ class IntegrationCreate(BaseModel):
         max_length=255,
         description="Optional display name for the global entity ID",
     )
+    default_entity_id: str | None = Field(
+        default=None,
+        max_length=255,
+        description="Default value for entity_id in URL templates (e.g., 'common' for Azure multi-tenant)",
+    )
 
 
 class IntegrationUpdate(BaseModel):
@@ -119,6 +124,11 @@ class IntegrationUpdate(BaseModel):
         default=None,
         max_length=255,
         description="Display name for the global entity ID",
+    )
+    default_entity_id: str | None = Field(
+        default=None,
+        max_length=255,
+        description="Default value for entity_id in URL templates (e.g., 'common' for Azure multi-tenant)",
     )
 
 
@@ -209,6 +219,10 @@ class IntegrationResponse(BaseModel):
         default=None,
         description="Display name for the global entity ID",
     )
+    default_entity_id: str | None = Field(
+        default=None,
+        description="Default value for entity_id in URL templates",
+    )
     has_oauth_config: bool = Field(
         default=False,
         description="Whether OAuth configuration is set up for this integration",
@@ -297,6 +311,7 @@ class OAuthConfigSummary(BaseModel):
     status_message: str | None = Field(default=None, description="Status message")
     expires_at: datetime | None = Field(default=None, description="Token expiration time")
     last_refresh_at: datetime | None = Field(default=None, description="Last token refresh time")
+    has_refresh_token: bool = Field(default=False, description="Whether a refresh token is available")
 
 
 class IntegrationDetailResponse(BaseModel):
@@ -330,6 +345,10 @@ class IntegrationDetailResponse(BaseModel):
     entity_id_name: str | None = Field(
         default=None,
         description="Display name for the global entity ID",
+    )
+    default_entity_id: str | None = Field(
+        default=None,
+        description="Default value for {entity_id} in URL templates (e.g., 'common' for Azure multi-tenant)",
     )
     has_oauth_config: bool = Field(
         default=False,

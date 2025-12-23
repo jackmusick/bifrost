@@ -29,10 +29,25 @@ export function useCreateOAuthConnection() {
 	const queryClient = useQueryClient();
 
 	return $api.useMutation("post", "/api/oauth/connections", {
-		onSuccess: () => {
+		onSuccess: (response) => {
+			// Invalidate integrations list
 			queryClient.invalidateQueries({
 				queryKey: ["get", "/api/integrations"],
 			});
+			// Also invalidate the specific integration detail if we have the integration_id
+			if (response?.integration_id) {
+				queryClient.invalidateQueries({
+					queryKey: [
+						"get",
+						"/api/integrations/{integration_id}",
+						{
+							params: {
+								path: { integration_id: response.integration_id },
+							},
+						},
+					],
+				});
+			}
 			toast.success("OAuth connection configured successfully");
 		},
 		onError: (error) => {
@@ -53,11 +68,13 @@ export function useUpdateOAuthConnection() {
 	const queryClient = useQueryClient();
 
 	return $api.useMutation("put", "/api/oauth/connections/{connection_name}", {
-		onSuccess: (_, variables) => {
+		onSuccess: (response, variables) => {
 			const connectionName = variables.params?.path?.connection_name;
+			// Invalidate integrations list
 			queryClient.invalidateQueries({
 				queryKey: ["get", "/api/integrations"],
 			});
+			// Invalidate the specific OAuth connection
 			queryClient.invalidateQueries({
 				queryKey: [
 					"get",
@@ -65,6 +82,20 @@ export function useUpdateOAuthConnection() {
 					{ params: { path: { connection_name: connectionName } } },
 				],
 			});
+			// Also invalidate the specific integration detail if we have the integration_id
+			if (response?.integration_id) {
+				queryClient.invalidateQueries({
+					queryKey: [
+						"get",
+						"/api/integrations/{integration_id}",
+						{
+							params: {
+								path: { integration_id: response.integration_id },
+							},
+						},
+					],
+				});
+			}
 			toast.success(
 				`Connection "${connectionName}" updated successfully`,
 			);
@@ -92,8 +123,15 @@ export function useDeleteOAuthConnection() {
 		{
 			onSuccess: (_, variables) => {
 				const connectionName = variables.params?.path?.connection_name;
+				// Invalidate integrations list
 				queryClient.invalidateQueries({
 					queryKey: ["get", "/api/integrations"],
+				});
+				// Also invalidate all integration detail queries (since DELETE returns 204 with no body)
+				queryClient.invalidateQueries({
+					predicate: (query) =>
+						query.queryKey[0] === "get" &&
+						query.queryKey[1] === "/api/integrations/{integration_id}",
 				});
 				toast.success(
 					`Connection "${connectionName}" deleted successfully`,
@@ -324,17 +362,19 @@ export function useTriggerOAuthRefreshJob() {
  * This is a standalone async function used outside React hooks
  */
 export async function handleOAuthCallback(
-	connectionName: string,
+	integrationId: string,
 	code: string,
 	state?: string | null,
+	redirectUri?: string,
 ) {
 	const { data, error } = await apiClient.POST(
 		"/api/oauth/callback/{connection_name}",
 		{
-			params: { path: { connection_name: connectionName } },
+			params: { path: { connection_name: integrationId } },
 			body: {
 				code,
 				state: state ?? null,
+				redirect_uri: redirectUri ?? null,
 			},
 		},
 	);

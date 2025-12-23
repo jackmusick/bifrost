@@ -114,6 +114,231 @@ class TestDefaultOrgScoping:
             clear_execution_context()
 
 
+class TestIntegrationsSDKSecurity:
+    """
+    Test security features of the integrations SDK module.
+
+    Tests:
+    - Context protection (requires execution context in external mode)
+    - Default org scoping (uses context org_id by default)
+    - Explicit org_id parameter support
+    """
+
+    async def test_integrations_get_requires_context(self):
+        """Test that integrations.get() requires execution context in external mode (no API key)"""
+        from bifrost import integrations
+        from unittest.mock import patch
+
+        # Clear context
+        clear_execution_context()
+
+        # In external mode without API key configured, should raise RuntimeError
+        with patch.dict('os.environ', {'BIFROST_DEV_URL': '', 'BIFROST_DEV_KEY': ''}, clear=False):
+            with pytest.raises(RuntimeError, match="BIFROST_DEV_URL and BIFROST_DEV_KEY"):
+                await integrations.get("Microsoft Partner")
+
+    async def test_integrations_get_uses_context_org_by_default(self):
+        """Test that integrations.get() uses context.org_id by default"""
+        from unittest.mock import AsyncMock, patch
+        from contextlib import asynccontextmanager
+        from bifrost import integrations
+        from src.sdk.context import ExecutionContext, Organization
+
+        # Create context for org-123
+        org = Organization(id="org-123", name="Test Org", is_active=True)
+        context = ExecutionContext(
+            user_id="test-user",
+            email="test@example.com",
+            name="Test User",
+            scope="org-123",
+            organization=org,
+            is_platform_admin=False,
+            is_function_key=False,
+            execution_id="test-exec-123"
+        )
+        set_execution_context(context)
+
+        try:
+            # Mock database context and repository
+            with patch('src.core.database.get_db_context') as mock_get_db:
+                mock_session = AsyncMock()
+
+                @asynccontextmanager
+                async def mock_db_context():
+                    yield mock_session
+
+                mock_get_db.return_value = mock_db_context()
+
+                # Mock repository method to return None (not found)
+                with patch('src.repositories.integrations.IntegrationsRepository.get_integration_for_org') as mock_get:
+                    mock_get.return_value = None
+
+                    # Call get() without org_id
+                    result = await integrations.get("Microsoft Partner")
+
+                    # Verify it called get_integration_for_org with org-123 UUID
+                    mock_get.assert_called_once()
+                    call_args = mock_get.call_args
+                    # First arg is name, second is org_id UUID
+                    assert call_args[0][0] == "Microsoft Partner"
+                    assert str(call_args[0][1]) == "org-123"
+                    # Verify result is None (not found)
+                    assert result is None
+        finally:
+            clear_execution_context()
+
+    async def test_integrations_get_with_explicit_org_id(self):
+        """Test that integrations.get(org_id='other-org') uses the specified org"""
+        from unittest.mock import AsyncMock, patch
+        from contextlib import asynccontextmanager
+        from bifrost import integrations
+        from src.sdk.context import ExecutionContext, Organization
+
+        # User is in org-123
+        org = Organization(id="org-123", name="Test Org", is_active=True)
+        context = ExecutionContext(
+            user_id="test-user",
+            email="test@example.com",
+            name="Test User",
+            scope="org-123",
+            organization=org,
+            is_platform_admin=True,  # Platform admin can access other orgs
+            is_function_key=False,
+            execution_id="test-exec-123"
+        )
+        set_execution_context(context)
+
+        try:
+            # Mock database context and repository
+            with patch('src.core.database.get_db_context') as mock_get_db:
+                mock_session = AsyncMock()
+
+                @asynccontextmanager
+                async def mock_db_context():
+                    yield mock_session
+
+                mock_get_db.return_value = mock_db_context()
+
+                # Mock repository method to return None (not found)
+                with patch('src.repositories.integrations.IntegrationsRepository.get_integration_for_org') as mock_get:
+                    mock_get.return_value = None
+
+                    # Explicitly request org-999's integration
+                    result = await integrations.get("Microsoft Partner", org_id="org-999")
+
+                    # Verify it called get_integration_for_org with org-999 UUID
+                    mock_get.assert_called_once()
+                    call_args = mock_get.call_args
+                    assert call_args[0][0] == "Microsoft Partner"
+                    assert str(call_args[0][1]) == "org-999"
+                    # Verify result is None (not found)
+                    assert result is None
+        finally:
+            clear_execution_context()
+
+    async def test_integrations_list_mappings_requires_context(self):
+        """Test that integrations.list_mappings() requires execution context in external mode (no API key)"""
+        from bifrost import integrations
+        from unittest.mock import patch
+
+        clear_execution_context()
+
+        # In external mode without API key configured, should raise RuntimeError
+        with patch.dict('os.environ', {'BIFROST_DEV_URL': '', 'BIFROST_DEV_KEY': ''}, clear=False):
+            with pytest.raises(RuntimeError, match="BIFROST_DEV_URL and BIFROST_DEV_KEY"):
+                await integrations.list_mappings("Microsoft Partner")
+
+
+class TestFilesSDKSecurity:
+    """
+    Test security features of the files SDK module.
+
+    Tests:
+    - Path traversal protection (../ attacks blocked)
+    - Absolute path protection (external mode only)
+    - Location-based access control (temp/workspace/uploads isolation)
+    """
+
+    async def test_files_path_traversal_blocked(self):
+        """Test that path traversal attacks are blocked"""
+        from bifrost import files
+
+        # In platform mode, test path traversal is blocked
+        from src.sdk.context import ExecutionContext, Organization
+
+        org = Organization(id="org-123", name="Test Org", is_active=True)
+        context = ExecutionContext(
+            user_id="test-user",
+            email="test@example.com",
+            name="Test User",
+            scope="org-123",
+            organization=org,
+            is_platform_admin=False,
+            is_function_key=False,
+            execution_id="test-exec-123"
+        )
+        set_execution_context(context)
+
+        try:
+            # Path traversal attempt should raise ValueError
+            with pytest.raises(ValueError, match="Path must be within"):
+                await files.read("../../../etc/passwd", location="workspace")
+
+            # Another path traversal attempt
+            with pytest.raises(ValueError, match="Path must be within"):
+                await files.write("../../escape.txt", "malicious", location="temp")
+        finally:
+            clear_execution_context()
+
+    async def test_files_absolute_path_blocked_in_external_mode(self):
+        """Test that absolute paths are blocked in external (CLI) mode"""
+        from bifrost import files
+
+        # Clear context to force external mode
+        clear_execution_context()
+
+        # Absolute paths should raise ValueError in external mode
+        with pytest.raises(ValueError, match="Absolute paths not allowed"):
+            await files.read("/etc/passwd", location="workspace")
+
+        with pytest.raises(ValueError, match="Absolute paths not allowed"):
+            await files.write("/tmp/malicious.txt", "content", location="temp")
+
+    async def test_files_location_access_controlled(self):
+        """Test that each location maps to the correct base directory"""
+        from bifrost import files
+        from pathlib import Path
+        from src.sdk.context import ExecutionContext, Organization
+
+        # In platform mode, verify location mapping
+        org = Organization(id="org-123", name="Test Org", is_active=True)
+        context = ExecutionContext(
+            user_id="test-user",
+            email="test@example.com",
+            name="Test User",
+            scope="org-123",
+            organization=org,
+            is_platform_admin=False,
+            is_function_key=False,
+            execution_id="test-exec-123"
+        )
+        set_execution_context(context)
+
+        try:
+            # Test workspace location resolves to workspace directory
+            workspace_path = files._resolve_path("test.txt", location="workspace")
+            assert str(workspace_path).startswith(str(files.WORKSPACE_FILES_DIR))
+
+            # Test temp location resolves to temp directory
+            temp_path = files._resolve_path("test.txt", location="temp")
+            assert str(temp_path).startswith(str(files.TEMP_FILES_DIR))
+
+            # Verify workspace and temp are separate
+            assert files.WORKSPACE_FILES_DIR != files.TEMP_FILES_DIR
+        finally:
+            clear_execution_context()
+
+
 class TestCrossOrgParameterUsage:
     """
     Test that when org_id parameter is specified, it's actually used.

@@ -37,6 +37,7 @@ class Integration(Base):
     )
     entity_id: Mapped[str | None] = mapped_column(String(255), default=None, nullable=True)
     entity_id_name: Mapped[str | None] = mapped_column(String(255), default=None, nullable=True)
+    default_entity_id: Mapped[str | None] = mapped_column(String(255), default=None, nullable=True)
     is_deleted: Mapped[bool] = mapped_column(Boolean, default=False)
     created_at: Mapped[datetime] = mapped_column(
         DateTime, default=datetime.utcnow, server_default=text("NOW()")

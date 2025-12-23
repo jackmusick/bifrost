@@ -8,6 +8,16 @@ import {
 	DialogHeader,
 	DialogTitle,
 } from "@/components/ui/dialog";
+import {
+	AlertDialog,
+	AlertDialogAction,
+	AlertDialogCancel,
+	AlertDialogContent,
+	AlertDialogDescription,
+	AlertDialogFooter,
+	AlertDialogHeader,
+	AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -82,6 +92,20 @@ function CreateIntegrationDialogContent({
 	const [configSchema, setConfigSchema] = useState<ConfigSchemaItem[]>(() => {
 		return existingIntegration?.config_schema || [];
 	});
+	const [defaultEntityId, setDefaultEntityId] = useState<string>(() => {
+		return existingIntegration?.default_entity_id || "";
+	});
+
+	// Track original values for confirmation dialogs
+	const originalName = existingIntegration?.name || "";
+	const originalDataProviderId = existingIntegration?.list_entities_data_provider_id || null;
+	const originalConfigSchemaKeys = new Set(existingIntegration?.config_schema?.map(f => f.key) || []);
+
+	// Confirmation dialog states
+	const [showDataProviderConfirm, setShowDataProviderConfirm] = useState(false);
+	const [showNameChangeConfirm, setShowNameChangeConfirm] = useState(false);
+	const [showConfigFieldRemovalConfirm, setShowConfigFieldRemovalConfirm] = useState(false);
+	const [removedFieldNames, setRemovedFieldNames] = useState<string[]>([]);
 
 	const handleSubmit = async (e: React.FormEvent) => {
 		e.preventDefault();
@@ -91,9 +115,41 @@ function CreateIntegrationDialogContent({
 			return;
 		}
 
+		// In edit mode, check for confirmations needed
+		if (isEditing) {
+			// Check 1: Name change confirmation
+			if (name !== originalName) {
+				setShowNameChangeConfirm(true);
+				return;
+			}
+
+			// Check 2: Data provider swap confirmation
+			if (dataProviderId !== originalDataProviderId) {
+				// Count affected mappings (those with entity_id values)
+				const affectedMappingsCount = initialData?.mappings?.filter(m => m.entity_id).length || 0;
+				if (affectedMappingsCount > 0) {
+					setShowDataProviderConfirm(true);
+					return;
+				}
+			}
+
+			// Check 3: Config field removal warning
+			const currentKeys = new Set(configSchema.map(f => f.key).filter(k => k.trim()));
+			const removedKeys = Array.from(originalConfigSchemaKeys).filter(k => !currentKeys.has(k));
+			if (removedKeys.length > 0) {
+				setRemovedFieldNames(removedKeys);
+				setShowConfigFieldRemovalConfirm(true);
+				return;
+			}
+		}
+
+		// Proceed with save
+		await performSave();
+	};
+
+	const performSave = async () => {
 		try {
 			if (isEditing && editIntegrationId) {
-				// Use type assertion for fields not yet in generated types
 				await updateMutation.mutateAsync({
 					params: { path: { integration_id: editIntegrationId } },
 					body: {
@@ -101,21 +157,17 @@ function CreateIntegrationDialogContent({
 						list_entities_data_provider_id: dataProviderId || undefined,
 						config_schema:
 							configSchema.length > 0 ? configSchema : undefined,
-					} as Parameters<typeof updateMutation.mutateAsync>[0]["body"] & {
-						description?: string;
+						default_entity_id: defaultEntityId || undefined,
 					},
 				});
 				toast.success("Integration updated successfully");
 			} else {
-				// Use type assertion for fields not yet in generated types
 				await createMutation.mutateAsync({
 					body: {
 						name,
-						list_entities_data_provider_id: dataProviderId || undefined,
 						config_schema:
 							configSchema.length > 0 ? configSchema : undefined,
-					} as Parameters<typeof createMutation.mutateAsync>[0]["body"] & {
-						description?: string;
+						default_entity_id: defaultEntityId || undefined,
 					},
 				});
 				toast.success("Integration created successfully");
@@ -159,17 +211,18 @@ function CreateIntegrationDialogContent({
 	};
 
 	return (
-		<form onSubmit={handleSubmit}>
-			<DialogHeader>
-				<DialogTitle>
-					{isEditing ? "Edit Integration" : "Create Integration"}
-				</DialogTitle>
-				<DialogDescription>
-					{isEditing
-						? "Update integration settings and configuration schema"
-						: "Create a new integration to map organizations to external entities"}
-				</DialogDescription>
-			</DialogHeader>
+		<>
+			<form onSubmit={handleSubmit}>
+				<DialogHeader>
+					<DialogTitle>
+						{isEditing ? "Edit Integration" : "Create Integration"}
+					</DialogTitle>
+					<DialogDescription>
+						{isEditing
+							? "Update integration settings and configuration schema"
+							: "Create a new integration to map organizations to external entities"}
+					</DialogDescription>
+				</DialogHeader>
 
 			<div className="space-y-4 py-4">
 				{/* Name */}
@@ -240,6 +293,20 @@ function CreateIntegrationDialogContent({
 					<p className="text-xs text-muted-foreground">
 						Select a data provider to populate entity options
 						for organization mappings
+					</p>
+				</div>
+
+				{/* Default Entity ID */}
+				<div className="space-y-2">
+					<Label htmlFor="defaultEntityId">Default Entity ID</Label>
+					<Input
+						id="defaultEntityId"
+						placeholder="e.g., common"
+						value={defaultEntityId}
+						onChange={(e) => setDefaultEntityId(e.target.value)}
+					/>
+					<p className="text-xs text-muted-foreground">
+						Default value for entity_id in URL templates (used when org mapping doesn't specify one)
 					</p>
 				</div>
 
@@ -361,7 +428,71 @@ function CreateIntegrationDialogContent({
 					)}
 				</Button>
 			</DialogFooter>
-		</form>
+			</form>
+
+			{/* Data Provider Change Confirmation */}
+			<AlertDialog open={showDataProviderConfirm} onOpenChange={setShowDataProviderConfirm}>
+			<AlertDialogContent>
+				<AlertDialogHeader>
+					<AlertDialogTitle>Change Data Provider?</AlertDialogTitle>
+					<AlertDialogDescription>
+						Changing the data provider may orphan {initialData?.mappings?.filter(m => m.entity_id).length || 0} existing entity mapping(s). The entity IDs will be preserved but may not match entities from the new provider.
+					</AlertDialogDescription>
+				</AlertDialogHeader>
+				<AlertDialogFooter>
+					<AlertDialogCancel>Cancel</AlertDialogCancel>
+					<AlertDialogAction onClick={() => {
+						setShowDataProviderConfirm(false);
+						performSave();
+					}}>
+						Keep Mappings
+					</AlertDialogAction>
+				</AlertDialogFooter>
+			</AlertDialogContent>
+		</AlertDialog>
+
+		{/* Name Change Confirmation */}
+		<AlertDialog open={showNameChangeConfirm} onOpenChange={setShowNameChangeConfirm}>
+			<AlertDialogContent>
+				<AlertDialogHeader>
+					<AlertDialogTitle>Rename Integration?</AlertDialogTitle>
+					<AlertDialogDescription>
+						Renaming this integration will break any SDK calls using the name '{originalName}'. Workflows and scripts will need to be updated to use '{name}'.
+					</AlertDialogDescription>
+				</AlertDialogHeader>
+				<AlertDialogFooter>
+					<AlertDialogCancel>Cancel</AlertDialogCancel>
+					<AlertDialogAction onClick={() => {
+						setShowNameChangeConfirm(false);
+						performSave();
+					}}>
+						Rename Anyway
+					</AlertDialogAction>
+				</AlertDialogFooter>
+			</AlertDialogContent>
+		</AlertDialog>
+
+		{/* Config Field Removal Confirmation */}
+		<AlertDialog open={showConfigFieldRemovalConfirm} onOpenChange={setShowConfigFieldRemovalConfirm}>
+			<AlertDialogContent>
+				<AlertDialogHeader>
+					<AlertDialogTitle>Remove Configuration Fields?</AlertDialogTitle>
+					<AlertDialogDescription>
+						Removing config field(s) will delete all stored values for: {removedFieldNames.join(', ')}. This cannot be undone.
+					</AlertDialogDescription>
+				</AlertDialogHeader>
+				<AlertDialogFooter>
+					<AlertDialogCancel>Cancel</AlertDialogCancel>
+					<AlertDialogAction onClick={() => {
+						setShowConfigFieldRemovalConfirm(false);
+						performSave();
+					}} className="bg-destructive text-destructive-foreground hover:bg-destructive/90">
+						Delete Fields
+					</AlertDialogAction>
+				</AlertDialogFooter>
+			</AlertDialogContent>
+		</AlertDialog>
+		</>
 	);
 }
 

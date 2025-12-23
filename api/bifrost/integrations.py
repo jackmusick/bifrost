@@ -53,8 +53,11 @@ class integrations:
         """
         Get integration configuration for an organization.
 
-        Returns the integration mapping including entity ID, configuration,
-        and OAuth details with resolved URLs.
+        Returns the integration data including entity ID, configuration,
+        and full OAuth details with decrypted credentials.
+
+        When an org-specific mapping exists, returns that mapping's data.
+        When no mapping exists, falls back to integration-level defaults.
 
         In platform mode: Reads from database via repositories.
         In external mode: Calls SDK API endpoint.
@@ -66,122 +69,244 @@ class integrations:
         Returns:
             dict | None: Integration data with keys:
                 - integration_id: UUID of the integration
-                - entity_id: str - Mapped external entity ID (e.g., tenant ID)
+                - entity_id: str - External entity ID (from mapping or default_entity_id)
                 - entity_name: str | None - Display name for the mapped entity
-                - config: dict[str, Any] - Merged configuration (schema defaults + org overrides)
-                - oauth_client_id: str | None - OAuth client ID from provider or override
-                - oauth_token_url: str | None - Token URL with {entity_id} resolved
-                - oauth_scopes: str | None - OAuth scopes for this integration
-            Returns None if integration or mapping not found.
-
-        Raises:
-            RuntimeError: If no execution context (in platform mode without API key)
+                - config: dict[str, Any] - Configuration (org overrides + defaults)
+                - oauth: dict | None - Full OAuth data (same format as oauth.get()):
+                    - connection_name: str
+                    - client_id: str
+                    - client_secret: str (decrypted)
+                    - authorization_url: str | None
+                    - token_url: str | None (resolved with entity_id)
+                    - scopes: list[str]
+                    - access_token: str | None (decrypted)
+                    - refresh_token: str | None (decrypted)
+                    - expires_at: str | None (ISO format)
+            Returns None if integration not found.
 
         Example:
             >>> from bifrost import integrations
-            >>> integration = await integrations.get("Microsoft Partner", org_id=context.org_id)
+            >>> integration = await integrations.get("HaloPSA")
             >>> if integration:
             ...     tenant_id = integration["entity_id"]
-            ...     token_url = integration["oauth_token_url"]  # Already resolved
-            ...     client_id = integration["oauth_client_id"]
+            ...     if integration["oauth"]:
+            ...         client_id = integration["oauth"]["client_id"]
+            ...         refresh_token = integration["oauth"]["refresh_token"]
         """
         if _is_platform_context():
-            # Direct database access (platform mode)
-            from ._internal import get_context
-            from src.repositories.integrations import IntegrationsRepository
-            from src.services.oauth_provider import resolve_url_template
-            from src.core.database import get_db_context
+            return await integrations._get_platform_mode(name, org_id)
+        else:
+            return await integrations._get_external_mode(name, org_id)
 
-            context = get_context()
-            target_org_id = org_id or getattr(context, 'org_id', None) or getattr(context, 'scope', None)
+    @staticmethod
+    async def _get_platform_mode(name: str, org_id: str | None = None) -> dict[str, Any] | None:
+        """Platform mode implementation for integrations.get()."""
+        from ._internal import get_context
+        from src.repositories.integrations import IntegrationsRepository
+        from src.services.oauth_provider import resolve_url_template
+        from src.core.database import get_db_context
+        from src.core.security import decrypt_secret
 
-            if not target_org_id:
-                logger.warning("integrations.get(): No organization ID provided or in context")
-                return None
+        context = get_context()
+        target_org_id = org_id or getattr(context, 'org_id', None) or getattr(context, 'scope', None)
 
-            # Convert to UUID if needed
-            try:
-                org_uuid = UUID(target_org_id) if isinstance(target_org_id, str) else target_org_id
-            except (ValueError, TypeError):
-                logger.warning(f"integrations.get(): Invalid organization ID: {target_org_id}")
+        async with get_db_context() as session:
+            repo = IntegrationsRepository(session)
+
+            # Try to get org-specific mapping first
+            mapping = None
+            org_uuid = None
+            if target_org_id:
+                try:
+                    org_uuid = UUID(target_org_id) if isinstance(target_org_id, str) else target_org_id
+                    mapping = await repo.get_integration_for_org(name, org_uuid)
+                except (ValueError, TypeError):
+                    logger.debug(f"integrations.get('{name}'): invalid org_id '{target_org_id}'")
+
+            if mapping:
+                # Org-specific mapping found - use mapping data
+                logger.debug(
+                    f"integrations.get('{name}'): found org mapping, "
+                    f"entity_id={mapping.entity_id}"
+                )
+                return await integrations._build_response_from_mapping(
+                    repo, mapping, org_uuid, resolve_url_template, decrypt_secret
+                )
+
+            # Fall back to integration defaults
+            integration = await repo.get_integration_by_name(name)
+            if not integration:
+                logger.debug(f"integrations.get('{name}'): integration not found")
                 return None
 
             logger.debug(
-                f"integrations.get('{name}'): platform mode, org_id={org_uuid}"
+                f"integrations.get('{name}'): using integration defaults, "
+                f"entity_id={integration.default_entity_id}"
+            )
+            return await integrations._build_response_from_integration(
+                repo, integration, resolve_url_template, decrypt_secret
             )
 
-            # Get database session from async context
-            async with get_db_context() as session:
-                repo = IntegrationsRepository(session)
+    @staticmethod
+    async def _build_response_from_mapping(
+        repo: Any,
+        mapping: Any,
+        org_uuid: UUID | None,
+        resolve_url_template: Any,
+        decrypt_secret: Any,
+    ) -> dict[str, Any]:
+        """Build response dict from an org-specific mapping."""
+        integration = mapping.integration
 
-                # Get the integration mapping for this org
-                mapping = await repo.get_integration_for_org(name, org_uuid)
+        # Get merged configuration (defaults + org overrides)
+        config = await repo.get_config_for_mapping(mapping.integration_id, org_uuid) if org_uuid else {}
 
-                if not mapping:
-                    logger.debug(f"integrations.get('{name}'): mapping not found for org '{org_uuid}'")
-                    return None
+        # Entity ID from mapping, fallback to integration default
+        entity_id = mapping.entity_id or integration.default_entity_id or integration.entity_id
 
-                # Get merged configuration
-                config = await repo.get_config_for_mapping(mapping.integration_id, org_uuid)
+        # Build base response
+        integration_data: dict[str, Any] = {
+            "integration_id": str(mapping.integration_id),
+            "entity_id": entity_id,
+            "entity_name": mapping.entity_name,
+            "config": config or {},
+            "oauth": None,
+        }
 
-                # Build the integration data response
-                integration_data = {
-                    "integration_id": str(mapping.integration_id),
-                    "entity_id": mapping.entity_id,
-                    "entity_name": mapping.entity_name,
-                    "config": config or {},
-                    "oauth_client_id": None,
-                    "oauth_token_url": None,
-                    "oauth_scopes": None,
-                }
+        # Add OAuth details if provider is configured
+        if integration and integration.oauth_provider:
+            provider = integration.oauth_provider
 
-                # Add OAuth details if provider is configured
-                provider = None
-                if mapping.integration and mapping.integration.oauth_provider:
-                    provider = mapping.integration.oauth_provider
-                    integration_data["oauth_client_id"] = provider.client_id
-
-                    # Format scopes as space-separated string
-                    if provider.scopes:
-                        integration_data["oauth_scopes"] = " ".join(provider.scopes)
-
-                    # Resolve OAuth token URL with entity_id
-                    # Use mapping's entity_id first, fall back to integration's global entity_id
-                    entity_id_for_url = mapping.entity_id or mapping.integration.entity_id
-                    if provider.token_url and entity_id_for_url:
-                        resolved_url = resolve_url_template(
-                            url=provider.token_url,
-                            entity_id=entity_id_for_url,
-                            defaults=provider.token_url_defaults,
-                        )
-                        integration_data["oauth_token_url"] = resolved_url
-
-                logger.debug(
-                    f"integrations.get('{name}'): found integration "
-                    f"entity_id={mapping.entity_id}, oauth={bool(provider)}"
-                )
-
-                return integration_data
-        else:
-            # API call (external mode)
-            client = _get_client()
-            response = await client.post(
-                "/api/cli/integrations/get",
-                json={"name": name, "org_id": org_id}
-            )
-
-            if response.status_code == 200:
-                result = response.json()
-                if result is None:
-                    return None
-                # Convert UUID to string if needed for consistency
-                if isinstance(result.get("integration_id"), dict):
-                    # Handle case where UUID comes back as dict
-                    result["integration_id"] = str(result.get("integration_id"))
-                return result
+            # Get token - prefer mapping's oauth_token, fall back to provider's org-level token
+            token = None
+            if mapping.oauth_token:
+                token = mapping.oauth_token
             else:
-                logger.warning(f"Integrations API call failed: {response.status_code}")
+                token = await repo.get_provider_org_token(provider.id)
+
+            integration_data["oauth"] = integrations._build_oauth_data(
+                provider, token, entity_id, resolve_url_template, decrypt_secret
+            )
+
+        return integration_data
+
+    @staticmethod
+    async def _build_response_from_integration(
+        repo: Any,
+        integration: Any,
+        resolve_url_template: Any,
+        decrypt_secret: Any,
+    ) -> dict[str, Any]:
+        """Build response dict from integration defaults (no org mapping)."""
+        # Entity ID from integration defaults
+        entity_id = integration.default_entity_id or integration.entity_id
+
+        # Get integration-level config defaults (org_id=NULL)
+        config = await repo.get_integration_defaults(integration.id)
+
+        # Build base response
+        integration_data: dict[str, Any] = {
+            "integration_id": str(integration.id),
+            "entity_id": entity_id,
+            "entity_name": None,  # No org mapping = no entity name
+            "config": config or {},
+            "oauth": None,
+        }
+
+        # Add OAuth details if provider is configured
+        if integration.oauth_provider:
+            provider = integration.oauth_provider
+
+            # Get org-level token from provider (user_id=NULL)
+            token = await repo.get_provider_org_token(provider.id)
+
+            integration_data["oauth"] = integrations._build_oauth_data(
+                provider, token, entity_id, resolve_url_template, decrypt_secret
+            )
+
+        return integration_data
+
+    @staticmethod
+    def _build_oauth_data(
+        provider: Any,
+        token: Any,
+        entity_id: str | None,
+        resolve_url_template: Any,
+        decrypt_secret: Any,
+    ) -> dict[str, Any]:
+        """Build OAuth data dict from provider and token."""
+        # Decrypt secrets
+        client_secret = None
+        if provider.encrypted_client_secret:
+            try:
+                raw = provider.encrypted_client_secret
+                client_secret = decrypt_secret(raw.decode() if isinstance(raw, bytes) else raw)
+            except Exception:
+                logger.warning("Failed to decrypt client_secret")
+
+        access_token = None
+        refresh_token = None
+        expires_at = None
+
+        if token:
+            if token.encrypted_access_token:
+                try:
+                    raw = token.encrypted_access_token
+                    access_token = decrypt_secret(raw.decode() if isinstance(raw, bytes) else raw)
+                except Exception:
+                    logger.warning("Failed to decrypt access_token")
+
+            if token.encrypted_refresh_token:
+                try:
+                    raw = token.encrypted_refresh_token
+                    refresh_token = decrypt_secret(raw.decode() if isinstance(raw, bytes) else raw)
+                except Exception:
+                    logger.warning("Failed to decrypt refresh_token")
+
+            if token.expires_at:
+                expires_at = token.expires_at.isoformat()
+
+        # Resolve token_url with entity_id
+        resolved_token_url = None
+        if provider.token_url and entity_id:
+            resolved_token_url = resolve_url_template(
+                url=provider.token_url,
+                entity_id=entity_id,
+                defaults=provider.token_url_defaults,
+            )
+
+        return {
+            "connection_name": provider.provider_name,
+            "client_id": provider.client_id,
+            "client_secret": client_secret,
+            "authorization_url": provider.authorization_url,
+            "token_url": resolved_token_url,
+            "scopes": provider.scopes or [],
+            "access_token": access_token,
+            "refresh_token": refresh_token,
+            "expires_at": expires_at,
+        }
+
+    @staticmethod
+    async def _get_external_mode(name: str, org_id: str | None = None) -> dict[str, Any] | None:
+        """External mode implementation for integrations.get()."""
+        client = _get_client()
+        response = await client.post(
+            "/api/cli/integrations/get",
+            json={"name": name, "org_id": org_id}
+        )
+
+        if response.status_code == 200:
+            result = response.json()
+            if result is None:
                 return None
+            # Convert UUID to string if needed for consistency
+            if isinstance(result.get("integration_id"), dict):
+                result["integration_id"] = str(result.get("integration_id"))
+            return result
+        else:
+            logger.warning(f"Integrations API call failed: {response.status_code}")
+            return None
 
     @staticmethod
     async def list_mappings(name: str) -> list[dict[str, Any]] | None:

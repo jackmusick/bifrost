@@ -128,10 +128,24 @@ class OAuthConnectionRepository:
         connection_name: str,
         org_id: UUID | None = None,
     ) -> OAuthProvider | None:
-        """Get a specific OAuth connection."""
-        query = select(OAuthProvider).where(
-            OAuthProvider.provider_name == connection_name
-        )
+        """Get a specific OAuth connection.
+
+        Supports lookup by:
+        - integration_id (UUID string) - preferred
+        - provider_name (string) - legacy fallback
+        """
+        # Try to parse as UUID first (integration_id lookup)
+        try:
+            integration_id = UUID(connection_name)
+            query = select(OAuthProvider).where(
+                OAuthProvider.integration_id == integration_id
+            )
+        except ValueError:
+            # Not a valid UUID, fall back to provider_name lookup
+            query = select(OAuthProvider).where(
+                OAuthProvider.provider_name == connection_name
+            )
+
         if org_id:
             query = query.where(OAuthProvider.organization_id == org_id)
 

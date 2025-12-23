@@ -16,7 +16,6 @@ from pydantic import BaseModel, Field
 from typing import Any
 
 from sqlalchemy import and_, delete, select
-from sqlalchemy.dialects.postgresql import insert
 
 from src.core.auth import Context, CurrentSuperuser
 from sqlalchemy.orm import joinedload, selectinload
@@ -114,6 +113,8 @@ class IntegrationsRepository:
 
     async def get_integration_detail_by_id(self, integration_id: UUID) -> Integration | None:
         """Get integration by ID with relationships loaded (oauth_provider, mappings, config_schema)."""
+        from src.models.orm import OAuthProvider
+
         result = await self.db.execute(
             select(Integration)
             .where(
@@ -123,7 +124,7 @@ class IntegrationsRepository:
                 )
             )
             .options(
-                joinedload(Integration.oauth_provider),
+                joinedload(Integration.oauth_provider).selectinload(OAuthProvider.tokens),
                 selectinload(Integration.mappings),
                 selectinload(Integration.config_schema),
             )
@@ -150,6 +151,7 @@ class IntegrationsRepository:
             name=request.name,
             entity_id=request.entity_id,
             entity_id_name=request.entity_id_name,
+            default_entity_id=request.default_entity_id,
             is_deleted=False,
             created_at=datetime.utcnow(),
             updated_at=datetime.utcnow(),
@@ -191,6 +193,9 @@ class IntegrationsRepository:
             integration.entity_id = request.entity_id
         if request.entity_id_name is not None:
             integration.entity_id_name = request.entity_id_name
+        if request.default_entity_id is not None:
+            # Allow setting to empty string to clear the value
+            integration.default_entity_id = request.default_entity_id if request.default_entity_id else None
 
         # Handle config_schema updates (normalized table)
         if request.config_schema is not None:
@@ -286,7 +291,7 @@ class IntegrationsRepository:
         return result.scalar_one_or_none()
 
     async def create_mapping(
-        self, request: IntegrationMappingCreate, integration_id: UUID
+        self, request: IntegrationMappingCreate, integration_id: UUID, updated_by: str = "system"
     ) -> IntegrationMapping:
         """Create a new integration mapping."""
         mapping = IntegrationMapping(
@@ -301,7 +306,63 @@ class IntegrationsRepository:
         self.db.add(mapping)
         await self.db.flush()
         await self.db.refresh(mapping)
+
+        # Persist config to configs table if provided
+        if request.config is not None:
+            await self._save_config(
+                integration_id=integration_id,
+                organization_id=request.organization_id,
+                config=request.config,
+                updated_by=updated_by,
+            )
+
         return mapping
+
+    async def _validate_config_value(
+        self,
+        key: str,
+        value: Any,
+        schema_type: str,
+    ) -> None:
+        """Validate that a config value matches its schema type."""
+        import json
+
+        if value is None or value == "":
+            return  # Allow clearing values
+
+        if schema_type == "int":
+            if not isinstance(value, int):
+                # Allow string representation of int
+                if isinstance(value, str):
+                    try:
+                        int(value)
+                    except ValueError:
+                        raise HTTPException(
+                            status_code=400,
+                            detail=f"Config key '{key}' expects integer, got invalid value"
+                        )
+                else:
+                    raise HTTPException(
+                        status_code=400,
+                        detail=f"Config key '{key}' expects integer, got {type(value).__name__}"
+                    )
+
+        elif schema_type == "bool":
+            if not isinstance(value, bool):
+                raise HTTPException(
+                    status_code=400,
+                    detail=f"Config key '{key}' expects boolean, got {type(value).__name__}"
+                )
+
+        elif schema_type == "json":
+            if isinstance(value, str):
+                try:
+                    json.loads(value)
+                except json.JSONDecodeError:
+                    raise HTTPException(
+                        status_code=400,
+                        detail=f"Config key '{key}' contains invalid JSON"
+                    )
 
     async def _save_config(
         self,
@@ -330,6 +391,10 @@ class IntegrationsRepository:
         for key, value in config.items():
             # Get the schema item for this key (for FK reference)
             schema_item = schema_items.get(key)
+
+            # Validate value against schema type if schema exists
+            if schema_item:
+                await self._validate_config_value(key, value, schema_item.type)
 
             # Build the WHERE clause for matching existing config
             # Handle NULL comparison properly with IS NULL
@@ -379,6 +444,9 @@ class IntegrationsRepository:
                         config_schema_id=schema_item.id if schema_item else None,
                     )
                     self.db.add(new_config)
+
+        # Flush changes so they're visible to subsequent queries
+        await self.db.flush()
 
     async def update_mapping(
         self,
@@ -588,7 +656,8 @@ async def get_integration(
     oauth_config = None
     if integration.oauth_provider:
         provider = integration.oauth_provider
-        # Get connection status from provider
+        # Get token data if available (for expires_at and has_refresh_token)
+        token = provider.tokens[0] if provider.tokens else None
         oauth_config = OAuthConfigSummary(
             provider_name=provider.provider_name,
             oauth_flow_type=provider.oauth_flow_type,
@@ -598,8 +667,9 @@ async def get_integration(
             scopes=provider.scopes or [],
             status=provider.status or "not_connected",
             status_message=provider.status_message,
-            expires_at=None,  # Token-level data, not provider-level
+            expires_at=token.expires_at if token else None,
             last_refresh_at=provider.last_token_refresh,
+            has_refresh_token=token.encrypted_refresh_token is not None if token else False,
         )
 
     # Build mapping responses with org-specific overrides only (not merged with defaults)
@@ -640,6 +710,7 @@ async def get_integration(
         config_defaults=config_defaults if config_defaults else None,
         entity_id=integration.entity_id,
         entity_id_name=integration.entity_id_name,
+        default_entity_id=integration.default_entity_id,
         has_oauth_config=integration.has_oauth_config,
         is_deleted=integration.is_deleted,
         created_at=integration.created_at,

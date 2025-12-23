@@ -2804,22 +2804,22 @@ export interface paths {
          * Execute workflow via API key
          * @description Execute an endpoint-enabled workflow using an API key for authentication
          */
-        get: operations["execute_endpoint_api_endpoints__workflow_name__delete"];
+        get: operations["execute_endpoint_api_endpoints__workflow_name__post"];
         /**
          * Execute workflow via API key
          * @description Execute an endpoint-enabled workflow using an API key for authentication
          */
-        put: operations["execute_endpoint_api_endpoints__workflow_name__delete"];
+        put: operations["execute_endpoint_api_endpoints__workflow_name__post"];
         /**
          * Execute workflow via API key
          * @description Execute an endpoint-enabled workflow using an API key for authentication
          */
-        post: operations["execute_endpoint_api_endpoints__workflow_name__delete"];
+        post: operations["execute_endpoint_api_endpoints__workflow_name__post"];
         /**
          * Execute workflow via API key
          * @description Execute an endpoint-enabled workflow using an API key for authentication
          */
-        delete: operations["execute_endpoint_api_endpoints__workflow_name__delete"];
+        delete: operations["execute_endpoint_api_endpoints__workflow_name__post"];
         options?: never;
         head?: never;
         patch?: never;
@@ -6612,6 +6612,11 @@ export interface components {
              * @description Optional display name for the global entity ID
              */
             entity_id_name?: string | null;
+            /**
+             * Default Entity Id
+             * @description Default value for entity_id in URL templates (e.g., 'common' for Azure multi-tenant)
+             */
+            default_entity_id?: string | null;
         };
         /**
          * IntegrationData
@@ -6703,6 +6708,11 @@ export interface components {
              * @description Display name for the global entity ID
              */
             entity_id_name?: string | null;
+            /**
+             * Default Entity Id
+             * @description Default value for {entity_id} in URL templates (e.g., 'common' for Azure multi-tenant)
+             */
+            default_entity_id?: string | null;
             /**
              * Has Oauth Config
              * @description Whether OAuth configuration is set up for this integration
@@ -6930,6 +6940,11 @@ export interface components {
              */
             entity_id_name?: string | null;
             /**
+             * Default Entity Id
+             * @description Default value for entity_id in URL templates
+             */
+            default_entity_id?: string | null;
+            /**
              * Has Oauth Config
              * @description Whether OAuth configuration is set up for this integration
              * @default false
@@ -6985,6 +7000,11 @@ export interface components {
              * @description Display name for the global entity ID
              */
             entity_id_name?: string | null;
+            /**
+             * Default Entity Id
+             * @description Default value for entity_id in URL templates (e.g., 'common' for Azure multi-tenant)
+             */
+            default_entity_id?: string | null;
         };
         /**
          * LLMConfigRequest
@@ -7581,6 +7601,12 @@ export interface components {
              * @description Last token refresh time
              */
             last_refresh_at?: string | null;
+            /**
+             * Has Refresh Token
+             * @description Whether a refresh token is available
+             * @default false
+             */
+            has_refresh_token: boolean;
         };
         /**
          * OAuthConnectionDetail
@@ -14297,7 +14323,7 @@ export interface operations {
             };
         };
     };
-    execute_endpoint_api_endpoints__workflow_name__delete: {
+    execute_endpoint_api_endpoints__workflow_name__post: {
         parameters: {
             query?: never;
             header: {
@@ -14330,7 +14356,7 @@ export interface operations {
             };
         };
     };
-    execute_endpoint_api_endpoints__workflow_name__delete: {
+    execute_endpoint_api_endpoints__workflow_name__post: {
         parameters: {
             query?: never;
             header: {
@@ -14363,7 +14389,7 @@ export interface operations {
             };
         };
     };
-    execute_endpoint_api_endpoints__workflow_name__delete: {
+    execute_endpoint_api_endpoints__workflow_name__post: {
         parameters: {
             query?: never;
             header: {
@@ -14396,7 +14422,7 @@ export interface operations {
             };
         };
     };
-    execute_endpoint_api_endpoints__workflow_name__delete: {
+    execute_endpoint_api_endpoints__workflow_name__post: {
         parameters: {
             query?: never;
             header: {

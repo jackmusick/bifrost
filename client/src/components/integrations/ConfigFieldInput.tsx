@@ -2,7 +2,8 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Button } from "@/components/ui/button";
-import { RotateCcw } from "lucide-react";
+import { Badge } from "@/components/ui/badge";
+import { RotateCcw, CheckCircle2 } from "lucide-react";
 import type { ConfigSchemaItem } from "@/services/integrations";
 
 interface ConfigFieldInputProps {
@@ -24,13 +25,21 @@ export function ConfigFieldInput({
 }: ConfigFieldInputProps) {
 	// Secrets should never be displayed - only allow setting new values
 	if (field.type === "secret") {
+		const hasSecretValue = Boolean(value);
+
 		return (
 			<div className="space-y-2">
 				<div className="flex items-center justify-between">
-					<Label className="flex items-center gap-1">
+					<Label className="flex items-center gap-2">
 						{field.key}
 						{field.required && (
 							<span className="text-destructive">*</span>
+						)}
+						{hasSecretValue && (
+							<Badge variant="secondary" className="text-xs font-normal">
+								<CheckCircle2 className="h-3 w-3 mr-1" />
+								Secret configured
+							</Badge>
 						)}
 					</Label>
 					{onReset && hasOverride && (
@@ -56,7 +65,7 @@ export function ConfigFieldInput({
 					type="password"
 					value={(value as string) || ""}
 					onChange={(e) => onChange(e.target.value)}
-					placeholder={hasOverride ? "••••••••  (override set)" : "Enter new value..."}
+					placeholder={hasOverride ? "••••••••  (override set)" : hasSecretValue ? "••••••••" : "Enter new value..."}
 				/>
 				{hasOverride && !value && (
 					<p className="text-xs text-muted-foreground">

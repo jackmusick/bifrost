@@ -240,7 +240,7 @@ class IntegrationsRepository(BaseRepository[Integration]):
     # =========================================================================
 
     async def create_mapping(
-        self, integration_id: UUID, data: IntegrationMappingCreate
+        self, integration_id: UUID, data: IntegrationMappingCreate, updated_by: str = "system"
     ) -> IntegrationMapping:
         """
         Create a new integration mapping.
@@ -248,6 +248,7 @@ class IntegrationsRepository(BaseRepository[Integration]):
         Args:
             integration_id: Integration UUID
             data: Mapping creation data
+            updated_by: User identifier for config audit trail
 
         Returns:
             Created mapping with relationships loaded
@@ -260,6 +261,16 @@ class IntegrationsRepository(BaseRepository[Integration]):
             oauth_token_id=data.oauth_token_id,
         )
         created = await self.create(mapping)
+
+        # Persist config to configs table if provided
+        if data.config is not None:
+            await self._save_config(
+                integration_id=integration_id,
+                organization_id=data.organization_id,
+                config=data.config,
+                updated_by=updated_by,
+            )
+
         # Reload with relationships
         result = await self.get_mapping(created.id)
         assert result is not None, "Created mapping should be retrievable"
@@ -599,3 +610,59 @@ class IntegrationsRepository(BaseRepository[Integration]):
         config = {**defaults, **overrides}
 
         return config
+
+    async def get_integration_defaults(self, integration_id: UUID) -> dict[str, Any]:
+        """
+        Get integration-level config defaults (org_id=NULL).
+
+        Used when no org mapping exists but we want integration defaults.
+
+        Args:
+            integration_id: Integration UUID
+
+        Returns:
+            dict: Integration-level config defaults
+        """
+        from src.models.orm import Config as ConfigModel
+
+        config_query = select(ConfigModel).where(
+            and_(
+                ConfigModel.integration_id == integration_id,
+                ConfigModel.organization_id.is_(None),
+            )
+        )
+        result = await self.session.execute(config_query)
+        config_entries = result.scalars().all()
+
+        config: dict[str, Any] = {}
+        for entry in config_entries:
+            value = entry.value
+            if isinstance(value, dict) and "value" in value:
+                config[entry.key] = value["value"]
+            else:
+                config[entry.key] = value
+
+        return config
+
+    async def get_provider_org_token(self, provider_id: UUID) -> Any:
+        """
+        Get org-level OAuth token for a provider (user_id=NULL).
+
+        Used when getting integration defaults - returns the org-level
+        token that's not tied to a specific user.
+
+        Args:
+            provider_id: OAuthProvider UUID
+
+        Returns:
+            OAuthToken or None if not found
+        """
+        from src.models.orm.oauth import OAuthToken
+
+        result = await self.session.execute(
+            select(OAuthToken).where(
+                OAuthToken.provider_id == provider_id,
+                OAuthToken.user_id.is_(None),
+            )
+        )
+        return result.scalars().first()
