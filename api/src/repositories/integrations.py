@@ -5,13 +5,15 @@ Database operations for integration management and mapping.
 Handles CRUD operations for Integration and IntegrationMapping tables.
 """
 
+from typing import Any
 from uuid import UUID
 
-from sqlalchemy import select
+from sqlalchemy import and_, delete, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import joinedload, selectinload
 
-from src.models.orm.integrations import Integration, IntegrationMapping
+from src.models.orm.config import Config
+from src.models.orm.integrations import Integration, IntegrationConfigSchema, IntegrationMapping
 from src.models.contracts.integrations import (
     IntegrationCreate,
     IntegrationUpdate,
@@ -53,14 +55,23 @@ class IntegrationsRepository(BaseRepository[Integration]):
         """
         integration = Integration(
             name=data.name,
-            oauth_provider_id=data.oauth_provider_id,
-            list_entities_data_provider_id=data.list_entities_data_provider_id,
-            config_schema=[item.model_dump() for item in data.config_schema]
-            if data.config_schema
-            else None,
             entity_id=data.entity_id,
             entity_id_name=data.entity_id_name,
         )
+
+        # Add config schema items if provided
+        if data.config_schema:
+            for idx, item in enumerate(data.config_schema):
+                schema_item = IntegrationConfigSchema(
+                    key=item.key,
+                    type=item.type,
+                    required=item.required,
+                    description=item.description,
+                    options=item.options,
+                    position=idx,
+                )
+                integration.config_schema.append(schema_item)
+
         return await self.create(integration)
 
     async def get_integration(self, id: UUID) -> Integration | None:
@@ -79,6 +90,7 @@ class IntegrationsRepository(BaseRepository[Integration]):
             .options(
                 joinedload(Integration.oauth_provider),
                 selectinload(Integration.mappings),
+                selectinload(Integration.config_schema),
             )
         )
         return result.unique().scalar_one_or_none()
@@ -99,6 +111,7 @@ class IntegrationsRepository(BaseRepository[Integration]):
             .options(
                 joinedload(Integration.oauth_provider),
                 selectinload(Integration.mappings),
+                selectinload(Integration.config_schema),
             )
         )
         return result.unique().scalar_one_or_none()
@@ -118,6 +131,7 @@ class IntegrationsRepository(BaseRepository[Integration]):
         query = select(Integration).options(
             joinedload(Integration.oauth_provider),
             selectinload(Integration.mappings),
+            selectinload(Integration.config_schema),
         )
 
         if not include_deleted:
@@ -133,6 +147,11 @@ class IntegrationsRepository(BaseRepository[Integration]):
         """
         Update an integration.
 
+        Handles config_schema updates by:
+        1. Removing schema items not in the new list (cascade deletes related configs)
+        2. Updating existing schema items by key
+        3. Adding new schema items
+
         Args:
             id: Integration UUID
             data: Update data (partial)
@@ -147,24 +166,56 @@ class IntegrationsRepository(BaseRepository[Integration]):
         # Update only provided fields
         if data.name is not None:
             integration.name = data.name
-        if data.oauth_provider_id is not None:
-            integration.oauth_provider_id = data.oauth_provider_id
         if data.list_entities_data_provider_id is not None:
             integration.list_entities_data_provider_id = (
                 data.list_entities_data_provider_id
             )
-        if data.config_schema is not None:
-            integration.config_schema = [
-                item.model_dump() for item in data.config_schema
-            ]
         if data.entity_id is not None:
             integration.entity_id = data.entity_id
         if data.entity_id_name is not None:
             integration.entity_id_name = data.entity_id_name
 
+        # Handle config_schema updates (normalized table)
+        if data.config_schema is not None:
+            # Build lookup of existing schema items by key
+            existing_by_key = {item.key: item for item in integration.config_schema}
+            new_keys = {item.key for item in data.config_schema}
+
+            # Remove schema items that are not in the new list
+            # (cascade delete will remove related configs)
+            for key in list(existing_by_key.keys()):
+                if key not in new_keys:
+                    item = existing_by_key[key]
+                    integration.config_schema.remove(item)
+                    await self.session.delete(item)
+
+            # Update existing or add new schema items
+            for idx, item_data in enumerate(data.config_schema):
+                if item_data.key in existing_by_key:
+                    # Update existing
+                    existing = existing_by_key[item_data.key]
+                    existing.type = item_data.type
+                    existing.required = item_data.required
+                    existing.description = item_data.description
+                    existing.options = item_data.options
+                    existing.position = idx
+                else:
+                    # Add new
+                    new_item = IntegrationConfigSchema(
+                        integration_id=integration.id,
+                        key=item_data.key,
+                        type=item_data.type,
+                        required=item_data.required,
+                        description=item_data.description,
+                        options=item_data.options,
+                        position=idx,
+                    )
+                    integration.config_schema.append(new_item)
+
         await self.session.flush()
         await self.session.refresh(integration)
-        return integration
+        # Reload with relationships
+        return await self.get_integration(id)
 
     async def delete_integration(self, id: UUID) -> bool:
         """
@@ -287,8 +338,90 @@ class IntegrationsRepository(BaseRepository[Integration]):
         )
         return list(result.unique().scalars().all())
 
+    async def _save_config(
+        self,
+        integration_id: UUID,
+        organization_id: UUID | None,
+        config: dict[str, Any],
+        updated_by: str = "system",
+    ) -> None:
+        """
+        Persist config values to the configs table.
+
+        For each key-value pair:
+        - If value is None or empty string, delete the entry (fall back to default)
+        - Otherwise, upsert the entry
+
+        Uses explicit SELECT + INSERT/UPDATE pattern because PostgreSQL's
+        ON CONFLICT doesn't work with functional indexes (COALESCE for NULL handling).
+
+        Args:
+            integration_id: Integration UUID
+            organization_id: Organization UUID (None for integration-level defaults)
+            config: Config key-value pairs to save
+            updated_by: User identifier for audit trail
+        """
+        # Look up schema items for this integration to get config_schema_id
+        schema_result = await self.session.execute(
+            select(IntegrationConfigSchema)
+            .where(IntegrationConfigSchema.integration_id == integration_id)
+        )
+        schema_items = {item.key: item for item in schema_result.scalars().all()}
+
+        for key, value in config.items():
+            # Get the schema item for this key (for FK reference)
+            schema_item = schema_items.get(key)
+
+            # Build the WHERE clause for matching existing config
+            # Handle NULL comparison properly with IS NULL
+            if organization_id is None:
+                where_clause = and_(
+                    Config.integration_id == integration_id,
+                    Config.organization_id.is_(None),
+                    Config.key == key,
+                )
+            else:
+                where_clause = and_(
+                    Config.integration_id == integration_id,
+                    Config.organization_id == organization_id,
+                    Config.key == key,
+                )
+
+            if value is None or value == "":
+                # Delete override (fall back to default)
+                await self.session.execute(delete(Config).where(where_clause))
+            else:
+                # Check if record exists
+                result = await self.session.execute(
+                    select(Config.id).where(where_clause)
+                )
+                existing = result.scalar_one_or_none()
+
+                if existing:
+                    # Update existing record
+                    await self.session.execute(
+                        update(Config)
+                        .where(Config.id == existing)
+                        .values(
+                            value={"value": value},
+                            updated_by=updated_by,
+                            config_schema_id=schema_item.id if schema_item else None,
+                        )
+                    )
+                else:
+                    # Insert new record
+                    new_config = Config(
+                        integration_id=integration_id,
+                        organization_id=organization_id,
+                        key=key,
+                        value={"value": value},
+                        updated_by=updated_by,
+                        config_schema_id=schema_item.id if schema_item else None,
+                    )
+                    self.session.add(new_config)
+
     async def update_mapping(
-        self, id: UUID, data: IntegrationMappingUpdate
+        self, id: UUID, data: IntegrationMappingUpdate, updated_by: str = "system"
     ) -> IntegrationMapping | None:
         """
         Update an integration mapping.
@@ -296,6 +429,7 @@ class IntegrationsRepository(BaseRepository[Integration]):
         Args:
             id: Mapping UUID
             data: Update data (partial)
+            updated_by: User identifier for config audit trail
 
         Returns:
             Updated mapping or None if not found
@@ -311,6 +445,15 @@ class IntegrationsRepository(BaseRepository[Integration]):
             mapping.entity_name = data.entity_name
         if data.oauth_token_id is not None:
             mapping.oauth_token_id = data.oauth_token_id
+
+        # Persist config to configs table
+        if data.config is not None:
+            await self._save_config(
+                integration_id=mapping.integration_id,
+                organization_id=mapping.organization_id,
+                config=data.config,
+                updated_by=updated_by,
+            )
 
         await self.session.flush()
         await self.session.refresh(mapping)
@@ -366,44 +509,25 @@ class IntegrationsRepository(BaseRepository[Integration]):
         # Then get the mapping for this org
         return await self.get_mapping_by_org(integration.id, org_id)
 
-    async def get_config_for_mapping(
+    async def get_org_config_overrides(
         self, integration_id: UUID, org_id: UUID
-    ) -> dict:
+    ) -> dict[str, Any]:
         """
-        Get merged configuration for an integration mapping.
+        Get ONLY org-specific config overrides (not merged with defaults).
 
-        Merges schema defaults from integration config_schema with
-        organization-specific overrides from the Config table.
+        Used for admin UI where we only want to show what the org has explicitly set,
+        not the default values. This prevents users from accidentally saving defaults
+        back to the org config.
 
         Args:
             integration_id: Integration UUID
             org_id: Organization UUID
 
         Returns:
-            dict: Merged configuration (schema defaults + org overrides)
+            dict: Only org-specific config overrides
         """
         from src.models.orm import Config as ConfigModel
-        from sqlalchemy import and_
 
-        # Get the integration to access config schema
-        integration = await self.get_integration(integration_id)
-        if not integration:
-            return {}
-
-        # Build config from schema defaults
-        config = {}
-        if integration.config_schema:
-            for schema_item in integration.config_schema:
-                if isinstance(schema_item, dict):
-                    if "default" in schema_item:
-                        config[schema_item["key"]] = schema_item["default"]
-                else:
-                    # Handle ConfigSchemaItem objects
-                    if hasattr(schema_item, "default") and schema_item.default is not None:
-                        config[schema_item.key] = schema_item.default
-
-        # Query for org-specific config overrides
-        # Config table entries with integration_id + org_id are per-org integration config
         config_query = select(ConfigModel).where(
             and_(
                 ConfigModel.organization_id == org_id,
@@ -413,12 +537,65 @@ class IntegrationsRepository(BaseRepository[Integration]):
         result = await self.session.execute(config_query)
         config_entries = result.scalars().all()
 
-        # Merge org overrides into config
+        config: dict[str, Any] = {}
         for entry in config_entries:
             value = entry.value
             if isinstance(value, dict) and "value" in value:
                 config[entry.key] = value["value"]
             else:
                 config[entry.key] = value
+
+        return config
+
+    async def get_config_for_mapping(
+        self, integration_id: UUID, org_id: UUID
+    ) -> dict:
+        """
+        Get merged configuration for an integration mapping.
+
+        Gets integration-level defaults (org_id=NULL) and merges
+        organization-specific overrides on top.
+
+        Args:
+            integration_id: Integration UUID
+            org_id: Organization UUID
+
+        Returns:
+            dict: Merged configuration (integration defaults + org overrides)
+        """
+        from src.models.orm import Config as ConfigModel
+        from sqlalchemy import or_
+
+        # Query for both integration defaults (org_id=NULL) and org-specific overrides
+        config_query = select(ConfigModel).where(
+            and_(
+                ConfigModel.integration_id == integration_id,
+                or_(
+                    ConfigModel.organization_id.is_(None),
+                    ConfigModel.organization_id == org_id,
+                ),
+            )
+        )
+        result = await self.session.execute(config_query)
+        config_entries = result.scalars().all()
+
+        # Separate defaults from org overrides
+        defaults: dict[str, Any] = {}
+        overrides: dict[str, Any] = {}
+
+        for entry in config_entries:
+            value = entry.value
+            if isinstance(value, dict) and "value" in value:
+                val = value["value"]
+            else:
+                val = value
+
+            if entry.organization_id is None:
+                defaults[entry.key] = val
+            else:
+                overrides[entry.key] = val
+
+        # Merge: start with defaults, apply org overrides
+        config = {**defaults, **overrides}
 
         return config

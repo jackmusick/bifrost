@@ -10,7 +10,7 @@ from typing import TYPE_CHECKING
 from uuid import UUID, uuid4
 
 from sqlalchemy import Boolean, DateTime, ForeignKey, Index, String, text
-from sqlalchemy.dialects.postgresql import JSONB
+from sqlalchemy.dialects.postgresql import ARRAY, JSONB
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from src.models.orm.base import Base
@@ -35,7 +35,6 @@ class Integration(Base):
     list_entities_data_provider_id: Mapped[UUID | None] = mapped_column(
         default=None, nullable=True
     )
-    config_schema: Mapped[dict | None] = mapped_column(JSONB, default=None, nullable=True)
     entity_id: Mapped[str | None] = mapped_column(String(255), default=None, nullable=True)
     entity_id_name: Mapped[str | None] = mapped_column(String(255), default=None, nullable=True)
     is_deleted: Mapped[bool] = mapped_column(Boolean, default=False)
@@ -58,6 +57,12 @@ class Integration(Base):
         back_populates="integration",
         lazy="selectin",
     )
+    config_schema: Mapped[list["IntegrationConfigSchema"]] = relationship(
+        back_populates="integration",
+        lazy="selectin",
+        cascade="all, delete-orphan",
+        order_by="IntegrationConfigSchema.position",
+    )
 
     __table_args__ = (
         Index("ix_integrations_name", "name"),
@@ -67,6 +72,54 @@ class Integration(Base):
     def has_oauth_config(self) -> bool:
         """Check if OAuth is configured for this integration."""
         return self.oauth_provider is not None
+
+
+class IntegrationConfigSchema(Base):
+    """Configuration schema item for an integration.
+
+    Defines what configuration keys are available for an integration,
+    their types, and validation rules. Normalized from JSONB for:
+    - Referential integrity with cascade delete
+    - Easier querying and updates
+    - Foreign key support for config values
+    """
+
+    __tablename__ = "integration_config_schema"
+
+    id: Mapped[UUID] = mapped_column(primary_key=True, default=uuid4)
+    integration_id: Mapped[UUID] = mapped_column(
+        ForeignKey("integrations.id", ondelete="CASCADE"), nullable=False
+    )
+    key: Mapped[str] = mapped_column(String(255), nullable=False)
+    type: Mapped[str] = mapped_column(String(50), nullable=False)  # string, int, bool, json, secret
+    required: Mapped[bool] = mapped_column(Boolean, default=False)
+    description: Mapped[str | None] = mapped_column(String(500), default=None, nullable=True)
+    options: Mapped[list[str] | None] = mapped_column(ARRAY(String), default=None, nullable=True)
+    position: Mapped[int] = mapped_column(default=0)  # For ordering
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime, default=datetime.utcnow, server_default=text("NOW()")
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime,
+        default=datetime.utcnow,
+        server_default=text("NOW()"),
+        onupdate=datetime.utcnow,
+    )
+
+    # Relationships
+    integration: Mapped["Integration"] = relationship(
+        back_populates="config_schema",
+    )
+
+    __table_args__ = (
+        Index("ix_integration_config_schema_integration_id", "integration_id"),
+        Index(
+            "ix_integration_config_schema_unique_key",
+            "integration_id",
+            "key",
+            unique=True,
+        ),
+    )
 
 
 class IntegrationMapping(Base):

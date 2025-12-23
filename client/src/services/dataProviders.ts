@@ -2,7 +2,7 @@
  * Data Providers hooks and utilities using openapi-react-query pattern
  */
 
-import { $api } from "@/lib/api-client";
+import { $api, apiClient } from "@/lib/api-client";
 import type { components } from "@/lib/v1";
 
 // Auto-generated types from OpenAPI spec
@@ -14,15 +14,6 @@ export type DataProviderOption = {
 	value: string;
 	description?: string;
 };
-
-// Response type for invoke endpoint
-interface DataProviderInvokeResponse {
-	options: Array<{
-		value: string;
-		label: string;
-		description?: string | null;
-	}>;
-}
 
 /**
  * Hook to fetch all available data providers
@@ -42,28 +33,18 @@ export async function getDataProviderOptions(
 	inputs?: Record<string, unknown>,
 ): Promise<DataProviderOption[]> {
 	try {
-		// Use fetch directly since the generated types may not include this endpoint yet
-		const response = await fetch(
-			`/api/data-providers/${providerId}/invoke`,
+		const { data, error } = await apiClient.POST(
+			"/api/data-providers/{provider_id}/invoke",
 			{
-				method: "POST",
-				headers: {
-					"Content-Type": "application/json",
-				},
-				credentials: "include",
-				body: JSON.stringify({ inputs: inputs || {} }),
+				params: { path: { provider_id: providerId } },
+				body: { inputs: inputs || {} },
 			},
 		);
 
-		if (!response.ok) {
-			console.error(
-				"Failed to invoke data provider:",
-				response.statusText,
-			);
+		if (error || !data) {
+			console.error("Failed to invoke data provider:", error);
 			return [];
 		}
-
-		const data: DataProviderInvokeResponse = await response.json();
 
 		return (data.options || []).map((opt) => ({
 			value: opt.value,

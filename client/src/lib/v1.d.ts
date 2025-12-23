@@ -2804,22 +2804,22 @@ export interface paths {
          * Execute workflow via API key
          * @description Execute an endpoint-enabled workflow using an API key for authentication
          */
-        get: operations["execute_endpoint_api_endpoints__workflow_name__post"];
+        get: operations["execute_endpoint_api_endpoints__workflow_name__delete"];
         /**
          * Execute workflow via API key
          * @description Execute an endpoint-enabled workflow using an API key for authentication
          */
-        put: operations["execute_endpoint_api_endpoints__workflow_name__post"];
+        put: operations["execute_endpoint_api_endpoints__workflow_name__delete"];
         /**
          * Execute workflow via API key
          * @description Execute an endpoint-enabled workflow using an API key for authentication
          */
-        post: operations["execute_endpoint_api_endpoints__workflow_name__post"];
+        post: operations["execute_endpoint_api_endpoints__workflow_name__delete"];
         /**
          * Execute workflow via API key
          * @description Execute an endpoint-enabled workflow using an API key for authentication
          */
-        delete: operations["execute_endpoint_api_endpoints__workflow_name__post"];
+        delete: operations["execute_endpoint_api_endpoints__workflow_name__delete"];
         options?: never;
         head?: never;
         patch?: never;
@@ -3872,6 +3872,30 @@ export interface paths {
          */
         get: operations["get_integration_by_name_api_integrations_by_name__name__get"];
         put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/integrations/{integration_id}/config": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get integration default config
+         * @description Get default config values for an integration (Platform admin only)
+         */
+        get: operations["get_integration_config_api_integrations__integration_id__config_get"];
+        /**
+         * Update integration default config
+         * @description Set default config values for an integration (Platform admin only)
+         */
+        put: operations["update_integration_config_api_integrations__integration_id__config_put"];
         post?: never;
         delete?: never;
         options?: never;
@@ -5056,6 +5080,9 @@ export interface components {
          * ConfigSchemaItem
          * @description Metadata for a single configuration item.
          *     Defines what configuration keys are available for an integration.
+         *
+         *     Note: Default values are stored in the configs table, not in the schema.
+         *     Use the integration config endpoint to set defaults.
          */
         ConfigSchemaItem: {
             /**
@@ -5075,11 +5102,6 @@ export interface components {
              * @default false
              */
             required: boolean;
-            /**
-             * Default
-             * @description Default value if not provided
-             */
-            default?: unknown;
             /**
              * Description
              * @description Human-readable description of this config item
@@ -6537,6 +6559,34 @@ export interface components {
             total_count: number;
         };
         /**
+         * IntegrationConfigResponse
+         * @description Response model for integration config.
+         */
+        IntegrationConfigResponse: {
+            /**
+             * Integration Id
+             * Format: uuid
+             */
+            integration_id: string;
+            /** Config */
+            config: {
+                [key: string]: unknown;
+            };
+        };
+        /**
+         * IntegrationConfigUpdate
+         * @description Request model for updating integration default config values.
+         */
+        IntegrationConfigUpdate: {
+            /**
+             * Config
+             * @description Default config values for this integration
+             */
+            config: {
+                [key: string]: unknown;
+            };
+        };
+        /**
          * IntegrationCreate
          * @description Request model for creating a new integration.
          *     POST /api/integrations
@@ -6636,6 +6686,13 @@ export interface components {
              * @description Configuration schema for this integration
              */
             config_schema?: components["schemas"]["ConfigSchemaItem"][] | null;
+            /**
+             * Config Defaults
+             * @description Integration-level default configuration values
+             */
+            config_defaults?: {
+                [key: string]: unknown;
+            } | null;
             /**
              * Entity Id
              * @description Global entity ID for token URL templating
@@ -14240,7 +14297,7 @@ export interface operations {
             };
         };
     };
-    execute_endpoint_api_endpoints__workflow_name__post: {
+    execute_endpoint_api_endpoints__workflow_name__delete: {
         parameters: {
             query?: never;
             header: {
@@ -14273,7 +14330,7 @@ export interface operations {
             };
         };
     };
-    execute_endpoint_api_endpoints__workflow_name__post: {
+    execute_endpoint_api_endpoints__workflow_name__delete: {
         parameters: {
             query?: never;
             header: {
@@ -14306,7 +14363,7 @@ export interface operations {
             };
         };
     };
-    execute_endpoint_api_endpoints__workflow_name__post: {
+    execute_endpoint_api_endpoints__workflow_name__delete: {
         parameters: {
             query?: never;
             header: {
@@ -14339,7 +14396,7 @@ export interface operations {
             };
         };
     };
-    execute_endpoint_api_endpoints__workflow_name__post: {
+    execute_endpoint_api_endpoints__workflow_name__delete: {
         parameters: {
             query?: never;
             header: {
@@ -16386,6 +16443,72 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["IntegrationResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_integration_config_api_integrations__integration_id__config_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                integration_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["IntegrationConfigResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    update_integration_config_api_integrations__integration_id__config_put: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                integration_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["IntegrationConfigUpdate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["IntegrationConfigResponse"];
                 };
             };
             /** @description Validation Error */

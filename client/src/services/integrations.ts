@@ -1,7 +1,11 @@
 /**
  * Integrations API service using openapi-react-query pattern
+ *
+ * All mutations automatically invalidate relevant queries so components
+ * reading from useIntegration() will re-render with fresh data.
  */
 
+import { useQueryClient } from "@tanstack/react-query";
 import { $api } from "@/lib/api-client";
 import type { components } from "@/lib/v1";
 
@@ -28,7 +32,7 @@ export function useIntegrations() {
 }
 
 /**
- * Hook to fetch a single integration
+ * Hook to fetch a single integration (includes mappings)
  */
 export function useIntegration(integrationId: string) {
 	return $api.useQuery("get", "/api/integrations/{integration_id}", {
@@ -42,21 +46,44 @@ export function useIntegration(integrationId: string) {
  * Hook to create an integration
  */
 export function useCreateIntegration() {
-	return $api.useMutation("post", "/api/integrations");
+	const queryClient = useQueryClient();
+
+	return $api.useMutation("post", "/api/integrations", {
+		onSuccess: () => {
+			queryClient.invalidateQueries({ queryKey: ["get", "/api/integrations"] });
+		},
+	});
 }
 
 /**
  * Hook to update an integration
  */
 export function useUpdateIntegration() {
-	return $api.useMutation("put", "/api/integrations/{integration_id}");
+	const queryClient = useQueryClient();
+
+	return $api.useMutation("put", "/api/integrations/{integration_id}", {
+		onSuccess: (_, variables) => {
+			const integrationId = variables.params.path.integration_id;
+			// Invalidate both the list and the specific integration
+			queryClient.invalidateQueries({ queryKey: ["get", "/api/integrations"] });
+			queryClient.invalidateQueries({
+				queryKey: ["get", "/api/integrations/{integration_id}", { params: { path: { integration_id: integrationId } } }],
+			});
+		},
+	});
 }
 
 /**
  * Hook to delete an integration
  */
 export function useDeleteIntegration() {
-	return $api.useMutation("delete", "/api/integrations/{integration_id}");
+	const queryClient = useQueryClient();
+
+	return $api.useMutation("delete", "/api/integrations/{integration_id}", {
+		onSuccess: () => {
+			queryClient.invalidateQueries({ queryKey: ["get", "/api/integrations"] });
+		},
+	});
 }
 
 /**
@@ -74,28 +101,66 @@ export function useIntegrationMappings(integrationId: string) {
  * Hook to create an integration mapping
  */
 export function useCreateMapping() {
-	return $api.useMutation(
-		"post",
-		"/api/integrations/{integration_id}/mappings",
-	);
+	const queryClient = useQueryClient();
+
+	return $api.useMutation("post", "/api/integrations/{integration_id}/mappings", {
+		onSuccess: (_, variables) => {
+			const integrationId = variables.params.path.integration_id;
+			// Invalidate the integration detail (which includes mappings)
+			queryClient.invalidateQueries({
+				queryKey: ["get", "/api/integrations/{integration_id}", { params: { path: { integration_id: integrationId } } }],
+			});
+		},
+	});
 }
 
 /**
  * Hook to update an integration mapping
  */
 export function useUpdateMapping() {
-	return $api.useMutation(
-		"put",
-		"/api/integrations/{integration_id}/mappings/{mapping_id}",
-	);
+	const queryClient = useQueryClient();
+
+	return $api.useMutation("put", "/api/integrations/{integration_id}/mappings/{mapping_id}", {
+		onSuccess: (_, variables) => {
+			const integrationId = variables.params.path.integration_id;
+			// Invalidate the integration detail (which includes mappings)
+			queryClient.invalidateQueries({
+				queryKey: ["get", "/api/integrations/{integration_id}", { params: { path: { integration_id: integrationId } } }],
+			});
+		},
+	});
 }
 
 /**
  * Hook to delete an integration mapping
  */
 export function useDeleteMapping() {
-	return $api.useMutation(
-		"delete",
-		"/api/integrations/{integration_id}/mappings/{mapping_id}",
-	);
+	const queryClient = useQueryClient();
+
+	return $api.useMutation("delete", "/api/integrations/{integration_id}/mappings/{mapping_id}", {
+		onSuccess: (_, variables) => {
+			const integrationId = variables.params.path.integration_id;
+			// Invalidate the integration detail (which includes mappings)
+			queryClient.invalidateQueries({
+				queryKey: ["get", "/api/integrations/{integration_id}", { params: { path: { integration_id: integrationId } } }],
+			});
+		},
+	});
+}
+
+/**
+ * Hook to update integration default config values
+ */
+export function useUpdateIntegrationConfig() {
+	const queryClient = useQueryClient();
+
+	return $api.useMutation("put", "/api/integrations/{integration_id}/config", {
+		onSuccess: (_, variables) => {
+			const integrationId = variables.params.path.integration_id;
+			// Invalidate the integration detail to refresh config
+			queryClient.invalidateQueries({
+				queryKey: ["get", "/api/integrations/{integration_id}", { params: { path: { integration_id: integrationId } } }],
+			});
+		},
+	});
 }

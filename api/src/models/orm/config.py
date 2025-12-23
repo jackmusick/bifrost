@@ -20,7 +20,14 @@ if TYPE_CHECKING:
 
 
 class Config(Base):
-    """Configuration key-value store."""
+    """Configuration key-value store.
+
+    Stores actual config values for integrations. Each config entry references:
+    - integration_id: The integration this config belongs to
+    - organization_id: The org (NULL for integration-level defaults)
+    - config_schema_id: The schema item defining this key (for cascade delete)
+    - key: The config key (denormalized for query convenience)
+    """
 
     __tablename__ = "configs"
 
@@ -43,6 +50,9 @@ class Config(Base):
     integration_id: Mapped[UUID | None] = mapped_column(
         ForeignKey("integrations.id"), default=None
     )
+    config_schema_id: Mapped[UUID | None] = mapped_column(
+        ForeignKey("integration_config_schema.id", ondelete="CASCADE"), default=None
+    )
     created_at: Mapped[datetime] = mapped_column(
         DateTime, default=datetime.utcnow, server_default=text("NOW()")
     )
@@ -58,8 +68,8 @@ class Config(Base):
     organization: Mapped["Organization | None"] = relationship(back_populates="configs")
 
     __table_args__ = (
-        Index("ix_configs_org_key", "organization_id", "key", unique=True),
-        Index("ix_configs_integration_id", "integration_id"),
+        Index("ix_configs_integration_org_key", "integration_id", "organization_id", "key", unique=True),
+        Index("ix_configs_schema_id", "config_schema_id"),
     )
 
 

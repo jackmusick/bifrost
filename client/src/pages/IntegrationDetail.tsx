@@ -1,6 +1,5 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo } from "react";
 import { useParams, Link } from "react-router-dom";
-import { useQueryClient } from "@tanstack/react-query";
 import {
 	Save,
 	Loader2,
@@ -23,8 +22,6 @@ import {
 	CardHeader,
 	CardTitle,
 } from "@/components/ui/card";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Badge } from "@/components/ui/badge";
 import {
@@ -35,14 +32,41 @@ import {
 	DataTableHeader,
 	DataTableRow,
 } from "@/components/ui/data-table";
+import {
+	Tabs,
+	TabsContent,
+	TabsList,
+	TabsTrigger,
+} from "@/components/ui/tabs";
+import {
+	Dialog,
+	DialogContent,
+	DialogDescription,
+	DialogFooter,
+	DialogHeader,
+	DialogTitle,
+} from "@/components/ui/dialog";
+import {
+	AlertDialog,
+	AlertDialogAction,
+	AlertDialogCancel,
+	AlertDialogContent,
+	AlertDialogDescription,
+	AlertDialogFooter,
+	AlertDialogHeader,
+	AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 import { toast } from "sonner";
 import {
 	useIntegration,
 	useCreateMapping,
 	useUpdateMapping,
 	useDeleteMapping,
+	useUpdateIntegration,
+	useUpdateIntegrationConfig,
 	type IntegrationMapping,
-	type ConfigSchemaItem,
 } from "@/services/integrations";
 import { $api } from "@/lib/api-client";
 import {
@@ -52,6 +76,13 @@ import {
 import { getStatusLabel, isExpired, expiresSoon } from "@/lib/client-types";
 import { CreateOAuthConnectionDialog } from "@/components/oauth/CreateOAuthConnectionDialog";
 import { CreateIntegrationDialog } from "@/components/integrations/CreateIntegrationDialog";
+import { OrgConfigDialog } from "@/components/integrations/OrgConfigDialog";
+import { ConfigOverridesTab } from "@/components/integrations/ConfigOverridesTab";
+import { useIntegrationEntities } from "@/hooks/useIntegrationEntities";
+import { useAutoMatch } from "@/hooks/useAutoMatch";
+import { EntitySelector } from "@/components/integrations/EntitySelector";
+import { AutoMatchControls } from "@/components/integrations/AutoMatchControls";
+import { MatchSuggestionBadge } from "@/components/integrations/MatchSuggestionBadge";
 
 interface MappingFormData {
 	organization_id: string;
@@ -71,13 +102,18 @@ interface OrgWithMapping {
 
 export function IntegrationDetail() {
 	const { id: integrationId } = useParams<{ id: string }>();
-	const queryClient = useQueryClient();
 
-	const [orgsWithMappings, setOrgsWithMappings] = useState<OrgWithMapping[]>(
-		[],
-	);
 	const [oauthConfigDialogOpen, setOAuthConfigDialogOpen] = useState(false);
 	const [editDialogOpen, setEditDialogOpen] = useState(false);
+	const [configDialogOpen, setConfigDialogOpen] = useState(false);
+	const [defaultsDialogOpen, setDefaultsDialogOpen] = useState(false);
+	const [defaultsFormValues, setDefaultsFormValues] = useState<Record<string, unknown>>({});
+	const [selectedOrgForConfig, setSelectedOrgForConfig] = useState<
+		OrgWithMapping | undefined
+	>();
+	const [deleteMappingConfirm, setDeleteMappingConfirm] = useState<
+		OrgWithMapping | null
+	>(null);
 
 	// Fetch integration details (includes mappings and OAuth config)
 	const {
@@ -95,11 +131,48 @@ export function IntegrationDetail() {
 	const createMutation = useCreateMapping();
 	const updateMutation = useUpdateMapping();
 	const deleteMutation = useDeleteMapping();
+	const updateIntegrationMutation = useUpdateIntegration();
+	const updateConfigMutation = useUpdateIntegrationConfig();
 	const authorizeMutation = useAuthorizeOAuthConnection();
 	const refreshMutation = useRefreshOAuthToken();
 
-	const organizations = Array.isArray(orgsData) ? orgsData : [];
-	const mappings = integration?.mappings || [];
+	// Memoize to stabilize references for the useEffect that combines them
+	const organizations = useMemo(
+		() => (Array.isArray(orgsData) ? orgsData : []),
+		[orgsData],
+	);
+	const mappings = useMemo(
+		() => integration?.mappings || [],
+		[integration?.mappings],
+	);
+
+	// Fetch entities from data provider
+	const {
+		data: entities = [],
+		isLoading: isLoadingEntities,
+	} = useIntegrationEntities(integration?.list_entities_data_provider_id);
+
+	// Auto-match hook
+	const {
+		suggestions: autoMatchSuggestions,
+		matchStats,
+		isMatching,
+		runAutoMatch,
+		acceptSuggestion,
+		rejectSuggestion,
+		acceptAll,
+		clearSuggestions,
+	} = useAutoMatch({
+		organizations: organizations.map((org: { id: string; name: string }) => ({
+			id: org.id,
+			name: org.name,
+		})),
+		entities: entities.map((e) => ({ value: e.value, label: e.label })),
+		existingMappings: mappings.map((m) => ({
+			organization_id: m.organization_id,
+			entity_id: m.entity_id,
+		})),
+	});
 
 	// OAuth config from integration (now returned directly from GET /api/integrations/{id})
 	const oauthConfig = integration?.oauth_config;
@@ -115,48 +188,60 @@ export function IntegrationDetail() {
 	const canUseAuthCodeFlow =
 		oauthConfig && oauthConfig.oauth_flow_type !== "client_credentials";
 
-	// Combine organizations with their mappings
-	useEffect(() => {
-		if (!isLoadingOrgs && !isLoadingIntegration) {
-			const combined: OrgWithMapping[] = organizations.map(
-				(org: { id: string; name: string }) => {
-					const existingMapping = mappings.find(
-						(m) => m.organization_id === org.id,
-					);
+	// Track dirty state for each org (user edits)
+	const [dirtyEdits, setDirtyEdits] = useState<
+		Map<string, { formData: Partial<MappingFormData>; isDirty: boolean }>
+	>(new Map());
 
-					const defaultConfig: Record<string, unknown> = {};
-					integration?.config_schema?.forEach((field) => {
-						if (field.default !== null && field.default !== undefined) {
-							defaultConfig[field.key] = field.default;
-						}
-					});
-
-					return {
-						id: org.id,
-						name: org.name,
-						mapping: existingMapping,
-						formData: existingMapping
-							? {
-									organization_id: existingMapping.organization_id,
-									entity_id: existingMapping.entity_id,
-									entity_name: existingMapping.entity_name || "",
-									oauth_token_id:
-										existingMapping.oauth_token_id || undefined,
-									config: existingMapping.config || defaultConfig,
-								}
-							: {
-									organization_id: org.id,
-									entity_id: "",
-									entity_name: "",
-									config: defaultConfig,
-								},
-						isDirty: false,
-					};
-				},
-			);
-			setOrgsWithMappings(combined);
+	// Combine organizations with their mappings using useMemo (no effect needed)
+	const orgsWithMappings = useMemo((): OrgWithMapping[] => {
+		if (isLoadingOrgs || isLoadingIntegration) {
+			return [];
 		}
-	}, [organizations, mappings, isLoadingOrgs, isLoadingIntegration, integration]);
+		return organizations.map((org: { id: string; name: string }) => {
+			const existingMapping = mappings.find(
+				(m) => m.organization_id === org.id,
+			);
+
+			// Check for dirty edits from user
+			const dirtyEdit = dirtyEdits.get(org.id);
+
+			const baseFormData: MappingFormData = existingMapping
+				? {
+						organization_id: existingMapping.organization_id,
+						entity_id: existingMapping.entity_id,
+						entity_name: existingMapping.entity_name || "",
+						oauth_token_id: existingMapping.oauth_token_id || undefined,
+						// Use actual mapping config only - don't fall back to defaults
+						// OrgConfigDialog shows defaults separately via defaultConfig prop
+						config: existingMapping.config || {},
+					}
+				: {
+						organization_id: org.id,
+						entity_id: "",
+						entity_name: "",
+						// New mappings start empty - defaults shown separately in dialog
+						config: {},
+					};
+
+			return {
+				id: org.id,
+				name: org.name,
+				mapping: existingMapping,
+				formData: dirtyEdit
+					? { ...baseFormData, ...dirtyEdit.formData }
+					: baseFormData,
+				isDirty: dirtyEdit?.isDirty ?? false,
+			};
+		});
+	}, [
+		organizations,
+		mappings,
+		isLoadingOrgs,
+		isLoadingIntegration,
+		integration,
+		dirtyEdits,
+	]);
 
 	// Listen for OAuth success messages from popup window
 	useEffect(() => {
@@ -186,38 +271,15 @@ export function IntegrationDetail() {
 		orgId: string,
 		updates: Partial<MappingFormData>,
 	) => {
-		setOrgsWithMappings((prev) =>
-			prev.map((org) =>
-				org.id === orgId
-					? {
-							...org,
-							formData: { ...org.formData, ...updates },
-							isDirty: true,
-						}
-					: org,
-			),
-		);
-	};
-
-	const updateConfigField = (
-		orgId: string,
-		key: string,
-		value: unknown,
-	) => {
-		setOrgsWithMappings((prev) =>
-			prev.map((org) =>
-				org.id === orgId
-					? {
-							...org,
-							formData: {
-								...org.formData,
-								config: { ...org.formData.config, [key]: value },
-							},
-							isDirty: true,
-						}
-					: org,
-			),
-		);
+		setDirtyEdits((prev) => {
+			const next = new Map(prev);
+			const existing = next.get(orgId);
+			next.set(orgId, {
+				formData: { ...(existing?.formData || {}), ...updates },
+				isDirty: true,
+			});
+			return next;
+		});
 	};
 
 	const handleSaveMapping = async (org: OrgWithMapping) => {
@@ -262,23 +324,31 @@ export function IntegrationDetail() {
 				toast.success(`Mapping created for ${org.name}`);
 			}
 
-			// Invalidate and refetch
-			queryClient.invalidateQueries({
-				queryKey: ["integrations", integrationId, "mappings"],
+			// Mark as not dirty (remove from dirty edits)
+			setDirtyEdits((prev) => {
+				const next = new Map(prev);
+				next.delete(org.id);
+				return next;
 			});
-
-			// Mark as not dirty
-			setOrgsWithMappings((prev) =>
-				prev.map((o) => (o.id === org.id ? { ...o, isDirty: false } : o)),
-			);
+			// Cache invalidation in useCreateMapping/useUpdateMapping handles refetch
 		} catch (error) {
 			console.error("Failed to save mapping:", error);
 			toast.error(`Failed to save mapping for ${org.name}`);
 		}
 	};
 
-	const handleDeleteMapping = async (org: OrgWithMapping) => {
-		if (!integrationId || !org.mapping) return;
+	const handleDeleteMappingClick = (org: OrgWithMapping) => {
+		setDeleteMappingConfirm(org);
+	};
+
+	const handleDeleteMappingConfirm = async () => {
+		const org = deleteMappingConfirm;
+		if (!integrationId || !org?.mapping) {
+			setDeleteMappingConfirm(null);
+			return;
+		}
+
+		setDeleteMappingConfirm(null);
 
 		try {
 			await deleteMutation.mutateAsync({
@@ -290,11 +360,7 @@ export function IntegrationDetail() {
 				},
 			});
 			toast.success(`Mapping deleted for ${org.name}`);
-
-			// Invalidate queries
-			queryClient.invalidateQueries({
-				queryKey: ["integrations", integrationId, "mappings"],
-			});
+			// Cache invalidation in useDeleteMapping handles refetch
 		} catch (error) {
 			console.error("Failed to delete mapping:", error);
 			toast.error(`Failed to delete mapping for ${org.name}`);
@@ -377,58 +443,118 @@ export function IntegrationDetail() {
 		}
 	};
 
-	const renderConfigField = (
-		org: OrgWithMapping,
-		field: ConfigSchemaItem,
-	) => {
-		const value = org.formData.config[field.key];
-
-		switch (field.type) {
-			case "bool":
-				return (
-					<div className="flex items-center gap-2">
-						<input
-							type="checkbox"
-							checked={Boolean(value)}
-							onChange={(e) =>
-								updateConfigField(org.id, field.key, e.target.checked)
-							}
-							className="rounded"
-						/>
-						<Label className="text-xs">{field.key}</Label>
-					</div>
-				);
-			case "int":
-				return (
-					<Input
-						type="number"
-						placeholder={field.key}
-						value={value as number}
-						onChange={(e) =>
-							updateConfigField(
-								org.id,
-								field.key,
-								parseInt(e.target.value),
-							)
-						}
-						className="h-8 text-sm"
-					/>
-				);
-			case "secret":
-			case "string":
-			default:
-				return (
-					<Input
-						type={field.type === "secret" ? "password" : "text"}
-						placeholder={field.key}
-						value={(value as string) || ""}
-						onChange={(e) =>
-							updateConfigField(org.id, field.key, e.target.value)
-						}
-						className="h-8 text-sm"
-					/>
-				);
+	const handleOpenConfigDialog = (orgId: string) => {
+		const org = orgsWithMappings.find((o) => o.id === orgId);
+		if (org) {
+			setSelectedOrgForConfig(org);
+			setConfigDialogOpen(true);
 		}
+	};
+
+	const handleSaveOrgConfig = async (config: Record<string, unknown>) => {
+		if (!selectedOrgForConfig || !integrationId) return;
+
+		// Only save if mapping exists (config is per-mapping)
+		if (!selectedOrgForConfig.mapping) {
+			toast.error("Save the mapping first before configuring");
+			throw new Error("No mapping exists");
+		}
+
+		try {
+			await updateMutation.mutateAsync({
+				params: {
+					path: {
+						integration_id: integrationId,
+						mapping_id: selectedOrgForConfig.mapping.id,
+					},
+				},
+				body: {
+					entity_id: selectedOrgForConfig.formData.entity_id,
+					entity_name:
+						selectedOrgForConfig.formData.entity_name || undefined,
+					oauth_token_id:
+						selectedOrgForConfig.formData.oauth_token_id || undefined,
+					config: Object.keys(config).length > 0 ? config : undefined,
+				},
+			});
+			toast.success(`Configuration saved for ${selectedOrgForConfig.name}`);
+			// Cache invalidation in useUpdateMapping handles refetch
+		} catch (error) {
+			console.error("Failed to save config:", error);
+			toast.error(`Failed to save configuration for ${selectedOrgForConfig.name}`);
+			throw error; // Re-throw so dialog knows save failed
+		}
+	};
+
+	const hasNonDefaultConfig = (org: OrgWithMapping): boolean => {
+		if (!org.mapping?.config || !integration?.config_schema) return false;
+
+		// Use config_defaults from the integration
+		const defaultConfig = integration.config_defaults ?? {};
+
+		return integration.config_schema.some((field) => {
+			const currentValue = org.mapping?.config?.[field.key];
+			const defaultValue = defaultConfig[field.key];
+			return currentValue !== defaultValue;
+		});
+	};
+
+	// Configuration Defaults Dialog handlers
+	const handleOpenDefaultsDialog = () => {
+		if (!integration?.config_schema) return;
+		// Initialize form with current default values from config_defaults
+		const currentDefaults: Record<string, unknown> = {};
+		integration.config_schema.forEach((field) => {
+			currentDefaults[field.key] = integration.config_defaults?.[field.key] ?? "";
+		});
+		setDefaultsFormValues(currentDefaults);
+		setDefaultsDialogOpen(true);
+	};
+
+	const handleSaveDefaults = async () => {
+		if (!integrationId || !integration?.config_schema) return;
+
+		try {
+			// Build config object from form values
+			const config: Record<string, unknown> = {};
+			for (const [key, value] of Object.entries(defaultsFormValues)) {
+				// Only include non-empty values
+				if (value !== "" && value !== null && value !== undefined) {
+					config[key] = value;
+				}
+			}
+
+			await updateConfigMutation.mutateAsync({
+				params: { path: { integration_id: integrationId } },
+				body: { config },
+			});
+
+			toast.success("Configuration defaults updated");
+			setDefaultsDialogOpen(false);
+		} catch (error) {
+			console.error("Failed to update defaults:", error);
+			toast.error("Failed to update configuration defaults");
+		}
+	};
+
+	const handleAcceptSuggestion = (orgId: string) => {
+		const suggestion = acceptSuggestion(orgId);
+		if (suggestion) {
+			updateOrgMapping(orgId, {
+				entity_id: suggestion.entityId,
+				entity_name: suggestion.entityName,
+			});
+		}
+	};
+
+	const handleAcceptAllSuggestions = () => {
+		const suggestions = acceptAll();
+		suggestions.forEach((suggestion) => {
+			updateOrgMapping(suggestion.organizationId, {
+				entity_id: suggestion.entityId,
+				entity_name: suggestion.entityName,
+			});
+		});
 	};
 
 	const isLoading = isLoadingIntegration || isLoadingOrgs;
@@ -515,38 +641,57 @@ export function IntegrationDetail() {
 				{/* Configuration Defaults */}
 				<Card>
 					<CardHeader className="pb-3">
-						<CardTitle className="text-base">
-							Configuration Defaults
-						</CardTitle>
-						<CardDescription>
-							Default config values for new mappings
-						</CardDescription>
+						<div className="flex items-center justify-between">
+							<div>
+								<CardTitle className="text-base">
+									Configuration Defaults
+								</CardTitle>
+								<CardDescription>
+									Default config values for new mappings
+								</CardDescription>
+							</div>
+							{integration.config_schema && integration.config_schema.length > 0 && (
+								<Button
+									variant="outline"
+									size="sm"
+									onClick={handleOpenDefaultsDialog}
+								>
+									<Pencil className="h-3 w-3 mr-1" />
+									Edit
+								</Button>
+							)}
+						</div>
 					</CardHeader>
 					<CardContent>
 						{integration.config_schema &&
 						integration.config_schema.length > 0 ? (
 							<div className="space-y-2">
-								{integration.config_schema.map((field) => (
-									<div
-										key={field.key}
-										className="flex items-center justify-between text-sm"
-									>
-										<span className="text-muted-foreground">
-											{field.key}
-											{field.required && (
-												<span className="text-destructive ml-1">
-													*
-												</span>
-											)}
-										</span>
-										<span className="font-mono text-xs bg-muted px-2 py-0.5 rounded">
-											{field.default !== null &&
-											field.default !== undefined
-												? String(field.default)
-												: "—"}
-										</span>
-									</div>
-								))}
+								{integration.config_schema.map((field) => {
+									const defaultValue = integration.config_defaults?.[field.key];
+									return (
+										<div
+											key={field.key}
+											className="flex items-center justify-between text-sm"
+										>
+											<span className="text-muted-foreground">
+												{field.key}
+												{field.required && (
+													<span className="text-destructive ml-1">
+														*
+													</span>
+												)}
+											</span>
+											<span className="font-mono text-xs bg-muted px-2 py-0.5 rounded">
+												{defaultValue !== null &&
+												defaultValue !== undefined
+													? field.type === "secret"
+														? "••••••••"
+														: String(defaultValue)
+													: "—"}
+											</span>
+										</div>
+									);
+								})}
 							</div>
 						) : (
 							<div className="text-center py-4">
@@ -703,15 +848,40 @@ export function IntegrationDetail() {
 				</Card>
 			</div>
 
-			{/* Mappings Table */}
-			<Card>
-				<CardHeader>
-					<CardTitle>Organization Mappings</CardTitle>
-					<CardDescription>
-						Configure how each organization maps to external entities
-					</CardDescription>
-				</CardHeader>
-				<CardContent>
+			{/* Tabs for Mappings and Config Overrides */}
+			<Tabs defaultValue="mappings" className="space-y-4">
+				<TabsList>
+					<TabsTrigger value="mappings">Mappings</TabsTrigger>
+					<TabsTrigger value="config-overrides">
+						Config Overrides
+					</TabsTrigger>
+				</TabsList>
+
+				<TabsContent value="mappings">
+					<Card>
+						<CardHeader className="flex flex-row items-start justify-between space-y-0">
+							<div>
+								<CardTitle>Organization Mappings</CardTitle>
+								<CardDescription>
+									Configure how each organization maps to external
+									entities
+								</CardDescription>
+							</div>
+							{/* Auto-Match Controls in header */}
+							{integration.list_entities_data_provider_id &&
+								orgsWithMappings.length > 0 && (
+									<AutoMatchControls
+										onRunAutoMatch={runAutoMatch}
+										onAcceptAll={handleAcceptAllSuggestions}
+										onClear={clearSuggestions}
+										matchStats={matchStats}
+										hasSuggestions={autoMatchSuggestions.size > 0}
+										isMatching={isMatching}
+										disabled={isLoadingEntities}
+									/>
+								)}
+						</CardHeader>
+						<CardContent>
 					{!integration.list_entities_data_provider_id ? (
 						<div className="flex flex-col items-center justify-center py-12 text-center">
 							<Settings className="h-12 w-12 text-muted-foreground" />
@@ -752,19 +922,6 @@ export function IntegrationDetail() {
 										<DataTableHead className="w-64">
 											External Entity
 										</DataTableHead>
-										{integration.config_schema?.map((field) => (
-											<DataTableHead
-												key={field.key}
-												className="w-48"
-											>
-												{field.key}
-												{field.required && (
-													<span className="text-destructive ml-1">
-														*
-													</span>
-												)}
-											</DataTableHead>
-										))}
 										<DataTableHead className="w-24">
 											Status
 										</DataTableHead>
@@ -774,36 +931,46 @@ export function IntegrationDetail() {
 									</DataTableRow>
 								</DataTableHeader>
 								<DataTableBody>
-									{orgsWithMappings.map((org) => (
+									{orgsWithMappings.map((org) => {
+										// Filter out entities already mapped to other orgs
+										const usedEntityIds = orgsWithMappings
+											.filter(o => o.id !== org.id && o.formData.entity_id)
+											.map(o => o.formData.entity_id);
+										const availableEntities = entities.filter(
+											e => e.value === org.formData.entity_id || !usedEntityIds.includes(e.value)
+										);
+
+										return (
 										<DataTableRow key={org.id}>
 											<DataTableCell className="font-medium">
 												{org.name}
 											</DataTableCell>
 											<DataTableCell>
-												<Input
-													placeholder="entity-id"
-													value={org.formData.entity_id}
-													onChange={(e) =>
-														updateOrgMapping(org.id, {
-															entity_id:
-																e.target.value,
-															entity_name:
-																e.target.value,
-														})
-													}
-													className="h-8 text-sm"
-												/>
+												{autoMatchSuggestions.has(org.id) ? (
+													<MatchSuggestionBadge
+														suggestion={
+															autoMatchSuggestions.get(org.id)!
+														}
+														onAccept={() =>
+															handleAcceptSuggestion(org.id)
+														}
+														onReject={() => rejectSuggestion(org.id)}
+													/>
+												) : (
+													<EntitySelector
+														entities={availableEntities}
+														value={org.formData.entity_id}
+														onChange={(value, label) =>
+															updateOrgMapping(org.id, {
+																entity_id: value,
+																entity_name: label,
+															})
+														}
+														isLoading={isLoadingEntities}
+														placeholder="Select entity..."
+													/>
+												)}
 											</DataTableCell>
-											{integration.config_schema?.map(
-												(field) => (
-													<DataTableCell key={field.key}>
-														{renderConfigField(
-															org,
-															field,
-														)}
-													</DataTableCell>
-												),
-											)}
 											<DataTableCell>
 												{org.mapping ? (
 													<Badge
@@ -838,44 +1005,62 @@ export function IntegrationDetail() {
 														size="sm"
 														variant="ghost"
 														onClick={() =>
-															handleSaveMapping(org)
+															handleOpenConfigDialog(org.id)
+														}
+														title="Configure"
+														className="relative"
+													>
+														<Settings className="h-4 w-4" />
+														{hasNonDefaultConfig(org) && (
+															<span className="absolute -top-0.5 -right-0.5 h-2 w-2 rounded-full bg-blue-600" />
+														)}
+													</Button>
+													<Button
+														size="sm"
+														variant="ghost"
+														onClick={() =>
+															handleDeleteMappingClick(org)
 														}
 														disabled={
-															!org.isDirty ||
-															!org.formData.entity_id
+															!org.mapping ||
+															deleteMutation.isPending
 														}
-														title="Save"
+														title={org.mapping ? "Unlink mapping" : "No mapping to unlink"}
+														className="text-red-600 hover:text-red-700 disabled:text-muted-foreground"
 													>
-														<Save className="h-4 w-4" />
+														<Unlink className="h-4 w-4" />
 													</Button>
-													{org.mapping && (
-														<Button
-															size="sm"
-															variant="ghost"
-															onClick={() =>
-																handleDeleteMapping(
-																	org,
-																)
-															}
-															disabled={
-																deleteMutation.isPending
-															}
-															title="Delete mapping"
-															className="text-red-600 hover:text-red-700"
-														>
-															<Unlink className="h-4 w-4" />
-														</Button>
-													)}
 												</div>
 											</DataTableCell>
 										</DataTableRow>
-									))}
+										);
+									})}
 								</DataTableBody>
 							</DataTable>
 						</div>
 					)}
 				</CardContent>
 			</Card>
+				</TabsContent>
+
+				<TabsContent value="config-overrides">
+					<Card>
+						<CardHeader>
+							<CardTitle>Configuration Overrides</CardTitle>
+							<CardDescription>
+								Manage organization-specific configuration overrides
+							</CardDescription>
+						</CardHeader>
+						<CardContent>
+							<ConfigOverridesTab
+								orgsWithMappings={orgsWithMappings}
+								configSchema={integration?.config_schema || []}
+								integrationId={integrationId || ""}
+							/>
+						</CardContent>
+					</Card>
+				</TabsContent>
+			</Tabs>
 
 			{/* OAuth Configuration Dialog */}
 			{integrationId && (
@@ -893,6 +1078,128 @@ export function IntegrationDetail() {
 				editIntegrationId={integrationId}
 				initialData={integration}
 			/>
+
+			{/* Org Config Dialog */}
+			{selectedOrgForConfig && (
+				<OrgConfigDialog
+					open={configDialogOpen}
+					onOpenChange={setConfigDialogOpen}
+					orgId={selectedOrgForConfig.id}
+					orgName={selectedOrgForConfig.name}
+					configSchema={integration?.config_schema || []}
+					currentConfig={selectedOrgForConfig.formData.config}
+					onSave={handleSaveOrgConfig}
+				/>
+			)}
+
+			{/* Configuration Defaults Dialog */}
+			<Dialog open={defaultsDialogOpen} onOpenChange={setDefaultsDialogOpen}>
+				<DialogContent className="max-w-md">
+					<DialogHeader>
+						<DialogTitle>Edit Configuration Defaults</DialogTitle>
+						<DialogDescription>
+							Set default values for new organization mappings
+						</DialogDescription>
+					</DialogHeader>
+					<div className="space-y-4 py-4">
+						{integration?.config_schema?.map((field) => (
+							<div key={field.key} className="space-y-2">
+								<Label htmlFor={`default-${field.key}`}>
+									{field.key}
+									{field.required && (
+										<span className="text-destructive ml-1">*</span>
+									)}
+									<span className="text-muted-foreground text-xs ml-2">
+										({field.type})
+									</span>
+								</Label>
+								{field.type === "bool" ? (
+									<select
+										id={`default-${field.key}`}
+										value={String(defaultsFormValues[field.key] ?? "")}
+										onChange={(e) =>
+											setDefaultsFormValues((prev) => ({
+												...prev,
+												[field.key]: e.target.value === "true",
+											}))
+										}
+										className="flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm transition-colors"
+									>
+										<option value="">— Not set —</option>
+										<option value="true">True</option>
+										<option value="false">False</option>
+									</select>
+								) : (
+									<Input
+										id={`default-${field.key}`}
+										type={field.type === "secret" ? "password" : "text"}
+										placeholder={`Default ${field.key}`}
+										value={String(defaultsFormValues[field.key] ?? "")}
+										onChange={(e) =>
+											setDefaultsFormValues((prev) => ({
+												...prev,
+												[field.key]: field.type === "int"
+													? parseInt(e.target.value) || ""
+													: e.target.value,
+											}))
+										}
+									/>
+								)}
+							</div>
+						))}
+					</div>
+					<DialogFooter>
+						<Button
+							variant="outline"
+							onClick={() => setDefaultsDialogOpen(false)}
+						>
+							Cancel
+						</Button>
+						<Button
+							onClick={handleSaveDefaults}
+							disabled={updateIntegrationMutation.isPending}
+						>
+							{updateIntegrationMutation.isPending ? (
+								<>
+									<Loader2 className="h-4 w-4 mr-2 animate-spin" />
+									Saving...
+								</>
+							) : (
+								"Save Defaults"
+							)}
+						</Button>
+					</DialogFooter>
+				</DialogContent>
+			</Dialog>
+
+			{/* Delete Mapping Confirmation Dialog */}
+			<AlertDialog
+				open={deleteMappingConfirm !== null}
+				onOpenChange={(open) => !open && setDeleteMappingConfirm(null)}
+			>
+				<AlertDialogContent>
+					<AlertDialogHeader>
+						<AlertDialogTitle>Delete Mapping</AlertDialogTitle>
+						<AlertDialogDescription>
+							Are you sure you want to delete the mapping for{" "}
+							<span className="font-semibold">
+								{deleteMappingConfirm?.name}
+							</span>
+							? This will remove the organization's integration configuration
+							and cannot be undone.
+						</AlertDialogDescription>
+					</AlertDialogHeader>
+					<AlertDialogFooter>
+						<AlertDialogCancel>Cancel</AlertDialogCancel>
+						<AlertDialogAction
+							onClick={handleDeleteMappingConfirm}
+							className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+						>
+							Delete
+						</AlertDialogAction>
+					</AlertDialogFooter>
+				</AlertDialogContent>
+			</AlertDialog>
 		</div>
 	);
 }

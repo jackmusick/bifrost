@@ -26,7 +26,12 @@ class ConfigSchemaItem(BaseModel):
     """
     Metadata for a single configuration item.
     Defines what configuration keys are available for an integration.
+
+    Note: Default values are stored in the configs table, not in the schema.
+    Use the integration config endpoint to set defaults.
     """
+
+    model_config = ConfigDict(from_attributes=True)
 
     key: str = Field(
         ...,
@@ -40,10 +45,6 @@ class ConfigSchemaItem(BaseModel):
     )
     required: bool = Field(
         default=False, description="Whether this configuration is required"
-    )
-    default: Any = Field(
-        default=None,
-        description="Default value if not provided",
     )
     description: str | None = Field(
         default=None,
@@ -317,6 +318,10 @@ class IntegrationDetailResponse(BaseModel):
     config_schema: list[ConfigSchemaItem] | None = Field(
         default=None,
         description="Configuration schema for this integration",
+    )
+    config_defaults: dict[str, Any] | None = Field(
+        default=None,
+        description="Integration-level default configuration values",
     )
     entity_id: str | None = Field(
         default=None,

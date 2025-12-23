@@ -138,20 +138,32 @@ async def _run_execution(execution_id: str, context_data: dict[str, Any]) -> dic
             name=caller_data["name"]
         )
 
-        # Load workflow function if not a script
+        # Load workflow or data provider function if not a script
         workflow_func = None
         is_script = bool(context_data.get("code"))
 
         if not is_script:
-            from src.services.execution.module_loader import get_workflow
-            workflow_name = context_data["name"]
-            result = get_workflow(workflow_name)
+            from src.services.execution.module_loader import get_workflow, get_data_provider
+
+            name = context_data["name"]
+            tags = context_data.get("tags", [])
+
+            # Check if this is a data provider or workflow
+            if "data_provider" in tags:
+                result = get_data_provider(name)
+                entity_type = "Data provider"
+                error_type = "DataProviderNotFound"
+            else:
+                result = get_workflow(name)
+                entity_type = "Workflow"
+                error_type = "WorkflowNotFound"
+
             if not result:
                 metrics = _capture_metrics(start_rss, start_utime, start_stime)
                 return {
                     "status": ExecutionStatus.FAILED.value,
-                    "error_message": f"Workflow '{workflow_name}' not found",
-                    "error_type": "WorkflowNotFound",
+                    "error_message": f"{entity_type} '{name}' not found",
+                    "error_type": error_type,
                     "duration_ms": int((datetime.utcnow() - start_time).total_seconds() * 1000),
                     "result": None,
                     "logs": [],

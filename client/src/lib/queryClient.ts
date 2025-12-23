@@ -11,8 +11,8 @@ export const queryClient = new QueryClient({
 			refetchOnWindowFocus: false,
 			// Disable retries for all queries
 			retry: false,
-			// Consider data fresh for 30 seconds to prevent excessive refetching
-			staleTime: 30000,
+			// No caching - always refetch fresh data
+			staleTime: 0,
 			// Only refetch if data is stale (not on every mount)
 			refetchOnMount: true,
 		},
