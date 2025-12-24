@@ -677,15 +677,21 @@ class TestExecutionConcurrency:
     def test_concurrent_executions_not_blocking(
         self, e2e_client, platform_admin, async_workflow
     ):
-        """Multiple async executions can run concurrently without blocking."""
+        """Multiple async executions run concurrently, not sequentially.
+
+        Validates using database timestamps rather than wall-clock time to avoid
+        flakiness from CI container/network overhead.
+        """
         if not async_workflow["id"]:
             pytest.skip("Async workflow not discovered")
 
         import time
+        from datetime import datetime
 
-        # Start multiple executions quickly
+        # Submit 3 executions with 5-second delays each
+        # If concurrent: ~5-7 seconds total execution span
+        # If sequential: 15+ seconds (3 x 5s)
         execution_ids = []
-        start_time = time.time()
 
         for i in range(3):
             response = e2e_client.post(
@@ -693,7 +699,7 @@ class TestExecutionConcurrency:
                 headers=platform_admin.headers,
                 json={
                     "workflow_id": async_workflow["id"],
-                    "input_data": {"delay_seconds": 2},
+                    "input_data": {"delay_seconds": 5},
                 },
             )
             assert response.status_code in [200, 202], \
@@ -702,14 +708,76 @@ class TestExecutionConcurrency:
             execution_id = data.get("execution_id") or data.get("executionId")
             execution_ids.append(execution_id)
 
-        submission_time = time.time() - start_time
-
-        # All 3 submissions should complete quickly (not wait for each to finish)
-        # If blocking, this would take ~6 seconds (3 x 2 second delay)
-        assert submission_time < 3, \
-            f"Submission took {submission_time}s - executions may be blocking"
-
-        # Verify all executions were created
         assert len(execution_ids) == 3, "Should have 3 execution IDs"
+
+        # Poll until all executions complete
+        max_wait = 60  # seconds (generous for CI)
+        poll_interval = 0.5
+        elapsed = 0.0
+
+        while elapsed < max_wait:
+            all_done = True
+            for eid in execution_ids:
+                response = e2e_client.get(
+                    f"/api/executions/{eid}",
+                    headers=platform_admin.headers,
+                )
+                if response.status_code == 200:
+                    status = response.json().get("status")
+                    # Status values are: "Success", "Failed", "Timeout", etc.
+                    if status not in ["Success", "Failed", "Timeout", "CompletedWithErrors", "Cancelled"]:
+                        all_done = False
+                        break
+                else:
+                    all_done = False
+                    break
+
+            if all_done:
+                break
+
+            time.sleep(poll_interval)
+            elapsed += poll_interval
+
+        assert elapsed < max_wait, "Timed out waiting for executions to complete"
+
+        # Collect timestamp data from all executions
+        executions_data = []
         for eid in execution_ids:
-            assert eid is not None, "Execution ID should not be None"
+            response = e2e_client.get(
+                f"/api/executions/{eid}",
+                headers=platform_admin.headers,
+            )
+            assert response.status_code == 200
+            data = response.json()
+            assert data.get("status") == "Success", \
+                f"Execution {eid} did not complete successfully: {data.get('status')}"
+            executions_data.append(data)
+
+        # Parse timestamps
+        def parse_timestamp(ts_str: str | None) -> datetime | None:
+            if not ts_str:
+                return None
+            # Handle ISO format with or without timezone
+            ts_str = ts_str.replace("Z", "+00:00")
+            return datetime.fromisoformat(ts_str)
+
+        started_times = [parse_timestamp(e.get("started_at")) for e in executions_data]
+        completed_times = [parse_timestamp(e.get("completed_at")) for e in executions_data]
+
+        # All timestamps should be present
+        assert all(started_times), f"Missing started_at timestamps: {started_times}"
+        assert all(completed_times), f"Missing completed_at timestamps: {completed_times}"
+
+        # Calculate execution span: from first start to last completion
+        first_start = min(started_times)  # type: ignore[type-var]
+        last_complete = max(completed_times)  # type: ignore[type-var]
+        execution_span = (last_complete - first_start).total_seconds()
+
+        # If running concurrently: ~5-10 seconds (5s delay + overhead)
+        # If running sequentially: 15+ seconds (3 x 5s)
+        # Use 12 seconds as threshold - clearly less than sequential
+        assert execution_span < 12, (
+            f"Execution span {execution_span:.1f}s suggests executions ran sequentially. "
+            f"Started: {[t.isoformat() for t in started_times]}, "  # type: ignore[union-attr]
+            f"Completed: {[t.isoformat() for t in completed_times]}"  # type: ignore[union-attr]
+        )

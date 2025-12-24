@@ -97,20 +97,31 @@ class TestOAuthConnectionCRUD:
             headers=platform_admin.headers,
         )
 
-    def test_list_oauth_connections(self, e2e_client, platform_admin, oauth_connection):
-        """Platform admin can list OAuth connections."""
+    def test_list_oauth_connections(self, e2e_client, platform_admin, oauth_connection, test_integration):
+        """Platform admin can list OAuth connections via integrations API.
+
+        OAuth connections are now accessed through the integrations API.
+        The /api/integrations endpoint returns integrations with has_oauth_config flag.
+        """
         response = e2e_client.get(
-            "/api/oauth/connections",
+            "/api/integrations",
             headers=platform_admin.headers,
         )
-        assert response.status_code == 200, f"List failed: {response.text}"
+        assert response.status_code == 200, f"List integrations failed: {response.text}"
         data = response.json()
-        # API returns {"connections": [...]}
-        connections = data.get("connections", data)
-        assert isinstance(connections, list)
-        names = [c["connection_name"] for c in connections]
-        # Connection name is derived from integration.name
-        assert oauth_connection["connection_name"] in names
+        # API returns {"items": [...], "total": N} structure
+        integrations = data.get("items", data) if isinstance(data, dict) else data
+        assert isinstance(integrations, list)
+
+        # Find our test integration
+        test_int = next(
+            (i for i in integrations if i["id"] == test_integration["id"]),
+            None
+        )
+        assert test_int is not None, "Test integration not found in list"
+        # Integration with OAuth config should have has_oauth_config=True
+        assert test_int.get("has_oauth_config") is True, \
+            f"Integration should have OAuth config: {test_int}"
 
     def test_get_oauth_connection_detail(self, e2e_client, platform_admin, oauth_connection):
         """Platform admin can get OAuth connection details."""

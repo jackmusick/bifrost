@@ -250,10 +250,15 @@ class SDKIntegrationsListMappingsRequest(BaseModel):
 
 class SDKIntegrationsMappingItem(BaseModel):
     """Single integration mapping in list response."""
+    id: str = Field(..., description="Mapping UUID")
+    integration_id: str = Field(..., description="Integration UUID")
     organization_id: str = Field(..., description="Organization UUID")
     entity_id: str = Field(..., description="External entity ID")
     entity_name: str | None = Field(None, description="Display name")
+    oauth_token_id: str | None = Field(None, description="Per-org OAuth token override ID")
     config: dict[str, Any] | None = Field(None, description="Organization-specific config")
+    created_at: str = Field(..., description="Creation timestamp (ISO format)")
+    updated_at: str = Field(..., description="Last update timestamp (ISO format)")
 
     model_config = ConfigDict(from_attributes=True)
 

@@ -1095,10 +1095,15 @@ async def sdk_integrations_list_mappings(
             # Get merged config (integration defaults + org overrides)
             config = await repo.get_config_for_mapping(integration.id, mapping.organization_id)
             items.append({
+                "id": str(mapping.id),
+                "integration_id": str(mapping.integration_id),
                 "organization_id": str(mapping.organization_id),
                 "entity_id": mapping.entity_id,
                 "entity_name": mapping.entity_name,
+                "oauth_token_id": str(mapping.oauth_token_id) if mapping.oauth_token_id else None,
                 "config": config,
+                "created_at": mapping.created_at.isoformat(),
+                "updated_at": mapping.updated_at.isoformat(),
             })
 
         return SDKIntegrationsListMappingsResponse(items=items)

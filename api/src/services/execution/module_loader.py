@@ -218,6 +218,31 @@ def _clear_workspace_modules(workspace_paths: Sequence[Path | str]) -> int:
     return cleared_count
 
 
+def _invalidate_workspace_import_caches(workspace_paths: Sequence[Path | str]) -> None:
+    """
+    Drop importer cache entries for workspace paths only.
+
+    Global importlib.invalidate_caches() calls have been observed to corrupt
+    libcst's parser in tests. Clearing the caches for our workspace paths is
+    sufficient for fresh imports without touching third-party importer state.
+    """
+    resolved_workspace_paths = []
+    for wp in workspace_paths:
+        try:
+            resolved_workspace_paths.append(str(Path(wp).resolve()))
+        except (OSError, ValueError):
+            continue
+
+    for cache_path in list(sys.path_importer_cache.keys()):
+        try:
+            resolved_cache_path = str(Path(cache_path).resolve())
+        except (OSError, ValueError):
+            continue
+
+        if any(resolved_cache_path.startswith(wp) for wp in resolved_workspace_paths):
+            sys.path_importer_cache.pop(cache_path, None)
+
+
 def reload_module(file_path: Path) -> ModuleType:
     """
     Reload a module fresh from disk, clearing all caches.
@@ -248,8 +273,8 @@ def reload_module(file_path: Path) -> ModuleType:
     # 2. Delete ALL .pyc files in workspace directories
     pyc_deleted = _clear_all_workspace_pyc(workspace_paths)
 
-    # 3. Invalidate Python's import caches
-    importlib.invalidate_caches()
+    # 3. Invalidate Python's import caches for workspace paths
+    _invalidate_workspace_import_caches(workspace_paths)
 
     if modules_cleared > 0 or pyc_deleted > 0:
         logger.debug(f"Fresh import prep: cleared {modules_cleared} modules, {pyc_deleted} .pyc files")
@@ -323,7 +348,7 @@ def scan_all_workflows() -> list[WorkflowMetadata]:
     # First clear everything for a clean slate
     _clear_workspace_modules(workspace_paths)
     _clear_all_workspace_pyc(workspace_paths)
-    importlib.invalidate_caches()
+    _invalidate_workspace_import_caches(workspace_paths)
 
     for workspace_path in workspace_paths:
         for py_file in workspace_path.rglob("*.py"):
@@ -378,7 +403,7 @@ def load_workflow(name: str) -> tuple[Callable, WorkflowMetadata] | None:
     # Clear everything for fresh imports
     _clear_workspace_modules(workspace_paths)
     _clear_all_workspace_pyc(workspace_paths)
-    importlib.invalidate_caches()
+    _invalidate_workspace_import_caches(workspace_paths)
 
     for workspace_path in workspace_paths:
         for py_file in workspace_path.rglob("*.py"):
@@ -425,7 +450,7 @@ def scan_all_data_providers() -> list[DataProviderMetadata]:
     # Clear everything for a clean slate
     _clear_workspace_modules(workspace_paths)
     _clear_all_workspace_pyc(workspace_paths)
-    importlib.invalidate_caches()
+    _invalidate_workspace_import_caches(workspace_paths)
 
     for workspace_path in workspace_paths:
         for py_file in workspace_path.rglob("*.py"):
@@ -473,7 +498,7 @@ def load_data_provider(name: str) -> tuple[Callable, DataProviderMetadata] | Non
     # Clear everything for fresh imports
     _clear_workspace_modules(workspace_paths)
     _clear_all_workspace_pyc(workspace_paths)
-    importlib.invalidate_caches()
+    _invalidate_workspace_import_caches(workspace_paths)
 
     for workspace_path in workspace_paths:
         for py_file in workspace_path.rglob("*.py"):

@@ -952,28 +952,31 @@ class TestIntegrationsExternalMode:
 
         mock_response = MagicMock()
         mock_response.status_code = 200
-        mock_response.json.return_value = [
-            {
-                "id": str(uuid4()),
-                "integration_id": integration_id,
-                "organization_id": org1_id,
-                "entity_id": "tenant-1",
-                "entity_name": "Tenant 1",
-                "config": {"key": "val1"},
-                "created_at": "2025-01-01T00:00:00Z",
-                "updated_at": "2025-01-01T00:00:00Z",
-            },
-            {
-                "id": str(uuid4()),
-                "integration_id": integration_id,
-                "organization_id": org2_id,
-                "entity_id": "tenant-2",
-                "entity_name": None,
-                "config": {},
-                "created_at": "2025-01-01T00:00:00Z",
-                "updated_at": "2025-01-01T00:00:00Z",
-            },
-        ]
+        # API returns {"items": [...]} structure
+        mock_response.json.return_value = {
+            "items": [
+                {
+                    "id": str(uuid4()),
+                    "integration_id": integration_id,
+                    "organization_id": org1_id,
+                    "entity_id": "tenant-1",
+                    "entity_name": "Tenant 1",
+                    "config": {"key": "val1"},
+                    "created_at": "2025-01-01T00:00:00Z",
+                    "updated_at": "2025-01-01T00:00:00Z",
+                },
+                {
+                    "id": str(uuid4()),
+                    "integration_id": integration_id,
+                    "organization_id": org2_id,
+                    "entity_id": "tenant-2",
+                    "entity_name": None,
+                    "config": {},
+                    "created_at": "2025-01-01T00:00:00Z",
+                    "updated_at": "2025-01-01T00:00:00Z",
+                },
+            ]
+        }
 
         mock_client = MagicMock()
         mock_client.post = AsyncMock(return_value=mock_response)

@@ -123,7 +123,7 @@ def get_result():
         finally:
             sys.path.remove(str(tmp_path))
             for mod in list(sys.modules.keys()):
-                if "nested_workflow" in mod or mod.startswith("lib"):
+                if "nested_workflow" in mod or mod.startswith("lib."):
                     del sys.modules[mod]
 
     def test_packages_directory_not_cleared(self, tmp_path: Path) -> None:
