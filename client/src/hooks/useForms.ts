@@ -114,7 +114,9 @@ export async function executeFormStartup(
 		},
 	);
 	if (error || !data) {
-		throw new Error(getErrorMessage(error, "Failed to execute startup workflow"));
+		throw new Error(
+			getErrorMessage(error, "Failed to execute startup workflow"),
+		);
 	}
 	return data;
 }

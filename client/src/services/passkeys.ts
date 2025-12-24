@@ -125,7 +125,9 @@ export async function registerPasskey(
 
 	if (!verifyRes.ok) {
 		const error = await verifyRes.json().catch(() => ({}));
-		throw new Error(error.detail || "Failed to verify passkey registration");
+		throw new Error(
+			error.detail || "Failed to verify passkey registration",
+		);
 	}
 
 	return verifyRes.json();
@@ -154,9 +156,7 @@ export async function authenticateWithPasskey(
 
 	if (!optionsRes.ok) {
 		const error = await optionsRes.json().catch(() => ({}));
-		throw new Error(
-			error.detail || "Failed to get authentication options",
-		);
+		throw new Error(error.detail || "Failed to get authentication options");
 	}
 
 	const { challenge_id, options } = await optionsRes.json();

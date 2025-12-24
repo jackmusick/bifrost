@@ -20,8 +20,6 @@ from .keys import (
     config_key,
     form_key,
     forms_hash_key,
-    oauth_hash_key,
-    oauth_provider_key,
     org_key,
     orgs_list_key,
     role_forms_key,
@@ -70,39 +68,6 @@ async def invalidate_config(org_id: str | None, key: str | None = None) -> None:
 async def invalidate_all_config(org_id: str | None) -> None:
     """Invalidate all config cache for an organization."""
     await invalidate_config(org_id, key=None)
-
-
-# =============================================================================
-# OAuth Invalidation
-# =============================================================================
-
-
-async def invalidate_oauth(org_id: str | None, provider: str | None = None) -> None:
-    """
-    Invalidate OAuth cache after provider or token update.
-
-    Args:
-        org_id: Organization ID or None for global
-        provider: Specific provider to invalidate, or None to invalidate all
-    """
-    try:
-        r = await get_shared_redis()
-
-        # Always invalidate the hash (contains all providers)
-        await r.delete(oauth_hash_key(org_id))
-
-        # Also invalidate specific provider if provided
-        if provider:
-            await r.delete(oauth_provider_key(org_id, provider))
-
-        logger.debug(f"Invalidated OAuth cache: org={org_id}, provider={provider}")
-    except Exception as e:
-        logger.warning(f"Failed to invalidate OAuth cache: {e}")
-
-
-async def invalidate_oauth_token(org_id: str | None, provider: str) -> None:
-    """Invalidate OAuth cache after token refresh."""
-    await invalidate_oauth(org_id, provider)
 
 
 # =============================================================================

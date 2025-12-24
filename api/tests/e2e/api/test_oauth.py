@@ -5,6 +5,7 @@ Tests CRUD operations for OAuth connections.
 """
 
 import pytest
+from uuid import uuid4
 
 
 @pytest.mark.e2e
@@ -12,13 +13,45 @@ class TestOAuthConnectionCRUD:
     """Test OAuth connection CRUD operations."""
 
     @pytest.fixture
-    def oauth_connection(self, e2e_client, platform_admin):
+    def test_integration(self, e2e_client, platform_admin):
+        """Create a test integration for OAuth connections."""
+        integration_name = f"e2e_oauth_integration_{uuid4().hex[:8]}"
+        response = e2e_client.post(
+            "/api/integrations",
+            headers=platform_admin.headers,
+            json={
+                "name": integration_name,
+                "config_schema": [
+                    {
+                        "key": "api_endpoint",
+                        "type": "string",
+                        "required": True,
+                        "description": "API endpoint URL",
+                    }
+                ],
+            },
+        )
+        assert response.status_code == 201, f"Create integration failed: {response.text}"
+        integration = response.json()
+
+        yield integration
+
+        # Cleanup
+        e2e_client.delete(
+            f"/api/integrations/{integration['id']}",
+            headers=platform_admin.headers,
+        )
+
+    @pytest.fixture
+    def oauth_connection(self, e2e_client, platform_admin, test_integration):
         """Create an OAuth connection and clean up after."""
+        # OAuth connection name is derived from integration.name
+        expected_connection_name = test_integration["name"]
         response = e2e_client.post(
             "/api/oauth/connections",
             headers=platform_admin.headers,
             json={
-                "connection_name": "e2e_test_oauth",
+                "integration_id": test_integration["id"],
                 "oauth_flow_type": "client_credentials",
                 "client_id": "test-client-id",
                 "client_secret": "test-client-secret",
@@ -28,6 +61,7 @@ class TestOAuthConnectionCRUD:
         )
         assert response.status_code == 201, f"Create OAuth connection failed: {response.text}"
         connection = response.json()
+        assert connection["connection_name"] == expected_connection_name
 
         yield connection
 
@@ -37,13 +71,15 @@ class TestOAuthConnectionCRUD:
             headers=platform_admin.headers,
         )
 
-    def test_create_oauth_connection(self, e2e_client, platform_admin):
+    def test_create_oauth_connection(self, e2e_client, platform_admin, test_integration):
         """Platform admin can create an OAuth connection."""
+        # Connection name is derived from integration.name
+        expected_connection_name = test_integration["name"]
         response = e2e_client.post(
             "/api/oauth/connections",
             headers=platform_admin.headers,
             json={
-                "connection_name": "e2e_create_test",
+                "integration_id": test_integration["id"],
                 "oauth_flow_type": "client_credentials",
                 "client_id": "github-client-id",
                 "client_secret": "github-client-secret",
@@ -53,7 +89,7 @@ class TestOAuthConnectionCRUD:
         )
         assert response.status_code == 201, f"Create failed: {response.text}"
         connection = response.json()
-        assert connection["connection_name"] == "e2e_create_test"
+        assert connection["connection_name"] == expected_connection_name
 
         # Cleanup
         e2e_client.delete(
@@ -73,7 +109,8 @@ class TestOAuthConnectionCRUD:
         connections = data.get("connections", data)
         assert isinstance(connections, list)
         names = [c["connection_name"] for c in connections]
-        assert "e2e_test_oauth" in names
+        # Connection name is derived from integration.name
+        assert oauth_connection["connection_name"] in names
 
     def test_get_oauth_connection_detail(self, e2e_client, platform_admin, oauth_connection):
         """Platform admin can get OAuth connection details."""
@@ -83,7 +120,8 @@ class TestOAuthConnectionCRUD:
         )
         assert response.status_code == 200, f"Get failed: {response.text}"
         connection = response.json()
-        assert connection["connection_name"] == "e2e_test_oauth"
+        # Connection name is derived from integration.name
+        assert connection["connection_name"] == oauth_connection["connection_name"]
 
     def test_update_oauth_connection(self, e2e_client, platform_admin, oauth_connection):
         """Platform admin can update OAuth connection."""
@@ -124,13 +162,14 @@ class TestOAuthConnectionCRUD:
         )
         assert response.status_code == 404
 
-    def test_initiate_oauth_authorization(self, e2e_client, platform_admin):
+    def test_initiate_oauth_authorization(self, e2e_client, platform_admin, test_integration):
         """Platform admin can initiate OAuth authorization flow."""
         # Create an authorization_code flow connection (client_credentials doesn't support authorization)
         create_resp = e2e_client.post(
             "/api/oauth/connections",
             headers=platform_admin.headers,
             json={
+                "integration_id": test_integration["id"],
                 "connection_name": "e2e_auth_code_test",
                 "oauth_flow_type": "authorization_code",
                 "client_id": "test-auth-code-client",
@@ -167,13 +206,14 @@ class TestOAuthConnectionCRUD:
                 headers=platform_admin.headers,
             )
 
-    def test_delete_oauth_connection(self, e2e_client, platform_admin):
+    def test_delete_oauth_connection(self, e2e_client, platform_admin, test_integration):
         """Platform admin can delete an OAuth connection."""
         # First create a connection to delete
         create_response = e2e_client.post(
             "/api/oauth/connections",
             headers=platform_admin.headers,
             json={
+                "integration_id": test_integration["id"],
                 "connection_name": "e2e_delete_test",
                 "oauth_flow_type": "client_credentials",
                 "client_id": "delete-test-client-id",
@@ -204,12 +244,43 @@ class TestOAuthConnectionCRUD:
 class TestOAuthAccess:
     """Test OAuth connection access control."""
 
-    def test_org_user_cannot_manage_oauth(self, e2e_client, org1_user):
+    @pytest.fixture
+    def test_integration(self, e2e_client, platform_admin):
+        """Create a test integration for OAuth access tests."""
+        integration_name = f"e2e_oauth_access_{uuid4().hex[:8]}"
+        response = e2e_client.post(
+            "/api/integrations",
+            headers=platform_admin.headers,
+            json={
+                "name": integration_name,
+                "config_schema": [
+                    {
+                        "key": "api_endpoint",
+                        "type": "string",
+                        "required": True,
+                        "description": "API endpoint URL",
+                    }
+                ],
+            },
+        )
+        assert response.status_code == 201, f"Create integration failed: {response.text}"
+        integration = response.json()
+
+        yield integration
+
+        # Cleanup
+        e2e_client.delete(
+            f"/api/integrations/{integration['id']}",
+            headers=platform_admin.headers,
+        )
+
+    def test_org_user_cannot_manage_oauth(self, e2e_client, org1_user, test_integration):
         """Org user cannot create OAuth connections (requires superuser)."""
         response = e2e_client.post(
             "/api/oauth/connections",
             headers=org1_user.headers,
             json={
+                "integration_id": test_integration["id"],
                 "connection_name": "unauthorized_test",
                 "oauth_flow_type": "client_credentials",
                 "client_id": "fake",
@@ -233,13 +304,44 @@ class TestOAuthAccess:
 class TestOAuthAuthorizationFlow:
     """Test OAuth authorization flow operations."""
 
-    def test_cancel_oauth_authorization(self, e2e_client, platform_admin):
+    @pytest.fixture
+    def test_integration(self, e2e_client, platform_admin):
+        """Create a test integration for OAuth authorization flow tests."""
+        integration_name = f"e2e_oauth_flow_{uuid4().hex[:8]}"
+        response = e2e_client.post(
+            "/api/integrations",
+            headers=platform_admin.headers,
+            json={
+                "name": integration_name,
+                "config_schema": [
+                    {
+                        "key": "api_endpoint",
+                        "type": "string",
+                        "required": True,
+                        "description": "API endpoint URL",
+                    }
+                ],
+            },
+        )
+        assert response.status_code == 201, f"Create integration failed: {response.text}"
+        integration = response.json()
+
+        yield integration
+
+        # Cleanup
+        e2e_client.delete(
+            f"/api/integrations/{integration['id']}",
+            headers=platform_admin.headers,
+        )
+
+    def test_cancel_oauth_authorization(self, e2e_client, platform_admin, test_integration):
         """Platform admin can cancel an in-progress OAuth authorization flow."""
         # Create an authorization_code flow connection
         create_resp = e2e_client.post(
             "/api/oauth/connections",
             headers=platform_admin.headers,
             json={
+                "integration_id": test_integration["id"],
                 "connection_name": "e2e_cancel_auth_test",
                 "oauth_flow_type": "authorization_code",
                 "client_id": "test-cancel-auth-client",

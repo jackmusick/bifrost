@@ -37,7 +37,9 @@ export function MatchSuggestionBadge({
 				)}
 			>
 				<span className="font-medium">{suggestion.entityName}</span>
-				<span className="text-xs opacity-75">({suggestion.score}%)</span>
+				<span className="text-xs opacity-75">
+					({suggestion.score}%)
+				</span>
 			</Badge>
 
 			<div className="flex items-center gap-1">

@@ -48,6 +48,18 @@ class Caller:
 
 
 @dataclass
+class ROIContext:
+    """
+    ROI tracking for workflow executions.
+
+    Initialized from workflow defaults, can be modified during execution.
+    Final values are captured when execution completes.
+    """
+    time_saved: int = 0   # Minutes saved, initialized from workflow default
+    value: float = 0.0    # Value generated, initialized from workflow default
+
+
+@dataclass
 class ExecutionContext:
     """
     Unified execution context for all code execution.
@@ -96,6 +108,10 @@ class ExecutionContext:
     # Results from the launch workflow (pre-execution context population)
     # Access via context.startup (None if no launch workflow)
     startup: dict[str, Any] | None = field(default=None)
+
+    # ==================== ROI ====================
+    # ROI tracking - initialized from workflow defaults, modifiable during execution
+    roi: ROIContext = field(default_factory=ROIContext)
 
     # ==================== WORKFLOW STATE (private) ====================
     _config: dict[str, Any] = field(default_factory=dict)

@@ -90,6 +90,42 @@ async def e2e_test_validation(name: str, count: int = 1) -> dict:
         # Should have parameters extracted from function signature
         assert len(data["metadata"]["parameters"]) == 2
 
+    def test_validate_workflow_with_roi(self, e2e_client, platform_admin):
+        """Validate workflow with time_saved and value fields."""
+        workflow_with_roi = '''
+"""Test workflow with ROI"""
+
+from bifrost import workflow
+
+@workflow(
+    category="automation",
+    tags=["test", "roi"],
+    time_saved=30,
+    value=150.50,
+)
+async def workflow_with_roi(task: str) -> dict:
+    """A workflow that saves time and provides value."""
+    return {"task": task, "completed": True}
+'''
+        response = e2e_client.post(
+            "/api/workflows/validate",
+            headers=platform_admin.headers,
+            json={
+                "path": "test_roi.py",
+                "content": workflow_with_roi,
+            },
+        )
+        assert response.status_code == 200, f"Validation failed: {response.text}"
+        data = response.json()
+        # Debug: print the response if test fails
+        if not data["valid"]:
+            print(f"Validation failed. Response: {data}")
+        assert data["valid"] is True, f"Validation should be valid. Issues: {data.get('issues', [])}"
+        assert data["metadata"] is not None
+        assert data["metadata"]["name"] == "workflow_with_roi"
+        assert data["metadata"]["time_saved"] == 30
+        assert data["metadata"]["value"] == 150.50
+
     def test_validate_workflow_with_syntax_error(self, e2e_client, platform_admin):
         """Validation catches syntax errors."""
         invalid_workflow = '''

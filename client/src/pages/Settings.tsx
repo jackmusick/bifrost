@@ -48,7 +48,9 @@ export function Settings() {
 						<TabsTrigger value="github">GitHub</TabsTrigger>
 						<TabsTrigger value="branding">Branding</TabsTrigger>
 						<TabsTrigger value="ai">AI</TabsTrigger>
-						<TabsTrigger value="maintenance">Maintenance</TabsTrigger>
+						<TabsTrigger value="maintenance">
+							Maintenance
+						</TabsTrigger>
 					</TabsList>
 
 					{tabActions && <TabActions>{tabActions}</TabActions>}

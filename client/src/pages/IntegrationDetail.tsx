@@ -34,12 +34,7 @@ import {
 	DataTableHeader,
 	DataTableRow,
 } from "@/components/ui/data-table";
-import {
-	Tabs,
-	TabsContent,
-	TabsList,
-	TabsTrigger,
-} from "@/components/ui/tabs";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import {
 	Dialog,
 	DialogContent,
@@ -168,13 +163,14 @@ export function IntegrationDetail() {
 	const [editDialogOpen, setEditDialogOpen] = useState(false);
 	const [configDialogOpen, setConfigDialogOpen] = useState(false);
 	const [defaultsDialogOpen, setDefaultsDialogOpen] = useState(false);
-	const [defaultsFormValues, setDefaultsFormValues] = useState<Record<string, unknown>>({});
+	const [defaultsFormValues, setDefaultsFormValues] = useState<
+		Record<string, unknown>
+	>({});
 	const [selectedOrgForConfig, setSelectedOrgForConfig] = useState<
 		OrgWithMapping | undefined
 	>();
-	const [deleteMappingConfirm, setDeleteMappingConfirm] = useState<
-		OrgWithMapping | null
-	>(null);
+	const [deleteMappingConfirm, setDeleteMappingConfirm] =
+		useState<OrgWithMapping | null>(null);
 	const [isSavingAll, setIsSavingAll] = useState(false);
 	const [editingOAuthConfig, setEditingOAuthConfig] = useState(false);
 	const [deleteOAuthDialogOpen, setDeleteOAuthDialogOpen] = useState(false);
@@ -212,10 +208,8 @@ export function IntegrationDetail() {
 	);
 
 	// Fetch entities from data provider
-	const {
-		data: entities = [],
-		isLoading: isLoadingEntities,
-	} = useIntegrationEntities(integration?.list_entities_data_provider_id);
+	const { data: entities = [], isLoading: isLoadingEntities } =
+		useIntegrationEntities(integration?.list_entities_data_provider_id);
 
 	// Auto-match hook
 	const {
@@ -228,10 +222,12 @@ export function IntegrationDetail() {
 		acceptAll,
 		clearSuggestions,
 	} = useAutoMatch({
-		organizations: organizations.map((org: { id: string; name: string }) => ({
-			id: org.id,
-			name: org.name,
-		})),
+		organizations: organizations.map(
+			(org: { id: string; name: string }) => ({
+				id: org.id,
+				name: org.name,
+			}),
+		),
 		entities: entities.map((e) => ({ value: e.value, label: e.label })),
 		existingMappings: mappings.map((m) => ({
 			organization_id: m.organization_id,
@@ -276,7 +272,8 @@ export function IntegrationDetail() {
 						organization_id: existingMapping.organization_id,
 						entity_id: existingMapping.entity_id,
 						entity_name: existingMapping.entity_name || "",
-						oauth_token_id: existingMapping.oauth_token_id || undefined,
+						oauth_token_id:
+							existingMapping.oauth_token_id || undefined,
 						// Use actual mapping config only - don't fall back to defaults
 						// OrgConfigDialog shows defaults separately via defaultConfig prop
 						config: existingMapping.config || {},
@@ -340,13 +337,13 @@ export function IntegrationDetail() {
 			const handleBeforeUnload = (e: BeforeUnloadEvent) => {
 				e.preventDefault();
 				// Modern browsers require returnValue to be set
-				e.returnValue = '';
+				e.returnValue = "";
 			};
 
-			window.addEventListener('beforeunload', handleBeforeUnload);
+			window.addEventListener("beforeunload", handleBeforeUnload);
 
 			return () => {
-				window.removeEventListener('beforeunload', handleBeforeUnload);
+				window.removeEventListener("beforeunload", handleBeforeUnload);
 			};
 		}
 
@@ -385,7 +382,8 @@ export function IntegrationDetail() {
 					body: {
 						entity_id: org.formData.entity_id,
 						entity_name: org.formData.entity_name || undefined,
-						oauth_token_id: org.formData.oauth_token_id || undefined,
+						oauth_token_id:
+							org.formData.oauth_token_id || undefined,
 						config:
 							Object.keys(org.formData.config).length > 0
 								? org.formData.config
@@ -401,7 +399,8 @@ export function IntegrationDetail() {
 						organization_id: org.id,
 						entity_id: org.formData.entity_id,
 						entity_name: org.formData.entity_name || undefined,
-						oauth_token_id: org.formData.oauth_token_id || undefined,
+						oauth_token_id:
+							org.formData.oauth_token_id || undefined,
 						config:
 							Object.keys(org.formData.config).length > 0
 								? org.formData.config
@@ -471,8 +470,10 @@ export function IntegrationDetail() {
 				onSuccess: (response) => {
 					const width = 600;
 					const height = 700;
-					const left = window.screenX + (window.outerWidth - width) / 2;
-					const top = window.screenY + (window.outerHeight - height) / 2;
+					const left =
+						window.screenX + (window.outerWidth - width) / 2;
+					const top =
+						window.screenY + (window.outerHeight - height) / 2;
 					window.open(
 						response.authorization_url,
 						"oauth_popup",
@@ -579,15 +580,20 @@ export function IntegrationDetail() {
 					entity_name:
 						selectedOrgForConfig.formData.entity_name || undefined,
 					oauth_token_id:
-						selectedOrgForConfig.formData.oauth_token_id || undefined,
+						selectedOrgForConfig.formData.oauth_token_id ||
+						undefined,
 					config: Object.keys(config).length > 0 ? config : undefined,
 				},
 			});
-			toast.success(`Configuration saved for ${selectedOrgForConfig.name}`);
+			toast.success(
+				`Configuration saved for ${selectedOrgForConfig.name}`,
+			);
 			// Cache invalidation in useUpdateMapping handles refetch
 		} catch (error) {
 			console.error("Failed to save config:", error);
-			toast.error(`Failed to save configuration for ${selectedOrgForConfig.name}`);
+			toast.error(
+				`Failed to save configuration for ${selectedOrgForConfig.name}`,
+			);
 			throw error; // Re-throw so dialog knows save failed
 		}
 	};
@@ -611,7 +617,8 @@ export function IntegrationDetail() {
 		// Initialize form with current default values from config_defaults
 		const currentDefaults: Record<string, unknown> = {};
 		integration.config_schema.forEach((field) => {
-			currentDefaults[field.key] = integration.config_defaults?.[field.key] ?? "";
+			currentDefaults[field.key] =
+				integration.config_defaults?.[field.key] ?? "";
 		});
 		setDefaultsFormValues(currentDefaults);
 		setDefaultsDialogOpen(true);
@@ -632,9 +639,12 @@ export function IntegrationDetail() {
 
 			// Validate int fields
 			if (field.type === "int") {
-				const numValue = typeof value === "string" ? parseInt(value) : value;
+				const numValue =
+					typeof value === "string" ? parseInt(value) : value;
 				if (isNaN(numValue as number)) {
-					validationErrors.push(`${field.key} must be a valid integer`);
+					validationErrors.push(
+						`${field.key} must be a valid integer`,
+					);
 				}
 			}
 
@@ -644,7 +654,9 @@ export function IntegrationDetail() {
 					try {
 						JSON.parse(value);
 					} catch {
-						validationErrors.push(`${field.key} must be valid JSON`);
+						validationErrors.push(
+							`${field.key} must be valid JSON`,
+						);
 					}
 				}
 			}
@@ -795,16 +807,17 @@ export function IntegrationDetail() {
 									Default config values for new mappings
 								</CardDescription>
 							</div>
-							{integration.config_schema && integration.config_schema.length > 0 && (
-								<Button
-									variant="outline"
-									size="sm"
-									onClick={handleOpenDefaultsDialog}
-								>
-									<Pencil className="h-3 w-3 mr-1" />
-									Edit
-								</Button>
-							)}
+							{integration.config_schema &&
+								integration.config_schema.length > 0 && (
+									<Button
+										variant="outline"
+										size="sm"
+										onClick={handleOpenDefaultsDialog}
+									>
+										<Pencil className="h-3 w-3 mr-1" />
+										Edit
+									</Button>
+								)}
 						</div>
 					</CardHeader>
 					<CardContent>
@@ -813,7 +826,9 @@ export function IntegrationDetail() {
 							<div className="flex items-center justify-between text-sm">
 								<div className="flex flex-col">
 									<span className="text-muted-foreground">
-										Default {integration.entity_id_name || "Entity ID"}
+										Default{" "}
+										{integration.entity_id_name ||
+											"Entity ID"}
 									</span>
 									<span className="text-xs text-muted-foreground/70">
 										Used when org mapping is not set
@@ -840,7 +855,10 @@ export function IntegrationDetail() {
 						integration.config_schema.length > 0 ? (
 							<div className="space-y-2">
 								{integration.config_schema.map((field) => {
-									const defaultValue = integration.config_defaults?.[field.key];
+									const defaultValue =
+										integration.config_defaults?.[
+											field.key
+										];
 									return (
 										<div
 											key={field.key}
@@ -875,14 +893,19 @@ export function IntegrationDetail() {
 					<CardHeader className="pb-3">
 						<div className="flex items-center justify-between">
 							<div>
-								<CardTitle className="text-base">OAuth</CardTitle>
+								<CardTitle className="text-base">
+									OAuth
+								</CardTitle>
 								<CardDescription>
 									Connection status and authentication
 								</CardDescription>
 							</div>
 							<div className="flex items-center gap-2">
 								{oauthConfig && (
-									<Badge variant="outline" className="text-xs">
+									<Badge
+										variant="outline"
+										className="text-xs"
+									>
 										{oauthConfig.oauth_flow_type}
 									</Badge>
 								)}
@@ -896,17 +919,29 @@ export function IntegrationDetail() {
 								{integration.has_oauth_config && (
 									<DropdownMenu>
 										<DropdownMenuTrigger asChild>
-											<Button variant="ghost" size="icon" className="h-8 w-8">
+											<Button
+												variant="ghost"
+												size="icon"
+												className="h-8 w-8"
+											>
 												<MoreVertical className="h-4 w-4" />
 											</Button>
 										</DropdownMenuTrigger>
 										<DropdownMenuContent align="end">
-											<DropdownMenuItem onClick={() => setEditingOAuthConfig(true)}>
+											<DropdownMenuItem
+												onClick={() =>
+													setEditingOAuthConfig(true)
+												}
+											>
 												<Pencil className="h-4 w-4 mr-2" />
 												Edit Configuration
 											</DropdownMenuItem>
 											<DropdownMenuItem
-												onClick={() => setDeleteOAuthDialogOpen(true)}
+												onClick={() =>
+													setDeleteOAuthDialogOpen(
+														true,
+													)
+												}
 												className="text-destructive focus:text-destructive"
 											>
 												<Trash2 className="h-4 w-4 mr-2" />
@@ -936,12 +971,16 @@ export function IntegrationDetail() {
 								)}
 
 								{/* No refresh token warning */}
-								{isOAuthConnected && oauthConfig && oauthConfig.has_refresh_token === false && (
-									<div className="flex items-center gap-2 p-2 rounded bg-yellow-50 dark:bg-yellow-950 text-yellow-700 dark:text-yellow-300 text-sm">
-										<AlertCircle className="h-4 w-4" />
-										No refresh token - manual reconnection required when token expires
-									</div>
-								)}
+								{isOAuthConnected &&
+									oauthConfig &&
+									oauthConfig.has_refresh_token === false && (
+										<div className="flex items-center gap-2 p-2 rounded bg-yellow-50 dark:bg-yellow-950 text-yellow-700 dark:text-yellow-300 text-sm">
+											<AlertCircle className="h-4 w-4" />
+											No refresh token - manual
+											reconnection required when token
+											expires
+										</div>
+									)}
 
 								{/* Connection status */}
 								<div className="flex items-center justify-between">
@@ -954,7 +993,9 @@ export function IntegrationDetail() {
 											: oauthConfig?.status === "failed"
 												? "Failed"
 												: oauthConfig
-													? getStatusLabel(oauthConfig.status)
+													? getStatusLabel(
+															oauthConfig.status,
+														)
 													: "Not Connected"}
 									</span>
 								</div>
@@ -965,7 +1006,9 @@ export function IntegrationDetail() {
 											Expires
 										</span>
 										<span className="text-sm font-mono">
-											{formatDateTime(oauthConfig.expires_at)}
+											{formatDateTime(
+												oauthConfig.expires_at,
+											)}
 										</span>
 									</div>
 								)}
@@ -981,8 +1024,12 @@ export function IntegrationDetail() {
 											}
 											size="sm"
 											className="flex-1"
-											onClick={handleIntegrationOAuthConnect}
-											disabled={authorizeMutation.isPending}
+											onClick={
+												handleIntegrationOAuthConnect
+											}
+											disabled={
+												authorizeMutation.isPending
+											}
 										>
 											{authorizeMutation.isPending ? (
 												<>
@@ -996,26 +1043,31 @@ export function IntegrationDetail() {
 											)}
 										</Button>
 									)}
-									{isOAuthConnected && oauthConfig?.expires_at && (
-										<Button
-											variant="outline"
-											size="sm"
-											onClick={handleIntegrationOAuthRefresh}
-											disabled={refreshMutation.isPending}
-										>
-											{refreshMutation.isPending ? (
-												<>
-													<Loader2 className="mr-2 h-3 w-3 animate-spin" />
-													Refreshing...
-												</>
-											) : (
-												<>
-													<RotateCw className="mr-2 h-3 w-3" />
-													Refresh Token
-												</>
-											)}
-										</Button>
-									)}
+									{isOAuthConnected &&
+										oauthConfig?.expires_at && (
+											<Button
+												variant="outline"
+												size="sm"
+												onClick={
+													handleIntegrationOAuthRefresh
+												}
+												disabled={
+													refreshMutation.isPending
+												}
+											>
+												{refreshMutation.isPending ? (
+													<>
+														<Loader2 className="mr-2 h-3 w-3 animate-spin" />
+														Refreshing...
+													</>
+												) : (
+													<>
+														<RotateCw className="mr-2 h-3 w-3" />
+														Refresh Token
+													</>
+												)}
+											</Button>
+										)}
 								</div>
 							</div>
 						) : (
@@ -1028,7 +1080,9 @@ export function IntegrationDetail() {
 									variant="outline"
 									size="sm"
 									className="mt-3"
-									onClick={() => setOAuthConfigDialogOpen(true)}
+									onClick={() =>
+										setOAuthConfigDialogOpen(true)
+									}
 								>
 									<Plus className="h-3 w-3 mr-2" />
 									Configure
@@ -1054,8 +1108,8 @@ export function IntegrationDetail() {
 							<div>
 								<CardTitle>Organization Mappings</CardTitle>
 								<CardDescription>
-									Configure how each organization maps to external
-									entities
+									Configure how each organization maps to
+									external entities
 								</CardDescription>
 							</div>
 							{/* Auto-Match Controls in header */}
@@ -1066,172 +1120,231 @@ export function IntegrationDetail() {
 										onAcceptAll={handleAcceptAllSuggestions}
 										onClear={clearSuggestions}
 										matchStats={matchStats}
-										hasSuggestions={autoMatchSuggestions.size > 0}
+										hasSuggestions={
+											autoMatchSuggestions.size > 0
+										}
 										isMatching={isMatching}
 										disabled={isLoadingEntities}
 									/>
 								)}
 						</CardHeader>
 						<CardContent>
-					{!integration.list_entities_data_provider_id ? (
-						<div className="flex flex-col items-center justify-center py-12 text-center">
-							<Settings className="h-12 w-12 text-muted-foreground" />
-							<h3 className="mt-4 text-lg font-semibold">
-								No Data Provider Configured
-							</h3>
-							<p className="mt-2 text-sm text-muted-foreground max-w-md">
-								Configure a data provider to populate the entity
-								dropdown. Edit the integration to select one.
-							</p>
-							<Button
-								variant="outline"
-								className="mt-4"
-								onClick={() => setEditDialogOpen(true)}
-							>
-								<Pencil className="h-4 w-4 mr-2" />
-								Edit Integration
-							</Button>
-						</div>
-					) : orgsWithMappings.length === 0 ? (
-						<div className="flex flex-col items-center justify-center py-12 text-center">
-							<LinkIcon className="h-12 w-12 text-muted-foreground" />
-							<h3 className="mt-4 text-lg font-semibold">
-								No organizations available
-							</h3>
-							<p className="mt-2 text-sm text-muted-foreground">
-								Create organizations first to set up mappings
-							</p>
-						</div>
-					) : (
-						<div className="rounded-md border overflow-x-auto">
-							<DataTable>
-								<DataTableHeader>
-									<DataTableRow>
-										<DataTableHead className="w-48">
-											Organization
-										</DataTableHead>
-										<DataTableHead className="w-64">
-											External Entity
-										</DataTableHead>
-										<DataTableHead className="w-24">
-											Status
-										</DataTableHead>
-										<DataTableHead className="w-32 text-right">
-											Actions
-										</DataTableHead>
-									</DataTableRow>
-								</DataTableHeader>
-								<DataTableBody>
-									{orgsWithMappings.map((org) => {
-										// Filter out entities already mapped to other orgs
-										const usedEntityIds = orgsWithMappings
-											.filter(o => o.id !== org.id && o.formData.entity_id)
-											.map(o => o.formData.entity_id);
-										const availableEntities = entities.filter(
-											e => e.value === org.formData.entity_id || !usedEntityIds.includes(e.value)
-										);
+							{!integration.list_entities_data_provider_id ? (
+								<div className="flex flex-col items-center justify-center py-12 text-center">
+									<Settings className="h-12 w-12 text-muted-foreground" />
+									<h3 className="mt-4 text-lg font-semibold">
+										No Data Provider Configured
+									</h3>
+									<p className="mt-2 text-sm text-muted-foreground max-w-md">
+										Configure a data provider to populate
+										the entity dropdown. Edit the
+										integration to select one.
+									</p>
+									<Button
+										variant="outline"
+										className="mt-4"
+										onClick={() => setEditDialogOpen(true)}
+									>
+										<Pencil className="h-4 w-4 mr-2" />
+										Edit Integration
+									</Button>
+								</div>
+							) : orgsWithMappings.length === 0 ? (
+								<div className="flex flex-col items-center justify-center py-12 text-center">
+									<LinkIcon className="h-12 w-12 text-muted-foreground" />
+									<h3 className="mt-4 text-lg font-semibold">
+										No organizations available
+									</h3>
+									<p className="mt-2 text-sm text-muted-foreground">
+										Create organizations first to set up
+										mappings
+									</p>
+								</div>
+							) : (
+								<div className="rounded-md border overflow-x-auto">
+									<DataTable>
+										<DataTableHeader>
+											<DataTableRow>
+												<DataTableHead className="w-48">
+													Organization
+												</DataTableHead>
+												<DataTableHead className="w-64">
+													External Entity
+												</DataTableHead>
+												<DataTableHead className="w-24">
+													Status
+												</DataTableHead>
+												<DataTableHead className="w-32 text-right">
+													Actions
+												</DataTableHead>
+											</DataTableRow>
+										</DataTableHeader>
+										<DataTableBody>
+											{orgsWithMappings.map((org) => {
+												// Filter out entities already mapped to other orgs
+												const usedEntityIds =
+													orgsWithMappings
+														.filter(
+															(o) =>
+																o.id !==
+																	org.id &&
+																o.formData
+																	.entity_id,
+														)
+														.map(
+															(o) =>
+																o.formData
+																	.entity_id,
+														);
+												const availableEntities =
+													entities.filter(
+														(e) =>
+															e.value ===
+																org.formData
+																	.entity_id ||
+															!usedEntityIds.includes(
+																e.value,
+															),
+													);
 
-										return (
-										<DataTableRow key={org.id}>
-											<DataTableCell className="font-medium">
-												{org.name}
-											</DataTableCell>
-											<DataTableCell>
-												{autoMatchSuggestions.has(org.id) ? (
-													<MatchSuggestionBadge
-														suggestion={
-															autoMatchSuggestions.get(org.id)!
-														}
-														onAccept={() =>
-															handleAcceptSuggestion(org.id)
-														}
-														onReject={() => rejectSuggestion(org.id)}
-													/>
-												) : (
-													<EntitySelector
-														entities={availableEntities}
-														value={org.formData.entity_id}
-														onChange={(value, label) =>
-															updateOrgMapping(org.id, {
-																entity_id: value,
-																entity_name: label,
-															})
-														}
-														isLoading={isLoadingEntities}
-														placeholder="Select entity..."
-													/>
-												)}
-											</DataTableCell>
-											<DataTableCell>
-												{org.mapping ? (
-													<Badge
-														variant="default"
-														className="bg-green-600"
-													>
-														<CheckCircle2 className="h-3 w-3 mr-1" />
-														Mapped
-													</Badge>
-												) : org.formData.entity_id ? (
-													<Badge variant="secondary">
-														<Plus className="h-3 w-3 mr-1" />
-														New
-													</Badge>
-												) : (
-													<Badge variant="outline">
-														Not Mapped
-													</Badge>
-												)}
-												{org.isDirty && (
-													<Badge
-														variant="secondary"
-														className="ml-1"
-													>
-														*
-													</Badge>
-												)}
-											</DataTableCell>
-											<DataTableCell className="text-right">
-												<div className="flex gap-1 justify-end">
-													<Button
-														size="sm"
-														variant="ghost"
-														onClick={() =>
-															handleOpenConfigDialog(org.id)
-														}
-														title="Configure"
-														className="relative"
-													>
-														<Settings className="h-4 w-4" />
-														{hasNonDefaultConfig(org) && (
-															<span className="absolute -top-0.5 -right-0.5 h-2 w-2 rounded-full bg-blue-600" />
-														)}
-													</Button>
-													<Button
-														size="sm"
-														variant="ghost"
-														onClick={() =>
-															handleDeleteMappingClick(org)
-														}
-														disabled={
-															!org.mapping ||
-															deleteMutation.isPending
-														}
-														title={org.mapping ? "Unlink mapping" : "No mapping to unlink"}
-														className="text-red-600 hover:text-red-700 disabled:text-muted-foreground"
-													>
-														<Unlink className="h-4 w-4" />
-													</Button>
-												</div>
-											</DataTableCell>
-										</DataTableRow>
-										);
-									})}
-								</DataTableBody>
-							</DataTable>
-						</div>
-					)}
-				</CardContent>
-			</Card>
+												return (
+													<DataTableRow key={org.id}>
+														<DataTableCell className="font-medium">
+															{org.name}
+														</DataTableCell>
+														<DataTableCell>
+															{autoMatchSuggestions.has(
+																org.id,
+															) ? (
+																<MatchSuggestionBadge
+																	suggestion={
+																		autoMatchSuggestions.get(
+																			org.id,
+																		)!
+																	}
+																	onAccept={() =>
+																		handleAcceptSuggestion(
+																			org.id,
+																		)
+																	}
+																	onReject={() =>
+																		rejectSuggestion(
+																			org.id,
+																		)
+																	}
+																/>
+															) : (
+																<EntitySelector
+																	entities={
+																		availableEntities
+																	}
+																	value={
+																		org
+																			.formData
+																			.entity_id
+																	}
+																	onChange={(
+																		value,
+																		label,
+																	) =>
+																		updateOrgMapping(
+																			org.id,
+																			{
+																				entity_id:
+																					value,
+																				entity_name:
+																					label,
+																			},
+																		)
+																	}
+																	isLoading={
+																		isLoadingEntities
+																	}
+																	placeholder="Select entity..."
+																/>
+															)}
+														</DataTableCell>
+														<DataTableCell>
+															{org.mapping ? (
+																<Badge
+																	variant="default"
+																	className="bg-green-600"
+																>
+																	<CheckCircle2 className="h-3 w-3 mr-1" />
+																	Mapped
+																</Badge>
+															) : org.formData
+																	.entity_id ? (
+																<Badge variant="secondary">
+																	<Plus className="h-3 w-3 mr-1" />
+																	New
+																</Badge>
+															) : (
+																<Badge variant="outline">
+																	Not Mapped
+																</Badge>
+															)}
+															{org.isDirty && (
+																<Badge
+																	variant="secondary"
+																	className="ml-1"
+																>
+																	*
+																</Badge>
+															)}
+														</DataTableCell>
+														<DataTableCell className="text-right">
+															<div className="flex gap-1 justify-end">
+																<Button
+																	size="sm"
+																	variant="ghost"
+																	onClick={() =>
+																		handleOpenConfigDialog(
+																			org.id,
+																		)
+																	}
+																	title="Configure"
+																	className="relative"
+																>
+																	<Settings className="h-4 w-4" />
+																	{hasNonDefaultConfig(
+																		org,
+																	) && (
+																		<span className="absolute -top-0.5 -right-0.5 h-2 w-2 rounded-full bg-blue-600" />
+																	)}
+																</Button>
+																<Button
+																	size="sm"
+																	variant="ghost"
+																	onClick={() =>
+																		handleDeleteMappingClick(
+																			org,
+																		)
+																	}
+																	disabled={
+																		!org.mapping ||
+																		deleteMutation.isPending
+																	}
+																	title={
+																		org.mapping
+																			? "Unlink mapping"
+																			: "No mapping to unlink"
+																	}
+																	className="text-red-600 hover:text-red-700 disabled:text-muted-foreground"
+																>
+																	<Unlink className="h-4 w-4" />
+																</Button>
+															</div>
+														</DataTableCell>
+													</DataTableRow>
+												);
+											})}
+										</DataTableBody>
+									</DataTable>
+								</div>
+							)}
+						</CardContent>
+					</Card>
 				</TabsContent>
 
 				<TabsContent value="config-overrides">
@@ -1239,7 +1352,8 @@ export function IntegrationDetail() {
 						<CardHeader>
 							<CardTitle>Configuration Overrides</CardTitle>
 							<CardDescription>
-								Manage organization-specific configuration overrides
+								Manage organization-specific configuration
+								overrides
 							</CardDescription>
 						</CardHeader>
 						<CardContent>
@@ -1294,14 +1408,21 @@ export function IntegrationDetail() {
 			)}
 
 			{/* Configuration Defaults Dialog */}
-			<Dialog open={defaultsDialogOpen} onOpenChange={setDefaultsDialogOpen}>
+			<Dialog
+				open={defaultsDialogOpen}
+				onOpenChange={setDefaultsDialogOpen}
+			>
 				<DialogContent className="max-w-md">
-					<form onSubmit={(e) => {
-						e.preventDefault();
-						handleSaveDefaults();
-					}}>
+					<form
+						onSubmit={(e) => {
+							e.preventDefault();
+							handleSaveDefaults();
+						}}
+					>
 						<DialogHeader>
-							<DialogTitle>Edit Configuration Defaults</DialogTitle>
+							<DialogTitle>
+								Edit Configuration Defaults
+							</DialogTitle>
 							<DialogDescription>
 								Set default values for new organization mappings
 							</DialogDescription>
@@ -1312,7 +1433,9 @@ export function IntegrationDetail() {
 									<Label htmlFor={`default-${field.key}`}>
 										{field.key}
 										{field.required && (
-											<span className="text-destructive ml-1">*</span>
+											<span className="text-destructive ml-1">
+												*
+											</span>
 										)}
 										<span className="text-muted-foreground text-xs ml-2">
 											({field.type})
@@ -1321,32 +1444,55 @@ export function IntegrationDetail() {
 									{field.type === "bool" ? (
 										<select
 											id={`default-${field.key}`}
-											value={String(defaultsFormValues[field.key] ?? "")}
+											value={String(
+												defaultsFormValues[field.key] ??
+													"",
+											)}
 											onChange={(e) =>
-												setDefaultsFormValues((prev) => ({
-													...prev,
-													[field.key]: e.target.value === "true",
-												}))
+												setDefaultsFormValues(
+													(prev) => ({
+														...prev,
+														[field.key]:
+															e.target.value ===
+															"true",
+													}),
+												)
 											}
 											className="flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm transition-colors"
 										>
-											<option value="">— Not set —</option>
+											<option value="">
+												— Not set —
+											</option>
 											<option value="true">True</option>
 											<option value="false">False</option>
 										</select>
 									) : (
 										<Input
 											id={`default-${field.key}`}
-											type={field.type === "secret" ? "password" : "text"}
+											type={
+												field.type === "secret"
+													? "password"
+													: "text"
+											}
 											placeholder={`Default ${field.key}`}
-											value={String(defaultsFormValues[field.key] ?? "")}
+											value={String(
+												defaultsFormValues[field.key] ??
+													"",
+											)}
 											onChange={(e) =>
-												setDefaultsFormValues((prev) => ({
-													...prev,
-													[field.key]: field.type === "int"
-														? parseInt(e.target.value) || ""
-														: e.target.value,
-												}))
+												setDefaultsFormValues(
+													(prev) => ({
+														...prev,
+														[field.key]:
+															field.type === "int"
+																? parseInt(
+																		e.target
+																			.value,
+																	) || ""
+																: e.target
+																		.value,
+													}),
+												)
 											}
 										/>
 									)}
@@ -1393,8 +1539,8 @@ export function IntegrationDetail() {
 							<span className="font-semibold">
 								{deleteMappingConfirm?.name}
 							</span>
-							? This will remove the organization's integration configuration
-							and cannot be undone.
+							? This will remove the organization's integration
+							configuration and cannot be undone.
 						</AlertDialogDescription>
 					</AlertDialogHeader>
 					<AlertDialogFooter>
@@ -1416,16 +1562,23 @@ export function IntegrationDetail() {
 			>
 				<AlertDialogContent>
 					<AlertDialogHeader>
-						<AlertDialogTitle>Delete OAuth Configuration</AlertDialogTitle>
+						<AlertDialogTitle>
+							Delete OAuth Configuration
+						</AlertDialogTitle>
 						<AlertDialogDescription>
-							Are you sure you want to delete the OAuth configuration for{" "}
-							<span className="font-semibold">{integration?.name}</span>?
-							This will remove the OAuth connection and any stored tokens.
-							This action cannot be undone.
+							Are you sure you want to delete the OAuth
+							configuration for{" "}
+							<span className="font-semibold">
+								{integration?.name}
+							</span>
+							? This will remove the OAuth connection and any
+							stored tokens. This action cannot be undone.
 						</AlertDialogDescription>
 					</AlertDialogHeader>
 					<AlertDialogFooter>
-						<AlertDialogCancel disabled={deleteOAuthMutation.isPending}>
+						<AlertDialogCancel
+							disabled={deleteOAuthMutation.isPending}
+						>
 							Cancel
 						</AlertDialogCancel>
 						<AlertDialogAction

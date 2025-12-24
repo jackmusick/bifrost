@@ -7,11 +7,7 @@ from src.models.contracts.base import (
     DataProviderInputMode,
     IntegrationType,
     RetryPolicy,
-    entity_to_model,
     generate_entity_id,
-    model_to_entity,
-    parse_composite_row_key,
-    parse_row_key,
 )
 
 # Organizations
@@ -199,6 +195,7 @@ from src.models.contracts.dashboard import (
     DailyMetricsEntry,
     DailyMetricsResponse,
     DashboardMetricsResponse,
+    ROISnapshot,
     ExecutionStats,
     OrganizationMetricsResponse,
     OrganizationMetricsSummary,
@@ -309,8 +306,6 @@ from src.models.contracts.cli import (
     CLIFileListRequest,
     CLIFileReadRequest,
     CLIFileWriteRequest,
-    CLIOAuthGetRequest,
-    CLIOAuthGetResponse,
     CLIRegisteredWorkflow,
     CLISessionContinueRequest,
     CLISessionContinueResponse,
@@ -321,6 +316,13 @@ from src.models.contracts.cli import (
     CLISessionRegisterRequest,
     CLISessionResponse,
     CLISessionResultRequest,
+)
+
+# SDK Response Models (for bifrost.* module returns)
+from src.models.contracts.sdk import (
+    ConfigData,
+    IntegrationData,
+    OAuthCredentials as SDKOAuthCredentials,
 )
 
 # Profile
@@ -364,8 +366,8 @@ from src.models.contracts.integrations import (
     IntegrationMappingUpdate,
     IntegrationMappingResponse,
     IntegrationMappingListResponse,
-    IntegrationData,
     OAuthConfigSummary,
+    IntegrationSDKResponse,  # For API SDK endpoint responses (no decrypted tokens)
 )
 
 # Decorator Properties
@@ -385,6 +387,19 @@ from src.models.contracts.maintenance import (
     ReindexResponse,
 )
 
+# ROI
+from src.models.contracts.roi import (
+    ROISettingsRequest,
+    ROISettingsResponse,
+    ROISummaryResponse,
+    WorkflowROIEntry,
+    ROIByWorkflowResponse,
+    OrganizationROIEntry,
+    ROIByOrganizationResponse,
+    ROITrendEntry,
+    ROITrendsResponse,
+)
+
 __all__ = [
     # Re-export everything defined above
     # NOTE: Bare names like User, Organization, Role, Form, Config, ExecutionLog
@@ -393,11 +408,7 @@ __all__ = [
     "RetryPolicy",
     "DataProviderInputMode",
     "IntegrationType",
-    "entity_to_model",
-    "model_to_entity",
     "generate_entity_id",
-    "parse_row_key",
-    "parse_composite_row_key",
     # Organizations - use OrganizationPublic for responses
     "CreateOrganizationRequest",
     "UpdateOrganizationRequest",
@@ -518,6 +529,7 @@ __all__ = [
     "GeneralHealthResponse",
     "ExecutionStats",
     "RecentFailure",
+    "ROISnapshot",
     "DashboardMetricsResponse",
     "PlatformMetricsResponse",
     "DailyMetricsEntry",
@@ -622,8 +634,6 @@ __all__ = [
     "CLIConfigListRequest",
     "CLIConfigDeleteRequest",
     "CLIConfigValue",
-    "CLIOAuthGetRequest",
-    "CLIOAuthGetResponse",
     # CLI Session Models
     "CLIRegisteredWorkflow",
     "CLISessionRegisterRequest",
@@ -679,6 +689,7 @@ __all__ = [
     "IntegrationMappingResponse",
     "IntegrationMappingListResponse",
     "IntegrationData",
+    "IntegrationSDKResponse",
     "OAuthConfigSummary",
     # Decorator Properties
     "DecoratorType",
@@ -691,4 +702,18 @@ __all__ = [
     "ReindexRequest",
     "ReindexProgress",
     "ReindexResponse",
+    # ROI
+    "ROISettingsRequest",
+    "ROISettingsResponse",
+    "ROISummaryResponse",
+    "WorkflowROIEntry",
+    "ROIByWorkflowResponse",
+    "OrganizationROIEntry",
+    "ROIByOrganizationResponse",
+    "ROITrendEntry",
+    "ROITrendsResponse",
+    # SDK Response Models
+    "ConfigData",
+    "IntegrationData",
+    "SDKOAuthCredentials",
 ]

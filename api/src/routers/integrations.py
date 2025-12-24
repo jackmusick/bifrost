@@ -24,7 +24,6 @@ from src.models import (
     ConfigSchemaItem,
     Integration,
     IntegrationCreate,
-    IntegrationData,
     IntegrationDetailResponse,
     IntegrationListResponse,
     IntegrationMapping,
@@ -33,6 +32,7 @@ from src.models import (
     IntegrationMappingResponse,
     IntegrationMappingUpdate,
     IntegrationResponse,
+    IntegrationSDKResponse,
     IntegrationUpdate,
     OAuthConfigSummary,
 )
@@ -1240,7 +1240,7 @@ async def get_oauth_authorization_url(
 
 @router.get(
     "/sdk/{name}",
-    response_model=IntegrationData,
+    response_model=IntegrationSDKResponse,
     summary="Get integration data for SDK",
     description="Get integration data with resolved OAuth and merged config for SDK consumption",
 )
@@ -1248,7 +1248,7 @@ async def get_integration_sdk_data(
     name: str,
     ctx: Context,
     org_id: UUID = Query(..., description="Organization ID for resolving mapping"),
-) -> IntegrationData:
+) -> IntegrationSDKResponse:
     """
     Get integration data for SDK consumption.
     Returns resolved OAuth provider and merged configuration.
@@ -1289,7 +1289,7 @@ async def get_integration_sdk_data(
             else None
         )
 
-    return IntegrationData(
+    return IntegrationSDKResponse(
         integration_id=integration.id,
         entity_id=mapping.entity_id,
         entity_name=mapping.entity_name,

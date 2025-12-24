@@ -5,7 +5,6 @@ Tests both platform mode (inside workflows) and external mode (CLI).
 Uses mocked dependencies for fast, isolated testing.
 """
 
-import json
 import pytest
 from unittest.mock import AsyncMock, MagicMock, patch
 from contextlib import asynccontextmanager
@@ -79,12 +78,19 @@ class TestIntegrationsPlatformMode:
         mock_integration.entity_id = None
 
         # Mock the database context and repository
+        from datetime import datetime, timezone
+
         mock_mapping = MagicMock()
+        mock_mapping.id = uuid4()
         mock_mapping.integration_id = uuid4()
+        mock_mapping.organization_id = uuid4()
         mock_mapping.entity_id = "tenant-12345"
         mock_mapping.entity_name = "Test Tenant"
         mock_mapping.integration = mock_integration
         mock_mapping.oauth_token = None
+        mock_mapping.oauth_token_id = None
+        mock_mapping.created_at = datetime.now(timezone.utc)
+        mock_mapping.updated_at = datetime.now(timezone.utc)
 
         mock_repo = MagicMock()
         mock_repo.get_integration_for_org = AsyncMock(return_value=mock_mapping)
@@ -104,12 +110,12 @@ class TestIntegrationsPlatformMode:
                 result = await integrations.get("TestIntegration")
 
         assert result is not None
-        assert result["integration_id"] == str(mock_mapping.integration_id)
-        assert result["entity_id"] == "tenant-12345"
-        assert result["entity_name"] == "Test Tenant"
-        assert result["config"]["api_url"] == "https://api.example.com"
-        assert result["config"]["timeout"] == 30
-        assert result["oauth"] is None  # No OAuth provider
+        assert result.integration_id == str(mock_mapping.integration_id)
+        assert result.entity_id == "tenant-12345"
+        assert result.entity_name == "Test Tenant"
+        assert result.config["api_url"] == "https://api.example.com"
+        assert result.config["timeout"] == 30
+        assert result.oauth is None  # No OAuth provider
 
     @pytest.mark.asyncio
     async def test_get_returns_none_when_integration_not_found(
@@ -170,10 +176,10 @@ class TestIntegrationsPlatformMode:
                 result = await integrations.get("TestIntegration")
 
         assert result is not None
-        assert result["integration_id"] == str(mock_integration.id)
-        assert result["entity_id"] == "default-tenant-id"
-        assert result["entity_name"] is None  # No mapping = no entity name
-        assert result["config"]["default_key"] == "default_value"
+        assert result.integration_id == str(mock_integration.id)
+        assert result.entity_id == "default-tenant-id"
+        assert result.entity_name is None  # No mapping = no entity name
+        assert result.config["default_key"] == "default_value"
         mock_repo.get_integration_for_org.assert_called_once()
 
     @pytest.mark.asyncio
@@ -183,6 +189,7 @@ class TestIntegrationsPlatformMode:
         """Test that integrations.get() uses context.org_id when org_id not specified."""
         from bifrost import integrations
         from uuid import UUID
+        from datetime import datetime, timezone
 
         set_execution_context(test_context)
 
@@ -192,11 +199,16 @@ class TestIntegrationsPlatformMode:
         mock_integration.entity_id = None
 
         mock_mapping = MagicMock()
+        mock_mapping.id = uuid4()
         mock_mapping.integration_id = uuid4()
+        mock_mapping.organization_id = uuid4()
         mock_mapping.entity_id = "tenant-123"
         mock_mapping.entity_name = None
         mock_mapping.integration = mock_integration
         mock_mapping.oauth_token = None
+        mock_mapping.oauth_token_id = None
+        mock_mapping.created_at = datetime.now(timezone.utc)
+        mock_mapping.updated_at = datetime.now(timezone.utc)
 
         mock_repo = MagicMock()
         mock_repo.get_integration_for_org = AsyncMock(return_value=mock_mapping)
@@ -211,7 +223,7 @@ class TestIntegrationsPlatformMode:
                 "src.repositories.integrations.IntegrationsRepository",
                 return_value=mock_repo,
             ):
-                result = await integrations.get("TestIntegration")
+                await integrations.get("TestIntegration")
 
         # Verify repository was called with the context's org_id
         call_args = mock_repo.get_integration_for_org.call_args
@@ -235,12 +247,19 @@ class TestIntegrationsPlatformMode:
         mock_integration.default_entity_id = None
         mock_integration.entity_id = None
 
+        from datetime import datetime, timezone
+
         mock_mapping = MagicMock()
+        mock_mapping.id = uuid4()
         mock_mapping.integration_id = uuid4()
+        mock_mapping.organization_id = uuid4()
         mock_mapping.entity_id = "other-tenant"
         mock_mapping.entity_name = "Other Tenant"
         mock_mapping.integration = mock_integration
         mock_mapping.oauth_token = None
+        mock_mapping.oauth_token_id = None
+        mock_mapping.created_at = datetime.now(timezone.utc)
+        mock_mapping.updated_at = datetime.now(timezone.utc)
 
         mock_repo = MagicMock()
         mock_repo.get_integration_for_org = AsyncMock(return_value=mock_mapping)
@@ -262,12 +281,13 @@ class TestIntegrationsPlatformMode:
         # Verify repository was called with the explicit org_id
         call_args = mock_repo.get_integration_for_org.call_args
         assert call_args[0][1] == UUID(other_org_id)
-        assert result["entity_id"] == "other-tenant"
+        assert result.entity_id == "other-tenant"
 
     @pytest.mark.asyncio
     async def test_get_returns_merged_config(self, test_context, test_org_id):
         """Test that integrations.get() returns properly merged configuration."""
         from bifrost import integrations
+        from datetime import datetime, timezone
 
         set_execution_context(test_context)
 
@@ -277,11 +297,16 @@ class TestIntegrationsPlatformMode:
         mock_integration.entity_id = None
 
         mock_mapping = MagicMock()
+        mock_mapping.id = uuid4()
         mock_mapping.integration_id = uuid4()
+        mock_mapping.organization_id = uuid4()
         mock_mapping.entity_id = "tenant-123"
         mock_mapping.entity_name = None
         mock_mapping.integration = mock_integration
         mock_mapping.oauth_token = None
+        mock_mapping.oauth_token_id = None
+        mock_mapping.created_at = datetime.now(timezone.utc)
+        mock_mapping.updated_at = datetime.now(timezone.utc)
 
         # Merged config (defaults + org overrides)
         merged_config = {
@@ -305,7 +330,7 @@ class TestIntegrationsPlatformMode:
             ):
                 result = await integrations.get("TestIntegration")
 
-        assert result["config"] == merged_config
+        assert result.config == merged_config
 
     @pytest.mark.asyncio
     async def test_get_returns_oauth_details_when_provider_exists(
@@ -341,11 +366,16 @@ class TestIntegrationsPlatformMode:
         mock_integration.default_entity_id = None
 
         mock_mapping = MagicMock()
+        mock_mapping.id = uuid4()
         mock_mapping.integration_id = uuid4()
+        mock_mapping.organization_id = uuid4()
         mock_mapping.entity_id = "tenant-123"
         mock_mapping.entity_name = "Test Tenant"
         mock_mapping.integration = mock_integration
         mock_mapping.oauth_token = mock_token
+        mock_mapping.oauth_token_id = mock_token.id if hasattr(mock_token, 'id') else uuid4()
+        mock_mapping.created_at = datetime.now(timezone.utc)
+        mock_mapping.updated_at = datetime.now(timezone.utc)
 
         mock_repo = MagicMock()
         mock_repo.get_integration_for_org = AsyncMock(return_value=mock_mapping)
@@ -371,16 +401,16 @@ class TestIntegrationsPlatformMode:
                     ):
                         result = await integrations.get("TestIntegration")
 
-        assert result["oauth"] is not None
-        assert result["oauth"]["connection_name"] == "TestProvider"
-        assert result["oauth"]["client_id"] == "oauth-client-123"
-        assert result["oauth"]["client_secret"] == "decrypted-encrypted-secret"
-        assert result["oauth"]["authorization_url"] == "https://login.example.com/authorize"
-        assert result["oauth"]["token_url"] == "https://login.example.com/token"
-        assert result["oauth"]["scopes"] == ["read", "write", "admin"]
-        assert result["oauth"]["access_token"] == "decrypted-encrypted-access"
-        assert result["oauth"]["refresh_token"] == "decrypted-encrypted-refresh"
-        assert result["oauth"]["expires_at"] is not None
+        assert result.oauth is not None
+        assert result.oauth.connection_name == "TestProvider"
+        assert result.oauth.client_id == "oauth-client-123"
+        assert result.oauth.client_secret == "decrypted-encrypted-secret"
+        assert result.oauth.authorization_url == "https://login.example.com/authorize"
+        assert result.oauth.token_url == "https://login.example.com/token"
+        assert result.oauth.scopes == ["read", "write", "admin"]
+        assert result.oauth.access_token == "decrypted-encrypted-access"
+        assert result.oauth.refresh_token == "decrypted-encrypted-refresh"
+        assert result.oauth.expires_at is not None
 
     @pytest.mark.asyncio
     async def test_get_resolves_oauth_token_url_with_entity_id(
@@ -407,12 +437,19 @@ class TestIntegrationsPlatformMode:
         mock_integration.entity_id = "global-entity"
         mock_integration.default_entity_id = None
 
+        from datetime import datetime, timezone
+
         mock_mapping = MagicMock()
+        mock_mapping.id = uuid4()
         mock_mapping.integration_id = uuid4()
+        mock_mapping.organization_id = uuid4()
         mock_mapping.entity_id = "specific-tenant"  # Should be used instead of global
         mock_mapping.entity_name = None
         mock_mapping.integration = mock_integration
         mock_mapping.oauth_token = None
+        mock_mapping.oauth_token_id = None
+        mock_mapping.created_at = datetime.now(timezone.utc)
+        mock_mapping.updated_at = datetime.now(timezone.utc)
 
         mock_repo = MagicMock()
         mock_repo.get_integration_for_org = AsyncMock(return_value=mock_mapping)
@@ -444,7 +481,7 @@ class TestIntegrationsPlatformMode:
             defaults={"entity_id": "default"},
         )
         assert (
-            result["oauth"]["token_url"]
+            result.oauth.token_url
             == "https://login.example.com/specific-tenant/oauth/token"
         )
 
@@ -493,10 +530,10 @@ class TestIntegrationsPlatformMode:
 
             # Should return integration defaults since no org_id
             assert result is not None
-            assert result["integration_id"] == str(mock_integration.id)
-            assert result["entity_id"] == "global-default-entity"
-            assert result["entity_name"] is None
-            assert result["config"]["global_key"] == "global_value"
+            assert result.integration_id == str(mock_integration.id)
+            assert result.entity_id == "global-default-entity"
+            assert result.entity_name is None
+            assert result.config["global_key"] == "global_value"
         finally:
             clear_execution_context()
 
@@ -532,7 +569,7 @@ class TestIntegrationsPlatformMode:
 
         # Should return integration defaults since org_id was invalid
         assert result is not None
-        assert result["entity_id"] == "default-entity"
+        assert result.entity_id == "default-entity"
 
     @pytest.mark.asyncio
     async def test_get_returns_oauth_from_integration_defaults(self, test_context, test_org_id):
@@ -593,20 +630,20 @@ class TestIntegrationsPlatformMode:
 
         # Verify we fell back to integration defaults
         assert result is not None
-        assert result["integration_id"] == str(mock_integration.id)
-        assert result["entity_id"] == "default-halopsa-tenant"
-        assert result["entity_name"] is None  # No mapping
-        assert result["config"]["api_url"] == "https://api.halo.com"
+        assert result.integration_id == str(mock_integration.id)
+        assert result.entity_id == "default-halopsa-tenant"
+        assert result.entity_name is None  # No mapping
+        assert result.config["api_url"] == "https://api.halo.com"
 
         # Verify OAuth data from integration defaults
-        assert result["oauth"] is not None
-        assert result["oauth"]["connection_name"] == "HaloPSA"
-        assert result["oauth"]["client_id"] == "default-client-id"
-        assert result["oauth"]["client_secret"] == "decrypted-encrypted-default-secret"
-        assert result["oauth"]["token_url"] == "https://default-halopsa-tenant.halopsa.com/auth/token"
-        assert result["oauth"]["scopes"] == ["all"]
-        assert result["oauth"]["access_token"] == "decrypted-encrypted-org-access"
-        assert result["oauth"]["refresh_token"] == "decrypted-encrypted-org-refresh"
+        assert result.oauth is not None
+        assert result.oauth.connection_name == "HaloPSA"
+        assert result.oauth.client_id == "default-client-id"
+        assert result.oauth.client_secret == "decrypted-encrypted-default-secret"
+        assert result.oauth.token_url == "https://default-halopsa-tenant.halopsa.com/auth/token"
+        assert result.oauth.scopes == ["all"]
+        assert result.oauth.access_token == "decrypted-encrypted-org-access"
+        assert result.oauth.refresh_token == "decrypted-encrypted-org-refresh"
 
         # Verify resolve_url_template was called with default_entity_id
         mock_resolve.assert_called_once_with(
@@ -630,16 +667,28 @@ class TestIntegrationsPlatformMode:
         mock_integration = MagicMock()
         mock_integration.id = integration_id
 
+        from datetime import datetime, timezone
+
         # Mock mappings
         mock_mapping1 = MagicMock()
+        mock_mapping1.id = uuid4()
+        mock_mapping1.integration_id = integration_id
         mock_mapping1.organization_id = org1_id
         mock_mapping1.entity_id = "tenant-1"
         mock_mapping1.entity_name = "Tenant One"
+        mock_mapping1.oauth_token_id = None
+        mock_mapping1.created_at = datetime.now(timezone.utc)
+        mock_mapping1.updated_at = datetime.now(timezone.utc)
 
         mock_mapping2 = MagicMock()
+        mock_mapping2.id = uuid4()
+        mock_mapping2.integration_id = integration_id
         mock_mapping2.organization_id = org2_id
         mock_mapping2.entity_id = "tenant-2"
         mock_mapping2.entity_name = "Tenant Two"
+        mock_mapping2.oauth_token_id = None
+        mock_mapping2.created_at = datetime.now(timezone.utc)
+        mock_mapping2.updated_at = datetime.now(timezone.utc)
 
         mock_repo = MagicMock()
         mock_repo.get_integration_by_name = AsyncMock(return_value=mock_integration)
@@ -661,13 +710,13 @@ class TestIntegrationsPlatformMode:
 
         assert result is not None
         assert len(result) == 2
-        assert result[0]["organization_id"] == str(org1_id)
-        assert result[0]["entity_id"] == "tenant-1"
-        assert result[0]["entity_name"] == "Tenant One"
-        assert result[0]["config"] == {"key1": "val1"}
-        assert result[1]["organization_id"] == str(org2_id)
-        assert result[1]["entity_id"] == "tenant-2"
-        assert result[1]["config"] == {"key2": "val2"}
+        assert str(result[0].organization_id) == str(org1_id)
+        assert result[0].entity_id == "tenant-1"
+        assert result[0].entity_name == "Tenant One"
+        assert result[0].config == {"key1": "val1"}
+        assert str(result[1].organization_id) == str(org2_id)
+        assert result[1].entity_id == "tenant-2"
+        assert result[1].config == {"key2": "val2"}
 
     @pytest.mark.asyncio
     async def test_list_mappings_returns_none_when_integration_not_found(
@@ -737,10 +786,17 @@ class TestIntegrationsPlatformMode:
         mock_integration = MagicMock()
         mock_integration.id = integration_id
 
+        from datetime import datetime, timezone
+
         mock_mapping = MagicMock()
+        mock_mapping.id = uuid4()
+        mock_mapping.integration_id = integration_id
         mock_mapping.organization_id = uuid4()
         mock_mapping.entity_id = "tenant-1"
         mock_mapping.entity_name = None
+        mock_mapping.oauth_token_id = None
+        mock_mapping.created_at = datetime.now(timezone.utc)
+        mock_mapping.updated_at = datetime.now(timezone.utc)
 
         mock_repo = MagicMock()
         mock_repo.get_integration_by_name = AsyncMock(return_value=mock_integration)
@@ -764,7 +820,7 @@ class TestIntegrationsPlatformMode:
         mock_repo.get_config_for_mapping.assert_called_once_with(
             integration_id, mock_mapping.organization_id
         )
-        assert result[0]["config"] == {"merged": "config", "timeout": 60}
+        assert result[0].config == {"merged": "config", "timeout": 60}
 
 
 class TestIntegrationsExternalMode:
@@ -775,24 +831,28 @@ class TestIntegrationsExternalMode:
         """Ensure no platform context and clean client state."""
         clear_execution_context()
         # Reset client singleton
-        from bifrost import client as client_module
+        from bifrost.client import BifrostClient
 
-        client_module._client = None
+        BifrostClient._instance = None
         yield
-        client_module._client = None
+        BifrostClient._instance = None
 
     @pytest.mark.asyncio
     async def test_get_calls_api_endpoint(self):
         """Test that integrations.get() calls API endpoint in external mode."""
         from bifrost import integrations
 
+        integration_id = uuid4()
         mock_response = MagicMock()
         mock_response.status_code = 200
         mock_response.json.return_value = {
-            "integration_id": str(uuid4()),
+            "id": str(uuid4()),
+            "integration_id": str(integration_id),
             "entity_id": "api-tenant",
             "entity_name": "API Tenant",
             "config": {"api_key": "secret"},
+            "created_at": "2025-01-01T00:00:00Z",
+            "updated_at": "2025-01-01T00:00:00Z",
             "oauth": {
                 "connection_name": "TestProvider",
                 "client_id": "client-123",
@@ -816,9 +876,9 @@ class TestIntegrationsExternalMode:
             "/api/cli/integrations/get",
             json={"name": "TestIntegration", "org_id": "org-123"},
         )
-        assert result["entity_id"] == "api-tenant"
-        assert result["config"]["api_key"] == "secret"
-        assert result["oauth"]["client_id"] == "client-123"
+        assert result.entity_id == "api-tenant"
+        assert result.config["api_key"] == "secret"
+        assert result.oauth.client_id == "client-123"
 
     @pytest.mark.asyncio
     async def test_get_returns_none_when_api_returns_null(self):
@@ -862,10 +922,13 @@ class TestIntegrationsExternalMode:
         mock_response = MagicMock()
         mock_response.status_code = 200
         mock_response.json.return_value = {
+            "id": str(uuid4()),
             "integration_id": {"uuid": "abc123"},  # Unusual format
             "entity_id": "tenant",
             "entity_name": None,
             "config": {},
+            "created_at": "2025-01-01T00:00:00Z",
+            "updated_at": "2025-01-01T00:00:00Z",
             "oauth": None,
         }
 
@@ -876,7 +939,7 @@ class TestIntegrationsExternalMode:
             result = await integrations.get("TestIntegration")
 
         # Should convert dict to string
-        assert isinstance(result["integration_id"], str)
+        assert isinstance(result.integration_id, str)
 
     @pytest.mark.asyncio
     async def test_list_mappings_calls_api_endpoint(self):
@@ -885,21 +948,30 @@ class TestIntegrationsExternalMode:
 
         org1_id = str(uuid4())
         org2_id = str(uuid4())
+        integration_id = str(uuid4())
 
         mock_response = MagicMock()
         mock_response.status_code = 200
         mock_response.json.return_value = [
             {
+                "id": str(uuid4()),
+                "integration_id": integration_id,
                 "organization_id": org1_id,
                 "entity_id": "tenant-1",
                 "entity_name": "Tenant 1",
                 "config": {"key": "val1"},
+                "created_at": "2025-01-01T00:00:00Z",
+                "updated_at": "2025-01-01T00:00:00Z",
             },
             {
+                "id": str(uuid4()),
+                "integration_id": integration_id,
                 "organization_id": org2_id,
                 "entity_id": "tenant-2",
                 "entity_name": None,
                 "config": {},
+                "created_at": "2025-01-01T00:00:00Z",
+                "updated_at": "2025-01-01T00:00:00Z",
             },
         ]
 
@@ -914,8 +986,8 @@ class TestIntegrationsExternalMode:
             json={"name": "TestIntegration"},
         )
         assert len(result) == 2
-        assert result[0]["entity_id"] == "tenant-1"
-        assert result[1]["entity_id"] == "tenant-2"
+        assert result[0].entity_id == "tenant-1"
+        assert result[1].entity_id == "tenant-2"
 
     @pytest.mark.asyncio
     async def test_list_mappings_returns_none_when_api_returns_null(self):
@@ -954,15 +1026,28 @@ class TestIntegrationsExternalMode:
     async def test_requires_api_key_in_external_mode(self):
         """Test that external mode requires BIFROST_DEV_URL and BIFROST_DEV_KEY."""
         from bifrost import integrations
+        import os
 
-        # Clear env vars
-        with patch.dict(
-            "os.environ", {"BIFROST_DEV_URL": "", "BIFROST_DEV_KEY": ""}, clear=False
-        ):
+        # Clear env vars - need to actually remove them
+        old_url = os.environ.get("BIFROST_DEV_URL")
+        old_key = os.environ.get("BIFROST_DEV_KEY")
+
+        try:
+            if "BIFROST_DEV_URL" in os.environ:
+                del os.environ["BIFROST_DEV_URL"]
+            if "BIFROST_DEV_KEY" in os.environ:
+                del os.environ["BIFROST_DEV_KEY"]
+
             with pytest.raises(
                 RuntimeError, match="BIFROST_DEV_URL and BIFROST_DEV_KEY"
             ):
                 await integrations.get("TestIntegration")
+        finally:
+            # Restore env vars
+            if old_url is not None:
+                os.environ["BIFROST_DEV_URL"] = old_url
+            if old_key is not None:
+                os.environ["BIFROST_DEV_KEY"] = old_key
 
 
 class TestIntegrationsContextDetection:

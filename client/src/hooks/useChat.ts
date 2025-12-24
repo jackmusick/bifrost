@@ -40,7 +40,8 @@ function getErrorMessage(error: unknown, fallback: string): string {
 /** Get all available agents */
 export async function getAgents(): Promise<AgentSummary[]> {
 	const { data, error } = await apiClient.GET("/api/agents");
-	if (error) throw new Error(getErrorMessage(error, "Failed to fetch agents"));
+	if (error)
+		throw new Error(getErrorMessage(error, "Failed to fetch agents"));
 	return data || [];
 }
 
@@ -57,7 +58,9 @@ export async function getAgent(agentId: string): Promise<AgentPublic> {
 export async function getConversations(): Promise<ConversationSummary[]> {
 	const { data, error } = await apiClient.GET("/api/chat/conversations");
 	if (error)
-		throw new Error(getErrorMessage(error, "Failed to fetch conversations"));
+		throw new Error(
+			getErrorMessage(error, "Failed to fetch conversations"),
+		);
 	return data || [];
 }
 
@@ -84,7 +87,9 @@ export async function createConversation(
 		body: request,
 	});
 	if (error)
-		throw new Error(getErrorMessage(error, "Failed to create conversation"));
+		throw new Error(
+			getErrorMessage(error, "Failed to create conversation"),
+		);
 	return data!;
 }
 
@@ -99,7 +104,9 @@ export async function deleteConversation(
 		},
 	);
 	if (error)
-		throw new Error(getErrorMessage(error, "Failed to delete conversation"));
+		throw new Error(
+			getErrorMessage(error, "Failed to delete conversation"),
+		);
 }
 
 /** Get messages for a conversation */
@@ -129,7 +136,8 @@ export async function sendMessage(
 			body: { message, stream: false },
 		},
 	);
-	if (error) throw new Error(getErrorMessage(error, "Failed to send message"));
+	if (error)
+		throw new Error(getErrorMessage(error, "Failed to send message"));
 	return data!;
 }
 
@@ -218,30 +226,36 @@ export function useCreateConversation() {
 /** Hook to delete a conversation */
 export function useDeleteConversation() {
 	const queryClient = useQueryClient();
-	const removeConversation = useChatStore((state) => state.removeConversation);
+	const removeConversation = useChatStore(
+		(state) => state.removeConversation,
+	);
 
-	return $api.useMutation("delete", "/api/chat/conversations/{conversation_id}", {
-		onSuccess: (_, variables) => {
-			const conversationId = (
-				variables.params as { path: { conversation_id: string } }
-			).path.conversation_id;
+	return $api.useMutation(
+		"delete",
+		"/api/chat/conversations/{conversation_id}",
+		{
+			onSuccess: (_, variables) => {
+				const conversationId = (
+					variables.params as { path: { conversation_id: string } }
+				).path.conversation_id;
 
-			// Remove from local state
-			removeConversation(conversationId);
+				// Remove from local state
+				removeConversation(conversationId);
 
-			// Invalidate queries
-			queryClient.invalidateQueries({
-				queryKey: ["get", "/api/chat/conversations"],
-			});
+				// Invalidate queries
+				queryClient.invalidateQueries({
+					queryKey: ["get", "/api/chat/conversations"],
+				});
 
-			toast.success("Conversation deleted");
+				toast.success("Conversation deleted");
+			},
+			onError: (error) => {
+				toast.error("Failed to delete conversation", {
+					description: getErrorMessage(error, "Unknown error"),
+				});
+			},
 		},
-		onError: (error) => {
-			toast.error("Failed to delete conversation", {
-				description: getErrorMessage(error, "Unknown error"),
-			});
-		},
-	});
+	);
 }
 
 /** Hook to send a message (non-streaming) */
@@ -283,7 +297,8 @@ export function useSendMessage() {
 					content: response.content,
 					tool_calls: response.tool_calls ?? undefined,
 					token_count_input: response.token_count_input ?? undefined,
-					token_count_output: response.token_count_output ?? undefined,
+					token_count_output:
+						response.token_count_output ?? undefined,
 					duration_ms: response.duration_ms ?? undefined,
 					sequence: Date.now() + 1,
 					created_at: new Date().toISOString(),
@@ -295,7 +310,11 @@ export function useSendMessage() {
 					queryKey: [
 						"get",
 						"/api/chat/conversations/{conversation_id}/messages",
-						{ params: { path: { conversation_id: conversationId } } },
+						{
+							params: {
+								path: { conversation_id: conversationId },
+							},
+						},
 					],
 				});
 				queryClient.invalidateQueries({
@@ -311,7 +330,9 @@ export function useSendMessage() {
 							"/api/chat/conversations/{conversation_id}/messages",
 							{
 								params: {
-									path: { conversation_id: activeConversationId },
+									path: {
+										conversation_id: activeConversationId,
+									},
 								},
 							},
 						],

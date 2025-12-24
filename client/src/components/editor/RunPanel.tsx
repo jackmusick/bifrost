@@ -366,7 +366,10 @@ export function RunPanel() {
 			setIsExecuting(false);
 
 			// Push error to terminal (no toast - terminal is the primary feedback)
-			const errorMessage = getErrorMessage(error, "Unknown error occurred");
+			const errorMessage = getErrorMessage(
+				error,
+				"Unknown error occurred",
+			);
 			appendTerminalOutput({
 				loggerOutput: [
 					{
@@ -473,7 +476,10 @@ export function RunPanel() {
 			setIsExecuting(false);
 
 			// Push error to terminal (no toast - terminal is the primary feedback)
-			const errorMessage = getErrorMessage(error, "Unknown error occurred");
+			const errorMessage = getErrorMessage(
+				error,
+				"Unknown error occurred",
+			);
 			appendTerminalOutput({
 				loggerOutput: [
 					{

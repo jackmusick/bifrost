@@ -8,7 +8,6 @@ and respect organization context.
 Modules tested:
 - integrations: get, list_mappings
 - config: get, set, list, delete
-- oauth: get
 - files: read, write, list, delete, exists
 - organizations: list, get, create, update, delete
 - workflows: list, get
@@ -27,8 +26,6 @@ from __future__ import annotations
 import json
 import pytest
 from datetime import datetime
-from pathlib import Path
-from typing import AsyncGenerator
 from unittest.mock import MagicMock, AsyncMock, patch
 from uuid import uuid4, UUID
 
@@ -38,7 +35,6 @@ from bifrost._context import set_execution_context, clear_execution_context
 # Import ORM models
 from src.models.orm.integrations import Integration, IntegrationMapping, IntegrationConfigSchema
 from src.models.orm.config import Config
-from src.models.orm.oauth import OAuthProvider, OAuthConnection
 from src.models.orm.organizations import Organization
 from src.models.orm.workflows import Workflow
 from src.models.orm.forms import Form
@@ -96,14 +92,15 @@ def test_context(test_org: Organization):
     """Create execution context for regular user."""
     from src.sdk.context import ExecutionContext, Organization as ContextOrg
 
+    user_uuid = uuid4()
     context_org = ContextOrg(
         id=str(test_org.id),
         name=test_org.name,
         is_active=test_org.is_active,
     )
     return ExecutionContext(
-        user_id="test-user",
-        email="test@example.com",
+        user_id=str(user_uuid),
+        email=f"test-{user_uuid.hex[:8]}@example.com",
         name="Test User",
         scope=str(test_org.id),
         organization=context_org,
@@ -124,7 +121,7 @@ def admin_context(test_org: Organization):
         is_active=test_org.is_active,
     )
     return ExecutionContext(
-        user_id="admin-user",
+        user_id=str(uuid4()),
         email="admin@example.com",
         name="Admin User",
         scope=str(test_org.id),
@@ -215,9 +212,9 @@ class TestIntegrationsPlatformMode:
             result = await integrations.get("TestIntegration")
 
         assert result is not None
-        assert result["entity_id"] == "tenant-123"
-        assert result["entity_name"] == "Test Tenant"
-        assert result["config"]["api_url"] == "https://api.test.com"
+        assert result.entity_id == "tenant-123"
+        assert result.entity_name == "Test Tenant"
+        assert result.config["api_url"] == "https://api.test.com"
 
     @pytest.mark.asyncio
     async def test_get_returns_none_when_not_found(
@@ -288,7 +285,7 @@ class TestIntegrationsPlatformMode:
 
         # Should only get test org's mapping
         assert result is not None
-        assert result["entity_id"] == "test-tenant"
+        assert result.entity_id == "test-tenant"
 
     @pytest.mark.asyncio
     async def test_list_mappings_returns_all_org_mappings(
@@ -335,7 +332,7 @@ class TestIntegrationsPlatformMode:
 
         assert result is not None
         assert len(result) == 2
-        org_ids = {r["organization_id"] for r in result}
+        org_ids = {str(r.organization_id) for r in result}
         assert str(test_org.id) in org_ids
         assert str(other_org.id) in org_ids
 
@@ -523,104 +520,6 @@ class TestConfigPlatformMode:
         assert result == "other_value"
 
 
-# ==================== OAUTH SDK TESTS ====================
-
-
-@pytest.mark.integration
-class TestOAuthPlatformMode:
-    """Test oauth SDK with real Redis cache."""
-
-    @pytest.mark.asyncio
-    async def test_get_returns_oauth_connection(
-        self,
-        test_context,
-        test_org: Organization,
-    ):
-        """Test oauth.get() retrieves OAuth connection from Redis."""
-        from bifrost import oauth
-        from src.core.cache import oauth_hash_key, get_redis
-
-        set_execution_context(test_context)
-
-        # Write OAuth data to Redis
-        oauth_data = {
-            "provider_name": "microsoft",
-            "client_id": "client-123",
-            "client_secret": "secret-456",
-            "authorization_url": "https://login.microsoft.com/authorize",
-            "token_url": "https://login.microsoft.com/token",
-            "scopes": ["openid", "profile", "email"],
-            "access_token": "access-token-xyz",
-            "refresh_token": "refresh-token-abc",
-            "expires_at": None,
-        }
-        async with get_redis() as r:
-            await r.hset(  # type: ignore[misc]
-                oauth_hash_key(str(test_org.id)),
-                "microsoft",
-                json.dumps(oauth_data),
-            )
-
-        result = await oauth.get("microsoft")
-
-        assert result is not None
-        assert result["connection_name"] == "microsoft"
-        assert result["client_id"] == "client-123"
-        assert result["client_secret"] == "secret-456"
-        assert result["access_token"] == "access-token-xyz"
-        assert result["scopes"] == ["openid", "profile", "email"]
-
-    @pytest.mark.asyncio
-    async def test_get_returns_none_when_not_found(
-        self,
-        test_context,
-    ):
-        """Test oauth.get() returns None when provider not found."""
-        from bifrost import oauth
-
-        set_execution_context(test_context)
-
-        result = await oauth.get("nonexistent_provider")
-
-        assert result is None
-
-    @pytest.mark.asyncio
-    async def test_get_with_explicit_org_id(
-        self,
-        admin_context,
-        other_org: Organization,
-    ):
-        """Test oauth.get() can access other org's OAuth with explicit org_id."""
-        from bifrost import oauth
-        from src.core.cache import oauth_hash_key, get_redis
-
-        set_execution_context(admin_context)
-
-        # Write OAuth for other org
-        oauth_data = {
-            "provider_name": "partner_center",
-            "client_id": "other-client",
-            "client_secret": "other-secret",
-            "authorization_url": None,
-            "token_url": "https://login.partner.com/token",
-            "scopes": ["read", "write"],
-            "access_token": None,
-            "refresh_token": None,
-            "expires_at": None,
-        }
-        async with get_redis() as r:
-            await r.hset(  # type: ignore[misc]
-                oauth_hash_key(str(other_org.id)),
-                "partner_center",
-                json.dumps(oauth_data),
-            )
-
-        result = await oauth.get("partner_center", org_id=str(other_org.id))
-
-        assert result is not None
-        assert result["client_id"] == "other-client"
-
-
 # ==================== FILES SDK TESTS ====================
 
 
@@ -643,10 +542,10 @@ class TestFilesPlatformMode:
 
         try:
             # Write file
-            await files.write(test_path, test_content, location="workspace")
+            await files.write_bytes(test_path, test_content, location="workspace")
 
             # Read file
-            result = await files.read(test_path, location="workspace")
+            result = await files.read_bytes(test_path, location="workspace")
 
             assert result == test_content
         finally:
@@ -669,7 +568,7 @@ class TestFilesPlatformMode:
         test_path = f"exists-test-{uuid4()}.txt"
 
         try:
-            await files.write(test_path, b"test", location="workspace")
+            await files.write_bytes(test_path, b"test", location="workspace")
 
             result = await files.exists(test_path, location="workspace")
 
@@ -710,15 +609,14 @@ class TestFilesPlatformMode:
         try:
             # Create test files
             for file_path in test_files:
-                await files.write(file_path, b"test", location="workspace")
+                await files.write_bytes(file_path, b"test", location="workspace")
 
             # List files
             result = await files.list(test_dir, location="workspace")
 
             assert len(result) >= 2
-            file_names = [f["name"] for f in result]
-            assert "file1.txt" in file_names
-            assert "file2.txt" in file_names
+            assert "file1.txt" in result
+            assert "file2.txt" in result
         finally:
             # Cleanup
             for file_path in test_files:
@@ -740,7 +638,7 @@ class TestFilesPlatformMode:
         test_path = f"delete-test-{uuid4()}.txt"
 
         # Create file
-        await files.write(test_path, b"test", location="workspace")
+        await files.write_bytes(test_path, b"test", location="workspace")
         assert await files.exists(test_path, location="workspace")
 
         # Delete file
@@ -772,27 +670,35 @@ class TestOrganizationsPlatformMode:
 
         # Write orgs to Redis cache
         async with get_redis() as r:
-            org_data = [
-                {
-                    "id": str(test_org.id),
-                    "name": test_org.name,
-                    "domain": test_org.domain,
-                    "is_active": test_org.is_active,
-                    "created_by": test_org.created_by,
-                    "created_at": test_org.created_at.isoformat(),
-                    "updated_at": test_org.updated_at.isoformat(),
-                },
-                {
-                    "id": str(other_org.id),
-                    "name": other_org.name,
-                    "domain": other_org.domain,
-                    "is_active": other_org.is_active,
-                    "created_by": other_org.created_by,
-                    "created_at": other_org.created_at.isoformat(),
-                    "updated_at": other_org.updated_at.isoformat(),
-                },
-            ]
-            await r.set(orgs_list_key(), json.dumps(org_data))
+            from src.core.cache import org_key
+
+            # Delete key first to avoid WRONGTYPE error
+            await r.delete(orgs_list_key())  # type: ignore[misc]
+
+            # Add org IDs to the set
+            await r.sadd(orgs_list_key(), str(test_org.id), str(other_org.id))  # type: ignore[misc]
+
+            # Add individual org data to their keys
+            test_org_data = {
+                "id": str(test_org.id),
+                "name": test_org.name,
+                "domain": test_org.domain,
+                "is_active": test_org.is_active,
+                "created_by": test_org.created_by,
+                "created_at": test_org.created_at.isoformat(),
+                "updated_at": test_org.updated_at.isoformat(),
+            }
+            other_org_data = {
+                "id": str(other_org.id),
+                "name": other_org.name,
+                "domain": other_org.domain,
+                "is_active": other_org.is_active,
+                "created_by": other_org.created_by,
+                "created_at": other_org.created_at.isoformat(),
+                "updated_at": other_org.updated_at.isoformat(),
+            }
+            await r.set(org_key(str(test_org.id)), json.dumps(test_org_data))  # type: ignore[misc]
+            await r.set(org_key(str(other_org.id)), json.dumps(other_org_data))  # type: ignore[misc]
 
         result = await organizations.list()
 
@@ -839,19 +745,28 @@ class TestOrganizationsPlatformMode:
     ):
         """Test organizations.create() writes to buffer."""
         from bifrost import organizations
+        from bifrost._write_buffer import WriteBuffer, set_write_buffer
 
         set_execution_context(admin_context)
 
-        with patch("bifrost._write_buffer.get_write_buffer") as mock_get_buffer:
-            mock_buffer = MagicMock()
-            mock_buffer.add_org_change = AsyncMock(return_value=str(uuid4()))
-            mock_get_buffer.return_value = mock_buffer
+        # Create actual write buffer
+        buffer = WriteBuffer(
+            execution_id=admin_context.execution_id,
+            org_id=str(admin_context.organization.id) if admin_context.organization else None,
+            user_id=admin_context.user_id,
+        )
+        set_write_buffer(buffer)
 
+        try:
             result = await organizations.create("New Org", domain="neworg.com")
 
             assert result.name == "New Org"
             assert result.domain == "neworg.com"
-            mock_buffer.add_org_change.assert_called_once()
+
+            # Verify buffer has pending changes
+            assert await buffer.has_pending_changes()
+        finally:
+            buffer.close()
 
     @pytest.mark.asyncio
     async def test_update_writes_to_buffer(
@@ -861,20 +776,39 @@ class TestOrganizationsPlatformMode:
     ):
         """Test organizations.update() writes to buffer."""
         from bifrost import organizations
+        from bifrost._write_buffer import WriteBuffer, set_write_buffer
+        from src.core.cache import org_key, get_redis
 
         set_execution_context(admin_context)
 
-        with patch("bifrost._write_buffer.get_write_buffer") as mock_get_buffer:
-            mock_buffer = MagicMock()
-            mock_buffer.add_org_change = AsyncMock()
-            mock_get_buffer.return_value = mock_buffer
+        # Write org to Redis cache (required for update to find it)
+        async with get_redis() as r:
+            org_data = {
+                "id": str(test_org.id),
+                "name": test_org.name,
+                "domain": test_org.domain,
+                "is_active": test_org.is_active,
+                "created_by": test_org.created_by,
+                "created_at": test_org.created_at.isoformat(),
+                "updated_at": test_org.updated_at.isoformat(),
+            }
+            await r.set(org_key(str(test_org.id)), json.dumps(org_data))  # type: ignore[misc]
 
+        # Create actual write buffer
+        buffer = WriteBuffer(
+            execution_id=admin_context.execution_id,
+            org_id=str(admin_context.organization.id) if admin_context.organization else None,
+            user_id=admin_context.user_id,
+        )
+        set_write_buffer(buffer)
+
+        try:
             await organizations.update(str(test_org.id), name="Updated Name")
 
-            mock_buffer.add_org_change.assert_called_once()
-            call_kwargs = mock_buffer.add_org_change.call_args[1]
-            assert call_kwargs["operation"] == "update"
-            assert call_kwargs["data"]["name"] == "Updated Name"
+            # Verify buffer has pending changes
+            assert await buffer.has_pending_changes()
+        finally:
+            buffer.close()
 
     @pytest.mark.asyncio
     async def test_delete_writes_to_buffer(
@@ -884,19 +818,39 @@ class TestOrganizationsPlatformMode:
     ):
         """Test organizations.delete() writes to buffer."""
         from bifrost import organizations
+        from bifrost._write_buffer import WriteBuffer, set_write_buffer
+        from src.core.cache import org_key, get_redis
 
         set_execution_context(admin_context)
 
-        with patch("bifrost._write_buffer.get_write_buffer") as mock_get_buffer:
-            mock_buffer = MagicMock()
-            mock_buffer.add_org_change = AsyncMock()
-            mock_get_buffer.return_value = mock_buffer
+        # Write org to Redis cache (required for delete to find it)
+        async with get_redis() as r:
+            org_data = {
+                "id": str(test_org.id),
+                "name": test_org.name,
+                "domain": test_org.domain,
+                "is_active": test_org.is_active,
+                "created_by": test_org.created_by,
+                "created_at": test_org.created_at.isoformat(),
+                "updated_at": test_org.updated_at.isoformat(),
+            }
+            await r.set(org_key(str(test_org.id)), json.dumps(org_data))  # type: ignore[misc]
 
+        # Create actual write buffer
+        buffer = WriteBuffer(
+            execution_id=admin_context.execution_id,
+            org_id=str(admin_context.organization.id) if admin_context.organization else None,
+            user_id=admin_context.user_id,
+        )
+        set_write_buffer(buffer)
+
+        try:
             await organizations.delete(str(test_org.id))
 
-            mock_buffer.add_org_change.assert_called_once()
-            call_kwargs = mock_buffer.add_org_change.call_args[1]
-            assert call_kwargs["operation"] == "delete"
+            # Verify buffer has pending changes
+            assert await buffer.has_pending_changes()
+        finally:
+            buffer.close()
 
 
 # ==================== WORKFLOWS SDK TESTS ====================
@@ -919,8 +873,8 @@ class TestWorkflowsPlatformMode:
         # Create workflows
         wf1 = Workflow(
             name="workflow1",
+            function_name="workflow1",
             description="First workflow",
-            organization_id=test_org.id,
             file_path="/workflows/workflow1.py",
             is_active=True,
             execution_mode="sync",
@@ -928,8 +882,8 @@ class TestWorkflowsPlatformMode:
         )
         wf2 = Workflow(
             name="workflow2",
+            function_name="workflow2",
             description="Second workflow",
-            organization_id=test_org.id,
             file_path="/workflows/workflow2.py",
             is_active=True,
             execution_mode="async",
@@ -937,8 +891,8 @@ class TestWorkflowsPlatformMode:
         )
         wf3 = Workflow(
             name="inactive_workflow",
+            function_name="inactive_workflow",
             description="Inactive",
-            organization_id=test_org.id,
             file_path="/workflows/inactive.py",
             is_active=False,
         )
@@ -953,7 +907,7 @@ class TestWorkflowsPlatformMode:
 
         # Should return only active workflows
         assert len(result) == 2
-        names = {wf["name"] for wf in result}
+        names = {wf.name for wf in result}
         assert "workflow1" in names
         assert "workflow2" in names
         assert "inactive_workflow" not in names
@@ -962,29 +916,44 @@ class TestWorkflowsPlatformMode:
     async def test_get_returns_execution_details(
         self,
         db_session: AsyncSession,
+        async_session_factory,
         test_context,
         test_org: Organization,
     ):
         """Test workflows.get() returns execution details."""
         from bifrost import workflows
+        from uuid import UUID
+        from src.models.orm.users import User
 
         # Create workflow and execution
         workflow = Workflow(
-            name="test_workflow",
+            name=f"test_workflow_{uuid4().hex[:8]}",
+            function_name=f"test_workflow_{uuid4().hex[:8]}",
             description="Test",
-            organization_id=test_org.id,
-            file_path="/workflows/test.py",
+            file_path=f"/workflows/test_{uuid4().hex[:8]}.py",
             is_active=True,
         )
         db_session.add(workflow)
         await db_session.flush()
 
+        # Create user that matches context user_id
+        user_uuid = UUID(test_context.user_id)
+        user = User(
+            id=user_uuid,
+            email=test_context.email,
+            name=test_context.name,
+            is_active=True,
+        )
+        db_session.add(user)
+        await db_session.flush()
+
         execution = Execution(
-            id="exec-123",
-            workflow_id=workflow.id,
+            id=uuid4(),
+            workflow_name=workflow.name,
             organization_id=test_org.id,
-            status=ExecutionStatus.COMPLETED,
-            triggered_by="test-user",
+            status=ExecutionStatus.SUCCESS,
+            executed_by=user_uuid,
+            executed_by_name=test_context.name,
             parameters={"key": "value"},
             result={"output": "success"},
         )
@@ -995,11 +964,14 @@ class TestWorkflowsPlatformMode:
         test_context._db = db_session
         set_execution_context(test_context)
 
-        result = await workflows.get("exec-123")
+        # Use test's session factory to avoid event loop mismatch
+        # workflows.get() delegates to executions.get(), so patch executions module
+        with patch("bifrost.executions.get_session_factory", return_value=async_session_factory):
+            result = await workflows.get(str(execution.id))
 
-        assert result["id"] == "exec-123"
-        assert result["status"] == "completed"
-        assert result["result"] == {"output": "success"}
+        assert result.execution_id == str(execution.id)
+        assert result.status == ExecutionStatus.SUCCESS
+        assert result.result == {"output": "success"}
 
 
 # ==================== FORMS SDK TESTS ====================
@@ -1016,28 +988,60 @@ class TestFormsPlatformMode:
         test_context,
         test_org: Organization,
     ):
-        """Test forms.list() returns forms from database."""
+        """Test forms.list() returns forms from Redis cache."""
         from bifrost import forms
+        from src.core.cache import forms_hash_key, user_forms_key, get_redis
 
-        # Create forms
+        # Create forms in database
         form1 = Form(
+            id=uuid4(),
             name="Form 1",
             description="Test form 1",
             organization_id=test_org.id,
-            form_schema={"fields": []},
-            is_public=False,
+            created_by="test-user",
             is_active=True,
         )
         form2 = Form(
+            id=uuid4(),
             name="Form 2",
             description="Test form 2",
             organization_id=test_org.id,
-            form_schema={"fields": []},
-            is_public=True,
+            created_by="test-user",
             is_active=True,
         )
         db_session.add_all([form1, form2])
         await db_session.commit()
+
+        # Write to Redis cache
+        async with get_redis() as r:
+            # Add form IDs to user's accessible forms set
+            user_key = user_forms_key(str(test_org.id), test_context.user_id)
+            await r.sadd(user_key, str(form1.id), str(form2.id))  # type: ignore[misc]
+
+            # Add form data to forms hash
+            hash_key = forms_hash_key(str(test_org.id))
+            form1_data = {
+                "id": str(form1.id),
+                "name": form1.name,
+                "description": form1.description,
+                "organization_id": str(form1.organization_id),
+                "is_active": form1.is_active,
+                "created_by": form1.created_by,
+                "created_at": form1.created_at.isoformat() if form1.created_at else None,
+                "updated_at": form1.updated_at.isoformat() if form1.updated_at else None,
+            }
+            form2_data = {
+                "id": str(form2.id),
+                "name": form2.name,
+                "description": form2.description,
+                "organization_id": str(form2.organization_id),
+                "is_active": form2.is_active,
+                "created_by": form2.created_by,
+                "created_at": form2.created_at.isoformat() if form2.created_at else None,
+                "updated_at": form2.updated_at.isoformat() if form2.updated_at else None,
+            }
+            await r.hset(hash_key, str(form1.id), json.dumps(form1_data))  # type: ignore[misc]
+            await r.hset(hash_key, str(form2.id), json.dumps(form2_data))  # type: ignore[misc]
 
         # Attach DB session to context
         test_context._db = db_session
@@ -1046,7 +1050,7 @@ class TestFormsPlatformMode:
         result = await forms.list()
 
         assert len(result) >= 2
-        names = {f["name"] for f in result}
+        names = {f.name for f in result}
         assert "Form 1" in names
         assert "Form 2" in names
 
@@ -1057,21 +1061,41 @@ class TestFormsPlatformMode:
         test_context,
         test_org: Organization,
     ):
-        """Test forms.get() returns form details."""
+        """Test forms.get() returns form details from Redis cache."""
         from bifrost import forms
+        from src.core.cache import forms_hash_key, user_forms_key, get_redis
 
-        # Create form
+        # Create form in database
         form = Form(
             id=uuid4(),
             name="Test Form",
             description="Form description",
             organization_id=test_org.id,
-            form_schema={"fields": [{"name": "email", "type": "text"}]},
-            is_public=False,
+            created_by="test-user",
             is_active=True,
         )
         db_session.add(form)
         await db_session.commit()
+
+        # Write to Redis cache
+        async with get_redis() as r:
+            # Add form ID to user's accessible forms set
+            user_key = user_forms_key(str(test_org.id), test_context.user_id)
+            await r.sadd(user_key, str(form.id))  # type: ignore[misc]
+
+            # Add form data to forms hash
+            hash_key = forms_hash_key(str(test_org.id))
+            form_data = {
+                "id": str(form.id),
+                "name": form.name,
+                "description": form.description,
+                "organization_id": str(form.organization_id),
+                "is_active": form.is_active,
+                "created_by": form.created_by,
+                "created_at": form.created_at.isoformat() if form.created_at else None,
+                "updated_at": form.updated_at.isoformat() if form.updated_at else None,
+            }
+            await r.hset(hash_key, str(form.id), json.dumps(form_data))  # type: ignore[misc]
 
         # Attach DB session to context
         test_context._db = db_session
@@ -1079,9 +1103,9 @@ class TestFormsPlatformMode:
 
         result = await forms.get(str(form.id))
 
-        assert result["id"] == str(form.id)
-        assert result["name"] == "Test Form"
-        assert result["description"] == "Form description"
+        assert str(result.id) == str(form.id)
+        assert result.name == "Test Form"
+        assert result.description == "Form description"
 
 
 # ==================== EXECUTIONS SDK TESTS ====================
@@ -1095,36 +1119,52 @@ class TestExecutionsPlatformMode:
     async def test_list_returns_executions(
         self,
         db_session: AsyncSession,
+        async_session_factory,
         test_context,
         test_org: Organization,
     ):
         """Test executions.list() returns executions from database."""
         from bifrost import executions
+        from uuid import UUID
+        from src.models.orm.users import User
 
         # Create workflow
         workflow = Workflow(
-            name="test_workflow",
-            organization_id=test_org.id,
-            file_path="/workflows/test.py",
+            name=f"test_workflow_{uuid4().hex[:8]}",
+            function_name=f"test_workflow_{uuid4().hex[:8]}",
+            file_path=f"/workflows/test_{uuid4().hex[:8]}.py",
             is_active=True,
         )
         db_session.add(workflow)
         await db_session.flush()
 
+        # Create user that matches context user_id
+        user_uuid = UUID(test_context.user_id)
+        user = User(
+            id=user_uuid,
+            email=test_context.email,
+            name=test_context.name,
+            is_active=True,
+        )
+        db_session.add(user)
+        await db_session.flush()
+
         # Create executions
         exec1 = Execution(
-            id="exec-1",
-            workflow_id=workflow.id,
+            id=uuid4(),
+            workflow_name=workflow.name,
             organization_id=test_org.id,
-            status=ExecutionStatus.COMPLETED,
-            triggered_by="test-user",
+            status=ExecutionStatus.SUCCESS,
+            executed_by=user_uuid,
+            executed_by_name=test_context.name,
         )
         exec2 = Execution(
-            id="exec-2",
-            workflow_id=workflow.id,
+            id=uuid4(),
+            workflow_name=workflow.name,
             organization_id=test_org.id,
             status=ExecutionStatus.RUNNING,
-            triggered_by="test-user",
+            executed_by=user_uuid,
+            executed_by_name=test_context.name,
         )
         db_session.add_all([exec1, exec2])
         await db_session.commit()
@@ -1133,39 +1173,56 @@ class TestExecutionsPlatformMode:
         test_context._db = db_session
         set_execution_context(test_context)
 
-        result = await executions.list()
+        # Use test's session factory to avoid event loop mismatch
+        with patch("bifrost.executions.get_session_factory", return_value=async_session_factory):
+            result = await executions.list()
 
         assert len(result) >= 2
-        exec_ids = {e["id"] for e in result}
-        assert "exec-1" in exec_ids
-        assert "exec-2" in exec_ids
+        exec_ids = {e.execution_id for e in result}
+        assert str(exec1.id) in exec_ids
+        assert str(exec2.id) in exec_ids
 
     @pytest.mark.asyncio
     async def test_get_returns_execution_details(
         self,
         db_session: AsyncSession,
+        async_session_factory,
         test_context,
         test_org: Organization,
     ):
         """Test executions.get() returns execution details."""
         from bifrost import executions
+        from uuid import UUID
+        from src.models.orm.users import User
 
         # Create workflow and execution
         workflow = Workflow(
-            name="test_workflow",
-            organization_id=test_org.id,
-            file_path="/workflows/test.py",
+            name=f"test_workflow_{uuid4().hex[:8]}",
+            function_name=f"test_workflow_{uuid4().hex[:8]}",
+            file_path=f"/workflows/test_{uuid4().hex[:8]}.py",
             is_active=True,
         )
         db_session.add(workflow)
         await db_session.flush()
 
+        # Create user that matches context user_id
+        user_uuid = UUID(test_context.user_id)
+        user = User(
+            id=user_uuid,
+            email=test_context.email,
+            name=test_context.name,
+            is_active=True,
+        )
+        db_session.add(user)
+        await db_session.flush()
+
         execution = Execution(
-            id="exec-detail",
-            workflow_id=workflow.id,
+            id=uuid4(),
+            workflow_name=workflow.name,
             organization_id=test_org.id,
-            status=ExecutionStatus.COMPLETED,
-            triggered_by="test-user",
+            status=ExecutionStatus.SUCCESS,
+            executed_by=user_uuid,
+            executed_by_name=test_context.name,
             parameters={"input": "data"},
             result={"output": "result"},
         )
@@ -1176,12 +1233,14 @@ class TestExecutionsPlatformMode:
         test_context._db = db_session
         set_execution_context(test_context)
 
-        result = await executions.get("exec-detail")
+        # Use test's session factory to avoid event loop mismatch
+        with patch("bifrost.executions.get_session_factory", return_value=async_session_factory):
+            result = await executions.get(str(execution.id))
 
-        assert result["id"] == "exec-detail"
-        assert result["status"] == "completed"
-        assert result["parameters"] == {"input": "data"}
-        assert result["result"] == {"output": "result"}
+        assert result.execution_id == str(execution.id)
+        assert result.status == ExecutionStatus.SUCCESS
+        assert result.input_data == {"input": "data"}
+        assert result.result == {"output": "result"}
 
 
 # ==================== ROLES SDK TESTS ====================
@@ -1280,23 +1339,32 @@ class TestRolesPlatformMode:
     ):
         """Test roles.create() writes to buffer."""
         from bifrost import roles
+        from bifrost._write_buffer import WriteBuffer, set_write_buffer
 
         # Attach DB session to context (needed for context validation)
         admin_context._db = MagicMock()
         set_execution_context(admin_context)
 
-        with patch("bifrost._write_buffer.get_write_buffer") as mock_get_buffer:
-            mock_buffer = MagicMock()
-            mock_buffer.add_role_change = AsyncMock(return_value=str(uuid4()))
-            mock_get_buffer.return_value = mock_buffer
+        # Create actual write buffer
+        buffer = WriteBuffer(
+            execution_id=admin_context.execution_id,
+            org_id=str(admin_context.organization.id) if admin_context.organization else None,
+            user_id=admin_context.user_id,
+        )
+        set_write_buffer(buffer)
 
+        try:
             result = await roles.create(
                 name="New Role",
                 description="New role description",
             )
 
             assert result.name == "New Role"
-            mock_buffer.add_role_change.assert_called_once()
+
+            # Verify buffer has pending changes
+            assert await buffer.has_pending_changes()
+        finally:
+            buffer.close()
 
     @pytest.mark.asyncio
     async def test_update_writes_to_buffer(
@@ -1307,6 +1375,8 @@ class TestRolesPlatformMode:
     ):
         """Test roles.update() writes to buffer."""
         from bifrost import roles
+        from bifrost._write_buffer import WriteBuffer, set_write_buffer
+        from src.core.cache import roles_hash_key, get_redis
 
         # Create role
         role = Role(
@@ -1314,24 +1384,44 @@ class TestRolesPlatformMode:
             name="Original Role",
             organization_id=test_org.id,
             is_active=True,
+            created_by="test-user",
         )
         db_session.add(role)
         await db_session.commit()
+
+        # Write role to Redis cache (required for update to find it)
+        async with get_redis() as r:
+            hash_key = roles_hash_key(str(test_org.id))
+            role_data = {
+                "id": str(role.id),
+                "name": role.name,
+                "description": None,
+                "is_active": role.is_active,
+                "created_by": role.created_by,
+                "created_at": role.created_at.isoformat() if role.created_at else None,
+                "updated_at": role.updated_at.isoformat() if role.updated_at else None,
+            }
+            await r.hset(hash_key, str(role.id), json.dumps(role_data))  # type: ignore[misc]
 
         # Attach DB session to context
         admin_context._db = db_session
         set_execution_context(admin_context)
 
-        with patch("bifrost._write_buffer.get_write_buffer") as mock_get_buffer:
-            mock_buffer = MagicMock()
-            mock_buffer.add_role_change = AsyncMock()
-            mock_get_buffer.return_value = mock_buffer
+        # Create actual write buffer
+        buffer = WriteBuffer(
+            execution_id=admin_context.execution_id,
+            org_id=str(admin_context.organization.id) if admin_context.organization else None,
+            user_id=admin_context.user_id,
+        )
+        set_write_buffer(buffer)
 
+        try:
             await roles.update(str(role.id), name="Updated Role")
 
-            mock_buffer.add_role_change.assert_called_once()
-            call_kwargs = mock_buffer.add_role_change.call_args[1]
-            assert call_kwargs["operation"] == "update"
+            # Verify buffer has pending changes
+            assert await buffer.has_pending_changes()
+        finally:
+            buffer.close()
 
     @pytest.mark.asyncio
     async def test_delete_writes_to_buffer(
@@ -1342,6 +1432,8 @@ class TestRolesPlatformMode:
     ):
         """Test roles.delete() writes to buffer."""
         from bifrost import roles
+        from bifrost._write_buffer import WriteBuffer, set_write_buffer
+        from src.core.cache import roles_hash_key, get_redis
 
         # Create role
         role = Role(
@@ -1349,21 +1441,41 @@ class TestRolesPlatformMode:
             name="Delete Me",
             organization_id=test_org.id,
             is_active=True,
+            created_by="test-user",
         )
         db_session.add(role)
         await db_session.commit()
+
+        # Write role to Redis cache (required for delete to find it)
+        async with get_redis() as r:
+            hash_key = roles_hash_key(str(test_org.id))
+            role_data = {
+                "id": str(role.id),
+                "name": role.name,
+                "description": None,
+                "is_active": role.is_active,
+                "created_by": role.created_by,
+                "created_at": role.created_at.isoformat() if role.created_at else None,
+                "updated_at": role.updated_at.isoformat() if role.updated_at else None,
+            }
+            await r.hset(hash_key, str(role.id), json.dumps(role_data))  # type: ignore[misc]
 
         # Attach DB session to context
         admin_context._db = db_session
         set_execution_context(admin_context)
 
-        with patch("bifrost._write_buffer.get_write_buffer") as mock_get_buffer:
-            mock_buffer = MagicMock()
-            mock_buffer.add_role_change = AsyncMock()
-            mock_get_buffer.return_value = mock_buffer
+        # Create actual write buffer
+        buffer = WriteBuffer(
+            execution_id=admin_context.execution_id,
+            org_id=str(admin_context.organization.id) if admin_context.organization else None,
+            user_id=admin_context.user_id,
+        )
+        set_write_buffer(buffer)
 
+        try:
             await roles.delete(str(role.id))
 
-            mock_buffer.add_role_change.assert_called_once()
-            call_kwargs = mock_buffer.add_role_change.call_args[1]
-            assert call_kwargs["operation"] == "delete"
+            # Verify buffer has pending changes
+            assert await buffer.has_pending_changes()
+        finally:
+            buffer.close()

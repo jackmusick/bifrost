@@ -30,7 +30,6 @@ Usage (Pre-warming):
 from .keys import (
     TTL_CONFIG,
     TTL_FORMS,
-    TTL_OAUTH,
     TTL_ORGS,
     TTL_PENDING,
     TTL_ROLES,
@@ -39,8 +38,6 @@ from .keys import (
     execution_logs_stream_key,
     form_key,
     forms_hash_key,
-    oauth_hash_key,
-    oauth_provider_key,
     org_key,
     orgs_list_key,
     pending_changes_key,
@@ -69,8 +66,6 @@ from .invalidation import (
     invalidate_config,
     invalidate_form,
     invalidate_form_assignment,
-    invalidate_oauth,
-    invalidate_oauth_token,
     invalidate_org,
     invalidate_role,
     invalidate_role_forms,
@@ -96,8 +91,6 @@ __all__ = [
     # Keys
     "config_hash_key",
     "config_key",
-    "oauth_hash_key",
-    "oauth_provider_key",
     "forms_hash_key",
     "form_key",
     "user_forms_key",
@@ -111,7 +104,6 @@ __all__ = [
     "execution_logs_stream_key",
     # TTLs
     "TTL_CONFIG",
-    "TTL_OAUTH",
     "TTL_FORMS",
     "TTL_ROLES",
     "TTL_ORGS",
@@ -126,8 +118,6 @@ __all__ = [
     # Invalidation
     "invalidate_config",
     "invalidate_all_config",
-    "invalidate_oauth",
-    "invalidate_oauth_token",
     "invalidate_form",
     "invalidate_form_assignment",
     "invalidate_role",

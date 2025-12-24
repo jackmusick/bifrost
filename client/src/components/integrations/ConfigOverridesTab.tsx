@@ -89,7 +89,9 @@ export function ConfigOverridesTab({
 		const result: ConfigRow[] = [];
 
 		// Only include orgs that have mappings
-		const orgsWithMappingsOnly = orgsWithMappings.filter((org) => org.mapping);
+		const orgsWithMappingsOnly = orgsWithMappings.filter(
+			(org) => org.mapping,
+		);
 
 		for (const org of orgsWithMappingsOnly) {
 			for (const field of visibleSchema) {
@@ -143,7 +145,11 @@ export function ConfigOverridesTab({
 			const updatedConfig = { ...row.currentConfig };
 
 			// If value is empty, remove the key (fall back to integration default)
-			if (newValue === "" || newValue === null || newValue === undefined) {
+			if (
+				newValue === "" ||
+				newValue === null ||
+				newValue === undefined
+			) {
 				delete updatedConfig[row.configKey];
 			} else {
 				updatedConfig[row.configKey] = newValue;
@@ -161,7 +167,9 @@ export function ConfigOverridesTab({
 					entity_name: row.mapping.entity_name || undefined,
 					oauth_token_id: row.mapping.oauth_token_id || undefined,
 					config:
-						Object.keys(updatedConfig).length > 0 ? updatedConfig : undefined,
+						Object.keys(updatedConfig).length > 0
+							? updatedConfig
+							: undefined,
 				},
 			});
 
@@ -221,7 +229,9 @@ export function ConfigOverridesTab({
 				},
 			});
 
-			toast.success(`Removed ${row.configKey} override for ${row.orgName}`);
+			toast.success(
+				`Removed ${row.configKey} override for ${row.orgName}`,
+			);
 			// Query invalidation in useUpdateMapping handles refresh
 		} catch (error) {
 			console.error("Failed to delete config:", error);
@@ -323,7 +333,8 @@ export function ConfigOverridesTab({
 						<Input
 							type="number"
 							value={
-								currentValue !== undefined && currentValue !== null
+								currentValue !== undefined &&
+								currentValue !== null
 									? (currentValue as number)
 									: ""
 							}
@@ -331,16 +342,23 @@ export function ConfigOverridesTab({
 								const val = e.target.value;
 								setEditingCell({
 									rowKey,
-									value: val === "" ? undefined : parseInt(val) || 0,
+									value:
+										val === ""
+											? undefined
+											: parseInt(val) || 0,
 								});
 							}}
-							onKeyDown={(e) => handleKeyDown(e, row, currentValue)}
+							onKeyDown={(e) =>
+								handleKeyDown(e, row, currentValue)
+							}
 							onBlur={() => handleSave(row, currentValue)}
 							disabled={isSaving}
 							className="h-8 w-24"
 							autoFocus
 						/>
-						{isSaving && <Loader2 className="h-4 w-4 animate-spin" />}
+						{isSaving && (
+							<Loader2 className="h-4 w-4 animate-spin" />
+						)}
 					</div>
 				);
 
@@ -349,7 +367,8 @@ export function ConfigOverridesTab({
 					<div className="flex flex-col gap-2">
 						<textarea
 							value={
-								currentValue === undefined || currentValue === null
+								currentValue === undefined ||
+								currentValue === null
 									? ""
 									: typeof currentValue === "string"
 										? currentValue
@@ -358,7 +377,10 @@ export function ConfigOverridesTab({
 							onChange={(e) => {
 								const val = e.target.value;
 								if (val === "") {
-									setEditingCell({ rowKey, value: undefined });
+									setEditingCell({
+										rowKey,
+										value: undefined,
+									});
 									return;
 								}
 								try {
@@ -416,13 +438,17 @@ export function ConfigOverridesTab({
 									value: val === "" ? undefined : val,
 								});
 							}}
-							onKeyDown={(e) => handleKeyDown(e, row, currentValue)}
+							onKeyDown={(e) =>
+								handleKeyDown(e, row, currentValue)
+							}
 							onBlur={() => handleSave(row, currentValue)}
 							disabled={isSaving}
 							className="h-8"
 							autoFocus
 						/>
-						{isSaving && <Loader2 className="h-4 w-4 animate-spin" />}
+						{isSaving && (
+							<Loader2 className="h-4 w-4 animate-spin" />
+						)}
 					</div>
 				);
 		}
@@ -436,8 +462,8 @@ export function ConfigOverridesTab({
 					No configuration schema
 				</h3>
 				<p className="mt-2 text-sm text-muted-foreground max-w-md">
-					Add configuration fields to the integration to enable per-org
-					configuration.
+					Add configuration fields to the integration to enable
+					per-org configuration.
 				</p>
 			</div>
 		);
@@ -451,8 +477,9 @@ export function ConfigOverridesTab({
 					No configuration overrides
 				</h3>
 				<p className="mt-2 text-sm text-muted-foreground max-w-md">
-					All organizations are using integration defaults. Use the Configure
-					button in the Mappings tab to set organization-specific values.
+					All organizations are using integration defaults. Use the
+					Configure button in the Mappings tab to set
+					organization-specific values.
 				</p>
 			</div>
 		);
@@ -461,15 +488,19 @@ export function ConfigOverridesTab({
 	return (
 		<div className="space-y-4">
 			<p className="text-sm text-muted-foreground">
-				Organization-specific configuration overrides. Click to edit, or delete
-				to revert to integration default.
+				Organization-specific configuration overrides. Click to edit, or
+				delete to revert to integration default.
 			</p>
 			<div className="rounded-md border overflow-x-auto">
 				<DataTable>
 					<DataTableHeader>
 						<DataTableRow>
-							<DataTableHead className="w-48">Organization</DataTableHead>
-							<DataTableHead className="w-48">Config Key</DataTableHead>
+							<DataTableHead className="w-48">
+								Organization
+							</DataTableHead>
+							<DataTableHead className="w-48">
+								Config Key
+							</DataTableHead>
 							<DataTableHead>Value</DataTableHead>
 							<DataTableHead className="w-16"></DataTableHead>
 						</DataTableRow>
@@ -499,10 +530,15 @@ export function ConfigOverridesTab({
 										className={`cursor-pointer transition-colors ${
 											isEditing ? "" : "hover:bg-muted/50"
 										} ${isSaving ? "opacity-70" : ""}`}
-										onClick={() => !isEditing && handleCellClick(row)}
+										onClick={() =>
+											!isEditing && handleCellClick(row)
+										}
 									>
 										{isEditing ? (
-											renderEditInput(row, editingCell.value)
+											renderEditInput(
+												row,
+												editingCell.value,
+											)
 										) : (
 											<span>
 												{formatDisplayValue(
@@ -518,7 +554,9 @@ export function ConfigOverridesTab({
 											<Button
 												variant="ghost"
 												size="sm"
-												onClick={() => handleDeleteClick(row)}
+												onClick={() =>
+													handleDeleteClick(row)
+												}
 												disabled={isSaving}
 												className="h-7 w-7 p-0 text-destructive hover:text-destructive"
 												title="Delete override (revert to default)"
@@ -545,14 +583,16 @@ export function ConfigOverridesTab({
 			>
 				<AlertDialogContent>
 					<AlertDialogHeader>
-						<AlertDialogTitle>Delete Configuration Override</AlertDialogTitle>
+						<AlertDialogTitle>
+							Delete Configuration Override
+						</AlertDialogTitle>
 						<AlertDialogDescription>
 							Are you sure you want to delete the{" "}
 							<span className="font-mono font-semibold">
 								{deleteConfirm?.configKey}
 							</span>{" "}
-							override for {deleteConfirm?.orgName}? This will revert to the
-							integration default value.
+							override for {deleteConfirm?.orgName}? This will
+							revert to the integration default value.
 						</AlertDialogDescription>
 					</AlertDialogHeader>
 					<AlertDialogFooter>

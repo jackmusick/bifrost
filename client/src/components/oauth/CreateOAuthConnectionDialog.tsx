@@ -132,7 +132,6 @@ export function CreateOAuthConnectionDialog({
 		setTimeout(() => setCopiedRedirect(false), 2000);
 	};
 
-
 	const handleSubmit = async (e: React.FormEvent) => {
 		e.preventDefault();
 
@@ -211,9 +210,7 @@ export function CreateOAuthConnectionDialog({
 											type="button"
 											variant="outline"
 											size="sm"
-											onClick={
-												handleCopyRedirectUri
-											}
+											onClick={handleCopyRedirectUri}
 										>
 											{copiedRedirect ? (
 												<Check className="h-4 w-4" />
@@ -223,9 +220,8 @@ export function CreateOAuthConnectionDialog({
 										</Button>
 									</div>
 									<p className="text-xs text-muted-foreground">
-										Copy this and add it to your
-										OAuth app's allowed redirect
-										URIs before continuing
+										Copy this and add it to your OAuth app's
+										allowed redirect URIs before continuing
 									</p>
 								</div>
 							</AlertDescription>
@@ -246,10 +242,7 @@ export function CreateOAuthConnectionDialog({
 								</TabsTrigger>
 							</TabsList>
 
-							<TabsContent
-								value="preset"
-								className="space-y-4"
-							>
+							<TabsContent value="preset" className="space-y-4">
 								<div className="space-y-2">
 									<Label>Select Provider</Label>
 									<Select
@@ -272,9 +265,7 @@ export function CreateOAuthConnectionDialog({
 															{preset.icon}
 														</span>
 														<span>
-															{
-																preset.displayName
-															}
+															{preset.displayName}
 														</span>
 													</div>
 												</SelectItem>
@@ -292,8 +283,7 @@ export function CreateOAuthConnectionDialog({
 														href={
 															OAUTH_PROVIDER_PRESETS[
 																selectedPreset
-															]
-																.documentation_url
+															].documentation_url
 														}
 														target="_blank"
 														rel="noopener noreferrer"
@@ -313,17 +303,13 @@ export function CreateOAuthConnectionDialog({
 								</div>
 							</TabsContent>
 
-							<TabsContent
-								value="custom"
-								className="space-y-4"
-							>
+							<TabsContent value="custom" className="space-y-4">
 								<Alert>
 									<Info className="h-4 w-4" />
 									<AlertDescription className="text-xs">
-										Configure a custom OAuth 2.0
-										provider. You'll need the
-										authorization and token URLs from
-										the provider's documentation.
+										Configure a custom OAuth 2.0 provider.
+										You'll need the authorization and token
+										URLs from the provider's documentation.
 									</AlertDescription>
 								</Alert>
 							</TabsContent>
@@ -398,15 +384,14 @@ export function CreateOAuthConnectionDialog({
 										onChange={(e) =>
 											setFormData({
 												...formData,
-												client_secret:
-													e.target.value,
+												client_secret: e.target.value,
 											})
 										}
 										placeholder={
 											isEditMode
 												? "Leave empty to keep existing..."
 												: formData.oauth_flow_type ===
-														"client_credentials"
+													  "client_credentials"
 													? "Required for client credentials flow..."
 													: "Optional for PKCE flow..."
 										}
@@ -420,7 +405,7 @@ export function CreateOAuthConnectionDialog({
 										{isEditMode
 											? "Leave empty to keep the existing secret, or enter a new one to update"
 											: formData.oauth_flow_type ===
-													"client_credentials"
+												  "client_credentials"
 												? "Required: Client credentials flow requires a client secret"
 												: "Optional: Leave empty for PKCE (Proof Key for Code Exchange) flow"}
 									</p>
@@ -435,9 +420,7 @@ export function CreateOAuthConnectionDialog({
 									</Label>
 									<Input
 										id="authorization_url"
-										value={
-											formData.authorization_url || ""
-										}
+										value={formData.authorization_url || ""}
 										onChange={(e) =>
 											setFormData({
 												...formData,
@@ -454,9 +437,7 @@ export function CreateOAuthConnectionDialog({
 							)}
 
 							<div className="space-y-2">
-								<Label htmlFor="token_url">
-									Token URL *
-								</Label>
+								<Label htmlFor="token_url">Token URL *</Label>
 								<Input
 									id="token_url"
 									value={formData.token_url}
@@ -491,8 +472,8 @@ export function CreateOAuthConnectionDialog({
 									className="font-mono text-xs"
 								/>
 								<p className="text-xs text-muted-foreground">
-									OAuth permissions to request. Leave
-									empty for default scopes.
+									OAuth permissions to request. Leave empty
+									for default scopes.
 								</p>
 							</div>
 						</div>
@@ -503,7 +484,10 @@ export function CreateOAuthConnectionDialog({
 							type="button"
 							variant="outline"
 							onClick={() => onOpenChange(false)}
-							disabled={createMutation.isPending || updateMutation.isPending}
+							disabled={
+								createMutation.isPending ||
+								updateMutation.isPending
+							}
 						>
 							Cancel
 						</Button>

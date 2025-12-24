@@ -754,93 +754,6 @@ class TestCLIConfigOperations:
 
 
 # =============================================================================
-# OAuth Operation Tests
-# =============================================================================
-
-
-class TestCLIOAuthOperations:
-    """Test SDK OAuth operation endpoints."""
-
-    @pytest.fixture
-    def sdk_api_key(self, e2e_client, platform_admin):
-        """Create an CLI API key for OAuth tests."""
-        response = e2e_client.post(
-            "/api/cli/keys",
-            json={"name": "OAuth Test Key"},
-            headers=platform_admin.headers,
-        )
-        data = response.json()
-        yield data
-        # Cleanup
-        e2e_client.delete(
-            f"/api/cli/keys/{data['id']}",
-            headers=platform_admin.headers,
-        )
-
-    def test_get_oauth_nonexistent_provider(
-        self,
-        e2e_client,
-        sdk_api_key,
-    ):
-        """Test getting an OAuth provider that doesn't exist."""
-        headers = {"Authorization": f"Bearer {sdk_api_key['key']}"}
-
-        response = e2e_client.post(
-            "/api/cli/oauth/get",
-            json={"provider": "nonexistent_provider_12345"},
-            headers=headers,
-        )
-        assert response.status_code == 200
-        assert response.json() is None
-
-    def test_get_oauth_requires_api_key(
-        self,
-        e2e_client,
-    ):
-        """Test that OAuth endpoint requires valid API key."""
-        # Clear cookies to test without session auth
-        e2e_client.cookies.clear()
-
-        response = e2e_client.post(
-            "/api/cli/oauth/get",
-            json={"provider": "microsoft"},
-        )
-        assert response.status_code == 401
-
-    def test_get_oauth_with_invalid_api_key(
-        self,
-        e2e_client,
-    ):
-        """Test OAuth endpoint with invalid API key."""
-        response = e2e_client.post(
-            "/api/cli/oauth/get",
-            json={"provider": "microsoft"},
-            headers={"Authorization": "Bearer bfsk_invalid_key_123"},
-        )
-        assert response.status_code == 401
-
-    def test_get_oauth_with_org_id(
-        self,
-        e2e_client,
-        sdk_api_key,
-    ):
-        """Test getting OAuth with explicit org_id parameter."""
-        headers = {"Authorization": f"Bearer {sdk_api_key['key']}"}
-
-        # Even with a valid org_id, provider may not exist - should return None
-        response = e2e_client.post(
-            "/api/cli/oauth/get",
-            json={
-                "provider": "nonexistent_provider",
-                "org_id": "00000000-0000-0000-0000-000000000000",
-            },
-            headers=headers,
-        )
-        assert response.status_code == 200
-        assert response.json() is None
-
-
-# =============================================================================
 # SDK Download Test
 # =============================================================================
 
@@ -881,7 +794,6 @@ class TestCLIDownload:
             "bifrost/client.py",
             "bifrost/files.py",
             "bifrost/config.py",
-            "bifrost/oauth.py",
             "bifrost/__init__.py",
             "bifrost/_context.py",
             "bifrost/decorators.py",

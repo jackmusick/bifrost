@@ -375,10 +375,11 @@ class IntegrationDetailResponse(BaseModel):
 # ==================== SDK RESPONSE MODELS ====================
 
 
-class IntegrationData(BaseModel):
+class IntegrationSDKResponse(BaseModel):
     """
-    Integration data for SDK consumption.
-    Returned by bifrost.integrations.get() in workflows.
+    Integration data for API SDK endpoint responses.
+    Used by /api/integrations/sdk/{name} endpoint.
+    Does NOT include decrypted OAuth tokens (use IntegrationData from sdk.py for that).
     """
 
     model_config = ConfigDict(from_attributes=True)

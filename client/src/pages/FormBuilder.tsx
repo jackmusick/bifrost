@@ -91,7 +91,10 @@ export function FormBuilder() {
 		useState(false);
 	const [workflowParamsDialogOpen, setWorkflowParamsDialogOpen] =
 		useState(false);
-	const [workflowResults, setWorkflowResults] = useState<Record<string, unknown> | null>(null);
+	const [workflowResults, setWorkflowResults] = useState<Record<
+		string,
+		unknown
+	> | null>(null);
 	const [isTestingWorkflow, setIsTestingWorkflow] = useState(false);
 
 	// Note: Opening info dialog for new forms is handled by checking
@@ -275,7 +278,10 @@ export function FormBuilder() {
 				toast.info("Launch workflow completed with no results");
 			}
 		} catch (error) {
-			const errorMessage = error instanceof Error ? error.message : "Failed to execute launch workflow";
+			const errorMessage =
+				error instanceof Error
+					? error.message
+					: "Failed to execute launch workflow";
 			toast.error(errorMessage);
 		} finally {
 			setIsTestingWorkflow(false);

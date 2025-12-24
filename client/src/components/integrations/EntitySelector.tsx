@@ -94,7 +94,9 @@ export function EntitySelector({
 				const selectedOption = options.find(
 					(opt) => opt.value === selectedValue,
 				);
-				const label = selectedOption ? selectedOption.label : selectedValue;
+				const label = selectedOption
+					? selectedOption.label
+					: selectedValue;
 				onChange(selectedValue, label);
 			}}
 			placeholder={placeholder}

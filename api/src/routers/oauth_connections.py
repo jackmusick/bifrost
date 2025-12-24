@@ -396,6 +396,24 @@ class OAuthConnectionRepository:
 
 
 @router.get(
+    "/connections",
+    response_model=dict,
+    summary="List OAuth connections",
+    description="List all OAuth connections (Platform admin only)",
+)
+async def list_connections(
+    ctx: Context,
+    user: CurrentSuperuser,
+) -> dict:
+    """List all OAuth connections."""
+    repo = OAuthConnectionRepository(ctx.db)
+    org_id = ctx.org_id
+    connections = await repo.list_connections(org_id)
+
+    return {"connections": connections}
+
+
+@router.get(
     "/connections/{connection_name}",
     response_model=OAuthConnectionDetail,
     summary="Get OAuth connection",
@@ -439,7 +457,7 @@ async def create_connection(
     repo = OAuthConnectionRepository(ctx.db)
     org_id = ctx.org_id
 
-    # Look up integration by ID to get provider name
+    # Look up integration by ID to verify it exists
     integration_id = UUID(request.integration_id)
     query = select(Integration).where(Integration.id == integration_id)
     result = await ctx.db.execute(query)
@@ -451,6 +469,7 @@ async def create_connection(
             detail=f"Integration '{request.integration_id}' not found",
         )
 
+    # Use the integration name as the provider/connection name
     provider_name = integration.name
 
     # Check for existing connection

@@ -85,21 +85,21 @@ export function ChatMessage({
 
 	// Assistant message - full markdown rendering
 	return (
-		<div
-			className={cn(
-				"py-3 px-4 group",
-				isStreaming && "animate-pulse",
-			)}
-		>
+		<div className={cn("py-3 px-4 group", isStreaming && "animate-pulse")}>
 			<div className="max-w-4xl">
 				{/* Markdown Content */}
 				<div className="prose prose-slate dark:prose-invert max-w-none prose-p:my-2 prose-p:leading-7 prose-headings:font-semibold prose-h1:text-xl prose-h2:text-lg prose-h3:text-base prose-ul:my-2 prose-ol:my-2 prose-li:my-0.5 prose-pre:my-2 prose-pre:p-0 prose-pre:bg-transparent">
 					<ReactMarkdown
 						components={{
 							code({ className, children }) {
-								const match = /language-(\w+)/.exec(className || "");
+								const match = /language-(\w+)/.exec(
+									className || "",
+								);
 								const isInline = !className;
-								const content = String(children).replace(/\n$/, "");
+								const content = String(children).replace(
+									/\n$/,
+									"",
+								);
 
 								if (!isInline && match) {
 									return (
@@ -140,10 +140,14 @@ export function ChatMessage({
 								<p className="my-2 leading-7">{children}</p>
 							),
 							ul: ({ children }) => (
-								<ul className="my-2 ml-4 list-disc space-y-1">{children}</ul>
+								<ul className="my-2 ml-4 list-disc space-y-1">
+									{children}
+								</ul>
 							),
 							ol: ({ children }) => (
-								<ol className="my-2 ml-4 list-decimal space-y-1">{children}</ol>
+								<ol className="my-2 ml-4 list-decimal space-y-1">
+									{children}
+								</ol>
 							),
 							li: ({ children }) => (
 								<li className="leading-6">{children}</li>
@@ -179,7 +183,9 @@ export function ChatMessage({
 								</th>
 							),
 							td: ({ children }) => (
-								<td className="border border-border px-3 py-2">{children}</td>
+								<td className="border border-border px-3 py-2">
+									{children}
+								</td>
 							),
 							// Horizontal rule
 							hr: () => <hr className="my-4 border-border" />,
@@ -215,7 +221,9 @@ export function ChatMessage({
 						{message.token_count_output && (
 							<span>Out: {message.token_count_output}</span>
 						)}
-						{message.duration_ms && <span>{message.duration_ms}ms</span>}
+						{message.duration_ms && (
+							<span>{message.duration_ms}ms</span>
+						)}
 					</div>
 				)}
 			</div>

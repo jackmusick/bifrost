@@ -72,15 +72,33 @@ const CHANNELS: { value: AgentChannel; label: string }[] = [
 	{ value: "chat", label: "Web Chat" },
 ];
 
-const ACCESS_LEVELS: { value: AgentAccessLevel; label: string; description: string }[] = [
+const ACCESS_LEVELS: {
+	value: AgentAccessLevel;
+	label: string;
+	description: string;
+}[] = [
 	{ value: "public", label: "Public", description: "Anyone can access" },
-	{ value: "authenticated", label: "Authenticated", description: "Any authenticated user" },
-	{ value: "role_based", label: "Role-Based", description: "Only assigned roles (none = platform admin only)" },
+	{
+		value: "authenticated",
+		label: "Authenticated",
+		description: "Any authenticated user",
+	},
+	{
+		value: "role_based",
+		label: "Role-Based",
+		description: "Only assigned roles (none = platform admin only)",
+	},
 ];
 
 const formSchema = z.object({
-	name: z.string().min(1, "Name is required").max(100, "Name must be 100 characters or less"),
-	description: z.string().max(500, "Description must be 500 characters or less").optional(),
+	name: z
+		.string()
+		.min(1, "Name is required")
+		.max(100, "Name must be 100 characters or less"),
+	description: z
+		.string()
+		.max(500, "Description must be 500 characters or less")
+		.optional(),
 	system_prompt: z.string().min(1, "System prompt is required"),
 	channels: z.array(z.enum(["chat", "voice", "teams", "slack"])),
 	access_level: z.enum(["public", "authenticated", "role_based"]),
@@ -99,7 +117,9 @@ interface AgentDialogProps {
 
 export function AgentDialog({ agentId, open, onOpenChange }: AgentDialogProps) {
 	const isEditing = !!agentId;
-	const { data: agent, isLoading: isLoadingAgent } = useAgent(agentId ?? undefined);
+	const { data: agent, isLoading: isLoadingAgent } = useAgent(
+		agentId ?? undefined,
+	);
 	const { data: allAgents } = useAgents();
 	const { data: toolWorkflows } = useToolWorkflows();
 	const { data: roles } = useRoles();
@@ -220,7 +240,10 @@ export function AgentDialog({ agentId, open, onOpenChange }: AgentDialogProps) {
 					</div>
 				) : (
 					<Form {...form}>
-						<form onSubmit={form.handleSubmit(onSubmit)} className="space-y-6">
+						<form
+							onSubmit={form.handleSubmit(onSubmit)}
+							className="space-y-6"
+						>
 							{/* Two-column layout */}
 							<div className="grid grid-cols-1 md:grid-cols-2 gap-6">
 								{/* Left column: System Prompt */}
@@ -230,7 +253,9 @@ export function AgentDialog({ agentId, open, onOpenChange }: AgentDialogProps) {
 										name="system_prompt"
 										render={({ field }) => (
 											<FormItem className="h-full flex flex-col">
-												<FormLabel>System Prompt</FormLabel>
+												<FormLabel>
+													System Prompt
+												</FormLabel>
 												<FormControl>
 													<Textarea
 														placeholder="You are a helpful sales assistant..."
@@ -239,7 +264,9 @@ export function AgentDialog({ agentId, open, onOpenChange }: AgentDialogProps) {
 													/>
 												</FormControl>
 												<FormDescription>
-													Instructions for the AI. This defines the agent's behavior and personality.
+													Instructions for the AI.
+													This defines the agent's
+													behavior and personality.
 												</FormDescription>
 												<FormMessage />
 											</FormItem>
@@ -256,7 +283,10 @@ export function AgentDialog({ agentId, open, onOpenChange }: AgentDialogProps) {
 											<FormItem>
 												<FormLabel>Name</FormLabel>
 												<FormControl>
-													<Input placeholder="Sales Assistant" {...field} />
+													<Input
+														placeholder="Sales Assistant"
+														{...field}
+													/>
 												</FormControl>
 												<FormMessage />
 											</FormItem>
@@ -268,7 +298,9 @@ export function AgentDialog({ agentId, open, onOpenChange }: AgentDialogProps) {
 										name="description"
 										render={({ field }) => (
 											<FormItem>
-												<FormLabel>Description</FormLabel>
+												<FormLabel>
+													Description
+												</FormLabel>
 												<FormControl>
 													<Textarea
 														placeholder="Helps with sales inquiries and product recommendations..."
@@ -278,7 +310,9 @@ export function AgentDialog({ agentId, open, onOpenChange }: AgentDialogProps) {
 													/>
 												</FormControl>
 												<FormDescription>
-													Used for AI routing - describe what this agent specializes in
+													Used for AI routing -
+													describe what this agent
+													specializes in
 												</FormDescription>
 												<FormMessage />
 											</FormItem>
@@ -292,87 +326,153 @@ export function AgentDialog({ agentId, open, onOpenChange }: AgentDialogProps) {
 										render={({ field }) => (
 											<FormItem>
 												<FormLabel>Channels</FormLabel>
-												<Popover open={channelsOpen} onOpenChange={setChannelsOpen}>
+												<Popover
+													open={channelsOpen}
+													onOpenChange={
+														setChannelsOpen
+													}
+												>
 													<PopoverTrigger asChild>
 														<FormControl>
 															<Button
 																variant="outline"
 																role="combobox"
-																aria-expanded={channelsOpen}
+																aria-expanded={
+																	channelsOpen
+																}
 																className="w-full justify-between h-auto min-h-10"
 															>
-																{field.value?.length > 0 ? (
+																{field.value
+																	?.length >
+																0 ? (
 																	<div className="flex flex-wrap gap-1">
-																		{field.value.map((channelValue) => {
-																			const channel = CHANNELS.find(
-																				(c) => c.value === channelValue
-																			);
-																			return (
-																				<Badge
-																					key={channelValue}
-																					variant="secondary"
-																					className="mr-1"
-																				>
-																					{channel?.label || channelValue}
-																					<button
-																						type="button"
-																						className="ml-1 ring-offset-background rounded-full outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2"
-																						onClick={(e) => {
-																							e.stopPropagation();
-																							field.onChange(
-																								field.value.filter((v) => v !== channelValue)
-																							);
-																						}}
+																		{field.value.map(
+																			(
+																				channelValue,
+																			) => {
+																				const channel =
+																					CHANNELS.find(
+																						(
+																							c,
+																						) =>
+																							c.value ===
+																							channelValue,
+																					);
+																				return (
+																					<Badge
+																						key={
+																							channelValue
+																						}
+																						variant="secondary"
+																						className="mr-1"
 																					>
-																						<X className="h-3 w-3" />
-																					</button>
-																				</Badge>
-																			);
-																		})}
+																						{channel?.label ||
+																							channelValue}
+																						<button
+																							type="button"
+																							className="ml-1 ring-offset-background rounded-full outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2"
+																							onClick={(
+																								e,
+																							) => {
+																								e.stopPropagation();
+																								field.onChange(
+																									field.value.filter(
+																										(
+																											v,
+																										) =>
+																											v !==
+																											channelValue,
+																									),
+																								);
+																							}}
+																						>
+																							<X className="h-3 w-3" />
+																						</button>
+																					</Badge>
+																				);
+																			},
+																		)}
 																	</div>
 																) : (
 																	<span className="text-muted-foreground">
-																		Select channels...
+																		Select
+																		channels...
 																	</span>
 																)}
 																<ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
 															</Button>
 														</FormControl>
 													</PopoverTrigger>
-													<PopoverContent className="w-[300px] p-0" align="start">
+													<PopoverContent
+														className="w-[300px] p-0"
+														align="start"
+													>
 														<Command>
 															<CommandList>
-																<CommandEmpty>No channels available.</CommandEmpty>
+																<CommandEmpty>
+																	No channels
+																	available.
+																</CommandEmpty>
 																<CommandGroup>
-																	{CHANNELS.map((channel) => (
-																		<CommandItem
-																			key={channel.value}
-																			value={channel.value}
-																			onSelect={() => {
-																				const current = field.value || [];
-																				if (current.includes(channel.value)) {
-																					field.onChange(
-																						current.filter((v) => v !== channel.value)
-																					);
-																				} else {
-																					field.onChange([...current, channel.value]);
+																	{CHANNELS.map(
+																		(
+																			channel,
+																		) => (
+																			<CommandItem
+																				key={
+																					channel.value
 																				}
-																			}}
-																		>
-																			<Checkbox
-																				checked={field.value?.includes(channel.value)}
-																				className="mr-2"
-																			/>
-																			{channel.label}
-																		</CommandItem>
-																	))}
+																				value={
+																					channel.value
+																				}
+																				onSelect={() => {
+																					const current =
+																						field.value ||
+																						[];
+																					if (
+																						current.includes(
+																							channel.value,
+																						)
+																					) {
+																						field.onChange(
+																							current.filter(
+																								(
+																									v,
+																								) =>
+																									v !==
+																									channel.value,
+																							),
+																						);
+																					} else {
+																						field.onChange(
+																							[
+																								...current,
+																								channel.value,
+																							],
+																						);
+																					}
+																				}}
+																			>
+																				<Checkbox
+																					checked={field.value?.includes(
+																						channel.value,
+																					)}
+																					className="mr-2"
+																				/>
+																				{
+																					channel.label
+																				}
+																			</CommandItem>
+																		),
+																	)}
 																</CommandGroup>
 															</CommandList>
 														</Command>
 													</PopoverContent>
 												</Popover>
 												<FormDescription>
-													Which communication channels this agent is available on
+													Which communication channels
+													this agent is available on
 												</FormDescription>
 												<FormMessage />
 											</FormItem>
@@ -385,9 +485,13 @@ export function AgentDialog({ agentId, open, onOpenChange }: AgentDialogProps) {
 										name="access_level"
 										render={({ field }) => (
 											<FormItem>
-												<FormLabel>Access Level</FormLabel>
+												<FormLabel>
+													Access Level
+												</FormLabel>
 												<Select
-													onValueChange={field.onChange}
+													onValueChange={
+														field.onChange
+													}
 													value={field.value}
 												>
 													<FormControl>
@@ -396,16 +500,31 @@ export function AgentDialog({ agentId, open, onOpenChange }: AgentDialogProps) {
 														</SelectTrigger>
 													</FormControl>
 													<SelectContent>
-														{ACCESS_LEVELS.map((level) => (
-															<SelectItem key={level.value} value={level.value}>
-																<div className="flex flex-col">
-																	<span>{level.label}</span>
-																	<span className="text-xs text-muted-foreground">
-																		{level.description}
-																	</span>
-																</div>
-															</SelectItem>
-														))}
+														{ACCESS_LEVELS.map(
+															(level) => (
+																<SelectItem
+																	key={
+																		level.value
+																	}
+																	value={
+																		level.value
+																	}
+																>
+																	<div className="flex flex-col">
+																		<span>
+																			{
+																				level.label
+																			}
+																		</span>
+																		<span className="text-xs text-muted-foreground">
+																			{
+																				level.description
+																			}
+																		</span>
+																	</div>
+																</SelectItem>
+															),
+														)}
 													</SelectContent>
 												</Select>
 												<FormMessage />
@@ -422,19 +541,29 @@ export function AgentDialog({ agentId, open, onOpenChange }: AgentDialogProps) {
 												<FormItem>
 													<FormLabel>
 														Assigned Roles{" "}
-														{field.value?.length > 0 && `(${field.value.length})`}
+														{field.value?.length >
+															0 &&
+															`(${field.value.length})`}
 													</FormLabel>
-													<Popover open={rolesOpen} onOpenChange={setRolesOpen}>
+													<Popover
+														open={rolesOpen}
+														onOpenChange={
+															setRolesOpen
+														}
+													>
 														<PopoverTrigger asChild>
 															<FormControl>
 																<Button
 																	variant="outline"
 																	role="combobox"
-																	aria-expanded={rolesOpen}
+																	aria-expanded={
+																		rolesOpen
+																	}
 																	className="w-full justify-between font-normal"
 																>
 																	<span className="text-muted-foreground">
-																		Select roles...
+																		Select
+																		roles...
 																	</span>
 																	<ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
 																</Button>
@@ -447,81 +576,137 @@ export function AgentDialog({ agentId, open, onOpenChange }: AgentDialogProps) {
 															<Command>
 																<CommandInput placeholder="Search roles..." />
 																<CommandList>
-																	<CommandEmpty>No roles found.</CommandEmpty>
+																	<CommandEmpty>
+																		No roles
+																		found.
+																	</CommandEmpty>
 																	<CommandGroup>
-																		{roles?.map((role: RolePublic) => (
-																			<CommandItem
-																				key={role.id}
-																				value={role.name || ""}
-																				onSelect={() => {
-																					const current = field.value || [];
-																					if (current.includes(role.id)) {
-																						field.onChange(
-																							current.filter((id) => id !== role.id)
-																						);
-																					} else {
-																						field.onChange([...current, role.id]);
+																		{roles?.map(
+																			(
+																				role: RolePublic,
+																			) => (
+																				<CommandItem
+																					key={
+																						role.id
 																					}
-																				}}
-																			>
-																				<div className="flex items-center gap-2 flex-1">
-																					<Checkbox
-																						checked={field.value?.includes(role.id)}
-																					/>
-																					<div className="flex flex-col">
-																						<span className="font-medium">
-																							{role.name}
-																						</span>
-																						{role.description && (
-																							<span className="text-xs text-muted-foreground">
-																								{role.description}
+																					value={
+																						role.name ||
+																						""
+																					}
+																					onSelect={() => {
+																						const current =
+																							field.value ||
+																							[];
+																						if (
+																							current.includes(
+																								role.id,
+																							)
+																						) {
+																							field.onChange(
+																								current.filter(
+																									(
+																										id,
+																									) =>
+																										id !==
+																										role.id,
+																								),
+																							);
+																						} else {
+																							field.onChange(
+																								[
+																									...current,
+																									role.id,
+																								],
+																							);
+																						}
+																					}}
+																				>
+																					<div className="flex items-center gap-2 flex-1">
+																						<Checkbox
+																							checked={field.value?.includes(
+																								role.id,
+																							)}
+																						/>
+																						<div className="flex flex-col">
+																							<span className="font-medium">
+																								{
+																									role.name
+																								}
 																							</span>
-																						)}
+																							{role.description && (
+																								<span className="text-xs text-muted-foreground">
+																									{
+																										role.description
+																									}
+																								</span>
+																							)}
+																						</div>
 																					</div>
-																				</div>
-																				<Check
-																					className={cn(
-																						"ml-auto h-4 w-4",
-																						field.value?.includes(role.id)
-																							? "opacity-100"
-																							: "opacity-0",
-																					)}
-																				/>
-																			</CommandItem>
-																		))}
+																					<Check
+																						className={cn(
+																							"ml-auto h-4 w-4",
+																							field.value?.includes(
+																								role.id,
+																							)
+																								? "opacity-100"
+																								: "opacity-0",
+																						)}
+																					/>
+																				</CommandItem>
+																			),
+																		)}
 																	</CommandGroup>
 																</CommandList>
 															</Command>
 														</PopoverContent>
 													</Popover>
-													{field.value?.length > 0 && (
+													{field.value?.length >
+														0 && (
 														<div className="flex flex-wrap gap-2 p-2 border rounded-md bg-muted/50">
-															{field.value.map((roleId) => {
-																const role = roles?.find(
-																	(r: RolePublic) => r.id === roleId,
-																);
-																return (
-																	<Badge
-																		key={roleId}
-																		variant="secondary"
-																		className="gap-1"
-																	>
-																		{role?.name || roleId}
-																		<X
-																			className="h-3 w-3 cursor-pointer"
-																			onClick={() =>
-																				field.onChange(
-																					field.value.filter((id) => id !== roleId)
-																				)
+															{field.value.map(
+																(roleId) => {
+																	const role =
+																		roles?.find(
+																			(
+																				r: RolePublic,
+																			) =>
+																				r.id ===
+																				roleId,
+																		);
+																	return (
+																		<Badge
+																			key={
+																				roleId
 																			}
-																		/>
-																	</Badge>
-																);
-															})}
+																			variant="secondary"
+																			className="gap-1"
+																		>
+																			{role?.name ||
+																				roleId}
+																			<X
+																				className="h-3 w-3 cursor-pointer"
+																				onClick={() =>
+																					field.onChange(
+																						field.value.filter(
+																							(
+																								id,
+																							) =>
+																								id !==
+																								roleId,
+																						),
+																					)
+																				}
+																			/>
+																		</Badge>
+																	);
+																},
+															)}
 														</div>
 													)}
 													<FormDescription>
-														Users must have at least one of these roles to access this agent
+														Users must have at least
+														one of these roles to
+														access this agent
 													</FormDescription>
 													<FormMessage />
 												</FormItem>
@@ -536,99 +721,167 @@ export function AgentDialog({ agentId, open, onOpenChange }: AgentDialogProps) {
 										render={({ field }) => (
 											<FormItem>
 												<FormLabel>Tools</FormLabel>
-												<Popover open={toolsOpen} onOpenChange={setToolsOpen}>
+												<Popover
+													open={toolsOpen}
+													onOpenChange={setToolsOpen}
+												>
 													<PopoverTrigger asChild>
 														<FormControl>
 															<Button
 																variant="outline"
 																role="combobox"
-																aria-expanded={toolsOpen}
+																aria-expanded={
+																	toolsOpen
+																}
 																className="w-full justify-between h-auto min-h-10"
 															>
-																{field.value?.length > 0 ? (
+																{field.value
+																	?.length >
+																0 ? (
 																	<div className="flex flex-wrap gap-1">
-																		{field.value.map((toolId) => {
-																			const workflow = toolWorkflows?.find(
-																				(w) => w.id === toolId
-																			);
-																			return (
-																				<Badge
-																					key={toolId}
-																					variant="secondary"
-																					className="mr-1"
-																				>
-																					{workflow?.name || toolId}
-																					<button
-																						type="button"
-																						className="ml-1 ring-offset-background rounded-full outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2"
-																						onClick={(e) => {
-																							e.stopPropagation();
-																							field.onChange(
-																								field.value.filter((id) => id !== toolId)
-																							);
-																						}}
+																		{field.value.map(
+																			(
+																				toolId,
+																			) => {
+																				const workflow =
+																					toolWorkflows?.find(
+																						(
+																							w,
+																						) =>
+																							w.id ===
+																							toolId,
+																					);
+																				return (
+																					<Badge
+																						key={
+																							toolId
+																						}
+																						variant="secondary"
+																						className="mr-1"
 																					>
-																						<X className="h-3 w-3" />
-																					</button>
-																				</Badge>
-																			);
-																		})}
+																						{workflow?.name ||
+																							toolId}
+																						<button
+																							type="button"
+																							className="ml-1 ring-offset-background rounded-full outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2"
+																							onClick={(
+																								e,
+																							) => {
+																								e.stopPropagation();
+																								field.onChange(
+																									field.value.filter(
+																										(
+																											id,
+																										) =>
+																											id !==
+																											toolId,
+																									),
+																								);
+																							}}
+																						>
+																							<X className="h-3 w-3" />
+																						</button>
+																					</Badge>
+																				);
+																			},
+																		)}
 																	</div>
 																) : (
 																	<span className="text-muted-foreground">
-																		Select tools...
+																		Select
+																		tools...
 																	</span>
 																)}
 																<ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
 															</Button>
 														</FormControl>
 													</PopoverTrigger>
-													<PopoverContent className="w-[400px] p-0" align="start">
+													<PopoverContent
+														className="w-[400px] p-0"
+														align="start"
+													>
 														<Command>
 															<CommandInput placeholder="Search tools..." />
 															<CommandList>
-																<CommandEmpty>No tools found.</CommandEmpty>
+																<CommandEmpty>
+																	No tools
+																	found.
+																</CommandEmpty>
 																<CommandGroup>
-																	{toolWorkflows?.map((workflow) => (
-																		<CommandItem
-																			key={workflow.id}
-																			value={workflow.name}
-																			onSelect={() => {
-																				const current = field.value || [];
-																				if (current.includes(workflow.id)) {
-																					field.onChange(
-																						current.filter((id) => id !== workflow.id)
-																					);
-																				} else {
-																					field.onChange([...current, workflow.id]);
+																	{toolWorkflows?.map(
+																		(
+																			workflow,
+																		) => (
+																			<CommandItem
+																				key={
+																					workflow.id
 																				}
-																			}}
-																		>
-																			<Check
-																				className={cn(
-																					"mr-2 h-4 w-4",
-																					field.value?.includes(workflow.id)
-																						? "opacity-100"
-																						: "opacity-0"
-																				)}
-																			/>
-																			<div className="flex flex-col">
-																				<span>{workflow.name}</span>
-																				{workflow.description && (
-																					<span className="text-xs text-muted-foreground">
-																						{workflow.description}
+																				value={
+																					workflow.name
+																				}
+																				onSelect={() => {
+																					const current =
+																						field.value ||
+																						[];
+																					if (
+																						current.includes(
+																							workflow.id,
+																						)
+																					) {
+																						field.onChange(
+																							current.filter(
+																								(
+																									id,
+																								) =>
+																									id !==
+																									workflow.id,
+																							),
+																						);
+																					} else {
+																						field.onChange(
+																							[
+																								...current,
+																								workflow.id,
+																							],
+																						);
+																					}
+																				}}
+																			>
+																				<Check
+																					className={cn(
+																						"mr-2 h-4 w-4",
+																						field.value?.includes(
+																							workflow.id,
+																						)
+																							? "opacity-100"
+																							: "opacity-0",
+																					)}
+																				/>
+																				<div className="flex flex-col">
+																					<span>
+																						{
+																							workflow.name
+																						}
 																					</span>
-																				)}
-																			</div>
-																		</CommandItem>
-																	))}
+																					{workflow.description && (
+																						<span className="text-xs text-muted-foreground">
+																							{
+																								workflow.description
+																							}
+																						</span>
+																					)}
+																				</div>
+																			</CommandItem>
+																		),
+																	)}
 																</CommandGroup>
 															</CommandList>
 														</Command>
 													</PopoverContent>
 												</Popover>
 												<FormDescription>
-													Workflows this agent can execute as tools
+													Workflows this agent can
+													execute as tools
 												</FormDescription>
 												<FormMessage />
 											</FormItem>
@@ -641,100 +894,172 @@ export function AgentDialog({ agentId, open, onOpenChange }: AgentDialogProps) {
 										name="delegated_agent_ids"
 										render={({ field }) => (
 											<FormItem>
-												<FormLabel>Delegated Agents</FormLabel>
-												<Popover open={delegationsOpen} onOpenChange={setDelegationsOpen}>
+												<FormLabel>
+													Delegated Agents
+												</FormLabel>
+												<Popover
+													open={delegationsOpen}
+													onOpenChange={
+														setDelegationsOpen
+													}
+												>
 													<PopoverTrigger asChild>
 														<FormControl>
 															<Button
 																variant="outline"
 																role="combobox"
-																aria-expanded={delegationsOpen}
+																aria-expanded={
+																	delegationsOpen
+																}
 																className="w-full justify-between h-auto min-h-10"
 															>
-																{field.value?.length > 0 ? (
+																{field.value
+																	?.length >
+																0 ? (
 																	<div className="flex flex-wrap gap-1">
-																		{field.value.map((agentIdValue) => {
-																			const delegateAgent = delegationOptions.find(
-																				(a) => a.id === agentIdValue
-																			);
-																			return (
-																				<Badge
-																					key={agentIdValue}
-																					variant="secondary"
-																					className="mr-1"
-																				>
-																					{delegateAgent?.name || agentIdValue}
-																					<button
-																						type="button"
-																						className="ml-1 ring-offset-background rounded-full outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2"
-																						onClick={(e) => {
-																							e.stopPropagation();
-																							field.onChange(
-																								field.value.filter((id) => id !== agentIdValue)
-																							);
-																						}}
+																		{field.value.map(
+																			(
+																				agentIdValue,
+																			) => {
+																				const delegateAgent =
+																					delegationOptions.find(
+																						(
+																							a,
+																						) =>
+																							a.id ===
+																							agentIdValue,
+																					);
+																				return (
+																					<Badge
+																						key={
+																							agentIdValue
+																						}
+																						variant="secondary"
+																						className="mr-1"
 																					>
-																						<X className="h-3 w-3" />
-																					</button>
-																				</Badge>
-																			);
-																		})}
+																						{delegateAgent?.name ||
+																							agentIdValue}
+																						<button
+																							type="button"
+																							className="ml-1 ring-offset-background rounded-full outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2"
+																							onClick={(
+																								e,
+																							) => {
+																								e.stopPropagation();
+																								field.onChange(
+																									field.value.filter(
+																										(
+																											id,
+																										) =>
+																											id !==
+																											agentIdValue,
+																									),
+																								);
+																							}}
+																						>
+																							<X className="h-3 w-3" />
+																						</button>
+																					</Badge>
+																				);
+																			},
+																		)}
 																	</div>
 																) : (
 																	<span className="text-muted-foreground">
-																		Select agents...
+																		Select
+																		agents...
 																	</span>
 																)}
 																<ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
 															</Button>
 														</FormControl>
 													</PopoverTrigger>
-													<PopoverContent className="w-[400px] p-0" align="start">
+													<PopoverContent
+														className="w-[400px] p-0"
+														align="start"
+													>
 														<Command>
 															<CommandInput placeholder="Search agents..." />
 															<CommandList>
-																<CommandEmpty>No agents found.</CommandEmpty>
+																<CommandEmpty>
+																	No agents
+																	found.
+																</CommandEmpty>
 																<CommandGroup>
-																	{delegationOptions.map((delegateAgent) => (
-																		<CommandItem
-																			key={delegateAgent.id}
-																			value={delegateAgent.name}
-																			onSelect={() => {
-																				const current = field.value || [];
-																				if (current.includes(delegateAgent.id)) {
-																					field.onChange(
-																						current.filter((id) => id !== delegateAgent.id)
-																					);
-																				} else {
-																					field.onChange([...current, delegateAgent.id]);
+																	{delegationOptions.map(
+																		(
+																			delegateAgent,
+																		) => (
+																			<CommandItem
+																				key={
+																					delegateAgent.id
 																				}
-																			}}
-																		>
-																			<Check
-																				className={cn(
-																					"mr-2 h-4 w-4",
-																					field.value?.includes(delegateAgent.id)
-																						? "opacity-100"
-																						: "opacity-0"
-																				)}
-																			/>
-																			<div className="flex flex-col">
-																				<span>{delegateAgent.name}</span>
-																				{delegateAgent.description && (
-																					<span className="text-xs text-muted-foreground">
-																						{delegateAgent.description}
+																				value={
+																					delegateAgent.name
+																				}
+																				onSelect={() => {
+																					const current =
+																						field.value ||
+																						[];
+																					if (
+																						current.includes(
+																							delegateAgent.id,
+																						)
+																					) {
+																						field.onChange(
+																							current.filter(
+																								(
+																									id,
+																								) =>
+																									id !==
+																									delegateAgent.id,
+																							),
+																						);
+																					} else {
+																						field.onChange(
+																							[
+																								...current,
+																								delegateAgent.id,
+																							],
+																						);
+																					}
+																				}}
+																			>
+																				<Check
+																					className={cn(
+																						"mr-2 h-4 w-4",
+																						field.value?.includes(
+																							delegateAgent.id,
+																						)
+																							? "opacity-100"
+																							: "opacity-0",
+																					)}
+																				/>
+																				<div className="flex flex-col">
+																					<span>
+																						{
+																							delegateAgent.name
+																						}
 																					</span>
-																				)}
-																			</div>
-																		</CommandItem>
-																	))}
+																					{delegateAgent.description && (
+																						<span className="text-xs text-muted-foreground">
+																							{
+																								delegateAgent.description
+																							}
+																						</span>
+																					)}
+																				</div>
+																			</CommandItem>
+																		),
+																	)}
 																</CommandGroup>
 															</CommandList>
 														</Command>
 													</PopoverContent>
 												</Popover>
 												<FormDescription>
-													Other agents this agent can delegate tasks to
+													Other agents this agent can
+													delegate tasks to
 												</FormDescription>
 												<FormMessage />
 											</FormItem>
@@ -744,11 +1069,17 @@ export function AgentDialog({ agentId, open, onOpenChange }: AgentDialogProps) {
 							</div>
 
 							<DialogFooter>
-								<Button type="button" variant="outline" onClick={handleClose}>
+								<Button
+									type="button"
+									variant="outline"
+									onClick={handleClose}
+								>
 									Cancel
 								</Button>
 								<Button type="submit" disabled={isPending}>
-									{isPending && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+									{isPending && (
+										<Loader2 className="mr-2 h-4 w-4 animate-spin" />
+									)}
 									{isPending
 										? "Saving..."
 										: isEditing

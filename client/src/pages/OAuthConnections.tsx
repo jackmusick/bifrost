@@ -80,11 +80,20 @@ export function OAuthConnections() {
 	);
 
 	// Map integrations to connection-like objects for UI compatibility
-	type OAuthStatus = "completed" | "failed" | "connected" | "not_connected" | "waiting_callback" | "testing";
+	type OAuthStatus =
+		| "completed"
+		| "failed"
+		| "connected"
+		| "not_connected"
+		| "waiting_callback"
+		| "testing";
 	type ConnectionLike = {
 		connection_name: string;
 		name: string;
-		oauth_flow_type: "authorization_code" | "client_credentials" | "refresh_token";
+		oauth_flow_type:
+			| "authorization_code"
+			| "client_credentials"
+			| "refresh_token";
 		status: OAuthStatus;
 		status_message?: string | null;
 		expires_at?: string | null;

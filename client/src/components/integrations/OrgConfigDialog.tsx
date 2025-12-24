@@ -82,7 +82,8 @@ function OrgConfigDialogContent({
 
 			for (const key of allKeys) {
 				const value = formValues[key];
-				const hasValue = value !== undefined && value !== null && value !== "";
+				const hasValue =
+					value !== undefined && value !== null && value !== "";
 
 				if (hasValue) {
 					// Has a value - send it
@@ -110,8 +111,8 @@ function OrgConfigDialogContent({
 			<DialogHeader>
 				<DialogTitle>Configure {orgName}</DialogTitle>
 				<DialogDescription>
-					Set organization-specific configuration overrides. Empty fields use
-					the integration default.
+					Set organization-specific configuration overrides. Empty
+					fields use the integration default.
 				</DialogDescription>
 			</DialogHeader>
 
@@ -122,7 +123,9 @@ function OrgConfigDialogContent({
 							key={field.key}
 							field={field}
 							value={formValues[field.key]}
-							onChange={(value) => handleFieldChange(field.key, value)}
+							onChange={(value) =>
+								handleFieldChange(field.key, value)
+							}
 							onReset={() => handleReset(field.key)}
 							hasOverride={overrideKeys.has(field.key)}
 						/>

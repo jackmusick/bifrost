@@ -372,24 +372,31 @@ export function AuthProvider({ children }: AuthProviderProps) {
 	);
 
 	// Login with passkey (passwordless authentication)
-	const loginWithPasskey = useCallback(async (email?: string): Promise<void> => {
-		// Import dynamically to avoid bundling WebAuthn code for browsers that don't support it
-		const { authenticateWithPasskey } = await import("@/services/passkeys");
+	const loginWithPasskey = useCallback(
+		async (email?: string): Promise<void> => {
+			// Import dynamically to avoid bundling WebAuthn code for browsers that don't support it
+			const { authenticateWithPasskey } =
+				await import("@/services/passkeys");
 
-		const tokens = await authenticateWithPasskey(email);
+			const tokens = await authenticateWithPasskey(email);
 
-		if (tokens.access_token) {
-			localStorage.setItem(ACCESS_TOKEN_KEY, tokens.access_token);
+			if (tokens.access_token) {
+				localStorage.setItem(ACCESS_TOKEN_KEY, tokens.access_token);
 
-			const payload = parseJwt(tokens.access_token);
-			if (payload) {
-				const extractedUser = extractUser(payload);
-				setUser(extractedUser);
-				localStorage.setItem(USER_KEY, JSON.stringify(extractedUser));
-				sessionStorage.setItem("userId", extractedUser.id);
+				const payload = parseJwt(tokens.access_token);
+				if (payload) {
+					const extractedUser = extractUser(payload);
+					setUser(extractedUser);
+					localStorage.setItem(
+						USER_KEY,
+						JSON.stringify(extractedUser),
+					);
+					sessionStorage.setItem("userId", extractedUser.id);
+				}
 			}
-		}
-	}, []);
+		},
+		[],
+	);
 
 	// Logout
 	const logout = useCallback(() => {

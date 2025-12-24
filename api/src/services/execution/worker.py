@@ -191,6 +191,7 @@ async def _run_execution(execution_id: str, context_data: dict[str, Any]) -> dic
             cache_ttl_seconds=context_data.get("cache_ttl_seconds", 300),
             parameters=context_data.get("parameters", {}),
             startup=context_data.get("startup"),  # Launch workflow results
+            roi=context_data.get("roi"),  # ROI initialization
             transient=context_data.get("transient", False),
             no_cache=context_data.get("no_cache", False),
             is_platform_admin=context_data.get("is_platform_admin", False),
@@ -211,6 +212,7 @@ async def _run_execution(execution_id: str, context_data: dict[str, Any]) -> dic
             "logs": exec_result.logs,
             "variables": exec_result.variables,
             "integration_calls": exec_result.integration_calls,
+            "roi": exec_result.roi,
             "error_message": exec_result.error_message,
             "error_type": exec_result.error_type,
             "cached": exec_result.cached,

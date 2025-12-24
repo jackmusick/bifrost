@@ -70,6 +70,8 @@ def _convert_workflow_orm_to_schema(workflow: WorkflowORM) -> WorkflowMetadata:
         public_endpoint=False,
         is_tool=workflow.is_tool or False,
         tool_description=workflow.tool_description,
+        time_saved=workflow.time_saved or 0,
+        value=float(workflow.value or 0.0),
         source_file_path=workflow.file_path,
         relative_file_path=_extract_relative_path(workflow.file_path),
     )

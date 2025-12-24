@@ -20,7 +20,7 @@ from src.models import (
     PackageUpdate,
     PackageUpdatesResponse,
 )
-from src.core.auth import Context, CurrentActiveUser, CurrentSuperuser
+from src.core.auth import Context, CurrentSuperuser
 from src.jobs.rabbitmq import publish_broadcast
 
 logger = logging.getLogger(__name__)

@@ -71,9 +71,8 @@ export function Security() {
 	// Dialog state
 	const [showAddDialog, setShowAddDialog] = useState(false);
 	const [deviceName, setDeviceName] = useState("");
-	const [passkeyToDelete, setPasskeyToDelete] = useState<PasskeyPublic | null>(
-		null,
-	);
+	const [passkeyToDelete, setPasskeyToDelete] =
+		useState<PasskeyPublic | null>(null);
 
 	const handleRegister = () => {
 		register(deviceName || undefined, {
@@ -284,8 +283,8 @@ export function Security() {
 						</DialogTitle>
 						<DialogDescription>
 							Register a new passkey for passwordless sign-in.
-							You'll be prompted to use Face ID, Touch ID, or
-							your device PIN.
+							You'll be prompted to use Face ID, Touch ID, or your
+							device PIN.
 						</DialogDescription>
 					</DialogHeader>
 

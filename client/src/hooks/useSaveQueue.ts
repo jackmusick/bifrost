@@ -11,7 +11,11 @@ interface SaveQueueEntry {
 	index?: boolean | undefined; // If true, inject IDs into decorators
 	debounceTimer?: NodeJS.Timeout | undefined;
 	onComplete?:
-		| ((newEtag: string, newContent?: string, needsIndexing?: boolean) => void)
+		| ((
+				newEtag: string,
+				newContent?: string,
+				needsIndexing?: boolean,
+		  ) => void)
 		| undefined;
 	onConflict?: ((reason: ConflictReason) => void) | undefined;
 }

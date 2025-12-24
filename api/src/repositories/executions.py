@@ -116,6 +116,8 @@ class ExecutionRepository(BaseRepository[Execution]):
         logs: list[dict] | None = None,
         variables: dict | None = None,
         metrics: dict | None = None,
+        time_saved: int | None = None,
+        value: float | None = None,
     ) -> None:
         """
         Update an execution record with results.
@@ -130,6 +132,8 @@ class ExecutionRepository(BaseRepository[Execution]):
             logs: Execution logs to persist
             variables: Runtime variables
             metrics: Resource metrics (peak_memory_bytes, cpu_*_seconds)
+            time_saved: Final time saved in minutes
+            value: Final value generated
         """
         # Get status value if it's an enum
         status_value = status.value if hasattr(status, "value") else status
@@ -174,6 +178,12 @@ class ExecutionRepository(BaseRepository[Execution]):
                 update_values["cpu_system_seconds"] = metrics["cpu_system_seconds"]
             if "cpu_total_seconds" in metrics:
                 update_values["cpu_total_seconds"] = metrics["cpu_total_seconds"]
+
+        # Economics
+        if time_saved is not None:
+            update_values["time_saved"] = time_saved
+        if value is not None:
+            update_values["value"] = value
 
         # Execute update
         await self.session.execute(
@@ -558,6 +568,8 @@ async def update_execution(
     logs: list[dict] | None = None,
     variables: dict | None = None,
     metrics: dict | None = None,
+    time_saved: int | None = None,
+    value: float | None = None,
 ) -> None:
     """
     Update an execution record with results.
@@ -579,5 +591,7 @@ async def update_execution(
             logs=logs,
             variables=variables,
             metrics=metrics,
+            time_saved=time_saved,
+            value=value,
         )
         await session.commit()

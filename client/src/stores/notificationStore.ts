@@ -165,7 +165,8 @@ export const isAwaitingActionNotification = (
 export const getNotificationCounts = (notifications: Notification[]) => {
 	return {
 		active: notifications.filter(isActiveNotification).length,
-		awaitingAction: notifications.filter(isAwaitingActionNotification).length,
+		awaitingAction: notifications.filter(isAwaitingActionNotification)
+			.length,
 		completed: notifications.filter((n) => n.status === "completed").length,
 		failed: notifications.filter((n) => n.status === "failed").length,
 		total: notifications.length,

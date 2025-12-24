@@ -155,7 +155,9 @@ export function Roles() {
 								<DataTableHeader className="sticky top-0 bg-background z-10">
 									<DataTableRow>
 										<DataTableHead>Name</DataTableHead>
-										<DataTableHead>Description</DataTableHead>
+										<DataTableHead>
+											Description
+										</DataTableHead>
 										<DataTableHead>Status</DataTableHead>
 										<DataTableHead>Created</DataTableHead>
 										<DataTableHead className="text-right">

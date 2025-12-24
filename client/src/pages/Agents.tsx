@@ -48,11 +48,7 @@ import {
 	DataTableHeader,
 	DataTableRow,
 } from "@/components/ui/data-table";
-import {
-	useAgents,
-	useDeleteAgent,
-	useUpdateAgent,
-} from "@/hooks/useAgents";
+import { useAgents, useDeleteAgent, useUpdateAgent } from "@/hooks/useAgents";
 import { useOrgScope } from "@/contexts/OrgScopeContext";
 import { useAuth } from "@/contexts/AuthContext";
 import { SearchBox } from "@/components/search/SearchBox";
@@ -61,7 +57,6 @@ import { AgentDialog } from "@/components/agents/AgentDialog";
 import type { components } from "@/lib/v1";
 
 type AgentSummary = components["schemas"]["AgentSummary"];
-
 
 export function Agents() {
 	const { scope, isGlobalScope } = useOrgScope();
@@ -73,7 +68,9 @@ export function Agents() {
 	const [viewMode, setViewMode] = useState<"grid" | "table">("grid");
 	const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false);
 	const [isAgentDialogOpen, setIsAgentDialogOpen] = useState(false);
-	const [selectedAgent, setSelectedAgent] = useState<AgentSummary | null>(null);
+	const [selectedAgent, setSelectedAgent] = useState<AgentSummary | null>(
+		null,
+	);
 	const [editAgentId, setEditAgentId] = useState<string | null>(null);
 
 	// Only platform admins can manage agents
@@ -132,7 +129,9 @@ export function Agents() {
 			<div className="flex items-center justify-between">
 				<div>
 					<div className="flex items-center gap-3">
-						<h1 className="text-4xl font-extrabold tracking-tight">Agents</h1>
+						<h1 className="text-4xl font-extrabold tracking-tight">
+							Agents
+						</h1>
 						{isPlatformAdmin && (
 							<Badge
 								variant={isGlobalScope ? "default" : "outline"}
@@ -167,10 +166,18 @@ export function Agents() {
 								value && setViewMode(value as "grid" | "table")
 							}
 						>
-							<ToggleGroupItem value="grid" aria-label="Grid view" size="sm">
+							<ToggleGroupItem
+								value="grid"
+								aria-label="Grid view"
+								size="sm"
+							>
 								<LayoutGrid className="h-4 w-4" />
 							</ToggleGroupItem>
-							<ToggleGroupItem value="table" aria-label="Table view" size="sm">
+							<ToggleGroupItem
+								value="table"
+								aria-label="Table view"
+								size="sm"
+							>
 								<TableIcon className="h-4 w-4" />
 							</ToggleGroupItem>
 						</ToggleGroup>
@@ -249,8 +256,14 @@ export function Agents() {
 											<div className="flex items-center gap-2 shrink-0">
 												<Switch
 													checked={agent.is_active}
-													onCheckedChange={() => handleToggleActive(agent)}
-													disabled={updateAgent.isPending}
+													onCheckedChange={() =>
+														handleToggleActive(
+															agent,
+														)
+													}
+													disabled={
+														updateAgent.isPending
+													}
 												/>
 											</div>
 										)}
@@ -260,7 +273,11 @@ export function Agents() {
 									{/* Channel badges */}
 									<div className="flex flex-wrap gap-1 mb-3">
 										{agent.channels?.map((channel) => (
-											<Badge key={channel} variant="secondary" className="text-xs">
+											<Badge
+												key={channel}
+												variant="secondary"
+												className="text-xs"
+											>
 												<MessageSquare className="h-3 w-3 mr-1" />
 												{channel}
 											</Badge>
@@ -274,7 +291,9 @@ export function Agents() {
 												variant="outline"
 												size="sm"
 												className="flex-1"
-												onClick={() => handleEdit(agent.id)}
+												onClick={() =>
+													handleEdit(agent.id)
+												}
 											>
 												<Pencil className="h-3 w-3 mr-1" />
 												Edit
@@ -282,7 +301,9 @@ export function Agents() {
 											<Button
 												variant="outline"
 												size="sm"
-												onClick={() => handleDelete(agent)}
+												onClick={() =>
+													handleDelete(agent)
+												}
 											>
 												<Trash2 className="h-3 w-3" />
 											</Button>
@@ -296,15 +317,17 @@ export function Agents() {
 					// Table View
 					<div className="flex-1 min-h-0">
 						<DataTable className="max-h-full">
-						<DataTableHeader>
-							<DataTableRow>
-								<DataTableHead>Name</DataTableHead>
-								<DataTableHead>Description</DataTableHead>
-								<DataTableHead>Channels</DataTableHead>
-								<DataTableHead>Status</DataTableHead>
-								<DataTableHead className="text-right">Actions</DataTableHead>
-							</DataTableRow>
-						</DataTableHeader>
+							<DataTableHeader>
+								<DataTableRow>
+									<DataTableHead>Name</DataTableHead>
+									<DataTableHead>Description</DataTableHead>
+									<DataTableHead>Channels</DataTableHead>
+									<DataTableHead>Status</DataTableHead>
+									<DataTableHead className="text-right">
+										Actions
+									</DataTableHead>
+								</DataTableRow>
+							</DataTableHeader>
 							<DataTableBody>
 								{filteredAgents.map((agent) => (
 									<DataTableRow key={agent.id}>
@@ -315,25 +338,30 @@ export function Agents() {
 											</div>
 										</DataTableCell>
 										<DataTableCell className="max-w-xs truncate text-muted-foreground">
-											{agent.description || "No description"}
+											{agent.description ||
+												"No description"}
 										</DataTableCell>
 										<DataTableCell>
 											<div className="flex flex-wrap gap-1">
-												{agent.channels?.map((channel) => (
-													<Badge
-														key={channel}
-														variant="secondary"
-														className="text-xs"
-													>
-														{channel}
-													</Badge>
-												))}
+												{agent.channels?.map(
+													(channel) => (
+														<Badge
+															key={channel}
+															variant="secondary"
+															className="text-xs"
+														>
+															{channel}
+														</Badge>
+													),
+												)}
 											</div>
 										</DataTableCell>
 										<DataTableCell>
 											<Switch
 												checked={agent.is_active}
-												onCheckedChange={() => handleToggleActive(agent)}
+												onCheckedChange={() =>
+													handleToggleActive(agent)
+												}
 												disabled={updateAgent.isPending}
 											/>
 										</DataTableCell>
@@ -342,14 +370,18 @@ export function Agents() {
 												<Button
 													variant="ghost"
 													size="icon-sm"
-													onClick={() => handleEdit(agent.id)}
+													onClick={() =>
+														handleEdit(agent.id)
+													}
 												>
 													<Pencil className="h-4 w-4" />
 												</Button>
 												<Button
 													variant="ghost"
 													size="icon-sm"
-													onClick={() => handleDelete(agent)}
+													onClick={() =>
+														handleDelete(agent)
+													}
 												>
 													<Trash2 className="h-4 w-4" />
 												</Button>
@@ -367,7 +399,9 @@ export function Agents() {
 					<CardContent className="flex flex-col items-center justify-center py-12 text-center">
 						<Bot className="h-12 w-12 text-muted-foreground" />
 						<h3 className="mt-4 text-lg font-semibold">
-							{searchTerm ? "No agents match your search" : "No agents found"}
+							{searchTerm
+								? "No agents match your search"
+								: "No agents found"}
 						</h3>
 						<p className="mt-2 text-sm text-muted-foreground">
 							{searchTerm
@@ -400,8 +434,8 @@ export function Agents() {
 					<AlertDialogHeader>
 						<AlertDialogTitle>Delete Agent?</AlertDialogTitle>
 						<AlertDialogDescription>
-							This will delete the agent "{selectedAgent?.name}". This action
-							cannot be undone.
+							This will delete the agent "{selectedAgent?.name}".
+							This action cannot be undone.
 						</AlertDialogDescription>
 					</AlertDialogHeader>
 					<AlertDialogFooter>
@@ -410,7 +444,9 @@ export function Agents() {
 							onClick={handleConfirmDelete}
 							className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
 						>
-							{deleteAgent.isPending ? "Deleting..." : "Delete Agent"}
+							{deleteAgent.isPending
+								? "Deleting..."
+								: "Delete Agent"}
 						</AlertDialogAction>
 					</AlertDialogFooter>
 				</AlertDialogContent>

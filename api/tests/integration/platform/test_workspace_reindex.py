@@ -13,7 +13,7 @@ from uuid import uuid4
 from sqlalchemy import select, delete
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from src.models import Workflow, DataProvider, WorkspaceFile
+from src.models import Workflow, DataProvider, WorkspaceFile, Execution
 from src.models.enums import GitStatus
 from src.services.file_storage_service import FileStorageService
 
@@ -42,7 +42,8 @@ async def clean_workspace():
 @pytest_asyncio.fixture
 async def clean_tables(db_session: AsyncSession):
     """Clean up test data from tables before and after test."""
-    # Clean before test
+    # Clean before test - delete executions first to avoid FK constraint violations
+    await db_session.execute(delete(Execution))
     await db_session.execute(delete(Workflow))
     await db_session.execute(delete(DataProvider))
     await db_session.execute(delete(WorkspaceFile))
@@ -50,7 +51,8 @@ async def clean_tables(db_session: AsyncSession):
 
     yield
 
-    # Clean after test
+    # Clean after test - delete executions first to avoid FK constraint violations
+    await db_session.execute(delete(Execution))
     await db_session.execute(delete(Workflow))
     await db_session.execute(delete(DataProvider))
     await db_session.execute(delete(WorkspaceFile))

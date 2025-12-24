@@ -20,7 +20,7 @@ import asyncio
 import hashlib
 import logging
 from pathlib import Path
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 from watchdog.events import (  # type: ignore[import-untyped]
     FileSystemEventHandler,
@@ -62,10 +62,10 @@ class WorkspaceWatcher:
     """
 
     def __init__(self):
-        self._observer: Observer | None = None
+        self._observer: Any = None  # Observer | None
         self._event_handler: WorkspaceEventHandler | None = None
         self._running = False
-        self._sync_task: asyncio.Task | None = None
+        self._sync_task: asyncio.Task[None] | None = None
         self._pending_changes: dict[str, str] = {}  # path -> event_type
         self._pending_lock = asyncio.Lock()
         self._loop: asyncio.AbstractEventLoop | None = None
@@ -198,7 +198,6 @@ class WorkspaceWatcher:
         - If cached hash differs → we originated this change, sync AND publish
         """
         from src.services.file_storage_service import FileStorageService
-        from src.core.pubsub import publish_workspace_file_write
 
         local_file = WORKSPACE_PATH / path
         if not local_file.exists() or not local_file.is_file():

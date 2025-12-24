@@ -20,6 +20,12 @@ export interface DashboardMetrics {
 		error_message: string | null;
 		started_at: string | null;
 	}>;
+	roi_24h?: {
+		total_time_saved: number;
+		total_value: number;
+		time_saved_unit: string;
+		value_unit: string;
+	};
 }
 
 export function useDashboardMetrics() {

@@ -42,7 +42,9 @@ export function useCreateOAuthConnection() {
 						"/api/integrations/{integration_id}",
 						{
 							params: {
-								path: { integration_id: response.integration_id },
+								path: {
+									integration_id: response.integration_id,
+								},
 							},
 						},
 					],
@@ -90,7 +92,9 @@ export function useUpdateOAuthConnection() {
 						"/api/integrations/{integration_id}",
 						{
 							params: {
-								path: { integration_id: response.integration_id },
+								path: {
+									integration_id: response.integration_id,
+								},
 							},
 						},
 					],
@@ -131,7 +135,8 @@ export function useDeleteOAuthConnection() {
 				queryClient.invalidateQueries({
 					predicate: (query) =>
 						query.queryKey[0] === "get" &&
-						query.queryKey[1] === "/api/integrations/{integration_id}",
+						query.queryKey[1] ===
+							"/api/integrations/{integration_id}",
 				});
 				toast.success(
 					`Connection "${connectionName}" deleted successfully`,

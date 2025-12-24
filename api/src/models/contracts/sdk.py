@@ -1,8 +1,14 @@
 """
-SDK contract models for Bifrost (file operations, config, usage scanning).
+SDK contract models for Bifrost.
+
+Includes:
+- Request/response models for SDK file/config operations
+- Typed response models for SDK modules (integrations, executions, forms, workflows)
+
+All response models use `str` for UUIDs and datetime fields (JSON-friendly, matches SDK patterns).
 """
 
-from typing import TYPE_CHECKING, Any, Literal
+from typing import TYPE_CHECKING, Any, Iterator, Literal
 
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -125,5 +131,113 @@ class SDKOAuthGetResponse(BaseModel):
     expires_at: str | None = Field(None, description="Token expiration (ISO format)")
 
     model_config = ConfigDict(from_attributes=True)
+
+
+# =============================================================================
+# SDK RESPONSE MODELS (for typed returns from SDK modules)
+# =============================================================================
+
+
+# ==================== OAuth & Integrations ====================
+
+
+class OAuthCredentials(BaseModel):
+    """OAuth credentials and configuration for an integration."""
+
+    connection_name: str
+    client_id: str
+    client_secret: str | None = None
+    authorization_url: str | None = None
+    token_url: str | None = None
+    scopes: list[str] = Field(default_factory=list)
+    access_token: str | None = None
+    refresh_token: str | None = None
+    expires_at: str | None = None
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+class IntegrationData(BaseModel):
+    """
+    Full integration data returned by integrations.get().
+
+    Includes entity mapping, configuration, and OAuth credentials.
+    """
+
+    integration_id: str
+    entity_id: str | None = None
+    entity_name: str | None = None
+    config: dict[str, Any] = Field(default_factory=dict)
+    oauth: OAuthCredentials | None = None
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+# ==================== Configuration ====================
+
+
+class ConfigData:
+    """
+    Dynamic configuration access with dot notation.
+
+    Allows accessing config keys as attributes:
+        config_data = await config.list()
+        api_url = config_data.api_url
+        timeout = config_data.timeout
+
+    Also supports dict-like access:
+        api_url = config_data["api_url"]
+        "api_url" in config_data
+    """
+
+    def __init__(self, data: dict[str, Any]) -> None:
+        # Use object.__setattr__ to avoid triggering __setattr__
+        object.__setattr__(self, "_data", data)
+
+    def __getattr__(self, name: str) -> Any:
+        """Get config value by attribute name."""
+        if name.startswith("_"):
+            raise AttributeError(name)
+        return self._data.get(name)
+
+    def __getitem__(self, key: str) -> Any:
+        """Get config value by key (dict-like access)."""
+        return self._data.get(key)
+
+    def __contains__(self, key: str) -> bool:
+        """Check if key exists in config."""
+        return key in self._data
+
+    def __iter__(self) -> Iterator[str]:
+        """Iterate over config keys."""
+        return iter(self._data)
+
+    def __len__(self) -> int:
+        """Return number of config keys."""
+        return len(self._data)
+
+    def __repr__(self) -> str:
+        """Return string representation."""
+        return f"ConfigData({self._data!r})"
+
+    def keys(self) -> Any:
+        """Return config keys."""
+        return self._data.keys()
+
+    def values(self) -> Any:
+        """Return config values."""
+        return self._data.values()
+
+    def items(self) -> Any:
+        """Return config key-value pairs."""
+        return self._data.items()
+
+    def get(self, key: str, default: Any = None) -> Any:
+        """Get config value with optional default."""
+        return self._data.get(key, default)
+
+    def to_dict(self) -> dict[str, Any]:
+        """Return underlying dict (for serialization)."""
+        return self._data.copy()
 
 

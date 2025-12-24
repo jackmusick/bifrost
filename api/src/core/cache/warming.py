@@ -22,12 +22,10 @@ from sqlalchemy import or_, select
 from .keys import (
     TTL_CONFIG,
     TTL_FORMS,
-    TTL_OAUTH,
     TTL_ORGS,
     TTL_ROLES,
     config_hash_key,
     forms_hash_key,
-    oauth_hash_key,
     org_key,
     role_forms_key,
     role_users_key,
@@ -77,7 +75,6 @@ async def prewarm_sdk_cache(
 
             # Pre-warm in parallel for efficiency
             await _prewarm_configs(db, r, org_uuid)
-            await _prewarm_oauth(db, r, org_uuid)
             await _prewarm_forms(db, r, org_uuid, user_id, is_admin)
             await _prewarm_roles(db, r, org_uuid)
 
@@ -151,97 +148,6 @@ async def _prewarm_configs(
     if config_data:
         await r.hset(hash_key, mapping=config_data)
         await r.expire(hash_key, TTL_CONFIG)
-
-
-async def _prewarm_oauth(
-    db: "AsyncSession",
-    r: Any,
-    org_uuid: UUID | None,
-) -> None:
-    """Pre-warm OAuth providers and tokens for the organization."""
-    from src.core.security import decrypt_secret
-    from src.models import OAuthProvider, OAuthToken
-
-    # Query providers (org-specific + global)
-    if org_uuid:
-        query = select(OAuthProvider).where(
-            or_(
-                OAuthProvider.organization_id == org_uuid,
-                OAuthProvider.organization_id.is_(None),
-            )
-        )
-    else:
-        query = select(OAuthProvider).where(OAuthProvider.organization_id.is_(None))
-
-    result = await db.execute(query)
-    providers = result.scalars().all()
-
-    if not providers:
-        return
-
-    oauth_data: dict[str, str] = {}
-    for provider in providers:
-        # Get org-level token (user_id is NULL)
-        token_query = select(OAuthToken).where(
-            OAuthToken.provider_id == provider.id,
-            OAuthToken.user_id.is_(None),
-        )
-        token_result = await db.execute(token_query)
-        token = token_result.scalars().first()
-
-        # Decrypt sensitive fields
-        try:
-            # encrypted_* fields may be bytes or str depending on DB driver
-            client_secret_raw = provider.encrypted_client_secret
-            client_secret = (
-                decrypt_secret(
-                    client_secret_raw.decode() if isinstance(client_secret_raw, bytes) else client_secret_raw
-                )
-                if client_secret_raw
-                else None
-            )
-
-            access_token_raw = token.encrypted_access_token if token else None
-            access_token = (
-                decrypt_secret(
-                    access_token_raw.decode() if isinstance(access_token_raw, bytes) else access_token_raw
-                )
-                if access_token_raw
-                else None
-            )
-
-            refresh_token_raw = token.encrypted_refresh_token if token else None
-            refresh_token = (
-                decrypt_secret(
-                    refresh_token_raw.decode() if isinstance(refresh_token_raw, bytes) else refresh_token_raw
-                )
-                if refresh_token_raw
-                else None
-            )
-        except Exception:
-            continue  # Skip if decryption fails
-
-        cache_value = {
-            "provider_id": str(provider.id),
-            "provider_name": provider.provider_name,
-            "client_id": provider.client_id,
-            "client_secret": client_secret,
-            "authorization_url": provider.authorization_url,
-            "token_url": provider.token_url,
-            "scopes": provider.scopes,
-            "access_token": access_token,
-            "refresh_token": refresh_token,
-            "expires_at": token.expires_at.isoformat() if token and token.expires_at else None,
-        }
-
-        oauth_data[provider.provider_name] = json.dumps(cache_value)
-
-    # Write to Redis hash
-    org_id = str(org_uuid) if org_uuid else None
-    hash_key = oauth_hash_key(org_id)
-    if oauth_data:
-        await r.hset(hash_key, mapping=oauth_data)
-        await r.expire(hash_key, TTL_OAUTH)
 
 
 async def _prewarm_forms(

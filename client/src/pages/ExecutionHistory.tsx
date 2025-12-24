@@ -644,201 +644,196 @@ export function ExecutionHistory() {
 										</DataTableRow>
 									</DataTableHeader>
 									<DataTableBody>
-												{filteredExecutions.map(
-													(execution) => {
-														const duration =
-															execution.completed_at &&
-															execution.started_at
-																? Math.round(
-																		(new Date(
-																			execution.completed_at,
-																		).getTime() -
-																			new Date(
-																				execution.started_at,
-																			).getTime()) /
-																			1000,
-																	)
-																: null;
+										{filteredExecutions.map((execution) => {
+											const duration =
+												execution.completed_at &&
+												execution.started_at
+													? Math.round(
+															(new Date(
+																execution.completed_at,
+															).getTime() -
+																new Date(
+																	execution.started_at,
+																).getTime()) /
+																1000,
+														)
+													: null;
 
-														// For now, treat all executions as global since orgId is not available in Execution schema
-														const isGlobalExecution = true;
+											// For now, treat all executions as global since orgId is not available in Execution schema
+											const isGlobalExecution = true;
 
-														return (
-															<DataTableRow
-																key={
-																	execution.execution_id
+											return (
+												<DataTableRow
+													key={execution.execution_id}
+													clickable
+													onClick={() =>
+														handleViewDetails(
+															execution.execution_id,
+														)
+													}
+												>
+													{isGlobalScope && (
+														<DataTableCell>
+															<Badge
+																variant={
+																	isGlobalExecution
+																		? "default"
+																		: "outline"
 																}
-																clickable
-																onClick={() =>
-																	handleViewDetails(
-																		execution.execution_id,
-																	)
-																}
+																className="text-xs"
 															>
-																{isGlobalScope && (
-																	<DataTableCell>
-																		<Badge
-																			variant={
-																				isGlobalExecution
-																					? "default"
-																					: "outline"
-																			}
-																			className="text-xs"
-																		>
-																			{isGlobalExecution ? (
-																				<>
-																					<Globe className="mr-1 h-3 w-3" />
-																					Global
-																				</>
-																			) : (
-																				<>
-																					<Building2 className="mr-1 h-3 w-3" />
-																					Global
-																				</>
-																			)}
-																		</Badge>
-																	</DataTableCell>
+																{isGlobalExecution ? (
+																	<>
+																		<Globe className="mr-1 h-3 w-3" />
+																		Global
+																	</>
+																) : (
+																	<>
+																		<Building2 className="mr-1 h-3 w-3" />
+																		Global
+																	</>
 																)}
-																<DataTableCell className="font-mono text-sm">
-																	<div className="flex items-center gap-2">
-																		{
-																			execution.workflow_name
-																		}
-																		{execution.session_id && (
-																			<TooltipProvider>
-																				<Tooltip>
-																					<TooltipTrigger
-																						asChild
-																					>
-																						<Button
-																							variant="ghost"
-																							size="icon"
-																							className="h-6 w-6 text-muted-foreground hover:text-primary"
-																							onClick={(
-																								e,
-																							) => {
-																								e.stopPropagation();
-																								navigate(
-																									`/cli/${execution.session_id}`,
-																								);
-																							}}
-																						>
-																							<Terminal className="h-4 w-4" />
-																						</Button>
-																					</TooltipTrigger>
-																					<TooltipContent side="right">
-																						<p className="text-sm">
-																							Dev
-																							run
-																							-
-																							Click
-																							to
-																							view
-																							session
-																						</p>
-																					</TooltipContent>
-																				</Tooltip>
-																			</TooltipProvider>
-																		)}
-																	</div>
-																</DataTableCell>
-																<DataTableCell>
-																	<div className="flex items-center gap-2">
-																		{getStatusBadge(
-																			execution.status,
-																		)}
-																		{execution.error_message && (
-																			<TooltipProvider>
-																				<Tooltip>
-																					<TooltipTrigger
-																						asChild
-																					>
-																						<Info className="h-4 w-4 text-destructive cursor-help" />
-																					</TooltipTrigger>
-																					<TooltipContent
-																						side="right"
-																						className="max-w-md bg-popover text-popover-foreground"
-																					>
-																						<p className="text-sm">
-																							{
-																								execution.error_message
-																							}
-																						</p>
-																					</TooltipContent>
-																				</Tooltip>
-																			</TooltipProvider>
-																		)}
-																	</div>
-																</DataTableCell>
-																<DataTableCell>
-																	{
-																		execution.executed_by_name
-																	}
-																</DataTableCell>
-																<DataTableCell className="text-sm">
-																	{execution.started_at
-																		? formatDate(
-																				execution.started_at,
-																			)
-																		: "-"}
-																</DataTableCell>
-																<DataTableCell className="text-sm">
-																	{execution.completed_at
-																		? formatDate(
-																				execution.completed_at,
-																			)
-																		: "-"}
-																</DataTableCell>
-																<DataTableCell className="text-sm text-muted-foreground">
-																	{duration !==
-																	null
-																		? `${duration}s`
-																		: "-"}
-																</DataTableCell>
-																<DataTableCell className="text-right">
-																	<div className="flex items-center justify-end gap-1">
-																		{(execution.status ===
-																			"Running" ||
-																			execution.status ===
-																				"Pending") && (
+															</Badge>
+														</DataTableCell>
+													)}
+													<DataTableCell className="font-mono text-sm">
+														<div className="flex items-center gap-2">
+															{
+																execution.workflow_name
+															}
+															{execution.session_id && (
+																<TooltipProvider>
+																	<Tooltip>
+																		<TooltipTrigger
+																			asChild
+																		>
 																			<Button
 																				variant="ghost"
 																				size="icon"
+																				className="h-6 w-6 text-muted-foreground hover:text-primary"
 																				onClick={(
 																					e,
 																				) => {
 																					e.stopPropagation();
-																					handleCancelExecution(
-																						execution.execution_id,
-																						execution.workflow_name,
+																					navigate(
+																						`/cli/${execution.session_id}`,
 																					);
 																				}}
-																				title="Cancel Execution"
 																			>
-																				<XCircle className="h-4 w-4" />
+																				<Terminal className="h-4 w-4" />
 																			</Button>
-																		)}
-																		<Button
-																			variant="ghost"
-																			size="icon"
-																			onClick={(
-																				e,
-																			) => {
-																				e.stopPropagation();
-																				handleViewDetails(
-																					execution.execution_id,
-																				);
-																			}}
-																			title="View Details"
+																		</TooltipTrigger>
+																		<TooltipContent side="right">
+																			<p className="text-sm">
+																				Dev
+																				run
+																				-
+																				Click
+																				to
+																				view
+																				session
+																			</p>
+																		</TooltipContent>
+																	</Tooltip>
+																</TooltipProvider>
+															)}
+														</div>
+													</DataTableCell>
+													<DataTableCell>
+														<div className="flex items-center gap-2">
+															{getStatusBadge(
+																execution.status,
+															)}
+															{execution.error_message && (
+																<TooltipProvider>
+																	<Tooltip>
+																		<TooltipTrigger
+																			asChild
 																		>
-																			<Eye className="h-4 w-4" />
-																		</Button>
-																	</div>
-																</DataTableCell>
-															</DataTableRow>
-														);
-													},
-												)}
+																			<Info className="h-4 w-4 text-destructive cursor-help" />
+																		</TooltipTrigger>
+																		<TooltipContent
+																			side="right"
+																			className="max-w-md bg-popover text-popover-foreground"
+																		>
+																			<p className="text-sm">
+																				{
+																					execution.error_message
+																				}
+																			</p>
+																		</TooltipContent>
+																	</Tooltip>
+																</TooltipProvider>
+															)}
+														</div>
+													</DataTableCell>
+													<DataTableCell>
+														{
+															execution.executed_by_name
+														}
+													</DataTableCell>
+													<DataTableCell className="text-sm">
+														{execution.started_at
+															? formatDate(
+																	execution.started_at,
+																)
+															: "-"}
+													</DataTableCell>
+													<DataTableCell className="text-sm">
+														{execution.completed_at
+															? formatDate(
+																	execution.completed_at,
+																)
+															: "-"}
+													</DataTableCell>
+													<DataTableCell className="text-sm text-muted-foreground">
+														{duration !== null
+															? `${duration}s`
+															: "-"}
+													</DataTableCell>
+													<DataTableCell className="text-right">
+														<div className="flex items-center justify-end gap-1">
+															{(execution.status ===
+																"Running" ||
+																execution.status ===
+																	"Pending") && (
+																<Button
+																	variant="ghost"
+																	size="icon"
+																	onClick={(
+																		e,
+																	) => {
+																		e.stopPropagation();
+																		handleCancelExecution(
+																			execution.execution_id,
+																			execution.workflow_name,
+																		);
+																	}}
+																	title="Cancel Execution"
+																>
+																	<XCircle className="h-4 w-4" />
+																</Button>
+															)}
+															<Button
+																variant="ghost"
+																size="icon"
+																onClick={(
+																	e,
+																) => {
+																	e.stopPropagation();
+																	handleViewDetails(
+																		execution.execution_id,
+																	);
+																}}
+																title="View Details"
+															>
+																<Eye className="h-4 w-4" />
+															</Button>
+														</div>
+													</DataTableCell>
+												</DataTableRow>
+											);
+										})}
 									</DataTableBody>
 									<DataTableFooter>
 										<DataTableRow>
@@ -851,7 +846,9 @@ export function ExecutionHistory() {
 														<PaginationContent>
 															<PaginationItem>
 																<PaginationPrevious
-																	onClick={(e) => {
+																	onClick={(
+																		e,
+																	) => {
 																		e.preventDefault();
 																		handlePreviousPage();
 																	}}
@@ -879,7 +876,9 @@ export function ExecutionHistory() {
 															</PaginationItem>
 															<PaginationItem>
 																<PaginationNext
-																	onClick={(e) => {
+																	onClick={(
+																		e,
+																	) => {
 																		e.preventDefault();
 																		handleNextPage();
 																	}}

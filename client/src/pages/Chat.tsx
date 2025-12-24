@@ -17,7 +17,11 @@ import { PageLoader } from "@/components/PageLoader";
 export function Chat() {
 	const { conversationId } = useParams<{ conversationId?: string }>();
 	const { setActiveConversation, reset } = useChatStore();
-	const { isConfigured, isPlatformAdmin, isLoading: configLoading } = useLLMConfig();
+	const {
+		isConfigured,
+		isPlatformAdmin,
+		isLoading: configLoading,
+	} = useLLMConfig();
 
 	// Set active conversation from URL param
 	useEffect(() => {
@@ -47,10 +51,12 @@ export function Chat() {
 						<Bot className="h-8 w-8 text-muted-foreground" />
 					</div>
 					<div className="space-y-2">
-						<h1 className="text-2xl font-semibold">AI Chat Not Configured</h1>
+						<h1 className="text-2xl font-semibold">
+							AI Chat Not Configured
+						</h1>
 						<p className="text-muted-foreground">
-							To enable AI chat, you need to configure an LLM provider (OpenAI or Anthropic)
-							with a valid API key.
+							To enable AI chat, you need to configure an LLM
+							provider (OpenAI or Anthropic) with a valid API key.
 						</p>
 					</div>
 					<Button asChild>

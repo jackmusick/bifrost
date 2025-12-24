@@ -36,7 +36,10 @@ export function ConfigFieldInput({
 							<span className="text-destructive">*</span>
 						)}
 						{hasSecretValue && (
-							<Badge variant="secondary" className="text-xs font-normal">
+							<Badge
+								variant="secondary"
+								className="text-xs font-normal"
+							>
 								<CheckCircle2 className="h-3 w-3 mr-1" />
 								Secret configured
 							</Badge>
@@ -65,11 +68,18 @@ export function ConfigFieldInput({
 					type="password"
 					value={(value as string) || ""}
 					onChange={(e) => onChange(e.target.value)}
-					placeholder={hasOverride ? "••••••••  (override set)" : hasSecretValue ? "••••••••" : "Enter new value..."}
+					placeholder={
+						hasOverride
+							? "••••••••  (override set)"
+							: hasSecretValue
+								? "••••••••"
+								: "Enter new value..."
+					}
 				/>
 				{hasOverride && !value && (
 					<p className="text-xs text-muted-foreground">
-						An override is set. Enter a new value to change it, or reset to use the integration default.
+						An override is set. Enter a new value to change it, or
+						reset to use the integration default.
 					</p>
 				)}
 			</div>
@@ -90,10 +100,16 @@ export function ConfigFieldInput({
 				return (
 					<Input
 						type="number"
-						value={value !== undefined && value !== null ? (value as number) : ""}
+						value={
+							value !== undefined && value !== null
+								? (value as number)
+								: ""
+						}
 						onChange={(e) => {
 							const val = e.target.value;
-							onChange(val === "" ? undefined : parseInt(val) || 0);
+							onChange(
+								val === "" ? undefined : parseInt(val) || 0,
+							);
 						}}
 						placeholder={field.description || field.key}
 					/>

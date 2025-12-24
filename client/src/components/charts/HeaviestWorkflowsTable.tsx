@@ -137,7 +137,9 @@ export function HeaviestWorkflowsTable({
 					<DataTableHeader>
 						<DataTableRow>
 							<DataTableHead>Workflow</DataTableHead>
-							<DataTableHead className="text-right">Runs</DataTableHead>
+							<DataTableHead className="text-right">
+								Runs
+							</DataTableHead>
 							<DataTableHead className="text-right">
 								Avg Memory
 							</DataTableHead>

@@ -14,7 +14,7 @@ from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.core.database import get_session_factory
-from src.models import ExecutionMetricsDaily
+from src.models import ExecutionMetricsDaily, WorkflowROIDaily
 from src.models.enums import ExecutionStatus
 
 logger = logging.getLogger(__name__)
@@ -26,6 +26,9 @@ async def update_daily_metrics(
     duration_ms: int | None = None,
     peak_memory_bytes: int | None = None,
     cpu_total_seconds: float | None = None,
+    time_saved: int = 0,
+    value: float = 0.0,
+    workflow_id: str | None = None,
     db: AsyncSession | None = None,
 ) -> None:
     """
@@ -40,6 +43,9 @@ async def update_daily_metrics(
         duration_ms: Execution duration in milliseconds
         peak_memory_bytes: Peak memory usage
         cpu_total_seconds: Total CPU time
+        time_saved: Minutes saved (only counted for SUCCESS)
+        value: Value generated (only counted for SUCCESS)
+        workflow_id: Workflow ID for per-workflow tracking
     """
     today = date.today()
     org_uuid = (
@@ -61,6 +67,8 @@ async def update_daily_metrics(
                     duration_ms,
                     peak_memory_bytes,
                     cpu_total_seconds,
+                    time_saved,
+                    value,
                 )
 
                 await _upsert_daily_metrics(
@@ -71,6 +79,8 @@ async def update_daily_metrics(
                     duration_ms,
                     peak_memory_bytes,
                     cpu_total_seconds,
+                    time_saved,
+                    value,
                 )
 
                 await session.commit()
@@ -83,6 +93,8 @@ async def update_daily_metrics(
                 duration_ms,
                 peak_memory_bytes,
                 cpu_total_seconds,
+                time_saved,
+                value,
             )
 
             await _upsert_daily_metrics(
@@ -93,6 +105,8 @@ async def update_daily_metrics(
                 duration_ms,
                 peak_memory_bytes,
                 cpu_total_seconds,
+                time_saved,
+                value,
             )
 
             await db.commit()
@@ -110,6 +124,8 @@ async def _upsert_daily_metrics(
     duration_ms: int | None,
     peak_memory_bytes: int | None,
     cpu_total_seconds: float | None,
+    time_saved: int,
+    value: float,
 ) -> None:
     """
     Upsert a single daily metrics row.
@@ -121,6 +137,10 @@ async def _upsert_daily_metrics(
     is_failed = status == ExecutionStatus.FAILED.value
     is_timeout = status == ExecutionStatus.TIMEOUT.value
     is_cancelled = status == ExecutionStatus.CANCELLED.value
+
+    # Only count ROI for successful executions
+    add_time_saved = time_saved if is_success else 0
+    add_value = value if is_success else 0.0
 
     # Build base values for insert
     insert_values = {
@@ -138,6 +158,8 @@ async def _upsert_daily_metrics(
         "peak_memory_bytes": peak_memory_bytes or 0,
         "total_cpu_seconds": cpu_total_seconds or 0.0,
         "peak_cpu_seconds": cpu_total_seconds or 0.0,
+        "total_time_saved": add_time_saved,
+        "total_value": add_value,
     }
 
     # PostgreSQL upsert
@@ -176,6 +198,9 @@ async def _upsert_daily_metrics(
                 "peak_cpu_seconds": func.greatest(
                     ExecutionMetricsDaily.peak_cpu_seconds, cpu_total_seconds or 0.0
                 ),
+                "total_time_saved": ExecutionMetricsDaily.total_time_saved
+                + add_time_saved,
+                "total_value": ExecutionMetricsDaily.total_value + add_value,
                 "updated_at": datetime.utcnow(),
             },
         )
@@ -210,6 +235,9 @@ async def _upsert_daily_metrics(
                 "peak_cpu_seconds": func.greatest(
                     ExecutionMetricsDaily.peak_cpu_seconds, cpu_total_seconds or 0.0
                 ),
+                "total_time_saved": ExecutionMetricsDaily.total_time_saved
+                + add_time_saved,
+                "total_value": ExecutionMetricsDaily.total_value + add_value,
                 "updated_at": datetime.utcnow(),
             },
         )
@@ -241,3 +269,117 @@ async def _upsert_daily_metrics(
             .where(org_filter)
             .values(avg_duration_ms=avg_duration)
         )
+
+
+async def update_workflow_roi_daily(
+    workflow_id: str,
+    org_id: str | None,
+    status: str,
+    time_saved: int = 0,
+    value: float = 0.0,
+    db: AsyncSession | None = None,
+) -> None:
+    """
+    Update daily workflow ROI metrics.
+
+    Called on each execution completion to track per-workflow ROI.
+    Uses upsert pattern to create row if not exists, then increment counters.
+
+    Args:
+        workflow_id: Workflow ID
+        org_id: Organization ID (None for global/platform executions)
+        status: Final execution status
+        time_saved: Minutes saved (only counted for SUCCESS)
+        value: Value generated (only counted for SUCCESS)
+        db: Optional database session
+    """
+    today = date.today()
+    workflow_uuid = UUID(workflow_id)
+    org_uuid = (
+        UUID(org_id.replace("ORG:", ""))
+        if org_id and org_id.startswith("ORG:")
+        else None
+    )
+
+    # Only count ROI for successful executions
+    is_success = status == ExecutionStatus.SUCCESS.value
+    add_time_saved = time_saved if is_success else 0
+    add_value = value if is_success else 0.0
+
+    try:
+        # Use provided session if given; otherwise open a new one
+        if db is None:
+            session_factory = get_session_factory()
+            async with session_factory() as session:
+                await _upsert_workflow_roi(
+                    session,
+                    today,
+                    workflow_uuid,
+                    org_uuid,
+                    is_success,
+                    add_time_saved,
+                    add_value,
+                )
+                await session.commit()
+        else:
+            await _upsert_workflow_roi(
+                db,
+                today,
+                workflow_uuid,
+                org_uuid,
+                is_success,
+                add_time_saved,
+                add_value,
+            )
+            await db.commit()
+
+    except Exception as e:
+        logger.error(
+            f"Error updating workflow ROI: {e}",
+            exc_info=True,
+        )
+        # Don't raise - metrics update failure shouldn't fail the execution
+
+
+async def _upsert_workflow_roi(
+    db,
+    today: date,
+    workflow_id: UUID,
+    org_id: UUID | None,
+    is_success: bool,
+    time_saved: int,
+    value: float,
+) -> None:
+    """
+    Upsert a single workflow ROI row.
+
+    Uses PostgreSQL INSERT ... ON CONFLICT to atomically update.
+    """
+    # Build base values for insert
+    insert_values = {
+        "date": today,
+        "workflow_id": workflow_id,
+        "organization_id": org_id,
+        "execution_count": 1,
+        "success_count": 1 if is_success else 0,
+        "total_time_saved": time_saved,
+        "total_value": value,
+    }
+
+    # PostgreSQL upsert
+    stmt = insert(WorkflowROIDaily).values(**insert_values)
+
+    # On conflict, increment counters
+    stmt = stmt.on_conflict_do_update(
+        constraint="uq_workflow_roi_daily",
+        set_={
+            "execution_count": WorkflowROIDaily.execution_count + 1,
+            "success_count": WorkflowROIDaily.success_count
+            + (1 if is_success else 0),
+            "total_time_saved": WorkflowROIDaily.total_time_saved + time_saved,
+            "total_value": WorkflowROIDaily.total_value + value,
+            "updated_at": datetime.utcnow(),
+        },
+    )
+
+    await db.execute(stmt)

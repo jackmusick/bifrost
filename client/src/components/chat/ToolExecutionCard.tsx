@@ -87,7 +87,9 @@ export interface ToolExecutionState {
 }
 
 /** Map API ExecutionStatus to card ToolExecutionStatus */
-function mapExecutionStatus(apiStatus: ExecutionStatus | undefined): ToolExecutionStatus {
+function mapExecutionStatus(
+	apiStatus: ExecutionStatus | undefined,
+): ToolExecutionStatus {
 	switch (apiStatus) {
 		case "Pending":
 			return "pending";
@@ -181,18 +183,20 @@ export function ToolExecutionCard({
 	// Fetch execution data from API (disabled during streaming)
 	const { data: apiExecution, isLoading: isLoadingExecution } = useExecution(
 		resolvedExecutionId,
-		isStreaming // Disable polling during streaming
+		isStreaming, // Disable polling during streaming
 	);
 
 	// Determine status: streaming state > API data > legacy execution > pending
-	const status: ToolExecutionStatus = isStreaming && streamingState
-		? streamingState.status
-		: apiExecution
-			? mapExecutionStatus(apiExecution.status)
-			: execution?.status ?? "pending";
+	const status: ToolExecutionStatus =
+		isStreaming && streamingState
+			? streamingState.status
+			: apiExecution
+				? mapExecutionStatus(apiExecution.status)
+				: (execution?.status ?? "pending");
 
 	// Determine completion status (needed for log fetching)
-	const isComplete = status === "success" || status === "failed" || status === "timeout";
+	const isComplete =
+		status === "success" || status === "failed" || status === "timeout";
 
 	// Subscribe to execution logs via WebSocket when running
 	useExecutionStream({
@@ -202,40 +206,49 @@ export function ToolExecutionCard({
 
 	// Get streaming logs from the execution stream store
 	const streamingLogs = useExecutionStreamStore((state) =>
-		resolvedExecutionId ? state.streams[resolvedExecutionId]?.streamingLogs ?? EMPTY_LOGS : EMPTY_LOGS
+		resolvedExecutionId
+			? (state.streams[resolvedExecutionId]?.streamingLogs ?? EMPTY_LOGS)
+			: EMPTY_LOGS,
 	);
 
 	// Fetch persisted logs when result section is expanded and execution is complete
 	const { data: persistedLogs } = useExecutionLogs(
 		resolvedExecutionId,
-		isComplete && isResultOpen && !!resolvedExecutionId
+		isComplete && isResultOpen && !!resolvedExecutionId,
 	);
 
 	// Determine logs to display: streaming logs > persisted logs > streaming state logs > legacy logs
 	const baseLogs = streamingState?.logs ?? execution?.logs ?? [];
-	const displayLogs = status === "running" && streamingLogs.length > 0
-		? streamingLogs
-		: (persistedLogs && persistedLogs.length > 0 ? persistedLogs : baseLogs);
+	const displayLogs =
+		status === "running" && streamingLogs.length > 0
+			? streamingLogs
+			: persistedLogs && persistedLogs.length > 0
+				? persistedLogs
+				: baseLogs;
 
 	// Determine result: streaming state > API data > legacy execution
-	const result = isStreaming && streamingState?.result !== undefined
-		? streamingState.result
-		: apiExecution?.result ?? execution?.result;
+	const result =
+		isStreaming && streamingState?.result !== undefined
+			? streamingState.result
+			: (apiExecution?.result ?? execution?.result);
 
 	// Determine error: streaming state > API data > legacy execution
-	const error = isStreaming && streamingState?.error
-		? streamingState.error
-		: apiExecution?.error_message ?? execution?.error;
+	const error =
+		isStreaming && streamingState?.error
+			? streamingState.error
+			: (apiExecution?.error_message ?? execution?.error);
 
 	// Determine duration: streaming state > API data > legacy execution
-	const durationMs = isStreaming && streamingState?.durationMs !== undefined
-		? streamingState.durationMs
-		: apiExecution?.duration_ms ?? execution?.durationMs;
+	const durationMs =
+		isStreaming && streamingState?.durationMs !== undefined
+			? streamingState.durationMs
+			: (apiExecution?.duration_ms ?? execution?.durationMs);
 
 	const config = statusConfig[status];
 	const StatusIcon = config.icon;
 	const hasResult = result !== undefined && result !== null;
-	const latestLog = displayLogs.length > 0 ? displayLogs[displayLogs.length - 1] : null;
+	const latestLog =
+		displayLogs.length > 0 ? displayLogs[displayLogs.length - 1] : null;
 
 	// Auto-scroll logs when new ones arrive
 	useEffect(() => {
@@ -253,7 +266,12 @@ export function ToolExecutionCard({
 	// Loading state when fetching execution data and no streaming/legacy data available
 	if (isLoadingExecution && !isStreaming && !execution) {
 		return (
-			<div className={cn("border rounded-lg bg-card overflow-hidden", className)}>
+			<div
+				className={cn(
+					"border rounded-lg bg-card overflow-hidden",
+					className,
+				)}
+			>
 				<div className="flex items-center gap-2 px-3 py-2 bg-muted/30">
 					<Skeleton className="h-5 w-16" />
 					<Skeleton className="h-4 w-24" />
@@ -298,7 +316,9 @@ export function ToolExecutionCard({
 					</Badge>
 
 					{/* Tool Name */}
-					<span className="font-medium text-sm">{resolvedToolCall.name}</span>
+					<span className="font-medium text-sm">
+						{resolvedToolCall.name}
+					</span>
 				</div>
 
 				<div className="flex items-center gap-2">
@@ -329,7 +349,8 @@ export function ToolExecutionCard({
 									Input Parameters
 								</h4>
 								{resolvedToolCall.arguments &&
-								Object.keys(resolvedToolCall.arguments).length > 0 ? (
+								Object.keys(resolvedToolCall.arguments).length >
+									0 ? (
 									<PrettyInputDisplay
 										inputData={
 											resolvedToolCall.arguments as Record<
@@ -362,8 +383,10 @@ export function ToolExecutionCard({
 									"text-xs font-mono",
 									log.level === "error" && "text-destructive",
 									log.level === "warning" && "text-amber-500",
-									log.level === "info" && "text-muted-foreground",
-									log.level === "debug" && "text-muted-foreground/70",
+									log.level === "info" &&
+										"text-muted-foreground",
+									log.level === "debug" &&
+										"text-muted-foreground/70",
 								)}
 							>
 								{log.message}
@@ -394,10 +417,7 @@ export function ToolExecutionCard({
 
 			{/* Result Section (collapsible) */}
 			{isComplete && hasResult && (
-				<Collapsible
-					open={isResultOpen}
-					onOpenChange={setIsResultOpen}
-				>
+				<Collapsible open={isResultOpen} onOpenChange={setIsResultOpen}>
 					<CollapsibleTrigger asChild>
 						<button
 							type="button"
@@ -422,55 +442,67 @@ export function ToolExecutionCard({
 									className="overflow-hidden"
 								>
 									<div className="border-t">
-									{/* Result Section */}
-									<div className="px-3 py-2 max-h-64 overflow-auto">
-										{typeof result === "object" &&
-										result !== null ? (
-											<PrettyInputDisplay
-												inputData={
-													result as Record<
-														string,
-														unknown
-													>
-												}
-												showToggle={true}
-												defaultView="pretty"
-											/>
-										) : (
-											<pre className="text-xs font-mono whitespace-pre-wrap text-muted-foreground">
-												{typeof result === "string"
-													? result
-													: JSON.stringify(
-															result,
-															null,
-															2,
-														)}
-											</pre>
+										{/* Result Section */}
+										<div className="px-3 py-2 max-h-64 overflow-auto">
+											{typeof result === "object" &&
+											result !== null ? (
+												<PrettyInputDisplay
+													inputData={
+														result as Record<
+															string,
+															unknown
+														>
+													}
+													showToggle={true}
+													defaultView="pretty"
+												/>
+											) : (
+												<pre className="text-xs font-mono whitespace-pre-wrap text-muted-foreground">
+													{typeof result === "string"
+														? result
+														: JSON.stringify(
+																result,
+																null,
+																2,
+															)}
+												</pre>
+											)}
+										</div>
+										{/* Logs Section */}
+										{displayLogs.length > 0 && (
+											<div className="px-3 py-2 border-t">
+												<h5 className="text-xs font-medium text-muted-foreground mb-1">
+													Logs
+												</h5>
+												<div className="max-h-32 overflow-y-auto space-y-0.5">
+													{displayLogs.map(
+														(log, index) => (
+															<p
+																key={`${log.timestamp || index}-${index}`}
+																className={cn(
+																	"text-xs font-mono",
+																	log.level ===
+																		"error" &&
+																		"text-destructive",
+																	log.level ===
+																		"warning" &&
+																		"text-amber-500",
+																	log.level ===
+																		"info" &&
+																		"text-muted-foreground",
+																	log.level ===
+																		"debug" &&
+																		"text-muted-foreground/70",
+																)}
+															>
+																{log.message}
+															</p>
+														),
+													)}
+												</div>
+											</div>
 										)}
 									</div>
-									{/* Logs Section */}
-									{displayLogs.length > 0 && (
-										<div className="px-3 py-2 border-t">
-											<h5 className="text-xs font-medium text-muted-foreground mb-1">Logs</h5>
-											<div className="max-h-32 overflow-y-auto space-y-0.5">
-												{displayLogs.map((log, index) => (
-													<p
-														key={`${log.timestamp || index}-${index}`}
-														className={cn(
-															"text-xs font-mono",
-															log.level === "error" && "text-destructive",
-															log.level === "warning" && "text-amber-500",
-															log.level === "info" && "text-muted-foreground",
-															log.level === "debug" && "text-muted-foreground/70",
-														)}
-													>
-														{log.message}
-													</p>
-												))}
-											</div>
-										</div>
-									)}
-								</div>
 								</motion.div>
 							</CollapsibleContent>
 						)}

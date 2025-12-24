@@ -64,7 +64,10 @@ interface ChatState {
 
 	// Persisted tool executions per conversation (keyed by tool_call_id)
 	// This allows us to show execution details after streaming completes
-	toolExecutionsByConversation: Record<string, Record<string, ToolExecutionState>>;
+	toolExecutionsByConversation: Record<
+		string,
+		Record<string, ToolExecutionState>
+	>;
 
 	// Streaming state
 	isStreaming: boolean;
@@ -274,7 +277,8 @@ export const useChatStore = create<ChatStore>((set, get) => ({
 			toolExecutionsByConversation: {
 				...state.toolExecutionsByConversation,
 				[conversationId]: {
-					...(state.toolExecutionsByConversation[conversationId] || {}),
+					...(state.toolExecutionsByConversation[conversationId] ||
+						{}),
 					...toolExecutions,
 				},
 			},

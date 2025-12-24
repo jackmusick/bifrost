@@ -650,7 +650,9 @@ export function FileTree() {
 				// Use filtered list from here on
 				const filesToUpload = filteredFiles;
 				if (filesToUpload.length === 0) {
-					toast.info("No files to upload (all files were filtered out)");
+					toast.info(
+						"No files to upload (all files were filtered out)",
+					);
 					return;
 				}
 

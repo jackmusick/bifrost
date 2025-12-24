@@ -8,51 +8,57 @@ All methods are async and must be awaited.
 
 from __future__ import annotations
 
-from typing import Any
+from typing import TYPE_CHECKING, Any
 from uuid import UUID
 
 from sqlalchemy import select
 from sqlalchemy.orm import joinedload
 
 from src.core.database import get_session_factory
-from src.models import Execution
+from src.models.contracts.executions import WorkflowExecution
 
 from ._internal import get_context
 
+if TYPE_CHECKING:
+    from src.models import Execution as ExecutionORM
 
-def _execution_to_dict(execution: Execution, include_logs: bool = False) -> dict[str, Any]:
-    """Convert ORM Execution to dictionary."""
-    # Map status enum to string value
-    status_value = execution.status.value if hasattr(execution.status, 'value') else str(execution.status)
 
-    result: dict[str, Any] = {
-        "id": str(execution.id),
-        "workflow_name": execution.workflow_name,
-        "workflow_version": execution.workflow_version,
-        "status": status_value,
-        "executed_by": str(execution.executed_by),
-        "executed_by_name": execution.executed_by_name,
-        "parameters": execution.parameters,
-        "result": execution.result,
-        "error_message": execution.error_message,
-        "created_at": execution.created_at.isoformat() if execution.created_at else None,
-        "started_at": execution.started_at.isoformat() if execution.started_at else None,
-        "completed_at": execution.completed_at.isoformat() if execution.completed_at else None,
-        "duration_ms": execution.duration_ms,
-    }
-
+def _execution_to_model(execution: "ExecutionORM", include_logs: bool = False) -> WorkflowExecution:
+    """Convert ORM Execution to WorkflowExecution model."""
+    # Build logs list if requested
+    logs: list[dict[str, Any]] | None = None
     if include_logs and hasattr(execution, 'logs'):
-        result["logs"] = [
+        logs = [
             {
                 "level": log.level,
                 "message": log.message,
-                "metadata": log.log_metadata,
+                "data": log.log_metadata,
                 "timestamp": log.timestamp.isoformat() if log.timestamp else None,
             }
             for log in sorted(execution.logs, key=lambda x: x.timestamp or x.id)
         ]
 
-    return result
+    return WorkflowExecution(
+        execution_id=str(execution.id),
+        workflow_name=execution.workflow_name,
+        org_id=str(execution.organization_id) if execution.organization_id else None,
+        form_id=str(execution.form_id) if execution.form_id else None,
+        executed_by=str(execution.executed_by),
+        executed_by_name=execution.executed_by_name,
+        status=execution.status,
+        input_data=execution.parameters or {},
+        result=execution.result,
+        result_type=execution.result_type,
+        error_message=execution.error_message,
+        duration_ms=execution.duration_ms,
+        started_at=execution.started_at,
+        completed_at=execution.completed_at,
+        logs=logs,
+        variables=execution.variables,
+        session_id=str(execution.session_id) if hasattr(execution, 'session_id') and execution.session_id else None,
+        peak_memory_bytes=execution.peak_memory_bytes if hasattr(execution, 'peak_memory_bytes') else None,
+        cpu_total_seconds=execution.cpu_total_seconds if hasattr(execution, 'cpu_total_seconds') else None,
+    )
 
 
 class executions:
@@ -72,7 +78,7 @@ class executions:
         start_date: str | None = None,
         end_date: str | None = None,
         limit: int = 50
-    ) -> list[dict[str, Any]]:
+    ) -> list[WorkflowExecution]:
         """
         List workflow executions with filtering.
 
@@ -87,7 +93,24 @@ class executions:
             limit: Maximum number of results (default: 50, max: 1000)
 
         Returns:
-            list[dict]: List of execution dictionaries
+            list[WorkflowExecution]: List of execution objects with attributes:
+                - execution_id: str - Unique execution ID
+                - workflow_name: str - Name of the workflow
+                - org_id: str | None - Organization ID
+                - form_id: str | None - Form ID if triggered by form
+                - executed_by: str - User ID who executed
+                - executed_by_name: str - Display name of user
+                - status: ExecutionStatus - Current status
+                - input_data: dict - Input parameters
+                - result: dict | list | str | None - Execution result
+                - result_type: str | None - How to render result
+                - error_message: str | None - Error if failed
+                - duration_ms: int | None - Execution duration
+                - started_at, completed_at: datetime | None
+                - logs: list[dict] | None - Execution logs
+                - variables: dict | None - Runtime variables
+                - session_id: str | None - CLI session ID
+                - peak_memory_bytes, cpu_total_seconds: Resource metrics
 
         Raises:
             RuntimeError: If no execution context
@@ -95,9 +118,12 @@ class executions:
         Example:
             >>> from bifrost import executions
             >>> recent = await executions.list(limit=10)
+            >>> for execution in recent:
+            ...     print(f"{execution.workflow_name}: {execution.status}")
             >>> failed = await executions.list(status="Failed")
-            >>> workflow_execs = await executions.list(workflow_name="create_customer")
         """
+        from src.models import Execution
+
         context = get_context()
 
         org_uuid = None
@@ -143,10 +169,10 @@ class executions:
                 query = query.where(Execution.created_at <= end_date)
 
             result = await db.execute(query)
-            return [_execution_to_dict(e) for e in result.scalars().all()]
+            return [_execution_to_model(e) for e in result.scalars().all()]
 
     @staticmethod
-    async def get(execution_id: str) -> dict[str, Any]:
+    async def get(execution_id: str) -> WorkflowExecution:
         """
         Get execution details by ID.
 
@@ -157,7 +183,7 @@ class executions:
             execution_id: Execution ID (UUID)
 
         Returns:
-            dict: Execution details including logs
+            WorkflowExecution: Execution details including logs
 
         Raises:
             ValueError: If execution not found or access denied
@@ -166,9 +192,11 @@ class executions:
         Example:
             >>> from bifrost import executions
             >>> exec_details = await executions.get("exec-123")
-            >>> print(exec_details["status"])
-            >>> print(exec_details["result"])
+            >>> print(exec_details.status)
+            >>> print(exec_details.result)
         """
+        from src.models import Execution
+
         context = get_context()
         exec_uuid = UUID(execution_id)
 
@@ -202,4 +230,4 @@ class executions:
                 if execution.executed_by != user_uuid:
                     raise PermissionError(f"Access denied to execution: {execution_id}")
 
-            return _execution_to_dict(execution, include_logs=True)
+            return _execution_to_model(execution, include_logs=True)

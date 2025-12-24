@@ -15,8 +15,6 @@ from src.core.cache.invalidation import (
     invalidate_config,
     invalidate_form,
     invalidate_form_assignment,
-    invalidate_oauth,
-    invalidate_oauth_token,
     invalidate_org,
     invalidate_role,
     invalidate_role_forms,
@@ -76,41 +74,6 @@ class TestConfigInvalidation:
             await invalidate_all_config("org-999")
 
             mock_redis.delete.assert_called_once()
-
-
-class TestOAuthInvalidation:
-    """Tests for OAuth cache invalidation."""
-
-    @pytest.fixture
-    def mock_redis(self):
-        """Create mock async Redis client."""
-        mock_r = AsyncMock()
-        mock_r.delete = AsyncMock()
-        return mock_r
-
-    @pytest.mark.asyncio
-    async def test_invalidate_oauth_with_provider(self, mock_redis):
-        """invalidate_oauth deletes hash and provider key."""
-        with patch("src.core.cache.invalidation.get_shared_redis", return_value=mock_redis):
-            await invalidate_oauth("org-123", "google")
-
-            assert mock_redis.delete.call_count == 2
-
-    @pytest.mark.asyncio
-    async def test_invalidate_oauth_all_providers(self, mock_redis):
-        """invalidate_oauth with no provider deletes only the hash."""
-        with patch("src.core.cache.invalidation.get_shared_redis", return_value=mock_redis):
-            await invalidate_oauth("org-456", provider=None)
-
-            assert mock_redis.delete.call_count == 1
-
-    @pytest.mark.asyncio
-    async def test_invalidate_oauth_token(self, mock_redis):
-        """invalidate_oauth_token delegates to invalidate_oauth."""
-        with patch("src.core.cache.invalidation.get_shared_redis", return_value=mock_redis):
-            await invalidate_oauth_token("org-789", "microsoft")
-
-            assert mock_redis.delete.call_count == 2
 
 
 class TestFormInvalidation:

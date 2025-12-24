@@ -46,6 +46,10 @@ def workflow(
     # Tool Configuration (for AI agent tool calling)
     is_tool: bool = False,
     tool_description: str | None = None,
+
+    # Economics - value metrics for reporting
+    time_saved: int = 0,
+    value: float = 0.0,
 ):
     """
     Decorator for registering workflow functions.
@@ -84,6 +88,8 @@ def workflow(
         public_endpoint: If True, skip authentication for webhooks
         is_tool: If True, makes this workflow available as an AI agent tool
         tool_description: LLM-friendly description for tool calling (defaults to full docstring)
+        time_saved: Minutes saved per execution (for reporting)
+        value: Flexible value unit (e.g., cost savings, revenue)
 
     Returns:
         Decorated function
@@ -153,6 +159,8 @@ def workflow(
             public_endpoint=public_endpoint,
             tool=is_tool,
             tool_description=workflow_tool_description if is_tool else None,
+            time_saved=time_saved,
+            value=value,
             source_file_path=source_file_path,
             parameters=parameters,
             function=func

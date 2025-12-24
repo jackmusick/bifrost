@@ -48,27 +48,31 @@ export function MentionPicker({
 	// Filter agents by search term - include searchTerm to reset selection
 	const filteredAgents = useMemo(() => {
 		// Reset selection when search term changes by returning fresh array
-		const filtered = agents?.filter((agent) => {
-			if (!searchTerm) return true;
-			const term = searchTerm.toLowerCase();
-			return (
-				agent.name.toLowerCase().includes(term) ||
-				agent.description?.toLowerCase().includes(term)
-			);
-		}) || [];
+		const filtered =
+			agents?.filter((agent) => {
+				if (!searchTerm) return true;
+				const term = searchTerm.toLowerCase();
+				return (
+					agent.name.toLowerCase().includes(term) ||
+					agent.description?.toLowerCase().includes(term)
+				);
+			}) || [];
 		return filtered;
 	}, [agents, searchTerm]);
 
 	// Clamp selectedIndex to valid range
-	const clampedIndex = Math.min(selectedIndex, Math.max(0, filteredAgents.length - 1));
+	const clampedIndex = Math.min(
+		selectedIndex,
+		Math.max(0, filteredAgents.length - 1),
+	);
 
 	// Scroll selected item into view
 	useEffect(() => {
 		if (listRef.current && filteredAgents.length > 0) {
-			const items = listRef.current.querySelectorAll('[cmdk-item]');
+			const items = listRef.current.querySelectorAll("[cmdk-item]");
 			const selectedItem = items[clampedIndex];
 			if (selectedItem) {
-				selectedItem.scrollIntoView({ block: 'nearest' });
+				selectedItem.scrollIntoView({ block: "nearest" });
 			}
 		}
 	}, [clampedIndex, filteredAgents.length]);
@@ -81,7 +85,7 @@ export function MentionPicker({
 			if (e.key === "ArrowDown") {
 				e.preventDefault();
 				setSelectedIndex((prev) =>
-					prev < filteredAgents.length - 1 ? prev + 1 : prev
+					prev < filteredAgents.length - 1 ? prev + 1 : prev,
 				);
 			} else if (e.key === "ArrowUp") {
 				e.preventDefault();
@@ -133,7 +137,7 @@ export function MentionPicker({
 									onSelect={() => onSelect(agent)}
 									className={cn(
 										"cursor-pointer",
-										index === clampedIndex && "bg-accent"
+										index === clampedIndex && "bg-accent",
 									)}
 								>
 									<Bot className="mr-2 h-4 w-4 text-muted-foreground" />

@@ -80,6 +80,8 @@ def mock_execution():
     execution.organization_id = org_id
     execution.parameters = {"input": "data"}
     execution.result = {"output": "result"}
+    execution.result_type = "dict"
+    execution.variables = {}
     execution.error_message = None
     execution.created_at = datetime(2025, 1, 1, 12, 0, 0)
     execution.started_at = datetime(2025, 1, 1, 12, 0, 1)
@@ -153,19 +155,17 @@ class TestExecutionsPlatformMode:
             result = await executions.list()
 
         assert len(result) == 1
-        assert result[0]["id"] == str(mock_execution.id)
-        assert result[0]["workflow_name"] == "test_workflow"
-        assert result[0]["workflow_version"] == "1.0.0"
-        assert result[0]["status"] == "Success"
-        assert result[0]["executed_by"] == str(mock_execution.executed_by)
-        assert result[0]["executed_by_name"] == "Test User"
-        assert result[0]["parameters"] == {"input": "data"}
-        assert result[0]["result"] == {"output": "result"}
-        assert result[0]["error_message"] is None
-        assert result[0]["created_at"] == "2025-01-01T12:00:00"
-        assert result[0]["started_at"] == "2025-01-01T12:00:01"
-        assert result[0]["completed_at"] == "2025-01-01T12:00:05"
-        assert result[0]["duration_ms"] == 4000
+        assert result[0].execution_id == str(mock_execution.id)
+        assert result[0].workflow_name == "test_workflow"
+        assert result[0].status == ExecutionStatus.SUCCESS
+        assert result[0].executed_by == str(mock_execution.executed_by)
+        assert result[0].executed_by_name == "Test User"
+        assert result[0].input_data == {"input": "data"}
+        assert result[0].result == {"output": "result"}
+        assert result[0].error_message is None
+        assert result[0].started_at == datetime(2025, 1, 1, 12, 0, 1)
+        assert result[0].completed_at == datetime(2025, 1, 1, 12, 0, 5)
+        assert result[0].duration_ms == 4000
 
     @pytest.mark.asyncio
     async def test_list_uses_context_org_id_when_not_specified(
@@ -173,7 +173,6 @@ class TestExecutionsPlatformMode:
     ):
         """Test that executions.list() uses context.org_id when not specified."""
         from bifrost import executions
-        from uuid import UUID
 
         set_execution_context(test_context)
 
@@ -190,10 +189,9 @@ class TestExecutionsPlatformMode:
         with patch(
             "bifrost.executions.get_session_factory", return_value=mock_session_factory
         ):
-            result = await executions.list()
+            await executions.list()
 
         # Verify the query was built with the context's org_id
-        call_args = mock_session.execute.call_args
         # The query should have filtered by organization_id
         assert mock_session.execute.called
 
@@ -222,7 +220,7 @@ class TestExecutionsPlatformMode:
             result = await executions.list(workflow_name="test_workflow")
 
         assert len(result) == 1
-        assert result[0]["workflow_name"] == "test_workflow"
+        assert result[0].workflow_name == "test_workflow"
         assert mock_session.execute.called
 
     @pytest.mark.asyncio
@@ -250,7 +248,7 @@ class TestExecutionsPlatformMode:
             result = await executions.list(status="Success")
 
         assert len(result) == 1
-        assert result[0]["status"] == "Success"
+        assert result[0].status == "Success"
         assert mock_session.execute.called
 
     @pytest.mark.asyncio
@@ -273,6 +271,8 @@ class TestExecutionsPlatformMode:
             exec_mock.organization_id = uuid4()
             exec_mock.parameters = {}
             exec_mock.result = {}
+            exec_mock.result_type = "dict"
+            exec_mock.variables = {}
             exec_mock.error_message = None
             exec_mock.created_at = datetime(2025, 1, 1, 12, i, 0)
             exec_mock.started_at = datetime(2025, 1, 1, 12, i, 1)
@@ -442,15 +442,15 @@ class TestExecutionsPlatformMode:
         ):
             result = await executions.get(str(mock_execution_with_logs.id))
 
-        assert result["id"] == str(mock_execution_with_logs.id)
-        assert result["workflow_name"] == "test_workflow"
-        assert result["status"] == "Success"
-        assert "logs" in result
-        assert len(result["logs"]) == 3
-        assert result["logs"][0]["level"] == "INFO"
-        assert result["logs"][0]["message"] == "Workflow started"
-        assert result["logs"][0]["metadata"] == {"step": 1}
-        assert result["logs"][0]["timestamp"] == "2025-01-01T12:00:01"
+        assert result.execution_id == str(mock_execution_with_logs.id)
+        assert result.workflow_name == "test_workflow"
+        assert result.status == ExecutionStatus.SUCCESS
+        assert result.logs is not None
+        assert len(result.logs) == 3
+        assert result.logs[0]["level"] == "INFO"
+        assert result.logs[0]["message"] == "Workflow started"
+        assert result.logs[0]["data"] == {"step": 1}
+        assert result.logs[0]["timestamp"] == "2025-01-01T12:00:01"
 
     @pytest.mark.asyncio
     async def test_get_raises_error_when_execution_not_found(self, test_context):
@@ -569,7 +569,7 @@ class TestExecutionsPlatformMode:
             result = await executions.get(str(mock_execution.id))
 
         # Admin should be able to view it
-        assert result["id"] == str(mock_execution.id)
+        assert result.execution_id == str(mock_execution.id)
 
     @pytest.mark.asyncio
     async def test_list_requires_platform_context(self):
@@ -676,7 +676,6 @@ class TestExecutionsPlatformMode:
         """Test that executions.get() handles invalid org_id gracefully."""
         from bifrost import executions
         from src.sdk.context import ExecutionContext, Organization
-        from uuid import UUID
 
         # Create context with invalid UUID org_id
         org = Organization(id="not-a-uuid", name="Invalid Org", is_active=True)
@@ -715,7 +714,7 @@ class TestExecutionsPlatformMode:
             result = await executions.get(str(mock_execution.id))
 
         # Should handle gracefully
-        assert result["id"] == str(mock_execution.id)
+        assert result.execution_id == str(mock_execution.id)
 
     @pytest.mark.asyncio
     async def test_list_filters_by_date_range(self, test_context, mock_execution):
@@ -762,6 +761,8 @@ class TestExecutionsPlatformMode:
         exec_mock.organization_id = uuid4()
         exec_mock.parameters = {}
         exec_mock.result = None
+        exec_mock.result_type = None
+        exec_mock.variables = {}
         exec_mock.error_message = None
         exec_mock.created_at = None
         exec_mock.started_at = None
@@ -784,10 +785,8 @@ class TestExecutionsPlatformMode:
             result = await executions.list()
 
         assert len(result) == 1
-        assert result[0]["workflow_version"] is None
-        assert result[0]["result"] is None
-        assert result[0]["error_message"] is None
-        assert result[0]["created_at"] is None
-        assert result[0]["started_at"] is None
-        assert result[0]["completed_at"] is None
-        assert result[0]["duration_ms"] is None
+        assert result[0].result is None
+        assert result[0].error_message is None
+        assert result[0].started_at is None
+        assert result[0].completed_at is None
+        assert result[0].duration_ms is None

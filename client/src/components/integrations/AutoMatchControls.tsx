@@ -7,10 +7,7 @@ import { useState } from "react";
 import { Wand2, Check, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import {
-	ToggleGroup,
-	ToggleGroupItem,
-} from "@/components/ui/toggle-group";
+import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 import type { MatchMode, MatchResult } from "@/lib/matching";
 
 interface AutoMatchControlsProps {
@@ -54,7 +51,10 @@ export function AutoMatchControls({
 				<ToggleGroupItem value="fuzzy">Fuzzy</ToggleGroupItem>
 				<ToggleGroupItem value="ai" disabled>
 					AI
-					<Badge variant="secondary" className="ml-1 text-[10px] px-1 py-0">
+					<Badge
+						variant="secondary"
+						className="ml-1 text-[10px] px-1 py-0"
+					>
 						Soon
 					</Badge>
 				</ToggleGroupItem>
@@ -63,11 +63,21 @@ export function AutoMatchControls({
 			{/* Action Buttons */}
 			{hasSuggestions ? (
 				<>
-					<Button size="sm" variant="default" onClick={onAcceptAll} disabled={disabled}>
+					<Button
+						size="sm"
+						variant="default"
+						onClick={onAcceptAll}
+						disabled={disabled}
+					>
 						<Check className="h-3.5 w-3.5 mr-1" />
 						Accept All ({matchStats?.matched || 0})
 					</Button>
-					<Button size="sm" variant="ghost" onClick={onClear} disabled={disabled}>
+					<Button
+						size="sm"
+						variant="ghost"
+						onClick={onClear}
+						disabled={disabled}
+					>
 						<X className="h-3.5 w-3.5" />
 					</Button>
 				</>

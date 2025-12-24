@@ -29,8 +29,12 @@ export function ChatLayout({
 	const [isSidebarOpen, setIsSidebarOpen] = useState(true);
 
 	// Get active conversation from store
-	const activeConversationId = useChatStore((state) => state.activeConversationId);
-	const setActiveConversation = useChatStore((state) => state.setActiveConversation);
+	const activeConversationId = useChatStore(
+		(state) => state.activeConversationId,
+	);
+	const setActiveConversation = useChatStore(
+		(state) => state.setActiveConversation,
+	);
 
 	// Set initial conversation if provided (in effect, not during render)
 	useEffect(() => {
@@ -40,7 +44,9 @@ export function ChatLayout({
 	}, [initialConversationId, activeConversationId, setActiveConversation]);
 
 	// Get conversation details for header
-	const { data: conversation } = useConversation(activeConversationId ?? undefined);
+	const { data: conversation } = useConversation(
+		activeConversationId ?? undefined,
+	);
 
 	return (
 		<div className="flex h-full overflow-hidden bg-background">
@@ -66,8 +72,7 @@ export function ChatLayout({
 						? "translate-x-0"
 						: "-translate-x-full lg:w-0 lg:opacity-0",
 					// Mobile overlay
-					isSidebarOpen &&
-						"fixed inset-y-0 left-0 z-20 lg:relative",
+					isSidebarOpen && "fixed inset-y-0 left-0 z-20 lg:relative",
 				)}
 			>
 				<div className="relative h-full">
@@ -114,11 +119,12 @@ export function ChatLayout({
 										conversation?.agent_name ||
 										"Chat"}
 								</h1>
-								{conversation?.agent_name && conversation?.title && (
-									<p className="text-xs text-muted-foreground truncate">
-										with {conversation.agent_name}
-									</p>
-								)}
+								{conversation?.agent_name &&
+									conversation?.title && (
+										<p className="text-xs text-muted-foreground truncate">
+											with {conversation.agent_name}
+										</p>
+									)}
 							</div>
 						)}
 					</header>

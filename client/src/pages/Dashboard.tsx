@@ -7,6 +7,8 @@ import {
 	AlertCircle,
 	CheckCircle2,
 	Zap,
+	Clock,
+	DollarSign,
 } from "lucide-react";
 import {
 	Card,
@@ -31,6 +33,28 @@ import {
 	ExecutionsByOrgChart,
 	HeaviestWorkflowsTable,
 } from "@/components/charts";
+
+/**
+ * Format time saved in minutes to a human-readable string.
+ */
+function formatTimeSaved(minutes: number): string {
+	const hours = Math.floor(minutes / 60);
+	const mins = minutes % 60;
+	if (hours > 0) {
+		return mins > 0 ? `${hours}h ${mins}m` : `${hours}h`;
+	}
+	return `${mins}m`;
+}
+
+/**
+ * Format value with commas for thousands separator.
+ */
+function formatValue(value: number): string {
+	return value.toLocaleString("en-US", {
+		minimumFractionDigits: 0,
+		maximumFractionDigits: 2,
+	});
+}
 
 export function Dashboard() {
 	const navigate = useNavigate();
@@ -93,8 +117,8 @@ export function Dashboard() {
 				</p>
 			</div>
 
-			{/* Resource Count Cards - First Row */}
-			<div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
+			{/* Metrics Cards */}
+			<div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
 				{/* Workflows */}
 				<Card>
 					<CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
@@ -182,6 +206,56 @@ export function Dashboard() {
 						)}
 						<p className="text-xs text-muted-foreground">
 							Last 30 days
+						</p>
+					</CardContent>
+				</Card>
+
+				{/* Time Saved (24h) */}
+				<Card>
+					<CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+						<CardTitle className="text-sm font-medium">
+							Time Saved (24h)
+						</CardTitle>
+						<Clock className="h-4 w-4 text-muted-foreground" />
+					</CardHeader>
+					<CardContent>
+						{isLoading ? (
+							<Skeleton className="h-8 w-16" />
+						) : (
+							<div className="text-2xl font-bold">
+								{metrics?.roi_24h
+									? formatTimeSaved(
+											metrics.roi_24h.total_time_saved,
+										)
+									: "0m"}
+							</div>
+						)}
+						<p className="text-xs text-muted-foreground">
+							{metrics?.roi_24h?.time_saved_unit ?? "minutes"}
+						</p>
+					</CardContent>
+				</Card>
+
+				{/* Value Generated (24h) */}
+				<Card>
+					<CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+						<CardTitle className="text-sm font-medium">
+							Value (24h)
+						</CardTitle>
+						<DollarSign className="h-4 w-4 text-muted-foreground" />
+					</CardHeader>
+					<CardContent>
+						{isLoading ? (
+							<Skeleton className="h-8 w-16" />
+						) : (
+							<div className="text-2xl font-bold">
+								{metrics?.roi_24h
+									? formatValue(metrics.roi_24h.total_value)
+									: "0"}
+							</div>
+						)}
+						<p className="text-xs text-muted-foreground">
+							{metrics?.roi_24h?.value_unit ?? "USD"}
 						</p>
 					</CardContent>
 				</Card>

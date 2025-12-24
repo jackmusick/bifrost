@@ -300,11 +300,19 @@ export function WorkflowKeys() {
 									<DataTableHeader className="sticky top-0 bg-background z-10">
 										<DataTableRow>
 											<DataTableHead>Scope</DataTableHead>
-											<DataTableHead>Description</DataTableHead>
+											<DataTableHead>
+												Description
+											</DataTableHead>
 											<DataTableHead>Key</DataTableHead>
-											<DataTableHead>Created</DataTableHead>
-											<DataTableHead>Last Used</DataTableHead>
-											<DataTableHead>Expires</DataTableHead>
+											<DataTableHead>
+												Created
+											</DataTableHead>
+											<DataTableHead>
+												Last Used
+											</DataTableHead>
+											<DataTableHead>
+												Expires
+											</DataTableHead>
 											<DataTableHead className="text-right">
 												Actions
 											</DataTableHead>

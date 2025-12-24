@@ -50,7 +50,9 @@ export function useCreateIntegration() {
 
 	return $api.useMutation("post", "/api/integrations", {
 		onSuccess: () => {
-			queryClient.invalidateQueries({ queryKey: ["get", "/api/integrations"] });
+			queryClient.invalidateQueries({
+				queryKey: ["get", "/api/integrations"],
+			});
 		},
 	});
 }
@@ -65,9 +67,15 @@ export function useUpdateIntegration() {
 		onSuccess: (_, variables) => {
 			const integrationId = variables.params.path.integration_id;
 			// Invalidate both the list and the specific integration
-			queryClient.invalidateQueries({ queryKey: ["get", "/api/integrations"] });
 			queryClient.invalidateQueries({
-				queryKey: ["get", "/api/integrations/{integration_id}", { params: { path: { integration_id: integrationId } } }],
+				queryKey: ["get", "/api/integrations"],
+			});
+			queryClient.invalidateQueries({
+				queryKey: [
+					"get",
+					"/api/integrations/{integration_id}",
+					{ params: { path: { integration_id: integrationId } } },
+				],
 			});
 		},
 	});
@@ -81,7 +89,9 @@ export function useDeleteIntegration() {
 
 	return $api.useMutation("delete", "/api/integrations/{integration_id}", {
 		onSuccess: () => {
-			queryClient.invalidateQueries({ queryKey: ["get", "/api/integrations"] });
+			queryClient.invalidateQueries({
+				queryKey: ["get", "/api/integrations"],
+			});
 		},
 	});
 }
@@ -103,15 +113,23 @@ export function useIntegrationMappings(integrationId: string) {
 export function useCreateMapping() {
 	const queryClient = useQueryClient();
 
-	return $api.useMutation("post", "/api/integrations/{integration_id}/mappings", {
-		onSuccess: (_, variables) => {
-			const integrationId = variables.params.path.integration_id;
-			// Invalidate the integration detail (which includes mappings)
-			queryClient.invalidateQueries({
-				queryKey: ["get", "/api/integrations/{integration_id}", { params: { path: { integration_id: integrationId } } }],
-			});
+	return $api.useMutation(
+		"post",
+		"/api/integrations/{integration_id}/mappings",
+		{
+			onSuccess: (_, variables) => {
+				const integrationId = variables.params.path.integration_id;
+				// Invalidate the integration detail (which includes mappings)
+				queryClient.invalidateQueries({
+					queryKey: [
+						"get",
+						"/api/integrations/{integration_id}",
+						{ params: { path: { integration_id: integrationId } } },
+					],
+				});
+			},
 		},
-	});
+	);
 }
 
 /**
@@ -120,15 +138,23 @@ export function useCreateMapping() {
 export function useUpdateMapping() {
 	const queryClient = useQueryClient();
 
-	return $api.useMutation("put", "/api/integrations/{integration_id}/mappings/{mapping_id}", {
-		onSuccess: (_, variables) => {
-			const integrationId = variables.params.path.integration_id;
-			// Invalidate the integration detail (which includes mappings)
-			queryClient.invalidateQueries({
-				queryKey: ["get", "/api/integrations/{integration_id}", { params: { path: { integration_id: integrationId } } }],
-			});
+	return $api.useMutation(
+		"put",
+		"/api/integrations/{integration_id}/mappings/{mapping_id}",
+		{
+			onSuccess: (_, variables) => {
+				const integrationId = variables.params.path.integration_id;
+				// Invalidate the integration detail (which includes mappings)
+				queryClient.invalidateQueries({
+					queryKey: [
+						"get",
+						"/api/integrations/{integration_id}",
+						{ params: { path: { integration_id: integrationId } } },
+					],
+				});
+			},
 		},
-	});
+	);
 }
 
 /**
@@ -137,15 +163,23 @@ export function useUpdateMapping() {
 export function useDeleteMapping() {
 	const queryClient = useQueryClient();
 
-	return $api.useMutation("delete", "/api/integrations/{integration_id}/mappings/{mapping_id}", {
-		onSuccess: (_, variables) => {
-			const integrationId = variables.params.path.integration_id;
-			// Invalidate the integration detail (which includes mappings)
-			queryClient.invalidateQueries({
-				queryKey: ["get", "/api/integrations/{integration_id}", { params: { path: { integration_id: integrationId } } }],
-			});
+	return $api.useMutation(
+		"delete",
+		"/api/integrations/{integration_id}/mappings/{mapping_id}",
+		{
+			onSuccess: (_, variables) => {
+				const integrationId = variables.params.path.integration_id;
+				// Invalidate the integration detail (which includes mappings)
+				queryClient.invalidateQueries({
+					queryKey: [
+						"get",
+						"/api/integrations/{integration_id}",
+						{ params: { path: { integration_id: integrationId } } },
+					],
+				});
+			},
 		},
-	});
+	);
 }
 
 /**
@@ -154,14 +188,21 @@ export function useDeleteMapping() {
 export function useUpdateIntegrationConfig() {
 	const queryClient = useQueryClient();
 
-	return $api.useMutation("put", "/api/integrations/{integration_id}/config", {
-		onSuccess: (_, variables) => {
-			const integrationId = variables.params.path.integration_id;
-			// Invalidate the integration detail to refresh config
-			queryClient.invalidateQueries({
-				queryKey: ["get", "/api/integrations/{integration_id}", { params: { path: { integration_id: integrationId } } }],
-			});
+	return $api.useMutation(
+		"put",
+		"/api/integrations/{integration_id}/config",
+		{
+			onSuccess: (_, variables) => {
+				const integrationId = variables.params.path.integration_id;
+				// Invalidate the integration detail to refresh config
+				queryClient.invalidateQueries({
+					queryKey: [
+						"get",
+						"/api/integrations/{integration_id}",
+						{ params: { path: { integration_id: integrationId } } },
+					],
+				});
+			},
 		},
-	});
+	);
 }
-

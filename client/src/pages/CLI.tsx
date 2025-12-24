@@ -207,7 +207,9 @@ bifrost run my_workflows.py --workflow onboard_user`}
 							<DataTableHead>Executions</DataTableHead>
 							<DataTableHead>Status</DataTableHead>
 							<DataTableHead>Created</DataTableHead>
-							<DataTableHead className="w-[100px]">Actions</DataTableHead>
+							<DataTableHead className="w-[100px]">
+								Actions
+							</DataTableHead>
 						</DataTableRow>
 					</DataTableHeader>
 					<DataTableBody>

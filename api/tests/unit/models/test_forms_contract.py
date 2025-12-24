@@ -4,6 +4,7 @@ Tests Pydantic validation rules for request/response models
 """
 
 from datetime import datetime
+from uuid import UUID
 
 import pytest
 from pydantic import ValidationError
@@ -262,15 +263,16 @@ class TestFormField:
         assert field.validation == {"min": 0, "max": 120}
 
     def test_field_with_data_provider(self):
-        """Test field with data_provider string"""
+        """Test field with data_provider_id UUID"""
+        provider_id = UUID("00000000-0000-0000-0000-000000000001")
         field = FormField(
             name="organization",
             label="Organization",
             type=FormFieldType.SELECT,
             required=True,
-            data_provider="msgraph_organizations"
+            data_provider_id=provider_id
         )
-        assert field.data_provider == "msgraph_organizations"
+        assert field.data_provider_id == provider_id
 
     def test_field_defaults(self):
         """Test that optional fields have proper defaults"""
@@ -281,7 +283,7 @@ class TestFormField:
         )
         assert field.required is False  # Default
         assert field.validation is None
-        assert field.data_provider is None
+        assert field.data_provider_id is None
 
     def test_missing_required_name(self):
         """Test that name is required"""

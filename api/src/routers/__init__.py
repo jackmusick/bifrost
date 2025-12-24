@@ -32,6 +32,8 @@ from src.routers.llm_config import router as llm_config_router
 from src.routers.integrations import router as integrations_router
 from src.routers.decorator_properties import router as decorator_properties_router
 from src.routers.maintenance import router as maintenance_router
+from src.routers.roi_settings import router as roi_settings_router
+from src.routers.roi_reports import router as roi_reports_router
 
 __all__ = [
     "auth_router",
@@ -67,4 +69,6 @@ __all__ = [
     "integrations_router",
     "decorator_properties_router",
     "maintenance_router",
+    "roi_settings_router",
+    "roi_reports_router",
 ]

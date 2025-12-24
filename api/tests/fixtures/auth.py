@@ -6,7 +6,6 @@ authenticated endpoints with real HTTP requests to the FastAPI server.
 """
 
 from datetime import datetime, timedelta
-from uuid import uuid4
 
 import jwt
 

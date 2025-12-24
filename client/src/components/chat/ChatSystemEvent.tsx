@@ -64,7 +64,9 @@ function AgentSwitchEvent({ event }: { event: SystemEvent }) {
 				) : (
 					<>
 						<ArrowRight className="h-3.5 w-3.5" />
-						<span className="text-muted-foreground">Switched to</span>
+						<span className="text-muted-foreground">
+							Switched to
+						</span>
 					</>
 				)}
 				<span className="font-medium flex items-center gap-1.5">
@@ -97,9 +99,7 @@ function ErrorEvent({ event }: { event: SystemEvent }) {
 function InfoEvent({ event }: { event: SystemEvent }) {
 	return (
 		<div className="flex justify-center py-2 px-4">
-			<div className="text-xs text-muted-foreground">
-				{event.message}
-			</div>
+			<div className="text-xs text-muted-foreground">{event.message}</div>
 		</div>
 	);
 }

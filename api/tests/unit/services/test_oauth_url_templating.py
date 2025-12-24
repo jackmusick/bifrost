@@ -4,7 +4,6 @@ Tests the resolve_url_template function that supports placeholder replacement
 in OAuth token URLs for multi-tenant scenarios.
 """
 
-import pytest
 
 from src.services.oauth_provider import resolve_url_template
 

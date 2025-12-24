@@ -43,14 +43,15 @@ class TestIntegrationsRepository:
         integration.name = "Test Integration"
         integration.oauth_provider_id = uuid4()
         integration.list_entities_data_provider_id = uuid4()
-        integration.config_schema = [
-            {
-                "key": "api_key",
-                "type": "secret",
-                "required": True,
-                "description": "API Key",
-            }
-        ]
+
+        # config_schema should be a list of objects with .key attribute, not dicts
+        mock_schema_item = MagicMock()
+        mock_schema_item.key = "api_key"
+        mock_schema_item.type = "secret"
+        mock_schema_item.required = True
+        mock_schema_item.description = "API Key"
+        integration.config_schema = [mock_schema_item]
+
         integration.is_deleted = False
         integration.created_at = MagicMock()
         integration.updated_at = MagicMock()
@@ -213,7 +214,8 @@ class TestIntegrationsRepository:
 
         assert result == mock_integration
         assert result.name == new_name
-        repository.get_integration.assert_called_once_with(mock_integration.id)
+        # get_integration is called twice: once to fetch, once to reload with relationships
+        assert repository.get_integration.call_count == 2
 
     async def test_update_integration_config_schema(
         self, repository, mock_session, mock_integration

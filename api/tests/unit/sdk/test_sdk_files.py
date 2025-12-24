@@ -5,11 +5,9 @@ Tests both platform mode (inside workflows) and external mode (CLI).
 Uses mocked dependencies for fast, isolated testing.
 """
 
-import os
 import pytest
-import tempfile
 from pathlib import Path
-from unittest.mock import AsyncMock, MagicMock, mock_open, patch, PropertyMock
+from unittest.mock import AsyncMock, MagicMock, mock_open, patch
 from uuid import uuid4
 
 from bifrost._context import set_execution_context, clear_execution_context

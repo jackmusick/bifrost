@@ -18,14 +18,6 @@ from src.core.security import decrypt_secret, encrypt_secret
 from src.models import OAuthToken, OAuthProvider
 from src.services.oauth_provider import OAuthProviderClient
 
-# Import cache invalidation
-try:
-    from src.core.cache import invalidate_oauth_token
-    CACHE_INVALIDATION_AVAILABLE = True
-except ImportError:
-    CACHE_INVALIDATION_AVAILABLE = False
-    invalidate_oauth_token = None  # type: ignore
-
 logger = logging.getLogger(__name__)
 
 
@@ -244,11 +236,6 @@ async def _refresh_single_token(
         provider.status = "completed"
         provider.last_token_refresh = datetime.now(timezone.utc)
         provider.status_message = None
-
-        # Invalidate cache
-        if CACHE_INVALIDATION_AVAILABLE and invalidate_oauth_token:
-            org_id = str(provider.organization_id) if provider.organization_id else None
-            await invalidate_oauth_token(org_id, provider.provider_name)
 
         return True
 

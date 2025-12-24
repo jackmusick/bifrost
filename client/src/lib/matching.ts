@@ -111,7 +111,9 @@ export function computeAutoMatches(
 	const usedEntityIds = new Set(existingMappedEntityIds);
 
 	// Only process organizations that don't have mappings yet
-	const unmappedOrgs = orgs.filter((org) => !existingMappedOrgIds.has(org.id));
+	const unmappedOrgs = orgs.filter(
+		(org) => !existingMappedOrgIds.has(org.id),
+	);
 
 	for (const org of unmappedOrgs) {
 		let matchResult: {

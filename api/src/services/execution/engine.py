@@ -96,6 +96,9 @@ class ExecutionRequest:
     # Launch workflow results (available via context.startup)
     startup: dict[str, Any] | None = None
 
+    # ROI initialization (from workflow defaults)
+    roi: dict[str, Any] | None = None
+
     # Flags
     transient: bool = False              # Don't write to DB
     no_cache: bool = False               # For data providers
@@ -117,6 +120,9 @@ class ExecutionResult:
     logs: list[dict[str, Any]] = field(default_factory=list)
     variables: dict[str, Any] | None = None  # Only for inline scripts
     integration_calls: list[dict[str, Any]] = field(default_factory=list)
+
+    # ROI (final values after execution)
+    roi: dict[str, Any] | None = None
 
     # Error details
     error_message: str | None = None
@@ -167,6 +173,14 @@ async def execute(request: ExecutionRequest) -> ExecutionResult:
         raise ValueError("Must provide either func or code")
 
     # Create execution context
+    from src.sdk.context import ROIContext
+
+    # Initialize ROI from request if provided
+    roi = ROIContext()
+    if request.roi:
+        roi.time_saved = request.roi.get("time_saved", 0)
+        roi.value = request.roi.get("value", 0.0)
+
     context = ExecutionContext(
         user_id=request.caller.user_id,
         email=request.caller.email,
@@ -178,6 +192,7 @@ async def execute(request: ExecutionRequest) -> ExecutionResult:
         execution_id=request.execution_id,
         _config=request.config,
         startup=request.startup,  # Launch workflow results (from form execution)
+        roi=roi,
     )
 
     # Set bifrost SDK context if available
@@ -299,6 +314,12 @@ async def execute(request: ExecutionRequest) -> ExecutionResult:
         if isinstance(result, dict) and result.get('success') is False:
             status = ExecutionStatus.COMPLETED_WITH_ERRORS
 
+        # Capture final ROI from context
+        roi_data = {
+            "time_saved": context.roi.time_saved,
+            "value": context.roi.value,
+        }
+
         return ExecutionResult(
             execution_id=request.execution_id,
             status=status,
@@ -307,6 +328,7 @@ async def execute(request: ExecutionRequest) -> ExecutionResult:
             logs=logger_output,
             variables=captured_variables,
             integration_calls=context._integration_calls,
+            roi=roi_data,
             cached=False,
             cache_expires_at=cache_expires_at_str
         )

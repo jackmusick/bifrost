@@ -65,6 +65,10 @@ class WorkflowMetadata(BaseModel):
     is_tool: bool = Field(default=False, description="Whether workflow is available as an AI tool")
     tool_description: str | None = Field(default=None, description="Description optimized for AI tool selection")
 
+    # Economics - value metrics for reporting
+    time_saved: int = Field(default=0, description="Minutes saved per execution")
+    value: float = Field(default=0.0, description="Flexible value unit (e.g., cost savings, revenue)")
+
     # Source tracking
     source_file_path: str | None = Field(default=None, description="Full file path to the workflow source code")
     relative_file_path: str | None = Field(default=None, description="Workspace-relative file path with /workspace/ prefix (e.g., '/workspace/workflows/my_workflow.py')")

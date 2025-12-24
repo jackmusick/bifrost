@@ -336,7 +336,7 @@ class TestRolesPlatformMode:
         mock_write_buffer.add_role_change.return_value = new_role_id
 
         with patch("bifrost.roles.get_write_buffer", return_value=mock_write_buffer):
-            result = await roles.create(name="Global Role")
+            await roles.create(name="Global Role")
 
         # Verify org_id is None for global scope
         call_args = mock_write_buffer.add_role_change.call_args
@@ -419,7 +419,7 @@ class TestRolesPlatformMode:
                 "bifrost.roles.get_write_buffer", return_value=mock_write_buffer
             ):
                 # Only update description
-                result = await roles.update(role_id, description="Updated description")
+                await roles.update(role_id, description="Updated description")
 
         # Verify name is preserved
         call_args = mock_write_buffer.add_role_change.call_args

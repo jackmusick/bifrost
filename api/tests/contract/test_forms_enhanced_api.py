@@ -4,6 +4,7 @@ Tests Pydantic validation for form context, query parameters, visibility, and ri
 """
 
 from datetime import datetime
+from uuid import UUID
 
 import pytest
 from pydantic import ValidationError
@@ -153,6 +154,7 @@ class TestEnhancedFormIntegration:
 
     def test_form_with_context_and_visibility(self):
         """Test form with workflow, query params, and field visibility"""
+        licenses_provider_id = UUID("550e8400-e29b-41d4-a716-446655440030")
         request = CreateFormRequest(
             name="Advanced Dynamic Form",
             workflow_id="550e8400-e29b-41d4-a716-446655440000",
@@ -177,7 +179,7 @@ class TestEnhancedFormIntegration:
                         type=FormFieldType.SELECT,
                         required=False,
                         visibility_expression="context.workflow.has_licenses === true",
-                        data_provider="get_available_licenses"
+                        data_provider_id=licenses_provider_id
                     )
                 ]
             ),
@@ -255,21 +257,22 @@ class TestDataProviderInputsValidation:
 
     def test_form_field_with_static_data_provider_inputs(self):
         """
-        Test that FormField with data_provider and data_provider_inputs validates correctly.
+        Test that FormField with data_provider_id and data_provider_inputs validates correctly.
 
         Expected behavior:
-        - data_provider_inputs is optional when data_provider is set
+        - data_provider_inputs is optional when data_provider_id is set
         - Each input config must have valid mode (static, fieldRef, expression)
         - Static mode requires 'value' field
         - Input keys should match data provider parameter names
         """
         # Valid form field with data provider and static inputs
+        test_provider_id = UUID("550e8400-e29b-41d4-a716-446655440000")
         field = FormField(
             name="repo_selector",
             label="Select Repository",
             type=FormFieldType.SELECT,
             required=True,
-            data_provider="get_github_repos",
+            data_provider_id=test_provider_id,
             data_provider_inputs={
                 "token": DataProviderInputConfig(
                     mode=DataProviderInputMode.STATIC,
@@ -282,7 +285,7 @@ class TestDataProviderInputsValidation:
             }
         )
 
-        assert field.data_provider == "get_github_repos"
+        assert field.data_provider_id == test_provider_id
         assert field.data_provider_inputs is not None
         assert len(field.data_provider_inputs) == 2
         assert field.data_provider_inputs["token"].mode == DataProviderInputMode.STATIC
@@ -292,10 +295,10 @@ class TestDataProviderInputsValidation:
 
     def test_data_provider_inputs_without_data_provider_fails(self):
         """
-        Test that data_provider_inputs cannot be set without data_provider.
+        Test that data_provider_inputs cannot be set without data_provider_id.
 
         Expected behavior:
-        - Setting data_provider_inputs without data_provider should raise ValidationError
+        - Setting data_provider_inputs without data_provider_id should raise ValidationError
         """
         with pytest.raises(ValidationError) as exc_info:
             FormField(
@@ -303,7 +306,7 @@ class TestDataProviderInputsValidation:
                 label="Invalid Field",
                 type=FormFieldType.SELECT,
                 required=False,
-                # No data_provider set!
+                # No data_provider_id set!
                 data_provider_inputs={
                     "param": DataProviderInputConfig(
                         mode=DataProviderInputMode.STATIC,
@@ -313,7 +316,7 @@ class TestDataProviderInputsValidation:
             )
 
         errors = exc_info.value.errors()
-        assert any("data_provider_inputs requires data_provider" in str(e.get("ctx", {}).get("error", "")) for e in errors)
+        assert any("data_provider_inputs requires data_provider_id" in str(e.get("ctx", {}).get("error", "")) for e in errors)
 
     def test_static_input_mode_validation(self):
         """
@@ -359,6 +362,10 @@ class TestDataProviderInputsValidation:
         - Each field's inputs are independent
         - Form validation passes with valid data_provider_inputs
         """
+        # Define test provider IDs
+        github_repos_provider_id = UUID("550e8400-e29b-41d4-a716-446655440010")
+        github_branches_provider_id = UUID("550e8400-e29b-41d4-a716-446655440020")
+
         request = CreateFormRequest(
             name="Form with Data Provider Inputs",
             workflow_id="550e8400-e29b-41d4-a716-446655440001",
@@ -375,7 +382,7 @@ class TestDataProviderInputsValidation:
                         label="Select Repository",
                         type=FormFieldType.SELECT,
                         required=True,
-                        data_provider="get_github_repos",
+                        data_provider_id=github_repos_provider_id,
                         data_provider_inputs={
                             "token": DataProviderInputConfig(
                                 mode=DataProviderInputMode.STATIC,
@@ -388,7 +395,7 @@ class TestDataProviderInputsValidation:
                         label="Select Branch",
                         type=FormFieldType.SELECT,
                         required=True,
-                        data_provider="get_github_branches",
+                        data_provider_id=github_branches_provider_id,
                         data_provider_inputs={
                             "token": DataProviderInputConfig(
                                 mode=DataProviderInputMode.STATIC,
@@ -407,18 +414,18 @@ class TestDataProviderInputsValidation:
         assert len(request.form_schema.fields) == 3
 
         # First field has no data provider
-        assert request.form_schema.fields[0].data_provider is None
+        assert request.form_schema.fields[0].data_provider_id is None
         assert request.form_schema.fields[0].data_provider_inputs is None
 
         # Second field has data provider with 1 input
-        assert request.form_schema.fields[1].data_provider == "get_github_repos"
+        assert request.form_schema.fields[1].data_provider_id == github_repos_provider_id
         inputs1 = request.form_schema.fields[1].data_provider_inputs
         assert inputs1 is not None
         assert len(inputs1) == 1
         assert "token" in inputs1
 
         # Third field has data provider with 2 inputs
-        assert request.form_schema.fields[2].data_provider == "get_github_branches"
+        assert request.form_schema.fields[2].data_provider_id == github_branches_provider_id
         inputs2 = request.form_schema.fields[2].data_provider_inputs
         assert inputs2 is not None
         assert len(inputs2) == 2

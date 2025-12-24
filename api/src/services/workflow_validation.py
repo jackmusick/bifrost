@@ -106,6 +106,8 @@ def _convert_workflow_metadata_to_model(
         endpoint_enabled=False,
         disable_global_key=False,
         public_endpoint=False,
+        time_saved=workflow_metadata.time_saved or 0,
+        value=workflow_metadata.value or 0.0,
         source_file_path=workflow_metadata.source_file_path,
         relative_file_path=relative_path,
     )

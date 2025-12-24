@@ -22,6 +22,7 @@ from src.models import (
     DashboardMetricsResponse,
     ExecutionStats,
     RecentFailure,
+    ROISnapshot,
     PlatformMetricsResponse,
     DailyMetricsEntry,
     DailyMetricsResponse,
@@ -37,6 +38,7 @@ from src.models import Execution as ExecutionModel
 from src.models import ExecutionMetricsDaily, Organization
 from src.models.orm import PlatformMetricsSnapshot as PlatformMetricsSnapshotORM
 from src.models.enums import ExecutionStatus
+from src.services.roi_settings_service import ROISettingsService
 
 logger = logging.getLogger(__name__)
 
@@ -90,12 +92,25 @@ async def get_metrics(
             # Still need to fetch recent failures (they change frequently)
             recent_failures = await _get_recent_failures(ctx)
 
+            # Fetch ROI settings for display units
+            roi_service = ROISettingsService(ctx.db)
+            roi_settings = await roi_service.get_settings()
+
+            # Build ROI snapshot
+            roi_24h = ROISnapshot(
+                total_time_saved=snapshot.time_saved_24h,
+                total_value=float(snapshot.value_24h),
+                time_saved_unit=roi_settings.time_saved_unit,
+                value_unit=roi_settings.value_unit,
+            )
+
             response = DashboardMetricsResponse(
                 workflow_count=snapshot.workflow_count,
                 form_count=snapshot.form_count,
                 data_provider_count=snapshot.data_provider_count,
                 execution_stats=execution_stats,
                 recent_failures=recent_failures,
+                roi_24h=roi_24h,
             )
 
             logger.debug(
@@ -648,10 +663,23 @@ async def _compute_metrics_directly(ctx: Context) -> DashboardMetricsResponse:
         avg_duration_seconds=avg_duration_seconds,
     )
 
+    # Fetch ROI settings (fallback has no ROI data)
+    roi_service = ROISettingsService(ctx.db)
+    roi_settings = await roi_service.get_settings()
+
+    # ROI snapshot (fallback: no data available)
+    roi_24h = ROISnapshot(
+        total_time_saved=0,
+        total_value=0.0,
+        time_saved_unit=roi_settings.time_saved_unit,
+        value_unit=roi_settings.value_unit,
+    )
+
     return DashboardMetricsResponse(
         workflow_count=workflow_count,
         form_count=form_count,
         data_provider_count=provider_count,
         execution_stats=execution_stats,
         recent_failures=recent_failures,
+        roi_24h=roi_24h,
     )

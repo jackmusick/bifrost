@@ -41,8 +41,6 @@ from src.models.contracts.cli import (
     CLIFileListRequest,
     CLIFileReadRequest,
     CLIFileWriteRequest,
-    CLIOAuthGetRequest,
-    CLIOAuthGetResponse,
     CLIRegisteredWorkflow,
     CLISessionContinueRequest,
     CLISessionContinueResponse,
@@ -912,113 +910,6 @@ async def cli_delete_config(
 
 
 # =============================================================================
-# CLI OAuth Operations
-# =============================================================================
-
-
-@router.post(
-    "/oauth/get",
-    response_model=CLIOAuthGetResponse | None,
-    summary="Get OAuth connection data",
-)
-async def cli_get_oauth(
-    request: CLIOAuthGetRequest,
-    current_user: User = Depends(get_current_user_from_api_key),
-    db: AsyncSession = Depends(get_db),
-) -> CLIOAuthGetResponse | None:
-    """Get OAuth connection data via CLI API."""
-    from sqlalchemy import or_
-    from src.core.security import decrypt_secret
-    from src.models.orm.oauth import OAuthProvider, OAuthToken
-
-    org_id = await _get_cli_org_id(current_user, request.org_id, db)
-    org_uuid = UUID(org_id) if org_id else None
-
-    if org_uuid:
-        query = select(OAuthProvider).where(
-            OAuthProvider.provider_name == request.provider,
-            or_(
-                OAuthProvider.organization_id == org_uuid,
-                OAuthProvider.organization_id.is_(None),
-            )
-        ).order_by(
-            OAuthProvider.organization_id.desc().nulls_last()
-        )
-    else:
-        query = select(OAuthProvider).where(
-            OAuthProvider.provider_name == request.provider,
-            OAuthProvider.organization_id.is_(None),
-        )
-
-    result = await db.execute(query)
-    provider = result.scalars().first()
-
-    if not provider:
-        logger.warning(f"OAuth provider '{request.provider}' not found for org '{org_id}'")
-        return None
-
-    token_query = select(OAuthToken).where(
-        OAuthToken.provider_id == provider.id,
-        OAuthToken.user_id.is_(None),
-    )
-    token_result = await db.execute(token_query)
-    token = token_result.scalars().first()
-
-    try:
-        client_secret_raw = provider.encrypted_client_secret
-        client_secret = (
-            decrypt_secret(
-                client_secret_raw.decode() if isinstance(client_secret_raw, bytes) else client_secret_raw
-            )
-            if client_secret_raw
-            else None
-        )
-
-        access_token = None
-        refresh_token = None
-        expires_at = None
-
-        if token:
-            access_token_raw = token.encrypted_access_token
-            access_token = (
-                decrypt_secret(
-                    access_token_raw.decode() if isinstance(access_token_raw, bytes) else access_token_raw
-                )
-                if access_token_raw
-                else None
-            )
-
-            refresh_token_raw = token.encrypted_refresh_token
-            refresh_token = (
-                decrypt_secret(
-                    refresh_token_raw.decode() if isinstance(refresh_token_raw, bytes) else refresh_token_raw
-                )
-                if refresh_token_raw
-                else None
-            )
-
-            expires_at = token.expires_at.isoformat() if token.expires_at else None
-
-    except Exception as e:
-        logger.error(f"Failed to decrypt OAuth credentials: {e}")
-        return None
-
-    logger.info(f"CLI retrieved OAuth '{request.provider}' for user {current_user.email}")
-
-    return CLIOAuthGetResponse(
-        connection_name=provider.provider_name,
-        client_id=provider.client_id,
-        client_secret=client_secret,
-        authorization_url=provider.authorization_url,
-        token_url=provider.token_url,
-        scopes=provider.scopes or [],
-        access_token=access_token,
-        refresh_token=refresh_token,
-        expires_at=expires_at,
-    )
-
-
-# =============================================================================
 # SDK Integrations Endpoints
 # =============================================================================
 
@@ -1815,7 +1706,7 @@ async def download_cli() -> StreamingResponse:
         )
 
     buffer = io.BytesIO()
-    include_files = {"client.py", "files.py", "config.py", "oauth.py"}
+    include_files = {"client.py", "files.py", "config.py", "integrations.py"}
 
     with tarfile.open(fileobj=buffer, mode="w:gz") as tar:
         for file_path in package_dir.rglob("*"):
@@ -1981,14 +1872,14 @@ Usage:
 from .client import BifrostClient, get_client
 from .files import files
 from .config import config
-from .oauth import oauth
+from .integrations import integrations
 from ._context import context
 from .decorators import workflow, data_provider, WorkflowMetadata, DataProviderMetadata, WorkflowParameter
 from .errors import UserError, WorkflowError, ValidationError, IntegrationError, ConfigurationError
 
 __all__ = [
     "BifrostClient", "get_client",
-    "files", "config", "oauth", "context",
+    "files", "config", "integrations", "context",
     "workflow", "data_provider", "WorkflowMetadata", "DataProviderMetadata", "WorkflowParameter",
     "UserError", "WorkflowError", "ValidationError", "IntegrationError", "ConfigurationError",
 ]
@@ -2189,6 +2080,8 @@ def workflow(
     allowed_methods: list[str] | None = None,
     disable_global_key: bool = False,
     public_endpoint: bool = False,
+    time_saved: int = 0,
+    value: float = 0.0,
 ):
     def decorator(func: Callable) -> Callable:
         wf_name = name or func.__name__
@@ -2203,6 +2096,7 @@ def workflow(
             timeout_seconds=timeout_seconds, retry_policy=retry_policy, schedule=schedule,
             endpoint_enabled=endpoint_enabled, allowed_methods=allowed_methods or ["POST"],
             disable_global_key=disable_global_key, public_endpoint=public_endpoint,
+            time_saved=time_saved, value=value,
             source_file_path=source_path, parameters=_extract_parameters(func), function=func,
         )
         func._workflow_metadata = metadata
@@ -2699,24 +2593,5 @@ class CLIConfigValue(BaseModel):
     key: str
     value: Any
     config_type: str
-    model_config = ConfigDict(from_attributes=True)
-
-
-class CLIOAuthGetRequest(BaseModel):
-    provider: str = Field(..., description="OAuth provider name")
-    org_id: str | None = Field(default=None)
-    model_config = ConfigDict(from_attributes=True)
-
-
-class CLIOAuthGetResponse(BaseModel):
-    connection_name: str
-    client_id: str
-    client_secret: str | None = None
-    authorization_url: str | None = None
-    token_url: str | None = None
-    scopes: list[str] = Field(default_factory=list)
-    access_token: str | None = None
-    refresh_token: str | None = None
-    expires_at: str | None = None
     model_config = ConfigDict(from_attributes=True)
 '''

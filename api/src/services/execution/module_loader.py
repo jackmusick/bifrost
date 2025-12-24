@@ -79,6 +79,10 @@ class WorkflowMetadata:
     tool: bool = False  # Whether this workflow is available as an agent tool
     tool_description: str | None = None  # LLM-friendly description for tool calling
 
+    # Economics - value metrics for reporting
+    time_saved: int = 0  # Minutes saved per execution
+    value: float = 0.0  # Flexible value unit (e.g., cost savings, revenue)
+
     # Source tracking
     source_file_path: str | None = None
 
@@ -664,6 +668,8 @@ def _convert_workflow_metadata(old_metadata: Any) -> WorkflowMetadata:
         public_endpoint=getattr(old_metadata, 'public_endpoint', False),
         tool=getattr(old_metadata, 'tool', False),
         tool_description=getattr(old_metadata, 'tool_description', None),
+        time_saved=getattr(old_metadata, 'time_saved', 0),
+        value=getattr(old_metadata, 'value', 0.0),
         source_file_path=getattr(old_metadata, 'source_file_path', None),
         parameters=_convert_parameters(getattr(old_metadata, 'parameters', [])),
         function=getattr(old_metadata, 'function', None)

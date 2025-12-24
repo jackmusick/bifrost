@@ -206,7 +206,9 @@ export function Organizations() {
 									<DataTableRow>
 										<DataTableHead>Name</DataTableHead>
 										<DataTableHead>Domain</DataTableHead>
-										<DataTableHead>Organization ID</DataTableHead>
+										<DataTableHead>
+											Organization ID
+										</DataTableHead>
 										<DataTableHead>Status</DataTableHead>
 										<DataTableHead>Created</DataTableHead>
 										<DataTableHead className="text-right"></DataTableHead>
@@ -214,9 +216,7 @@ export function Organizations() {
 								</DataTableHeader>
 								<DataTableBody>
 									{filteredOrgs.map((org) => (
-										<DataTableRow
-											key={org.id}
-										>
+										<DataTableRow key={org.id}>
 											<DataTableCell className="font-medium">
 												{org.name}
 											</DataTableCell>

@@ -68,7 +68,9 @@ export function ChatInput({
 		(e: React.KeyboardEvent<HTMLTextAreaElement>) => {
 			// If mention picker is open, let it handle navigation
 			if (mentionOpen) {
-				if (["ArrowUp", "ArrowDown", "Enter", "Escape"].includes(e.key)) {
+				if (
+					["ArrowUp", "ArrowDown", "Enter", "Escape"].includes(e.key)
+				) {
 					// These are handled by MentionPicker
 					return;
 				}
@@ -96,7 +98,8 @@ export function ChatInput({
 
 			if (lastAtIndex !== -1) {
 				// Check if @ is at start or preceded by whitespace
-				const charBefore = lastAtIndex > 0 ? value[lastAtIndex - 1] : " ";
+				const charBefore =
+					lastAtIndex > 0 ? value[lastAtIndex - 1] : " ";
 				if (/\s/.test(charBefore) || lastAtIndex === 0) {
 					const searchText = textBeforeCursor.slice(lastAtIndex + 1);
 					// Check if there's no space in the search text (would close mention)
@@ -127,7 +130,7 @@ export function ChatInput({
 			// Remove the @search from message text (mention will show as chip)
 			const beforeMention = message.slice(0, mentionStart);
 			const afterCursor = message.slice(
-				mentionStart + 1 + mentionSearch.length
+				mentionStart + 1 + mentionSearch.length,
 			);
 			const newMessage = `${beforeMention}${afterCursor}`.trim();
 
@@ -150,7 +153,10 @@ export function ChatInput({
 				// Move cursor to where the @ was
 				const newCursorPos = beforeMention.length;
 				setTimeout(() => {
-					textareaRef.current?.setSelectionRange(newCursorPos, newCursorPos);
+					textareaRef.current?.setSelectionRange(
+						newCursorPos,
+						newCursorPos,
+					);
 				}, 0);
 			}
 		},
@@ -211,7 +217,11 @@ export function ChatInput({
 										{mention.name}
 										<button
 											type="button"
-											onClick={() => handleRemoveMention(mention.name)}
+											onClick={() =>
+												handleRemoveMention(
+													mention.name,
+												)
+											}
 											className="ml-0.5 p-0.5 rounded-full hover:bg-primary/20 transition-colors"
 											aria-label={`Remove ${mention.name}`}
 										>
@@ -290,7 +300,8 @@ export function ChatInput({
 
 				{/* Disclaimer */}
 				<p className="text-center text-xs text-muted-foreground mt-2">
-					Claude is AI and can make mistakes. Please double-check responses.
+					Claude is AI and can make mistakes. Please double-check
+					responses.
 				</p>
 			</div>
 		</div>

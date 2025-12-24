@@ -11,7 +11,11 @@ import { ChatMessage } from "./ChatMessage";
 import { ChatInput } from "./ChatInput";
 import { ToolExecutionCard } from "./ToolExecutionCard";
 import { ChatSystemEvent, type SystemEvent } from "./ChatSystemEvent";
-import { useChatStore, useStreamingMessage, type StreamingMessage } from "@/stores/chatStore";
+import {
+	useChatStore,
+	useStreamingMessage,
+	type StreamingMessage,
+} from "@/stores/chatStore";
 import { useMessages } from "@/hooks/useChat";
 import { useChatStream } from "@/hooks/useChatStream";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -40,7 +44,8 @@ function StreamingMessageDisplay({
 		created_at: new Date().toISOString(),
 	}));
 
-	const hasContent = streamingMessage.content && streamingMessage.content.trim().length > 0;
+	const hasContent =
+		streamingMessage.content && streamingMessage.content.trim().length > 0;
 	const toolExecutions = Object.values(streamingMessage.toolExecutions);
 	const hasToolExecutions = toolExecutions.length > 0;
 
@@ -81,7 +86,9 @@ function StreamingMessageDisplay({
 			{(hasContent || !hasToolExecutions) && (
 				<ChatMessage
 					message={message}
-					isStreaming={!hasToolExecutions || !streamingMessage.content}
+					isStreaming={
+						!hasToolExecutions || !streamingMessage.content
+					}
 					onToolCallClick={onToolCallClick}
 				/>
 			)}
@@ -103,7 +110,9 @@ function MessageWithToolCards({
 	// Check if this message has tool calls
 	const hasToolCalls = message.tool_calls && message.tool_calls.length > 0;
 	if (!hasToolCalls) {
-		return <ChatMessage message={message} onToolCallClick={onToolCallClick} />;
+		return (
+			<ChatMessage message={message} onToolCallClick={onToolCallClick} />
+		);
 	}
 
 	return (
@@ -114,7 +123,12 @@ function MessageWithToolCards({
 					// Get execution_id from the tool result message
 					// Cast needed until types are regenerated after migration
 					const resultMsg = toolResultMessages.get(tc.id);
-					const executionId = (resultMsg as { execution_id?: string | null } | undefined)?.execution_id ?? undefined;
+					const executionId =
+						(
+							resultMsg as
+								| { execution_id?: string | null }
+								| undefined
+						)?.execution_id ?? undefined;
 
 					return (
 						<ToolExecutionCard
@@ -128,7 +142,10 @@ function MessageWithToolCards({
 
 			{/* Message text content (if any) */}
 			{message.content && message.content.trim().length > 0 && (
-				<ChatMessage message={message} onToolCallClick={onToolCallClick} />
+				<ChatMessage
+					message={message}
+					onToolCallClick={onToolCallClick}
+				/>
 			)}
 		</div>
 	);
@@ -177,7 +194,8 @@ export function ChatWindow({
 	);
 	const systemEvents = useChatStore(
 		(state) =>
-			(conversationId && state.systemEventsByConversation[conversationId]) ||
+			(conversationId &&
+				state.systemEventsByConversation[conversationId]) ||
 			EMPTY_EVENTS,
 	);
 	const streamingMessage = useStreamingMessage();
@@ -201,7 +219,9 @@ export function ChatWindow({
 
 			// Create a content+role hash for deduplication
 			const apiContentHashes = new Set(
-				apiMessages.map((m) => `${m.role}:${m.content?.slice(0, 100) || ""}`),
+				apiMessages.map(
+					(m) => `${m.role}:${m.content?.slice(0, 100) || ""}`,
+				),
 			);
 
 			const localOnly = localMessages.filter((m) => {
@@ -270,7 +290,11 @@ export function ChatWindow({
 		}
 
 		// Sort by timestamp
-		items.sort((a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime());
+		items.sort(
+			(a, b) =>
+				new Date(a.timestamp).getTime() -
+				new Date(b.timestamp).getTime(),
+		);
 
 		return items;
 	}, [messages, systemEvents]);
@@ -286,7 +310,9 @@ export function ChatWindow({
 		// 1. Currently being streamed (temp-* for user input not yet confirmed)
 		// 2. Not matching any API message content
 		const apiContentHashes = new Set(
-			apiMessages.map((m) => `${m.role}:${m.content?.slice(0, 100) || ""}`),
+			apiMessages.map(
+				(m) => `${m.role}:${m.content?.slice(0, 100) || ""}`,
+			),
 		);
 
 		const pendingMessages = localMessages.filter((m) => {
@@ -307,7 +333,13 @@ export function ChatWindow({
 		if (pendingMessages.length !== localMessages.length) {
 			setMessages(conversationId, pendingMessages);
 		}
-	}, [conversationId, apiMessages, localMessages, setMessages, clearMessages]);
+	}, [
+		conversationId,
+		apiMessages,
+		localMessages,
+		setMessages,
+		clearMessages,
+	]);
 
 	// Auto-scroll to bottom on new messages or events (only if user is at bottom)
 	useEffect(() => {
@@ -326,11 +358,13 @@ export function ChatWindow({
 		return (
 			<div className="flex-1 flex flex-col items-center justify-center text-muted-foreground p-8">
 				<MessageSquare className="h-12 w-12 mb-4 opacity-20" />
-				<h3 className="text-lg font-medium mb-2">Start a conversation</h3>
+				<h3 className="text-lg font-medium mb-2">
+					Start a conversation
+				</h3>
 				<p className="text-sm text-center max-w-sm">
-					Click "New Chat" to start a conversation. I can help with questions,
-					tasks, and more. If you need specialized capabilities, I'll find the
-					right tools to help.
+					Click "New Chat" to start a conversation. I can help with
+					questions, tasks, and more. If you need specialized
+					capabilities, I'll find the right tools to help.
 				</p>
 			</div>
 		);
@@ -363,14 +397,20 @@ export function ChatWindow({
 				<div className="flex-1 flex flex-col items-center justify-center text-muted-foreground p-8">
 					<Bot className="h-12 w-12 mb-4 opacity-20" />
 					<h3 className="text-lg font-medium mb-2">
-						{agentName ? `Chat with ${agentName}` : "Start a conversation"}
+						{agentName
+							? `Chat with ${agentName}`
+							: "Start a conversation"}
 					</h3>
 					<p className="text-sm text-center max-w-sm mb-6">
-						Send a message to start the conversation. The AI assistant will
-						respond to your questions and help with tasks.
+						Send a message to start the conversation. The AI
+						assistant will respond to your questions and help with
+						tasks.
 					</p>
 				</div>
-				<ChatInput onSend={handleSendMessage} placeholder="Send a message..." />
+				<ChatInput
+					onSend={handleSendMessage}
+					placeholder="Send a message..."
+				/>
 			</div>
 		);
 	}
@@ -393,7 +433,10 @@ export function ChatWindow({
 								onToolCallClick={onToolCallClick}
 							/>
 						) : (
-							<ChatSystemEvent key={item.data.id} event={item.data} />
+							<ChatSystemEvent
+								key={item.data.id}
+								event={item.data}
+							/>
 						),
 					)}
 
@@ -416,7 +459,9 @@ export function ChatWindow({
 			<ChatInput
 				onSend={handleSendMessage}
 				isLoading={isStreaming}
-				placeholder={agentName ? `Message ${agentName}...` : "Send a message..."}
+				placeholder={
+					agentName ? `Message ${agentName}...` : "Send a message..."
+				}
 			/>
 		</div>
 	);

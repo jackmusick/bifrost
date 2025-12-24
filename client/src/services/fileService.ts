@@ -10,7 +10,8 @@ import { authFetch } from "@/lib/api-client";
 export type FileMetadata = components["schemas"]["FileMetadata"];
 export type FileContentRequest = components["schemas"]["FileContentRequest"];
 export type FileContentResponse = components["schemas"]["FileContentResponse"];
-export type FileConflictResponse = components["schemas"]["FileConflictResponse"];
+export type FileConflictResponse =
+	components["schemas"]["FileConflictResponse"];
 
 // Custom error for file conflicts
 export class FileConflictError extends Error {

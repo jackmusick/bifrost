@@ -16,6 +16,9 @@ import logging
 from typing import Any
 from uuid import UUID
 
+from src.models.contracts.sdk import IntegrationData, OAuthCredentials
+from src.models.contracts.integrations import IntegrationMappingResponse
+
 from ._context import _execution_context
 
 logger = logging.getLogger(__name__)
@@ -49,7 +52,7 @@ class integrations:
     """
 
     @staticmethod
-    async def get(name: str, org_id: str | None = None) -> dict[str, Any] | None:
+    async def get(name: str, org_id: str | None = None) -> IntegrationData | None:
         """
         Get integration configuration for an organization.
 
@@ -67,15 +70,15 @@ class integrations:
             org_id: Organization ID (defaults to current org from context)
 
         Returns:
-            dict | None: Integration data with keys:
-                - integration_id: UUID of the integration
-                - entity_id: str - External entity ID (from mapping or default_entity_id)
+            IntegrationData | None: Integration data with attributes:
+                - integration_id: str - UUID of the integration
+                - entity_id: str | None - External entity ID (from mapping or default_entity_id)
                 - entity_name: str | None - Display name for the mapped entity
                 - config: dict[str, Any] - Configuration (org overrides + defaults)
-                - oauth: dict | None - Full OAuth data (same format as oauth.get()):
+                - oauth: OAuthCredentials | None - OAuth data with attributes:
                     - connection_name: str
                     - client_id: str
-                    - client_secret: str (decrypted)
+                    - client_secret: str | None (decrypted)
                     - authorization_url: str | None
                     - token_url: str | None (resolved with entity_id)
                     - scopes: list[str]
@@ -88,10 +91,10 @@ class integrations:
             >>> from bifrost import integrations
             >>> integration = await integrations.get("HaloPSA")
             >>> if integration:
-            ...     tenant_id = integration["entity_id"]
-            ...     if integration["oauth"]:
-            ...         client_id = integration["oauth"]["client_id"]
-            ...         refresh_token = integration["oauth"]["refresh_token"]
+            ...     tenant_id = integration.entity_id
+            ...     if integration.oauth:
+            ...         client_id = integration.oauth.client_id
+            ...         refresh_token = integration.oauth.refresh_token
         """
         if _is_platform_context():
             return await integrations._get_platform_mode(name, org_id)
@@ -99,7 +102,7 @@ class integrations:
             return await integrations._get_external_mode(name, org_id)
 
     @staticmethod
-    async def _get_platform_mode(name: str, org_id: str | None = None) -> dict[str, Any] | None:
+    async def _get_platform_mode(name: str, org_id: str | None = None) -> IntegrationData | None:
         """Platform mode implementation for integrations.get()."""
         from ._internal import get_context
         from src.repositories.integrations import IntegrationsRepository
@@ -154,8 +157,8 @@ class integrations:
         org_uuid: UUID | None,
         resolve_url_template: Any,
         decrypt_secret: Any,
-    ) -> dict[str, Any]:
-        """Build response dict from an org-specific mapping."""
+    ) -> IntegrationData:
+        """Build IntegrationData from an org-specific mapping."""
         integration = mapping.integration
 
         # Get merged configuration (defaults + org overrides)
@@ -164,16 +167,8 @@ class integrations:
         # Entity ID from mapping, fallback to integration default
         entity_id = mapping.entity_id or integration.default_entity_id or integration.entity_id
 
-        # Build base response
-        integration_data: dict[str, Any] = {
-            "integration_id": str(mapping.integration_id),
-            "entity_id": entity_id,
-            "entity_name": mapping.entity_name,
-            "config": config or {},
-            "oauth": None,
-        }
-
-        # Add OAuth details if provider is configured
+        # Build OAuth credentials if provider is configured
+        oauth: OAuthCredentials | None = None
         if integration and integration.oauth_provider:
             provider = integration.oauth_provider
 
@@ -184,11 +179,17 @@ class integrations:
             else:
                 token = await repo.get_provider_org_token(provider.id)
 
-            integration_data["oauth"] = integrations._build_oauth_data(
+            oauth = integrations._build_oauth_data(
                 provider, token, entity_id, resolve_url_template, decrypt_secret
             )
 
-        return integration_data
+        return IntegrationData(
+            integration_id=str(mapping.integration_id),
+            entity_id=entity_id,
+            entity_name=mapping.entity_name,
+            config=config or {},
+            oauth=oauth,
+        )
 
     @staticmethod
     async def _build_response_from_integration(
@@ -196,35 +197,33 @@ class integrations:
         integration: Any,
         resolve_url_template: Any,
         decrypt_secret: Any,
-    ) -> dict[str, Any]:
-        """Build response dict from integration defaults (no org mapping)."""
+    ) -> IntegrationData:
+        """Build IntegrationData from integration defaults (no org mapping)."""
         # Entity ID from integration defaults
         entity_id = integration.default_entity_id or integration.entity_id
 
         # Get integration-level config defaults (org_id=NULL)
         config = await repo.get_integration_defaults(integration.id)
 
-        # Build base response
-        integration_data: dict[str, Any] = {
-            "integration_id": str(integration.id),
-            "entity_id": entity_id,
-            "entity_name": None,  # No org mapping = no entity name
-            "config": config or {},
-            "oauth": None,
-        }
-
-        # Add OAuth details if provider is configured
+        # Build OAuth credentials if provider is configured
+        oauth: OAuthCredentials | None = None
         if integration.oauth_provider:
             provider = integration.oauth_provider
 
             # Get org-level token from provider (user_id=NULL)
             token = await repo.get_provider_org_token(provider.id)
 
-            integration_data["oauth"] = integrations._build_oauth_data(
+            oauth = integrations._build_oauth_data(
                 provider, token, entity_id, resolve_url_template, decrypt_secret
             )
 
-        return integration_data
+        return IntegrationData(
+            integration_id=str(integration.id),
+            entity_id=entity_id,
+            entity_name=None,  # No org mapping = no entity name
+            config=config or {},
+            oauth=oauth,
+        )
 
     @staticmethod
     def _build_oauth_data(
@@ -233,8 +232,8 @@ class integrations:
         entity_id: str | None,
         resolve_url_template: Any,
         decrypt_secret: Any,
-    ) -> dict[str, Any]:
-        """Build OAuth data dict from provider and token."""
+    ) -> OAuthCredentials:
+        """Build OAuthCredentials from provider and token."""
         # Decrypt secrets
         client_secret = None
         if provider.encrypted_client_secret:
@@ -275,20 +274,20 @@ class integrations:
                 defaults=provider.token_url_defaults,
             )
 
-        return {
-            "connection_name": provider.provider_name,
-            "client_id": provider.client_id,
-            "client_secret": client_secret,
-            "authorization_url": provider.authorization_url,
-            "token_url": resolved_token_url,
-            "scopes": provider.scopes or [],
-            "access_token": access_token,
-            "refresh_token": refresh_token,
-            "expires_at": expires_at,
-        }
+        return OAuthCredentials(
+            connection_name=provider.provider_name,
+            client_id=provider.client_id,
+            client_secret=client_secret,
+            authorization_url=provider.authorization_url,
+            token_url=resolved_token_url,
+            scopes=provider.scopes or [],
+            access_token=access_token,
+            refresh_token=refresh_token,
+            expires_at=expires_at,
+        )
 
     @staticmethod
-    async def _get_external_mode(name: str, org_id: str | None = None) -> dict[str, Any] | None:
+    async def _get_external_mode(name: str, org_id: str | None = None) -> IntegrationData | None:
         """External mode implementation for integrations.get()."""
         client = _get_client()
         response = await client.post(
@@ -303,13 +302,16 @@ class integrations:
             # Convert UUID to string if needed for consistency
             if isinstance(result.get("integration_id"), dict):
                 result["integration_id"] = str(result.get("integration_id"))
-            return result
+            # Convert oauth dict to OAuthCredentials if present
+            if result.get("oauth"):
+                result["oauth"] = OAuthCredentials(**result["oauth"])
+            return IntegrationData(**result)
         else:
             logger.warning(f"Integrations API call failed: {response.status_code}")
             return None
 
     @staticmethod
-    async def list_mappings(name: str) -> list[dict[str, Any]] | None:
+    async def list_mappings(name: str) -> list[IntegrationMappingResponse] | None:
         """
         List all mappings for an integration.
 
@@ -322,11 +324,16 @@ class integrations:
             name: Integration name
 
         Returns:
-            list | None: List of mapping dicts, each containing:
-                - organization_id: UUID of the organization
+            list[IntegrationMappingResponse] | None: List of mappings, each with attributes:
+                - id: UUID - Mapping ID
+                - integration_id: UUID - Associated integration ID
+                - organization_id: UUID - Organization ID
                 - entity_id: str - External entity ID
                 - entity_name: str | None - Display name
+                - oauth_token_id: UUID | None - Per-org OAuth token override ID
                 - config: dict[str, Any] | None - Organization-specific config
+                - created_at: datetime - Creation timestamp
+                - updated_at: datetime - Last update timestamp
             Returns None if integration not found.
 
         Raises:
@@ -337,8 +344,8 @@ class integrations:
             >>> mappings = await integrations.list_mappings("Microsoft Partner")
             >>> if mappings:
             ...     for mapping in mappings:
-            ...         org_id = mapping["organization_id"]
-            ...         tenant_id = mapping["entity_id"]
+            ...         org_id = mapping.organization_id
+            ...         tenant_id = mapping.entity_id
         """
         if _is_platform_context():
             # Direct database access (platform mode)
@@ -360,23 +367,28 @@ class integrations:
                     return None
 
                 # Get all mappings for this integration
-                mappings = await repo.list_mappings(integration.id)
+                orm_mappings = await repo.list_mappings(integration.id)
 
                 logger.debug(
-                    f"integrations.list_mappings('{name}'): found {len(mappings)} mappings"
+                    f"integrations.list_mappings('{name}'): found {len(orm_mappings)} mappings"
                 )
 
-                # Convert to response format
-                result = []
-                for mapping in mappings:
+                # Convert to IntegrationMappingResponse models
+                result: list[IntegrationMappingResponse] = []
+                for orm_mapping in orm_mappings:
                     # Get merged config for each mapping
-                    config = await repo.get_config_for_mapping(integration.id, mapping.organization_id)
-                    result.append({
-                        "organization_id": str(mapping.organization_id),
-                        "entity_id": mapping.entity_id,
-                        "entity_name": mapping.entity_name,
-                        "config": config,
-                    })
+                    mapping_config = await repo.get_config_for_mapping(integration.id, orm_mapping.organization_id)
+                    result.append(IntegrationMappingResponse(
+                        id=orm_mapping.id,
+                        integration_id=orm_mapping.integration_id,
+                        organization_id=orm_mapping.organization_id,
+                        entity_id=orm_mapping.entity_id,
+                        entity_name=orm_mapping.entity_name,
+                        oauth_token_id=orm_mapping.oauth_token_id,
+                        config=mapping_config,
+                        created_at=orm_mapping.created_at,
+                        updated_at=orm_mapping.updated_at,
+                    ))
                 return result
         else:
             # API call (external mode)
@@ -387,14 +399,16 @@ class integrations:
             )
 
             if response.status_code == 200:
-                result = response.json()
-                if result is None:
+                json_result = response.json()
+                if json_result is None:
                     return None
-                # Convert UUIDs to strings for consistency
-                for mapping in result:
-                    if isinstance(mapping.get("organization_id"), dict):
-                        mapping["organization_id"] = str(mapping.get("organization_id"))
-                return result
+                # API returns {"items": [...]} structure
+                items = json_result.get("items", [])
+                # Convert to IntegrationMappingResponse models
+                sdk_mappings: list[IntegrationMappingResponse] = []
+                for mapping_data in items:
+                    sdk_mappings.append(IntegrationMappingResponse(**mapping_data))
+                return sdk_mappings
             else:
                 logger.warning(f"Integrations API call failed: {response.status_code}")
                 return None

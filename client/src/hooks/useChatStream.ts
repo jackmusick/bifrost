@@ -148,7 +148,14 @@ export function useChatStream({
 							queryKey: [
 								"get",
 								"/api/chat/conversations/{conversation_id}",
-								{ params: { path: { conversation_id: data.conversation_id } } },
+								{
+									params: {
+										path: {
+											conversation_id:
+												data.conversation_id,
+										},
+									},
+								},
 							],
 						});
 					}
@@ -182,7 +189,8 @@ export function useChatStream({
 
 					case "tool_progress":
 						if (chunk.tool_progress) {
-							const { tool_call_id, execution_id, status, log } = chunk.tool_progress;
+							const { tool_call_id, execution_id, status, log } =
+								chunk.tool_progress;
 							// Set execution_id if provided (needed for log streaming subscription)
 							if (execution_id) {
 								setToolExecutionId(tool_call_id, execution_id);
@@ -210,16 +218,25 @@ export function useChatStream({
 						// Add completed message to local cache BEFORE clearing streaming
 						// This prevents the message from disappearing during the API refetch
 						const convId = currentConversationIdRef.current;
-						const streamState = useChatStore.getState().streamingMessage;
+						const streamState =
+							useChatStore.getState().streamingMessage;
 
 						if (convId && streamState) {
 							// Save tool executions for persistence (so they show after streaming ends)
-							if (Object.keys(streamState.toolExecutions).length > 0) {
-								saveToolExecutions(convId, streamState.toolExecutions);
+							if (
+								Object.keys(streamState.toolExecutions).length >
+								0
+							) {
+								saveToolExecutions(
+									convId,
+									streamState.toolExecutions,
+								);
 							}
 
 							const completedMessage: MessagePublic = {
-								id: chunk.message_id || `completed-${Date.now()}`,
+								id:
+									chunk.message_id ||
+									`completed-${Date.now()}`,
 								conversation_id: convId,
 								role: "assistant",
 								content: streamState.content || "",
@@ -229,8 +246,10 @@ export function useChatStream({
 										: undefined,
 								sequence: Date.now(),
 								created_at: new Date().toISOString(),
-								token_count_input: chunk.token_count_input ?? undefined,
-								token_count_output: chunk.token_count_output ?? undefined,
+								token_count_input:
+									chunk.token_count_input ?? undefined,
+								token_count_output:
+									chunk.token_count_output ?? undefined,
 								duration_ms: chunk.duration_ms ?? undefined,
 							};
 							addMessage(convId, completedMessage);
@@ -244,7 +263,11 @@ export function useChatStream({
 								queryKey: [
 									"get",
 									"/api/chat/conversations/{conversation_id}/messages",
-									{ params: { path: { conversation_id: convId } } },
+									{
+										params: {
+											path: { conversation_id: convId },
+										},
+									},
 								],
 							});
 							queryClient.invalidateQueries({
@@ -267,7 +290,10 @@ export function useChatStream({
 									timestamp: new Date().toISOString(),
 									agentName: chunk.agent_switch.agent_name,
 									agentId: chunk.agent_switch.agent_id,
-									reason: chunk.agent_switch.reason === "@mention" ? "@mention" : "routed",
+									reason:
+										chunk.agent_switch.reason === "@mention"
+											? "@mention"
+											: "routed",
 								});
 							}
 						}
@@ -275,7 +301,8 @@ export function useChatStream({
 					}
 
 					case "error": {
-						const errorMsg = chunk.error || "Unknown error occurred";
+						const errorMsg =
+							chunk.error || "Unknown error occurred";
 						setStreamError(errorMsg);
 						onError?.(errorMsg);
 
@@ -435,7 +462,10 @@ export function useChatStream({
 					};
 
 					ws.onerror = (error) => {
-						console.error("[useChatStream] WebSocket error:", error);
+						console.error(
+							"[useChatStream] WebSocket error:",
+							error,
+						);
 						setConnected(false);
 						setStreamError("Connection error");
 					};

@@ -16,6 +16,7 @@ import {
 	MessageSquare,
 	Bot,
 	Plug,
+	DollarSign,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useAuth } from "@/contexts/AuthContext";
@@ -143,6 +144,18 @@ const navSections: NavSection[] = [
 		],
 	},
 	{
+		title: "Reports",
+		requiresPlatformAdmin: true,
+		items: [
+			{
+				title: "ROI",
+				href: "/reports/roi",
+				icon: DollarSign,
+				requiresPlatformAdmin: true,
+			},
+		],
+	},
+	{
 		title: "Resources",
 		requiresPlatformAdmin: true,
 		items: [
@@ -232,7 +245,9 @@ export function Sidebar({
 										<NavLink
 											to={item.href}
 											title={
-												isCollapsed ? item.title : undefined
+												isCollapsed
+													? item.title
+													: undefined
 											}
 											className={({ isActive }) =>
 												cn(
@@ -303,7 +318,9 @@ export function Sidebar({
 												<NavLink
 													to={item.href}
 													onClick={() =>
-														setIsMobileMenuOpen(false)
+														setIsMobileMenuOpen(
+															false,
+														)
 													}
 													className={({ isActive }) =>
 														cn(

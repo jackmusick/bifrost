@@ -7,7 +7,7 @@ All SDK methods are async and must be awaited.
 
 Usage:
     from bifrost import organizations, workflows, files, forms, executions, roles
-    from bifrost import config, oauth
+    from bifrost import config, integrations
 
 Example:
     # Create an organization
@@ -15,6 +15,8 @@ Example:
 
     # List workflows
     wf_list = await workflows.list()
+    for wf in wf_list:
+        print(wf.name, wf.description)
 
     # Local filesystem operations
     files.write("data/temp.txt", "content", location="temp")
@@ -22,6 +24,8 @@ Example:
 
     # List executions
     recent = await executions.list(limit=10)
+    for execution in recent:
+        print(f"{execution.workflow_name}: {execution.status}")
 
     # Create a role
     role = await roles.create("Manager", permissions=["users.read", "users.write"])
@@ -29,9 +33,14 @@ Example:
     # Manage configuration
     await config.set("api_url", "https://api.example.com")
     url = await config.get("api_url")
+    cfg = await config.list()
+    print(cfg.api_url)  # Dot notation access
 
-    # Get OAuth tokens (for secrets, use config with is_secret=True)
-    conn = await oauth.get("microsoft")
+    # Get integration with OAuth tokens
+    integration = await integrations.get("HaloPSA")
+    if integration and integration.oauth:
+        client_id = integration.oauth.client_id
+        refresh_token = integration.oauth.refresh_token
 """
 
 from dataclasses import dataclass
@@ -41,7 +50,6 @@ from .executions import executions
 from .files import files
 from .forms import forms
 from .integrations import integrations
-from .oauth import oauth
 from .organizations import organizations
 from .roles import roles
 from .workflows import workflows
@@ -61,6 +69,18 @@ from src.models import (
     Form,
 )
 
+# SDK Response Models (for typed return values)
+from src.models.contracts.sdk import (
+    ConfigData,
+    IntegrationData,
+    OAuthCredentials as SDKOAuthCredentials,
+)
+# Use existing contract models
+from src.models.contracts.executions import WorkflowExecution, ExecutionLogPublic
+from src.models.contracts.forms import FormPublic
+from src.models.contracts.workflows import WorkflowMetadata
+from src.models.contracts.integrations import IntegrationMappingResponse
+
 # For backwards compatibility with type stubs
 @dataclass
 class Caller:
@@ -70,6 +90,7 @@ class Caller:
     name: str
 
 __all__ = [
+    # SDK Modules
     'organizations',
     'workflows',
     'files',
@@ -77,21 +98,35 @@ __all__ = [
     'executions',
     'roles',
     'config',
-    'oauth',
     'integrations',
+    # Decorators
     'workflow',
     'data_provider',
+    # Context
     'context',
     'ExecutionContext',
     'Organization',
     'Caller',
+    # Enums
     'ExecutionStatus',
-    'OAuthCredentials',
     'ConfigType',
     'FormFieldType',
     'IntegrationType',
+    # ORM Models (for type hints)
+    'OAuthCredentials',
     'Role',
     'Form',
+    # SDK Response Models
+    'ConfigData',
+    'IntegrationData',
+    'SDKOAuthCredentials',
+    # Contract Models (reused from API contracts)
+    'WorkflowExecution',
+    'ExecutionLogPublic',
+    'FormPublic',
+    'WorkflowMetadata',
+    'IntegrationMappingResponse',
+    # Errors
     'UserError',
     'WorkflowError',
     'ValidationError',

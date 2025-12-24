@@ -7,7 +7,7 @@ Represents execution metrics and platform metrics snapshots.
 from datetime import datetime
 from uuid import UUID
 
-from sqlalchemy import BigInteger, Date, DateTime, Float, ForeignKey, Index, Integer, UniqueConstraint, text
+from sqlalchemy import BigInteger, Date, DateTime, Float, ForeignKey, Index, Integer, Numeric, UniqueConstraint, text
 from sqlalchemy.orm import Mapped, mapped_column
 
 from src.models.orm.base import Base
@@ -46,6 +46,10 @@ class ExecutionMetricsDaily(Base):
     peak_memory_bytes: Mapped[int] = mapped_column(BigInteger, default=0)
     total_cpu_seconds: Mapped[float] = mapped_column(Float, default=0.0)
     peak_cpu_seconds: Mapped[float] = mapped_column(Float, default=0.0)
+
+    # Economics aggregates
+    total_time_saved: Mapped[int] = mapped_column(BigInteger, default=0)
+    total_value: Mapped[float] = mapped_column(Numeric(12, 2), default=0)
 
     # Timestamps
     created_at: Mapped[datetime] = mapped_column(
@@ -116,7 +120,61 @@ class PlatformMetricsSnapshot(Base):
     success_rate_all_time: Mapped[float] = mapped_column(Float, default=0.0)
     success_rate_24h: Mapped[float] = mapped_column(Float, default=0.0)
 
+    # Economics (last 24 hours)
+    time_saved_24h: Mapped[int] = mapped_column(BigInteger, default=0)
+    value_24h: Mapped[float] = mapped_column(Numeric(12, 2), default=0)
+
+    # Economics (all time)
+    time_saved_all_time: Mapped[int] = mapped_column(BigInteger, default=0)
+    value_all_time: Mapped[float] = mapped_column(Numeric(12, 2), default=0)
+
     # Timestamp
     refreshed_at: Mapped[datetime] = mapped_column(
         DateTime, default=datetime.utcnow, server_default=text("NOW()")
+    )
+
+
+class WorkflowROIDaily(Base):
+    """
+    Daily aggregated ROI metrics per workflow per organization.
+
+    Populated by the consumer on each execution completion.
+    Used for per-workflow value reporting.
+    """
+
+    __tablename__ = "workflow_roi_daily"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    date: Mapped[datetime] = mapped_column(Date, nullable=False)
+    workflow_id: Mapped[UUID] = mapped_column(
+        ForeignKey("workflows.id", ondelete="CASCADE"), nullable=False
+    )
+    organization_id: Mapped[UUID | None] = mapped_column(
+        ForeignKey("organizations.id", ondelete="CASCADE"), nullable=True
+    )
+
+    # Execution counts
+    execution_count: Mapped[int] = mapped_column(Integer, default=0)
+    success_count: Mapped[int] = mapped_column(Integer, default=0)
+
+    # Economics aggregates
+    total_time_saved: Mapped[int] = mapped_column(BigInteger, default=0)
+    total_value: Mapped[float] = mapped_column(Numeric(12, 2), default=0)
+
+    # Timestamps
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime, default=datetime.utcnow, server_default=text("NOW()")
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime,
+        default=datetime.utcnow,
+        server_default=text("NOW()"),
+        onupdate=datetime.utcnow,
+    )
+
+    __table_args__ = (
+        UniqueConstraint("date", "workflow_id", "organization_id", name="uq_workflow_roi_daily"),
+        Index("ix_workflow_roi_daily_date", "date"),
+        Index("ix_workflow_roi_daily_workflow", "workflow_id"),
+        Index("ix_workflow_roi_daily_org", "organization_id"),
     )

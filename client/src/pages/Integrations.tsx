@@ -55,9 +55,8 @@ export function Integrations() {
 		string | undefined
 	>();
 	const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
-	const [integrationToDelete, setIntegrationToDelete] = useState<
-		Integration | null
-	>(null);
+	const [integrationToDelete, setIntegrationToDelete] =
+		useState<Integration | null>(null);
 	const [searchTerm, setSearchTerm] = useState("");
 
 	const { data, isLoading, refetch } = useIntegrations();
@@ -129,8 +128,8 @@ export function Integrations() {
 							Integrations
 						</h1>
 						<p className="mt-2 text-muted-foreground">
-							Configure integrations and map organizations to external
-							entities
+							Configure integrations and map organizations to
+							external entities
 						</p>
 						<p className="mt-1 text-sm text-muted-foreground">
 							Set up OAuth providers, data providers, and
@@ -167,7 +166,9 @@ export function Integrations() {
 				<Card>
 					<CardHeader className="pb-2">
 						<CardDescription>Total Integrations</CardDescription>
-						<CardTitle className="text-3xl">{stats.total}</CardTitle>
+						<CardTitle className="text-3xl">
+							{stats.total}
+						</CardTitle>
 					</CardHeader>
 				</Card>
 				<Card>
@@ -187,7 +188,9 @@ export function Integrations() {
 						<CardDescription>With Data Provider</CardDescription>
 						<CardTitle
 							className={`text-3xl ${
-								stats.withDataProvider > 0 ? "text-green-600" : ""
+								stats.withDataProvider > 0
+									? "text-green-600"
+									: ""
 							}`}
 						>
 							{stats.withDataProvider}
@@ -205,7 +208,9 @@ export function Integrations() {
 							<CardDescription>
 								{filteredIntegrations.length > 0
 									? `Showing ${filteredIntegrations.length} integration${
-											filteredIntegrations.length !== 1 ? "s" : ""
+											filteredIntegrations.length !== 1
+												? "s"
+												: ""
 										}`
 									: searchTerm
 										? "No integrations match your search"
@@ -284,9 +289,7 @@ export function Integrations() {
 														.slice(0, 2)
 														.map((field) => (
 															<Badge
-																key={
-																	field.key
-																}
+																key={field.key}
 																variant="secondary"
 																className="text-xs"
 															>
@@ -314,9 +317,7 @@ export function Integrations() {
 										</DataTableCell>
 										<DataTableCell
 											className="text-right"
-											onClick={(e) =>
-												e.stopPropagation()
-											}
+											onClick={(e) => e.stopPropagation()}
 										>
 											<div className="flex gap-1 justify-end">
 												<Button
@@ -406,8 +407,9 @@ export function Integrations() {
 								?
 							</p>
 							<p className="text-sm text-destructive">
-								This will also delete all organization mappings for
-								this integration. This action cannot be undone.
+								This will also delete all organization mappings
+								for this integration. This action cannot be
+								undone.
 							</p>
 						</AlertDialogDescription>
 					</AlertDialogHeader>

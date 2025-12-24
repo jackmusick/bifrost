@@ -8,7 +8,6 @@ Tests OAuth configuration and authorization endpoints.
 import pytest
 import pytest_asyncio
 from uuid import uuid4
-from sqlalchemy import select
 from src.models.orm import OAuthProvider
 
 

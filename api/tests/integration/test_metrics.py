@@ -80,6 +80,8 @@ class TestDailyMetricsUpsert:
             duration_ms=1000,
             peak_memory_bytes=100_000_000,
             cpu_total_seconds=0.5,
+            time_saved=0,
+            value=0.0,
         )
         await db_session.commit()
 
@@ -92,6 +94,8 @@ class TestDailyMetricsUpsert:
             duration_ms=2000,
             peak_memory_bytes=200_000_000,
             cpu_total_seconds=1.0,
+            time_saved=0,
+            value=0.0,
         )
         await db_session.commit()
 
@@ -104,6 +108,8 @@ class TestDailyMetricsUpsert:
             duration_ms=500,
             peak_memory_bytes=50_000_000,
             cpu_total_seconds=0.2,
+            time_saved=0,
+            value=0.0,
         )
         await db_session.commit()
 
@@ -154,6 +160,8 @@ class TestDailyMetricsUpsert:
             duration_ms=1500,
             peak_memory_bytes=150_000_000,
             cpu_total_seconds=0.8,
+            time_saved=0,
+            value=0.0,
         )
         await db_session.commit()
 
@@ -166,6 +174,8 @@ class TestDailyMetricsUpsert:
             duration_ms=30000,
             peak_memory_bytes=500_000_000,
             cpu_total_seconds=5.0,
+            time_saved=0,
+            value=0.0,
         )
         await db_session.commit()
 
@@ -214,6 +224,8 @@ class TestDailyMetricsUpsert:
             duration_ms=1000,
             peak_memory_bytes=100_000_000,
             cpu_total_seconds=0.5,
+            time_saved=0,
+            value=0.0,
         )
         await db_session.commit()
 
@@ -226,6 +238,8 @@ class TestDailyMetricsUpsert:
             duration_ms=1000,
             peak_memory_bytes=100_000_000,
             cpu_total_seconds=0.5,
+            time_saved=0,
+            value=0.0,
         )
         await db_session.commit()
 
@@ -268,6 +282,8 @@ class TestDailyMetricsUpsert:
             duration_ms=1000,
             peak_memory_bytes=None,
             cpu_total_seconds=None,
+            time_saved=0,
+            value=0.0,
         )
         await db_session.commit()
 
@@ -279,6 +295,8 @@ class TestDailyMetricsUpsert:
             duration_ms=2000,
             peak_memory_bytes=None,
             cpu_total_seconds=None,
+            time_saved=0,
+            value=0.0,
         )
         await db_session.commit()
 
@@ -290,6 +308,8 @@ class TestDailyMetricsUpsert:
             duration_ms=3000,
             peak_memory_bytes=None,
             cpu_total_seconds=None,
+            time_saved=0,
+            value=0.0,
         )
         await db_session.commit()
 

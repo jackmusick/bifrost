@@ -97,7 +97,9 @@ export function Maintenance() {
 		} catch (err) {
 			toast.error("Reindex failed", {
 				description:
-					err instanceof Error ? err.message : "Unknown error occurred",
+					err instanceof Error
+						? err.message
+						: "Unknown error occurred",
 			});
 		} finally {
 			setIsRunning(false);
@@ -152,8 +154,10 @@ export function Maintenance() {
 										<AlertTriangle className="h-5 w-5" />
 										<span className="font-medium">
 											{filesNeedingIds.length} file
-											{filesNeedingIds.length !== 1 ? "s" : ""} need
-											indexing
+											{filesNeedingIds.length !== 1
+												? "s"
+												: ""}{" "}
+											need indexing
 										</span>
 									</div>
 								) : (
@@ -165,7 +169,8 @@ export function Maintenance() {
 									</div>
 								)}
 								<Badge variant="secondary">
-									{totalFiles} total file{totalFiles !== 1 ? "s" : ""}
+									{totalFiles} total file
+									{totalFiles !== 1 ? "s" : ""}
 								</Badge>
 							</div>
 
@@ -183,7 +188,9 @@ export function Maintenance() {
 													className="flex items-center gap-2"
 												>
 													<FileCode className="h-4 w-4 text-muted-foreground flex-shrink-0" />
-													<span className="truncate">{file}</span>
+													<span className="truncate">
+														{file}
+													</span>
 												</li>
 											))}
 										</ul>
@@ -208,13 +215,16 @@ export function Maintenance() {
 					<div className="flex items-start gap-3 rounded-lg border border-blue-200 bg-blue-50 p-4 dark:border-blue-900 dark:bg-blue-950">
 						<AlertCircle className="h-5 w-5 text-blue-600 dark:text-blue-400 flex-shrink-0 mt-0.5" />
 						<div className="text-sm text-blue-800 dark:text-blue-200">
-							<p className="font-medium mb-1">About ID Injection</p>
+							<p className="font-medium mb-1">
+								About ID Injection
+							</p>
 							<p className="text-blue-700 dark:text-blue-300">
-								Workflow, tool, and data provider decorators need
-								unique IDs for proper tracking. Running "Inject IDs"
-								will add UUIDs to any decorators that are missing
-								them. This is a safe, non-destructive operation that
-								preserves your code formatting.
+								Workflow, tool, and data provider decorators
+								need unique IDs for proper tracking. Running
+								"Inject IDs" will add UUIDs to any decorators
+								that are missing them. This is a safe,
+								non-destructive operation that preserves your
+								code formatting.
 							</p>
 						</div>
 					</div>
@@ -250,8 +260,8 @@ export function Maintenance() {
 					{/* Button descriptions */}
 					<div className="text-xs text-muted-foreground space-y-1">
 						<p>
-							<strong>Scan Only:</strong> Check which files need IDs
-							without making changes
+							<strong>Scan Only:</strong> Check which files need
+							IDs without making changes
 						</p>
 						<p>
 							<strong>Inject IDs:</strong> Add missing IDs to

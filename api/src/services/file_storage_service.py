@@ -1064,6 +1064,8 @@ class FileStorageService:
                     execution_mode = kwargs.get("execution_mode", "sync")
                     is_tool = kwargs.get("is_tool", False)
                     tool_description = kwargs.get("tool_description")
+                    time_saved = kwargs.get("time_saved", 0)
+                    value = kwargs.get("value", 0.0)
 
                     # Extract parameters from function signature
                     parameters_schema = self._extract_parameters_from_ast(node)
@@ -1086,6 +1088,8 @@ class FileStorageService:
                         execution_mode=execution_mode,
                         is_tool=is_tool,
                         tool_description=tool_description,
+                        time_saved=time_saved,
+                        value=value,
                         is_active=True,
                         last_seen_at=now,
                     ).on_conflict_do_update(
@@ -1102,6 +1106,8 @@ class FileStorageService:
                             "execution_mode": execution_mode,
                             "is_tool": is_tool,
                             "tool_description": tool_description,
+                            "time_saved": time_saved,
+                            "value": value,
                             "is_active": True,
                             "last_seen_at": now,
                             "updated_at": now,

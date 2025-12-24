@@ -199,33 +199,6 @@ class CLIConfigValue(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
 
-# ==================== CLI OAUTH OPERATIONS ====================
-
-
-class CLIOAuthGetRequest(BaseModel):
-    """Request to get OAuth connection data via CLI."""
-    provider: str = Field(..., description="OAuth provider/connection name")
-    org_id: str | None = Field(
-        default=None, description="Organization ID (optional, uses context default)")
-
-    model_config = ConfigDict(from_attributes=True)
-
-
-class CLIOAuthGetResponse(BaseModel):
-    """OAuth connection data response from CLI."""
-    connection_name: str = Field(..., description="Connection/provider name")
-    client_id: str = Field(..., description="OAuth client ID")
-    client_secret: str | None = Field(None, description="OAuth client secret (decrypted)")
-    authorization_url: str | None = Field(None, description="OAuth authorization URL")
-    token_url: str | None = Field(None, description="OAuth token URL")
-    scopes: list[str] = Field(default_factory=list, description="OAuth scopes")
-    access_token: str | None = Field(None, description="Current access token (decrypted)")
-    refresh_token: str | None = Field(None, description="Refresh token (decrypted)")
-    expires_at: str | None = Field(None, description="Token expiration (ISO format)")
-
-    model_config = ConfigDict(from_attributes=True)
-
-
 # ==================== SDK INTEGRATIONS MODELS ====================
 
 

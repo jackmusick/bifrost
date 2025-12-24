@@ -113,6 +113,11 @@ const Workbench = lazy(() =>
 const Chat = lazy(() =>
 	import("@/pages/Chat").then((m) => ({ default: m.Chat })),
 );
+const ROIReports = lazy(() =>
+	import("@/pages/ROIReports").then((m) => ({
+		default: m.ROIReports,
+	})),
+);
 
 function AppRoutes() {
 	const { brandingLoaded } = useOrgScope();
@@ -359,6 +364,16 @@ function AppRoutes() {
 							element={
 								<ProtectedRoute requirePlatformAdmin>
 									<SystemLogs />
+								</ProtectedRoute>
+							}
+						/>
+
+						{/* Reports - PlatformAdmin only */}
+						<Route
+							path="reports/roi"
+							element={
+								<ProtectedRoute requirePlatformAdmin>
+									<ROIReports />
 								</ProtectedRoute>
 							}
 						/>

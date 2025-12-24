@@ -16,6 +16,8 @@ import json as json_module
 import logging
 from typing import Any
 
+from src.models.contracts.sdk import ConfigData
+
 from ._context import _execution_context
 
 logger = logging.getLogger(__name__)
@@ -208,7 +210,7 @@ class config:
             response.raise_for_status()
 
     @staticmethod
-    async def list(org_id: str | None = None) -> dict[str, Any]:
+    async def list(org_id: str | None = None) -> ConfigData:
         """
         List configuration key-value pairs.
 
@@ -218,16 +220,21 @@ class config:
             org_id: Organization ID (optional, defaults to current org)
 
         Returns:
-            dict[str, Any]: Configuration key-value pairs
+            ConfigData: Configuration data with dot-notation and dict-like access:
+                >>> cfg = await config.list()
+                >>> cfg.api_url        # Dot notation access
+                >>> cfg["api_url"]     # Dict-like access
+                >>> "api_url" in cfg   # Containment check
+                >>> cfg.keys()         # Iterate keys
 
         Raises:
             RuntimeError: If no execution context (in platform mode)
 
         Example:
             >>> from bifrost import config
-            >>> org_config = await config.list()
-            >>> for key, value in org_config.items():
-            ...     print(f"{key}: {value}")
+            >>> cfg = await config.list()
+            >>> api_url = cfg.api_url
+            >>> timeout = cfg.timeout or 30
         """
         if _is_platform_context():
             # Direct Redis access (platform mode)
@@ -241,7 +248,7 @@ class config:
                 all_data = await r.hgetall(config_hash_key(target_org_id))  # type: ignore[misc]
 
                 if not all_data:
-                    return {}
+                    return ConfigData({})
 
                 config_dict: dict[str, Any] = {}
                 for config_key, data in all_data.items():
@@ -271,7 +278,7 @@ class config:
                     else:
                         config_dict[config_key] = raw_value
 
-                return config_dict
+                return ConfigData(config_dict)
         else:
             # API call (external mode)
             client = _get_client()
@@ -280,7 +287,7 @@ class config:
                 json={"org_id": org_id}
             )
             response.raise_for_status()
-            return response.json()
+            return ConfigData(response.json())
 
     @staticmethod
     async def delete(key: str, org_id: str | None = None) -> bool:

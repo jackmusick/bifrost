@@ -10,7 +10,6 @@ This migration merges the parallel development branches:
 """
 from typing import Sequence, Union
 
-from alembic import op
 
 
 # revision identifiers, used by Alembic.

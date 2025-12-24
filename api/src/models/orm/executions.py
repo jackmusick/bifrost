@@ -8,7 +8,7 @@ from datetime import datetime
 from typing import TYPE_CHECKING
 from uuid import UUID, uuid4
 
-from sqlalchemy import BigInteger, Boolean, DateTime, Enum as SQLAlchemyEnum, Float, ForeignKey, Index, Integer, String, Text, text
+from sqlalchemy import BigInteger, Boolean, DateTime, Enum as SQLAlchemyEnum, Float, ForeignKey, Index, Integer, Numeric, String, Text, text
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -54,6 +54,10 @@ class Execution(Base):
     cpu_user_seconds: Mapped[float | None] = mapped_column(Float, default=None)
     cpu_system_seconds: Mapped[float | None] = mapped_column(Float, default=None)
     cpu_total_seconds: Mapped[float | None] = mapped_column(Float, default=None)
+
+    # Economics - final values for this execution
+    time_saved: Mapped[int] = mapped_column(Integer, default=0)  # Minutes saved
+    value: Mapped[float] = mapped_column(Numeric(10, 2), default=0)  # Value generated
 
     executed_by: Mapped[UUID] = mapped_column(ForeignKey("users.id"))
     executed_by_name: Mapped[str] = mapped_column(String(255))

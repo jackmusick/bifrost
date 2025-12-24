@@ -120,7 +120,10 @@ export function useAutoSave() {
 						);
 
 						// Update editor with indexed content
-						if (indexResponse.content_modified && indexResponse.content) {
+						if (
+							indexResponse.content_modified &&
+							indexResponse.content
+						) {
 							updateTabContent(
 								activeTabIndex,
 								indexResponse.content,
@@ -195,7 +198,11 @@ export function useAutoSave() {
 
 			// If server modified content, update editor buffer
 			if (response.content_modified && response.content) {
-				updateTabContent(activeTabIndex, response.content, response.etag);
+				updateTabContent(
+					activeTabIndex,
+					response.content,
+					response.etag,
+				);
 			} else {
 				// Update tab with new etag
 				const state = useEditorStore.getState();
@@ -234,7 +241,10 @@ export function useAutoSave() {
 					);
 
 					// Update editor with indexed content
-					if (indexResponse.content_modified && indexResponse.content) {
+					if (
+						indexResponse.content_modified &&
+						indexResponse.content
+					) {
 						updateTabContent(
 							activeTabIndex,
 							indexResponse.content,

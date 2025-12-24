@@ -239,7 +239,9 @@ export function Config() {
 										<DataTableHead>Key</DataTableHead>
 										<DataTableHead>Value</DataTableHead>
 										<DataTableHead>Type</DataTableHead>
-										<DataTableHead>Description</DataTableHead>
+										<DataTableHead>
+											Description
+										</DataTableHead>
 										<DataTableHead className="text-right">
 											Actions
 										</DataTableHead>

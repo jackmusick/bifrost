@@ -20,7 +20,7 @@ from src.models.contracts.integrations import (
     IntegrationMappingResponse,
     IntegrationListResponse,
     IntegrationMappingListResponse,
-    IntegrationData,
+    IntegrationSDKResponse,
 )
 
 
@@ -39,7 +39,6 @@ class TestConfigSchemaItem:
         assert item.type == "secret"
         assert item.required is True
         assert item.description == "API Key for authentication"
-        assert item.default is None
         assert item.options is None
 
     def test_config_schema_item_minimal(self):
@@ -48,20 +47,8 @@ class TestConfigSchemaItem:
         assert item.key == "setting1"
         assert item.type == "string"
         assert item.required is False
-        assert item.default is None
         assert item.description is None
         assert item.options is None
-
-    def test_config_schema_item_with_default(self):
-        """Test config schema item with default value."""
-        item = ConfigSchemaItem(
-            key="timeout",
-            type="int",
-            default=30,
-        )
-        assert item.key == "timeout"
-        assert item.type == "int"
-        assert item.default == 30
 
     def test_config_schema_item_with_options(self):
         """Test config schema item with dropdown options."""
@@ -130,32 +117,33 @@ class TestIntegrationCreate:
         """Test creating integration with only required fields."""
         data = IntegrationCreate(name="Test Integration")
         assert data.name == "Test Integration"
-        assert data.oauth_provider_id is None
-        assert data.list_entities_data_provider_id is None
         assert data.config_schema is None
+        assert data.entity_id is None
+        assert data.entity_id_name is None
+        assert data.default_entity_id is None
 
     def test_integration_create_full(self):
         """Test creating integration with all fields."""
-        oauth_id = uuid4()
-        data_provider_id = uuid4()
         schema = [
             ConfigSchemaItem(key="api_key", type="secret", required=True),
-            ConfigSchemaItem(key="timeout", type="int", default=30),
+            ConfigSchemaItem(key="timeout", type="int", required=False),
         ]
 
         data = IntegrationCreate(
             name="Full Integration",
-            oauth_provider_id=oauth_id,
-            list_entities_data_provider_id=data_provider_id,
             config_schema=schema,
+            entity_id="tenant-123",
+            entity_id_name="Tenant ID",
+            default_entity_id="common",
         )
 
         assert data.name == "Full Integration"
-        assert data.oauth_provider_id == oauth_id
-        assert data.list_entities_data_provider_id == data_provider_id
         assert data.config_schema is not None
         assert len(data.config_schema) == 2
         assert data.config_schema[0].key == "api_key"
+        assert data.entity_id == "tenant-123"
+        assert data.entity_id_name == "Tenant ID"
+        assert data.default_entity_id == "common"
 
     def test_integration_create_invalid_name_empty(self):
         """Test creating integration with empty name."""
@@ -209,15 +197,17 @@ class TestIntegrationUpdate:
         """Test update with no fields (all optional)."""
         data = IntegrationUpdate(name=None)
         assert data.name is None
-        assert data.oauth_provider_id is None
         assert data.list_entities_data_provider_id is None
         assert data.config_schema is None
+        assert data.entity_id is None
+        assert data.entity_id_name is None
+        assert data.default_entity_id is None
 
     def test_integration_update_name_only(self):
         """Test update with only name."""
         data = IntegrationUpdate(name="Updated Name")
         assert data.name == "Updated Name"
-        assert data.oauth_provider_id is None
+        assert data.list_entities_data_provider_id is None
 
     def test_integration_update_config_schema_only(self):
         """Test update with only config schema."""
@@ -369,16 +359,18 @@ class TestIntegrationResponse:
         """Test valid integration response."""
         now = datetime.utcnow()
         integration_id = uuid4()
-        oauth_id = uuid4()
 
         response = IntegrationResponse(
             id=integration_id,
             name="Test Integration",
-            oauth_provider_id=oauth_id,
             list_entities_data_provider_id=None,
             config_schema=[
                 ConfigSchemaItem(key="api_key", type="secret", required=True)
             ],
+            entity_id="tenant-123",
+            entity_id_name="Tenant ID",
+            default_entity_id="common",
+            has_oauth_config=True,
             is_deleted=False,
             created_at=now,
             updated_at=now,
@@ -386,7 +378,10 @@ class TestIntegrationResponse:
 
         assert response.id == integration_id
         assert response.name == "Test Integration"
-        assert response.oauth_provider_id == oauth_id
+        assert response.entity_id == "tenant-123"
+        assert response.entity_id_name == "Tenant ID"
+        assert response.default_entity_id == "common"
+        assert response.has_oauth_config is True
         assert response.is_deleted is False
         assert response.config_schema is not None
         assert len(response.config_schema) == 1
@@ -520,13 +515,13 @@ class TestIntegrationMappingListResponse:
         assert response.total == 0
 
 
-class TestIntegrationData:
-    """Tests for IntegrationData model (SDK response)."""
+class TestIntegrationSDKResponse:
+    """Tests for IntegrationSDKResponse model (SDK response)."""
 
     def test_integration_data_valid(self):
         """Test valid integration data."""
         integration_id = uuid4()
-        data = IntegrationData(
+        data = IntegrationSDKResponse(
             integration_id=integration_id,
             entity_id="tenant-123",
             entity_name="Test Tenant",
@@ -548,7 +543,7 @@ class TestIntegrationData:
     def test_integration_data_minimal(self):
         """Test integration data with minimal fields."""
         integration_id = uuid4()
-        data = IntegrationData(
+        data = IntegrationSDKResponse(
             integration_id=integration_id,
             entity_id="tenant-123",
         )
@@ -563,7 +558,7 @@ class TestIntegrationData:
 
     def test_integration_data_default_config(self):
         """Test that config defaults to empty dict."""
-        data = IntegrationData(
+        data = IntegrationSDKResponse(
             integration_id=uuid4(),
             entity_id="entity-1",
         )
@@ -573,7 +568,7 @@ class TestIntegrationData:
     def test_integration_data_missing_integration_id(self):
         """Test that integration_id is required and cannot be None."""
         with pytest.raises(ValidationError) as exc_info:
-            IntegrationData(integration_id=None, entity_id="entity-1")  # type: ignore
+            IntegrationSDKResponse(integration_id=None, entity_id="entity-1")  # type: ignore
         errors = exc_info.value.errors()
         # Passing None to a UUID field raises uuid_type error
         assert any(
@@ -584,7 +579,7 @@ class TestIntegrationData:
     def test_integration_data_missing_entity_id(self):
         """Test that entity_id is required and cannot be None."""
         with pytest.raises(ValidationError) as exc_info:
-            IntegrationData(integration_id=uuid4(), entity_id=None)  # type: ignore
+            IntegrationSDKResponse(integration_id=uuid4(), entity_id=None)  # type: ignore
         errors = exc_info.value.errors()
         # Passing None to a str field raises string_type error
         assert any(
@@ -594,7 +589,7 @@ class TestIntegrationData:
 
     def test_integration_data_with_oauth_fields(self):
         """Test integration data with OAuth configuration."""
-        data = IntegrationData(
+        data = IntegrationSDKResponse(
             integration_id=uuid4(),
             entity_id="tenant-123",
             oauth_client_id="client-123",

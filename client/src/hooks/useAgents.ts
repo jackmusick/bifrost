@@ -94,8 +94,8 @@ export function useUpdateAgent() {
 
 	return $api.useMutation("put", "/api/agents/{agent_id}", {
 		onSuccess: (_data, variables) => {
-			const agentId = (variables.params as { path: { agent_id: string } }).path
-				.agent_id;
+			const agentId = (variables.params as { path: { agent_id: string } })
+				.path.agent_id;
 			queryClient.invalidateQueries({ queryKey: ["get", "/api/agents"] });
 			queryClient.invalidateQueries({
 				queryKey: [
@@ -137,8 +137,8 @@ export function useAssignAgentTools() {
 
 	return $api.useMutation("post", "/api/agents/{agent_id}/tools", {
 		onSuccess: (_data, variables) => {
-			const agentId = (variables.params as { path: { agent_id: string } }).path
-				.agent_id;
+			const agentId = (variables.params as { path: { agent_id: string } })
+				.path.agent_id;
 			queryClient.invalidateQueries({
 				queryKey: [
 					"get",
@@ -166,7 +166,9 @@ export function useRemoveAgentTool() {
 		{
 			onSuccess: (_data, variables) => {
 				const agentId = (
-					variables.params as { path: { agent_id: string; workflow_id: string } }
+					variables.params as {
+						path: { agent_id: string; workflow_id: string };
+					}
 				).path.agent_id;
 				queryClient.invalidateQueries({
 					queryKey: [
@@ -192,8 +194,8 @@ export function useAssignAgentDelegations() {
 
 	return $api.useMutation("post", "/api/agents/{agent_id}/delegations", {
 		onSuccess: (_data, variables) => {
-			const agentId = (variables.params as { path: { agent_id: string } }).path
-				.agent_id;
+			const agentId = (variables.params as { path: { agent_id: string } })
+				.path.agent_id;
 			queryClient.invalidateQueries({
 				queryKey: [
 					"get",

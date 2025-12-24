@@ -8,7 +8,6 @@ Tests the Redis key generation functions to ensure consistent patterns.
 from src.core.cache.keys import (
     TTL_CONFIG,
     TTL_FORMS,
-    TTL_OAUTH,
     TTL_ORGS,
     TTL_PENDING,
     TTL_ROLES,
@@ -17,8 +16,6 @@ from src.core.cache.keys import (
     execution_logs_stream_key,
     form_key,
     forms_hash_key,
-    oauth_hash_key,
-    oauth_provider_key,
     org_key,
     orgs_list_key,
     pending_changes_key,
@@ -57,30 +54,6 @@ class TestConfigKeys:
         """Individual config key for global scope."""
         key = config_key(None, "database_url")
         assert key == "bifrost:global:config:database_url"
-
-
-class TestOAuthKeys:
-    """Tests for OAuth cache key generation."""
-
-    def test_oauth_hash_key_with_org(self):
-        """OAuth hash key with organization ID."""
-        key = oauth_hash_key("org-456")
-        assert key == "bifrost:org:org-456:oauth"
-
-    def test_oauth_hash_key_global(self):
-        """OAuth hash key for global scope."""
-        key = oauth_hash_key(None)
-        assert key == "bifrost:global:oauth"
-
-    def test_oauth_provider_key_with_org(self):
-        """OAuth provider key with organization ID."""
-        key = oauth_provider_key("org-456", "google")
-        assert key == "bifrost:org:org-456:oauth:google"
-
-    def test_oauth_provider_key_global(self):
-        """OAuth provider key for global scope."""
-        key = oauth_provider_key(None, "microsoft")
-        assert key == "bifrost:global:oauth:microsoft"
 
 
 class TestFormsKeys:
@@ -200,10 +173,6 @@ class TestTTLConstants:
         """Config TTL is 5 minutes."""
         assert TTL_CONFIG == 300
 
-    def test_ttl_oauth(self):
-        """OAuth TTL is 1 minute (tokens need freshness)."""
-        assert TTL_OAUTH == 60
-
     def test_ttl_forms(self):
         """Forms TTL is 10 minutes."""
         assert TTL_FORMS == 600
@@ -230,8 +199,6 @@ class TestKeyPatternConsistency:
             config_hash_key("org-1"),
             config_hash_key(None),
             config_key("org-1", "my_key"),
-            oauth_hash_key("org-2"),
-            oauth_provider_key("org-2", "google"),
             forms_hash_key("org-3"),
             form_key("org-3", "form-1"),
             roles_hash_key("org-4"),
@@ -253,8 +220,6 @@ class TestKeyPatternConsistency:
         keys = [
             config_hash_key(org_id),
             config_key(org_id, "test_key"),
-            oauth_hash_key(org_id),
-            oauth_provider_key(org_id, "google"),
             forms_hash_key(org_id),
             form_key(org_id, "form-1"),
             roles_hash_key(org_id),
@@ -268,8 +233,6 @@ class TestKeyPatternConsistency:
         keys = [
             config_hash_key(None),
             config_key(None, "test_key"),
-            oauth_hash_key(None),
-            oauth_provider_key(None, "google"),
             forms_hash_key(None),
             form_key(None, "form-1"),
             roles_hash_key(None),

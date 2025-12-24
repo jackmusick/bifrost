@@ -77,14 +77,13 @@ export function LLMConfig() {
 	const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
 
 	// Load current configuration
-	const { data: config, isLoading: configLoading, refetch } = $api.useQuery(
-		"get",
-		"/api/admin/llm/config",
-		undefined,
-		{
-			staleTime: 5 * 60 * 1000,
-		},
-	);
+	const {
+		data: config,
+		isLoading: configLoading,
+		refetch,
+	} = $api.useQuery("get", "/api/admin/llm/config", undefined, {
+		staleTime: 5 * 60 * 1000,
+	});
 
 	// Mutations
 	const saveMutation = $api.useMutation("post", "/api/admin/llm/config");
@@ -309,8 +308,8 @@ export function LLMConfig() {
 						<CardTitle>AI Provider Configuration</CardTitle>
 					</div>
 					<CardDescription>
-						Configure the LLM provider for AI chat functionality. This
-						enables the Chat feature across the platform.
+						Configure the LLM provider for AI chat functionality.
+						This enables the Chat feature across the platform.
 					</CardDescription>
 				</CardHeader>
 				<CardContent className="space-y-6">
@@ -335,7 +334,8 @@ export function LLMConfig() {
 								</Button>
 							</div>
 							<p className="mt-1 text-sm text-green-700 dark:text-green-300">
-								Using {config.provider} with model {config.model}
+								Using {config.provider} with model{" "}
+								{config.model}
 							</p>
 						</div>
 					) : (
@@ -356,13 +356,18 @@ export function LLMConfig() {
 					{/* Provider Selection */}
 					<div className="space-y-2">
 						<Label htmlFor="provider">Provider</Label>
-						<Select value={provider} onValueChange={handleProviderChange}>
+						<Select
+							value={provider}
+							onValueChange={handleProviderChange}
+						>
 							<SelectTrigger id="provider">
 								<SelectValue placeholder="Select provider" />
 							</SelectTrigger>
 							<SelectContent>
 								<SelectItem value="openai">OpenAI</SelectItem>
-								<SelectItem value="anthropic">Anthropic</SelectItem>
+								<SelectItem value="anthropic">
+									Anthropic
+								</SelectItem>
 								<SelectItem value="custom">
 									Custom (OpenAI-compatible)
 								</SelectItem>
@@ -417,7 +422,9 @@ export function LLMConfig() {
 							<Button
 								variant="secondary"
 								onClick={handleTestConnection}
-								disabled={testing || (!apiKey && !config?.api_key_set)}
+								disabled={
+									testing || (!apiKey && !config?.api_key_set)
+								}
 							>
 								{testing ? (
 									<>
@@ -514,7 +521,9 @@ export function LLMConfig() {
 
 					{/* Advanced Settings */}
 					<div className="space-y-4 pt-4 border-t">
-						<h4 className="text-sm font-medium">Advanced Settings</h4>
+						<h4 className="text-sm font-medium">
+							Advanced Settings
+						</h4>
 
 						{/* Max Tokens */}
 						<div className="space-y-3">
@@ -530,7 +539,9 @@ export function LLMConfig() {
 								max={32768}
 								step={256}
 								value={[maxTokens]}
-								onValueChange={(values: number[]) => setMaxTokens(values[0])}
+								onValueChange={(values: number[]) =>
+									setMaxTokens(values[0])
+								}
 							/>
 							<p className="text-xs text-muted-foreground">
 								Maximum tokens in the response (higher = longer
@@ -552,10 +563,13 @@ export function LLMConfig() {
 								max={2}
 								step={0.1}
 								value={[temperature]}
-								onValueChange={(values: number[]) => setTemperature(values[0])}
+								onValueChange={(values: number[]) =>
+									setTemperature(values[0])
+								}
 							/>
 							<p className="text-xs text-muted-foreground">
-								Controls randomness (0 = deterministic, 2 = creative)
+								Controls randomness (0 = deterministic, 2 =
+								creative)
 							</p>
 						</div>
 
@@ -568,13 +582,16 @@ export function LLMConfig() {
 								id="default-system-prompt"
 								placeholder="You are a helpful AI assistant..."
 								value={defaultSystemPrompt}
-								onChange={(e) => setDefaultSystemPrompt(e.target.value)}
+								onChange={(e) =>
+									setDefaultSystemPrompt(e.target.value)
+								}
 								rows={4}
 								className="font-mono text-sm resize-none"
 							/>
 							<p className="text-xs text-muted-foreground">
-								System prompt used when chatting without a specific agent.
-								Leave empty to use the built-in default.
+								System prompt used when chatting without a
+								specific agent. Leave empty to use the built-in
+								default.
 							</p>
 						</div>
 					</div>
@@ -607,8 +624,8 @@ export function LLMConfig() {
 				</CardHeader>
 				<CardContent className="space-y-2 text-sm text-muted-foreground">
 					<p>
-						Once configured, AI chat will be available to users through
-						the Chat page:
+						Once configured, AI chat will be available to users
+						through the Chat page:
 					</p>
 					<ul className="list-disc list-inside space-y-1 ml-2">
 						<li>
@@ -621,22 +638,23 @@ export function LLMConfig() {
 							Agents can be configured to provide specialized
 							assistance
 						</li>
-						<li>
-							Token usage is tracked per conversation
-						</li>
+						<li>Token usage is tracked per conversation</li>
 					</ul>
 				</CardContent>
 			</Card>
 
 			{/* Delete Confirmation Dialog */}
-			<Dialog open={showDeleteConfirm} onOpenChange={setShowDeleteConfirm}>
+			<Dialog
+				open={showDeleteConfirm}
+				onOpenChange={setShowDeleteConfirm}
+			>
 				<DialogContent>
 					<DialogHeader>
 						<DialogTitle>Remove AI Configuration</DialogTitle>
 						<DialogDescription>
 							Are you sure you want to remove the AI provider
-							configuration? This will disable AI chat functionality
-							until reconfigured.
+							configuration? This will disable AI chat
+							functionality until reconfigured.
 						</DialogDescription>
 					</DialogHeader>
 					<DialogFooter>

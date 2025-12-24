@@ -20,6 +20,7 @@ from src.models import (
     Organization,
     User,
     PlatformMetricsSnapshot,
+    ExecutionMetricsDaily,
 )
 from src.models.enums import ExecutionStatus
 
@@ -104,6 +105,27 @@ async def refresh_metrics_snapshot() -> dict[str, Any]:
             current_result = await db.execute(current_query)
             current = current_result.one()
 
+            # ROI (last 24 hours) - from execution_metrics_daily table
+            roi_24h_query = select(
+                func.sum(ExecutionMetricsDaily.total_time_saved).label("time_saved"),
+                func.sum(ExecutionMetricsDaily.total_value).label("value"),
+            ).where(
+                ExecutionMetricsDaily.date >= yesterday.date(),
+                ExecutionMetricsDaily.organization_id.is_(None),  # Global metrics only
+            )
+            roi_24h_result = await db.execute(roi_24h_query)
+            roi_24h = roi_24h_result.one()
+
+            # ROI (all time) - from execution_metrics_daily table
+            roi_all_time_query = select(
+                func.sum(ExecutionMetricsDaily.total_time_saved).label("time_saved"),
+                func.sum(ExecutionMetricsDaily.total_value).label("value"),
+            ).where(
+                ExecutionMetricsDaily.organization_id.is_(None),  # Global metrics only
+            )
+            roi_all_time_result = await db.execute(roi_all_time_query)
+            roi_all_time = roi_all_time_result.one()
+
             # Calculate success rates
             total_all_time = all_time.total or 0
             success_all_time = all_time.success or 0
@@ -142,6 +164,12 @@ async def refresh_metrics_snapshot() -> dict[str, Any]:
                     # Success rates
                     success_rate_all_time=round(success_rate_all_time, 2),
                     success_rate_24h=round(success_rate_24h, 2),
+                    # ROI (last 24 hours)
+                    time_saved_24h=int(roi_24h.time_saved or 0),
+                    value_24h=float(roi_24h.value or 0),
+                    # ROI (all time)
+                    time_saved_all_time=int(roi_all_time.time_saved or 0),
+                    value_all_time=float(roi_all_time.value or 0),
                     # Timestamp
                     refreshed_at=now,
                 )

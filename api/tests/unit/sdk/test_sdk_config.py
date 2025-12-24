@@ -149,7 +149,7 @@ class TestConfigPlatformMode:
             yield mock_redis
 
         with patch("src.core.cache.get_redis", return_value=mock_redis_context()):
-            result = await config.get("test_key")
+            await config.get("test_key")
 
         # Verify it used the context's org_id
         call_args = mock_redis.hget.call_args
@@ -466,7 +466,7 @@ class TestConfigPlatformMode:
         with patch("src.core.cache.get_redis", return_value=mock_redis_context()):
             result = await config.list()
 
-        assert result == {}
+        assert len(result) == 0
 
     @pytest.mark.asyncio
     async def test_list_uses_context_org_when_org_id_not_provided(
@@ -485,7 +485,7 @@ class TestConfigPlatformMode:
             yield mock_redis
 
         with patch("src.core.cache.get_redis", return_value=mock_redis_context()):
-            result = await config.list()
+            await config.list()
 
         # Verify it used the context's org_id
         call_args = mock_redis.hgetall.call_args
@@ -508,7 +508,7 @@ class TestConfigPlatformMode:
             yield mock_redis
 
         with patch("src.core.cache.get_redis", return_value=mock_redis_context()):
-            result = await config.list(org_id=other_org_id)
+            await config.list(org_id=other_org_id)
 
         # Verify it used the explicit org_id
         call_args = mock_redis.hgetall.call_args
@@ -628,11 +628,11 @@ class TestConfigExternalMode:
         """Ensure no platform context and clean client state."""
         clear_execution_context()
         # Reset client singleton
-        from bifrost import client as client_module
+        from bifrost.client import BifrostClient
 
-        client_module._client = None
+        BifrostClient._instance = None
         yield
-        client_module._client = None
+        BifrostClient._instance = None
 
     @pytest.mark.asyncio
     async def test_get_calls_api_endpoint(self):

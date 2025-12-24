@@ -10,9 +10,9 @@ from __future__ import annotations
 
 import json as json_module
 import logging
-from typing import Any
 
 from src.core.cache import forms_hash_key, get_redis, user_forms_key
+from src.models.contracts.forms import FormPublic
 
 from ._internal import get_context
 
@@ -30,14 +30,27 @@ class forms:
     """
 
     @staticmethod
-    async def list() -> list[dict[str, Any]]:
+    async def list() -> list[FormPublic]:
         """
         List all forms available to the current user.
 
         Reads from Redis cache (pre-warmed with user's accessible forms).
 
         Returns:
-            list[dict]: List of form dictionaries
+            list[FormPublic]: List of form objects with attributes:
+                - id: UUID - Form ID
+                - name: str - Form name
+                - description: str | None - Form description
+                - workflow_id: str | None - Linked workflow ID
+                - launch_workflow_id: str | None - Workflow to launch on submit
+                - default_launch_params: dict | None - Default params for launch
+                - allowed_query_params: list[str] | None - Allowed URL query params
+                - form_schema: dict | FormSchema | None - Form field schema
+                - access_level: FormAccessLevel | None - Access level
+                - organization_id: UUID | None - Organization ID
+                - is_active: bool - Whether form is active
+                - file_path: str | None - Workspace file path
+                - created_at, updated_at: datetime | None
 
         Raises:
             RuntimeError: If no execution context
@@ -46,7 +59,7 @@ class forms:
             >>> from bifrost import forms
             >>> all_forms = await forms.list()
             >>> for form in all_forms:
-            ...     print(f"{form['id']}: {form['name']}")
+            ...     print(f"{form.id}: {form.name}")
         """
         context = get_context()
 
@@ -63,23 +76,23 @@ class forms:
                 return []
 
             # Get form data for each ID
-            forms_list: list[dict[str, Any]] = []
+            forms_list: list[FormPublic] = []
             for form_id in form_ids:
                 data = await r.hget(forms_hash_key(org_id), form_id)  # type: ignore[misc]
                 if data:
                     try:
                         form_data = json_module.loads(data)
-                        forms_list.append(form_data)
+                        forms_list.append(FormPublic(**form_data))
                     except json_module.JSONDecodeError:
                         continue
 
             # Sort by name
-            forms_list.sort(key=lambda f: f.get("name", ""))
+            forms_list.sort(key=lambda f: f.name or "")
 
             return forms_list
 
     @staticmethod
-    async def get(form_id: str) -> dict[str, Any]:
+    async def get(form_id: str) -> FormPublic:
         """
         Get a form definition by ID.
 
@@ -89,7 +102,20 @@ class forms:
             form_id: Form ID
 
         Returns:
-            dict: Form dictionary
+            FormPublic: Form object with attributes:
+                - id: UUID - Form ID
+                - name: str - Form name
+                - description: str | None - Form description
+                - workflow_id: str | None - Linked workflow ID
+                - launch_workflow_id: str | None - Workflow to launch on submit
+                - default_launch_params: dict | None - Default params for launch
+                - allowed_query_params: list[str] | None - Allowed URL query params
+                - form_schema: dict | FormSchema | None - Form field schema
+                - access_level: FormAccessLevel | None - Access level
+                - organization_id: UUID | None - Organization ID
+                - is_active: bool - Whether form is active
+                - file_path: str | None - Workspace file path
+                - created_at, updated_at: datetime | None
 
         Raises:
             ValueError: If form not found
@@ -99,7 +125,7 @@ class forms:
         Example:
             >>> from bifrost import forms
             >>> form = await forms.get("form-123")
-            >>> print(form['name'])
+            >>> print(form.name)
         """
         context = get_context()
 
@@ -123,6 +149,6 @@ class forms:
 
             try:
                 form_data = json_module.loads(data)
-                return form_data
+                return FormPublic(**form_data)
             except json_module.JSONDecodeError:
                 raise ValueError(f"Invalid form data: {form_id}")

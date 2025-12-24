@@ -58,7 +58,7 @@ class WorkspaceImportRestrictor(MetaPathFinder):
         'bifrost.roles',
         'bifrost.config',
         'bifrost.secrets',
-        'bifrost.oauth',
+        'bifrost.integrations',
         # SDK Contract - src modules that bifrost SDK imports
         'src.sdk.decorators',
         'src.sdk.context',
@@ -263,7 +263,7 @@ class WorkspaceImportRestrictor(MetaPathFinder):
                 f"  - from bifrost import roles           # Role management\n"
                 f"  - from bifrost import config          # Configuration access\n"
                 f"  - from bifrost import secrets         # Secrets management\n"
-                f"  - from bifrost import oauth           # OAuth tokens\n"
+                f"  - from bifrost import integrations    # Integration and OAuth access\n"
                 f"\n"
                 f"The bifrost SDK provides a safe, stable API for accessing platform features.\n"
                 f"Direct imports from src.* modules are not allowed.\n"

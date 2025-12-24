@@ -45,27 +45,6 @@ def config_key(org_id: str | None, key: str) -> str:
 
 
 # =============================================================================
-# OAuth Keys
-# =============================================================================
-
-
-def oauth_hash_key(org_id: str | None) -> str:
-    """
-    Key for the hash containing all OAuth providers for an org.
-
-    Structure: HASH where field = provider name, value = JSON provider data
-    """
-    scope = _get_scope(org_id)
-    return f"bifrost:{scope}:oauth"
-
-
-def oauth_provider_key(org_id: str | None, provider: str) -> str:
-    """Key for a specific OAuth provider (for targeted invalidation)."""
-    scope = _get_scope(org_id)
-    return f"bifrost:{scope}:oauth:{provider}"
-
-
-# =============================================================================
 # Form Keys
 # =============================================================================
 
@@ -272,7 +251,6 @@ def rate_limit_key(endpoint: str, identifier: str) -> str:
 
 # TTLs in seconds
 TTL_CONFIG = 300  # 5 minutes
-TTL_OAUTH = 60  # 1 minute (tokens can be refreshed)
 TTL_FORMS = 600  # 10 minutes
 TTL_ROLES = 600  # 10 minutes
 TTL_ORGS = 3600  # 1 hour

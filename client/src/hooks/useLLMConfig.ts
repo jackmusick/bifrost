@@ -36,7 +36,7 @@ export function useLLMConfig() {
 	// For non-admins, we can't check config - assume it might work
 	// They'll get an error when trying to chat if not configured
 	const isConfigured = isPlatformAdmin
-		? config?.is_configured ?? false
+		? (config?.is_configured ?? false)
 		: null; // null means "unknown" for non-admins
 
 	return {

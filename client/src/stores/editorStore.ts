@@ -152,11 +152,7 @@ interface EditorState {
 	setIndexing: (isIndexing: boolean, message?: string | null) => void;
 
 	// Update tab content from server (for ID injection)
-	updateTabContent: (
-		tabIndex: number,
-		content: string,
-		etag: string,
-	) => void;
+	updateTabContent: (tabIndex: number, content: string, etag: string) => void;
 }
 
 export const useEditorStore = create<EditorState>()(

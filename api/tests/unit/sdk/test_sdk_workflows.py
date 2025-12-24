@@ -12,6 +12,39 @@ from uuid import uuid4
 from bifrost._context import set_execution_context, clear_execution_context
 
 
+def create_mock_workflow(**kwargs):
+    """Create a mock workflow with all required fields to avoid MagicMock issues."""
+    mock_wf = MagicMock()
+    # Set all required fields with proper defaults
+    mock_wf.id = kwargs.get('id', uuid4())
+    mock_wf.name = kwargs.get('name', 'test_workflow')
+    mock_wf.description = kwargs.get('description', None)
+    mock_wf.category = kwargs.get('category', 'General')
+    mock_wf.tags = kwargs.get('tags', [])
+    mock_wf.parameters_schema = kwargs.get('parameters_schema', [])
+    mock_wf.execution_mode = kwargs.get('execution_mode', 'sync')
+    mock_wf.endpoint_enabled = kwargs.get('endpoint_enabled', False)
+    mock_wf.allowed_methods = kwargs.get('allowed_methods', ['POST'])
+    mock_wf.schedule = kwargs.get('schedule', None)
+    mock_wf.is_tool = kwargs.get('is_tool', False)
+    mock_wf.tool_description = kwargs.get('tool_description', None)
+    mock_wf.time_saved = kwargs.get('time_saved', 0)
+    mock_wf.value = kwargs.get('value', 0.0)
+    mock_wf.file_path = kwargs.get('file_path', '/workspace/workflows/test.py')
+
+    # Configure getattr to return None for fields that use getattr with default
+    mock_wf.configure_mock(**{
+        'timeout_seconds': None,
+        'retry_policy': None,
+        'source_file_path': None,
+        'relative_file_path': None,
+        'disable_global_key': False,
+        'public_endpoint': False,
+    })
+
+    return mock_wf
+
+
 @pytest.fixture
 def test_org_id():
     """Return a test organization ID."""
@@ -70,22 +103,27 @@ class TestWorkflowsPlatformMode:
 
         set_execution_context(test_context)
 
-        # Mock workflow objects
-        mock_workflow_1 = MagicMock()
-        mock_workflow_1.name = "CreateCustomer"
-        mock_workflow_1.description = "Creates a new customer record"
-        mock_workflow_1.parameters_schema = [
-            {"name": "customer_name", "type": "string", "required": True}
-        ]
-        mock_workflow_1.execution_mode = "sync"
-        mock_workflow_1.endpoint_enabled = True
+        # Mock workflow objects with all required fields
+        mock_workflow_1 = create_mock_workflow(
+            name="create_customer",
+            description="Creates a new customer record",
+            category="Customer Management",
+            tags=["customer"],
+            parameters_schema=[{"name": "customer_name", "type": "string", "required": True}],
+            execution_mode="sync",
+            endpoint_enabled=True,
+            file_path="/workspace/workflows/create_customer.py"
+        )
 
-        mock_workflow_2 = MagicMock()
-        mock_workflow_2.name = "UpdateInventory"
-        mock_workflow_2.description = None
-        mock_workflow_2.parameters_schema = []
-        mock_workflow_2.execution_mode = "async"
-        mock_workflow_2.endpoint_enabled = False
+        mock_workflow_2 = create_mock_workflow(
+            name="update_inventory",
+            description=None,
+            category="Inventory",
+            parameters_schema=[],
+            execution_mode="async",
+            endpoint_enabled=False,
+            file_path="/workspace/workflows/update_inventory.py"
+        )
 
         # Mock repository
         mock_repo = MagicMock()
@@ -103,18 +141,19 @@ class TestWorkflowsPlatformMode:
 
         assert result is not None
         assert len(result) == 2
-        assert result[0]["name"] == "CreateCustomer"
-        assert result[0]["description"] == "Creates a new customer record"
-        assert result[0]["parameters"] == [
-            {"name": "customer_name", "type": "string", "required": True}
-        ]
-        assert result[0]["executionMode"] == "sync"
-        assert result[0]["endpointEnabled"] is True
-        assert result[1]["name"] == "UpdateInventory"
-        assert result[1]["description"] == ""
-        assert result[1]["parameters"] == []
-        assert result[1]["executionMode"] == "async"
-        assert result[1]["endpointEnabled"] is False
+        assert result[0].name == "create_customer"
+        assert result[0].description == "Creates a new customer record"
+        assert len(result[0].parameters) == 1
+        assert result[0].parameters[0].name == "customer_name"
+        assert result[0].parameters[0].type == "string"
+        assert result[0].parameters[0].required is True
+        assert result[0].execution_mode == "sync"
+        assert result[0].endpoint_enabled is True
+        assert result[1].name == "update_inventory"
+        assert result[1].description is None
+        assert result[1].parameters == []
+        assert result[1].execution_mode == "async"
+        assert result[1].endpoint_enabled is False
 
     @pytest.mark.asyncio
     async def test_list_returns_empty_list_when_no_database_session(self, test_context):
@@ -159,15 +198,19 @@ class TestWorkflowsPlatformMode:
         set_execution_context(test_context)
 
         # Mock workflow with all fields populated
-        mock_workflow = MagicMock()
-        mock_workflow.name = "ProcessOrder"
-        mock_workflow.description = "Process customer order"
-        mock_workflow.parameters_schema = [
-            {"name": "order_id", "type": "string", "required": True},
-            {"name": "priority", "type": "string", "required": False, "default": "normal"},
-        ]
-        mock_workflow.execution_mode = "async"
-        mock_workflow.endpoint_enabled = True
+        mock_workflow = create_mock_workflow(
+            name="process_order",
+            description="Process customer order",
+            category="Orders",
+            tags=["order", "processing"],
+            parameters_schema=[
+                {"name": "order_id", "type": "string", "required": True},
+                {"name": "priority", "type": "string", "required": False, "default_value": "normal"},
+            ],
+            execution_mode="async",
+            endpoint_enabled=True,
+            file_path="/workspace/workflows/process_order.py"
+        )
 
         mock_repo = MagicMock()
         mock_repo.get_all_active = AsyncMock(return_value=[mock_workflow])
@@ -181,13 +224,13 @@ class TestWorkflowsPlatformMode:
 
         assert len(result) == 1
         workflow = result[0]
-        assert workflow["name"] == "ProcessOrder"
-        assert workflow["description"] == "Process customer order"
-        assert len(workflow["parameters"]) == 2
-        assert workflow["parameters"][0]["name"] == "order_id"
-        assert workflow["parameters"][1]["default"] == "normal"
-        assert workflow["executionMode"] == "async"
-        assert workflow["endpointEnabled"] is True
+        assert workflow.name == "process_order"
+        assert workflow.description == "Process customer order"
+        assert len(workflow.parameters) == 2
+        assert workflow.parameters[0].name == "order_id"
+        assert workflow.parameters[1].default_value == "normal"
+        assert workflow.execution_mode == "async"
+        assert workflow.endpoint_enabled is True
 
     @pytest.mark.asyncio
     async def test_list_handles_null_description(self, test_context):
@@ -196,12 +239,7 @@ class TestWorkflowsPlatformMode:
 
         set_execution_context(test_context)
 
-        mock_workflow = MagicMock()
-        mock_workflow.name = "TestWorkflow"
-        mock_workflow.description = None
-        mock_workflow.parameters_schema = []
-        mock_workflow.execution_mode = "sync"
-        mock_workflow.endpoint_enabled = False
+        mock_workflow = create_mock_workflow(description=None)
 
         mock_repo = MagicMock()
         mock_repo.get_all_active = AsyncMock(return_value=[mock_workflow])
@@ -213,7 +251,7 @@ class TestWorkflowsPlatformMode:
         ):
             result = await workflows.list()
 
-        assert result[0]["description"] == ""
+        assert result[0].description is None
 
     @pytest.mark.asyncio
     async def test_list_handles_null_parameters_schema(self, test_context):
@@ -222,12 +260,7 @@ class TestWorkflowsPlatformMode:
 
         set_execution_context(test_context)
 
-        mock_workflow = MagicMock()
-        mock_workflow.name = "TestWorkflow"
-        mock_workflow.description = "Test"
-        mock_workflow.parameters_schema = None
-        mock_workflow.execution_mode = "sync"
-        mock_workflow.endpoint_enabled = False
+        mock_workflow = create_mock_workflow(description="Test", parameters_schema=None)
 
         mock_repo = MagicMock()
         mock_repo.get_all_active = AsyncMock(return_value=[mock_workflow])
@@ -239,7 +272,7 @@ class TestWorkflowsPlatformMode:
         ):
             result = await workflows.list()
 
-        assert result[0]["parameters"] == []
+        assert result[0].parameters == []
 
     @pytest.mark.asyncio
     async def test_list_handles_null_execution_mode(self, test_context):
@@ -248,12 +281,7 @@ class TestWorkflowsPlatformMode:
 
         set_execution_context(test_context)
 
-        mock_workflow = MagicMock()
-        mock_workflow.name = "TestWorkflow"
-        mock_workflow.description = "Test"
-        mock_workflow.parameters_schema = []
-        mock_workflow.execution_mode = None
-        mock_workflow.endpoint_enabled = False
+        mock_workflow = create_mock_workflow(description="Test", execution_mode=None)
 
         mock_repo = MagicMock()
         mock_repo.get_all_active = AsyncMock(return_value=[mock_workflow])
@@ -265,7 +293,7 @@ class TestWorkflowsPlatformMode:
         ):
             result = await workflows.list()
 
-        assert result[0]["executionMode"] == "sync"
+        assert result[0].execution_mode == "sync"
 
     @pytest.mark.asyncio
     async def test_list_handles_null_endpoint_enabled(self, test_context):
@@ -274,12 +302,7 @@ class TestWorkflowsPlatformMode:
 
         set_execution_context(test_context)
 
-        mock_workflow = MagicMock()
-        mock_workflow.name = "TestWorkflow"
-        mock_workflow.description = "Test"
-        mock_workflow.parameters_schema = []
-        mock_workflow.execution_mode = "sync"
-        mock_workflow.endpoint_enabled = None
+        mock_workflow = create_mock_workflow(description="Test", endpoint_enabled=None)
 
         mock_repo = MagicMock()
         mock_repo.get_all_active = AsyncMock(return_value=[mock_workflow])
@@ -291,7 +314,7 @@ class TestWorkflowsPlatformMode:
         ):
             result = await workflows.list()
 
-        assert result[0]["endpointEnabled"] is False
+        assert result[0].endpoint_enabled is False
 
     @pytest.mark.asyncio
     async def test_list_requires_platform_context(self):
@@ -311,31 +334,33 @@ class TestWorkflowsPlatformMode:
 
         set_execution_context(test_context)
 
-        execution_id = str(uuid4())
-        mock_execution_data = {
-            "id": execution_id,
-            "workflow_name": "CreateCustomer",
-            "workflow_version": "1.0.0",
-            "status": "Completed",
-            "executed_by": "test-user",
-            "executed_by_name": "Test User",
-            "parameters": {"customer_name": "Acme Corp"},
-            "result": {"customer_id": "cust-123"},
-            "error_message": None,
-            "created_at": "2025-01-01T00:00:00",
-            "started_at": "2025-01-01T00:00:01",
-            "completed_at": "2025-01-01T00:00:05",
-            "duration_ms": 4000,
-            "logs": [],
-        }
+        from src.models.contracts.executions import WorkflowExecution
 
-        with patch("bifrost.executions.executions.get", new=AsyncMock(return_value=mock_execution_data)):
+        from src.models.enums import ExecutionStatus
+
+        execution_id = str(uuid4())
+        mock_execution = WorkflowExecution(
+            execution_id=execution_id,
+            workflow_name="CreateCustomer",
+            executed_by="test-user",
+            executed_by_name="Test User",
+            status=ExecutionStatus.SUCCESS,
+            input_data={"customer_name": "Acme Corp"},
+            result={"customer_id": "cust-123"},
+            error_message=None,
+            started_at=None,
+            completed_at=None,
+            duration_ms=4000,
+            logs=[],
+        )
+
+        with patch("bifrost.executions.executions.get", new=AsyncMock(return_value=mock_execution)):
             result = await workflows.get(execution_id)
 
-        assert result["id"] == execution_id
-        assert result["workflow_name"] == "CreateCustomer"
-        assert result["status"] == "Completed"
-        assert result["result"] == {"customer_id": "cust-123"}
+        assert result.execution_id == execution_id
+        assert result.workflow_name == "CreateCustomer"
+        assert result.status == ExecutionStatus.SUCCESS
+        assert result.result == {"customer_id": "cust-123"}
 
     @pytest.mark.asyncio
     async def test_get_raises_value_error_when_execution_not_found(self, test_context):
@@ -426,12 +451,7 @@ class TestWorkflowsPlatformMode:
 
         set_execution_context(test_context)
 
-        mock_workflow = MagicMock()
-        mock_workflow.name = "TestWorkflow"
-        mock_workflow.description = "Test"
-        mock_workflow.parameters_schema = []
-        mock_workflow.execution_mode = "sync"
-        mock_workflow.endpoint_enabled = False
+        mock_workflow = create_mock_workflow(description="Test")
 
         mock_repo = MagicMock()
         mock_repo.get_all_active = AsyncMock(return_value=[mock_workflow])

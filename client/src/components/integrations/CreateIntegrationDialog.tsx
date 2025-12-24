@@ -60,7 +60,7 @@ function CreateIntegrationDialogContent({
 
 	// Only fetch if we don't have initialData and we're editing
 	const { data: fetchedIntegration } = useIntegration(
-		initialData ? "" : (editIntegrationId || ""),
+		initialData ? "" : editIntegrationId || "",
 	);
 
 	// Use initialData if provided, otherwise use fetched data
@@ -81,9 +81,10 @@ function CreateIntegrationDialogContent({
 		return existingIntegration?.name || "";
 	});
 	const [description, setDescription] = useState(() => {
-		const integrationWithDesc = existingIntegration as typeof existingIntegration & {
-			description?: string;
-		};
+		const integrationWithDesc =
+			existingIntegration as typeof existingIntegration & {
+				description?: string;
+			};
 		return integrationWithDesc?.description || "";
 	});
 	const [dataProviderId, setDataProviderId] = useState<string | null>(() => {
@@ -98,13 +99,18 @@ function CreateIntegrationDialogContent({
 
 	// Track original values for confirmation dialogs
 	const originalName = existingIntegration?.name || "";
-	const originalDataProviderId = existingIntegration?.list_entities_data_provider_id || null;
-	const originalConfigSchemaKeys = new Set(existingIntegration?.config_schema?.map(f => f.key) || []);
+	const originalDataProviderId =
+		existingIntegration?.list_entities_data_provider_id || null;
+	const originalConfigSchemaKeys = new Set(
+		existingIntegration?.config_schema?.map((f) => f.key) || [],
+	);
 
 	// Confirmation dialog states
-	const [showDataProviderConfirm, setShowDataProviderConfirm] = useState(false);
+	const [showDataProviderConfirm, setShowDataProviderConfirm] =
+		useState(false);
 	const [showNameChangeConfirm, setShowNameChangeConfirm] = useState(false);
-	const [showConfigFieldRemovalConfirm, setShowConfigFieldRemovalConfirm] = useState(false);
+	const [showConfigFieldRemovalConfirm, setShowConfigFieldRemovalConfirm] =
+		useState(false);
 	const [removedFieldNames, setRemovedFieldNames] = useState<string[]>([]);
 
 	const handleSubmit = async (e: React.FormEvent) => {
@@ -126,7 +132,9 @@ function CreateIntegrationDialogContent({
 			// Check 2: Data provider swap confirmation
 			if (dataProviderId !== originalDataProviderId) {
 				// Count affected mappings (those with entity_id values)
-				const affectedMappingsCount = initialData?.mappings?.filter(m => m.entity_id).length || 0;
+				const affectedMappingsCount =
+					initialData?.mappings?.filter((m) => m.entity_id).length ||
+					0;
 				if (affectedMappingsCount > 0) {
 					setShowDataProviderConfirm(true);
 					return;
@@ -134,8 +142,12 @@ function CreateIntegrationDialogContent({
 			}
 
 			// Check 3: Config field removal warning
-			const currentKeys = new Set(configSchema.map(f => f.key).filter(k => k.trim()));
-			const removedKeys = Array.from(originalConfigSchemaKeys).filter(k => !currentKeys.has(k));
+			const currentKeys = new Set(
+				configSchema.map((f) => f.key).filter((k) => k.trim()),
+			);
+			const removedKeys = Array.from(originalConfigSchemaKeys).filter(
+				(k) => !currentKeys.has(k),
+			);
 			if (removedKeys.length > 0) {
 				setRemovedFieldNames(removedKeys);
 				setShowConfigFieldRemovalConfirm(true);
@@ -154,7 +166,8 @@ function CreateIntegrationDialogContent({
 					params: { path: { integration_id: editIntegrationId } },
 					body: {
 						name,
-						list_entities_data_provider_id: dataProviderId || undefined,
+						list_entities_data_provider_id:
+							dataProviderId || undefined,
 						config_schema:
 							configSchema.length > 0 ? configSchema : undefined,
 						default_entity_id: defaultEntityId || undefined,
@@ -224,274 +237,311 @@ function CreateIntegrationDialogContent({
 					</DialogDescription>
 				</DialogHeader>
 
-			<div className="space-y-4 py-4">
-				{/* Name */}
-				<div className="space-y-2">
-					<Label htmlFor="name">Integration Name *</Label>
-					<Input
-						id="name"
-						placeholder="e.g., Microsoft 365, Google Workspace"
-						value={name}
-						onChange={(e) => setName(e.target.value)}
-						required
-					/>
-				</div>
-
-				{/* Description */}
-				<div className="space-y-2">
-					<Label htmlFor="description">Description</Label>
-					<Input
-						id="description"
-						placeholder="Brief description of this integration"
-						value={description}
-						onChange={(e) => setDescription(e.target.value)}
-					/>
-				</div>
-
-				{/* Data Provider Selection */}
-				<div className="space-y-2">
-					<Label htmlFor="dataProvider">
-						Entity Data Provider
-					</Label>
-					<Select
-						value={dataProviderId || "none"}
-						onValueChange={(value) =>
-							setDataProviderId(
-								value === "none" ? null : value,
-							)
-						}
-					>
-						<SelectTrigger id="dataProvider">
-							<SelectValue placeholder="Select a data provider..." />
-						</SelectTrigger>
-						<SelectContent>
-							<SelectItem value="none">None</SelectItem>
-							{isLoadingProviders ? (
-								<SelectItem value="loading" disabled>
-									Loading...
-								</SelectItem>
-							) : (
-								(
-									dataProviders as Array<{
-										id?: string | null;
-										name: string;
-									}>
-								)?.map(
-									(provider) =>
-										provider.id && (
-											<SelectItem
-												key={provider.id}
-												value={provider.id}
-											>
-												{provider.name}
-											</SelectItem>
-										),
-								)
-							)}
-						</SelectContent>
-					</Select>
-					<p className="text-xs text-muted-foreground">
-						Select a data provider to populate entity options
-						for organization mappings
-					</p>
-				</div>
-
-				{/* Default Entity ID */}
-				<div className="space-y-2">
-					<Label htmlFor="defaultEntityId">Default Entity ID</Label>
-					<Input
-						id="defaultEntityId"
-						placeholder="e.g., common"
-						value={defaultEntityId}
-						onChange={(e) => setDefaultEntityId(e.target.value)}
-					/>
-					<p className="text-xs text-muted-foreground">
-						Default value for entity_id in URL templates (used when org mapping doesn't specify one)
-					</p>
-				</div>
-
-				{/* Config Schema */}
-				<div className="space-y-2">
-					<div className="flex items-center justify-between">
-						<Label>Configuration Schema</Label>
-						<Button
-							type="button"
-							variant="outline"
-							size="sm"
-							onClick={addConfigField}
-						>
-							<Plus className="h-4 w-4 mr-1" />
-							Add Field
-						</Button>
+				<div className="space-y-4 py-4">
+					{/* Name */}
+					<div className="space-y-2">
+						<Label htmlFor="name">Integration Name *</Label>
+						<Input
+							id="name"
+							placeholder="e.g., Microsoft 365, Google Workspace"
+							value={name}
+							onChange={(e) => setName(e.target.value)}
+							required
+						/>
 					</div>
-					<p className="text-xs text-muted-foreground">
-						Define configuration fields required for each
-						organization mapping
-					</p>
 
-					<div className="space-y-3">
-						{configSchema.map((field, index) => (
-							<div
-								key={index}
-								className="flex gap-2 items-start p-3 border rounded-md"
+					{/* Description */}
+					<div className="space-y-2">
+						<Label htmlFor="description">Description</Label>
+						<Input
+							id="description"
+							placeholder="Brief description of this integration"
+							value={description}
+							onChange={(e) => setDescription(e.target.value)}
+						/>
+					</div>
+
+					{/* Data Provider Selection */}
+					<div className="space-y-2">
+						<Label htmlFor="dataProvider">
+							Entity Data Provider
+						</Label>
+						<Select
+							value={dataProviderId || "none"}
+							onValueChange={(value) =>
+								setDataProviderId(
+									value === "none" ? null : value,
+								)
+							}
+						>
+							<SelectTrigger id="dataProvider">
+								<SelectValue placeholder="Select a data provider..." />
+							</SelectTrigger>
+							<SelectContent>
+								<SelectItem value="none">None</SelectItem>
+								{isLoadingProviders ? (
+									<SelectItem value="loading" disabled>
+										Loading...
+									</SelectItem>
+								) : (
+									(
+										dataProviders as Array<{
+											id?: string | null;
+											name: string;
+										}>
+									)?.map(
+										(provider) =>
+											provider.id && (
+												<SelectItem
+													key={provider.id}
+													value={provider.id}
+												>
+													{provider.name}
+												</SelectItem>
+											),
+									)
+								)}
+							</SelectContent>
+						</Select>
+						<p className="text-xs text-muted-foreground">
+							Select a data provider to populate entity options
+							for organization mappings
+						</p>
+					</div>
+
+					{/* Default Entity ID */}
+					<div className="space-y-2">
+						<Label htmlFor="defaultEntityId">
+							Default Entity ID
+						</Label>
+						<Input
+							id="defaultEntityId"
+							placeholder="e.g., common"
+							value={defaultEntityId}
+							onChange={(e) => setDefaultEntityId(e.target.value)}
+						/>
+						<p className="text-xs text-muted-foreground">
+							Default value for entity_id in URL templates (used
+							when org mapping doesn't specify one)
+						</p>
+					</div>
+
+					{/* Config Schema */}
+					<div className="space-y-2">
+						<div className="flex items-center justify-between">
+							<Label>Configuration Schema</Label>
+							<Button
+								type="button"
+								variant="outline"
+								size="sm"
+								onClick={addConfigField}
 							>
-								<div className="flex-1 space-y-2">
-									<Input
-										placeholder="Field key (e.g., tenant_id)"
-										value={field.key}
-										onChange={(e) =>
-											updateConfigField(index, {
-												key: e.target.value,
-											})
-										}
-										required
-									/>
-									<div className="flex gap-2">
-										<Select
-											value={field.type}
-											onValueChange={(value) =>
+								<Plus className="h-4 w-4 mr-1" />
+								Add Field
+							</Button>
+						</div>
+						<p className="text-xs text-muted-foreground">
+							Define configuration fields required for each
+							organization mapping
+						</p>
+
+						<div className="space-y-3">
+							{configSchema.map((field, index) => (
+								<div
+									key={index}
+									className="flex gap-2 items-start p-3 border rounded-md"
+								>
+									<div className="flex-1 space-y-2">
+										<Input
+											placeholder="Field key (e.g., tenant_id)"
+											value={field.key}
+											onChange={(e) =>
 												updateConfigField(index, {
-													type: value as ConfigSchemaItem["type"],
+													key: e.target.value,
 												})
 											}
-										>
-											<SelectTrigger className="w-32">
-												<SelectValue />
-											</SelectTrigger>
-											<SelectContent>
-												<SelectItem value="string">
-													String
-												</SelectItem>
-												<SelectItem value="int">
-													Integer
-												</SelectItem>
-												<SelectItem value="bool">
-													Boolean
-												</SelectItem>
-												<SelectItem value="json">
-													JSON
-												</SelectItem>
-												<SelectItem value="secret">
-													Secret
-												</SelectItem>
-											</SelectContent>
-										</Select>
-										<label className="flex items-center gap-2 text-sm">
-											<input
-												type="checkbox"
-												checked={field.required}
-												onChange={(e) =>
+											required
+										/>
+										<div className="flex gap-2">
+											<Select
+												value={field.type}
+												onValueChange={(value) =>
 													updateConfigField(index, {
-														required: e.target.checked,
+														type: value as ConfigSchemaItem["type"],
 													})
 												}
-												className="rounded"
-											/>
-											Required
-										</label>
+											>
+												<SelectTrigger className="w-32">
+													<SelectValue />
+												</SelectTrigger>
+												<SelectContent>
+													<SelectItem value="string">
+														String
+													</SelectItem>
+													<SelectItem value="int">
+														Integer
+													</SelectItem>
+													<SelectItem value="bool">
+														Boolean
+													</SelectItem>
+													<SelectItem value="json">
+														JSON
+													</SelectItem>
+													<SelectItem value="secret">
+														Secret
+													</SelectItem>
+												</SelectContent>
+											</Select>
+											<label className="flex items-center gap-2 text-sm">
+												<input
+													type="checkbox"
+													checked={field.required}
+													onChange={(e) =>
+														updateConfigField(
+															index,
+															{
+																required:
+																	e.target
+																		.checked,
+															},
+														)
+													}
+													className="rounded"
+												/>
+												Required
+											</label>
+										</div>
 									</div>
+									<Button
+										type="button"
+										variant="ghost"
+										size="icon"
+										onClick={() => removeConfigField(index)}
+										className="text-destructive"
+									>
+										<Trash2 className="h-4 w-4" />
+									</Button>
 								</div>
-								<Button
-									type="button"
-									variant="ghost"
-									size="icon"
-									onClick={() => removeConfigField(index)}
-									className="text-destructive"
-								>
-									<Trash2 className="h-4 w-4" />
-								</Button>
-							</div>
-						))}
+							))}
+						</div>
 					</div>
 				</div>
-			</div>
 
-			<DialogFooter>
-				<Button
-					type="button"
-					variant="outline"
-					onClick={() => onOpenChange(false)}
-					disabled={isLoading}
-				>
-					Cancel
-				</Button>
-				<Button type="submit" disabled={isLoading}>
-					{isLoading ? (
-						<>
-							<Loader2 className="mr-2 h-4 w-4 animate-spin" />
-							{isEditing ? "Updating..." : "Creating..."}
-						</>
-					) : isEditing ? (
-						"Update Integration"
-					) : (
-						"Create Integration"
-					)}
-				</Button>
-			</DialogFooter>
+				<DialogFooter>
+					<Button
+						type="button"
+						variant="outline"
+						onClick={() => onOpenChange(false)}
+						disabled={isLoading}
+					>
+						Cancel
+					</Button>
+					<Button type="submit" disabled={isLoading}>
+						{isLoading ? (
+							<>
+								<Loader2 className="mr-2 h-4 w-4 animate-spin" />
+								{isEditing ? "Updating..." : "Creating..."}
+							</>
+						) : isEditing ? (
+							"Update Integration"
+						) : (
+							"Create Integration"
+						)}
+					</Button>
+				</DialogFooter>
 			</form>
 
 			{/* Data Provider Change Confirmation */}
-			<AlertDialog open={showDataProviderConfirm} onOpenChange={setShowDataProviderConfirm}>
-			<AlertDialogContent>
-				<AlertDialogHeader>
-					<AlertDialogTitle>Change Data Provider?</AlertDialogTitle>
-					<AlertDialogDescription>
-						Changing the data provider may orphan {initialData?.mappings?.filter(m => m.entity_id).length || 0} existing entity mapping(s). The entity IDs will be preserved but may not match entities from the new provider.
-					</AlertDialogDescription>
-				</AlertDialogHeader>
-				<AlertDialogFooter>
-					<AlertDialogCancel>Cancel</AlertDialogCancel>
-					<AlertDialogAction onClick={() => {
-						setShowDataProviderConfirm(false);
-						performSave();
-					}}>
-						Keep Mappings
-					</AlertDialogAction>
-				</AlertDialogFooter>
-			</AlertDialogContent>
-		</AlertDialog>
+			<AlertDialog
+				open={showDataProviderConfirm}
+				onOpenChange={setShowDataProviderConfirm}
+			>
+				<AlertDialogContent>
+					<AlertDialogHeader>
+						<AlertDialogTitle>
+							Change Data Provider?
+						</AlertDialogTitle>
+						<AlertDialogDescription>
+							Changing the data provider may orphan{" "}
+							{initialData?.mappings?.filter((m) => m.entity_id)
+								.length || 0}{" "}
+							existing entity mapping(s). The entity IDs will be
+							preserved but may not match entities from the new
+							provider.
+						</AlertDialogDescription>
+					</AlertDialogHeader>
+					<AlertDialogFooter>
+						<AlertDialogCancel>Cancel</AlertDialogCancel>
+						<AlertDialogAction
+							onClick={() => {
+								setShowDataProviderConfirm(false);
+								performSave();
+							}}
+						>
+							Keep Mappings
+						</AlertDialogAction>
+					</AlertDialogFooter>
+				</AlertDialogContent>
+			</AlertDialog>
 
-		{/* Name Change Confirmation */}
-		<AlertDialog open={showNameChangeConfirm} onOpenChange={setShowNameChangeConfirm}>
-			<AlertDialogContent>
-				<AlertDialogHeader>
-					<AlertDialogTitle>Rename Integration?</AlertDialogTitle>
-					<AlertDialogDescription>
-						Renaming this integration will break any SDK calls using the name '{originalName}'. Workflows and scripts will need to be updated to use '{name}'.
-					</AlertDialogDescription>
-				</AlertDialogHeader>
-				<AlertDialogFooter>
-					<AlertDialogCancel>Cancel</AlertDialogCancel>
-					<AlertDialogAction onClick={() => {
-						setShowNameChangeConfirm(false);
-						performSave();
-					}}>
-						Rename Anyway
-					</AlertDialogAction>
-				</AlertDialogFooter>
-			</AlertDialogContent>
-		</AlertDialog>
+			{/* Name Change Confirmation */}
+			<AlertDialog
+				open={showNameChangeConfirm}
+				onOpenChange={setShowNameChangeConfirm}
+			>
+				<AlertDialogContent>
+					<AlertDialogHeader>
+						<AlertDialogTitle>Rename Integration?</AlertDialogTitle>
+						<AlertDialogDescription>
+							Renaming this integration will break any SDK calls
+							using the name '{originalName}'. Workflows and
+							scripts will need to be updated to use '{name}'.
+						</AlertDialogDescription>
+					</AlertDialogHeader>
+					<AlertDialogFooter>
+						<AlertDialogCancel>Cancel</AlertDialogCancel>
+						<AlertDialogAction
+							onClick={() => {
+								setShowNameChangeConfirm(false);
+								performSave();
+							}}
+						>
+							Rename Anyway
+						</AlertDialogAction>
+					</AlertDialogFooter>
+				</AlertDialogContent>
+			</AlertDialog>
 
-		{/* Config Field Removal Confirmation */}
-		<AlertDialog open={showConfigFieldRemovalConfirm} onOpenChange={setShowConfigFieldRemovalConfirm}>
-			<AlertDialogContent>
-				<AlertDialogHeader>
-					<AlertDialogTitle>Remove Configuration Fields?</AlertDialogTitle>
-					<AlertDialogDescription>
-						Removing config field(s) will delete all stored values for: {removedFieldNames.join(', ')}. This cannot be undone.
-					</AlertDialogDescription>
-				</AlertDialogHeader>
-				<AlertDialogFooter>
-					<AlertDialogCancel>Cancel</AlertDialogCancel>
-					<AlertDialogAction onClick={() => {
-						setShowConfigFieldRemovalConfirm(false);
-						performSave();
-					}} className="bg-destructive text-destructive-foreground hover:bg-destructive/90">
-						Delete Fields
-					</AlertDialogAction>
-				</AlertDialogFooter>
-			</AlertDialogContent>
-		</AlertDialog>
+			{/* Config Field Removal Confirmation */}
+			<AlertDialog
+				open={showConfigFieldRemovalConfirm}
+				onOpenChange={setShowConfigFieldRemovalConfirm}
+			>
+				<AlertDialogContent>
+					<AlertDialogHeader>
+						<AlertDialogTitle>
+							Remove Configuration Fields?
+						</AlertDialogTitle>
+						<AlertDialogDescription>
+							Removing config field(s) will delete all stored
+							values for: {removedFieldNames.join(", ")}. This
+							cannot be undone.
+						</AlertDialogDescription>
+					</AlertDialogHeader>
+					<AlertDialogFooter>
+						<AlertDialogCancel>Cancel</AlertDialogCancel>
+						<AlertDialogAction
+							onClick={() => {
+								setShowConfigFieldRemovalConfirm(false);
+								performSave();
+							}}
+							className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+						>
+							Delete Fields
+						</AlertDialogAction>
+					</AlertDialogFooter>
+				</AlertDialogContent>
+			</AlertDialog>
 		</>
 	);
 }

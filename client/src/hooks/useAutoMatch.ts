@@ -21,9 +21,9 @@ export function useAutoMatch({
 	entities,
 	existingMappings,
 }: UseAutoMatchProps) {
-	const [suggestions, setSuggestions] = useState<Map<string, MatchSuggestion>>(
-		new Map(),
-	);
+	const [suggestions, setSuggestions] = useState<
+		Map<string, MatchSuggestion>
+	>(new Map());
 	const [matchStats, setMatchStats] = useState<MatchResult["stats"] | null>(
 		null,
 	);

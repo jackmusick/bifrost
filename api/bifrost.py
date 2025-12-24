@@ -26,7 +26,7 @@ from src.models import (
 def __getattr__(name):
     """Dynamically load SDK classes when accessed."""
     sdk_modules = [
-        'config', 'executions', 'files', 'forms', 'oauth',
+        'config', 'executions', 'files', 'forms', 'integrations',
         'organizations', 'roles', 'workflows'
     ]
     # Internal/private modules are loaded as-is (not classes)
@@ -66,7 +66,7 @@ __all__ = [
     "executions",  # noqa: F822
     "files",  # noqa: F822
     "forms",  # noqa: F822
-    "oauth",  # noqa: F822
+    "integrations",  # noqa: F822
     "organizations",  # noqa: F822
     "roles",  # noqa: F822
     "workflows",  # noqa: F822

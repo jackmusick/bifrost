@@ -184,7 +184,9 @@ export function Users() {
 										<DataTableHead>Type</DataTableHead>
 										<DataTableHead>Status</DataTableHead>
 										<DataTableHead>Created</DataTableHead>
-										<DataTableHead>Last Login</DataTableHead>
+										<DataTableHead>
+											Last Login
+										</DataTableHead>
 										<DataTableHead className="text-right"></DataTableHead>
 									</DataTableRow>
 								</DataTableHeader>

@@ -318,7 +318,9 @@ export default function SystemLogs() {
 													<DataTableHead>
 														Timestamp
 													</DataTableHead>
-													<DataTableHead>Level</DataTableHead>
+													<DataTableHead>
+														Level
+													</DataTableHead>
 													<DataTableHead>
 														Category
 													</DataTableHead>

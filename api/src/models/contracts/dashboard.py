@@ -4,7 +4,7 @@ Dashboard and metrics contract models for Bifrost.
 
 from typing import TYPE_CHECKING
 
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 if TYPE_CHECKING:
     pass
@@ -32,6 +32,14 @@ class RecentFailure(BaseModel):
     started_at: str | None
 
 
+class ROISnapshot(BaseModel):
+    """ROI metrics snapshot."""
+    total_time_saved: int = Field(description="Total time saved in minutes (24h)")
+    total_value: float = Field(description="Total value generated (24h)")
+    time_saved_unit: str = Field(description="Display label for time saved")
+    value_unit: str = Field(description="Display label for value")
+
+
 class DashboardMetricsResponse(BaseModel):
     """Dashboard metrics response"""
     workflow_count: int
@@ -39,6 +47,7 @@ class DashboardMetricsResponse(BaseModel):
     form_count: int
     execution_stats: ExecutionStats
     recent_failures: list[RecentFailure]
+    roi_24h: ROISnapshot | None = None
 
 
 class PlatformMetricsResponse(BaseModel):

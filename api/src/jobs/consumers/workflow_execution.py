@@ -148,6 +148,8 @@ class WorkflowExecutionConsumer(BaseConsumer):
             # Get workflow metadata from database if this is a workflow execution
             workflow_name = script_name or "inline_script"
             timeout_seconds = 1800  # Default 30 minutes
+            roi_time_saved = 0
+            roi_value = 0.0
 
             if not is_script and workflow_id:
                 from src.services.execution.service import get_workflow_by_id, WorkflowNotFoundError, WorkflowLoadError
@@ -156,6 +158,9 @@ class WorkflowExecutionConsumer(BaseConsumer):
                     _, metadata = await get_workflow_by_id(workflow_id)
                     workflow_name = metadata.name
                     timeout_seconds = metadata.timeout_seconds if metadata else 1800
+                    # Initialize ROI from workflow defaults
+                    roi_time_saved = metadata.time_saved or 0
+                    roi_value = float(metadata.value) if metadata.value else 0.0
                 except WorkflowNotFoundError:
                     logger.error(f"Workflow not found: {workflow_id}")
                     duration_ms = int((datetime.utcnow() - start_time).total_seconds() * 1000)
@@ -277,6 +282,10 @@ class WorkflowExecutionConsumer(BaseConsumer):
                 "transient": False,
                 "is_platform_admin": False,
                 "startup": startup,  # Launch workflow results (available via context.startup)
+                "roi": {
+                    "time_saved": roi_time_saved,
+                    "value": roi_value,
+                },
             }
 
             # Execute in isolated process
@@ -334,6 +343,11 @@ class WorkflowExecutionConsumer(BaseConsumer):
             status_str = result.get("status", "Failed")
             status = ExecutionStatus(status_str) if status_str in [s.value for s in ExecutionStatus] else ExecutionStatus.FAILED
 
+            # Extract ROI from result (if available)
+            roi_data = result.get("roi", {})
+            final_time_saved = roi_data.get("time_saved", roi_time_saved)
+            final_value = roi_data.get("value", roi_value)
+
             # Update execution with result and metrics
             # Note: logs are NOT passed here - they're persisted via flush_logs_to_postgres()
             # in engine.py from the Redis Stream (single source of truth per _logging.py)
@@ -346,6 +360,8 @@ class WorkflowExecutionConsumer(BaseConsumer):
                 duration_ms=result.get("duration_ms", 0),
                 variables=result.get("variables"),
                 metrics=result.get("metrics"),
+                time_saved=final_time_saved,
+                value=final_value,
             )
 
             await publish_execution_update(
@@ -372,14 +388,27 @@ class WorkflowExecutionConsumer(BaseConsumer):
 
             # Update daily metrics for dashboards
             metrics = result.get("metrics", {})
-            from src.core.metrics import update_daily_metrics
+            from src.core.metrics import update_daily_metrics, update_workflow_roi_daily
             await update_daily_metrics(
                 org_id=org_id,
                 status=status.value,
                 duration_ms=result.get("duration_ms", 0),
                 peak_memory_bytes=metrics.get("peak_memory_bytes") if metrics else None,
                 cpu_total_seconds=metrics.get("cpu_total_seconds") if metrics else None,
+                time_saved=final_time_saved,
+                value=final_value,
+                workflow_id=workflow_id,
             )
+
+            # Update per-workflow ROI if this is a workflow execution
+            if workflow_id:
+                await update_workflow_roi_daily(
+                    workflow_id=workflow_id,
+                    org_id=org_id,
+                    status=status.value,
+                    time_saved=final_time_saved,
+                    value=final_value,
+                )
 
             logger.info(
                 f"Execution completed: {workflow_name}",

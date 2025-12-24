@@ -9,12 +9,17 @@ import type { components } from "@/lib/v1";
 
 // Re-export types from generated API
 export type WorkflowParameter = components["schemas"]["WorkflowParameter"];
-export type CLIRegisteredWorkflow = components["schemas"]["CLIRegisteredWorkflow"];
-export type CLISessionExecutionSummary = components["schemas"]["CLISessionExecutionSummary"];
+export type CLIRegisteredWorkflow =
+	components["schemas"]["CLIRegisteredWorkflow"];
+export type CLISessionExecutionSummary =
+	components["schemas"]["CLISessionExecutionSummary"];
 export type CLISessionResponse = components["schemas"]["CLISessionResponse"];
-export type CLISessionListResponse = components["schemas"]["CLISessionListResponse"];
-export type CLISessionContinueRequest = components["schemas"]["CLISessionContinueRequest"];
-export type CLISessionContinueResponse = components["schemas"]["CLISessionContinueResponse"];
+export type CLISessionListResponse =
+	components["schemas"]["CLISessionListResponse"];
+export type CLISessionContinueRequest =
+	components["schemas"]["CLISessionContinueRequest"];
+export type CLISessionContinueResponse =
+	components["schemas"]["CLISessionContinueResponse"];
 
 /**
  * Get list of all CLI sessions for current user

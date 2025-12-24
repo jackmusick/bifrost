@@ -4,16981 +4,17092 @@
  */
 
 export interface paths {
-    "/health": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /**
-         * Health Check
-         * @description Basic health check endpoint.
-         *
-         *     Returns:
-         *         Basic health status
-         */
-        get: operations["health_check_health_get"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/health/detailed": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /**
-         * Detailed Health Check
-         * @description Detailed health check with component status.
-         *
-         *     Checks:
-         *     - Database connectivity
-         *
-         *     Returns:
-         *         Detailed health status with component information
-         */
-        get: operations["detailed_health_check_health_detailed_get"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/auth/login": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /**
-         * Login
-         * @description Login with email and password.
-         *
-         *     For email/password authentication, MFA is REQUIRED:
-         *     - If user has MFA enrolled: returns mfa_required=True with mfa_token
-         *     - If user has no MFA: returns mfa_setup_required=True to redirect to enrollment
-         *
-         *     Performs user provisioning on each login:
-         *     - First user in system becomes PlatformAdmin
-         *     - Subsequent users are matched to organizations by email domain
-         *     - JWT tokens include user_type, org_id, and roles for authorization
-         *
-         *     Rate limited: 10 requests per minute per IP address.
-         *
-         *     Args:
-         *         form_data: OAuth2 password form with username (email) and password
-         *         request: FastAPI request object
-         *         db: Database session
-         *
-         *     Returns:
-         *         LoginResponse with either tokens (MFA bypass for trusted device) or MFA requirements
-         *
-         *     Raises:
-         *         HTTPException: If credentials are invalid or provisioning fails
-         */
-        post: operations["login_auth_login_post"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/auth/mfa/setup": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /**
-         * Mfa Initial Setup
-         * @description Initialize MFA enrollment during first-time setup.
-         *
-         *     This endpoint is for users who just logged in with password for the first time
-         *     and need to enroll in MFA. Requires an mfa_token with purpose "mfa_setup"
-         *     in the Authorization header.
-         *
-         *     Returns:
-         *         MFA setup data including secret and QR code URI
-         *
-         *     Raises:
-         *         HTTPException: If MFA token is invalid or expired
-         */
-        post: operations["mfa_initial_setup_auth_mfa_setup_post"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/auth/mfa/verify": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /**
-         * Mfa Initial Verify
-         * @description Verify MFA code to complete initial enrollment.
-         *
-         *     This endpoint is for users completing their first MFA setup after password login.
-         *     Requires an mfa_token with purpose "mfa_setup" in the Authorization header.
-         *
-         *     On success:
-         *     - Activates the MFA method
-         *     - Generates recovery codes (shown only once!)
-         *     - Returns access tokens for auto-login
-         *
-         *     Returns:
-         *         Success status, recovery codes, and access tokens
-         *
-         *     Raises:
-         *         HTTPException: If MFA token is invalid or code verification fails
-         */
-        post: operations["mfa_initial_verify_auth_mfa_verify_post"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/auth/mfa/login": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /**
-         * Verify Mfa Login
-         * @description Complete MFA verification during login to get access tokens.
-         *
-         *     This is used when an existing user with MFA logs in and needs to verify their code.
-         *     For initial MFA enrollment verification, use POST /auth/mfa/verify.
-         *
-         *     Rate limited: 5 requests per minute per IP address.
-         *
-         *     Args:
-         *         mfa_request: MFA verification request with token, code, and trust options
-         *         request: FastAPI request object
-         *         db: Database session
-         *
-         *     Returns:
-         *         LoginResponse with access and refresh tokens
-         *
-         *     Raises:
-         *         HTTPException: If MFA token is invalid or code verification fails
-         */
-        post: operations["verify_mfa_login_auth_mfa_login_post"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/auth/refresh": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /**
-         * Refresh Token
-         * @description Refresh access token using refresh token with rotation.
-         *
-         *     Implements refresh token rotation: the old token is invalidated
-         *     and a new one is issued. This limits the window for token theft.
-         *
-         *     Fetches fresh user data and roles from database to ensure
-         *     the new token has up-to-date claims.
-         *
-         *     The refresh token can be provided in two ways:
-         *     1. Request body (API clients): {"refresh_token": "..."}
-         *     2. HttpOnly cookie (browser clients): Automatically sent
-         *
-         *     Rate limited: 10 requests per minute per IP address.
-         *
-         *     Args:
-         *         request: FastAPI request object
-         *         token_data: Optional refresh token in body (API clients)
-         *         db: Database session
-         *
-         *     Returns:
-         *         New access and refresh tokens with updated claims
-         *
-         *     Raises:
-         *         HTTPException: If refresh token is invalid or revoked
-         */
-        post: operations["refresh_token_auth_refresh_post"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/auth/me": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /**
-         * Get Current User Info
-         * @description Get current authenticated user information.
-         *
-         *     Returns user info including type, organization, and roles from the JWT token.
-         *
-         *     Args:
-         *         current_user: Current authenticated user (from JWT)
-         *
-         *     Returns:
-         *         User information with roles
-         */
-        get: operations["get_current_user_info_auth_me_get"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/auth/logout": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /**
-         * Logout
-         * @description Logout current user and revoke refresh token.
-         *
-         *     Clears authentication cookies and revokes the current refresh token.
-         *     The access token will remain valid until expiry (30 minutes max).
-         *
-         *     For API clients using Bearer auth, the refresh_token should be passed
-         *     in the request body. For browser clients using cookies, the token is
-         *     read from the refresh_token cookie automatically.
-         *
-         *     Args:
-         *         request: FastAPI request (to get refresh token cookie)
-         *         response: FastAPI response (to clear cookies)
-         *         current_user: Current authenticated user
-         *         body: Optional request body containing refresh_token for API clients
-         *
-         *     Returns:
-         *         Logout confirmation
-         */
-        post: operations["logout_auth_logout_post"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/auth/revoke-all": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /**
-         * Revoke All Sessions
-         * @description Revoke all refresh tokens for the current user.
-         *
-         *     This logs out all sessions across all devices. Useful when:
-         *     - User suspects account compromise
-         *     - User wants to sign out everywhere
-         *     - Password has been changed
-         *
-         *     Note: Access tokens will remain valid until expiry (30 minutes max).
-         *     For immediate revocation, consider also changing the password.
-         *
-         *     Args:
-         *         response: FastAPI response (to clear current cookies)
-         *         current_user: Current authenticated user
-         *
-         *     Returns:
-         *         Number of sessions revoked
-         */
-        post: operations["revoke_all_sessions_auth_revoke_all_post"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/auth/admin/revoke-user": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /**
-         * Admin Revoke User Sessions
-         * @description Revoke all refresh tokens for a specific user (admin only).
-         *
-         *     Allows platform administrators to forcibly log out a user from all
-         *     devices. Useful for security incidents or account compromises.
-         *
-         *     Requires platform admin (superuser) privileges.
-         *
-         *     Args:
-         *         revoke_data: Target user ID to revoke
-         *         current_user: Current authenticated user (must be admin)
-         *         db: Database session
-         *
-         *     Returns:
-         *         Number of sessions revoked
-         *
-         *     Raises:
-         *         HTTPException: If not admin or user not found
-         */
-        post: operations["admin_revoke_user_sessions_auth_admin_revoke_user_post"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/auth/register": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /**
-         * Register User
-         * @description Register a new user with auto-provisioning.
-         *
-         *     Handles three scenarios:
-         *     1. Pre-created user (is_registered=False): Admin created the user, user completes registration
-         *     2. First user in system: Becomes PlatformAdmin
-         *     3. New user with matching domain: Auto-joined to organization
-         *
-         *     Note: In production, this should be restricted or require admin approval.
-         *
-         *     Rate limited: 10 requests per minute per IP address.
-         *
-         *     Args:
-         *         request: FastAPI request object
-         *         user_data: User registration data
-         *         db: Database session
-         *
-         *     Returns:
-         *         Created user information with roles
-         *
-         *     Raises:
-         *         HTTPException: If email already registered or provisioning fails
-         */
-        post: operations["register_user_auth_register_post"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/auth/status": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /**
-         * Get Auth Status
-         * @description Get authentication system status for the login page.
-         *
-         *     Public endpoint that returns everything needed to render the login UI:
-         *     - Whether this is first-time setup (no users exist)
-         *     - Available authentication methods (password, OAuth providers)
-         *     - MFA requirements
-         *
-         *     Returns:
-         *         AuthStatusResponse with complete login page configuration
-         */
-        get: operations["get_auth_status_auth_status_get"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/auth/mfa/status": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /**
-         * Get Mfa Status
-         * @description Get MFA status for current user.
-         *
-         *     Returns:
-         *         MFA status including enabled state, enrolled methods, and recovery code count
-         */
-        get: operations["get_mfa_status_auth_mfa_status_get"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/auth/mfa/totp/setup": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /**
-         * Setup Mfa
-         * @description Initialize MFA enrollment for an authenticated user.
-         *
-         *     This endpoint is for users who are already logged in and want to add/reset TOTP.
-         *     For initial MFA enrollment during login, use POST /auth/mfa/setup instead.
-         *
-         *     Generates a new TOTP secret and returns the provisioning URI for QR code generation.
-         *     The MFA method is created in PENDING status until verified.
-         *
-         *     Returns:
-         *         MFA setup data including secret and QR code URI
-         */
-        post: operations["setup_mfa_auth_mfa_totp_setup_post"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/auth/mfa/totp/verify": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /**
-         * Verify Mfa
-         * @description Verify MFA code to complete enrollment for an authenticated user.
-         *
-         *     This endpoint is for users who are already logged in and want to complete TOTP setup.
-         *     For initial MFA enrollment during login, use POST /auth/mfa/verify instead.
-         *
-         *     On success:
-         *     - Activates the MFA method
-         *     - Generates recovery codes (shown only once!)
-         *     - Returns access tokens for auto-login
-         *
-         *     Args:
-         *         request: MFA verification request with 6-digit code
-         *
-         *     Returns:
-         *         Success status, recovery codes, and access tokens
-         *
-         *     Raises:
-         *         HTTPException: If verification fails
-         */
-        post: operations["verify_mfa_auth_mfa_totp_verify_post"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/auth/mfa": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        post?: never;
-        /**
-         * Remove Mfa
-         * @description Remove MFA enrollment.
-         *
-         *     Requires either current password or MFA code for verification.
-         *
-         *     Args:
-         *         request: Removal request with password or MFA code
-         *
-         *     Returns:
-         *         Success message
-         *
-         *     Raises:
-         *         HTTPException: If verification fails
-         */
-        delete: operations["remove_mfa_auth_mfa_delete"];
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/auth/mfa/recovery-codes/regenerate": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /**
-         * Regenerate Recovery Codes
-         * @description Regenerate recovery codes.
-         *
-         *     Requires MFA code for verification. Invalidates all existing recovery codes.
-         *
-         *     Args:
-         *         request: Request with current MFA code
-         *
-         *     Returns:
-         *         New set of recovery codes
-         *
-         *     Raises:
-         *         HTTPException: If MFA verification fails
-         */
-        post: operations["regenerate_recovery_codes_auth_mfa_recovery_codes_regenerate_post"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/auth/mfa/recovery-codes/count": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /**
-         * Get Recovery Codes Count
-         * @description Get count of remaining unused recovery codes.
-         *
-         *     Returns:
-         *         Total and remaining recovery code counts
-         */
-        get: operations["get_recovery_codes_count_auth_mfa_recovery_codes_count_get"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/auth/mfa/trusted-devices": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /**
-         * List Trusted Devices
-         * @description List all trusted devices for current user.
-         *
-         *     Returns:
-         *         List of trusted devices with their status
-         */
-        get: operations["list_trusted_devices_auth_mfa_trusted_devices_get"];
-        put?: never;
-        post?: never;
-        /**
-         * Revoke All Trusted Devices
-         * @description Revoke trust for all devices.
-         *
-         *     Returns:
-         *         Count of revoked devices
-         */
-        delete: operations["revoke_all_trusted_devices_auth_mfa_trusted_devices_delete"];
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/auth/mfa/trusted-devices/{device_id}": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        post?: never;
-        /**
-         * Revoke Trusted Device
-         * @description Revoke trust for a specific device.
-         *
-         *     Args:
-         *         device_id: Device ID to revoke
-         *
-         *     Returns:
-         *         Success message
-         *
-         *     Raises:
-         *         HTTPException: If device not found
-         */
-        delete: operations["revoke_trusted_device_auth_mfa_trusted_devices__device_id__delete"];
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/auth/oauth/providers": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /**
-         * Get Oauth Providers
-         * @description Get available OAuth providers.
-         *
-         *     Returns list of configured OAuth providers that can be used for login.
-         *
-         *     Returns:
-         *         List of available OAuth providers with display info
-         */
-        get: operations["get_oauth_providers_auth_oauth_providers_get"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/auth/oauth/init/{provider}": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /**
-         * Init Oauth
-         * @description Initialize OAuth login flow.
-         *
-         *     Generates authorization URL with PKCE challenge for secure OAuth flow.
-         *     The PKCE code_verifier is stored server-side in Redis, bound to the state.
-         *
-         *     Args:
-         *         provider: OAuth provider name (microsoft, google, oidc)
-         *         redirect_uri: Frontend callback URL
-         *
-         *     Returns:
-         *         Authorization URL and state for CSRF protection
-         *
-         *     Security:
-         *         - State is used for CSRF protection
-         *         - PKCE verifier is stored server-side (never sent to client)
-         *         - State can only be used once and expires after 10 minutes
-         */
-        get: operations["init_oauth_auth_oauth_init__provider__get"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/auth/oauth/callback": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /**
-         * Oauth Callback
-         * @description Complete OAuth login flow.
-         *
-         *     Called by frontend after receiving callback from OAuth provider.
-         *     Validates state, retrieves PKCE verifier from Redis, exchanges code for tokens.
-         *
-         *     OAuth users bypass MFA - the OAuth provider is trusted for authentication.
-         *     (This can be changed via oauth_require_mfa config option.)
-         *
-         *     Sets HttpOnly cookies for browser clients in addition to returning tokens in
-         *     the response body. This provides defense-in-depth: browser clients get XSS
-         *     protection from HttpOnly cookies, while API clients can use the response body.
-         *
-         *     Args:
-         *         callback_data: OAuth callback data with code and state
-         *         response: FastAPI response for setting cookies
-         *
-         *     Returns:
-         *         JWT access and refresh tokens (also sets cookies)
-         *
-         *     Raises:
-         *         HTTPException: If OAuth flow fails or user cannot be provisioned
-         *
-         *     Security:
-         *         - State is validated against Redis (CSRF protection)
-         *         - PKCE verifier is retrieved from Redis (never sent by client)
-         *         - State is single-use (deleted after retrieval)
-         */
-        post: operations["oauth_callback_auth_oauth_callback_post"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/auth/oauth/accounts": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /**
-         * Get Linked Accounts
-         * @description Get OAuth accounts linked to current user.
-         *
-         *     Returns:
-         *         List of linked OAuth accounts
-         */
-        get: operations["get_linked_accounts_auth_oauth_accounts_get"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/auth/oauth/accounts/{provider}": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        post?: never;
-        /**
-         * Unlink Oauth Account
-         * @description Unlink an OAuth account from current user.
-         *
-         *     User must have password set or another OAuth account to unlink.
-         *
-         *     Args:
-         *         provider: OAuth provider to unlink
-         *
-         *     Returns:
-         *         Success message
-         *
-         *     Raises:
-         *         HTTPException: If account not found or user would be locked out
-         */
-        delete: operations["unlink_oauth_account_auth_oauth_accounts__provider__delete"];
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/auth/passkeys/register/options": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /**
-         * Get passkey registration options
-         * @description Generate WebAuthn registration options for creating a new passkey. Returns a challenge and options that should be passed to navigator.credentials.create().
-         */
-        post: operations["get_registration_options_auth_passkeys_register_options_post"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/auth/passkeys/register/verify": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /**
-         * Verify passkey registration
-         * @description Verify the passkey registration response from the browser. This completes the passkey enrollment process.
-         */
-        post: operations["verify_registration_auth_passkeys_register_verify_post"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/auth/passkeys/authenticate/options": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /**
-         * Get passkey authentication options
-         * @description Generate WebAuthn authentication options for passwordless login. Returns a challenge that should be passed to navigator.credentials.get(). If email is provided, limits credentials to that user. If email is omitted, uses discoverable credentials (passkey autofill).
-         */
-        post: operations["get_authentication_options_auth_passkeys_authenticate_options_post"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/auth/passkeys/authenticate/verify": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /**
-         * Verify passkey authentication
-         * @description Verify the passkey authentication response and return JWT tokens. This is the passwordless login endpoint - no password required.
-         */
-        post: operations["verify_authentication_auth_passkeys_authenticate_verify_post"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/auth/passkeys": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /**
-         * List user's passkeys
-         * @description Get a list of all passkeys registered for the current user.
-         */
-        get: operations["list_passkeys_auth_passkeys_get"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/auth/passkeys/{passkey_id}": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        post?: never;
-        /**
-         * Delete a passkey
-         * @description Delete a passkey by ID. Users can only delete their own passkeys.
-         */
-        delete: operations["delete_passkey_auth_passkeys__passkey_id__delete"];
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/organizations": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /**
-         * List all organizations
-         * @description Get all organizations (Platform admin only)
-         */
-        get: operations["list_organizations_api_organizations_get"];
-        put?: never;
-        /**
-         * Create a new organization
-         * @description Create a new client organization (Platform admin only)
-         */
-        post: operations["create_organization_api_organizations_post"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/organizations/{org_id}": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /**
-         * Get organization by ID
-         * @description Get a specific organization by ID (Platform admin only)
-         */
-        get: operations["get_organization_api_organizations__org_id__get"];
-        put?: never;
-        post?: never;
-        /**
-         * Delete an organization
-         * @description Soft delete an organization (sets is_active=False, Platform admin only)
-         */
-        delete: operations["delete_organization_api_organizations__org_id__delete"];
-        options?: never;
-        head?: never;
-        /**
-         * Update an organization
-         * @description Update an existing organization (Platform admin only)
-         */
-        patch: operations["update_organization_api_organizations__org_id__patch"];
-        trace?: never;
-    };
-    "/api/users": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /**
-         * List users
-         * @description List all users with optional filtering by type and organization
-         */
-        get: operations["list_users_api_users_get"];
-        put?: never;
-        /**
-         * Create user
-         * @description Create a new user proactively (Platform admin only)
-         */
-        post: operations["create_user_api_users_post"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/users/{user_id}": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /**
-         * Get user details
-         * @description Get a specific user's details (Platform admin only)
-         */
-        get: operations["get_user_api_users__user_id__get"];
-        put?: never;
-        post?: never;
-        /**
-         * Delete user
-         * @description Delete a user from the system
-         */
-        delete: operations["delete_user_api_users__user_id__delete"];
-        options?: never;
-        head?: never;
-        /**
-         * Update user
-         * @description Update user properties including role transitions
-         */
-        patch: operations["update_user_api_users__user_id__patch"];
-        trace?: never;
-    };
-    "/api/users/{user_id}/roles": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /**
-         * Get user roles
-         * @description Get all roles assigned to a user
-         */
-        get: operations["get_user_roles_api_users__user_id__roles_get"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/users/{user_id}/forms": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /**
-         * Get user forms
-         * @description Get all forms a user can access based on their roles
-         */
-        get: operations["get_user_forms_api_users__user_id__forms_get"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/roles": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /**
-         * List all roles
-         * @description Get all roles (Platform admin only)
-         */
-        get: operations["list_roles_api_roles_get"];
-        put?: never;
-        /**
-         * Create a role
-         * @description Create a new role (Platform admin only)
-         */
-        post: operations["create_role_api_roles_post"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/roles/{role_id}": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /**
-         * Get a role
-         * @description Get a role by ID (Platform admin only)
-         */
-        get: operations["get_role_api_roles__role_id__get"];
-        put?: never;
-        post?: never;
-        /**
-         * Delete a role
-         * @description Soft delete a role (Platform admin only)
-         */
-        delete: operations["delete_role_api_roles__role_id__delete"];
-        options?: never;
-        head?: never;
-        /**
-         * Update a role
-         * @description Update a role (Platform admin only)
-         */
-        patch: operations["update_role_api_roles__role_id__patch"];
-        trace?: never;
-    };
-    "/api/roles/{role_id}/users": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /**
-         * Get role users
-         * @description Get all users assigned to a role
-         */
-        get: operations["get_role_users_api_roles__role_id__users_get"];
-        put?: never;
-        /**
-         * Assign users to role
-         * @description Assign users to a role (batch operation)
-         */
-        post: operations["assign_users_to_role_api_roles__role_id__users_post"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/roles/{role_id}/users/{user_id}": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        post?: never;
-        /**
-         * Remove user from role
-         * @description Remove a user from a role
-         */
-        delete: operations["remove_user_from_role_api_roles__role_id__users__user_id__delete"];
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/roles/{role_id}/forms": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /**
-         * Get role forms
-         * @description Get all forms assigned to a role
-         */
-        get: operations["get_role_forms_api_roles__role_id__forms_get"];
-        put?: never;
-        /**
-         * Assign forms to role
-         * @description Assign forms to a role (batch operation)
-         */
-        post: operations["assign_forms_to_role_api_roles__role_id__forms_post"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/roles/{role_id}/forms/{form_id}": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        post?: never;
-        /**
-         * Remove form from role
-         * @description Remove a form from a role
-         */
-        delete: operations["remove_form_from_role_api_roles__role_id__forms__form_id__delete"];
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/roles/{role_id}/agents": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /**
-         * Get role agents
-         * @description Get all agents assigned to a role
-         */
-        get: operations["get_role_agents_api_roles__role_id__agents_get"];
-        put?: never;
-        /**
-         * Assign agents to role
-         * @description Assign agents to a role (batch operation)
-         */
-        post: operations["assign_agents_to_role_api_roles__role_id__agents_post"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/roles/{role_id}/agents/{agent_id}": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        post?: never;
-        /**
-         * Remove agent from role
-         * @description Remove an agent from a role
-         */
-        delete: operations["remove_agent_from_role_api_roles__role_id__agents__agent_id__delete"];
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/executions": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /**
-         * List workflow executions
-         * @description List workflow executions with filtering and pagination
-         */
-        get: operations["list_executions_api_executions_get"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/executions/{execution_id}": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /**
-         * Get execution details
-         * @description Get detailed information about a specific execution
-         */
-        get: operations["get_execution_api_executions__execution_id__get"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/executions/{execution_id}/result": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /**
-         * Get execution result only
-         * @description Get only the result of a specific execution (progressive loading)
-         */
-        get: operations["get_execution_result_api_executions__execution_id__result_get"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/executions/{execution_id}/logs": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /**
-         * Get execution logs only
-         * @description Get only the logs of a specific execution (progressive loading)
-         */
-        get: operations["get_execution_logs_api_executions__execution_id__logs_get"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/executions/{execution_id}/variables": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /**
-         * Get execution variables only
-         * @description Get only the variables of a specific execution (platform admin only)
-         */
-        get: operations["get_execution_variables_api_executions__execution_id__variables_get"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/executions/{execution_id}/cancel": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /**
-         * Cancel execution
-         * @description Cancel a pending or running execution
-         */
-        post: operations["cancel_execution_api_executions__execution_id__cancel_post"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/executions/cleanup/stuck": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /**
-         * Get stuck executions
-         * @description Get executions that have been running or pending too long (Platform admin only)
-         */
-        get: operations["get_stuck_executions_api_executions_cleanup_stuck_get"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/executions/cleanup/trigger": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /**
-         * Trigger execution cleanup
-         * @description Clean up stuck executions by marking them as timed out (Platform admin only)
-         */
-        post: operations["trigger_cleanup_api_executions_cleanup_trigger_post"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/executions/cleanup/redis-orphans": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /**
-         * Cleanup orphaned Redis pending executions
-         * @description Clean up Redis pending executions that are too old (Platform admin only)
-         */
-        post: operations["cleanup_redis_orphans_api_executions_cleanup_redis_orphans_post"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/workflows": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /**
-         * List all workflows
-         * @description Returns metadata for all registered workflows in the system
-         */
-        get: operations["list_workflows_api_workflows_get"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/workflows/execute": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /**
-         * Execute a workflow or script
-         * @description Execute a workflow by name or inline Python code (Platform admin only)
-         */
-        post: operations["execute_workflow_api_workflows_execute_post"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/workflows/validate": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /**
-         * Validate a workflow file
-         * @description Validate a workflow file for syntax errors and decorator issues
-         */
-        post: operations["validate_workflow_api_workflows_validate_post"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/forms": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /**
-         * List forms
-         * @description List all forms visible to the user based on their permissions
-         */
-        get: operations["list_forms_api_forms_get"];
-        put?: never;
-        /**
-         * Create a new form
-         * @description Create a new form (Platform admin only)
-         */
-        post: operations["create_form_api_forms_post"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/forms/{form_id}": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /**
-         * Get form by ID
-         * @description Get a specific form by ID. User must have access to the form.
-         */
-        get: operations["get_form_api_forms__form_id__get"];
-        put?: never;
-        post?: never;
-        /**
-         * Delete a form
-         * @description Soft delete a form (Platform admin only)
-         */
-        delete: operations["delete_form_api_forms__form_id__delete"];
-        options?: never;
-        head?: never;
-        /**
-         * Update a form
-         * @description Update an existing form (Platform admin only)
-         */
-        patch: operations["update_form_api_forms__form_id__patch"];
-        trace?: never;
-    };
-    "/api/forms/{form_id}/execute": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /**
-         * Execute a form
-         * @description Execute the workflow linked to a form. Requires appropriate access based on form's access_level.
-         */
-        post: operations["execute_form_api_forms__form_id__execute_post"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/forms/{form_id}/startup": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /**
-         * Execute launch workflow
-         * @description Execute the launch workflow to populate form context before main execution.
-         */
-        post: operations["execute_startup_workflow_api_forms__form_id__startup_post"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/forms/{form_id}/upload": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /**
-         * Generate presigned URL for file upload
-         * @description Generate a presigned S3 URL for direct file upload. The file will be stored in the uploads folder.
-         */
-        post: operations["generate_upload_url_api_forms__form_id__upload_post"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/config": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /**
-         * Get configuration values
-         * @description Get configuration values for current scope (includes global configs)
-         */
-        get: operations["get_config_api_config_get"];
-        put?: never;
-        /**
-         * Set configuration value
-         * @description Set a configuration value in the current scope
-         */
-        post: operations["set_config_api_config_post"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/config/{key}": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        post?: never;
-        /**
-         * Delete configuration value
-         * @description Delete a configuration value by key
-         */
-        delete: operations["delete_config_api_config__key__delete"];
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/data-providers": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /**
-         * List all data providers
-         * @description Returns metadata for all registered data providers in the system
-         */
-        get: operations["list_data_providers_api_data_providers_get"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/data-providers/{provider_id}/invoke": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /**
-         * Invoke a data provider
-         * @description Execute a data provider and return its options. User must have access via form or integration.
-         */
-        post: operations["invoke_data_provider_api_data_providers__provider_id__invoke_post"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/branding": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /**
-         * Get branding settings
-         * @description Get platform branding settings. Public endpoint for login page display.
-         */
-        get: operations["get_branding_api_branding_get"];
-        /**
-         * Update primary color
-         * @description Update platform primary color (superuser only)
-         */
-        put: operations["update_branding_api_branding_put"];
-        post?: never;
-        /**
-         * Reset all branding to defaults
-         * @description Remove all custom branding (logos and color) and revert to defaults (superuser only)
-         */
-        delete: operations["reset_all_branding_api_branding_delete"];
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/branding/logo/{logo_type}": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /**
-         * Get logo image
-         * @description Serve the uploaded logo image
-         */
-        get: operations["get_logo_api_branding_logo__logo_type__get"];
-        put?: never;
-        /**
-         * Upload logo
-         * @description Upload a square or rectangle logo (superuser only)
-         */
-        post: operations["upload_logo_api_branding_logo__logo_type__post"];
-        /**
-         * Reset logo to default
-         * @description Remove custom logo and revert to default (superuser only)
-         */
-        delete: operations["reset_logo_api_branding_logo__logo_type__delete"];
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/branding/color": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        post?: never;
-        /**
-         * Reset primary color to default
-         * @description Remove custom primary color and revert to default (superuser only)
-         */
-        delete: operations["reset_color_api_branding_color_delete"];
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/editor/files": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /**
-         * List directory contents
-         * @description List files and folders in a directory (Platform admin only)
-         */
-        get: operations["list_files_api_editor_files_get"];
-        put?: never;
-        post?: never;
-        /**
-         * Delete file or folder
-         * @description Delete a file or folder recursively (Platform admin only)
-         */
-        delete: operations["delete_file_or_directory_api_editor_files_delete"];
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/editor/files/content": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /**
-         * Read file content
-         * @description Read the content of a file (Platform admin only)
-         */
-        get: operations["get_file_content_api_editor_files_content_get"];
-        /**
-         * Write file content
-         * @description Write content to a file (Platform admin only)
-         */
-        put: operations["put_file_content_api_editor_files_content_put"];
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/editor/files/folder": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /**
-         * Create folder
-         * @description Create a new folder (Platform admin only)
-         */
-        post: operations["create_new_folder_api_editor_files_folder_post"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/editor/files/rename": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /**
-         * Rename or move file/folder
-         * @description Rename or move a file or folder (Platform admin only)
-         */
-        post: operations["rename_or_move_api_editor_files_rename_post"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/editor/search": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /**
-         * Search file contents
-         * @description Search for text or regex patterns in files (Platform admin only)
-         */
-        post: operations["search_file_contents_api_editor_search_post"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/schedules": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /**
-         * List scheduled workflows
-         * @description List all workflows that have a schedule configured with enriched metadata (Platform admin only)
-         */
-        get: operations["list_schedules_api_schedules_get"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/workflow-keys": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /**
-         * List workflow API keys
-         * @description List all workflows with API keys enabled (Platform admin only)
-         */
-        get: operations["list_keys_api_workflow_keys_get"];
-        put?: never;
-        /**
-         * Create a new API key
-         * @description Create a new workflow API key (Platform admin only, requires workflow_name)
-         */
-        post: operations["create_key_api_workflow_keys_post"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/workflow-keys/{workflow_id}": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        post?: never;
-        /**
-         * Revoke an API key
-         * @description Revoke a workflow API key by workflow ID (Platform admin only)
-         */
-        delete: operations["revoke_key_api_workflow_keys__workflow_id__delete"];
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/logs": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /**
-         * List system logs
-         * @description List system logs (stub - returns empty for now)
-         */
-        get: operations["list_logs_api_logs_get"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/logs/{category}/{row_key}": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /**
-         * Get single log
-         * @description Get a single system log entry (stub - returns 404)
-         */
-        get: operations["get_log_api_logs__category___row_key__get"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/metrics": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /**
-         * Get dashboard metrics
-         * @description Get platform metrics for the dashboard. Uses pre-computed snapshot for instant loads.
-         */
-        get: operations["get_metrics_api_metrics_get"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/metrics/snapshot": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /**
-         * Get full platform metrics snapshot
-         * @description Get the complete pre-computed metrics snapshot. Platform admin only.
-         */
-        get: operations["get_metrics_snapshot_api_metrics_snapshot_get"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/metrics/executions/daily": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /**
-         * Get daily execution metrics
-         * @description Get daily execution metrics for trends. Platform admin only.
-         */
-        get: operations["get_daily_metrics_api_metrics_executions_daily_get"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/metrics/organizations": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /**
-         * Get organization metrics breakdown
-         * @description Get execution metrics grouped by organization. Platform admin only.
-         */
-        get: operations["get_organization_metrics_api_metrics_organizations_get"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/metrics/resources": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /**
-         * Get resource usage trends
-         * @description Get memory and CPU usage trends. Platform admin only.
-         */
-        get: operations["get_resource_metrics_api_metrics_resources_get"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/metrics/workflows": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /**
-         * Get workflow-level metrics
-         * @description Get aggregated execution metrics grouped by workflow. Platform admin only.
-         */
-        get: operations["get_workflow_metrics_api_metrics_workflows_get"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/packages": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /**
-         * List installed packages
-         * @description List all installed Python packages
-         */
-        get: operations["list_packages_api_packages_get"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/packages/updates": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /**
-         * Check for package updates
-         * @description Check for available updates to installed packages
-         */
-        get: operations["check_updates_api_packages_updates_get"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/packages/install": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /**
-         * Install a Python package
-         * @description Install a Python package (Platform admin only)
-         */
-        post: operations["install_package_api_packages_install_post"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/packages/{package_name}": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        post?: never;
-        /**
-         * Uninstall a Python package
-         * @description Uninstall a Python package (Platform admin only)
-         */
-        delete: operations["uninstall_package_api_packages__package_name__delete"];
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/github/status": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /**
-         * Get GitHub sync status
-         * @description Get current GitHub repository connection and sync status
-         */
-        get: operations["get_github_status_api_github_status_get"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/github/refresh": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /**
-         * Refresh Git status
-         * @description Get complete Git status including local changes, conflicts, and commit history
-         */
-        post: operations["refresh_github_status_api_github_refresh_post"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/github/pull": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /**
-         * Pull from GitHub
-         * @description Pull latest changes from the connected GitHub repository
-         */
-        post: operations["pull_from_github_api_github_pull_post"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/github/push": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /**
-         * Push to GitHub
-         * @description Push local changes to the connected GitHub repository
-         */
-        post: operations["push_to_github_api_github_push_post"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/github/changes": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /**
-         * Get local changes
-         * @description List local changes not yet pushed to GitHub
-         */
-        get: operations["get_changes_api_github_changes_get"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/github/init": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /**
-         * Initialize Git repository
-         * @description Initialize workspace as a Git repository with remote (stub)
-         */
-        post: operations["init_repo_api_github_init_post"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/github/commit": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /**
-         * Commit local changes
-         * @description Commit staged changes with a message (stub)
-         */
-        post: operations["commit_changes_api_github_commit_post"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/github/commits": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /**
-         * Get commit history
-         * @description Get commit history with pagination
-         */
-        get: operations["get_commits_api_github_commits_get"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/github/conflicts": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /**
-         * Get merge conflicts
-         * @description List files with merge conflicts (stub)
-         */
-        get: operations["get_conflicts_api_github_conflicts_get"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/github/abort-merge": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /**
-         * Abort merge
-         * @description Abort current merge operation (stub)
-         */
-        post: operations["abort_merge_api_github_abort_merge_post"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/github/discard-unpushed": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /**
-         * Discard unpushed commits
-         * @description Discard all unpushed commits and reset to remote
-         */
-        post: operations["discard_unpushed_commits_api_github_discard_unpushed_post"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/github/discard-commit": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /**
-         * Discard specific commit
-         * @description Discard a specific commit and all newer commits
-         */
-        post: operations["discard_commit_api_github_discard_commit_post"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/github/config": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /**
-         * Get GitHub configuration
-         * @description Retrieve current GitHub integration configuration
-         */
-        get: operations["get_github_config_api_github_config_get"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/github/validate": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /**
-         * Validate GitHub token
-         * @description Validate GitHub token and save to database, returns accessible repositories
-         */
-        post: operations["validate_github_token_api_github_validate_post"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/github/configure": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /**
-         * Configure GitHub integration
-         * @description Queue GitHub repository setup job. Watch notification channel for progress.
-         */
-        post: operations["configure_github_api_github_configure_post"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/github/repositories": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /**
-         * List GitHub repositories
-         * @description List accessible repositories using the saved GitHub token
-         */
-        get: operations["list_github_repos_api_github_repositories_get"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/github/branches": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /**
-         * List repository branches
-         * @description List branches in a GitHub repository using saved token
-         */
-        get: operations["list_github_branches_api_github_branches_get"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/github/analyze-workspace": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /**
-         * Analyze workspace
-         * @description Analyze workspace for potential conflicts before configuring GitHub
-         */
-        post: operations["analyze_workspace_api_github_analyze_workspace_post"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/github/create-repository": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /**
-         * Create GitHub repository
-         * @description Create a new GitHub repository using saved token
-         */
-        post: operations["create_github_repository_api_github_create_repository_post"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/github/disconnect": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /**
-         * Disconnect GitHub integration
-         * @description Remove GitHub integration configuration
-         */
-        post: operations["disconnect_github_api_github_disconnect_post"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/oauth/connections/{connection_name}": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /**
-         * Get OAuth connection
-         * @description Get a specific OAuth connection (Platform admin only)
-         */
-        get: operations["get_connection_api_oauth_connections__connection_name__get"];
-        /**
-         * Update OAuth connection
-         * @description Update an existing OAuth connection (Platform admin only)
-         */
-        put: operations["update_connection_api_oauth_connections__connection_name__put"];
-        post?: never;
-        /**
-         * Delete OAuth connection
-         * @description Delete an OAuth connection (Platform admin only)
-         */
-        delete: operations["delete_connection_api_oauth_connections__connection_name__delete"];
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/oauth/connections": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /**
-         * Create OAuth connection
-         * @description Create a new OAuth connection (Platform admin only)
-         */
-        post: operations["create_connection_api_oauth_connections_post"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/oauth/connections/{connection_name}/authorize": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /**
-         * Initiate OAuth authorization
-         * @description Get authorization URL for user to complete OAuth flow
-         */
-        post: operations["authorize_connection_api_oauth_connections__connection_name__authorize_post"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/oauth/connections/{connection_name}/cancel": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /**
-         * Cancel OAuth authorization
-         * @description Cancel pending OAuth authorization and reset to not_connected
-         */
-        post: operations["cancel_authorization_api_oauth_connections__connection_name__cancel_post"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/oauth/connections/{connection_name}/refresh": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /**
-         * Refresh OAuth token
-         * @description Manually refresh the OAuth access token using the refresh token
-         */
-        post: operations["refresh_token_api_oauth_connections__connection_name__refresh_post"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/oauth/callback/{connection_name}": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /**
-         * OAuth callback
-         * @description Handle OAuth callback and exchange code for tokens
-         */
-        post: operations["oauth_callback_api_oauth_callback__connection_name__post"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/oauth/credentials/{connection_name}": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /**
-         * Get OAuth credentials
-         * @description Get OAuth credentials for use in workflows (Platform admin only)
-         */
-        get: operations["get_credentials_api_oauth_credentials__connection_name__get"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/oauth/refresh_job_status": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /**
-         * Get OAuth refresh job status
-         * @description Get status of the background token refresh job
-         */
-        get: operations["get_refresh_job_status_api_oauth_refresh_job_status_get"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/oauth/refresh_all": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /**
-         * Trigger refresh of all OAuth tokens
-         * @description Manually trigger refresh of all OAuth tokens (Platform admin only)
-         */
-        post: operations["trigger_refresh_all_api_oauth_refresh_all_post"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/endpoints/{workflow_name}": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /**
-         * Execute workflow via API key
-         * @description Execute an endpoint-enabled workflow using an API key for authentication
-         */
-        get: operations["execute_endpoint_api_endpoints__workflow_name__post"];
-        /**
-         * Execute workflow via API key
-         * @description Execute an endpoint-enabled workflow using an API key for authentication
-         */
-        put: operations["execute_endpoint_api_endpoints__workflow_name__post"];
-        /**
-         * Execute workflow via API key
-         * @description Execute an endpoint-enabled workflow using an API key for authentication
-         */
-        post: operations["execute_endpoint_api_endpoints__workflow_name__post"];
-        /**
-         * Execute workflow via API key
-         * @description Execute an endpoint-enabled workflow using an API key for authentication
-         */
-        delete: operations["execute_endpoint_api_endpoints__workflow_name__post"];
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/cli/context": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /**
-         * Get developer context
-         * @description Get development context for CLI initialization.
-         */
-        get: operations["get_dev_context_api_cli_context_get"];
-        /**
-         * Update developer context
-         * @description Update developer context settings.
-         */
-        put: operations["update_dev_context_api_cli_context_put"];
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/cli/keys": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /**
-         * List API keys
-         * @description List all API keys for the current user.
-         */
-        get: operations["list_api_keys_api_cli_keys_get"];
-        put?: never;
-        /**
-         * Create API key
-         * @description Create a new API key.
-         */
-        post: operations["create_api_key_api_cli_keys_post"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/cli/keys/{key_id}": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        post?: never;
-        /**
-         * Delete API key
-         * @description Delete an API key.
-         */
-        delete: operations["delete_api_key_api_cli_keys__key_id__delete"];
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/cli/keys/{key_id}/revoke": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        /**
-         * Revoke API key
-         * @description Revoke an API key (set is_active to False).
-         */
-        patch: operations["revoke_api_key_api_cli_keys__key_id__revoke_patch"];
-        trace?: never;
-    };
-    "/api/cli/files/read": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /**
-         * Read file content
-         * @description Read a file via CLI API.
-         */
-        post: operations["cli_read_file_api_cli_files_read_post"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/cli/files/write": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /**
-         * Write file content
-         * @description Write a file via CLI API.
-         */
-        post: operations["cli_write_file_api_cli_files_write_post"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/cli/files/list": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /**
-         * List files in directory
-         * @description List files in a directory via CLI API.
-         */
-        post: operations["cli_list_files_api_cli_files_list_post"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/cli/files/delete": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /**
-         * Delete file or directory
-         * @description Delete a file or directory via CLI API.
-         */
-        post: operations["cli_delete_file_api_cli_files_delete_post"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/cli/config/get": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /**
-         * Get config value
-         * @description Get a config value via CLI API.
-         */
-        post: operations["cli_get_config_api_cli_config_get_post"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/cli/config/set": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /**
-         * Set config value
-         * @description Set a config value via CLI API.
-         */
-        post: operations["cli_set_config_api_cli_config_set_post"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/cli/config/list": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /**
-         * List config values
-         * @description List all config values via CLI API.
-         */
-        post: operations["cli_list_config_api_cli_config_list_post"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/cli/config/delete": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /**
-         * Delete config value
-         * @description Delete a config value via CLI API.
-         */
-        post: operations["cli_delete_config_api_cli_config_delete_post"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/cli/oauth/get": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /**
-         * Get OAuth connection data
-         * @description Get OAuth connection data via CLI API.
-         */
-        post: operations["cli_get_oauth_api_cli_oauth_get_post"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/cli/integrations/get": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /**
-         * Get integration data for an organization
-         * @description Get integration mapping data for an organization via SDK.
-         */
-        post: operations["sdk_integrations_get_api_cli_integrations_get_post"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/cli/integrations/list_mappings": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /**
-         * List all mappings for an integration
-         * @description List all mappings for an integration via SDK.
-         */
-        post: operations["sdk_integrations_list_mappings_api_cli_integrations_list_mappings_post"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/cli/sessions": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /**
-         * List user's CLI sessions
-         * @description List all CLI sessions for the current user.
-         */
-        get: operations["list_cli_sessions_api_cli_sessions_get"];
-        put?: never;
-        /**
-         * Register/create a CLI session
-         * @description Register workflows discovered by CLI for web UI.
-         *
-         *     Called by `bifrost run <file>` to register workflows before
-         *     opening the browser to the CLI session page.
-         */
-        post: operations["register_cli_session_api_cli_sessions_post"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/cli/sessions/{session_id}": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /**
-         * Get CLI session state
-         * @description Get current CLI session state for web UI.
-         */
-        get: operations["get_cli_session_api_cli_sessions__session_id__get"];
-        put?: never;
-        post?: never;
-        /**
-         * Delete CLI session
-         * @description Delete a CLI session.
-         */
-        delete: operations["delete_cli_session_api_cli_sessions__session_id__delete"];
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/cli/sessions/{session_id}/continue": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /**
-         * Continue workflow execution
-         * @description Submit parameters to continue workflow execution.
-         *
-         *     Called by web UI when user clicks "Continue".
-         *     Creates a real Execution record and sets pending=True so CLI can pick up.
-         */
-        post: operations["continue_cli_session_api_cli_sessions__session_id__continue_post"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/cli/sessions/{session_id}/pending": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /**
-         * Poll for pending execution
-         * @description Poll for pending workflow execution.
-         *
-         *     Returns 204 No Content if no execution pending.
-         *     Returns execution_id, params and clears pending flag when execution is ready.
-         */
-        get: operations["get_pending_execution_api_cli_sessions__session_id__pending_get"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/cli/sessions/{session_id}/heartbeat": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /**
-         * Update session heartbeat
-         * @description Update session's last_seen timestamp (CLI heartbeat).
-         */
-        post: operations["session_heartbeat_api_cli_sessions__session_id__heartbeat_post"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/cli/sessions/{session_id}/executions/{execution_id}/log": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /**
-         * Stream log entry from CLI
-         * @description Stream a log entry from CLI to the execution.
-         */
-        post: operations["post_cli_log_api_cli_sessions__session_id__executions__execution_id__log_post"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/cli/sessions/{session_id}/executions/{execution_id}/result": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /**
-         * Post execution result from CLI
-         * @description Post execution result from CLI.
-         */
-        post: operations["post_cli_result_api_cli_sessions__session_id__executions__execution_id__result_post"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/cli/download": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /**
-         * Download CLI package
-         * @description Download the Bifrost CLI as a pip-installable tarball
-         */
-        get: operations["download_cli_api_cli_download_get"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/notifications": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /**
-         * List Notifications
-         * @description Get all notifications for the current user.
-         *
-         *     Platform admins also receive admin-scoped notifications.
-         *
-         *     Returns:
-         *         List of active notifications
-         */
-        get: operations["list_notifications_api_notifications_get"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/notifications/{notification_id}": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /**
-         * Get Notification
-         * @description Get a specific notification by ID.
-         *
-         *     Args:
-         *         notification_id: Notification ID
-         *
-         *     Returns:
-         *         Notification details
-         *
-         *     Raises:
-         *         404 if not found or not owned by user
-         */
-        get: operations["get_notification_api_notifications__notification_id__get"];
-        put?: never;
-        post?: never;
-        /**
-         * Dismiss Notification
-         * @description Dismiss (delete) a notification.
-         *
-         *     Only the owner can dismiss their notification.
-         *
-         *     Args:
-         *         notification_id: Notification ID to dismiss
-         *
-         *     Raises:
-         *         404 if not found or not owned by user
-         */
-        delete: operations["dismiss_notification_api_notifications__notification_id__delete"];
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/notifications/locks/upload": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /**
-         * Get Upload Lock Status
-         * @description Check the current upload lock status (admin only).
-         *
-         *     Used by admins to monitor file uploads and manage locks.
-         *
-         *     Returns:
-         *         Upload lock information
-         */
-        get: operations["get_upload_lock_status_api_notifications_locks_upload_get"];
-        put?: never;
-        post?: never;
-        /**
-         * Force Release Upload Lock
-         * @description Force release the upload lock (admin only).
-         *
-         *     Use this only for stuck locks that didn't release properly.
-         *
-         *     Raises:
-         *         404 if no lock exists
-         */
-        delete: operations["force_release_upload_lock_api_notifications_locks_upload_delete"];
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/profile": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /**
-         * Get current user profile
-         * @description Get the authenticated user's profile information
-         */
-        get: operations["get_profile_api_profile_get"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        /**
-         * Update user profile
-         * @description Update the authenticated user's profile information
-         */
-        patch: operations["update_profile_api_profile_patch"];
-        trace?: never;
-    };
-    "/api/profile/avatar": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /**
-         * Get user avatar
-         * @description Get the authenticated user's avatar image
-         */
-        get: operations["get_avatar_api_profile_avatar_get"];
-        put?: never;
-        /**
-         * Upload avatar
-         * @description Upload a new avatar image (PNG or JPEG, max 2MB)
-         */
-        post: operations["upload_avatar_api_profile_avatar_post"];
-        /**
-         * Delete avatar
-         * @description Remove the user's avatar
-         */
-        delete: operations["delete_avatar_api_profile_avatar_delete"];
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/profile/password": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /**
-         * Change password
-         * @description Change the authenticated user's password
-         */
-        post: operations["change_password_api_profile_password_post"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/agents": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /**
-         * List Agents
-         * @description List agents the user has access to.
-         *
-         *     Platform admins see all agents.
-         *     Users see agents based on role assignments.
-         */
-        get: operations["list_agents_api_agents_get"];
-        put?: never;
-        /**
-         * Create Agent
-         * @description Create a new agent (platform admin only).
-         *
-         *     Creates both database record and S3 file.
-         */
-        post: operations["create_agent_api_agents_post"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/agents/{agent_id}": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /**
-         * Get Agent
-         * @description Get agent by ID.
-         */
-        get: operations["get_agent_api_agents__agent_id__get"];
-        /**
-         * Update Agent
-         * @description Update an agent (platform admin only).
-         */
-        put: operations["update_agent_api_agents__agent_id__put"];
-        post?: never;
-        /**
-         * Delete Agent
-         * @description Soft delete an agent (platform admin only).
-         */
-        delete: operations["delete_agent_api_agents__agent_id__delete"];
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/agents/{agent_id}/tools": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /**
-         * Get Agent Tools
-         * @description Get tools assigned to an agent.
-         */
-        get: operations["get_agent_tools_api_agents__agent_id__tools_get"];
-        put?: never;
-        /**
-         * Assign Tools To Agent
-         * @description Assign tools to an agent (platform admin only).
-         */
-        post: operations["assign_tools_to_agent_api_agents__agent_id__tools_post"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/agents/{agent_id}/tools/{workflow_id}": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        post?: never;
-        /**
-         * Remove Tool From Agent
-         * @description Remove a tool from an agent (platform admin only).
-         */
-        delete: operations["remove_tool_from_agent_api_agents__agent_id__tools__workflow_id__delete"];
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/agents/{agent_id}/delegations": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /**
-         * Get Agent Delegations
-         * @description Get agents this agent can delegate to.
-         */
-        get: operations["get_agent_delegations_api_agents__agent_id__delegations_get"];
-        put?: never;
-        /**
-         * Assign Delegations To Agent
-         * @description Assign delegation targets to an agent (platform admin only).
-         */
-        post: operations["assign_delegations_to_agent_api_agents__agent_id__delegations_post"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/agents/{agent_id}/delegations/{delegate_id}": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        post?: never;
-        /**
-         * Remove Delegation From Agent
-         * @description Remove a delegation from an agent (platform admin only).
-         */
-        delete: operations["remove_delegation_from_agent_api_agents__agent_id__delegations__delegate_id__delete"];
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/chat/conversations": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /**
-         * List Conversations
-         * @description List user's conversations.
-         */
-        get: operations["list_conversations_api_chat_conversations_get"];
-        put?: never;
-        /**
-         * Create Conversation
-         * @description Create a new conversation, optionally with an agent.
-         */
-        post: operations["create_conversation_api_chat_conversations_post"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/chat/conversations/{conversation_id}": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /**
-         * Get Conversation
-         * @description Get conversation details.
-         */
-        get: operations["get_conversation_api_chat_conversations__conversation_id__get"];
-        put?: never;
-        post?: never;
-        /**
-         * Delete Conversation
-         * @description Delete a conversation (soft delete).
-         */
-        delete: operations["delete_conversation_api_chat_conversations__conversation_id__delete"];
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/chat/conversations/{conversation_id}/messages": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /**
-         * Get Messages
-         * @description Get messages in a conversation.
-         */
-        get: operations["get_messages_api_chat_conversations__conversation_id__messages_get"];
-        put?: never;
-        /**
-         * Send Message
-         * @description Send a message to a conversation (non-streaming).
-         *
-         *     For streaming responses, use the WebSocket endpoint.
-         */
-        post: operations["send_message_api_chat_conversations__conversation_id__messages_post"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/admin/llm/config": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /**
-         * Get Llm Config
-         * @description Get current LLM provider configuration.
-         *
-         *     Returns the configuration without the API key (only indicates if it's set).
-         *     Requires platform admin access.
-         */
-        get: operations["get_llm_config_api_admin_llm_config_get"];
-        put?: never;
-        /**
-         * Set Llm Config
-         * @description Set LLM provider configuration.
-         *
-         *     The API key will be encrypted before storage.
-         *     Requires platform admin access.
-         */
-        post: operations["set_llm_config_api_admin_llm_config_post"];
-        /**
-         * Delete Llm Config
-         * @description Delete LLM provider configuration.
-         *
-         *     Requires platform admin access.
-         */
-        delete: operations["delete_llm_config_api_admin_llm_config_delete"];
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/admin/llm/test": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /**
-         * Test Llm Connection
-         * @description Test LLM connection with provided credentials.
-         *
-         *     Tests the connection without saving the configuration.
-         *     Useful for validating API keys before committing.
-         *     Requires platform admin access.
-         */
-        post: operations["test_llm_connection_api_admin_llm_test_post"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/admin/llm/test-saved": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /**
-         * Test Saved Llm Connection
-         * @description Test connection using saved LLM configuration.
-         *
-         *     Tests the currently saved configuration.
-         *     Requires platform admin access.
-         */
-        post: operations["test_saved_llm_connection_api_admin_llm_test_saved_post"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/admin/llm/models": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /**
-         * List Llm Models
-         * @description List available models from the configured LLM provider.
-         *
-         *     Works with OpenAI and Anthropic (both support model listing).
-         *     Requires platform admin access.
-         */
-        get: operations["list_llm_models_api_admin_llm_models_get"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/integrations": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /**
-         * List integrations
-         * @description List all integrations (Platform admin only)
-         */
-        get: operations["list_integrations_api_integrations_get"];
-        put?: never;
-        /**
-         * Create integration
-         * @description Create a new integration (Platform admin only)
-         */
-        post: operations["create_integration_api_integrations_post"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/integrations/{integration_id}": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /**
-         * Get integration by ID
-         * @description Get a specific integration by ID with mappings and OAuth config (Platform admin only)
-         */
-        get: operations["get_integration_api_integrations__integration_id__get"];
-        /**
-         * Update integration
-         * @description Update an existing integration (Platform admin only)
-         */
-        put: operations["update_integration_api_integrations__integration_id__put"];
-        post?: never;
-        /**
-         * Delete integration
-         * @description Soft delete an integration (Platform admin only)
-         */
-        delete: operations["delete_integration_api_integrations__integration_id__delete"];
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/integrations/by-name/{name}": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /**
-         * Get integration by name
-         * @description Get a specific integration by name (Platform admin only)
-         */
-        get: operations["get_integration_by_name_api_integrations_by_name__name__get"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/integrations/{integration_id}/config": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /**
-         * Get integration default config
-         * @description Get default config values for an integration (Platform admin only)
-         */
-        get: operations["get_integration_config_api_integrations__integration_id__config_get"];
-        /**
-         * Update integration default config
-         * @description Set default config values for an integration (Platform admin only)
-         */
-        put: operations["update_integration_config_api_integrations__integration_id__config_put"];
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/integrations/{integration_id}/mappings": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /**
-         * List mappings for integration
-         * @description List all mappings for a specific integration (Platform admin only)
-         */
-        get: operations["list_mappings_api_integrations__integration_id__mappings_get"];
-        put?: never;
-        /**
-         * Create integration mapping
-         * @description Create a new mapping between an integration and organization (Platform admin only)
-         */
-        post: operations["create_mapping_api_integrations__integration_id__mappings_post"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/integrations/{integration_id}/mappings/{mapping_id}": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /**
-         * Get integration mapping
-         * @description Get a specific mapping by ID (Platform admin only)
-         */
-        get: operations["get_mapping_api_integrations__integration_id__mappings__mapping_id__get"];
-        /**
-         * Update integration mapping
-         * @description Update an existing mapping (Platform admin only)
-         */
-        put: operations["update_mapping_api_integrations__integration_id__mappings__mapping_id__put"];
-        post?: never;
-        /**
-         * Delete integration mapping
-         * @description Delete an integration mapping (Platform admin only)
-         */
-        delete: operations["delete_mapping_api_integrations__integration_id__mappings__mapping_id__delete"];
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/integrations/{integration_id}/mappings/by-org/{org_id}": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /**
-         * Get mapping by organization
-         * @description Get the mapping for an integration in a specific organization (Platform admin only)
-         */
-        get: operations["get_mapping_by_org_api_integrations__integration_id__mappings_by_org__org_id__get"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/integrations/{integration_id}/oauth": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /**
-         * Get OAuth provider config
-         * @description Get the OAuth provider configuration for this integration (Platform admin only)
-         */
-        get: operations["get_oauth_config_api_integrations__integration_id__oauth_get"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/integrations/{integration_id}/oauth/authorize": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /**
-         * Get OAuth authorization URL
-         * @description Get the authorization URL for this integration's OAuth flow (Platform admin only)
-         */
-        get: operations["get_oauth_authorization_url_api_integrations__integration_id__oauth_authorize_get"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/integrations/sdk/{name}": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /**
-         * Get integration data for SDK
-         * @description Get integration data with resolved OAuth and merged config for SDK consumption
-         */
-        get: operations["get_integration_sdk_data_api_integrations_sdk__name__get"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/decorator-properties": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /**
-         * Read decorator properties from a file
-         * @description Read all workflow/data_provider/tool decorator properties from a Python file
-         */
-        get: operations["get_decorator_properties_api_decorator_properties_get"];
-        /**
-         * Update decorator properties
-         * @description Update properties on a decorator in a Python file
-         */
-        put: operations["update_decorator_properties_api_decorator_properties_put"];
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/maintenance/status": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /**
-         * Get maintenance status
-         * @description Get current workspace maintenance status (Platform admin only)
-         */
-        get: operations["get_maintenance_status_api_maintenance_status_get"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/maintenance/reindex": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /**
-         * Run workspace reindex
-         * @description Reindex workspace files, optionally injecting IDs (Platform admin only)
-         */
-        post: operations["run_reindex_api_maintenance_reindex_post"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /** Root */
-        get: operations["root__get"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
+	"/health": {
+		parameters: {
+			query?: never;
+			header?: never;
+			path?: never;
+			cookie?: never;
+		};
+		/**
+		 * Health Check
+		 * @description Basic health check endpoint.
+		 *
+		 *     Returns:
+		 *         Basic health status
+		 */
+		get: operations["health_check_health_get"];
+		put?: never;
+		post?: never;
+		delete?: never;
+		options?: never;
+		head?: never;
+		patch?: never;
+		trace?: never;
+	};
+	"/health/detailed": {
+		parameters: {
+			query?: never;
+			header?: never;
+			path?: never;
+			cookie?: never;
+		};
+		/**
+		 * Detailed Health Check
+		 * @description Detailed health check with component status.
+		 *
+		 *     Checks:
+		 *     - Database connectivity
+		 *
+		 *     Returns:
+		 *         Detailed health status with component information
+		 */
+		get: operations["detailed_health_check_health_detailed_get"];
+		put?: never;
+		post?: never;
+		delete?: never;
+		options?: never;
+		head?: never;
+		patch?: never;
+		trace?: never;
+	};
+	"/auth/login": {
+		parameters: {
+			query?: never;
+			header?: never;
+			path?: never;
+			cookie?: never;
+		};
+		get?: never;
+		put?: never;
+		/**
+		 * Login
+		 * @description Login with email and password.
+		 *
+		 *     For email/password authentication, MFA is REQUIRED:
+		 *     - If user has MFA enrolled: returns mfa_required=True with mfa_token
+		 *     - If user has no MFA: returns mfa_setup_required=True to redirect to enrollment
+		 *
+		 *     Performs user provisioning on each login:
+		 *     - First user in system becomes PlatformAdmin
+		 *     - Subsequent users are matched to organizations by email domain
+		 *     - JWT tokens include user_type, org_id, and roles for authorization
+		 *
+		 *     Rate limited: 10 requests per minute per IP address.
+		 *
+		 *     Args:
+		 *         form_data: OAuth2 password form with username (email) and password
+		 *         request: FastAPI request object
+		 *         db: Database session
+		 *
+		 *     Returns:
+		 *         LoginResponse with either tokens (MFA bypass for trusted device) or MFA requirements
+		 *
+		 *     Raises:
+		 *         HTTPException: If credentials are invalid or provisioning fails
+		 */
+		post: operations["login_auth_login_post"];
+		delete?: never;
+		options?: never;
+		head?: never;
+		patch?: never;
+		trace?: never;
+	};
+	"/auth/mfa/setup": {
+		parameters: {
+			query?: never;
+			header?: never;
+			path?: never;
+			cookie?: never;
+		};
+		get?: never;
+		put?: never;
+		/**
+		 * Mfa Initial Setup
+		 * @description Initialize MFA enrollment during first-time setup.
+		 *
+		 *     This endpoint is for users who just logged in with password for the first time
+		 *     and need to enroll in MFA. Requires an mfa_token with purpose "mfa_setup"
+		 *     in the Authorization header.
+		 *
+		 *     Returns:
+		 *         MFA setup data including secret and QR code URI
+		 *
+		 *     Raises:
+		 *         HTTPException: If MFA token is invalid or expired
+		 */
+		post: operations["mfa_initial_setup_auth_mfa_setup_post"];
+		delete?: never;
+		options?: never;
+		head?: never;
+		patch?: never;
+		trace?: never;
+	};
+	"/auth/mfa/verify": {
+		parameters: {
+			query?: never;
+			header?: never;
+			path?: never;
+			cookie?: never;
+		};
+		get?: never;
+		put?: never;
+		/**
+		 * Mfa Initial Verify
+		 * @description Verify MFA code to complete initial enrollment.
+		 *
+		 *     This endpoint is for users completing their first MFA setup after password login.
+		 *     Requires an mfa_token with purpose "mfa_setup" in the Authorization header.
+		 *
+		 *     On success:
+		 *     - Activates the MFA method
+		 *     - Generates recovery codes (shown only once!)
+		 *     - Returns access tokens for auto-login
+		 *
+		 *     Returns:
+		 *         Success status, recovery codes, and access tokens
+		 *
+		 *     Raises:
+		 *         HTTPException: If MFA token is invalid or code verification fails
+		 */
+		post: operations["mfa_initial_verify_auth_mfa_verify_post"];
+		delete?: never;
+		options?: never;
+		head?: never;
+		patch?: never;
+		trace?: never;
+	};
+	"/auth/mfa/login": {
+		parameters: {
+			query?: never;
+			header?: never;
+			path?: never;
+			cookie?: never;
+		};
+		get?: never;
+		put?: never;
+		/**
+		 * Verify Mfa Login
+		 * @description Complete MFA verification during login to get access tokens.
+		 *
+		 *     This is used when an existing user with MFA logs in and needs to verify their code.
+		 *     For initial MFA enrollment verification, use POST /auth/mfa/verify.
+		 *
+		 *     Rate limited: 5 requests per minute per IP address.
+		 *
+		 *     Args:
+		 *         mfa_request: MFA verification request with token, code, and trust options
+		 *         request: FastAPI request object
+		 *         db: Database session
+		 *
+		 *     Returns:
+		 *         LoginResponse with access and refresh tokens
+		 *
+		 *     Raises:
+		 *         HTTPException: If MFA token is invalid or code verification fails
+		 */
+		post: operations["verify_mfa_login_auth_mfa_login_post"];
+		delete?: never;
+		options?: never;
+		head?: never;
+		patch?: never;
+		trace?: never;
+	};
+	"/auth/refresh": {
+		parameters: {
+			query?: never;
+			header?: never;
+			path?: never;
+			cookie?: never;
+		};
+		get?: never;
+		put?: never;
+		/**
+		 * Refresh Token
+		 * @description Refresh access token using refresh token with rotation.
+		 *
+		 *     Implements refresh token rotation: the old token is invalidated
+		 *     and a new one is issued. This limits the window for token theft.
+		 *
+		 *     Fetches fresh user data and roles from database to ensure
+		 *     the new token has up-to-date claims.
+		 *
+		 *     The refresh token can be provided in two ways:
+		 *     1. Request body (API clients): {"refresh_token": "..."}
+		 *     2. HttpOnly cookie (browser clients): Automatically sent
+		 *
+		 *     Rate limited: 10 requests per minute per IP address.
+		 *
+		 *     Args:
+		 *         request: FastAPI request object
+		 *         token_data: Optional refresh token in body (API clients)
+		 *         db: Database session
+		 *
+		 *     Returns:
+		 *         New access and refresh tokens with updated claims
+		 *
+		 *     Raises:
+		 *         HTTPException: If refresh token is invalid or revoked
+		 */
+		post: operations["refresh_token_auth_refresh_post"];
+		delete?: never;
+		options?: never;
+		head?: never;
+		patch?: never;
+		trace?: never;
+	};
+	"/auth/me": {
+		parameters: {
+			query?: never;
+			header?: never;
+			path?: never;
+			cookie?: never;
+		};
+		/**
+		 * Get Current User Info
+		 * @description Get current authenticated user information.
+		 *
+		 *     Returns user info including type, organization, and roles from the JWT token.
+		 *
+		 *     Args:
+		 *         current_user: Current authenticated user (from JWT)
+		 *
+		 *     Returns:
+		 *         User information with roles
+		 */
+		get: operations["get_current_user_info_auth_me_get"];
+		put?: never;
+		post?: never;
+		delete?: never;
+		options?: never;
+		head?: never;
+		patch?: never;
+		trace?: never;
+	};
+	"/auth/logout": {
+		parameters: {
+			query?: never;
+			header?: never;
+			path?: never;
+			cookie?: never;
+		};
+		get?: never;
+		put?: never;
+		/**
+		 * Logout
+		 * @description Logout current user and revoke refresh token.
+		 *
+		 *     Clears authentication cookies and revokes the current refresh token.
+		 *     The access token will remain valid until expiry (30 minutes max).
+		 *
+		 *     For API clients using Bearer auth, the refresh_token should be passed
+		 *     in the request body. For browser clients using cookies, the token is
+		 *     read from the refresh_token cookie automatically.
+		 *
+		 *     Args:
+		 *         request: FastAPI request (to get refresh token cookie)
+		 *         response: FastAPI response (to clear cookies)
+		 *         current_user: Current authenticated user
+		 *         body: Optional request body containing refresh_token for API clients
+		 *
+		 *     Returns:
+		 *         Logout confirmation
+		 */
+		post: operations["logout_auth_logout_post"];
+		delete?: never;
+		options?: never;
+		head?: never;
+		patch?: never;
+		trace?: never;
+	};
+	"/auth/revoke-all": {
+		parameters: {
+			query?: never;
+			header?: never;
+			path?: never;
+			cookie?: never;
+		};
+		get?: never;
+		put?: never;
+		/**
+		 * Revoke All Sessions
+		 * @description Revoke all refresh tokens for the current user.
+		 *
+		 *     This logs out all sessions across all devices. Useful when:
+		 *     - User suspects account compromise
+		 *     - User wants to sign out everywhere
+		 *     - Password has been changed
+		 *
+		 *     Note: Access tokens will remain valid until expiry (30 minutes max).
+		 *     For immediate revocation, consider also changing the password.
+		 *
+		 *     Args:
+		 *         response: FastAPI response (to clear current cookies)
+		 *         current_user: Current authenticated user
+		 *
+		 *     Returns:
+		 *         Number of sessions revoked
+		 */
+		post: operations["revoke_all_sessions_auth_revoke_all_post"];
+		delete?: never;
+		options?: never;
+		head?: never;
+		patch?: never;
+		trace?: never;
+	};
+	"/auth/admin/revoke-user": {
+		parameters: {
+			query?: never;
+			header?: never;
+			path?: never;
+			cookie?: never;
+		};
+		get?: never;
+		put?: never;
+		/**
+		 * Admin Revoke User Sessions
+		 * @description Revoke all refresh tokens for a specific user (admin only).
+		 *
+		 *     Allows platform administrators to forcibly log out a user from all
+		 *     devices. Useful for security incidents or account compromises.
+		 *
+		 *     Requires platform admin (superuser) privileges.
+		 *
+		 *     Args:
+		 *         revoke_data: Target user ID to revoke
+		 *         current_user: Current authenticated user (must be admin)
+		 *         db: Database session
+		 *
+		 *     Returns:
+		 *         Number of sessions revoked
+		 *
+		 *     Raises:
+		 *         HTTPException: If not admin or user not found
+		 */
+		post: operations["admin_revoke_user_sessions_auth_admin_revoke_user_post"];
+		delete?: never;
+		options?: never;
+		head?: never;
+		patch?: never;
+		trace?: never;
+	};
+	"/auth/register": {
+		parameters: {
+			query?: never;
+			header?: never;
+			path?: never;
+			cookie?: never;
+		};
+		get?: never;
+		put?: never;
+		/**
+		 * Register User
+		 * @description Register a new user with auto-provisioning.
+		 *
+		 *     Handles three scenarios:
+		 *     1. Pre-created user (is_registered=False): Admin created the user, user completes registration
+		 *     2. First user in system: Becomes PlatformAdmin
+		 *     3. New user with matching domain: Auto-joined to organization
+		 *
+		 *     Note: In production, this should be restricted or require admin approval.
+		 *
+		 *     Rate limited: 10 requests per minute per IP address.
+		 *
+		 *     Args:
+		 *         request: FastAPI request object
+		 *         user_data: User registration data
+		 *         db: Database session
+		 *
+		 *     Returns:
+		 *         Created user information with roles
+		 *
+		 *     Raises:
+		 *         HTTPException: If email already registered or provisioning fails
+		 */
+		post: operations["register_user_auth_register_post"];
+		delete?: never;
+		options?: never;
+		head?: never;
+		patch?: never;
+		trace?: never;
+	};
+	"/auth/status": {
+		parameters: {
+			query?: never;
+			header?: never;
+			path?: never;
+			cookie?: never;
+		};
+		/**
+		 * Get Auth Status
+		 * @description Get authentication system status for the login page.
+		 *
+		 *     Public endpoint that returns everything needed to render the login UI:
+		 *     - Whether this is first-time setup (no users exist)
+		 *     - Available authentication methods (password, OAuth providers)
+		 *     - MFA requirements
+		 *
+		 *     Returns:
+		 *         AuthStatusResponse with complete login page configuration
+		 */
+		get: operations["get_auth_status_auth_status_get"];
+		put?: never;
+		post?: never;
+		delete?: never;
+		options?: never;
+		head?: never;
+		patch?: never;
+		trace?: never;
+	};
+	"/auth/mfa/status": {
+		parameters: {
+			query?: never;
+			header?: never;
+			path?: never;
+			cookie?: never;
+		};
+		/**
+		 * Get Mfa Status
+		 * @description Get MFA status for current user.
+		 *
+		 *     Returns:
+		 *         MFA status including enabled state, enrolled methods, and recovery code count
+		 */
+		get: operations["get_mfa_status_auth_mfa_status_get"];
+		put?: never;
+		post?: never;
+		delete?: never;
+		options?: never;
+		head?: never;
+		patch?: never;
+		trace?: never;
+	};
+	"/auth/mfa/totp/setup": {
+		parameters: {
+			query?: never;
+			header?: never;
+			path?: never;
+			cookie?: never;
+		};
+		get?: never;
+		put?: never;
+		/**
+		 * Setup Mfa
+		 * @description Initialize MFA enrollment for an authenticated user.
+		 *
+		 *     This endpoint is for users who are already logged in and want to add/reset TOTP.
+		 *     For initial MFA enrollment during login, use POST /auth/mfa/setup instead.
+		 *
+		 *     Generates a new TOTP secret and returns the provisioning URI for QR code generation.
+		 *     The MFA method is created in PENDING status until verified.
+		 *
+		 *     Returns:
+		 *         MFA setup data including secret and QR code URI
+		 */
+		post: operations["setup_mfa_auth_mfa_totp_setup_post"];
+		delete?: never;
+		options?: never;
+		head?: never;
+		patch?: never;
+		trace?: never;
+	};
+	"/auth/mfa/totp/verify": {
+		parameters: {
+			query?: never;
+			header?: never;
+			path?: never;
+			cookie?: never;
+		};
+		get?: never;
+		put?: never;
+		/**
+		 * Verify Mfa
+		 * @description Verify MFA code to complete enrollment for an authenticated user.
+		 *
+		 *     This endpoint is for users who are already logged in and want to complete TOTP setup.
+		 *     For initial MFA enrollment during login, use POST /auth/mfa/verify instead.
+		 *
+		 *     On success:
+		 *     - Activates the MFA method
+		 *     - Generates recovery codes (shown only once!)
+		 *     - Returns access tokens for auto-login
+		 *
+		 *     Args:
+		 *         request: MFA verification request with 6-digit code
+		 *
+		 *     Returns:
+		 *         Success status, recovery codes, and access tokens
+		 *
+		 *     Raises:
+		 *         HTTPException: If verification fails
+		 */
+		post: operations["verify_mfa_auth_mfa_totp_verify_post"];
+		delete?: never;
+		options?: never;
+		head?: never;
+		patch?: never;
+		trace?: never;
+	};
+	"/auth/mfa": {
+		parameters: {
+			query?: never;
+			header?: never;
+			path?: never;
+			cookie?: never;
+		};
+		get?: never;
+		put?: never;
+		post?: never;
+		/**
+		 * Remove Mfa
+		 * @description Remove MFA enrollment.
+		 *
+		 *     Requires either current password or MFA code for verification.
+		 *
+		 *     Args:
+		 *         request: Removal request with password or MFA code
+		 *
+		 *     Returns:
+		 *         Success message
+		 *
+		 *     Raises:
+		 *         HTTPException: If verification fails
+		 */
+		delete: operations["remove_mfa_auth_mfa_delete"];
+		options?: never;
+		head?: never;
+		patch?: never;
+		trace?: never;
+	};
+	"/auth/mfa/recovery-codes/regenerate": {
+		parameters: {
+			query?: never;
+			header?: never;
+			path?: never;
+			cookie?: never;
+		};
+		get?: never;
+		put?: never;
+		/**
+		 * Regenerate Recovery Codes
+		 * @description Regenerate recovery codes.
+		 *
+		 *     Requires MFA code for verification. Invalidates all existing recovery codes.
+		 *
+		 *     Args:
+		 *         request: Request with current MFA code
+		 *
+		 *     Returns:
+		 *         New set of recovery codes
+		 *
+		 *     Raises:
+		 *         HTTPException: If MFA verification fails
+		 */
+		post: operations["regenerate_recovery_codes_auth_mfa_recovery_codes_regenerate_post"];
+		delete?: never;
+		options?: never;
+		head?: never;
+		patch?: never;
+		trace?: never;
+	};
+	"/auth/mfa/recovery-codes/count": {
+		parameters: {
+			query?: never;
+			header?: never;
+			path?: never;
+			cookie?: never;
+		};
+		/**
+		 * Get Recovery Codes Count
+		 * @description Get count of remaining unused recovery codes.
+		 *
+		 *     Returns:
+		 *         Total and remaining recovery code counts
+		 */
+		get: operations["get_recovery_codes_count_auth_mfa_recovery_codes_count_get"];
+		put?: never;
+		post?: never;
+		delete?: never;
+		options?: never;
+		head?: never;
+		patch?: never;
+		trace?: never;
+	};
+	"/auth/mfa/trusted-devices": {
+		parameters: {
+			query?: never;
+			header?: never;
+			path?: never;
+			cookie?: never;
+		};
+		/**
+		 * List Trusted Devices
+		 * @description List all trusted devices for current user.
+		 *
+		 *     Returns:
+		 *         List of trusted devices with their status
+		 */
+		get: operations["list_trusted_devices_auth_mfa_trusted_devices_get"];
+		put?: never;
+		post?: never;
+		/**
+		 * Revoke All Trusted Devices
+		 * @description Revoke trust for all devices.
+		 *
+		 *     Returns:
+		 *         Count of revoked devices
+		 */
+		delete: operations["revoke_all_trusted_devices_auth_mfa_trusted_devices_delete"];
+		options?: never;
+		head?: never;
+		patch?: never;
+		trace?: never;
+	};
+	"/auth/mfa/trusted-devices/{device_id}": {
+		parameters: {
+			query?: never;
+			header?: never;
+			path?: never;
+			cookie?: never;
+		};
+		get?: never;
+		put?: never;
+		post?: never;
+		/**
+		 * Revoke Trusted Device
+		 * @description Revoke trust for a specific device.
+		 *
+		 *     Args:
+		 *         device_id: Device ID to revoke
+		 *
+		 *     Returns:
+		 *         Success message
+		 *
+		 *     Raises:
+		 *         HTTPException: If device not found
+		 */
+		delete: operations["revoke_trusted_device_auth_mfa_trusted_devices__device_id__delete"];
+		options?: never;
+		head?: never;
+		patch?: never;
+		trace?: never;
+	};
+	"/auth/oauth/providers": {
+		parameters: {
+			query?: never;
+			header?: never;
+			path?: never;
+			cookie?: never;
+		};
+		/**
+		 * Get Oauth Providers
+		 * @description Get available OAuth providers.
+		 *
+		 *     Returns list of configured OAuth providers that can be used for login.
+		 *
+		 *     Returns:
+		 *         List of available OAuth providers with display info
+		 */
+		get: operations["get_oauth_providers_auth_oauth_providers_get"];
+		put?: never;
+		post?: never;
+		delete?: never;
+		options?: never;
+		head?: never;
+		patch?: never;
+		trace?: never;
+	};
+	"/auth/oauth/init/{provider}": {
+		parameters: {
+			query?: never;
+			header?: never;
+			path?: never;
+			cookie?: never;
+		};
+		/**
+		 * Init Oauth
+		 * @description Initialize OAuth login flow.
+		 *
+		 *     Generates authorization URL with PKCE challenge for secure OAuth flow.
+		 *     The PKCE code_verifier is stored server-side in Redis, bound to the state.
+		 *
+		 *     Args:
+		 *         provider: OAuth provider name (microsoft, google, oidc)
+		 *         redirect_uri: Frontend callback URL
+		 *
+		 *     Returns:
+		 *         Authorization URL and state for CSRF protection
+		 *
+		 *     Security:
+		 *         - State is used for CSRF protection
+		 *         - PKCE verifier is stored server-side (never sent to client)
+		 *         - State can only be used once and expires after 10 minutes
+		 */
+		get: operations["init_oauth_auth_oauth_init__provider__get"];
+		put?: never;
+		post?: never;
+		delete?: never;
+		options?: never;
+		head?: never;
+		patch?: never;
+		trace?: never;
+	};
+	"/auth/oauth/callback": {
+		parameters: {
+			query?: never;
+			header?: never;
+			path?: never;
+			cookie?: never;
+		};
+		get?: never;
+		put?: never;
+		/**
+		 * Oauth Callback
+		 * @description Complete OAuth login flow.
+		 *
+		 *     Called by frontend after receiving callback from OAuth provider.
+		 *     Validates state, retrieves PKCE verifier from Redis, exchanges code for tokens.
+		 *
+		 *     OAuth users bypass MFA - the OAuth provider is trusted for authentication.
+		 *     (This can be changed via oauth_require_mfa config option.)
+		 *
+		 *     Sets HttpOnly cookies for browser clients in addition to returning tokens in
+		 *     the response body. This provides defense-in-depth: browser clients get XSS
+		 *     protection from HttpOnly cookies, while API clients can use the response body.
+		 *
+		 *     Args:
+		 *         callback_data: OAuth callback data with code and state
+		 *         response: FastAPI response for setting cookies
+		 *
+		 *     Returns:
+		 *         JWT access and refresh tokens (also sets cookies)
+		 *
+		 *     Raises:
+		 *         HTTPException: If OAuth flow fails or user cannot be provisioned
+		 *
+		 *     Security:
+		 *         - State is validated against Redis (CSRF protection)
+		 *         - PKCE verifier is retrieved from Redis (never sent by client)
+		 *         - State is single-use (deleted after retrieval)
+		 */
+		post: operations["oauth_callback_auth_oauth_callback_post"];
+		delete?: never;
+		options?: never;
+		head?: never;
+		patch?: never;
+		trace?: never;
+	};
+	"/auth/oauth/accounts": {
+		parameters: {
+			query?: never;
+			header?: never;
+			path?: never;
+			cookie?: never;
+		};
+		/**
+		 * Get Linked Accounts
+		 * @description Get OAuth accounts linked to current user.
+		 *
+		 *     Returns:
+		 *         List of linked OAuth accounts
+		 */
+		get: operations["get_linked_accounts_auth_oauth_accounts_get"];
+		put?: never;
+		post?: never;
+		delete?: never;
+		options?: never;
+		head?: never;
+		patch?: never;
+		trace?: never;
+	};
+	"/auth/oauth/accounts/{provider}": {
+		parameters: {
+			query?: never;
+			header?: never;
+			path?: never;
+			cookie?: never;
+		};
+		get?: never;
+		put?: never;
+		post?: never;
+		/**
+		 * Unlink Oauth Account
+		 * @description Unlink an OAuth account from current user.
+		 *
+		 *     User must have password set or another OAuth account to unlink.
+		 *
+		 *     Args:
+		 *         provider: OAuth provider to unlink
+		 *
+		 *     Returns:
+		 *         Success message
+		 *
+		 *     Raises:
+		 *         HTTPException: If account not found or user would be locked out
+		 */
+		delete: operations["unlink_oauth_account_auth_oauth_accounts__provider__delete"];
+		options?: never;
+		head?: never;
+		patch?: never;
+		trace?: never;
+	};
+	"/auth/passkeys/register/options": {
+		parameters: {
+			query?: never;
+			header?: never;
+			path?: never;
+			cookie?: never;
+		};
+		get?: never;
+		put?: never;
+		/**
+		 * Get passkey registration options
+		 * @description Generate WebAuthn registration options for creating a new passkey. Returns a challenge and options that should be passed to navigator.credentials.create().
+		 */
+		post: operations["get_registration_options_auth_passkeys_register_options_post"];
+		delete?: never;
+		options?: never;
+		head?: never;
+		patch?: never;
+		trace?: never;
+	};
+	"/auth/passkeys/register/verify": {
+		parameters: {
+			query?: never;
+			header?: never;
+			path?: never;
+			cookie?: never;
+		};
+		get?: never;
+		put?: never;
+		/**
+		 * Verify passkey registration
+		 * @description Verify the passkey registration response from the browser. This completes the passkey enrollment process.
+		 */
+		post: operations["verify_registration_auth_passkeys_register_verify_post"];
+		delete?: never;
+		options?: never;
+		head?: never;
+		patch?: never;
+		trace?: never;
+	};
+	"/auth/passkeys/authenticate/options": {
+		parameters: {
+			query?: never;
+			header?: never;
+			path?: never;
+			cookie?: never;
+		};
+		get?: never;
+		put?: never;
+		/**
+		 * Get passkey authentication options
+		 * @description Generate WebAuthn authentication options for passwordless login. Returns a challenge that should be passed to navigator.credentials.get(). If email is provided, limits credentials to that user. If email is omitted, uses discoverable credentials (passkey autofill).
+		 */
+		post: operations["get_authentication_options_auth_passkeys_authenticate_options_post"];
+		delete?: never;
+		options?: never;
+		head?: never;
+		patch?: never;
+		trace?: never;
+	};
+	"/auth/passkeys/authenticate/verify": {
+		parameters: {
+			query?: never;
+			header?: never;
+			path?: never;
+			cookie?: never;
+		};
+		get?: never;
+		put?: never;
+		/**
+		 * Verify passkey authentication
+		 * @description Verify the passkey authentication response and return JWT tokens. This is the passwordless login endpoint - no password required.
+		 */
+		post: operations["verify_authentication_auth_passkeys_authenticate_verify_post"];
+		delete?: never;
+		options?: never;
+		head?: never;
+		patch?: never;
+		trace?: never;
+	};
+	"/auth/passkeys": {
+		parameters: {
+			query?: never;
+			header?: never;
+			path?: never;
+			cookie?: never;
+		};
+		/**
+		 * List user's passkeys
+		 * @description Get a list of all passkeys registered for the current user.
+		 */
+		get: operations["list_passkeys_auth_passkeys_get"];
+		put?: never;
+		post?: never;
+		delete?: never;
+		options?: never;
+		head?: never;
+		patch?: never;
+		trace?: never;
+	};
+	"/auth/passkeys/{passkey_id}": {
+		parameters: {
+			query?: never;
+			header?: never;
+			path?: never;
+			cookie?: never;
+		};
+		get?: never;
+		put?: never;
+		post?: never;
+		/**
+		 * Delete a passkey
+		 * @description Delete a passkey by ID. Users can only delete their own passkeys.
+		 */
+		delete: operations["delete_passkey_auth_passkeys__passkey_id__delete"];
+		options?: never;
+		head?: never;
+		patch?: never;
+		trace?: never;
+	};
+	"/api/organizations": {
+		parameters: {
+			query?: never;
+			header?: never;
+			path?: never;
+			cookie?: never;
+		};
+		/**
+		 * List all organizations
+		 * @description Get all organizations (Platform admin only)
+		 */
+		get: operations["list_organizations_api_organizations_get"];
+		put?: never;
+		/**
+		 * Create a new organization
+		 * @description Create a new client organization (Platform admin only)
+		 */
+		post: operations["create_organization_api_organizations_post"];
+		delete?: never;
+		options?: never;
+		head?: never;
+		patch?: never;
+		trace?: never;
+	};
+	"/api/organizations/{org_id}": {
+		parameters: {
+			query?: never;
+			header?: never;
+			path?: never;
+			cookie?: never;
+		};
+		/**
+		 * Get organization by ID
+		 * @description Get a specific organization by ID (Platform admin only)
+		 */
+		get: operations["get_organization_api_organizations__org_id__get"];
+		put?: never;
+		post?: never;
+		/**
+		 * Delete an organization
+		 * @description Soft delete an organization (sets is_active=False, Platform admin only)
+		 */
+		delete: operations["delete_organization_api_organizations__org_id__delete"];
+		options?: never;
+		head?: never;
+		/**
+		 * Update an organization
+		 * @description Update an existing organization (Platform admin only)
+		 */
+		patch: operations["update_organization_api_organizations__org_id__patch"];
+		trace?: never;
+	};
+	"/api/users": {
+		parameters: {
+			query?: never;
+			header?: never;
+			path?: never;
+			cookie?: never;
+		};
+		/**
+		 * List users
+		 * @description List all users with optional filtering by type and organization
+		 */
+		get: operations["list_users_api_users_get"];
+		put?: never;
+		/**
+		 * Create user
+		 * @description Create a new user proactively (Platform admin only)
+		 */
+		post: operations["create_user_api_users_post"];
+		delete?: never;
+		options?: never;
+		head?: never;
+		patch?: never;
+		trace?: never;
+	};
+	"/api/users/{user_id}": {
+		parameters: {
+			query?: never;
+			header?: never;
+			path?: never;
+			cookie?: never;
+		};
+		/**
+		 * Get user details
+		 * @description Get a specific user's details (Platform admin only)
+		 */
+		get: operations["get_user_api_users__user_id__get"];
+		put?: never;
+		post?: never;
+		/**
+		 * Delete user
+		 * @description Delete a user from the system
+		 */
+		delete: operations["delete_user_api_users__user_id__delete"];
+		options?: never;
+		head?: never;
+		/**
+		 * Update user
+		 * @description Update user properties including role transitions
+		 */
+		patch: operations["update_user_api_users__user_id__patch"];
+		trace?: never;
+	};
+	"/api/users/{user_id}/roles": {
+		parameters: {
+			query?: never;
+			header?: never;
+			path?: never;
+			cookie?: never;
+		};
+		/**
+		 * Get user roles
+		 * @description Get all roles assigned to a user
+		 */
+		get: operations["get_user_roles_api_users__user_id__roles_get"];
+		put?: never;
+		post?: never;
+		delete?: never;
+		options?: never;
+		head?: never;
+		patch?: never;
+		trace?: never;
+	};
+	"/api/users/{user_id}/forms": {
+		parameters: {
+			query?: never;
+			header?: never;
+			path?: never;
+			cookie?: never;
+		};
+		/**
+		 * Get user forms
+		 * @description Get all forms a user can access based on their roles
+		 */
+		get: operations["get_user_forms_api_users__user_id__forms_get"];
+		put?: never;
+		post?: never;
+		delete?: never;
+		options?: never;
+		head?: never;
+		patch?: never;
+		trace?: never;
+	};
+	"/api/roles": {
+		parameters: {
+			query?: never;
+			header?: never;
+			path?: never;
+			cookie?: never;
+		};
+		/**
+		 * List all roles
+		 * @description Get all roles (Platform admin only)
+		 */
+		get: operations["list_roles_api_roles_get"];
+		put?: never;
+		/**
+		 * Create a role
+		 * @description Create a new role (Platform admin only)
+		 */
+		post: operations["create_role_api_roles_post"];
+		delete?: never;
+		options?: never;
+		head?: never;
+		patch?: never;
+		trace?: never;
+	};
+	"/api/roles/{role_id}": {
+		parameters: {
+			query?: never;
+			header?: never;
+			path?: never;
+			cookie?: never;
+		};
+		/**
+		 * Get a role
+		 * @description Get a role by ID (Platform admin only)
+		 */
+		get: operations["get_role_api_roles__role_id__get"];
+		put?: never;
+		post?: never;
+		/**
+		 * Delete a role
+		 * @description Soft delete a role (Platform admin only)
+		 */
+		delete: operations["delete_role_api_roles__role_id__delete"];
+		options?: never;
+		head?: never;
+		/**
+		 * Update a role
+		 * @description Update a role (Platform admin only)
+		 */
+		patch: operations["update_role_api_roles__role_id__patch"];
+		trace?: never;
+	};
+	"/api/roles/{role_id}/users": {
+		parameters: {
+			query?: never;
+			header?: never;
+			path?: never;
+			cookie?: never;
+		};
+		/**
+		 * Get role users
+		 * @description Get all users assigned to a role
+		 */
+		get: operations["get_role_users_api_roles__role_id__users_get"];
+		put?: never;
+		/**
+		 * Assign users to role
+		 * @description Assign users to a role (batch operation)
+		 */
+		post: operations["assign_users_to_role_api_roles__role_id__users_post"];
+		delete?: never;
+		options?: never;
+		head?: never;
+		patch?: never;
+		trace?: never;
+	};
+	"/api/roles/{role_id}/users/{user_id}": {
+		parameters: {
+			query?: never;
+			header?: never;
+			path?: never;
+			cookie?: never;
+		};
+		get?: never;
+		put?: never;
+		post?: never;
+		/**
+		 * Remove user from role
+		 * @description Remove a user from a role
+		 */
+		delete: operations["remove_user_from_role_api_roles__role_id__users__user_id__delete"];
+		options?: never;
+		head?: never;
+		patch?: never;
+		trace?: never;
+	};
+	"/api/roles/{role_id}/forms": {
+		parameters: {
+			query?: never;
+			header?: never;
+			path?: never;
+			cookie?: never;
+		};
+		/**
+		 * Get role forms
+		 * @description Get all forms assigned to a role
+		 */
+		get: operations["get_role_forms_api_roles__role_id__forms_get"];
+		put?: never;
+		/**
+		 * Assign forms to role
+		 * @description Assign forms to a role (batch operation)
+		 */
+		post: operations["assign_forms_to_role_api_roles__role_id__forms_post"];
+		delete?: never;
+		options?: never;
+		head?: never;
+		patch?: never;
+		trace?: never;
+	};
+	"/api/roles/{role_id}/forms/{form_id}": {
+		parameters: {
+			query?: never;
+			header?: never;
+			path?: never;
+			cookie?: never;
+		};
+		get?: never;
+		put?: never;
+		post?: never;
+		/**
+		 * Remove form from role
+		 * @description Remove a form from a role
+		 */
+		delete: operations["remove_form_from_role_api_roles__role_id__forms__form_id__delete"];
+		options?: never;
+		head?: never;
+		patch?: never;
+		trace?: never;
+	};
+	"/api/roles/{role_id}/agents": {
+		parameters: {
+			query?: never;
+			header?: never;
+			path?: never;
+			cookie?: never;
+		};
+		/**
+		 * Get role agents
+		 * @description Get all agents assigned to a role
+		 */
+		get: operations["get_role_agents_api_roles__role_id__agents_get"];
+		put?: never;
+		/**
+		 * Assign agents to role
+		 * @description Assign agents to a role (batch operation)
+		 */
+		post: operations["assign_agents_to_role_api_roles__role_id__agents_post"];
+		delete?: never;
+		options?: never;
+		head?: never;
+		patch?: never;
+		trace?: never;
+	};
+	"/api/roles/{role_id}/agents/{agent_id}": {
+		parameters: {
+			query?: never;
+			header?: never;
+			path?: never;
+			cookie?: never;
+		};
+		get?: never;
+		put?: never;
+		post?: never;
+		/**
+		 * Remove agent from role
+		 * @description Remove an agent from a role
+		 */
+		delete: operations["remove_agent_from_role_api_roles__role_id__agents__agent_id__delete"];
+		options?: never;
+		head?: never;
+		patch?: never;
+		trace?: never;
+	};
+	"/api/executions": {
+		parameters: {
+			query?: never;
+			header?: never;
+			path?: never;
+			cookie?: never;
+		};
+		/**
+		 * List workflow executions
+		 * @description List workflow executions with filtering and pagination
+		 */
+		get: operations["list_executions_api_executions_get"];
+		put?: never;
+		post?: never;
+		delete?: never;
+		options?: never;
+		head?: never;
+		patch?: never;
+		trace?: never;
+	};
+	"/api/executions/{execution_id}": {
+		parameters: {
+			query?: never;
+			header?: never;
+			path?: never;
+			cookie?: never;
+		};
+		/**
+		 * Get execution details
+		 * @description Get detailed information about a specific execution
+		 */
+		get: operations["get_execution_api_executions__execution_id__get"];
+		put?: never;
+		post?: never;
+		delete?: never;
+		options?: never;
+		head?: never;
+		patch?: never;
+		trace?: never;
+	};
+	"/api/executions/{execution_id}/result": {
+		parameters: {
+			query?: never;
+			header?: never;
+			path?: never;
+			cookie?: never;
+		};
+		/**
+		 * Get execution result only
+		 * @description Get only the result of a specific execution (progressive loading)
+		 */
+		get: operations["get_execution_result_api_executions__execution_id__result_get"];
+		put?: never;
+		post?: never;
+		delete?: never;
+		options?: never;
+		head?: never;
+		patch?: never;
+		trace?: never;
+	};
+	"/api/executions/{execution_id}/logs": {
+		parameters: {
+			query?: never;
+			header?: never;
+			path?: never;
+			cookie?: never;
+		};
+		/**
+		 * Get execution logs only
+		 * @description Get only the logs of a specific execution (progressive loading)
+		 */
+		get: operations["get_execution_logs_api_executions__execution_id__logs_get"];
+		put?: never;
+		post?: never;
+		delete?: never;
+		options?: never;
+		head?: never;
+		patch?: never;
+		trace?: never;
+	};
+	"/api/executions/{execution_id}/variables": {
+		parameters: {
+			query?: never;
+			header?: never;
+			path?: never;
+			cookie?: never;
+		};
+		/**
+		 * Get execution variables only
+		 * @description Get only the variables of a specific execution (platform admin only)
+		 */
+		get: operations["get_execution_variables_api_executions__execution_id__variables_get"];
+		put?: never;
+		post?: never;
+		delete?: never;
+		options?: never;
+		head?: never;
+		patch?: never;
+		trace?: never;
+	};
+	"/api/executions/{execution_id}/cancel": {
+		parameters: {
+			query?: never;
+			header?: never;
+			path?: never;
+			cookie?: never;
+		};
+		get?: never;
+		put?: never;
+		/**
+		 * Cancel execution
+		 * @description Cancel a pending or running execution
+		 */
+		post: operations["cancel_execution_api_executions__execution_id__cancel_post"];
+		delete?: never;
+		options?: never;
+		head?: never;
+		patch?: never;
+		trace?: never;
+	};
+	"/api/executions/cleanup/stuck": {
+		parameters: {
+			query?: never;
+			header?: never;
+			path?: never;
+			cookie?: never;
+		};
+		/**
+		 * Get stuck executions
+		 * @description Get executions that have been running or pending too long (Platform admin only)
+		 */
+		get: operations["get_stuck_executions_api_executions_cleanup_stuck_get"];
+		put?: never;
+		post?: never;
+		delete?: never;
+		options?: never;
+		head?: never;
+		patch?: never;
+		trace?: never;
+	};
+	"/api/executions/cleanup/trigger": {
+		parameters: {
+			query?: never;
+			header?: never;
+			path?: never;
+			cookie?: never;
+		};
+		get?: never;
+		put?: never;
+		/**
+		 * Trigger execution cleanup
+		 * @description Clean up stuck executions by marking them as timed out (Platform admin only)
+		 */
+		post: operations["trigger_cleanup_api_executions_cleanup_trigger_post"];
+		delete?: never;
+		options?: never;
+		head?: never;
+		patch?: never;
+		trace?: never;
+	};
+	"/api/executions/cleanup/redis-orphans": {
+		parameters: {
+			query?: never;
+			header?: never;
+			path?: never;
+			cookie?: never;
+		};
+		get?: never;
+		put?: never;
+		/**
+		 * Cleanup orphaned Redis pending executions
+		 * @description Clean up Redis pending executions that are too old (Platform admin only)
+		 */
+		post: operations["cleanup_redis_orphans_api_executions_cleanup_redis_orphans_post"];
+		delete?: never;
+		options?: never;
+		head?: never;
+		patch?: never;
+		trace?: never;
+	};
+	"/api/workflows": {
+		parameters: {
+			query?: never;
+			header?: never;
+			path?: never;
+			cookie?: never;
+		};
+		/**
+		 * List all workflows
+		 * @description Returns metadata for all registered workflows in the system
+		 */
+		get: operations["list_workflows_api_workflows_get"];
+		put?: never;
+		post?: never;
+		delete?: never;
+		options?: never;
+		head?: never;
+		patch?: never;
+		trace?: never;
+	};
+	"/api/workflows/execute": {
+		parameters: {
+			query?: never;
+			header?: never;
+			path?: never;
+			cookie?: never;
+		};
+		get?: never;
+		put?: never;
+		/**
+		 * Execute a workflow or script
+		 * @description Execute a workflow by name or inline Python code (Platform admin only)
+		 */
+		post: operations["execute_workflow_api_workflows_execute_post"];
+		delete?: never;
+		options?: never;
+		head?: never;
+		patch?: never;
+		trace?: never;
+	};
+	"/api/workflows/validate": {
+		parameters: {
+			query?: never;
+			header?: never;
+			path?: never;
+			cookie?: never;
+		};
+		get?: never;
+		put?: never;
+		/**
+		 * Validate a workflow file
+		 * @description Validate a workflow file for syntax errors and decorator issues
+		 */
+		post: operations["validate_workflow_api_workflows_validate_post"];
+		delete?: never;
+		options?: never;
+		head?: never;
+		patch?: never;
+		trace?: never;
+	};
+	"/api/forms": {
+		parameters: {
+			query?: never;
+			header?: never;
+			path?: never;
+			cookie?: never;
+		};
+		/**
+		 * List forms
+		 * @description List all forms visible to the user based on their permissions
+		 */
+		get: operations["list_forms_api_forms_get"];
+		put?: never;
+		/**
+		 * Create a new form
+		 * @description Create a new form (Platform admin only)
+		 */
+		post: operations["create_form_api_forms_post"];
+		delete?: never;
+		options?: never;
+		head?: never;
+		patch?: never;
+		trace?: never;
+	};
+	"/api/forms/{form_id}": {
+		parameters: {
+			query?: never;
+			header?: never;
+			path?: never;
+			cookie?: never;
+		};
+		/**
+		 * Get form by ID
+		 * @description Get a specific form by ID. User must have access to the form.
+		 */
+		get: operations["get_form_api_forms__form_id__get"];
+		put?: never;
+		post?: never;
+		/**
+		 * Delete a form
+		 * @description Soft delete a form (Platform admin only)
+		 */
+		delete: operations["delete_form_api_forms__form_id__delete"];
+		options?: never;
+		head?: never;
+		/**
+		 * Update a form
+		 * @description Update an existing form (Platform admin only)
+		 */
+		patch: operations["update_form_api_forms__form_id__patch"];
+		trace?: never;
+	};
+	"/api/forms/{form_id}/execute": {
+		parameters: {
+			query?: never;
+			header?: never;
+			path?: never;
+			cookie?: never;
+		};
+		get?: never;
+		put?: never;
+		/**
+		 * Execute a form
+		 * @description Execute the workflow linked to a form. Requires appropriate access based on form's access_level.
+		 */
+		post: operations["execute_form_api_forms__form_id__execute_post"];
+		delete?: never;
+		options?: never;
+		head?: never;
+		patch?: never;
+		trace?: never;
+	};
+	"/api/forms/{form_id}/startup": {
+		parameters: {
+			query?: never;
+			header?: never;
+			path?: never;
+			cookie?: never;
+		};
+		get?: never;
+		put?: never;
+		/**
+		 * Execute launch workflow
+		 * @description Execute the launch workflow to populate form context before main execution.
+		 */
+		post: operations["execute_startup_workflow_api_forms__form_id__startup_post"];
+		delete?: never;
+		options?: never;
+		head?: never;
+		patch?: never;
+		trace?: never;
+	};
+	"/api/forms/{form_id}/upload": {
+		parameters: {
+			query?: never;
+			header?: never;
+			path?: never;
+			cookie?: never;
+		};
+		get?: never;
+		put?: never;
+		/**
+		 * Generate presigned URL for file upload
+		 * @description Generate a presigned S3 URL for direct file upload. The file will be stored in the uploads folder.
+		 */
+		post: operations["generate_upload_url_api_forms__form_id__upload_post"];
+		delete?: never;
+		options?: never;
+		head?: never;
+		patch?: never;
+		trace?: never;
+	};
+	"/api/config": {
+		parameters: {
+			query?: never;
+			header?: never;
+			path?: never;
+			cookie?: never;
+		};
+		/**
+		 * Get configuration values
+		 * @description Get configuration values for current scope (includes global configs)
+		 */
+		get: operations["get_config_api_config_get"];
+		put?: never;
+		/**
+		 * Set configuration value
+		 * @description Set a configuration value in the current scope
+		 */
+		post: operations["set_config_api_config_post"];
+		delete?: never;
+		options?: never;
+		head?: never;
+		patch?: never;
+		trace?: never;
+	};
+	"/api/config/{key}": {
+		parameters: {
+			query?: never;
+			header?: never;
+			path?: never;
+			cookie?: never;
+		};
+		get?: never;
+		put?: never;
+		post?: never;
+		/**
+		 * Delete configuration value
+		 * @description Delete a configuration value by key
+		 */
+		delete: operations["delete_config_api_config__key__delete"];
+		options?: never;
+		head?: never;
+		patch?: never;
+		trace?: never;
+	};
+	"/api/data-providers": {
+		parameters: {
+			query?: never;
+			header?: never;
+			path?: never;
+			cookie?: never;
+		};
+		/**
+		 * List all data providers
+		 * @description Returns metadata for all registered data providers in the system
+		 */
+		get: operations["list_data_providers_api_data_providers_get"];
+		put?: never;
+		post?: never;
+		delete?: never;
+		options?: never;
+		head?: never;
+		patch?: never;
+		trace?: never;
+	};
+	"/api/data-providers/{provider_id}/invoke": {
+		parameters: {
+			query?: never;
+			header?: never;
+			path?: never;
+			cookie?: never;
+		};
+		get?: never;
+		put?: never;
+		/**
+		 * Invoke a data provider
+		 * @description Execute a data provider and return its options. User must have access via form or integration.
+		 */
+		post: operations["invoke_data_provider_api_data_providers__provider_id__invoke_post"];
+		delete?: never;
+		options?: never;
+		head?: never;
+		patch?: never;
+		trace?: never;
+	};
+	"/api/branding": {
+		parameters: {
+			query?: never;
+			header?: never;
+			path?: never;
+			cookie?: never;
+		};
+		/**
+		 * Get branding settings
+		 * @description Get platform branding settings. Public endpoint for login page display.
+		 */
+		get: operations["get_branding_api_branding_get"];
+		/**
+		 * Update primary color
+		 * @description Update platform primary color (superuser only)
+		 */
+		put: operations["update_branding_api_branding_put"];
+		post?: never;
+		/**
+		 * Reset all branding to defaults
+		 * @description Remove all custom branding (logos and color) and revert to defaults (superuser only)
+		 */
+		delete: operations["reset_all_branding_api_branding_delete"];
+		options?: never;
+		head?: never;
+		patch?: never;
+		trace?: never;
+	};
+	"/api/branding/logo/{logo_type}": {
+		parameters: {
+			query?: never;
+			header?: never;
+			path?: never;
+			cookie?: never;
+		};
+		/**
+		 * Get logo image
+		 * @description Serve the uploaded logo image
+		 */
+		get: operations["get_logo_api_branding_logo__logo_type__get"];
+		put?: never;
+		/**
+		 * Upload logo
+		 * @description Upload a square or rectangle logo (superuser only)
+		 */
+		post: operations["upload_logo_api_branding_logo__logo_type__post"];
+		/**
+		 * Reset logo to default
+		 * @description Remove custom logo and revert to default (superuser only)
+		 */
+		delete: operations["reset_logo_api_branding_logo__logo_type__delete"];
+		options?: never;
+		head?: never;
+		patch?: never;
+		trace?: never;
+	};
+	"/api/branding/color": {
+		parameters: {
+			query?: never;
+			header?: never;
+			path?: never;
+			cookie?: never;
+		};
+		get?: never;
+		put?: never;
+		post?: never;
+		/**
+		 * Reset primary color to default
+		 * @description Remove custom primary color and revert to default (superuser only)
+		 */
+		delete: operations["reset_color_api_branding_color_delete"];
+		options?: never;
+		head?: never;
+		patch?: never;
+		trace?: never;
+	};
+	"/api/editor/files": {
+		parameters: {
+			query?: never;
+			header?: never;
+			path?: never;
+			cookie?: never;
+		};
+		/**
+		 * List directory contents
+		 * @description List files and folders in a directory (Platform admin only)
+		 */
+		get: operations["list_files_api_editor_files_get"];
+		put?: never;
+		post?: never;
+		/**
+		 * Delete file or folder
+		 * @description Delete a file or folder recursively (Platform admin only)
+		 */
+		delete: operations["delete_file_or_directory_api_editor_files_delete"];
+		options?: never;
+		head?: never;
+		patch?: never;
+		trace?: never;
+	};
+	"/api/editor/files/content": {
+		parameters: {
+			query?: never;
+			header?: never;
+			path?: never;
+			cookie?: never;
+		};
+		/**
+		 * Read file content
+		 * @description Read the content of a file (Platform admin only)
+		 */
+		get: operations["get_file_content_api_editor_files_content_get"];
+		/**
+		 * Write file content
+		 * @description Write content to a file (Platform admin only)
+		 */
+		put: operations["put_file_content_api_editor_files_content_put"];
+		post?: never;
+		delete?: never;
+		options?: never;
+		head?: never;
+		patch?: never;
+		trace?: never;
+	};
+	"/api/editor/files/folder": {
+		parameters: {
+			query?: never;
+			header?: never;
+			path?: never;
+			cookie?: never;
+		};
+		get?: never;
+		put?: never;
+		/**
+		 * Create folder
+		 * @description Create a new folder (Platform admin only)
+		 */
+		post: operations["create_new_folder_api_editor_files_folder_post"];
+		delete?: never;
+		options?: never;
+		head?: never;
+		patch?: never;
+		trace?: never;
+	};
+	"/api/editor/files/rename": {
+		parameters: {
+			query?: never;
+			header?: never;
+			path?: never;
+			cookie?: never;
+		};
+		get?: never;
+		put?: never;
+		/**
+		 * Rename or move file/folder
+		 * @description Rename or move a file or folder (Platform admin only)
+		 */
+		post: operations["rename_or_move_api_editor_files_rename_post"];
+		delete?: never;
+		options?: never;
+		head?: never;
+		patch?: never;
+		trace?: never;
+	};
+	"/api/editor/search": {
+		parameters: {
+			query?: never;
+			header?: never;
+			path?: never;
+			cookie?: never;
+		};
+		get?: never;
+		put?: never;
+		/**
+		 * Search file contents
+		 * @description Search for text or regex patterns in files (Platform admin only)
+		 */
+		post: operations["search_file_contents_api_editor_search_post"];
+		delete?: never;
+		options?: never;
+		head?: never;
+		patch?: never;
+		trace?: never;
+	};
+	"/api/schedules": {
+		parameters: {
+			query?: never;
+			header?: never;
+			path?: never;
+			cookie?: never;
+		};
+		/**
+		 * List scheduled workflows
+		 * @description List all workflows that have a schedule configured with enriched metadata (Platform admin only)
+		 */
+		get: operations["list_schedules_api_schedules_get"];
+		put?: never;
+		post?: never;
+		delete?: never;
+		options?: never;
+		head?: never;
+		patch?: never;
+		trace?: never;
+	};
+	"/api/workflow-keys": {
+		parameters: {
+			query?: never;
+			header?: never;
+			path?: never;
+			cookie?: never;
+		};
+		/**
+		 * List workflow API keys
+		 * @description List all workflows with API keys enabled (Platform admin only)
+		 */
+		get: operations["list_keys_api_workflow_keys_get"];
+		put?: never;
+		/**
+		 * Create a new API key
+		 * @description Create a new workflow API key (Platform admin only, requires workflow_name)
+		 */
+		post: operations["create_key_api_workflow_keys_post"];
+		delete?: never;
+		options?: never;
+		head?: never;
+		patch?: never;
+		trace?: never;
+	};
+	"/api/workflow-keys/{workflow_id}": {
+		parameters: {
+			query?: never;
+			header?: never;
+			path?: never;
+			cookie?: never;
+		};
+		get?: never;
+		put?: never;
+		post?: never;
+		/**
+		 * Revoke an API key
+		 * @description Revoke a workflow API key by workflow ID (Platform admin only)
+		 */
+		delete: operations["revoke_key_api_workflow_keys__workflow_id__delete"];
+		options?: never;
+		head?: never;
+		patch?: never;
+		trace?: never;
+	};
+	"/api/logs": {
+		parameters: {
+			query?: never;
+			header?: never;
+			path?: never;
+			cookie?: never;
+		};
+		/**
+		 * List system logs
+		 * @description List system logs (stub - returns empty for now)
+		 */
+		get: operations["list_logs_api_logs_get"];
+		put?: never;
+		post?: never;
+		delete?: never;
+		options?: never;
+		head?: never;
+		patch?: never;
+		trace?: never;
+	};
+	"/api/logs/{category}/{row_key}": {
+		parameters: {
+			query?: never;
+			header?: never;
+			path?: never;
+			cookie?: never;
+		};
+		/**
+		 * Get single log
+		 * @description Get a single system log entry (stub - returns 404)
+		 */
+		get: operations["get_log_api_logs__category___row_key__get"];
+		put?: never;
+		post?: never;
+		delete?: never;
+		options?: never;
+		head?: never;
+		patch?: never;
+		trace?: never;
+	};
+	"/api/metrics": {
+		parameters: {
+			query?: never;
+			header?: never;
+			path?: never;
+			cookie?: never;
+		};
+		/**
+		 * Get dashboard metrics
+		 * @description Get platform metrics for the dashboard. Uses pre-computed snapshot for instant loads.
+		 */
+		get: operations["get_metrics_api_metrics_get"];
+		put?: never;
+		post?: never;
+		delete?: never;
+		options?: never;
+		head?: never;
+		patch?: never;
+		trace?: never;
+	};
+	"/api/metrics/snapshot": {
+		parameters: {
+			query?: never;
+			header?: never;
+			path?: never;
+			cookie?: never;
+		};
+		/**
+		 * Get full platform metrics snapshot
+		 * @description Get the complete pre-computed metrics snapshot. Platform admin only.
+		 */
+		get: operations["get_metrics_snapshot_api_metrics_snapshot_get"];
+		put?: never;
+		post?: never;
+		delete?: never;
+		options?: never;
+		head?: never;
+		patch?: never;
+		trace?: never;
+	};
+	"/api/metrics/executions/daily": {
+		parameters: {
+			query?: never;
+			header?: never;
+			path?: never;
+			cookie?: never;
+		};
+		/**
+		 * Get daily execution metrics
+		 * @description Get daily execution metrics for trends. Platform admin only.
+		 */
+		get: operations["get_daily_metrics_api_metrics_executions_daily_get"];
+		put?: never;
+		post?: never;
+		delete?: never;
+		options?: never;
+		head?: never;
+		patch?: never;
+		trace?: never;
+	};
+	"/api/metrics/organizations": {
+		parameters: {
+			query?: never;
+			header?: never;
+			path?: never;
+			cookie?: never;
+		};
+		/**
+		 * Get organization metrics breakdown
+		 * @description Get execution metrics grouped by organization. Platform admin only.
+		 */
+		get: operations["get_organization_metrics_api_metrics_organizations_get"];
+		put?: never;
+		post?: never;
+		delete?: never;
+		options?: never;
+		head?: never;
+		patch?: never;
+		trace?: never;
+	};
+	"/api/metrics/resources": {
+		parameters: {
+			query?: never;
+			header?: never;
+			path?: never;
+			cookie?: never;
+		};
+		/**
+		 * Get resource usage trends
+		 * @description Get memory and CPU usage trends. Platform admin only.
+		 */
+		get: operations["get_resource_metrics_api_metrics_resources_get"];
+		put?: never;
+		post?: never;
+		delete?: never;
+		options?: never;
+		head?: never;
+		patch?: never;
+		trace?: never;
+	};
+	"/api/metrics/workflows": {
+		parameters: {
+			query?: never;
+			header?: never;
+			path?: never;
+			cookie?: never;
+		};
+		/**
+		 * Get workflow-level metrics
+		 * @description Get aggregated execution metrics grouped by workflow. Platform admin only.
+		 */
+		get: operations["get_workflow_metrics_api_metrics_workflows_get"];
+		put?: never;
+		post?: never;
+		delete?: never;
+		options?: never;
+		head?: never;
+		patch?: never;
+		trace?: never;
+	};
+	"/api/packages": {
+		parameters: {
+			query?: never;
+			header?: never;
+			path?: never;
+			cookie?: never;
+		};
+		/**
+		 * List installed packages
+		 * @description List all installed Python packages
+		 */
+		get: operations["list_packages_api_packages_get"];
+		put?: never;
+		post?: never;
+		delete?: never;
+		options?: never;
+		head?: never;
+		patch?: never;
+		trace?: never;
+	};
+	"/api/packages/updates": {
+		parameters: {
+			query?: never;
+			header?: never;
+			path?: never;
+			cookie?: never;
+		};
+		/**
+		 * Check for package updates
+		 * @description Check for available updates to installed packages
+		 */
+		get: operations["check_updates_api_packages_updates_get"];
+		put?: never;
+		post?: never;
+		delete?: never;
+		options?: never;
+		head?: never;
+		patch?: never;
+		trace?: never;
+	};
+	"/api/packages/install": {
+		parameters: {
+			query?: never;
+			header?: never;
+			path?: never;
+			cookie?: never;
+		};
+		get?: never;
+		put?: never;
+		/**
+		 * Install a Python package
+		 * @description Install a Python package (Platform admin only)
+		 */
+		post: operations["install_package_api_packages_install_post"];
+		delete?: never;
+		options?: never;
+		head?: never;
+		patch?: never;
+		trace?: never;
+	};
+	"/api/packages/{package_name}": {
+		parameters: {
+			query?: never;
+			header?: never;
+			path?: never;
+			cookie?: never;
+		};
+		get?: never;
+		put?: never;
+		post?: never;
+		/**
+		 * Uninstall a Python package
+		 * @description Uninstall a Python package (Platform admin only)
+		 */
+		delete: operations["uninstall_package_api_packages__package_name__delete"];
+		options?: never;
+		head?: never;
+		patch?: never;
+		trace?: never;
+	};
+	"/api/github/status": {
+		parameters: {
+			query?: never;
+			header?: never;
+			path?: never;
+			cookie?: never;
+		};
+		/**
+		 * Get GitHub sync status
+		 * @description Get current GitHub repository connection and sync status
+		 */
+		get: operations["get_github_status_api_github_status_get"];
+		put?: never;
+		post?: never;
+		delete?: never;
+		options?: never;
+		head?: never;
+		patch?: never;
+		trace?: never;
+	};
+	"/api/github/refresh": {
+		parameters: {
+			query?: never;
+			header?: never;
+			path?: never;
+			cookie?: never;
+		};
+		get?: never;
+		put?: never;
+		/**
+		 * Refresh Git status
+		 * @description Get complete Git status including local changes, conflicts, and commit history
+		 */
+		post: operations["refresh_github_status_api_github_refresh_post"];
+		delete?: never;
+		options?: never;
+		head?: never;
+		patch?: never;
+		trace?: never;
+	};
+	"/api/github/pull": {
+		parameters: {
+			query?: never;
+			header?: never;
+			path?: never;
+			cookie?: never;
+		};
+		get?: never;
+		put?: never;
+		/**
+		 * Pull from GitHub
+		 * @description Pull latest changes from the connected GitHub repository
+		 */
+		post: operations["pull_from_github_api_github_pull_post"];
+		delete?: never;
+		options?: never;
+		head?: never;
+		patch?: never;
+		trace?: never;
+	};
+	"/api/github/push": {
+		parameters: {
+			query?: never;
+			header?: never;
+			path?: never;
+			cookie?: never;
+		};
+		get?: never;
+		put?: never;
+		/**
+		 * Push to GitHub
+		 * @description Push local changes to the connected GitHub repository
+		 */
+		post: operations["push_to_github_api_github_push_post"];
+		delete?: never;
+		options?: never;
+		head?: never;
+		patch?: never;
+		trace?: never;
+	};
+	"/api/github/changes": {
+		parameters: {
+			query?: never;
+			header?: never;
+			path?: never;
+			cookie?: never;
+		};
+		/**
+		 * Get local changes
+		 * @description List local changes not yet pushed to GitHub
+		 */
+		get: operations["get_changes_api_github_changes_get"];
+		put?: never;
+		post?: never;
+		delete?: never;
+		options?: never;
+		head?: never;
+		patch?: never;
+		trace?: never;
+	};
+	"/api/github/init": {
+		parameters: {
+			query?: never;
+			header?: never;
+			path?: never;
+			cookie?: never;
+		};
+		get?: never;
+		put?: never;
+		/**
+		 * Initialize Git repository
+		 * @description Initialize workspace as a Git repository with remote (stub)
+		 */
+		post: operations["init_repo_api_github_init_post"];
+		delete?: never;
+		options?: never;
+		head?: never;
+		patch?: never;
+		trace?: never;
+	};
+	"/api/github/commit": {
+		parameters: {
+			query?: never;
+			header?: never;
+			path?: never;
+			cookie?: never;
+		};
+		get?: never;
+		put?: never;
+		/**
+		 * Commit local changes
+		 * @description Commit staged changes with a message (stub)
+		 */
+		post: operations["commit_changes_api_github_commit_post"];
+		delete?: never;
+		options?: never;
+		head?: never;
+		patch?: never;
+		trace?: never;
+	};
+	"/api/github/commits": {
+		parameters: {
+			query?: never;
+			header?: never;
+			path?: never;
+			cookie?: never;
+		};
+		/**
+		 * Get commit history
+		 * @description Get commit history with pagination
+		 */
+		get: operations["get_commits_api_github_commits_get"];
+		put?: never;
+		post?: never;
+		delete?: never;
+		options?: never;
+		head?: never;
+		patch?: never;
+		trace?: never;
+	};
+	"/api/github/conflicts": {
+		parameters: {
+			query?: never;
+			header?: never;
+			path?: never;
+			cookie?: never;
+		};
+		/**
+		 * Get merge conflicts
+		 * @description List files with merge conflicts (stub)
+		 */
+		get: operations["get_conflicts_api_github_conflicts_get"];
+		put?: never;
+		post?: never;
+		delete?: never;
+		options?: never;
+		head?: never;
+		patch?: never;
+		trace?: never;
+	};
+	"/api/github/abort-merge": {
+		parameters: {
+			query?: never;
+			header?: never;
+			path?: never;
+			cookie?: never;
+		};
+		get?: never;
+		put?: never;
+		/**
+		 * Abort merge
+		 * @description Abort current merge operation (stub)
+		 */
+		post: operations["abort_merge_api_github_abort_merge_post"];
+		delete?: never;
+		options?: never;
+		head?: never;
+		patch?: never;
+		trace?: never;
+	};
+	"/api/github/discard-unpushed": {
+		parameters: {
+			query?: never;
+			header?: never;
+			path?: never;
+			cookie?: never;
+		};
+		get?: never;
+		put?: never;
+		/**
+		 * Discard unpushed commits
+		 * @description Discard all unpushed commits and reset to remote
+		 */
+		post: operations["discard_unpushed_commits_api_github_discard_unpushed_post"];
+		delete?: never;
+		options?: never;
+		head?: never;
+		patch?: never;
+		trace?: never;
+	};
+	"/api/github/discard-commit": {
+		parameters: {
+			query?: never;
+			header?: never;
+			path?: never;
+			cookie?: never;
+		};
+		get?: never;
+		put?: never;
+		/**
+		 * Discard specific commit
+		 * @description Discard a specific commit and all newer commits
+		 */
+		post: operations["discard_commit_api_github_discard_commit_post"];
+		delete?: never;
+		options?: never;
+		head?: never;
+		patch?: never;
+		trace?: never;
+	};
+	"/api/github/config": {
+		parameters: {
+			query?: never;
+			header?: never;
+			path?: never;
+			cookie?: never;
+		};
+		/**
+		 * Get GitHub configuration
+		 * @description Retrieve current GitHub integration configuration
+		 */
+		get: operations["get_github_config_api_github_config_get"];
+		put?: never;
+		post?: never;
+		delete?: never;
+		options?: never;
+		head?: never;
+		patch?: never;
+		trace?: never;
+	};
+	"/api/github/validate": {
+		parameters: {
+			query?: never;
+			header?: never;
+			path?: never;
+			cookie?: never;
+		};
+		get?: never;
+		put?: never;
+		/**
+		 * Validate GitHub token
+		 * @description Validate GitHub token and save to database, returns accessible repositories
+		 */
+		post: operations["validate_github_token_api_github_validate_post"];
+		delete?: never;
+		options?: never;
+		head?: never;
+		patch?: never;
+		trace?: never;
+	};
+	"/api/github/configure": {
+		parameters: {
+			query?: never;
+			header?: never;
+			path?: never;
+			cookie?: never;
+		};
+		get?: never;
+		put?: never;
+		/**
+		 * Configure GitHub integration
+		 * @description Queue GitHub repository setup job. Watch notification channel for progress.
+		 */
+		post: operations["configure_github_api_github_configure_post"];
+		delete?: never;
+		options?: never;
+		head?: never;
+		patch?: never;
+		trace?: never;
+	};
+	"/api/github/repositories": {
+		parameters: {
+			query?: never;
+			header?: never;
+			path?: never;
+			cookie?: never;
+		};
+		/**
+		 * List GitHub repositories
+		 * @description List accessible repositories using the saved GitHub token
+		 */
+		get: operations["list_github_repos_api_github_repositories_get"];
+		put?: never;
+		post?: never;
+		delete?: never;
+		options?: never;
+		head?: never;
+		patch?: never;
+		trace?: never;
+	};
+	"/api/github/branches": {
+		parameters: {
+			query?: never;
+			header?: never;
+			path?: never;
+			cookie?: never;
+		};
+		/**
+		 * List repository branches
+		 * @description List branches in a GitHub repository using saved token
+		 */
+		get: operations["list_github_branches_api_github_branches_get"];
+		put?: never;
+		post?: never;
+		delete?: never;
+		options?: never;
+		head?: never;
+		patch?: never;
+		trace?: never;
+	};
+	"/api/github/analyze-workspace": {
+		parameters: {
+			query?: never;
+			header?: never;
+			path?: never;
+			cookie?: never;
+		};
+		get?: never;
+		put?: never;
+		/**
+		 * Analyze workspace
+		 * @description Analyze workspace for potential conflicts before configuring GitHub
+		 */
+		post: operations["analyze_workspace_api_github_analyze_workspace_post"];
+		delete?: never;
+		options?: never;
+		head?: never;
+		patch?: never;
+		trace?: never;
+	};
+	"/api/github/create-repository": {
+		parameters: {
+			query?: never;
+			header?: never;
+			path?: never;
+			cookie?: never;
+		};
+		get?: never;
+		put?: never;
+		/**
+		 * Create GitHub repository
+		 * @description Create a new GitHub repository using saved token
+		 */
+		post: operations["create_github_repository_api_github_create_repository_post"];
+		delete?: never;
+		options?: never;
+		head?: never;
+		patch?: never;
+		trace?: never;
+	};
+	"/api/github/disconnect": {
+		parameters: {
+			query?: never;
+			header?: never;
+			path?: never;
+			cookie?: never;
+		};
+		get?: never;
+		put?: never;
+		/**
+		 * Disconnect GitHub integration
+		 * @description Remove GitHub integration configuration
+		 */
+		post: operations["disconnect_github_api_github_disconnect_post"];
+		delete?: never;
+		options?: never;
+		head?: never;
+		patch?: never;
+		trace?: never;
+	};
+	"/api/oauth/connections/{connection_name}": {
+		parameters: {
+			query?: never;
+			header?: never;
+			path?: never;
+			cookie?: never;
+		};
+		/**
+		 * Get OAuth connection
+		 * @description Get a specific OAuth connection (Platform admin only)
+		 */
+		get: operations["get_connection_api_oauth_connections__connection_name__get"];
+		/**
+		 * Update OAuth connection
+		 * @description Update an existing OAuth connection (Platform admin only)
+		 */
+		put: operations["update_connection_api_oauth_connections__connection_name__put"];
+		post?: never;
+		/**
+		 * Delete OAuth connection
+		 * @description Delete an OAuth connection (Platform admin only)
+		 */
+		delete: operations["delete_connection_api_oauth_connections__connection_name__delete"];
+		options?: never;
+		head?: never;
+		patch?: never;
+		trace?: never;
+	};
+	"/api/oauth/connections": {
+		parameters: {
+			query?: never;
+			header?: never;
+			path?: never;
+			cookie?: never;
+		};
+		get?: never;
+		put?: never;
+		/**
+		 * Create OAuth connection
+		 * @description Create a new OAuth connection (Platform admin only)
+		 */
+		post: operations["create_connection_api_oauth_connections_post"];
+		delete?: never;
+		options?: never;
+		head?: never;
+		patch?: never;
+		trace?: never;
+	};
+	"/api/oauth/connections/{connection_name}/authorize": {
+		parameters: {
+			query?: never;
+			header?: never;
+			path?: never;
+			cookie?: never;
+		};
+		get?: never;
+		put?: never;
+		/**
+		 * Initiate OAuth authorization
+		 * @description Get authorization URL for user to complete OAuth flow
+		 */
+		post: operations["authorize_connection_api_oauth_connections__connection_name__authorize_post"];
+		delete?: never;
+		options?: never;
+		head?: never;
+		patch?: never;
+		trace?: never;
+	};
+	"/api/oauth/connections/{connection_name}/cancel": {
+		parameters: {
+			query?: never;
+			header?: never;
+			path?: never;
+			cookie?: never;
+		};
+		get?: never;
+		put?: never;
+		/**
+		 * Cancel OAuth authorization
+		 * @description Cancel pending OAuth authorization and reset to not_connected
+		 */
+		post: operations["cancel_authorization_api_oauth_connections__connection_name__cancel_post"];
+		delete?: never;
+		options?: never;
+		head?: never;
+		patch?: never;
+		trace?: never;
+	};
+	"/api/oauth/connections/{connection_name}/refresh": {
+		parameters: {
+			query?: never;
+			header?: never;
+			path?: never;
+			cookie?: never;
+		};
+		get?: never;
+		put?: never;
+		/**
+		 * Refresh OAuth token
+		 * @description Manually refresh the OAuth access token using the refresh token
+		 */
+		post: operations["refresh_token_api_oauth_connections__connection_name__refresh_post"];
+		delete?: never;
+		options?: never;
+		head?: never;
+		patch?: never;
+		trace?: never;
+	};
+	"/api/oauth/callback/{connection_name}": {
+		parameters: {
+			query?: never;
+			header?: never;
+			path?: never;
+			cookie?: never;
+		};
+		get?: never;
+		put?: never;
+		/**
+		 * OAuth callback
+		 * @description Handle OAuth callback and exchange code for tokens
+		 */
+		post: operations["oauth_callback_api_oauth_callback__connection_name__post"];
+		delete?: never;
+		options?: never;
+		head?: never;
+		patch?: never;
+		trace?: never;
+	};
+	"/api/oauth/credentials/{connection_name}": {
+		parameters: {
+			query?: never;
+			header?: never;
+			path?: never;
+			cookie?: never;
+		};
+		/**
+		 * Get OAuth credentials
+		 * @description Get OAuth credentials for use in workflows (Platform admin only)
+		 */
+		get: operations["get_credentials_api_oauth_credentials__connection_name__get"];
+		put?: never;
+		post?: never;
+		delete?: never;
+		options?: never;
+		head?: never;
+		patch?: never;
+		trace?: never;
+	};
+	"/api/oauth/refresh_job_status": {
+		parameters: {
+			query?: never;
+			header?: never;
+			path?: never;
+			cookie?: never;
+		};
+		/**
+		 * Get OAuth refresh job status
+		 * @description Get status of the background token refresh job
+		 */
+		get: operations["get_refresh_job_status_api_oauth_refresh_job_status_get"];
+		put?: never;
+		post?: never;
+		delete?: never;
+		options?: never;
+		head?: never;
+		patch?: never;
+		trace?: never;
+	};
+	"/api/oauth/refresh_all": {
+		parameters: {
+			query?: never;
+			header?: never;
+			path?: never;
+			cookie?: never;
+		};
+		get?: never;
+		put?: never;
+		/**
+		 * Trigger refresh of all OAuth tokens
+		 * @description Manually trigger refresh of all OAuth tokens (Platform admin only)
+		 */
+		post: operations["trigger_refresh_all_api_oauth_refresh_all_post"];
+		delete?: never;
+		options?: never;
+		head?: never;
+		patch?: never;
+		trace?: never;
+	};
+	"/api/endpoints/{workflow_name}": {
+		parameters: {
+			query?: never;
+			header?: never;
+			path?: never;
+			cookie?: never;
+		};
+		/**
+		 * Execute workflow via API key
+		 * @description Execute an endpoint-enabled workflow using an API key for authentication
+		 */
+		get: operations["execute_endpoint_api_endpoints__workflow_name__post"];
+		/**
+		 * Execute workflow via API key
+		 * @description Execute an endpoint-enabled workflow using an API key for authentication
+		 */
+		put: operations["execute_endpoint_api_endpoints__workflow_name__post"];
+		/**
+		 * Execute workflow via API key
+		 * @description Execute an endpoint-enabled workflow using an API key for authentication
+		 */
+		post: operations["execute_endpoint_api_endpoints__workflow_name__post"];
+		/**
+		 * Execute workflow via API key
+		 * @description Execute an endpoint-enabled workflow using an API key for authentication
+		 */
+		delete: operations["execute_endpoint_api_endpoints__workflow_name__post"];
+		options?: never;
+		head?: never;
+		patch?: never;
+		trace?: never;
+	};
+	"/api/cli/context": {
+		parameters: {
+			query?: never;
+			header?: never;
+			path?: never;
+			cookie?: never;
+		};
+		/**
+		 * Get developer context
+		 * @description Get development context for CLI initialization.
+		 */
+		get: operations["get_dev_context_api_cli_context_get"];
+		/**
+		 * Update developer context
+		 * @description Update developer context settings.
+		 */
+		put: operations["update_dev_context_api_cli_context_put"];
+		post?: never;
+		delete?: never;
+		options?: never;
+		head?: never;
+		patch?: never;
+		trace?: never;
+	};
+	"/api/cli/keys": {
+		parameters: {
+			query?: never;
+			header?: never;
+			path?: never;
+			cookie?: never;
+		};
+		/**
+		 * List API keys
+		 * @description List all API keys for the current user.
+		 */
+		get: operations["list_api_keys_api_cli_keys_get"];
+		put?: never;
+		/**
+		 * Create API key
+		 * @description Create a new API key.
+		 */
+		post: operations["create_api_key_api_cli_keys_post"];
+		delete?: never;
+		options?: never;
+		head?: never;
+		patch?: never;
+		trace?: never;
+	};
+	"/api/cli/keys/{key_id}": {
+		parameters: {
+			query?: never;
+			header?: never;
+			path?: never;
+			cookie?: never;
+		};
+		get?: never;
+		put?: never;
+		post?: never;
+		/**
+		 * Delete API key
+		 * @description Delete an API key.
+		 */
+		delete: operations["delete_api_key_api_cli_keys__key_id__delete"];
+		options?: never;
+		head?: never;
+		patch?: never;
+		trace?: never;
+	};
+	"/api/cli/keys/{key_id}/revoke": {
+		parameters: {
+			query?: never;
+			header?: never;
+			path?: never;
+			cookie?: never;
+		};
+		get?: never;
+		put?: never;
+		post?: never;
+		delete?: never;
+		options?: never;
+		head?: never;
+		/**
+		 * Revoke API key
+		 * @description Revoke an API key (set is_active to False).
+		 */
+		patch: operations["revoke_api_key_api_cli_keys__key_id__revoke_patch"];
+		trace?: never;
+	};
+	"/api/cli/files/read": {
+		parameters: {
+			query?: never;
+			header?: never;
+			path?: never;
+			cookie?: never;
+		};
+		get?: never;
+		put?: never;
+		/**
+		 * Read file content
+		 * @description Read a file via CLI API.
+		 */
+		post: operations["cli_read_file_api_cli_files_read_post"];
+		delete?: never;
+		options?: never;
+		head?: never;
+		patch?: never;
+		trace?: never;
+	};
+	"/api/cli/files/write": {
+		parameters: {
+			query?: never;
+			header?: never;
+			path?: never;
+			cookie?: never;
+		};
+		get?: never;
+		put?: never;
+		/**
+		 * Write file content
+		 * @description Write a file via CLI API.
+		 */
+		post: operations["cli_write_file_api_cli_files_write_post"];
+		delete?: never;
+		options?: never;
+		head?: never;
+		patch?: never;
+		trace?: never;
+	};
+	"/api/cli/files/list": {
+		parameters: {
+			query?: never;
+			header?: never;
+			path?: never;
+			cookie?: never;
+		};
+		get?: never;
+		put?: never;
+		/**
+		 * List files in directory
+		 * @description List files in a directory via CLI API.
+		 */
+		post: operations["cli_list_files_api_cli_files_list_post"];
+		delete?: never;
+		options?: never;
+		head?: never;
+		patch?: never;
+		trace?: never;
+	};
+	"/api/cli/files/delete": {
+		parameters: {
+			query?: never;
+			header?: never;
+			path?: never;
+			cookie?: never;
+		};
+		get?: never;
+		put?: never;
+		/**
+		 * Delete file or directory
+		 * @description Delete a file or directory via CLI API.
+		 */
+		post: operations["cli_delete_file_api_cli_files_delete_post"];
+		delete?: never;
+		options?: never;
+		head?: never;
+		patch?: never;
+		trace?: never;
+	};
+	"/api/cli/config/get": {
+		parameters: {
+			query?: never;
+			header?: never;
+			path?: never;
+			cookie?: never;
+		};
+		get?: never;
+		put?: never;
+		/**
+		 * Get config value
+		 * @description Get a config value via CLI API.
+		 */
+		post: operations["cli_get_config_api_cli_config_get_post"];
+		delete?: never;
+		options?: never;
+		head?: never;
+		patch?: never;
+		trace?: never;
+	};
+	"/api/cli/config/set": {
+		parameters: {
+			query?: never;
+			header?: never;
+			path?: never;
+			cookie?: never;
+		};
+		get?: never;
+		put?: never;
+		/**
+		 * Set config value
+		 * @description Set a config value via CLI API.
+		 */
+		post: operations["cli_set_config_api_cli_config_set_post"];
+		delete?: never;
+		options?: never;
+		head?: never;
+		patch?: never;
+		trace?: never;
+	};
+	"/api/cli/config/list": {
+		parameters: {
+			query?: never;
+			header?: never;
+			path?: never;
+			cookie?: never;
+		};
+		get?: never;
+		put?: never;
+		/**
+		 * List config values
+		 * @description List all config values via CLI API.
+		 */
+		post: operations["cli_list_config_api_cli_config_list_post"];
+		delete?: never;
+		options?: never;
+		head?: never;
+		patch?: never;
+		trace?: never;
+	};
+	"/api/cli/config/delete": {
+		parameters: {
+			query?: never;
+			header?: never;
+			path?: never;
+			cookie?: never;
+		};
+		get?: never;
+		put?: never;
+		/**
+		 * Delete config value
+		 * @description Delete a config value via CLI API.
+		 */
+		post: operations["cli_delete_config_api_cli_config_delete_post"];
+		delete?: never;
+		options?: never;
+		head?: never;
+		patch?: never;
+		trace?: never;
+	};
+	"/api/cli/oauth/get": {
+		parameters: {
+			query?: never;
+			header?: never;
+			path?: never;
+			cookie?: never;
+		};
+		get?: never;
+		put?: never;
+		/**
+		 * Get OAuth connection data
+		 * @description Get OAuth connection data via CLI API.
+		 */
+		post: operations["cli_get_oauth_api_cli_oauth_get_post"];
+		delete?: never;
+		options?: never;
+		head?: never;
+		patch?: never;
+		trace?: never;
+	};
+	"/api/cli/integrations/get": {
+		parameters: {
+			query?: never;
+			header?: never;
+			path?: never;
+			cookie?: never;
+		};
+		get?: never;
+		put?: never;
+		/**
+		 * Get integration data for an organization
+		 * @description Get integration mapping data for an organization via SDK.
+		 */
+		post: operations["sdk_integrations_get_api_cli_integrations_get_post"];
+		delete?: never;
+		options?: never;
+		head?: never;
+		patch?: never;
+		trace?: never;
+	};
+	"/api/cli/integrations/list_mappings": {
+		parameters: {
+			query?: never;
+			header?: never;
+			path?: never;
+			cookie?: never;
+		};
+		get?: never;
+		put?: never;
+		/**
+		 * List all mappings for an integration
+		 * @description List all mappings for an integration via SDK.
+		 */
+		post: operations["sdk_integrations_list_mappings_api_cli_integrations_list_mappings_post"];
+		delete?: never;
+		options?: never;
+		head?: never;
+		patch?: never;
+		trace?: never;
+	};
+	"/api/cli/sessions": {
+		parameters: {
+			query?: never;
+			header?: never;
+			path?: never;
+			cookie?: never;
+		};
+		/**
+		 * List user's CLI sessions
+		 * @description List all CLI sessions for the current user.
+		 */
+		get: operations["list_cli_sessions_api_cli_sessions_get"];
+		put?: never;
+		/**
+		 * Register/create a CLI session
+		 * @description Register workflows discovered by CLI for web UI.
+		 *
+		 *     Called by `bifrost run <file>` to register workflows before
+		 *     opening the browser to the CLI session page.
+		 */
+		post: operations["register_cli_session_api_cli_sessions_post"];
+		delete?: never;
+		options?: never;
+		head?: never;
+		patch?: never;
+		trace?: never;
+	};
+	"/api/cli/sessions/{session_id}": {
+		parameters: {
+			query?: never;
+			header?: never;
+			path?: never;
+			cookie?: never;
+		};
+		/**
+		 * Get CLI session state
+		 * @description Get current CLI session state for web UI.
+		 */
+		get: operations["get_cli_session_api_cli_sessions__session_id__get"];
+		put?: never;
+		post?: never;
+		/**
+		 * Delete CLI session
+		 * @description Delete a CLI session.
+		 */
+		delete: operations["delete_cli_session_api_cli_sessions__session_id__delete"];
+		options?: never;
+		head?: never;
+		patch?: never;
+		trace?: never;
+	};
+	"/api/cli/sessions/{session_id}/continue": {
+		parameters: {
+			query?: never;
+			header?: never;
+			path?: never;
+			cookie?: never;
+		};
+		get?: never;
+		put?: never;
+		/**
+		 * Continue workflow execution
+		 * @description Submit parameters to continue workflow execution.
+		 *
+		 *     Called by web UI when user clicks "Continue".
+		 *     Creates a real Execution record and sets pending=True so CLI can pick up.
+		 */
+		post: operations["continue_cli_session_api_cli_sessions__session_id__continue_post"];
+		delete?: never;
+		options?: never;
+		head?: never;
+		patch?: never;
+		trace?: never;
+	};
+	"/api/cli/sessions/{session_id}/pending": {
+		parameters: {
+			query?: never;
+			header?: never;
+			path?: never;
+			cookie?: never;
+		};
+		/**
+		 * Poll for pending execution
+		 * @description Poll for pending workflow execution.
+		 *
+		 *     Returns 204 No Content if no execution pending.
+		 *     Returns execution_id, params and clears pending flag when execution is ready.
+		 */
+		get: operations["get_pending_execution_api_cli_sessions__session_id__pending_get"];
+		put?: never;
+		post?: never;
+		delete?: never;
+		options?: never;
+		head?: never;
+		patch?: never;
+		trace?: never;
+	};
+	"/api/cli/sessions/{session_id}/heartbeat": {
+		parameters: {
+			query?: never;
+			header?: never;
+			path?: never;
+			cookie?: never;
+		};
+		get?: never;
+		put?: never;
+		/**
+		 * Update session heartbeat
+		 * @description Update session's last_seen timestamp (CLI heartbeat).
+		 */
+		post: operations["session_heartbeat_api_cli_sessions__session_id__heartbeat_post"];
+		delete?: never;
+		options?: never;
+		head?: never;
+		patch?: never;
+		trace?: never;
+	};
+	"/api/cli/sessions/{session_id}/executions/{execution_id}/log": {
+		parameters: {
+			query?: never;
+			header?: never;
+			path?: never;
+			cookie?: never;
+		};
+		get?: never;
+		put?: never;
+		/**
+		 * Stream log entry from CLI
+		 * @description Stream a log entry from CLI to the execution.
+		 */
+		post: operations["post_cli_log_api_cli_sessions__session_id__executions__execution_id__log_post"];
+		delete?: never;
+		options?: never;
+		head?: never;
+		patch?: never;
+		trace?: never;
+	};
+	"/api/cli/sessions/{session_id}/executions/{execution_id}/result": {
+		parameters: {
+			query?: never;
+			header?: never;
+			path?: never;
+			cookie?: never;
+		};
+		get?: never;
+		put?: never;
+		/**
+		 * Post execution result from CLI
+		 * @description Post execution result from CLI.
+		 */
+		post: operations["post_cli_result_api_cli_sessions__session_id__executions__execution_id__result_post"];
+		delete?: never;
+		options?: never;
+		head?: never;
+		patch?: never;
+		trace?: never;
+	};
+	"/api/cli/download": {
+		parameters: {
+			query?: never;
+			header?: never;
+			path?: never;
+			cookie?: never;
+		};
+		/**
+		 * Download CLI package
+		 * @description Download the Bifrost CLI as a pip-installable tarball
+		 */
+		get: operations["download_cli_api_cli_download_get"];
+		put?: never;
+		post?: never;
+		delete?: never;
+		options?: never;
+		head?: never;
+		patch?: never;
+		trace?: never;
+	};
+	"/api/notifications": {
+		parameters: {
+			query?: never;
+			header?: never;
+			path?: never;
+			cookie?: never;
+		};
+		/**
+		 * List Notifications
+		 * @description Get all notifications for the current user.
+		 *
+		 *     Platform admins also receive admin-scoped notifications.
+		 *
+		 *     Returns:
+		 *         List of active notifications
+		 */
+		get: operations["list_notifications_api_notifications_get"];
+		put?: never;
+		post?: never;
+		delete?: never;
+		options?: never;
+		head?: never;
+		patch?: never;
+		trace?: never;
+	};
+	"/api/notifications/{notification_id}": {
+		parameters: {
+			query?: never;
+			header?: never;
+			path?: never;
+			cookie?: never;
+		};
+		/**
+		 * Get Notification
+		 * @description Get a specific notification by ID.
+		 *
+		 *     Args:
+		 *         notification_id: Notification ID
+		 *
+		 *     Returns:
+		 *         Notification details
+		 *
+		 *     Raises:
+		 *         404 if not found or not owned by user
+		 */
+		get: operations["get_notification_api_notifications__notification_id__get"];
+		put?: never;
+		post?: never;
+		/**
+		 * Dismiss Notification
+		 * @description Dismiss (delete) a notification.
+		 *
+		 *     Only the owner can dismiss their notification.
+		 *
+		 *     Args:
+		 *         notification_id: Notification ID to dismiss
+		 *
+		 *     Raises:
+		 *         404 if not found or not owned by user
+		 */
+		delete: operations["dismiss_notification_api_notifications__notification_id__delete"];
+		options?: never;
+		head?: never;
+		patch?: never;
+		trace?: never;
+	};
+	"/api/notifications/locks/upload": {
+		parameters: {
+			query?: never;
+			header?: never;
+			path?: never;
+			cookie?: never;
+		};
+		/**
+		 * Get Upload Lock Status
+		 * @description Check the current upload lock status (admin only).
+		 *
+		 *     Used by admins to monitor file uploads and manage locks.
+		 *
+		 *     Returns:
+		 *         Upload lock information
+		 */
+		get: operations["get_upload_lock_status_api_notifications_locks_upload_get"];
+		put?: never;
+		post?: never;
+		/**
+		 * Force Release Upload Lock
+		 * @description Force release the upload lock (admin only).
+		 *
+		 *     Use this only for stuck locks that didn't release properly.
+		 *
+		 *     Raises:
+		 *         404 if no lock exists
+		 */
+		delete: operations["force_release_upload_lock_api_notifications_locks_upload_delete"];
+		options?: never;
+		head?: never;
+		patch?: never;
+		trace?: never;
+	};
+	"/api/profile": {
+		parameters: {
+			query?: never;
+			header?: never;
+			path?: never;
+			cookie?: never;
+		};
+		/**
+		 * Get current user profile
+		 * @description Get the authenticated user's profile information
+		 */
+		get: operations["get_profile_api_profile_get"];
+		put?: never;
+		post?: never;
+		delete?: never;
+		options?: never;
+		head?: never;
+		/**
+		 * Update user profile
+		 * @description Update the authenticated user's profile information
+		 */
+		patch: operations["update_profile_api_profile_patch"];
+		trace?: never;
+	};
+	"/api/profile/avatar": {
+		parameters: {
+			query?: never;
+			header?: never;
+			path?: never;
+			cookie?: never;
+		};
+		/**
+		 * Get user avatar
+		 * @description Get the authenticated user's avatar image
+		 */
+		get: operations["get_avatar_api_profile_avatar_get"];
+		put?: never;
+		/**
+		 * Upload avatar
+		 * @description Upload a new avatar image (PNG or JPEG, max 2MB)
+		 */
+		post: operations["upload_avatar_api_profile_avatar_post"];
+		/**
+		 * Delete avatar
+		 * @description Remove the user's avatar
+		 */
+		delete: operations["delete_avatar_api_profile_avatar_delete"];
+		options?: never;
+		head?: never;
+		patch?: never;
+		trace?: never;
+	};
+	"/api/profile/password": {
+		parameters: {
+			query?: never;
+			header?: never;
+			path?: never;
+			cookie?: never;
+		};
+		get?: never;
+		put?: never;
+		/**
+		 * Change password
+		 * @description Change the authenticated user's password
+		 */
+		post: operations["change_password_api_profile_password_post"];
+		delete?: never;
+		options?: never;
+		head?: never;
+		patch?: never;
+		trace?: never;
+	};
+	"/api/agents": {
+		parameters: {
+			query?: never;
+			header?: never;
+			path?: never;
+			cookie?: never;
+		};
+		/**
+		 * List Agents
+		 * @description List agents the user has access to.
+		 *
+		 *     Platform admins see all agents.
+		 *     Users see agents based on role assignments.
+		 */
+		get: operations["list_agents_api_agents_get"];
+		put?: never;
+		/**
+		 * Create Agent
+		 * @description Create a new agent (platform admin only).
+		 *
+		 *     Creates both database record and S3 file.
+		 */
+		post: operations["create_agent_api_agents_post"];
+		delete?: never;
+		options?: never;
+		head?: never;
+		patch?: never;
+		trace?: never;
+	};
+	"/api/agents/{agent_id}": {
+		parameters: {
+			query?: never;
+			header?: never;
+			path?: never;
+			cookie?: never;
+		};
+		/**
+		 * Get Agent
+		 * @description Get agent by ID.
+		 */
+		get: operations["get_agent_api_agents__agent_id__get"];
+		/**
+		 * Update Agent
+		 * @description Update an agent (platform admin only).
+		 */
+		put: operations["update_agent_api_agents__agent_id__put"];
+		post?: never;
+		/**
+		 * Delete Agent
+		 * @description Soft delete an agent (platform admin only).
+		 */
+		delete: operations["delete_agent_api_agents__agent_id__delete"];
+		options?: never;
+		head?: never;
+		patch?: never;
+		trace?: never;
+	};
+	"/api/agents/{agent_id}/tools": {
+		parameters: {
+			query?: never;
+			header?: never;
+			path?: never;
+			cookie?: never;
+		};
+		/**
+		 * Get Agent Tools
+		 * @description Get tools assigned to an agent.
+		 */
+		get: operations["get_agent_tools_api_agents__agent_id__tools_get"];
+		put?: never;
+		/**
+		 * Assign Tools To Agent
+		 * @description Assign tools to an agent (platform admin only).
+		 */
+		post: operations["assign_tools_to_agent_api_agents__agent_id__tools_post"];
+		delete?: never;
+		options?: never;
+		head?: never;
+		patch?: never;
+		trace?: never;
+	};
+	"/api/agents/{agent_id}/tools/{workflow_id}": {
+		parameters: {
+			query?: never;
+			header?: never;
+			path?: never;
+			cookie?: never;
+		};
+		get?: never;
+		put?: never;
+		post?: never;
+		/**
+		 * Remove Tool From Agent
+		 * @description Remove a tool from an agent (platform admin only).
+		 */
+		delete: operations["remove_tool_from_agent_api_agents__agent_id__tools__workflow_id__delete"];
+		options?: never;
+		head?: never;
+		patch?: never;
+		trace?: never;
+	};
+	"/api/agents/{agent_id}/delegations": {
+		parameters: {
+			query?: never;
+			header?: never;
+			path?: never;
+			cookie?: never;
+		};
+		/**
+		 * Get Agent Delegations
+		 * @description Get agents this agent can delegate to.
+		 */
+		get: operations["get_agent_delegations_api_agents__agent_id__delegations_get"];
+		put?: never;
+		/**
+		 * Assign Delegations To Agent
+		 * @description Assign delegation targets to an agent (platform admin only).
+		 */
+		post: operations["assign_delegations_to_agent_api_agents__agent_id__delegations_post"];
+		delete?: never;
+		options?: never;
+		head?: never;
+		patch?: never;
+		trace?: never;
+	};
+	"/api/agents/{agent_id}/delegations/{delegate_id}": {
+		parameters: {
+			query?: never;
+			header?: never;
+			path?: never;
+			cookie?: never;
+		};
+		get?: never;
+		put?: never;
+		post?: never;
+		/**
+		 * Remove Delegation From Agent
+		 * @description Remove a delegation from an agent (platform admin only).
+		 */
+		delete: operations["remove_delegation_from_agent_api_agents__agent_id__delegations__delegate_id__delete"];
+		options?: never;
+		head?: never;
+		patch?: never;
+		trace?: never;
+	};
+	"/api/chat/conversations": {
+		parameters: {
+			query?: never;
+			header?: never;
+			path?: never;
+			cookie?: never;
+		};
+		/**
+		 * List Conversations
+		 * @description List user's conversations.
+		 */
+		get: operations["list_conversations_api_chat_conversations_get"];
+		put?: never;
+		/**
+		 * Create Conversation
+		 * @description Create a new conversation, optionally with an agent.
+		 */
+		post: operations["create_conversation_api_chat_conversations_post"];
+		delete?: never;
+		options?: never;
+		head?: never;
+		patch?: never;
+		trace?: never;
+	};
+	"/api/chat/conversations/{conversation_id}": {
+		parameters: {
+			query?: never;
+			header?: never;
+			path?: never;
+			cookie?: never;
+		};
+		/**
+		 * Get Conversation
+		 * @description Get conversation details.
+		 */
+		get: operations["get_conversation_api_chat_conversations__conversation_id__get"];
+		put?: never;
+		post?: never;
+		/**
+		 * Delete Conversation
+		 * @description Delete a conversation (soft delete).
+		 */
+		delete: operations["delete_conversation_api_chat_conversations__conversation_id__delete"];
+		options?: never;
+		head?: never;
+		patch?: never;
+		trace?: never;
+	};
+	"/api/chat/conversations/{conversation_id}/messages": {
+		parameters: {
+			query?: never;
+			header?: never;
+			path?: never;
+			cookie?: never;
+		};
+		/**
+		 * Get Messages
+		 * @description Get messages in a conversation.
+		 */
+		get: operations["get_messages_api_chat_conversations__conversation_id__messages_get"];
+		put?: never;
+		/**
+		 * Send Message
+		 * @description Send a message to a conversation (non-streaming).
+		 *
+		 *     For streaming responses, use the WebSocket endpoint.
+		 */
+		post: operations["send_message_api_chat_conversations__conversation_id__messages_post"];
+		delete?: never;
+		options?: never;
+		head?: never;
+		patch?: never;
+		trace?: never;
+	};
+	"/api/admin/llm/config": {
+		parameters: {
+			query?: never;
+			header?: never;
+			path?: never;
+			cookie?: never;
+		};
+		/**
+		 * Get Llm Config
+		 * @description Get current LLM provider configuration.
+		 *
+		 *     Returns the configuration without the API key (only indicates if it's set).
+		 *     Requires platform admin access.
+		 */
+		get: operations["get_llm_config_api_admin_llm_config_get"];
+		put?: never;
+		/**
+		 * Set Llm Config
+		 * @description Set LLM provider configuration.
+		 *
+		 *     The API key will be encrypted before storage.
+		 *     Requires platform admin access.
+		 */
+		post: operations["set_llm_config_api_admin_llm_config_post"];
+		/**
+		 * Delete Llm Config
+		 * @description Delete LLM provider configuration.
+		 *
+		 *     Requires platform admin access.
+		 */
+		delete: operations["delete_llm_config_api_admin_llm_config_delete"];
+		options?: never;
+		head?: never;
+		patch?: never;
+		trace?: never;
+	};
+	"/api/admin/llm/test": {
+		parameters: {
+			query?: never;
+			header?: never;
+			path?: never;
+			cookie?: never;
+		};
+		get?: never;
+		put?: never;
+		/**
+		 * Test Llm Connection
+		 * @description Test LLM connection with provided credentials.
+		 *
+		 *     Tests the connection without saving the configuration.
+		 *     Useful for validating API keys before committing.
+		 *     Requires platform admin access.
+		 */
+		post: operations["test_llm_connection_api_admin_llm_test_post"];
+		delete?: never;
+		options?: never;
+		head?: never;
+		patch?: never;
+		trace?: never;
+	};
+	"/api/admin/llm/test-saved": {
+		parameters: {
+			query?: never;
+			header?: never;
+			path?: never;
+			cookie?: never;
+		};
+		get?: never;
+		put?: never;
+		/**
+		 * Test Saved Llm Connection
+		 * @description Test connection using saved LLM configuration.
+		 *
+		 *     Tests the currently saved configuration.
+		 *     Requires platform admin access.
+		 */
+		post: operations["test_saved_llm_connection_api_admin_llm_test_saved_post"];
+		delete?: never;
+		options?: never;
+		head?: never;
+		patch?: never;
+		trace?: never;
+	};
+	"/api/admin/llm/models": {
+		parameters: {
+			query?: never;
+			header?: never;
+			path?: never;
+			cookie?: never;
+		};
+		/**
+		 * List Llm Models
+		 * @description List available models from the configured LLM provider.
+		 *
+		 *     Works with OpenAI and Anthropic (both support model listing).
+		 *     Requires platform admin access.
+		 */
+		get: operations["list_llm_models_api_admin_llm_models_get"];
+		put?: never;
+		post?: never;
+		delete?: never;
+		options?: never;
+		head?: never;
+		patch?: never;
+		trace?: never;
+	};
+	"/api/integrations": {
+		parameters: {
+			query?: never;
+			header?: never;
+			path?: never;
+			cookie?: never;
+		};
+		/**
+		 * List integrations
+		 * @description List all integrations (Platform admin only)
+		 */
+		get: operations["list_integrations_api_integrations_get"];
+		put?: never;
+		/**
+		 * Create integration
+		 * @description Create a new integration (Platform admin only)
+		 */
+		post: operations["create_integration_api_integrations_post"];
+		delete?: never;
+		options?: never;
+		head?: never;
+		patch?: never;
+		trace?: never;
+	};
+	"/api/integrations/{integration_id}": {
+		parameters: {
+			query?: never;
+			header?: never;
+			path?: never;
+			cookie?: never;
+		};
+		/**
+		 * Get integration by ID
+		 * @description Get a specific integration by ID with mappings and OAuth config (Platform admin only)
+		 */
+		get: operations["get_integration_api_integrations__integration_id__get"];
+		/**
+		 * Update integration
+		 * @description Update an existing integration (Platform admin only)
+		 */
+		put: operations["update_integration_api_integrations__integration_id__put"];
+		post?: never;
+		/**
+		 * Delete integration
+		 * @description Soft delete an integration (Platform admin only)
+		 */
+		delete: operations["delete_integration_api_integrations__integration_id__delete"];
+		options?: never;
+		head?: never;
+		patch?: never;
+		trace?: never;
+	};
+	"/api/integrations/by-name/{name}": {
+		parameters: {
+			query?: never;
+			header?: never;
+			path?: never;
+			cookie?: never;
+		};
+		/**
+		 * Get integration by name
+		 * @description Get a specific integration by name (Platform admin only)
+		 */
+		get: operations["get_integration_by_name_api_integrations_by_name__name__get"];
+		put?: never;
+		post?: never;
+		delete?: never;
+		options?: never;
+		head?: never;
+		patch?: never;
+		trace?: never;
+	};
+	"/api/integrations/{integration_id}/config": {
+		parameters: {
+			query?: never;
+			header?: never;
+			path?: never;
+			cookie?: never;
+		};
+		/**
+		 * Get integration default config
+		 * @description Get default config values for an integration (Platform admin only)
+		 */
+		get: operations["get_integration_config_api_integrations__integration_id__config_get"];
+		/**
+		 * Update integration default config
+		 * @description Set default config values for an integration (Platform admin only)
+		 */
+		put: operations["update_integration_config_api_integrations__integration_id__config_put"];
+		post?: never;
+		delete?: never;
+		options?: never;
+		head?: never;
+		patch?: never;
+		trace?: never;
+	};
+	"/api/integrations/{integration_id}/mappings": {
+		parameters: {
+			query?: never;
+			header?: never;
+			path?: never;
+			cookie?: never;
+		};
+		/**
+		 * List mappings for integration
+		 * @description List all mappings for a specific integration (Platform admin only)
+		 */
+		get: operations["list_mappings_api_integrations__integration_id__mappings_get"];
+		put?: never;
+		/**
+		 * Create integration mapping
+		 * @description Create a new mapping between an integration and organization (Platform admin only)
+		 */
+		post: operations["create_mapping_api_integrations__integration_id__mappings_post"];
+		delete?: never;
+		options?: never;
+		head?: never;
+		patch?: never;
+		trace?: never;
+	};
+	"/api/integrations/{integration_id}/mappings/{mapping_id}": {
+		parameters: {
+			query?: never;
+			header?: never;
+			path?: never;
+			cookie?: never;
+		};
+		/**
+		 * Get integration mapping
+		 * @description Get a specific mapping by ID (Platform admin only)
+		 */
+		get: operations["get_mapping_api_integrations__integration_id__mappings__mapping_id__get"];
+		/**
+		 * Update integration mapping
+		 * @description Update an existing mapping (Platform admin only)
+		 */
+		put: operations["update_mapping_api_integrations__integration_id__mappings__mapping_id__put"];
+		post?: never;
+		/**
+		 * Delete integration mapping
+		 * @description Delete an integration mapping (Platform admin only)
+		 */
+		delete: operations["delete_mapping_api_integrations__integration_id__mappings__mapping_id__delete"];
+		options?: never;
+		head?: never;
+		patch?: never;
+		trace?: never;
+	};
+	"/api/integrations/{integration_id}/mappings/by-org/{org_id}": {
+		parameters: {
+			query?: never;
+			header?: never;
+			path?: never;
+			cookie?: never;
+		};
+		/**
+		 * Get mapping by organization
+		 * @description Get the mapping for an integration in a specific organization (Platform admin only)
+		 */
+		get: operations["get_mapping_by_org_api_integrations__integration_id__mappings_by_org__org_id__get"];
+		put?: never;
+		post?: never;
+		delete?: never;
+		options?: never;
+		head?: never;
+		patch?: never;
+		trace?: never;
+	};
+	"/api/integrations/{integration_id}/oauth": {
+		parameters: {
+			query?: never;
+			header?: never;
+			path?: never;
+			cookie?: never;
+		};
+		/**
+		 * Get OAuth provider config
+		 * @description Get the OAuth provider configuration for this integration (Platform admin only)
+		 */
+		get: operations["get_oauth_config_api_integrations__integration_id__oauth_get"];
+		put?: never;
+		post?: never;
+		delete?: never;
+		options?: never;
+		head?: never;
+		patch?: never;
+		trace?: never;
+	};
+	"/api/integrations/{integration_id}/oauth/authorize": {
+		parameters: {
+			query?: never;
+			header?: never;
+			path?: never;
+			cookie?: never;
+		};
+		/**
+		 * Get OAuth authorization URL
+		 * @description Get the authorization URL for this integration's OAuth flow (Platform admin only)
+		 */
+		get: operations["get_oauth_authorization_url_api_integrations__integration_id__oauth_authorize_get"];
+		put?: never;
+		post?: never;
+		delete?: never;
+		options?: never;
+		head?: never;
+		patch?: never;
+		trace?: never;
+	};
+	"/api/integrations/sdk/{name}": {
+		parameters: {
+			query?: never;
+			header?: never;
+			path?: never;
+			cookie?: never;
+		};
+		/**
+		 * Get integration data for SDK
+		 * @description Get integration data with resolved OAuth and merged config for SDK consumption
+		 */
+		get: operations["get_integration_sdk_data_api_integrations_sdk__name__get"];
+		put?: never;
+		post?: never;
+		delete?: never;
+		options?: never;
+		head?: never;
+		patch?: never;
+		trace?: never;
+	};
+	"/api/decorator-properties": {
+		parameters: {
+			query?: never;
+			header?: never;
+			path?: never;
+			cookie?: never;
+		};
+		/**
+		 * Read decorator properties from a file
+		 * @description Read all workflow/data_provider/tool decorator properties from a Python file
+		 */
+		get: operations["get_decorator_properties_api_decorator_properties_get"];
+		/**
+		 * Update decorator properties
+		 * @description Update properties on a decorator in a Python file
+		 */
+		put: operations["update_decorator_properties_api_decorator_properties_put"];
+		post?: never;
+		delete?: never;
+		options?: never;
+		head?: never;
+		patch?: never;
+		trace?: never;
+	};
+	"/api/maintenance/status": {
+		parameters: {
+			query?: never;
+			header?: never;
+			path?: never;
+			cookie?: never;
+		};
+		/**
+		 * Get maintenance status
+		 * @description Get current workspace maintenance status (Platform admin only)
+		 */
+		get: operations["get_maintenance_status_api_maintenance_status_get"];
+		put?: never;
+		post?: never;
+		delete?: never;
+		options?: never;
+		head?: never;
+		patch?: never;
+		trace?: never;
+	};
+	"/api/maintenance/reindex": {
+		parameters: {
+			query?: never;
+			header?: never;
+			path?: never;
+			cookie?: never;
+		};
+		get?: never;
+		put?: never;
+		/**
+		 * Run workspace reindex
+		 * @description Reindex workspace files, optionally injecting IDs (Platform admin only)
+		 */
+		post: operations["run_reindex_api_maintenance_reindex_post"];
+		delete?: never;
+		options?: never;
+		head?: never;
+		patch?: never;
+		trace?: never;
+	};
+	"/": {
+		parameters: {
+			query?: never;
+			header?: never;
+			path?: never;
+			cookie?: never;
+		};
+		/** Root */
+		get: operations["root__get"];
+		put?: never;
+		post?: never;
+		delete?: never;
+		options?: never;
+		head?: never;
+		patch?: never;
+		trace?: never;
+	};
 }
 export type webhooks = Record<string, never>;
 export interface components {
-    schemas: {
-        /**
-         * AdminRevokeRequest
-         * @description Admin revocation request.
-         */
-        AdminRevokeRequest: {
-            /** User Id */
-            user_id: string;
-        };
-        /**
-         * AgentAccessLevel
-         * @description Agent access control levels
-         * @enum {string}
-         */
-        AgentAccessLevel: "public" | "authenticated" | "role_based";
-        /**
-         * AgentChannel
-         * @description Supported agent communication channels
-         * @enum {string}
-         */
-        AgentChannel: "chat" | "voice" | "teams" | "slack";
-        /**
-         * AgentCreate
-         * @description Request model for creating an agent.
-         */
-        AgentCreate: {
-            /** Name */
-            name: string;
-            /** Description */
-            description?: string | null;
-            /** System Prompt */
-            system_prompt: string;
-            /** Channels */
-            channels?: components["schemas"]["AgentChannel"][];
-            /** @default role_based */
-            access_level: components["schemas"]["AgentAccessLevel"];
-            /**
-             * Tool Ids
-             * @description List of workflow IDs to use as tools
-             */
-            tool_ids?: string[];
-            /**
-             * Delegated Agent Ids
-             * @description List of agent IDs this agent can delegate to
-             */
-            delegated_agent_ids?: string[];
-            /**
-             * Role Ids
-             * @description List of role IDs that can access this agent (for role_based access)
-             */
-            role_ids?: string[];
-        };
-        /**
-         * AgentPublic
-         * @description Agent output for API responses.
-         */
-        AgentPublic: {
-            /** Id */
-            id: string | null;
-            /** Name */
-            name: string;
-            /** Description */
-            description?: string | null;
-            /** System Prompt */
-            system_prompt: string;
-            /** Channels */
-            channels: string[];
-            access_level: components["schemas"]["AgentAccessLevel"];
-            /** Organization Id */
-            organization_id?: string | null;
-            /** Is Active */
-            is_active: boolean;
-            /** File Path */
-            file_path?: string | null;
-            /** Created By */
-            created_by: string;
-            /** Created At */
-            created_at: string;
-            /** Updated At */
-            updated_at: string;
-            /** Tool Ids */
-            tool_ids?: string[];
-            /** Delegated Agent Ids */
-            delegated_agent_ids?: string[];
-            /** Role Ids */
-            role_ids?: string[];
-        };
-        /**
-         * AgentSummary
-         * @description Lightweight agent summary for listings.
-         */
-        AgentSummary: {
-            /** Id */
-            id: string;
-            /** Name */
-            name: string;
-            /** Description */
-            description?: string | null;
-            /** Channels */
-            channels: string[];
-            /** Is Active */
-            is_active: boolean;
-        };
-        /**
-         * AgentUpdate
-         * @description Request model for updating an agent.
-         */
-        AgentUpdate: {
-            /** Name */
-            name?: string | null;
-            /** Description */
-            description?: string | null;
-            /** System Prompt */
-            system_prompt?: string | null;
-            /** Channels */
-            channels?: components["schemas"]["AgentChannel"][] | null;
-            access_level?: components["schemas"]["AgentAccessLevel"] | null;
-            /** Is Active */
-            is_active?: boolean | null;
-            /**
-             * Tool Ids
-             * @description List of workflow IDs to use as tools
-             */
-            tool_ids?: string[] | null;
-            /**
-             * Delegated Agent Ids
-             * @description List of agent IDs this agent can delegate to
-             */
-            delegated_agent_ids?: string[] | null;
-            /**
-             * Role Ids
-             * @description List of role IDs that can access this agent (for role_based access)
-             */
-            role_ids?: string[] | null;
-        };
-        /**
-         * ApiKeyCreate
-         * @description Create a new API key.
-         */
-        ApiKeyCreate: {
-            /**
-             * Name
-             * @description Key name/description
-             */
-            name: string;
-            /**
-             * Expires In Days
-             * @description Days until expiration
-             */
-            expires_in_days?: number | null;
-        };
-        /**
-         * ApiKeyCreated
-         * @description Response when creating a new API key (includes the actual key).
-         */
-        ApiKeyCreated: {
-            /**
-             * Id
-             * Format: uuid
-             */
-            id: string;
-            /** Name */
-            name: string;
-            /** Key Prefix */
-            key_prefix: string;
-            /** Is Active */
-            is_active: boolean;
-            /** Expires At */
-            expires_at: string | null;
-            /** Last Used At */
-            last_used_at: string | null;
-            /** Use Count */
-            use_count: number;
-            /**
-             * Created At
-             * Format: date-time
-             */
-            created_at: string;
-            /**
-             * Key
-             * @description The API key (only shown once)
-             */
-            key: string;
-        };
-        /**
-         * ApiKeyList
-         * @description List of API keys.
-         */
-        ApiKeyList: {
-            /** Keys */
-            keys: components["schemas"]["ApiKeyResponse"][];
-        };
-        /**
-         * ApiKeyResponse
-         * @description API key response (without the actual key).
-         */
-        ApiKeyResponse: {
-            /**
-             * Id
-             * Format: uuid
-             */
-            id: string;
-            /** Name */
-            name: string;
-            /** Key Prefix */
-            key_prefix: string;
-            /** Is Active */
-            is_active: boolean;
-            /** Expires At */
-            expires_at: string | null;
-            /** Last Used At */
-            last_used_at: string | null;
-            /** Use Count */
-            use_count: number;
-            /**
-             * Created At
-             * Format: date-time
-             */
-            created_at: string;
-        };
-        /**
-         * AssignAgentsToRoleRequest
-         * @description Request for assigning agents to a role.
-         */
-        AssignAgentsToRoleRequest: {
-            /** Agent Ids */
-            agent_ids: string[];
-        };
-        /**
-         * AssignDelegationsToAgentRequest
-         * @description Request for assigning delegation targets to an agent.
-         */
-        AssignDelegationsToAgentRequest: {
-            /** Agent Ids */
-            agent_ids: string[];
-        };
-        /**
-         * AssignFormsToRoleRequest
-         * @description Request model for assigning forms to a role
-         */
-        AssignFormsToRoleRequest: {
-            /**
-             * Form Ids
-             * @description List of form IDs to assign
-             */
-            form_ids: string[];
-        };
-        /**
-         * AssignToolsToAgentRequest
-         * @description Request for assigning tools (workflows) to an agent.
-         */
-        AssignToolsToAgentRequest: {
-            /** Workflow Ids */
-            workflow_ids: string[];
-        };
-        /**
-         * AssignUsersToRoleRequest
-         * @description Request model for assigning users to a role
-         */
-        AssignUsersToRoleRequest: {
-            /**
-             * User Ids
-             * @description List of user IDs to assign
-             */
-            user_ids: string[];
-        };
-        /**
-         * AuthStatusResponse
-         * @description Pre-login status response.
-         *
-         *     Provides all information the client needs to render the login page:
-         *     - Whether initial setup is required (no users exist)
-         *     - Whether password login is available
-         *     - Whether MFA is required for password login
-         *     - Available OAuth/SSO providers
-         */
-        AuthStatusResponse: {
-            /** Needs Setup */
-            needs_setup: boolean;
-            /** Password Login Enabled */
-            password_login_enabled: boolean;
-            /** Mfa Required For Password */
-            mfa_required_for_password: boolean;
-            /** Oauth Providers */
-            oauth_providers: components["schemas"]["src__models__contracts__auth__OAuthProviderInfo"][];
-        };
-        /**
-         * AuthorizeResponse
-         * @description Response for initiating OAuth authorization.
-         */
-        AuthorizeResponse: {
-            /**
-             * Authorization Url
-             * @description URL to redirect user for authorization
-             */
-            authorization_url: string;
-            /**
-             * State
-             * @description State parameter for CSRF protection
-             */
-            state: string;
-            /**
-             * Message
-             * @default Redirect user to authorization_url
-             */
-            message: string;
-        };
-        /** Body_login_auth_login_post */
-        Body_login_auth_login_post: {
-            /** Grant Type */
-            grant_type?: string | null;
-            /** Username */
-            username: string;
-            /**
-             * Password
-             * Format: password
-             */
-            password: string;
-            /**
-             * Scope
-             * @default
-             */
-            scope: string;
-            /** Client Id */
-            client_id?: string | null;
-            /**
-             * Client Secret
-             * Format: password
-             */
-            client_secret?: string | null;
-        };
-        /** Body_upload_avatar_api_profile_avatar_post */
-        Body_upload_avatar_api_profile_avatar_post: {
-            /**
-             * File
-             * Format: binary
-             */
-            file: string;
-        };
-        /** Body_upload_logo_api_branding_logo__logo_type__post */
-        Body_upload_logo_api_branding_logo__logo_type__post: {
-            /**
-             * File
-             * Format: binary
-             * @description Logo image file
-             */
-            file: string;
-        };
-        /**
-         * BrandingSettings
-         * @description Global platform branding configuration
-         */
-        BrandingSettings: {
-            /**
-             * Square Logo Url
-             * @description Square logo URL (for icons, 1:1 ratio)
-             */
-            square_logo_url?: string | null;
-            /**
-             * Rectangle Logo Url
-             * @description Rectangle logo URL (for headers, 16:9 ratio)
-             */
-            rectangle_logo_url?: string | null;
-            /**
-             * Primary Color
-             * @description Primary brand color (hex format, e.g., #FF5733)
-             */
-            primary_color?: string | null;
-        };
-        /**
-         * BrandingUpdateRequest
-         * @description Request model for updating primary color only - logos use POST /logo/{type}
-         */
-        BrandingUpdateRequest: {
-            /**
-             * Primary Color
-             * @description Primary color (hex code, e.g., #0066CC)
-             */
-            primary_color?: string | null;
-        };
-        /**
-         * CLIConfigDeleteRequest
-         * @description Request to delete a config value via CLI.
-         */
-        CLIConfigDeleteRequest: {
-            /**
-             * Key
-             * @description Configuration key
-             */
-            key: string;
-            /**
-             * Org Id
-             * @description Organization ID (optional, uses context default)
-             */
-            org_id?: string | null;
-        };
-        /**
-         * CLIConfigGetRequest
-         * @description Request to get a config value via CLI.
-         */
-        CLIConfigGetRequest: {
-            /**
-             * Key
-             * @description Configuration key
-             */
-            key: string;
-            /**
-             * Org Id
-             * @description Organization ID (optional, uses context default)
-             */
-            org_id?: string | null;
-        };
-        /**
-         * CLIConfigListRequest
-         * @description Request to list config values via CLI.
-         */
-        CLIConfigListRequest: {
-            /**
-             * Org Id
-             * @description Organization ID (optional, uses context default)
-             */
-            org_id?: string | null;
-        };
-        /**
-         * CLIConfigSetRequest
-         * @description Request to set a config value via CLI.
-         */
-        CLIConfigSetRequest: {
-            /**
-             * Key
-             * @description Configuration key
-             */
-            key: string;
-            /**
-             * Value
-             * @description Configuration value
-             */
-            value: unknown;
-            /**
-             * Org Id
-             * @description Organization ID (optional, uses context default)
-             */
-            org_id?: string | null;
-            /**
-             * Is Secret
-             * @description Whether to encrypt the value
-             * @default false
-             */
-            is_secret: boolean;
-        };
-        /**
-         * CLIConfigValue
-         * @description Config value response from CLI.
-         */
-        CLIConfigValue: {
-            /**
-             * Key
-             * @description Configuration key
-             */
-            key: string;
-            /**
-             * Value
-             * @description Configuration value
-             */
-            value: unknown;
-            /**
-             * Config Type
-             * @description Type of the config (string, int, bool, json, secret)
-             */
-            config_type: string;
-        };
-        /**
-         * CLIFileDeleteRequest
-         * @description Request to delete a file or directory via CLI.
-         */
-        CLIFileDeleteRequest: {
-            /**
-             * Path
-             * @description Path to file or directory
-             */
-            path: string;
-            /**
-             * Location
-             * @description Storage location
-             * @default workspace
-             * @enum {string}
-             */
-            location: "temp" | "workspace";
-        };
-        /**
-         * CLIFileListRequest
-         * @description Request to list files in a directory via CLI.
-         */
-        CLIFileListRequest: {
-            /**
-             * Directory
-             * @description Directory path (relative)
-             * @default
-             */
-            directory: string;
-            /**
-             * Location
-             * @description Storage location
-             * @default workspace
-             * @enum {string}
-             */
-            location: "temp" | "workspace";
-        };
-        /**
-         * CLIFileReadRequest
-         * @description Request to read a file via CLI.
-         */
-        CLIFileReadRequest: {
-            /**
-             * Path
-             * @description Relative path to file
-             */
-            path: string;
-            /**
-             * Location
-             * @description Storage location
-             * @default workspace
-             * @enum {string}
-             */
-            location: "temp" | "workspace";
-        };
-        /**
-         * CLIFileWriteRequest
-         * @description Request to write a file via CLI.
-         */
-        CLIFileWriteRequest: {
-            /**
-             * Path
-             * @description Relative path to file
-             */
-            path: string;
-            /**
-             * Content
-             * @description File content (text)
-             */
-            content: string;
-            /**
-             * Location
-             * @description Storage location
-             * @default workspace
-             * @enum {string}
-             */
-            location: "temp" | "workspace";
-        };
-        /**
-         * CLIOAuthGetRequest
-         * @description Request to get OAuth connection data via CLI.
-         */
-        CLIOAuthGetRequest: {
-            /**
-             * Provider
-             * @description OAuth provider/connection name
-             */
-            provider: string;
-            /**
-             * Org Id
-             * @description Organization ID (optional, uses context default)
-             */
-            org_id?: string | null;
-        };
-        /**
-         * CLIOAuthGetResponse
-         * @description OAuth connection data response from CLI.
-         */
-        CLIOAuthGetResponse: {
-            /**
-             * Connection Name
-             * @description Connection/provider name
-             */
-            connection_name: string;
-            /**
-             * Client Id
-             * @description OAuth client ID
-             */
-            client_id: string;
-            /**
-             * Client Secret
-             * @description OAuth client secret (decrypted)
-             */
-            client_secret?: string | null;
-            /**
-             * Authorization Url
-             * @description OAuth authorization URL
-             */
-            authorization_url?: string | null;
-            /**
-             * Token Url
-             * @description OAuth token URL
-             */
-            token_url?: string | null;
-            /**
-             * Scopes
-             * @description OAuth scopes
-             */
-            scopes?: string[];
-            /**
-             * Access Token
-             * @description Current access token (decrypted)
-             */
-            access_token?: string | null;
-            /**
-             * Refresh Token
-             * @description Refresh token (decrypted)
-             */
-            refresh_token?: string | null;
-            /**
-             * Expires At
-             * @description Token expiration (ISO format)
-             */
-            expires_at?: string | null;
-        };
-        /**
-         * CLIRegisteredWorkflow
-         * @description Workflow registered by CLI.
-         */
-        CLIRegisteredWorkflow: {
-            /** Name */
-            name: string;
-            /** Description */
-            description: string;
-            /** Parameters */
-            parameters: components["schemas"]["WorkflowParameter"][];
-        };
-        /**
-         * CLISessionContinueRequest
-         * @description Request to continue workflow execution.
-         */
-        CLISessionContinueRequest: {
-            /** Workflow Name */
-            workflow_name: string;
-            /** Params */
-            params: {
-                [key: string]: unknown;
-            };
-        };
-        /**
-         * CLISessionContinueResponse
-         * @description Response when continuing workflow execution.
-         */
-        CLISessionContinueResponse: {
-            /** Status */
-            status: string;
-            /** Execution Id */
-            execution_id: string;
-            /** Workflow */
-            workflow: string;
-        };
-        /**
-         * CLISessionExecutionSummary
-         * @description Summary of an execution within a session.
-         */
-        CLISessionExecutionSummary: {
-            /** Id */
-            id: string;
-            /** Workflow Name */
-            workflow_name: string;
-            /** Status */
-            status: string;
-            /**
-             * Created At
-             * Format: date-time
-             */
-            created_at: string;
-            /** Duration Ms */
-            duration_ms?: number | null;
-        };
-        /**
-         * CLISessionListResponse
-         * @description Response for listing CLI sessions.
-         */
-        CLISessionListResponse: {
-            /** Sessions */
-            sessions: components["schemas"]["CLISessionResponse"][];
-        };
-        /**
-         * CLISessionLogRequest
-         * @description Log entry from CLI.
-         */
-        CLISessionLogRequest: {
-            /**
-             * Level
-             * @description Log level: DEBUG, INFO, WARNING, ERROR
-             */
-            level: string;
-            /**
-             * Message
-             * @description Log message
-             */
-            message: string;
-            /**
-             * Timestamp
-             * @description ISO timestamp
-             */
-            timestamp?: string | null;
-            /**
-             * Metadata
-             * @description Additional metadata
-             */
-            metadata?: {
-                [key: string]: unknown;
-            } | null;
-        };
-        /**
-         * CLISessionPendingResponse
-         * @description Response for CLI polling (when execution is pending).
-         */
-        CLISessionPendingResponse: {
-            /** Execution Id */
-            execution_id: string;
-            /** Workflow Name */
-            workflow_name: string;
-            /** Params */
-            params: {
-                [key: string]: unknown;
-            };
-        };
-        /**
-         * CLISessionRegisterRequest
-         * @description Request to register/create a CLI session.
-         */
-        CLISessionRegisterRequest: {
-            /**
-             * Session Id
-             * @description UUID generated by CLI
-             */
-            session_id: string;
-            /**
-             * File Path
-             * @description Absolute path to workflow file
-             */
-            file_path: string;
-            /** Workflows */
-            workflows: components["schemas"]["CLIRegisteredWorkflow"][];
-            /**
-             * Selected Workflow
-             * @description Pre-selected workflow name
-             */
-            selected_workflow?: string | null;
-        };
-        /**
-         * CLISessionResponse
-         * @description Response for a CLI session.
-         */
-        CLISessionResponse: {
-            /** Id */
-            id: string;
-            /** User Id */
-            user_id: string;
-            /** File Path */
-            file_path: string;
-            /** Workflows */
-            workflows: components["schemas"]["CLIRegisteredWorkflow"][];
-            /** Selected Workflow */
-            selected_workflow?: string | null;
-            /** Params */
-            params?: {
-                [key: string]: unknown;
-            } | null;
-            /**
-             * Pending
-             * @default false
-             */
-            pending: boolean;
-            /** Last Seen */
-            last_seen?: string | null;
-            /**
-             * Created At
-             * Format: date-time
-             */
-            created_at: string;
-            /**
-             * Is Connected
-             * @description True if CLI is actively connected (last_seen within 10s)
-             */
-            is_connected: boolean;
-            /** Executions */
-            executions?: components["schemas"]["CLISessionExecutionSummary"][];
-        };
-        /**
-         * CLISessionResultRequest
-         * @description Result from CLI execution.
-         */
-        CLISessionResultRequest: {
-            /**
-             * Status
-             * @description Success or Failed
-             */
-            status: string;
-            /**
-             * Result
-             * @description Return value from workflow
-             */
-            result?: unknown | null;
-            /**
-             * Error Message
-             * @description Error message if failed
-             */
-            error_message?: string | null;
-            /**
-             * Duration Ms
-             * @description Execution duration in ms
-             */
-            duration_ms?: number | null;
-            /**
-             * Logs
-             * @description All logs from execution (sent together to avoid race conditions)
-             */
-            logs?: components["schemas"]["CLISessionLogRequest"][];
-        };
-        /**
-         * ChatRequest
-         * @description Request for sending a chat message.
-         */
-        ChatRequest: {
-            /** Message */
-            message: string;
-            /**
-             * Stream
-             * @description Whether to stream the response
-             * @default true
-             */
-            stream: boolean;
-        };
-        /**
-         * ChatResponse
-         * @description Response from chat completion (non-streaming).
-         */
-        ChatResponse: {
-            /** Message Id */
-            message_id: string;
-            /** Content */
-            content: string;
-            /** Tool Calls */
-            tool_calls?: components["schemas"]["ToolCall"][] | null;
-            /** Token Count Input */
-            token_count_input?: number | null;
-            /** Token Count Output */
-            token_count_output?: number | null;
-            /** Duration Ms */
-            duration_ms?: number | null;
-        };
-        /**
-         * CleanupTriggeredResponse
-         * @description Response model for cleanup trigger operation
-         */
-        CleanupTriggeredResponse: {
-            /**
-             * Cleaned
-             * @description Total number of executions cleaned up
-             */
-            cleaned: number;
-            /**
-             * Pending
-             * @description Number of pending executions timed out
-             */
-            pending: number;
-            /**
-             * Running
-             * @description Number of running executions timed out
-             */
-            running: number;
-            /**
-             * Failed
-             * @description Number of executions that failed to clean up
-             */
-            failed: number;
-        };
-        /**
-         * CommitHistoryResponse
-         * @description Response with commit history and pagination
-         */
-        CommitHistoryResponse: {
-            /**
-             * Commits
-             * @description List of commits (newest first)
-             */
-            commits?: components["schemas"]["CommitInfo"][];
-            /**
-             * Total Commits
-             * @description Total number of commits in the entire history
-             */
-            total_commits: number;
-            /**
-             * Has More
-             * @description Whether there are more commits to load
-             */
-            has_more: boolean;
-        };
-        /**
-         * CommitInfo
-         * @description Information about a single commit
-         */
-        CommitInfo: {
-            /**
-             * Sha
-             * @description Commit SHA
-             */
-            sha: string;
-            /**
-             * Message
-             * @description Commit message
-             */
-            message: string;
-            /**
-             * Author
-             * @description Commit author
-             */
-            author: string;
-            /**
-             * Timestamp
-             * @description ISO 8601 timestamp
-             */
-            timestamp: string;
-            /**
-             * Is Pushed
-             * @description Whether commit is pushed to remote
-             */
-            is_pushed: boolean;
-        };
-        /**
-         * ConfigResponse
-         * @description Configuration entity response (global or org-specific)
-         */
-        ConfigResponse: {
-            /** Key */
-            key: string;
-            /**
-             * Value
-             * @description Config value. For SECRET type, this will be '[SECRET]' in list responses.
-             */
-            value: unknown;
-            /** @default string */
-            type: components["schemas"]["ConfigType"];
-            /**
-             * Scope
-             * @description GLOBAL for MSP-wide or 'org' for org-specific
-             * @default org
-             * @enum {string}
-             */
-            scope: "GLOBAL" | "org";
-            /**
-             * Org Id
-             * @description Organization ID (only for org-specific config)
-             */
-            org_id?: string | null;
-            /** Description */
-            description?: string | null;
-            /** Updated At */
-            updated_at?: string | null;
-            /** Updated By */
-            updated_by?: string | null;
-        };
-        /**
-         * ConfigSchemaItem
-         * @description Metadata for a single configuration item.
-         *     Defines what configuration keys are available for an integration.
-         *
-         *     Note: Default values are stored in the configs table, not in the schema.
-         *     Use the integration config endpoint to set defaults.
-         */
-        ConfigSchemaItem: {
-            /**
-             * Key
-             * @description Configuration key (alphanumeric, underscores)
-             */
-            key: string;
-            /**
-             * Type
-             * @description Configuration value type
-             * @enum {string}
-             */
-            type: "string" | "int" | "bool" | "json" | "secret";
-            /**
-             * Required
-             * @description Whether this configuration is required
-             * @default false
-             */
-            required: boolean;
-            /**
-             * Description
-             * @description Human-readable description of this config item
-             */
-            description?: string | null;
-            /**
-             * Options
-             * @description List of valid string options for dropdown UI
-             */
-            options?: string[] | null;
-        };
-        /**
-         * ConfigType
-         * @description Configuration value types
-         * @enum {string}
-         */
-        ConfigType: "string" | "int" | "bool" | "json" | "secret";
-        /**
-         * ConflictInfo
-         * @description Information about conflicts in a file (no markers written to disk)
-         */
-        ConflictInfo: {
-            /**
-             * File Path
-             * @description Relative path to conflicted file
-             */
-            file_path: string;
-            /**
-             * Current Content
-             * @description Local version of the file
-             */
-            current_content: string;
-            /**
-             * Incoming Content
-             * @description Remote version of the file
-             */
-            incoming_content: string;
-            /**
-             * Base Content
-             * @description Common ancestor version (if available)
-             */
-            base_content?: string | null;
-        };
-        /**
-         * ConversationCreate
-         * @description Request model for creating a conversation.
-         */
-        ConversationCreate: {
-            /**
-             * Agent Id
-             * @description ID of the agent to chat with (optional for agentless chat)
-             */
-            agent_id?: string | null;
-            /** @default chat */
-            channel: components["schemas"]["AgentChannel"];
-            /** Title */
-            title?: string | null;
-        };
-        /**
-         * ConversationPublic
-         * @description Conversation output for API responses.
-         */
-        ConversationPublic: {
-            /** Id */
-            id: string;
-            /** Agent Id */
-            agent_id?: string | null;
-            /** User Id */
-            user_id: string;
-            /** Channel */
-            channel: string;
-            /** Title */
-            title?: string | null;
-            /** Is Active */
-            is_active: boolean;
-            /** Created At */
-            created_at: string | null;
-            /** Updated At */
-            updated_at: string | null;
-            /** Message Count */
-            message_count?: number | null;
-            /** Last Message At */
-            last_message_at?: string | null;
-            /** Agent Name */
-            agent_name?: string | null;
-        };
-        /**
-         * ConversationSummary
-         * @description Lightweight conversation summary for sidebar listings.
-         */
-        ConversationSummary: {
-            /** Id */
-            id: string;
-            /** Agent Id */
-            agent_id?: string | null;
-            /** Agent Name */
-            agent_name?: string | null;
-            /** Title */
-            title?: string | null;
-            /** Updated At */
-            updated_at: string;
-            /** Last Message Preview */
-            last_message_preview?: string | null;
-        };
-        /**
-         * CreateOAuthConnectionRequest
-         * @description Request model for creating a new OAuth connection
-         *     POST /api/oauth/connections
-         */
-        CreateOAuthConnectionRequest: {
-            /**
-             * Integration Id
-             * @description ID of the integration this OAuth connection belongs to
-             */
-            integration_id: string;
-            /**
-             * Description
-             * @description Optional description of this OAuth connection
-             */
-            description?: string | null;
-            /**
-             * Oauth Flow Type
-             * @description OAuth 2.0 flow type
-             * @enum {string}
-             */
-            oauth_flow_type: "authorization_code" | "client_credentials" | "refresh_token";
-            /**
-             * Client Id
-             * @description OAuth client ID (not sensitive)
-             */
-            client_id: string;
-            /**
-             * Client Secret
-             * @description OAuth client secret (optional for PKCE flow, required for client_credentials, will be stored securely in Key Vault)
-             */
-            client_secret?: string | null;
-            /**
-             * Authorization Url
-             * @description OAuth authorization endpoint URL (required for authorization_code, not used for client_credentials)
-             */
-            authorization_url?: string | null;
-            /**
-             * Token Url
-             * @description OAuth token endpoint URL (must be HTTPS, may include {placeholders} for templating)
-             */
-            token_url: string;
-            /**
-             * Token Url Defaults
-             * @description Default values for token_url placeholders (e.g., {'entity_id': 'common'})
-             */
-            token_url_defaults?: {
-                [key: string]: string;
-            } | null;
-            /**
-             * Scopes
-             * @description Comma-separated list of OAuth scopes to request
-             * @default
-             */
-            scopes: string;
-            /**
-             * Redirect Uri
-             * @description OAuth redirect URI (defaults to /oauth/callback/{connection_name})
-             */
-            redirect_uri?: string | null;
-        };
-        /**
-         * CreateRepoRequest
-         * @description Request to create a new GitHub repository
-         */
-        CreateRepoRequest: {
-            /**
-             * Name
-             * @description Repository name
-             */
-            name: string;
-            /**
-             * Description
-             * @description Repository description
-             */
-            description?: string | null;
-            /**
-             * Private
-             * @description Whether repository should be private
-             * @default true
-             */
-            private: boolean;
-            /**
-             * Organization
-             * @description Organization name (if creating in an org)
-             */
-            organization?: string | null;
-        };
-        /**
-         * CreateRepoResponse
-         * @description Response after creating a new repository
-         */
-        CreateRepoResponse: {
-            /**
-             * Full Name
-             * @description Full repository name (owner/repo)
-             */
-            full_name: string;
-            /**
-             * Url
-             * @description Repository URL
-             */
-            url: string;
-            /**
-             * Clone Url
-             * @description HTTPS clone URL
-             */
-            clone_url: string;
-        };
-        /**
-         * DailyMetricsEntry
-         * @description Single day's execution metrics.
-         */
-        DailyMetricsEntry: {
-            /** Date */
-            date: string;
-            /** Organization Id */
-            organization_id?: string | null;
-            /** Organization Name */
-            organization_name?: string | null;
-            /** Execution Count */
-            execution_count: number;
-            /** Success Count */
-            success_count: number;
-            /** Failed Count */
-            failed_count: number;
-            /** Timeout Count */
-            timeout_count: number;
-            /** Cancelled Count */
-            cancelled_count: number;
-            /** Avg Duration Ms */
-            avg_duration_ms: number;
-            /** Max Duration Ms */
-            max_duration_ms: number;
-            /** Peak Memory Bytes */
-            peak_memory_bytes: number;
-            /** Total Memory Bytes */
-            total_memory_bytes: number;
-            /** Peak Cpu Seconds */
-            peak_cpu_seconds: number;
-            /** Total Cpu Seconds */
-            total_cpu_seconds: number;
-        };
-        /**
-         * DailyMetricsResponse
-         * @description Response for daily execution metrics trends.
-         */
-        DailyMetricsResponse: {
-            /** Days */
-            days: components["schemas"]["DailyMetricsEntry"][];
-            /** Total Days */
-            total_days: number;
-        };
-        /**
-         * DashboardMetricsResponse
-         * @description Dashboard metrics response
-         */
-        DashboardMetricsResponse: {
-            /** Workflow Count */
-            workflow_count: number;
-            /** Data Provider Count */
-            data_provider_count: number;
-            /** Form Count */
-            form_count: number;
-            execution_stats: components["schemas"]["ExecutionStats"];
-            /** Recent Failures */
-            recent_failures: components["schemas"]["RecentFailure"][];
-        };
-        /**
-         * DataProviderInputConfig
-         * @description Configuration for a single data provider input parameter (T006)
-         */
-        DataProviderInputConfig: {
-            mode: components["schemas"]["DataProviderInputMode"];
-            /** Value */
-            value?: string | null;
-            /** Field Name */
-            field_name?: string | null;
-            /** Expression */
-            expression?: string | null;
-        };
-        /**
-         * DataProviderInputMode
-         * @description Data provider input configuration modes (T005)
-         * @enum {string}
-         */
-        DataProviderInputMode: "static" | "fieldRef" | "expression";
-        /**
-         * DataProviderInvokeRequest
-         * @description Request to invoke a data provider.
-         */
-        DataProviderInvokeRequest: {
-            /**
-             * Inputs
-             * @description Input parameters for the data provider
-             */
-            inputs?: {
-                [key: string]: unknown;
-            };
-        };
-        /**
-         * DataProviderInvokeResponse
-         * @description Response from invoking a data provider.
-         */
-        DataProviderInvokeResponse: {
-            /**
-             * Options
-             * @description List of options from the provider
-             */
-            options?: components["schemas"]["DataProviderOption"][];
-        };
-        /**
-         * DataProviderMetadata
-         * @description Data provider metadata from @data_provider decorator (T008)
-         */
-        DataProviderMetadata: {
-            /**
-             * Id
-             * @description Data provider UUID (when loaded from database)
-             */
-            id?: string | null;
-            /** Name */
-            name: string;
-            /** Description */
-            description?: string | null;
-            /**
-             * Category
-             * @default General
-             */
-            category: string;
-            /**
-             * Cache Ttl Seconds
-             * @default 300
-             */
-            cache_ttl_seconds: number;
-            /**
-             * Parameters
-             * @description Input parameters from @param decorators
-             */
-            parameters?: components["schemas"]["WorkflowParameter"][];
-            /**
-             * Source File Path
-             * @description Full file path to the data provider source code
-             */
-            source_file_path?: string | null;
-            /**
-             * Relative File Path
-             * @description Workspace-relative file path with /workspace/ prefix (e.g., '/workspace/data_providers/my_provider.py')
-             */
-            relative_file_path?: string | null;
-        };
-        /**
-         * DataProviderOption
-         * @description A single option from a data provider.
-         */
-        DataProviderOption: {
-            /**
-             * Value
-             * @description Option value
-             */
-            value: string;
-            /**
-             * Label
-             * @description Option display label
-             */
-            label: string;
-            /**
-             * Description
-             * @description Optional description
-             */
-            description?: string | null;
-        };
-        /**
-         * DecoratorInfo
-         * @description Information about a discovered decorator in a source file.
-         */
-        DecoratorInfo: {
-            /**
-             * Decorator Type
-             * @enum {string}
-             */
-            decorator_type: "workflow" | "data_provider" | "tool";
-            /** Function Name */
-            function_name: string;
-            /**
-             * Line Number
-             * @default 0
-             */
-            line_number: number;
-            /** Properties */
-            properties: {
-                [key: string]: unknown;
-            };
-            /**
-             * Has Parentheses
-             * @description True if decorator uses parentheses syntax: @workflow(...)
-             */
-            has_parentheses: boolean;
-        };
-        /**
-         * DecoratorPropertiesResponse
-         * @description Response containing all decorators found in a file.
-         */
-        DecoratorPropertiesResponse: {
-            /**
-             * Path
-             * @description File path
-             */
-            path: string;
-            /**
-             * Decorators
-             * @description List of discovered decorators
-             */
-            decorators: components["schemas"]["DecoratorInfo"][];
-        };
-        /**
-         * DetailedHealthCheck
-         * @description Detailed health check with component status.
-         */
-        DetailedHealthCheck: {
-            /** Status */
-            status: string;
-            /**
-             * Timestamp
-             * Format: date-time
-             */
-            timestamp: string;
-            /**
-             * Version
-             * @default 2.0.0
-             */
-            version: string;
-            /** Environment */
-            environment: string;
-            /** Components */
-            components: {
-                [key: string]: {
-                    [key: string]: unknown;
-                };
-            };
-        };
-        /**
-         * DetectedRepoInfo
-         * @description Information about auto-detected existing repository
-         */
-        DetectedRepoInfo: {
-            /**
-             * Full Name
-             * @description Repository full name (owner/repo)
-             */
-            full_name: string;
-            /**
-             * Branch
-             * @description Current branch
-             */
-            branch: string;
-        };
-        /**
-         * DeveloperContextResponse
-         * @description Developer context for CLI initialization.
-         */
-        DeveloperContextResponse: {
-            /**
-             * User
-             * @description User information
-             */
-            user: {
-                [key: string]: unknown;
-            };
-            /**
-             * Organization
-             * @description Default organization
-             */
-            organization: {
-                [key: string]: unknown;
-            } | null;
-            /**
-             * Default Parameters
-             * @description Default workflow parameters
-             * @default {}
-             */
-            default_parameters: {
-                [key: string]: unknown;
-            };
-            /**
-             * Track Executions
-             * @description Whether to track executions in history
-             * @default true
-             */
-            track_executions: boolean;
-        };
-        /**
-         * DeveloperContextUpdate
-         * @description Update developer context settings.
-         */
-        DeveloperContextUpdate: {
-            /**
-             * Default Org Id
-             * @description Default organization ID
-             */
-            default_org_id?: string | null;
-            /**
-             * Default Parameters
-             * @description Default workflow parameters
-             */
-            default_parameters?: {
-                [key: string]: unknown;
-            } | null;
-            /**
-             * Track Executions
-             * @description Track executions in history
-             */
-            track_executions?: boolean | null;
-        };
-        /**
-         * DiscardCommitRequest
-         * @description Request to discard a specific commit and all newer commits
-         */
-        DiscardCommitRequest: {
-            /**
-             * Commit Sha
-             * @description SHA of the commit to discard (this commit and all newer commits will be discarded)
-             */
-            commit_sha: string;
-        };
-        /**
-         * DiscardUnpushedCommitsResponse
-         * @description Response after discarding unpushed commits
-         */
-        DiscardUnpushedCommitsResponse: {
-            /**
-             * Success
-             * @description Whether discard was successful
-             */
-            success: boolean;
-            /**
-             * Discarded Commits
-             * @description List of commits that were discarded
-             */
-            discarded_commits?: components["schemas"]["CommitInfo"][];
-            /**
-             * New Head
-             * @description New HEAD commit SHA after discard
-             */
-            new_head?: string | null;
-            /**
-             * Error
-             * @description Error message if operation failed
-             */
-            error?: string | null;
-        };
-        /**
-         * EndpointExecuteResponse
-         * @description Response for endpoint execution.
-         */
-        EndpointExecuteResponse: {
-            /** Execution Id */
-            execution_id: string;
-            /** Status */
-            status: string;
-            /** Message */
-            message?: string | null;
-            /** Result */
-            result?: unknown;
-            /** Error */
-            error?: string | null;
-            /** Duration Ms */
-            duration_ms?: number | null;
-        };
-        /**
-         * ExecutionLogPublic
-         * @description Single log entry from workflow execution (API response model)
-         */
-        ExecutionLogPublic: {
-            /** Timestamp */
-            timestamp: string;
-            /** Level */
-            level: string;
-            /** Message */
-            message: string;
-            /** Data */
-            data?: {
-                [key: string]: unknown;
-            } | null;
-        };
-        /**
-         * ExecutionStats
-         * @description Execution statistics for dashboard
-         */
-        ExecutionStats: {
-            /** Total Executions */
-            total_executions: number;
-            /** Success Count */
-            success_count: number;
-            /** Failed Count */
-            failed_count: number;
-            /** Running Count */
-            running_count: number;
-            /** Pending Count */
-            pending_count: number;
-            /** Success Rate */
-            success_rate: number;
-            /** Avg Duration Seconds */
-            avg_duration_seconds: number;
-        };
-        /**
-         * ExecutionStatus
-         * @description Workflow execution status
-         * @enum {string}
-         */
-        ExecutionStatus: "Pending" | "Running" | "Success" | "Failed" | "Timeout" | "CompletedWithErrors" | "Cancelling" | "Cancelled";
-        /**
-         * ExecutionsListResponse
-         * @description Response model for listing workflow executions with pagination
-         */
-        ExecutionsListResponse: {
-            /**
-             * Executions
-             * @description List of workflow executions
-             */
-            executions: components["schemas"]["WorkflowExecution"][];
-            /**
-             * Continuation Token
-             * @description Continuation token for next page (opaque, base64-encoded). Presence of token indicates more results available.
-             */
-            continuation_token?: string | null;
-        };
-        /**
-         * FileChange
-         * @description Represents a changed file in Git
-         */
-        FileChange: {
-            /**
-             * Path
-             * @description Relative path from workspace root
-             */
-            path: string;
-            /** @description Git status of the file */
-            status: components["schemas"]["GitFileStatus"];
-            /**
-             * Additions
-             * @description Number of lines added
-             */
-            additions?: number | null;
-            /**
-             * Deletions
-             * @description Number of lines deleted
-             */
-            deletions?: number | null;
-        };
-        /**
-         * FileConflictResponse
-         * @description Response when file write encounters a conflict
-         */
-        FileConflictResponse: {
-            /**
-             * Reason
-             * @description Type of conflict
-             * @enum {string}
-             */
-            reason: "content_changed" | "path_not_found";
-            /**
-             * Message
-             * @description Human-readable conflict description
-             */
-            message: string;
-        };
-        /**
-         * FileContentRequest
-         * @description Request to write file content
-         */
-        FileContentRequest: {
-            /**
-             * Path
-             * @description Relative path from /home/repo
-             */
-            path: string;
-            /**
-             * Content
-             * @description File content (plain text or base64 encoded)
-             */
-            content: string;
-            /**
-             * Encoding
-             * @description Content encoding (utf-8 or base64)
-             * @default utf-8
-             */
-            encoding: string;
-            /**
-             * Expected Etag
-             * @description Expected ETag for conflict detection (optional)
-             */
-            expected_etag?: string | null;
-        };
-        /**
-         * FileContentResponse
-         * @description Response with file content
-         */
-        FileContentResponse: {
-            /**
-             * Path
-             * @description Relative path from /home/repo
-             */
-            path: string;
-            /**
-             * Content
-             * @description File content
-             */
-            content: string;
-            /**
-             * Encoding
-             * @description Content encoding
-             */
-            encoding: string;
-            /**
-             * Size
-             * @description Content size in bytes
-             */
-            size: number;
-            /**
-             * Etag
-             * @description ETag for change detection
-             */
-            etag: string;
-            /**
-             * Modified
-             * @description Last modified timestamp (ISO 8601)
-             */
-            modified: string;
-            /**
-             * Content Modified
-             * @description True if server modified content (e.g., injected IDs). Client should update editor buffer.
-             * @default false
-             */
-            content_modified: boolean;
-            /**
-             * Needs Indexing
-             * @description True if file has decorators that need ID injection. Client should trigger indexing.
-             * @default false
-             */
-            needs_indexing: boolean;
-        };
-        /**
-         * FileMetadata
-         * @description File or folder metadata
-         *     Used in directory listing responses
-         */
-        FileMetadata: {
-            /**
-             * Path
-             * @description Relative path from /home/repo
-             */
-            path: string;
-            /**
-             * Name
-             * @description File or folder name
-             */
-            name: string;
-            /** @description File or folder */
-            type: components["schemas"]["FileType"];
-            /**
-             * Size
-             * @description Size in bytes (null for folders)
-             */
-            size?: number | null;
-            /**
-             * Extension
-             * @description File extension (null for folders)
-             */
-            extension?: string | null;
-            /**
-             * Modified
-             * @description Last modified timestamp (ISO 8601)
-             */
-            modified: string;
-            /**
-             * Is Workflow
-             * @description True if file contains a @workflow decorator
-             * @default false
-             */
-            is_workflow: boolean;
-            /**
-             * Is Data Provider
-             * @description True if file contains a @data_provider decorator
-             * @default false
-             */
-            is_data_provider: boolean;
-        };
-        /**
-         * FileType
-         * @description File or folder type
-         * @enum {string}
-         */
-        FileType: "file" | "folder";
-        /**
-         * FileUploadRequest
-         * @description Request model for generating file upload SAS URL
-         */
-        FileUploadRequest: {
-            /**
-             * File Name
-             * @description Original file name
-             */
-            file_name: string;
-            /**
-             * Content Type
-             * @description MIME type of the file
-             */
-            content_type: string;
-            /**
-             * File Size
-             * @description File size in bytes
-             */
-            file_size: number;
-        };
-        /**
-         * FileUploadResponse
-         * @description Response model for file upload SAS URL generation
-         */
-        FileUploadResponse: {
-            /**
-             * Upload Url
-             * @description URL for direct upload
-             */
-            upload_url: string;
-            /**
-             * Blob Uri
-             * @description Final file URI
-             */
-            blob_uri: string;
-            /**
-             * Expires At
-             * @description Token expiration timestamp (ISO format)
-             */
-            expires_at: string;
-            /** @description Metadata for accessing the uploaded file in workflows */
-            file_metadata: components["schemas"]["UploadedFileMetadata"];
-        };
-        /**
-         * FormAccessLevel
-         * @description Form access control levels
-         * @enum {string}
-         */
-        FormAccessLevel: "public" | "authenticated" | "role_based";
-        /**
-         * FormCreate
-         * @description Input for creating a form.
-         */
-        FormCreate: {
-            /** Name */
-            name: string;
-            /** Description */
-            description?: string | null;
-            /** Workflow Id */
-            workflow_id?: string | null;
-            /** Launch Workflow Id */
-            launch_workflow_id?: string | null;
-            /** Default Launch Params */
-            default_launch_params?: {
-                [key: string]: unknown;
-            } | null;
-            /** Allowed Query Params */
-            allowed_query_params?: string[] | null;
-            /** Form Schema */
-            form_schema: {
-                [key: string]: unknown;
-            } | components["schemas"]["FormSchema-Input"];
-            /** @default role_based */
-            access_level: components["schemas"]["FormAccessLevel"] | null;
-        };
-        /**
-         * FormExecuteRequest
-         * @description Request model for executing a form
-         */
-        FormExecuteRequest: {
-            /**
-             * Form Data
-             * @description Form field values
-             */
-            form_data?: {
-                [key: string]: unknown;
-            };
-            /**
-             * Startup Data
-             * @description Results from /startup call (launch workflow)
-             */
-            startup_data?: {
-                [key: string]: unknown;
-            } | null;
-        };
-        /**
-         * FormField
-         * @description Form field definition
-         */
-        "FormField-Input": {
-            /**
-             * Name
-             * @description Parameter name for workflow
-             */
-            name: string;
-            /**
-             * Label
-             * @description Display label (optional for markdown/html types)
-             */
-            label?: string | null;
-            type: components["schemas"]["FormFieldType"];
-            /**
-             * Required
-             * @default false
-             */
-            required: boolean;
-            /** Validation */
-            validation?: {
-                [key: string]: unknown;
-            } | null;
-            /**
-             * Data Provider Id
-             * @description Data provider ID for dynamic options
-             */
-            data_provider_id?: string | null;
-            /**
-             * Data Provider Inputs
-             * @description Input configurations for data provider parameters
-             */
-            data_provider_inputs?: {
-                [key: string]: components["schemas"]["DataProviderInputConfig"];
-            } | null;
-            /** Default Value */
-            default_value?: unknown | null;
-            /** Placeholder */
-            placeholder?: string | null;
-            /** Help Text */
-            help_text?: string | null;
-            /**
-             * Visibility Expression
-             * @description JavaScript expression for conditional visibility (e.g., context.field.show === true)
-             */
-            visibility_expression?: string | null;
-            /**
-             * Options
-             * @description Options for radio/select fields
-             */
-            options?: {
-                [key: string]: string;
-            }[] | null;
-            /**
-             * Allowed Types
-             * @description Allowed MIME types for file uploads
-             */
-            allowed_types?: string[] | null;
-            /**
-             * Multiple
-             * @description Allow multiple file uploads
-             */
-            multiple?: boolean | null;
-            /**
-             * Max Size Mb
-             * @description Maximum file size in MB
-             */
-            max_size_mb?: number | null;
-            /**
-             * Content
-             * @description Static content for markdown/HTML components
-             */
-            content?: string | null;
-            /**
-             * Allow As Query Param
-             * @description Whether this field's value can be populated from URL query parameters
-             */
-            allow_as_query_param?: boolean | null;
-        };
-        /**
-         * FormField
-         * @description Form field definition
-         */
-        "FormField-Output": {
-            /**
-             * Name
-             * @description Parameter name for workflow
-             */
-            name: string;
-            /**
-             * Label
-             * @description Display label (optional for markdown/html types)
-             */
-            label?: string | null;
-            type: components["schemas"]["FormFieldType"];
-            /**
-             * Required
-             * @default false
-             */
-            required: boolean;
-            /** Validation */
-            validation?: {
-                [key: string]: unknown;
-            } | null;
-            /**
-             * Data Provider Id
-             * @description Data provider ID for dynamic options
-             */
-            data_provider_id?: string | null;
-            /**
-             * Data Provider Inputs
-             * @description Input configurations for data provider parameters
-             */
-            data_provider_inputs?: {
-                [key: string]: components["schemas"]["DataProviderInputConfig"];
-            } | null;
-            /** Default Value */
-            default_value?: unknown | null;
-            /** Placeholder */
-            placeholder?: string | null;
-            /** Help Text */
-            help_text?: string | null;
-            /**
-             * Visibility Expression
-             * @description JavaScript expression for conditional visibility (e.g., context.field.show === true)
-             */
-            visibility_expression?: string | null;
-            /**
-             * Options
-             * @description Options for radio/select fields
-             */
-            options?: {
-                [key: string]: string;
-            }[] | null;
-            /**
-             * Allowed Types
-             * @description Allowed MIME types for file uploads
-             */
-            allowed_types?: string[] | null;
-            /**
-             * Multiple
-             * @description Allow multiple file uploads
-             */
-            multiple?: boolean | null;
-            /**
-             * Max Size Mb
-             * @description Maximum file size in MB
-             */
-            max_size_mb?: number | null;
-            /**
-             * Content
-             * @description Static content for markdown/HTML components
-             */
-            content?: string | null;
-            /**
-             * Allow As Query Param
-             * @description Whether this field's value can be populated from URL query parameters
-             */
-            allow_as_query_param?: boolean | null;
-        };
-        /**
-         * FormFieldType
-         * @description Form field types
-         * @enum {string}
-         */
-        FormFieldType: "text" | "email" | "number" | "select" | "checkbox" | "textarea" | "radio" | "datetime" | "markdown" | "html" | "file";
-        /**
-         * FormPublic
-         * @description Form output for API responses.
-         */
-        FormPublic: {
-            /**
-             * Id
-             * Format: uuid
-             */
-            id: string;
-            /** Name */
-            name: string;
-            /** Description */
-            description?: string | null;
-            /** Workflow Id */
-            workflow_id?: string | null;
-            /** Launch Workflow Id */
-            launch_workflow_id?: string | null;
-            /** Default Launch Params */
-            default_launch_params?: {
-                [key: string]: unknown;
-            } | null;
-            /** Allowed Query Params */
-            allowed_query_params?: string[] | null;
-            /** Form Schema */
-            form_schema?: {
-                [key: string]: unknown;
-            } | components["schemas"]["FormSchema-Output"] | null;
-            access_level?: components["schemas"]["FormAccessLevel"] | null;
-            /** Organization Id */
-            organization_id?: string | null;
-            /** Is Active */
-            is_active: boolean;
-            /**
-             * File Path
-             * @description Workspace-relative file path (e.g., 'forms/my-form-abc123.form.json')
-             */
-            file_path?: string | null;
-            /** Created At */
-            created_at?: string | null;
-            /** Updated At */
-            updated_at?: string | null;
-        };
-        /**
-         * FormSchema
-         * @description Form schema with field definitions
-         */
-        "FormSchema-Input": {
-            /**
-             * Fields
-             * @description Max 50 fields per form
-             */
-            fields: components["schemas"]["FormField-Input"][];
-        };
-        /**
-         * FormSchema
-         * @description Form schema with field definitions
-         */
-        "FormSchema-Output": {
-            /**
-             * Fields
-             * @description Max 50 fields per form
-             */
-            fields: components["schemas"]["FormField-Output"][];
-        };
-        /**
-         * FormStartupResponse
-         * @description Response model for form startup/launch workflow execution
-         */
-        FormStartupResponse: {
-            /**
-             * Result
-             * @description Workflow execution result
-             */
-            result?: {
-                [key: string]: unknown;
-            } | unknown[] | string | null;
-        };
-        /**
-         * FormUpdate
-         * @description Input for updating a form.
-         */
-        FormUpdate: {
-            /** Name */
-            name?: string | null;
-            /** Description */
-            description?: string | null;
-            /** Workflow Id */
-            workflow_id?: string | null;
-            /** Launch Workflow Id */
-            launch_workflow_id?: string | null;
-            /** Default Launch Params */
-            default_launch_params?: {
-                [key: string]: unknown;
-            } | null;
-            /** Allowed Query Params */
-            allowed_query_params?: string[] | null;
-            /** Form Schema */
-            form_schema?: {
-                [key: string]: unknown;
-            } | components["schemas"]["FormSchema-Input"] | null;
-            /** Is Active */
-            is_active?: boolean | null;
-            access_level?: components["schemas"]["FormAccessLevel"] | null;
-        };
-        /**
-         * GitFileStatus
-         * @description Git file status
-         * @enum {string}
-         */
-        GitFileStatus: "M" | "A" | "D" | "U" | "C";
-        /**
-         * GitHubBranchInfo
-         * @description GitHub branch information
-         */
-        GitHubBranchInfo: {
-            /**
-             * Name
-             * @description Branch name
-             */
-            name: string;
-            /**
-             * Protected
-             * @description Whether branch is protected
-             */
-            protected: boolean;
-            /**
-             * Commit Sha
-             * @description Latest commit SHA
-             */
-            commit_sha: string;
-        };
-        /**
-         * GitHubBranchesResponse
-         * @description Response with list of branches
-         */
-        GitHubBranchesResponse: {
-            /**
-             * Branches
-             * @description List of branches in repository
-             */
-            branches: components["schemas"]["GitHubBranchInfo"][];
-        };
-        /**
-         * GitHubConfigRequest
-         * @description Request to configure GitHub integration - will always replace workspace with remote
-         */
-        GitHubConfigRequest: {
-            /**
-             * Repo Url
-             * @description GitHub repository URL (e.g., https://github.com/user/repo)
-             */
-            repo_url: string;
-            /**
-             * Auth Token
-             * @description GitHub personal access token
-             */
-            auth_token: string;
-            /**
-             * Branch
-             * @description Branch to sync with
-             * @default main
-             */
-            branch: string;
-        };
-        /**
-         * GitHubConfigResponse
-         * @description Response after configuring GitHub
-         */
-        GitHubConfigResponse: {
-            /**
-             * Configured
-             * @description Whether GitHub is fully configured
-             */
-            configured: boolean;
-            /**
-             * Token Saved
-             * @description Whether a GitHub token has been validated and saved
-             * @default false
-             */
-            token_saved: boolean;
-            /**
-             * Repo Url
-             * @description Configured repository URL
-             */
-            repo_url?: string | null;
-            /**
-             * Branch
-             * @description Configured branch
-             */
-            branch?: string | null;
-            /**
-             * Backup Path
-             * @description Path to backup directory if workspace was backed up
-             */
-            backup_path?: string | null;
-        };
-        /**
-         * GitHubRepoInfo
-         * @description GitHub repository information
-         */
-        GitHubRepoInfo: {
-            /**
-             * Name
-             * @description Repository name (owner/repo)
-             */
-            name: string;
-            /**
-             * Full Name
-             * @description Full repository name
-             */
-            full_name: string;
-            /**
-             * Description
-             * @description Repository description
-             */
-            description?: string | null;
-            /**
-             * Url
-             * @description Repository URL
-             */
-            url: string;
-            /**
-             * Private
-             * @description Whether repository is private
-             */
-            private: boolean;
-        };
-        /**
-         * GitHubReposResponse
-         * @description Response with list of GitHub repositories
-         */
-        GitHubReposResponse: {
-            /**
-             * Repositories
-             * @description List of accessible repositories
-             */
-            repositories: components["schemas"]["GitHubRepoInfo"][];
-            /** @description Auto-detected existing repository */
-            detected_repo?: components["schemas"]["DetectedRepoInfo"] | null;
-        };
-        /**
-         * GitHubSetupResponse
-         * @description Response after queueing GitHub setup job
-         */
-        GitHubSetupResponse: {
-            /**
-             * Job Id
-             * @description Job ID for tracking the setup operation
-             */
-            job_id: string;
-            /**
-             * Notification Id
-             * @description Notification ID for watching progress via WebSocket
-             */
-            notification_id: string;
-            /**
-             * Status
-             * @description Job status (queued)
-             * @default queued
-             */
-            status: string;
-        };
-        /**
-         * GitRefreshStatusResponse
-         * @description Unified response after fetching and getting complete Git status.
-         *     This combines fetch + status + commit history into a single response.
-         */
-        GitRefreshStatusResponse: {
-            /**
-             * Success
-             * @description Whether refresh was successful
-             */
-            success: boolean;
-            /**
-             * Initialized
-             * @description Whether Git repository is initialized
-             */
-            initialized: boolean;
-            /**
-             * Configured
-             * @description Whether GitHub integration is configured
-             */
-            configured: boolean;
-            /**
-             * Current Branch
-             * @description Current branch name
-             */
-            current_branch?: string | null;
-            /**
-             * Changed Files
-             * @description List of locally changed files
-             */
-            changed_files?: components["schemas"]["FileChange"][];
-            /**
-             * Conflicts
-             * @description List of merge conflicts
-             */
-            conflicts?: components["schemas"]["ConflictInfo"][];
-            /**
-             * Merging
-             * @description Whether repository is in merge state (MERGE_HEAD exists)
-             * @default false
-             */
-            merging: boolean;
-            /**
-             * Commits Ahead
-             * @description Number of local commits ahead of remote (ready to push)
-             * @default 0
-             */
-            commits_ahead: number;
-            /**
-             * Commits Behind
-             * @description Number of commits behind remote (ready to pull)
-             * @default 0
-             */
-            commits_behind: number;
-            /**
-             * Commit History
-             * @description Recent commit history with pushed/unpushed status
-             */
-            commit_history?: components["schemas"]["CommitInfo"][];
-            /**
-             * Last Synced
-             * @description ISO timestamp of when sync was performed
-             */
-            last_synced: string;
-            /**
-             * Error
-             * @description Error message if sync failed
-             */
-            error?: string | null;
-        };
-        /** HTTPValidationError */
-        HTTPValidationError: {
-            /** Detail */
-            detail?: components["schemas"]["ValidationError"][];
-        };
-        /**
-         * HealthCheck
-         * @description Health check response model.
-         */
-        HealthCheck: {
-            /** Status */
-            status: string;
-            /**
-             * Timestamp
-             * Format: date-time
-             */
-            timestamp: string;
-            /**
-             * Version
-             * @default 2.0.0
-             */
-            version: string;
-            /** Environment */
-            environment: string;
-        };
-        /**
-         * InstallPackageRequest
-         * @description Request model for installing a package
-         */
-        InstallPackageRequest: {
-            /**
-             * Package Name
-             * @description Package name (e.g., 'requests')
-             */
-            package_name: string;
-            /**
-             * Version
-             * @description Version specifier (e.g., '>=2.28.0')
-             */
-            version?: string | null;
-        };
-        /**
-         * InstalledPackage
-         * @description Installed package information
-         */
-        InstalledPackage: {
-            /** Name */
-            name: string;
-            /** Version */
-            version: string;
-        };
-        /**
-         * InstalledPackagesResponse
-         * @description Response model for listing installed packages
-         */
-        InstalledPackagesResponse: {
-            /** Packages */
-            packages: components["schemas"]["InstalledPackage"][];
-            /** Total Count */
-            total_count: number;
-        };
-        /**
-         * IntegrationConfigResponse
-         * @description Response model for integration config.
-         */
-        IntegrationConfigResponse: {
-            /**
-             * Integration Id
-             * Format: uuid
-             */
-            integration_id: string;
-            /** Config */
-            config: {
-                [key: string]: unknown;
-            };
-        };
-        /**
-         * IntegrationConfigUpdate
-         * @description Request model for updating integration default config values.
-         */
-        IntegrationConfigUpdate: {
-            /**
-             * Config
-             * @description Default config values for this integration
-             */
-            config: {
-                [key: string]: unknown;
-            };
-        };
-        /**
-         * IntegrationCreate
-         * @description Request model for creating a new integration.
-         *     POST /api/integrations
-         */
-        IntegrationCreate: {
-            /**
-             * Name
-             * @description Unique integration name (e.g., 'Microsoft Partner', 'QuickBooks Online')
-             */
-            name: string;
-            /**
-             * Config Schema
-             * @description Optional schema defining available configuration for this integration
-             */
-            config_schema?: components["schemas"]["ConfigSchemaItem"][] | null;
-            /**
-             * Entity Id
-             * @description Optional global entity ID for token URL templating (e.g., tenant ID, partner tenant ID)
-             */
-            entity_id?: string | null;
-            /**
-             * Entity Id Name
-             * @description Optional display name for the global entity ID
-             */
-            entity_id_name?: string | null;
-            /**
-             * Default Entity Id
-             * @description Default value for entity_id in URL templates (e.g., 'common' for Azure multi-tenant)
-             */
-            default_entity_id?: string | null;
-        };
-        /**
-         * IntegrationData
-         * @description Integration data for SDK consumption.
-         *     Returned by bifrost.integrations.get() in workflows.
-         */
-        IntegrationData: {
-            /**
-             * Integration Id
-             * Format: uuid
-             * @description Integration ID
-             */
-            integration_id: string;
-            /**
-             * Entity Id
-             * @description Mapped external entity ID
-             */
-            entity_id: string;
-            /**
-             * Entity Name
-             * @description Display name for the mapped entity
-             */
-            entity_name?: string | null;
-            /**
-             * Config
-             * @description Merged configuration (schema defaults + org overrides)
-             */
-            config?: {
-                [key: string]: unknown;
-            };
-            /**
-             * Oauth Client Id
-             * @description OAuth client ID (from provider or override)
-             */
-            oauth_client_id?: string | null;
-            /**
-             * Oauth Token Url
-             * @description OAuth token URL (with {entity_id} placeholder if applicable)
-             */
-            oauth_token_url?: string | null;
-            /**
-             * Oauth Scopes
-             * @description OAuth scopes for this integration
-             */
-            oauth_scopes?: string | null;
-        };
-        /**
-         * IntegrationDetailResponse
-         * @description Detailed response model for a single integration.
-         *     Includes mappings and OAuth configuration in a single response.
-         *     GET /api/integrations/{integration_id}
-         */
-        IntegrationDetailResponse: {
-            /**
-             * Id
-             * Format: uuid
-             * @description Integration ID
-             */
-            id: string;
-            /**
-             * Name
-             * @description Integration name
-             */
-            name: string;
-            /**
-             * List Entities Data Provider Id
-             * @description Associated data provider ID for listing entities
-             */
-            list_entities_data_provider_id?: string | null;
-            /**
-             * Config Schema
-             * @description Configuration schema for this integration
-             */
-            config_schema?: components["schemas"]["ConfigSchemaItem"][] | null;
-            /**
-             * Config Defaults
-             * @description Integration-level default configuration values
-             */
-            config_defaults?: {
-                [key: string]: unknown;
-            } | null;
-            /**
-             * Entity Id
-             * @description Global entity ID for token URL templating
-             */
-            entity_id?: string | null;
-            /**
-             * Entity Id Name
-             * @description Display name for the global entity ID
-             */
-            entity_id_name?: string | null;
-            /**
-             * Default Entity Id
-             * @description Default value for {entity_id} in URL templates (e.g., 'common' for Azure multi-tenant)
-             */
-            default_entity_id?: string | null;
-            /**
-             * Has Oauth Config
-             * @description Whether OAuth configuration is set up for this integration
-             * @default false
-             */
-            has_oauth_config: boolean;
-            /**
-             * Is Deleted
-             * @description Soft delete flag
-             * @default false
-             */
-            is_deleted: boolean;
-            /**
-             * Created At
-             * Format: date-time
-             * @description Creation timestamp
-             */
-            created_at: string;
-            /**
-             * Updated At
-             * Format: date-time
-             * @description Last update timestamp
-             */
-            updated_at: string;
-            /**
-             * Mappings
-             * @description All organization mappings for this integration
-             */
-            mappings?: components["schemas"]["IntegrationMappingResponse"][];
-            /** @description OAuth provider configuration and connection status */
-            oauth_config?: components["schemas"]["OAuthConfigSummary"] | null;
-        };
-        /**
-         * IntegrationListResponse
-         * @description Response model for listing integrations.
-         *     GET /api/integrations
-         */
-        IntegrationListResponse: {
-            /**
-             * Items
-             * @description List of integrations
-             */
-            items: components["schemas"]["IntegrationResponse"][];
-            /**
-             * Total
-             * @description Total number of integrations
-             */
-            total: number;
-        };
-        /**
-         * IntegrationMappingCreate
-         * @description Request model for creating an integration mapping.
-         *     POST /api/integrations/{integration_id}/mappings
-         */
-        IntegrationMappingCreate: {
-            /**
-             * Organization Id
-             * Format: uuid
-             * @description Organization ID to map to this integration
-             */
-            organization_id: string;
-            /**
-             * Entity Id
-             * @description External entity ID (e.g., tenant ID, company ID)
-             */
-            entity_id: string;
-            /**
-             * Entity Name
-             * @description Display name for the external entity
-             */
-            entity_name?: string | null;
-            /**
-             * Oauth Token Id
-             * @description Optional per-organization OAuth token override
-             */
-            oauth_token_id?: string | null;
-            /**
-             * Config
-             * @description Per-organization integration configuration values
-             */
-            config?: {
-                [key: string]: unknown;
-            } | null;
-        };
-        /**
-         * IntegrationMappingListResponse
-         * @description Response model for listing integration mappings.
-         *     GET /api/integrations/{integration_id}/mappings
-         */
-        IntegrationMappingListResponse: {
-            /**
-             * Items
-             * @description List of integration mappings
-             */
-            items: components["schemas"]["IntegrationMappingResponse"][];
-            /**
-             * Total
-             * @description Total number of mappings
-             */
-            total: number;
-        };
-        /**
-         * IntegrationMappingResponse
-         * @description Response model for a single integration mapping.
-         *     GET /api/integrations/{integration_id}/mappings/{mapping_id}
-         */
-        IntegrationMappingResponse: {
-            /**
-             * Id
-             * Format: uuid
-             * @description Mapping ID
-             */
-            id: string;
-            /**
-             * Integration Id
-             * Format: uuid
-             * @description Associated integration ID
-             */
-            integration_id: string;
-            /**
-             * Organization Id
-             * Format: uuid
-             * @description Associated organization ID
-             */
-            organization_id: string;
-            /**
-             * Entity Id
-             * @description External entity ID
-             */
-            entity_id: string;
-            /**
-             * Entity Name
-             * @description Display name for the external entity
-             */
-            entity_name?: string | null;
-            /**
-             * Oauth Token Id
-             * @description Per-organization OAuth token override ID
-             */
-            oauth_token_id?: string | null;
-            /**
-             * Config
-             * @description Per-organization integration configuration
-             */
-            config?: {
-                [key: string]: unknown;
-            } | null;
-            /**
-             * Created At
-             * Format: date-time
-             * @description Creation timestamp
-             */
-            created_at: string;
-            /**
-             * Updated At
-             * Format: date-time
-             * @description Last update timestamp
-             */
-            updated_at: string;
-        };
-        /**
-         * IntegrationMappingUpdate
-         * @description Request model for updating an integration mapping.
-         *     PUT /api/integrations/{integration_id}/mappings/{mapping_id}
-         */
-        IntegrationMappingUpdate: {
-            /**
-             * Entity Id
-             * @description External entity ID
-             */
-            entity_id?: string | null;
-            /**
-             * Entity Name
-             * @description Display name for the external entity
-             */
-            entity_name?: string | null;
-            /**
-             * Oauth Token Id
-             * @description Per-organization OAuth token override
-             */
-            oauth_token_id?: string | null;
-            /**
-             * Config
-             * @description Per-organization integration configuration
-             */
-            config?: {
-                [key: string]: unknown;
-            } | null;
-        };
-        /**
-         * IntegrationResponse
-         * @description Response model for a single integration.
-         *     GET /api/integrations/{integration_id}
-         */
-        IntegrationResponse: {
-            /**
-             * Id
-             * Format: uuid
-             * @description Integration ID
-             */
-            id: string;
-            /**
-             * Name
-             * @description Integration name
-             */
-            name: string;
-            /**
-             * List Entities Data Provider Id
-             * @description Associated data provider ID for listing entities
-             */
-            list_entities_data_provider_id?: string | null;
-            /**
-             * Config Schema
-             * @description Configuration schema for this integration
-             */
-            config_schema?: components["schemas"]["ConfigSchemaItem"][] | null;
-            /**
-             * Entity Id
-             * @description Global entity ID for token URL templating
-             */
-            entity_id?: string | null;
-            /**
-             * Entity Id Name
-             * @description Display name for the global entity ID
-             */
-            entity_id_name?: string | null;
-            /**
-             * Default Entity Id
-             * @description Default value for entity_id in URL templates
-             */
-            default_entity_id?: string | null;
-            /**
-             * Has Oauth Config
-             * @description Whether OAuth configuration is set up for this integration
-             * @default false
-             */
-            has_oauth_config: boolean;
-            /**
-             * Is Deleted
-             * @description Soft delete flag
-             * @default false
-             */
-            is_deleted: boolean;
-            /**
-             * Created At
-             * Format: date-time
-             * @description Creation timestamp
-             */
-            created_at: string;
-            /**
-             * Updated At
-             * Format: date-time
-             * @description Last update timestamp
-             */
-            updated_at: string;
-        };
-        /**
-         * IntegrationUpdate
-         * @description Request model for updating an integration.
-         *     PUT /api/integrations/{integration_id}
-         */
-        IntegrationUpdate: {
-            /**
-             * Name
-             * @description Integration name
-             */
-            name?: string | null;
-            /**
-             * List Entities Data Provider Id
-             * @description Data provider ID for listing entities
-             */
-            list_entities_data_provider_id?: string | null;
-            /**
-             * Config Schema
-             * @description Configuration schema
-             */
-            config_schema?: components["schemas"]["ConfigSchemaItem"][] | null;
-            /**
-             * Entity Id
-             * @description Global entity ID for token URL templating
-             */
-            entity_id?: string | null;
-            /**
-             * Entity Id Name
-             * @description Display name for the global entity ID
-             */
-            entity_id_name?: string | null;
-            /**
-             * Default Entity Id
-             * @description Default value for entity_id in URL templates (e.g., 'common' for Azure multi-tenant)
-             */
-            default_entity_id?: string | null;
-        };
-        /**
-         * LLMConfigRequest
-         * @description Request to set LLM configuration.
-         */
-        LLMConfigRequest: {
-            /**
-             * Provider
-             * @description LLM provider type
-             * @enum {string}
-             */
-            provider: "openai" | "anthropic" | "custom";
-            /**
-             * Model
-             * @description Model identifier (e.g., 'gpt-4o', 'claude-sonnet-4-20250514')
-             */
-            model: string;
-            /**
-             * Api Key
-             * @description API key for the provider
-             */
-            api_key: string;
-            /**
-             * Endpoint
-             * @description Custom endpoint URL (for custom OpenAI-compatible providers)
-             */
-            endpoint?: string | null;
-            /**
-             * Max Tokens
-             * @description Maximum tokens for completion
-             * @default 4096
-             */
-            max_tokens: number;
-            /**
-             * Temperature
-             * @description Temperature for sampling (0.0-2.0)
-             * @default 0.7
-             */
-            temperature: number;
-            /**
-             * Default System Prompt
-             * @description Default system prompt for agentless chat
-             */
-            default_system_prompt?: string | null;
-        };
-        /**
-         * LLMConfigResponse
-         * @description LLM configuration response (API key is never returned).
-         */
-        LLMConfigResponse: {
-            /**
-             * Provider
-             * @enum {string}
-             */
-            provider: "openai" | "anthropic" | "custom";
-            /** Model */
-            model: string;
-            /** Endpoint */
-            endpoint?: string | null;
-            /**
-             * Max Tokens
-             * @default 4096
-             */
-            max_tokens: number;
-            /**
-             * Temperature
-             * @default 0.7
-             */
-            temperature: number;
-            /** Default System Prompt */
-            default_system_prompt?: string | null;
-            /**
-             * Is Configured
-             * @default true
-             */
-            is_configured: boolean;
-            /**
-             * Api Key Set
-             * @default false
-             */
-            api_key_set: boolean;
-        };
-        /**
-         * LLMModelsResponse
-         * @description Response listing available models.
-         */
-        LLMModelsResponse: {
-            /** Models */
-            models: string[];
-            /** Provider */
-            provider: string;
-        };
-        /**
-         * LLMTestRequest
-         * @description Request to test LLM configuration before saving.
-         */
-        LLMTestRequest: {
-            /**
-             * Provider
-             * @description LLM provider type
-             * @enum {string}
-             */
-            provider: "openai" | "anthropic" | "custom";
-            /**
-             * Model
-             * @description Model identifier
-             */
-            model: string;
-            /**
-             * Api Key
-             * @description API key to test
-             */
-            api_key: string;
-            /**
-             * Endpoint
-             * @description Custom endpoint URL
-             */
-            endpoint?: string | null;
-        };
-        /**
-         * LLMTestResponse
-         * @description Response from testing LLM connection.
-         */
-        LLMTestResponse: {
-            /** Success */
-            success: boolean;
-            /** Message */
-            message: string;
-            /** Models */
-            models?: string[] | null;
-        };
-        /**
-         * LinkedAccountResponse
-         * @description Linked OAuth account info.
-         */
-        LinkedAccountResponse: {
-            /** Provider */
-            provider: string;
-            /** Provider Email */
-            provider_email: string;
-            /** Linked At */
-            linked_at: string;
-            /** Last Used At */
-            last_used_at?: string | null;
-        };
-        /**
-         * LinkedAccountsResponse
-         * @description List of linked OAuth accounts.
-         */
-        LinkedAccountsResponse: {
-            /** Accounts */
-            accounts: components["schemas"]["LinkedAccountResponse"][];
-        };
-        /**
-         * LoginResponse
-         * @description Unified login response that can be Token or MFA response.
-         */
-        LoginResponse: {
-            /** Access Token */
-            access_token?: string | null;
-            /** Refresh Token */
-            refresh_token?: string | null;
-            /**
-             * Token Type
-             * @default bearer
-             */
-            token_type: string;
-            /**
-             * Mfa Required
-             * @default false
-             */
-            mfa_required: boolean;
-            /**
-             * Mfa Setup Required
-             * @default false
-             */
-            mfa_setup_required: boolean;
-            /** Mfa Token */
-            mfa_token?: string | null;
-            /** Available Methods */
-            available_methods?: string[] | null;
-            /** Expires In */
-            expires_in?: number | null;
-        };
-        /**
-         * LogoutRequest
-         * @description Logout request with optional refresh token.
-         */
-        LogoutRequest: {
-            /** Refresh Token */
-            refresh_token?: string | null;
-        };
-        /**
-         * LogoutResponse
-         * @description Logout response model.
-         */
-        LogoutResponse: {
-            /**
-             * Message
-             * @default Logged out successfully
-             */
-            message: string;
-        };
-        /**
-         * MFAEnrollVerifyResponse
-         * @description Response after completing MFA enrollment.
-         */
-        MFAEnrollVerifyResponse: {
-            /** Success */
-            success: boolean;
-            /** Recovery Codes */
-            recovery_codes: string[];
-            /** Access Token */
-            access_token: string;
-            /** Refresh Token */
-            refresh_token: string;
-            /**
-             * Token Type
-             * @default bearer
-             */
-            token_type: string;
-        };
-        /**
-         * MFARemoveRequest
-         * @description Request to remove MFA method.
-         */
-        MFARemoveRequest: {
-            /** Password */
-            password?: string | null;
-            /** Mfa Code */
-            mfa_code?: string | null;
-        };
-        /**
-         * MFAStatusResponse
-         * @description MFA status response.
-         */
-        MFAStatusResponse: {
-            /** Mfa Enabled */
-            mfa_enabled: boolean;
-            /** Mfa Required */
-            mfa_required: boolean;
-            /** Enforcement Deadline */
-            enforcement_deadline?: string | null;
-            /** Enrolled Methods */
-            enrolled_methods: string[];
-            /** Recovery Codes Remaining */
-            recovery_codes_remaining: number;
-        };
-        /**
-         * MFAVerifyResponse
-         * @description MFA verification response.
-         *
-         *     For enrollment completion: includes recovery_codes and tokens (auto-login)
-         *     For subsequent verifications: just success status
-         */
-        MFAVerifyResponse: {
-            /** Success */
-            success: boolean;
-            /** Recovery Codes */
-            recovery_codes?: string[] | null;
-            /** Access Token */
-            access_token?: string | null;
-            /** Refresh Token */
-            refresh_token?: string | null;
-            /**
-             * Token Type
-             * @default bearer
-             */
-            token_type: string;
-        };
-        /**
-         * MaintenanceStatus
-         * @description Current maintenance status of the workspace.
-         */
-        MaintenanceStatus: {
-            /**
-             * Files Needing Ids
-             * @description List of Python files with decorators missing IDs
-             */
-            files_needing_ids?: string[];
-            /**
-             * Total Files
-             * @description Total number of files in workspace
-             * @default 0
-             */
-            total_files: number;
-            /**
-             * Last Reindex
-             * @description Timestamp of last reindex operation
-             */
-            last_reindex?: string | null;
-        };
-        /**
-         * MessagePublic
-         * @description Message output for API responses.
-         */
-        MessagePublic: {
-            /** Id */
-            id: string;
-            /** Conversation Id */
-            conversation_id: string;
-            role: components["schemas"]["MessageRole"];
-            /** Content */
-            content?: string | null;
-            /** Tool Calls */
-            tool_calls?: components["schemas"]["ToolCall"][] | null;
-            /** Tool Call Id */
-            tool_call_id?: string | null;
-            /** Tool Name */
-            tool_name?: string | null;
-            /**
-             * Execution Id
-             * @description Execution ID for tool results (for fetching logs)
-             */
-            execution_id?: string | null;
-            /** Token Count Input */
-            token_count_input?: number | null;
-            /** Token Count Output */
-            token_count_output?: number | null;
-            /** Model */
-            model?: string | null;
-            /** Duration Ms */
-            duration_ms?: number | null;
-            /** Sequence */
-            sequence: number;
-            /** Created At */
-            created_at: string;
-        };
-        /**
-         * MessageRole
-         * @description Message roles in chat conversations
-         * @enum {string}
-         */
-        MessageRole: "user" | "assistant" | "system" | "tool";
-        /**
-         * NotificationCategory
-         * @description Categories for grouping notifications.
-         * @enum {string}
-         */
-        NotificationCategory: "github_setup" | "github_sync" | "file_upload" | "package_install" | "system";
-        /**
-         * NotificationListResponse
-         * @description Response containing list of notifications.
-         */
-        NotificationListResponse: {
-            /**
-             * Notifications
-             * @description Active notifications
-             */
-            notifications?: components["schemas"]["NotificationPublic"][];
-        };
-        /**
-         * NotificationPublic
-         * @description Public representation of a notification.
-         */
-        NotificationPublic: {
-            /**
-             * Id
-             * @description Unique notification ID
-             */
-            id: string;
-            /** @description Notification category */
-            category: components["schemas"]["NotificationCategory"];
-            /**
-             * Title
-             * @description Notification title
-             */
-            title: string;
-            /**
-             * Description
-             * @description Current status message
-             */
-            description?: string | null;
-            /** @description Current status */
-            status: components["schemas"]["NotificationStatus"];
-            /**
-             * Percent
-             * @description Progress percentage. None = indeterminate, 0-100 = determinate.
-             */
-            percent?: number | null;
-            /**
-             * Error
-             * @description Error message if failed
-             */
-            error?: string | null;
-            /**
-             * Result
-             * @description Result data on completion
-             */
-            result?: {
-                [key: string]: unknown;
-            } | null;
-            /**
-             * Metadata
-             * @description Additional metadata
-             */
-            metadata?: {
-                [key: string]: unknown;
-            } | null;
-            /**
-             * Created At
-             * Format: date-time
-             * @description When notification was created
-             */
-            created_at: string;
-            /**
-             * Updated At
-             * Format: date-time
-             * @description When notification was last updated
-             */
-            updated_at: string;
-            /**
-             * User Id
-             * @description User who owns this notification
-             */
-            user_id: string;
-        };
-        /**
-         * NotificationStatus
-         * @description Status of a notification/operation.
-         * @enum {string}
-         */
-        NotificationStatus: "pending" | "running" | "awaiting_action" | "completed" | "failed" | "cancelled";
-        /**
-         * OAuthAuthorizeResponse
-         * @description Response model for OAuth authorization URL.
-         */
-        OAuthAuthorizeResponse: {
-            /**
-             * Authorization Url
-             * @description URL to redirect user for authorization
-             */
-            authorization_url: string;
-            /**
-             * State
-             * @description State parameter for CSRF protection
-             */
-            state: string;
-            /**
-             * Message
-             * @default Redirect user to authorization_url to complete OAuth flow
-             */
-            message: string;
-        };
-        /**
-         * OAuthCallbackResponse
-         * @description Response model for OAuth callback endpoint
-         */
-        OAuthCallbackResponse: {
-            /**
-             * Success
-             * @description Whether the OAuth connection was successful
-             */
-            success: boolean;
-            /**
-             * Message
-             * @description Status message
-             */
-            message: string;
-            /**
-             * Status
-             * @description Connection status
-             */
-            status: string;
-            /**
-             * Connection Name
-             * @description Name of the OAuth connection
-             */
-            connection_name: string;
-            /**
-             * Warning Message
-             * @description Warning message displayed to user (e.g., missing refresh token)
-             */
-            warning_message?: string | null;
-            /**
-             * Error Message
-             * @description Error message displayed to user
-             */
-            error_message?: string | null;
-        };
-        /**
-         * OAuthConfigResponse
-         * @description Response model for OAuth provider configuration.
-         */
-        OAuthConfigResponse: {
-            /**
-             * Id
-             * Format: uuid
-             * @description OAuth provider ID
-             */
-            id: string;
-            /**
-             * Provider Name
-             * @description Provider name
-             */
-            provider_name: string;
-            /**
-             * Display Name
-             * @description Display name
-             */
-            display_name?: string | null;
-            /**
-             * Oauth Flow Type
-             * @description OAuth flow type (authorization_code or client_credentials)
-             */
-            oauth_flow_type: string;
-            /**
-             * Client Id
-             * @description OAuth client ID
-             */
-            client_id: string;
-            /**
-             * Authorization Url
-             * @description OAuth authorization endpoint URL (only for authorization_code flow)
-             */
-            authorization_url?: string | null;
-            /**
-             * Token Url
-             * @description OAuth token endpoint URL
-             */
-            token_url: string | null;
-            /**
-             * Scopes
-             * @description OAuth scopes
-             */
-            scopes?: string[];
-            /**
-             * Created At
-             * Format: date-time
-             * @description Creation timestamp
-             */
-            created_at: string;
-            /**
-             * Updated At
-             * Format: date-time
-             * @description Last update timestamp
-             */
-            updated_at: string;
-        };
-        /**
-         * OAuthConfigSummary
-         * @description OAuth configuration summary for integration detail response.
-         *     Includes provider config and connection status.
-         */
-        OAuthConfigSummary: {
-            /**
-             * Provider Name
-             * @description OAuth provider name
-             */
-            provider_name: string;
-            /**
-             * Oauth Flow Type
-             * @description OAuth flow type (authorization_code, client_credentials)
-             */
-            oauth_flow_type: string;
-            /**
-             * Client Id
-             * @description OAuth client ID
-             */
-            client_id: string;
-            /**
-             * Authorization Url
-             * @description Authorization URL
-             */
-            authorization_url?: string | null;
-            /**
-             * Token Url
-             * @description Token URL
-             */
-            token_url: string;
-            /**
-             * Scopes
-             * @description OAuth scopes
-             */
-            scopes?: string[];
-            /**
-             * Status
-             * @description Connection status
-             * @default not_connected
-             */
-            status: string;
-            /**
-             * Status Message
-             * @description Status message
-             */
-            status_message?: string | null;
-            /**
-             * Expires At
-             * @description Token expiration time
-             */
-            expires_at?: string | null;
-            /**
-             * Last Refresh At
-             * @description Last token refresh time
-             */
-            last_refresh_at?: string | null;
-            /**
-             * Has Refresh Token
-             * @description Whether a refresh token is available
-             * @default false
-             */
-            has_refresh_token: boolean;
-        };
-        /**
-         * OAuthConnectionDetail
-         * @description Detailed model for OAuth connections (used in get/update responses)
-         *     GET /api/oauth/connections/{connection_name}
-         *
-         *     Includes configuration details but masks sensitive fields
-         */
-        OAuthConnectionDetail: {
-            /** Connection Name */
-            connection_name: string;
-            /**
-             * Name
-             * @description Display name for the connection
-             */
-            name?: string | null;
-            /**
-             * Provider
-             * @description Provider identifier
-             */
-            provider?: string | null;
-            /** Description */
-            description?: string | null;
-            /**
-             * Oauth Flow Type
-             * @enum {string}
-             */
-            oauth_flow_type: "authorization_code" | "client_credentials" | "refresh_token";
-            /**
-             * Client Id
-             * @description OAuth client ID (safe to expose)
-             */
-            client_id: string;
-            /**
-             * Authorization Url
-             * @description OAuth authorization endpoint (required for authorization_code, not used for client_credentials)
-             */
-            authorization_url?: string | null;
-            /** Token Url */
-            token_url: string;
-            /** Scopes */
-            scopes: string;
-            /**
-             * Status
-             * @enum {string}
-             */
-            status: "not_connected" | "waiting_callback" | "testing" | "connected" | "completed" | "failed";
-            /** Status Message */
-            status_message?: string | null;
-            /**
-             * Integration Id
-             * @description ID of the integration this OAuth connection belongs to
-             */
-            integration_id?: string | null;
-            /** Expires At */
-            expires_at?: string | null;
-            /** Last Refresh At */
-            last_refresh_at?: string | null;
-            /** Last Test At */
-            last_test_at?: string | null;
-            /**
-             * Created At
-             * Format: date-time
-             */
-            created_at: string;
-            /** Created By */
-            created_by: string;
-            /**
-             * Updated At
-             * Format: date-time
-             */
-            updated_at: string;
-        };
-        /**
-         * OAuthCredentialsModel
-         * @description OAuth credentials Pydantic model for API responses
-         *     GET /api/oauth/credentials/{connection_name}
-         *
-         *     Contains actual access token and refresh token for use in API calls
-         *     This model is only exposed to authenticated workflow contexts
-         *
-         *     Note: This is the Pydantic model for API responses. The regular OAuthCredentials
-         *     class is used for workflow consumption with is_expired() and get_auth_header() methods.
-         */
-        OAuthCredentialsModel: {
-            /**
-             * Connection Name
-             * @description Connection identifier
-             */
-            connection_name: string;
-            /**
-             * Access Token
-             * @description Current OAuth access token
-             */
-            access_token: string;
-            /**
-             * Token Type
-             * @description Token type (usually Bearer)
-             * @default Bearer
-             */
-            token_type: string;
-            /**
-             * Expires At
-             * @description ISO 8601 timestamp when token expires
-             */
-            expires_at: string;
-            /**
-             * Refresh Token
-             * @description Refresh token if available
-             */
-            refresh_token?: string | null;
-            /**
-             * Scopes
-             * @description Space-separated list of granted scopes
-             * @default
-             */
-            scopes: string;
-            /**
-             * Integration Id
-             * @description ID of the integration this OAuth connection belongs to
-             */
-            integration_id?: string | null;
-        };
-        /**
-         * OAuthCredentialsResponse
-         * @description Response wrapper for OAuth credentials endpoint
-         *     Includes connection status and metadata
-         */
-        OAuthCredentialsResponse: {
-            /** Connection Name */
-            connection_name: string;
-            /** @description Credentials if connection is active, None if not connected */
-            credentials?: components["schemas"]["OAuthCredentialsModel"] | null;
-            /**
-             * Status
-             * @description Current connection status
-             * @enum {string}
-             */
-            status: "not_connected" | "waiting_callback" | "testing" | "connected" | "completed" | "failed";
-            /**
-             * Integration Id
-             * @description ID of the integration this OAuth connection belongs to
-             */
-            integration_id?: string | null;
-            /**
-             * Expires At
-             * @description ISO 8601 timestamp when token expires
-             */
-            expires_at?: string | null;
-        };
-        /**
-         * OAuthInitResponse
-         * @description OAuth initialization response.
-         */
-        OAuthInitResponse: {
-            /** Authorization Url */
-            authorization_url: string;
-            /** State */
-            state: string;
-        };
-        /**
-         * OAuthProvidersResponse
-         * @description Available OAuth providers.
-         */
-        OAuthProvidersResponse: {
-            /** Providers */
-            providers: components["schemas"]["src__routers__oauth_sso__OAuthProviderInfo"][];
-        };
-        /**
-         * OAuthTokenResponse
-         * @description OAuth login token response.
-         */
-        OAuthTokenResponse: {
-            /** Access Token */
-            access_token: string;
-            /** Refresh Token */
-            refresh_token: string;
-            /**
-             * Token Type
-             * @default bearer
-             */
-            token_type: string;
-        };
-        /**
-         * OrganizationCreate
-         * @description Input for creating an organization.
-         */
-        OrganizationCreate: {
-            /** Name */
-            name: string;
-            /** Domain */
-            domain?: string | null;
-            /**
-             * Is Active
-             * @default true
-             */
-            is_active: boolean;
-            /** Settings */
-            settings?: {
-                [key: string]: unknown;
-            };
-        };
-        /**
-         * OrganizationMetricsResponse
-         * @description Response for organization metrics breakdown.
-         */
-        OrganizationMetricsResponse: {
-            /** Organizations */
-            organizations: components["schemas"]["OrganizationMetricsSummary"][];
-            /** Total Organizations */
-            total_organizations: number;
-        };
-        /**
-         * OrganizationMetricsSummary
-         * @description Summary metrics for a single organization.
-         */
-        OrganizationMetricsSummary: {
-            /** Organization Id */
-            organization_id: string;
-            /** Organization Name */
-            organization_name: string;
-            /** Total Executions */
-            total_executions: number;
-            /** Success Count */
-            success_count: number;
-            /** Failed Count */
-            failed_count: number;
-            /** Success Rate */
-            success_rate: number;
-            /** Total Memory Bytes */
-            total_memory_bytes: number;
-            /** Total Cpu Seconds */
-            total_cpu_seconds: number;
-            /** Avg Duration Ms */
-            avg_duration_ms: number;
-        };
-        /**
-         * OrganizationPublic
-         * @description Organization output for API responses.
-         */
-        OrganizationPublic: {
-            /** Name */
-            name: string;
-            /** Domain */
-            domain?: string | null;
-            /**
-             * Is Active
-             * @default true
-             */
-            is_active: boolean;
-            /** Settings */
-            settings?: {
-                [key: string]: unknown;
-            };
-            /**
-             * Id
-             * Format: uuid
-             */
-            id: string;
-            /** Created At */
-            created_at: string | null;
-            /** Created By */
-            created_by: string;
-            /** Updated At */
-            updated_at: string | null;
-        };
-        /**
-         * OrganizationUpdate
-         * @description Input for updating an organization (all fields optional).
-         */
-        OrganizationUpdate: {
-            /** Name */
-            name?: string | null;
-            /** Domain */
-            domain?: string | null;
-            /** Is Active */
-            is_active?: boolean | null;
-            /** Settings */
-            settings?: {
-                [key: string]: unknown;
-            } | null;
-        };
-        /**
-         * PackageInstallResponse
-         * @description Response model for package installation
-         */
-        PackageInstallResponse: {
-            /** Package Name */
-            package_name: string;
-            /** Version */
-            version?: string | null;
-            /**
-             * Status
-             * @description Installation status (success, failed, in_progress)
-             */
-            status: string;
-            /**
-             * Message
-             * @description Installation message
-             */
-            message: string;
-        };
-        /**
-         * PackageUpdate
-         * @description Package update information
-         */
-        PackageUpdate: {
-            /** Name */
-            name: string;
-            /** Current Version */
-            current_version: string;
-            /** Latest Version */
-            latest_version: string;
-        };
-        /**
-         * PackageUpdatesResponse
-         * @description Response model for package update check
-         */
-        PackageUpdatesResponse: {
-            /** Updates Available */
-            updates_available: components["schemas"]["PackageUpdate"][];
-            /** Total Count */
-            total_count: number;
-        };
-        /**
-         * PasskeyAuthOptionsRequest
-         * @description Request to generate passkey authentication options.
-         */
-        PasskeyAuthOptionsRequest: {
-            /**
-             * Email
-             * @description Optional email to target specific user's credentials. If None, uses discoverable credentials (passkey autofill).
-             */
-            email?: string | null;
-        };
-        /**
-         * PasskeyAuthOptionsResponse
-         * @description Response with WebAuthn authentication options for the browser.
-         */
-        PasskeyAuthOptionsResponse: {
-            /**
-             * Challenge Id
-             * @description Challenge ID to include in the verify request
-             */
-            challenge_id: string;
-            /**
-             * Options
-             * @description WebAuthn authentication options JSON for navigator.credentials.get()
-             */
-            options: {
-                [key: string]: unknown;
-            };
-        };
-        /**
-         * PasskeyAuthVerifyRequest
-         * @description Request to verify passkey authentication.
-         */
-        PasskeyAuthVerifyRequest: {
-            /**
-             * Challenge Id
-             * @description Challenge ID from the options response
-             */
-            challenge_id: string;
-            /**
-             * Credential
-             * @description WebAuthn authentication credential JSON from navigator.credentials.get()
-             */
-            credential: {
-                [key: string]: unknown;
-            };
-        };
-        /**
-         * PasskeyDeleteResponse
-         * @description Response after deleting a passkey.
-         */
-        PasskeyDeleteResponse: {
-            /**
-             * Deleted
-             * @description Whether the passkey was deleted
-             */
-            deleted: boolean;
-            /**
-             * Passkey Id
-             * Format: uuid
-             * @description ID of the deleted passkey
-             */
-            passkey_id: string;
-        };
-        /**
-         * PasskeyListResponse
-         * @description Response with list of user's passkeys.
-         */
-        PasskeyListResponse: {
-            /**
-             * Passkeys
-             * @description List of user's passkeys
-             */
-            passkeys: components["schemas"]["PasskeyPublic"][];
-            /**
-             * Count
-             * @description Total number of passkeys
-             */
-            count: number;
-        };
-        /**
-         * PasskeyPublic
-         * @description Public representation of a user's passkey.
-         */
-        PasskeyPublic: {
-            /**
-             * Id
-             * Format: uuid
-             * @description Passkey ID
-             */
-            id: string;
-            /**
-             * Name
-             * @description User-friendly name for the passkey
-             */
-            name: string;
-            /**
-             * Device Type
-             * @description Device type: 'singleDevice' or 'multiDevice'
-             */
-            device_type: string;
-            /**
-             * Backed Up
-             * @description Whether the passkey is synced to cloud (iCloud Keychain, Google Password Manager, etc.)
-             */
-            backed_up: boolean;
-            /**
-             * Created At
-             * Format: date-time
-             * @description When the passkey was registered
-             */
-            created_at: string;
-            /**
-             * Last Used At
-             * @description When the passkey was last used for authentication
-             */
-            last_used_at: string | null;
-        };
-        /**
-         * PasskeyRegistrationOptionsRequest
-         * @description Request to generate passkey registration options.
-         */
-        PasskeyRegistrationOptionsRequest: {
-            /**
-             * Device Name
-             * @description Optional friendly name for the passkey (e.g., 'MacBook Pro Touch ID')
-             */
-            device_name?: string | null;
-        };
-        /**
-         * PasskeyRegistrationOptionsResponse
-         * @description Response with WebAuthn registration options for the browser.
-         */
-        PasskeyRegistrationOptionsResponse: {
-            /**
-             * Options
-             * @description WebAuthn registration options JSON for navigator.credentials.create()
-             */
-            options: {
-                [key: string]: unknown;
-            };
-        };
-        /**
-         * PasskeyRegistrationVerifyRequest
-         * @description Request to verify passkey registration.
-         */
-        PasskeyRegistrationVerifyRequest: {
-            /**
-             * Credential
-             * @description WebAuthn registration credential JSON from navigator.credentials.create()
-             */
-            credential: {
-                [key: string]: unknown;
-            };
-            /**
-             * Device Name
-             * @description Optional friendly name for the passkey
-             */
-            device_name?: string | null;
-        };
-        /**
-         * PasskeyRegistrationVerifyResponse
-         * @description Response after successful passkey registration.
-         */
-        PasskeyRegistrationVerifyResponse: {
-            /**
-             * Verified
-             * @description Whether registration was successful
-             */
-            verified: boolean;
-            /**
-             * Passkey Id
-             * Format: uuid
-             * @description ID of the newly created passkey
-             */
-            passkey_id: string;
-            /**
-             * Name
-             * @description Name of the passkey
-             */
-            name: string;
-        };
-        /**
-         * PasswordChange
-         * @description Request model for changing password.
-         */
-        PasswordChange: {
-            /**
-             * Current Password
-             * @description Current password
-             */
-            current_password: string;
-            /**
-             * New Password
-             * @description New password (minimum 8 characters)
-             */
-            new_password: string;
-        };
-        /**
-         * PlatformMetricsResponse
-         * @description Platform metrics snapshot response.
-         *
-         *     Pre-computed metrics for instant dashboard loads.
-         *     Refreshed by scheduler every 1-5 minutes.
-         */
-        PlatformMetricsResponse: {
-            /** Workflow Count */
-            workflow_count: number;
-            /** Form Count */
-            form_count: number;
-            /** Data Provider Count */
-            data_provider_count: number;
-            /** Organization Count */
-            organization_count: number;
-            /** User Count */
-            user_count: number;
-            /** Total Executions */
-            total_executions: number;
-            /** Total Success */
-            total_success: number;
-            /** Total Failed */
-            total_failed: number;
-            /** Executions 24H */
-            executions_24h: number;
-            /** Success 24H */
-            success_24h: number;
-            /** Failed 24H */
-            failed_24h: number;
-            /** Running Count */
-            running_count: number;
-            /** Pending Count */
-            pending_count: number;
-            /** Avg Duration Ms 24H */
-            avg_duration_ms_24h: number;
-            /** Total Memory Bytes 24H */
-            total_memory_bytes_24h: number;
-            /** Total Cpu Seconds 24H */
-            total_cpu_seconds_24h: number;
-            /** Success Rate All Time */
-            success_rate_all_time: number;
-            /** Success Rate 24H */
-            success_rate_24h: number;
-            /** Refreshed At */
-            refreshed_at: string;
-        };
-        /**
-         * ProfileResponse
-         * @description Response model for user profile.
-         */
-        ProfileResponse: {
-            /**
-             * Id
-             * Format: uuid
-             */
-            id: string;
-            /** Email */
-            email: string;
-            /** Name */
-            name: string | null;
-            /** Has Avatar */
-            has_avatar: boolean;
-            /** User Type */
-            user_type: string;
-            /** Organization Id */
-            organization_id: string | null;
-            /** Is Superuser */
-            is_superuser: boolean;
-        };
-        /**
-         * ProfileUpdate
-         * @description Request model for updating user profile.
-         */
-        ProfileUpdate: {
-            /**
-             * Name
-             * @description Display name
-             */
-            name?: string | null;
-        };
-        /**
-         * PullFromGitHubRequest
-         * @description Request to pull from GitHub
-         */
-        PullFromGitHubRequest: {
-            /**
-             * Connection Id
-             * @description WebPubSub connection ID for streaming logs
-             */
-            connection_id?: string | null;
-        };
-        /**
-         * PullFromGitHubResponse
-         * @description Response after pulling from GitHub
-         */
-        PullFromGitHubResponse: {
-            /**
-             * Success
-             * @description Whether pull succeeded
-             */
-            success: boolean;
-            /**
-             * Updated Files
-             * @description List of updated file paths
-             */
-            updated_files?: string[];
-            /**
-             * Conflicts
-             * @description List of conflicts (if any)
-             */
-            conflicts?: components["schemas"]["ConflictInfo"][];
-            /**
-             * Error
-             * @description Error message if pull failed
-             */
-            error?: string | null;
-        };
-        /**
-         * PushToGitHubRequest
-         * @description Request to push to GitHub
-         */
-        PushToGitHubRequest: {
-            /**
-             * Message
-             * @description Commit message
-             */
-            message?: string | null;
-            /**
-             * Connection Id
-             * @description WebPubSub connection ID for streaming logs
-             */
-            connection_id?: string | null;
-        };
-        /**
-         * PushToGitHubResponse
-         * @description Response after pushing to GitHub
-         */
-        PushToGitHubResponse: {
-            /**
-             * Success
-             * @description Whether push succeeded
-             */
-            success: boolean;
-            /**
-             * Error
-             * @description Error message if push failed
-             */
-            error?: string | null;
-        };
-        /**
-         * RecentFailure
-         * @description Recent failed execution info
-         */
-        RecentFailure: {
-            /** Execution Id */
-            execution_id: string;
-            /** Workflow Name */
-            workflow_name: string;
-            /** Error Message */
-            error_message: string | null;
-            /** Started At */
-            started_at: string | null;
-        };
-        /**
-         * RecoveryCodesCountResponse
-         * @description Recovery codes count response.
-         */
-        RecoveryCodesCountResponse: {
-            /** Total */
-            total: number;
-            /** Remaining */
-            remaining: number;
-        };
-        /**
-         * RecoveryCodesResponse
-         * @description Recovery codes response.
-         */
-        RecoveryCodesResponse: {
-            /** Recovery Codes */
-            recovery_codes: string[];
-            /** Count */
-            count: number;
-        };
-        /**
-         * RefreshAllResponse
-         * @description Response for triggering refresh of all tokens.
-         */
-        RefreshAllResponse: {
-            /** Triggered */
-            triggered: boolean;
-            /** Message */
-            message: string;
-            /**
-             * Connections Queued
-             * @default 0
-             */
-            connections_queued: number;
-            /**
-             * Refreshed Successfully
-             * @default 0
-             */
-            refreshed_successfully: number;
-            /**
-             * Refresh Failed
-             * @default 0
-             */
-            refresh_failed: number;
-        };
-        /**
-         * RefreshJobRun
-         * @description Details of a single refresh job run.
-         */
-        RefreshJobRun: {
-            /**
-             * Status
-             * @default completed
-             */
-            status: string;
-            /** Start Time */
-            start_time?: string | null;
-            /** End Time */
-            end_time?: string | null;
-            /**
-             * Connections Checked
-             * @default 0
-             */
-            connections_checked: number;
-            /**
-             * Refreshed Successfully
-             * @default 0
-             */
-            refreshed_successfully: number;
-            /**
-             * Refresh Failed
-             * @default 0
-             */
-            refresh_failed: number;
-            /**
-             * Needs Refresh
-             * @default 0
-             */
-            needs_refresh: number;
-            /**
-             * Total Connections
-             * @default 0
-             */
-            total_connections: number;
-            /** Error */
-            error?: string | null;
-            /** Errors */
-            errors?: string[];
-        };
-        /**
-         * RefreshJobStatusResponse
-         * @description Response for refresh job status.
-         */
-        RefreshJobStatusResponse: {
-            /**
-             * Enabled
-             * @default true
-             */
-            enabled: boolean;
-            last_run?: components["schemas"]["RefreshJobRun"] | null;
-            /** Next Run */
-            next_run?: string | null;
-        };
-        /**
-         * RefreshTokenResponse
-         * @description Response for token refresh.
-         */
-        RefreshTokenResponse: {
-            /** Success */
-            success: boolean;
-            /** Message */
-            message: string;
-            /** Expires At */
-            expires_at?: string | null;
-        };
-        /**
-         * RegenerateRecoveryCodesRequest
-         * @description Request to regenerate recovery codes.
-         */
-        RegenerateRecoveryCodesRequest: {
-            /** Mfa Code */
-            mfa_code: string;
-        };
-        /**
-         * ReindexRequest
-         * @description Request to start a workspace reindex operation.
-         */
-        ReindexRequest: {
-            /**
-             * Inject Ids
-             * @description Whether to inject IDs into decorators that don't have them
-             * @default true
-             */
-            inject_ids: boolean;
-            /**
-             * Notification Id
-             * @description Optional notification ID to update with progress
-             */
-            notification_id?: string | null;
-        };
-        /**
-         * ReindexResponse
-         * @description Response from starting or completing a reindex operation.
-         */
-        ReindexResponse: {
-            /**
-             * Status
-             * @description Operation status: started, completed, failed
-             */
-            status: string;
-            /**
-             * Files Indexed
-             * @description Number of files indexed
-             * @default 0
-             */
-            files_indexed: number;
-            /**
-             * Files Needing Ids
-             * @description Files that needed ID injection (for detection mode)
-             */
-            files_needing_ids?: string[];
-            /**
-             * Ids Injected
-             * @description Number of files that had IDs injected (for inject mode)
-             * @default 0
-             */
-            ids_injected: number;
-            /**
-             * Message
-             * @description Human-readable status message
-             */
-            message?: string | null;
-        };
-        /**
-         * ResourceMetricsEntry
-         * @description Resource usage metrics for a time period.
-         */
-        ResourceMetricsEntry: {
-            /** Date */
-            date: string;
-            /** Peak Memory Bytes */
-            peak_memory_bytes: number;
-            /** Total Memory Bytes */
-            total_memory_bytes: number;
-            /** Avg Memory Bytes */
-            avg_memory_bytes: number;
-            /** Peak Cpu Seconds */
-            peak_cpu_seconds: number;
-            /** Total Cpu Seconds */
-            total_cpu_seconds: number;
-            /** Avg Cpu Seconds */
-            avg_cpu_seconds: number;
-            /** Execution Count */
-            execution_count: number;
-        };
-        /**
-         * ResourceMetricsResponse
-         * @description Response for resource usage trends.
-         */
-        ResourceMetricsResponse: {
-            /** Days */
-            days: components["schemas"]["ResourceMetricsEntry"][];
-            /** Total Days */
-            total_days: number;
-        };
-        /**
-         * RetryPolicy
-         * @description Retry policy configuration for workflow execution
-         */
-        RetryPolicy: {
-            /**
-             * Max Attempts
-             * @description Total attempts including initial execution
-             * @default 3
-             */
-            max_attempts: number;
-            /**
-             * Backoff Seconds
-             * @description Initial backoff duration in seconds
-             * @default 2
-             */
-            backoff_seconds: number;
-            /**
-             * Max Backoff Seconds
-             * @description Maximum backoff cap in seconds
-             * @default 60
-             */
-            max_backoff_seconds: number;
-        };
-        /**
-         * RevokeAllResponse
-         * @description Revoke all sessions response model.
-         */
-        RevokeAllResponse: {
-            /** Message */
-            message: string;
-            /** Sessions Revoked */
-            sessions_revoked: number;
-        };
-        /**
-         * RoleAgentsResponse
-         * @description Response for getting agents assigned to a role.
-         */
-        RoleAgentsResponse: {
-            /** Agent Ids */
-            agent_ids?: string[];
-        };
-        /**
-         * RoleCreate
-         * @description Input for creating a role.
-         */
-        RoleCreate: {
-            /** Name */
-            name: string;
-            /** Description */
-            description?: string | null;
-            /**
-             * Is Active
-             * @default true
-             */
-            is_active: boolean;
-            /** Organization Id */
-            organization_id?: string | null;
-        };
-        /**
-         * RoleFormsResponse
-         * @description Response model for getting forms assigned to a role
-         */
-        RoleFormsResponse: {
-            /**
-             * Form Ids
-             * @description List of form IDs assigned to the role
-             */
-            form_ids: string[];
-        };
-        /**
-         * RolePublic
-         * @description Role output for API responses.
-         */
-        RolePublic: {
-            /** Name */
-            name: string;
-            /** Description */
-            description?: string | null;
-            /**
-             * Is Active
-             * @default true
-             */
-            is_active: boolean;
-            /**
-             * Id
-             * Format: uuid
-             */
-            id: string;
-            /** Organization Id */
-            organization_id: string | null;
-            /** Created By */
-            created_by: string;
-            /** Created At */
-            created_at: string | null;
-            /** Updated At */
-            updated_at: string | null;
-        };
-        /**
-         * RoleUpdate
-         * @description Input for updating a role.
-         */
-        RoleUpdate: {
-            /** Name */
-            name?: string | null;
-            /** Description */
-            description?: string | null;
-            /** Is Active */
-            is_active?: boolean | null;
-        };
-        /**
-         * RoleUsersResponse
-         * @description Response model for getting users assigned to a role
-         */
-        RoleUsersResponse: {
-            /**
-             * User Ids
-             * @description List of user IDs assigned to the role
-             */
-            user_ids: string[];
-        };
-        /**
-         * SDKIntegrationsGetRequest
-         * @description Request to get integration configuration via SDK.
-         */
-        SDKIntegrationsGetRequest: {
-            /**
-             * Name
-             * @description Integration name
-             */
-            name: string;
-            /**
-             * Org Id
-             * @description Organization ID (optional, uses context default)
-             */
-            org_id?: string | null;
-        };
-        /**
-         * SDKIntegrationsGetResponse
-         * @description Integration data response from SDK.
-         */
-        SDKIntegrationsGetResponse: {
-            /**
-             * Integration Id
-             * @description Integration UUID
-             */
-            integration_id: string;
-            /**
-             * Entity Id
-             * @description Mapped external entity ID (e.g., tenant ID)
-             */
-            entity_id: string;
-            /**
-             * Entity Name
-             * @description Display name for the mapped entity
-             */
-            entity_name?: string | null;
-            /**
-             * Config
-             * @description Merged configuration (schema defaults + org overrides)
-             */
-            config?: {
-                [key: string]: unknown;
-            };
-            /**
-             * Oauth Client Id
-             * @description OAuth client ID
-             */
-            oauth_client_id?: string | null;
-            /**
-             * Oauth Token Url
-             * @description OAuth token URL (with {entity_id} resolved)
-             */
-            oauth_token_url?: string | null;
-            /**
-             * Oauth Scopes
-             * @description OAuth scopes (space-separated or None)
-             */
-            oauth_scopes?: string | null;
-        };
-        /**
-         * SDKIntegrationsListMappingsRequest
-         * @description Request to list integration mappings via SDK.
-         */
-        SDKIntegrationsListMappingsRequest: {
-            /**
-             * Name
-             * @description Integration name
-             */
-            name: string;
-        };
-        /**
-         * SDKIntegrationsListMappingsResponse
-         * @description Response for listing integration mappings.
-         */
-        SDKIntegrationsListMappingsResponse: {
-            /**
-             * Items
-             * @description List of mappings
-             */
-            items: components["schemas"]["SDKIntegrationsMappingItem"][];
-        };
-        /**
-         * SDKIntegrationsMappingItem
-         * @description Single integration mapping in list response.
-         */
-        SDKIntegrationsMappingItem: {
-            /**
-             * Organization Id
-             * @description Organization UUID
-             */
-            organization_id: string;
-            /**
-             * Entity Id
-             * @description External entity ID
-             */
-            entity_id: string;
-            /**
-             * Entity Name
-             * @description Display name
-             */
-            entity_name?: string | null;
-            /**
-             * Config
-             * @description Organization-specific config
-             */
-            config?: {
-                [key: string]: unknown;
-            } | null;
-        };
-        /**
-         * ScheduleMetadata
-         * @description Workflow metadata enriched with computed schedule-specific fields.
-         *
-         *     Extends WorkflowMetadata with validation, timing, and execution history.
-         *     Used by the /api/schedules endpoint to return workflows with schedules.
-         */
-        ScheduleMetadata: {
-            /**
-             * Id
-             * @description Workflow UUID
-             */
-            id: string;
-            /**
-             * Name
-             * @description Workflow name (snake_case)
-             */
-            name: string;
-            /**
-             * Description
-             * @description Human-readable description
-             */
-            description?: string | null;
-            /**
-             * Category
-             * @description Category for organization
-             * @default General
-             */
-            category: string;
-            /**
-             * Tags
-             * @description Tags for categorization
-             */
-            tags?: string[];
-            /**
-             * Schedule
-             * @description CRON expression
-             */
-            schedule?: string | null;
-            /**
-             * Source File Path
-             * @description Full file path
-             */
-            source_file_path?: string | null;
-            /**
-             * Relative File Path
-             * @description Workspace-relative path
-             */
-            relative_file_path?: string | null;
-            /**
-             * Validation Status
-             * @description CRON validation status
-             */
-            validation_status?: ("valid" | "warning" | "error") | null;
-            /**
-             * Validation Message
-             * @description Validation error/warning message
-             */
-            validation_message?: string | null;
-            /**
-             * Human Readable
-             * @description Human-readable schedule (e.g., 'Every day at 9:00 AM')
-             */
-            human_readable?: string | null;
-            /**
-             * Next Run At
-             * @description Next scheduled execution time
-             */
-            next_run_at?: string | null;
-            /**
-             * Is Overdue
-             * @description Whether schedule is overdue (next_run_at <= now)
-             * @default false
-             */
-            is_overdue: boolean;
-            /**
-             * Last Run At
-             * @description Last execution completion time
-             */
-            last_run_at?: string | null;
-            /**
-             * Last Execution Id
-             * @description ID of most recent execution
-             */
-            last_execution_id?: string | null;
-            /**
-             * Execution Count
-             * @description Total number of executions
-             * @default 0
-             */
-            execution_count: number;
-        };
-        /**
-         * SearchRequest
-         * @description Search query request
-         */
-        SearchRequest: {
-            /**
-             * Query
-             * @description Search text or regex pattern
-             */
-            query: string;
-            /**
-             * Case Sensitive
-             * @description Case-sensitive matching
-             * @default false
-             */
-            case_sensitive: boolean;
-            /**
-             * Is Regex
-             * @description Treat query as regex
-             * @default false
-             */
-            is_regex: boolean;
-            /**
-             * Include Pattern
-             * @description Glob pattern for files to search
-             * @default **\/*
-             */
-            include_pattern: string | null;
-            /**
-             * Max Results
-             * @description Maximum results to return
-             * @default 1000
-             */
-            max_results: number;
-        };
-        /**
-         * SearchResponse
-         * @description Search results response
-         */
-        SearchResponse: {
-            /**
-             * Query
-             * @description Original search query
-             */
-            query: string;
-            /**
-             * Total Matches
-             * @description Total matches found
-             */
-            total_matches: number;
-            /**
-             * Files Searched
-             * @description Number of files searched
-             */
-            files_searched: number;
-            /**
-             * Results
-             * @description Array of search results
-             */
-            results: components["schemas"]["SearchResult"][];
-            /**
-             * Truncated
-             * @description Whether results were truncated
-             */
-            truncated: boolean;
-            /**
-             * Search Time Ms
-             * @description Search duration in milliseconds
-             */
-            search_time_ms: number;
-        };
-        /**
-         * SearchResult
-         * @description Single search match result
-         */
-        SearchResult: {
-            /**
-             * File Path
-             * @description Relative path to file containing match
-             */
-            file_path: string;
-            /**
-             * Line
-             * @description Line number (1-indexed)
-             */
-            line: number;
-            /**
-             * Column
-             * @description Column number (0-indexed)
-             */
-            column: number;
-            /**
-             * Match Text
-             * @description The matched text
-             */
-            match_text: string;
-            /**
-             * Context Before
-             * @description Line before match
-             */
-            context_before?: string | null;
-            /**
-             * Context After
-             * @description Line after match
-             */
-            context_after?: string | null;
-        };
-        /**
-         * SetConfigRequest
-         * @description Request model for setting config
-         */
-        SetConfigRequest: {
-            /** Key */
-            key: string;
-            /**
-             * Value
-             * @description Config value. For SECRET type, this will be encrypted before storage.
-             */
-            value: string;
-            type: components["schemas"]["ConfigType"];
-            /**
-             * Description
-             * @description Optional description of this config entry
-             */
-            description?: string | null;
-        };
-        /**
-         * StuckExecutionsResponse
-         * @description Response model for stuck executions query
-         */
-        StuckExecutionsResponse: {
-            /**
-             * Executions
-             * @description List of stuck executions
-             */
-            executions: components["schemas"]["WorkflowExecution"][];
-            /**
-             * Count
-             * @description Number of stuck executions found
-             */
-            count: number;
-        };
-        /**
-         * SystemLog
-         * @description System log entry (platform events, not workflow executions)
-         */
-        SystemLog: {
-            /**
-             * Event Id
-             * @description Unique event ID (UUID)
-             */
-            event_id: string;
-            /**
-             * Timestamp
-             * Format: date-time
-             * @description When the event occurred (ISO 8601)
-             */
-            timestamp: string;
-            /**
-             * Category
-             * @description Event category
-             * @enum {string}
-             */
-            category: "discovery" | "organization" | "user" | "role" | "config" | "secret" | "form" | "oauth" | "execution" | "system" | "error";
-            /**
-             * Level
-             * @description Event severity level
-             * @enum {string}
-             */
-            level: "info" | "warning" | "error" | "critical";
-            /**
-             * Message
-             * @description Human-readable event description
-             */
-            message: string;
-            /**
-             * Executed By
-             * @description User ID or 'System'
-             */
-            executed_by: string;
-            /**
-             * Executed By Name
-             * @description Display name or 'System'
-             */
-            executed_by_name: string;
-            /**
-             * Details
-             * @description Additional event-specific data
-             */
-            details?: {
-                [key: string]: unknown;
-            } | null;
-        };
-        /**
-         * SystemLogsListResponse
-         * @description Response model for listing system logs with pagination
-         */
-        SystemLogsListResponse: {
-            /**
-             * Logs
-             * @description List of system log entries
-             */
-            logs: components["schemas"]["SystemLog"][];
-            /**
-             * Continuation Token
-             * @description Continuation token for next page (opaque, base64-encoded)
-             */
-            continuation_token?: string | null;
-        };
-        /**
-         * Token
-         * @description Token response model.
-         */
-        Token: {
-            /** Access Token */
-            access_token: string;
-            /** Refresh Token */
-            refresh_token: string;
-            /**
-             * Token Type
-             * @default bearer
-             */
-            token_type: string;
-        };
-        /**
-         * TokenRefresh
-         * @description Token refresh request model.
-         */
-        TokenRefresh: {
-            /** Refresh Token */
-            refresh_token: string;
-        };
-        /**
-         * ToolCall
-         * @description Tool call from assistant message.
-         */
-        ToolCall: {
-            /**
-             * Id
-             * @description Unique identifier for this tool call
-             */
-            id: string;
-            /**
-             * Name
-             * @description Name of the tool to call
-             */
-            name: string;
-            /**
-             * Arguments
-             * @description Arguments to pass to the tool
-             */
-            arguments?: {
-                [key: string]: unknown;
-            };
-        };
-        /**
-         * TrustedDeviceResponse
-         * @description Trusted device info.
-         */
-        TrustedDeviceResponse: {
-            /** Id */
-            id: string;
-            /** Device Name */
-            device_name: string | null;
-            /** Created At */
-            created_at: string;
-            /** Expires At */
-            expires_at: string;
-            /** Last Used At */
-            last_used_at: string | null;
-            /**
-             * Is Current
-             * @default false
-             */
-            is_current: boolean;
-        };
-        /**
-         * TrustedDevicesResponse
-         * @description List of trusted devices.
-         */
-        TrustedDevicesResponse: {
-            /** Devices */
-            devices: components["schemas"]["TrustedDeviceResponse"][];
-        };
-        /**
-         * UpdateOAuthConnectionRequest
-         * @description Request model for updating an OAuth connection
-         *     PUT /api/oauth/connections/{connection_name}
-         */
-        UpdateOAuthConnectionRequest: {
-            /**
-             * Name
-             * @description Display name
-             */
-            name?: string | null;
-            /** Client Id */
-            client_id?: string | null;
-            /** Client Secret */
-            client_secret?: string | null;
-            /** Authorization Url */
-            authorization_url?: string | null;
-            /** Token Url */
-            token_url?: string | null;
-            /**
-             * Token Url Defaults
-             * @description Default values for token_url placeholders
-             */
-            token_url_defaults?: {
-                [key: string]: string;
-            } | null;
-            /**
-             * Scopes
-             * @description List of OAuth scopes
-             */
-            scopes?: string[] | null;
-        };
-        /**
-         * UpdatePropertiesRequest
-         * @description Request to update properties on a decorator.
-         */
-        UpdatePropertiesRequest: {
-            /**
-             * Path
-             * @description File path
-             */
-            path: string;
-            /**
-             * Function Name
-             * @description Target function name
-             */
-            function_name: string;
-            /**
-             * Properties
-             * @description Properties to set/update
-             */
-            properties: {
-                [key: string]: unknown;
-            };
-            /**
-             * Expected Etag
-             * @description ETag for optimistic concurrency control with Monaco editor
-             */
-            expected_etag?: string | null;
-        };
-        /**
-         * UpdatePropertiesResponse
-         * @description Response after updating decorator properties.
-         */
-        UpdatePropertiesResponse: {
-            /**
-             * Modified
-             * @description Whether any changes were made
-             */
-            modified: boolean;
-            /**
-             * Changes
-             * @description Human-readable list of changes made
-             */
-            changes: string[];
-            /**
-             * New Etag
-             * @description New ETag after modification
-             */
-            new_etag: string;
-        };
-        /**
-         * UploadLockInfo
-         * @description Information about an active upload lock.
-         */
-        UploadLockInfo: {
-            /**
-             * Locked
-             * @description Whether upload is currently locked
-             */
-            locked: boolean;
-            /**
-             * Owner User Id
-             * @description User ID holding the lock
-             */
-            owner_user_id?: string | null;
-            /**
-             * Owner Email
-             * @description Email of user holding the lock
-             */
-            owner_email?: string | null;
-            /**
-             * Operation
-             * @description Description of the operation
-             */
-            operation?: string | null;
-            /**
-             * Locked At
-             * @description When lock was acquired
-             */
-            locked_at?: string | null;
-            /**
-             * Expires At
-             * @description When lock expires
-             */
-            expires_at?: string | null;
-        };
-        /**
-         * UploadedFileMetadata
-         * @description Metadata for uploaded file that workflows can use to access the file
-         */
-        UploadedFileMetadata: {
-            /**
-             * Name
-             * @description Original file name
-             */
-            name: string;
-            /**
-             * Container
-             * @description Blob storage container name (e.g., 'uploads')
-             */
-            container: string;
-            /**
-             * Path
-             * @description Blob path within container
-             */
-            path: string;
-            /**
-             * Content Type
-             * @description MIME type of the file
-             */
-            content_type: string;
-            /**
-             * Size
-             * @description File size in bytes
-             */
-            size: number;
-        };
-        /**
-         * UserFormsResponse
-         * @description Response model for getting forms accessible to a user
-         */
-        UserFormsResponse: {
-            /** @description User type (PLATFORM or ORG) */
-            user_type: components["schemas"]["UserType"];
-            /**
-             * Has Access To All Forms
-             * @description Whether user has access to all forms
-             */
-            has_access_to_all_forms: boolean;
-            /**
-             * Form Ids
-             * @description List of form IDs user can access (empty if has_access_to_all_forms=true)
-             */
-            form_ids?: string[];
-        };
-        /**
-         * UserPublic
-         * @description User output for API responses (excludes sensitive fields).
-         */
-        UserPublic: {
-            /**
-             * Email
-             * Format: email
-             */
-            email: string;
-            /** Name */
-            name?: string | null;
-            /**
-             * Is Active
-             * @default true
-             */
-            is_active: boolean;
-            /**
-             * Is Superuser
-             * @default false
-             */
-            is_superuser: boolean;
-            /**
-             * Is Verified
-             * @default false
-             */
-            is_verified: boolean;
-            /**
-             * Is Registered
-             * @default true
-             */
-            is_registered: boolean;
-            /**
-             * Mfa Enabled
-             * @default false
-             */
-            mfa_enabled: boolean;
-            /** @default ORG */
-            user_type: components["schemas"]["UserType"];
-            /**
-             * Id
-             * Format: uuid
-             */
-            id: string;
-            /** Organization Id */
-            organization_id: string | null;
-            /** Last Login */
-            last_login: string | null;
-            /** Created At */
-            created_at: string | null;
-            /** Updated At */
-            updated_at: string | null;
-        };
-        /**
-         * UserResponse
-         * @description User response model.
-         */
-        UserResponse: {
-            /** Id */
-            id: string;
-            /** Email */
-            email: string;
-            /** Name */
-            name: string;
-            /** Is Active */
-            is_active: boolean;
-            /** Is Superuser */
-            is_superuser: boolean;
-            /** Is Verified */
-            is_verified: boolean;
-            /** User Type */
-            user_type: string;
-            /** Organization Id */
-            organization_id: string | null;
-            /**
-             * Roles
-             * @default []
-             */
-            roles: string[];
-        };
-        /**
-         * UserRolesResponse
-         * @description Response model for getting roles assigned to a user
-         */
-        UserRolesResponse: {
-            /**
-             * Role Ids
-             * @description List of role IDs assigned to the user
-             */
-            role_ids: string[];
-        };
-        /**
-         * UserType
-         * @description User type - Platform admin, organization user, or system account
-         * @enum {string}
-         */
-        UserType: "PLATFORM" | "ORG" | "SYSTEM";
-        /**
-         * UserUpdate
-         * @description Input for updating a user.
-         */
-        UserUpdate: {
-            /** Email */
-            email?: string | null;
-            /** Name */
-            name?: string | null;
-            /** Password */
-            password?: string | null;
-            /** Is Active */
-            is_active?: boolean | null;
-            /** Is Superuser */
-            is_superuser?: boolean | null;
-            /** Is Verified */
-            is_verified?: boolean | null;
-            /** Mfa Enabled */
-            mfa_enabled?: boolean | null;
-            /** Organization Id */
-            organization_id?: string | null;
-        };
-        /**
-         * ValidateTokenRequest
-         * @description Request to validate GitHub token
-         */
-        ValidateTokenRequest: {
-            /**
-             * Token
-             * @description GitHub personal access token to validate
-             */
-            token: string;
-        };
-        /** ValidationError */
-        ValidationError: {
-            /** Location */
-            loc: (string | number)[];
-            /** Message */
-            msg: string;
-            /** Error Type */
-            type: string;
-        };
-        /**
-         * ValidationIssue
-         * @description A single validation error or warning
-         */
-        ValidationIssue: {
-            /**
-             * Line
-             * @description Line number where issue occurs (if applicable)
-             */
-            line?: number | null;
-            /**
-             * Message
-             * @description Human-readable error or warning message
-             */
-            message: string;
-            /**
-             * Severity
-             * @description Severity level
-             * @enum {string}
-             */
-            severity: "error" | "warning";
-        };
-        /**
-         * WorkflowExecution
-         * @description Workflow execution entity
-         */
-        WorkflowExecution: {
-            /** Execution Id */
-            execution_id: string;
-            /** Workflow Name */
-            workflow_name: string;
-            /** Org Id */
-            org_id?: string | null;
-            /** Form Id */
-            form_id?: string | null;
-            /** Executed By */
-            executed_by: string;
-            /** Executed By Name */
-            executed_by_name: string;
-            status: components["schemas"]["ExecutionStatus"];
-            /** Input Data */
-            input_data: {
-                [key: string]: unknown;
-            };
-            /** Result */
-            result?: {
-                [key: string]: unknown;
-            } | unknown[] | string | null;
-            /** Result Type */
-            result_type?: string | null;
-            /** Error Message */
-            error_message?: string | null;
-            /** Duration Ms */
-            duration_ms?: number | null;
-            /** Started At */
-            started_at?: string | null;
-            /** Completed At */
-            completed_at?: string | null;
-            /** Logs */
-            logs?: {
-                [key: string]: unknown;
-            }[] | null;
-            /** Variables */
-            variables?: {
-                [key: string]: unknown;
-            } | null;
-            /** Session Id */
-            session_id?: string | null;
-            /** Peak Memory Bytes */
-            peak_memory_bytes?: number | null;
-            /** Cpu Total Seconds */
-            cpu_total_seconds?: number | null;
-        };
-        /**
-         * WorkflowExecutionRequest
-         * @description Request model for executing a workflow
-         */
-        WorkflowExecutionRequest: {
-            /**
-             * Workflow Id
-             * @description UUID of the workflow to execute (required if code not provided)
-             */
-            workflow_id?: string | null;
-            /**
-             * Input Data
-             * @description Workflow input parameters
-             */
-            input_data?: {
-                [key: string]: unknown;
-            };
-            /**
-             * Form Id
-             * @description Optional form ID that triggered this execution
-             */
-            form_id?: string | null;
-            /**
-             * Transient
-             * @description If true, skip database persistence (for code editor debugging)
-             * @default false
-             */
-            transient: boolean;
-            /**
-             * Code
-             * @description Optional: Python code to execute as script (base64 encoded). If provided, executes code instead of looking up workflow by ID.
-             */
-            code?: string | null;
-            /**
-             * Script Name
-             * @description Optional: Name/identifier for the script (used for logging when code is provided)
-             */
-            script_name?: string | null;
-        };
-        /**
-         * WorkflowExecutionResponse
-         * @description Response model for workflow execution
-         */
-        WorkflowExecutionResponse: {
-            /** Execution Id */
-            execution_id: string;
-            /** Workflow Id */
-            workflow_id?: string | null;
-            /** Workflow Name */
-            workflow_name?: string | null;
-            status: components["schemas"]["ExecutionStatus"];
-            /** Result */
-            result?: {
-                [key: string]: unknown;
-            } | unknown[] | string | null;
-            /** Error */
-            error?: string | null;
-            /** Error Type */
-            error_type?: string | null;
-            /** Details */
-            details?: {
-                [key: string]: unknown;
-            } | null;
-            /** Duration Ms */
-            duration_ms?: number | null;
-            /** Started At */
-            started_at?: string | null;
-            /** Completed At */
-            completed_at?: string | null;
-            /** Logs */
-            logs?: {
-                [key: string]: unknown;
-            }[] | null;
-            /** Variables */
-            variables?: {
-                [key: string]: unknown;
-            } | null;
-            /**
-             * Is Transient
-             * @default false
-             */
-            is_transient: boolean;
-        };
-        /**
-         * WorkflowKeyCreateRequest
-         * @description Request model for creating a workflow API key
-         */
-        WorkflowKeyCreateRequest: {
-            /**
-             * Workflow Name
-             * @description Workflow-specific key, or None for global
-             */
-            workflow_name?: string | null;
-            /**
-             * Expires In Days
-             * @description Days until key expires (default: no expiration)
-             */
-            expires_in_days?: number | null;
-            /**
-             * Description
-             * @description Optional key description
-             */
-            description?: string | null;
-            /**
-             * Disable Global Key
-             * @description If true, workflow opts out of global API keys
-             * @default false
-             */
-            disable_global_key: boolean;
-        };
-        /**
-         * WorkflowKeyCreatedResponse
-         * @description Response when creating a key - includes the raw key (shown only once).
-         */
-        WorkflowKeyCreatedResponse: {
-            /** Id */
-            id: string;
-            /**
-             * Raw Key
-             * @default
-             */
-            raw_key: string;
-            /**
-             * Masked Key
-             * @description Last 4 characters for display
-             */
-            masked_key?: string | null;
-            /** Workflow Name */
-            workflow_name?: string | null;
-            /** Created By */
-            created_by: string;
-            /**
-             * Created At
-             * Format: date-time
-             */
-            created_at: string;
-            /** Last Used At */
-            last_used_at?: string | null;
-            /** Revoked */
-            revoked: boolean;
-            /** Expires At */
-            expires_at?: string | null;
-            /** Description */
-            description?: string | null;
-            /**
-             * Disable Global Key
-             * @description If true, workflow opts out of global API keys
-             * @default false
-             */
-            disable_global_key: boolean;
-        };
-        /**
-         * WorkflowKeyResponse
-         * @description Response model for workflow key (includes raw key on creation only)
-         */
-        WorkflowKeyResponse: {
-            /** Id */
-            id: string;
-            /**
-             * Raw Key
-             * @description Raw API key (only returned on creation)
-             */
-            raw_key?: string | null;
-            /**
-             * Masked Key
-             * @description Last 4 characters for display
-             */
-            masked_key?: string | null;
-            /** Workflow Name */
-            workflow_name?: string | null;
-            /** Created By */
-            created_by: string;
-            /**
-             * Created At
-             * Format: date-time
-             */
-            created_at: string;
-            /** Last Used At */
-            last_used_at?: string | null;
-            /** Revoked */
-            revoked: boolean;
-            /** Expires At */
-            expires_at?: string | null;
-            /** Description */
-            description?: string | null;
-            /**
-             * Disable Global Key
-             * @description If true, workflow opts out of global API keys
-             * @default false
-             */
-            disable_global_key: boolean;
-        };
-        /**
-         * WorkflowMetadata
-         * @description Workflow metadata for discovery API
-         */
-        WorkflowMetadata: {
-            /**
-             * Id
-             * @description Workflow UUID
-             */
-            id: string;
-            /**
-             * Name
-             * @description Workflow name (snake_case)
-             */
-            name: string;
-            /**
-             * Description
-             * @description Human-readable description
-             */
-            description?: string | null;
-            /**
-             * Category
-             * @description Category for organization
-             * @default General
-             */
-            category: string;
-            /**
-             * Tags
-             * @description Tags for categorization and search
-             */
-            tags?: string[];
-            /**
-             * Parameters
-             * @description Workflow parameters
-             */
-            parameters?: components["schemas"]["WorkflowParameter"][];
-            /**
-             * Execution Mode
-             * @description Execution mode
-             * @default sync
-             * @enum {string}
-             */
-            execution_mode: "sync" | "async";
-            /**
-             * Timeout Seconds
-             * @description Max execution time in seconds (default 30 min, max 2 hours)
-             * @default 1800
-             */
-            timeout_seconds: number;
-            /** @description Retry configuration */
-            retry_policy?: components["schemas"]["RetryPolicy"] | null;
-            /**
-             * Schedule
-             * @description Cron expression for scheduled execution
-             */
-            schedule?: string | null;
-            /**
-             * Endpoint Enabled
-             * @description Whether workflow is exposed as HTTP endpoint
-             * @default false
-             */
-            endpoint_enabled: boolean;
-            /**
-             * Allowed Methods
-             * @description Allowed HTTP methods
-             */
-            allowed_methods?: string[];
-            /**
-             * Disable Global Key
-             * @description If true, only workflow-specific API keys work
-             * @default false
-             */
-            disable_global_key: boolean;
-            /**
-             * Public Endpoint
-             * @description If true, skip authentication for webhooks
-             * @default false
-             */
-            public_endpoint: boolean;
-            /**
-             * Is Tool
-             * @description Whether workflow is available as an AI tool
-             * @default false
-             */
-            is_tool: boolean;
-            /**
-             * Tool Description
-             * @description Description optimized for AI tool selection
-             */
-            tool_description?: string | null;
-            /**
-             * Source File Path
-             * @description Full file path to the workflow source code
-             */
-            source_file_path?: string | null;
-            /**
-             * Relative File Path
-             * @description Workspace-relative file path with /workspace/ prefix (e.g., '/workspace/workflows/my_workflow.py')
-             */
-            relative_file_path?: string | null;
-        };
-        /**
-         * WorkflowMetricsResponse
-         * @description Response for workflow metrics aggregations.
-         */
-        WorkflowMetricsResponse: {
-            /** Workflows */
-            workflows: components["schemas"]["WorkflowMetricsSummary"][];
-            /** Total Workflows */
-            total_workflows: number;
-            /** Sort By */
-            sort_by: string;
-            /** Days */
-            days: number;
-        };
-        /**
-         * WorkflowMetricsSummary
-         * @description Aggregated metrics for a single workflow.
-         */
-        WorkflowMetricsSummary: {
-            /** Workflow Name */
-            workflow_name: string;
-            /** Total Executions */
-            total_executions: number;
-            /** Success Count */
-            success_count: number;
-            /** Failed Count */
-            failed_count: number;
-            /** Success Rate */
-            success_rate: number;
-            /** Avg Memory Bytes */
-            avg_memory_bytes: number;
-            /** Avg Duration Ms */
-            avg_duration_ms: number;
-            /** Avg Cpu Seconds */
-            avg_cpu_seconds: number;
-            /** Peak Memory Bytes */
-            peak_memory_bytes: number;
-            /** Max Duration Ms */
-            max_duration_ms: number;
-        };
-        /**
-         * WorkflowParameter
-         * @description Workflow parameter metadata - derived from function signature.
-         *
-         *     Note: Form-specific fields like data_provider, help_text, validation
-         *     belong on FormField, not here. Workflow parameters come from Python
-         *     function signatures and don't have form-specific metadata.
-         */
-        WorkflowParameter: {
-            /** Name */
-            name: string;
-            /** Type */
-            type: string;
-            /** Required */
-            required: boolean;
-            /** Label */
-            label?: string | null;
-            /** Default Value */
-            default_value?: unknown | null;
-            /** Description */
-            description?: string | null;
-            /** Options */
-            options?: {
-                [key: string]: string;
-            }[] | null;
-        };
-        /**
-         * WorkflowValidationRequest
-         * @description Request model for workflow validation endpoint
-         */
-        WorkflowValidationRequest: {
-            /**
-             * Path
-             * @description Relative workspace path to the workflow file
-             */
-            path: string;
-            /**
-             * Content
-             * @description File content to validate (if not provided, reads from disk)
-             */
-            content?: string | null;
-        };
-        /**
-         * WorkflowValidationResponse
-         * @description Response model for workflow validation endpoint
-         */
-        WorkflowValidationResponse: {
-            /**
-             * Valid
-             * @description True if workflow is valid and will be discovered
-             */
-            valid: boolean;
-            /**
-             * Issues
-             * @description List of errors and warnings
-             */
-            issues?: components["schemas"]["ValidationIssue"][];
-            /** @description Workflow metadata if valid */
-            metadata?: components["schemas"]["WorkflowMetadata"] | null;
-        };
-        /**
-         * WorkspaceAnalysisResponse
-         * @description Response with workspace analysis - simplified for replace-only strategy
-         */
-        WorkspaceAnalysisResponse: {
-            /**
-             * Workspace Status
-             * @description Current state of the workspace directory
-             * @enum {string}
-             */
-            workspace_status: "empty" | "has_files_no_git" | "is_git_repo" | "is_different_git_repo";
-            /**
-             * File Count
-             * @description Number of files in workspace (excluding .git)
-             */
-            file_count: number;
-            /**
-             * Existing Remote
-             * @description URL of existing Git remote (if any)
-             */
-            existing_remote?: string | null;
-            /**
-             * Requires Confirmation
-             * @description Whether user needs to confirm replacing workspace
-             */
-            requires_confirmation: boolean;
-            /**
-             * Backup Will Be Created
-             * @description Indicates a backup will be created before replacing
-             * @default true
-             */
-            backup_will_be_created: boolean;
-        };
-        /**
-         * OAuthProviderInfo
-         * @description OAuth provider information for login page
-         */
-        src__models__contracts__auth__OAuthProviderInfo: {
-            /** Name */
-            name: string;
-            /** Display Name */
-            display_name: string;
-            /** Icon */
-            icon?: string | null;
-        };
-        /**
-         * OAuthCallbackRequest
-         * @description Request model for OAuth callback endpoint
-         */
-        src__models__contracts__oauth__OAuthCallbackRequest: {
-            /**
-             * Code
-             * @description Authorization code from OAuth provider
-             */
-            code: string;
-            /**
-             * State
-             * @description State parameter for CSRF protection
-             */
-            state?: string | null;
-            /**
-             * Redirect Uri
-             * @description Redirect URI used in authorization request
-             */
-            redirect_uri?: string | null;
-        };
-        /**
-         * UserCreate
-         * @description Input for creating a user.
-         */
-        src__models__contracts__users__UserCreate: {
-            /**
-             * Email
-             * Format: email
-             */
-            email: string;
-            /** Name */
-            name?: string | null;
-            /** Password */
-            password?: string | null;
-            /**
-             * Is Active
-             * @default true
-             */
-            is_active: boolean;
-            /**
-             * Is Superuser
-             * @default false
-             */
-            is_superuser: boolean;
-            /** @default ORG */
-            user_type: components["schemas"]["UserType"];
-            /** Organization Id */
-            organization_id?: string | null;
-        };
-        /**
-         * MFAVerifyRequest
-         * @description Request to verify MFA code during login.
-         */
-        src__routers__auth__MFAVerifyRequest: {
-            /** Mfa Token */
-            mfa_token: string;
-            /** Code */
-            code: string;
-            /**
-             * Trust Device
-             * @default false
-             */
-            trust_device: boolean;
-            /** Device Name */
-            device_name?: string | null;
-        };
-        /**
-         * UserCreate
-         * @description User creation request model.
-         */
-        src__routers__auth__UserCreate: {
-            /**
-             * Email
-             * Format: email
-             */
-            email: string;
-            /** Password */
-            password: string;
-            /** Name */
-            name?: string | null;
-        };
-        /**
-         * MFASetupResponse
-         * @description MFA setup response with secret.
-         */
-        src__routers__mfa__MFASetupResponse: {
-            /** Secret */
-            secret: string;
-            /** Qr Code Uri */
-            qr_code_uri: string;
-            /** Provisioning Uri */
-            provisioning_uri: string;
-            /** Issuer */
-            issuer: string;
-            /** Account Name */
-            account_name: string;
-        };
-        /**
-         * MFAVerifyRequest
-         * @description Request to verify MFA code.
-         */
-        src__routers__mfa__MFAVerifyRequest: {
-            /** Code */
-            code: string;
-        };
-        /**
-         * OAuthCallbackRequest
-         * @description OAuth callback request (for when frontend handles callback).
-         */
-        src__routers__oauth_sso__OAuthCallbackRequest: {
-            /** Provider */
-            provider: string;
-            /** Code */
-            code: string;
-            /** State */
-            state: string;
-        };
-        /**
-         * OAuthProviderInfo
-         * @description OAuth provider information.
-         */
-        src__routers__oauth_sso__OAuthProviderInfo: {
-            /** Name */
-            name: string;
-            /** Display Name */
-            display_name: string;
-            /** Icon */
-            icon?: string | null;
-        };
-    };
-    responses: never;
-    parameters: never;
-    requestBodies: never;
-    headers: never;
-    pathItems: never;
+	schemas: {
+		/**
+		 * AdminRevokeRequest
+		 * @description Admin revocation request.
+		 */
+		AdminRevokeRequest: {
+			/** User Id */
+			user_id: string;
+		};
+		/**
+		 * AgentAccessLevel
+		 * @description Agent access control levels
+		 * @enum {string}
+		 */
+		AgentAccessLevel: "public" | "authenticated" | "role_based";
+		/**
+		 * AgentChannel
+		 * @description Supported agent communication channels
+		 * @enum {string}
+		 */
+		AgentChannel: "chat" | "voice" | "teams" | "slack";
+		/**
+		 * AgentCreate
+		 * @description Request model for creating an agent.
+		 */
+		AgentCreate: {
+			/** Name */
+			name: string;
+			/** Description */
+			description?: string | null;
+			/** System Prompt */
+			system_prompt: string;
+			/** Channels */
+			channels?: components["schemas"]["AgentChannel"][];
+			/** @default role_based */
+			access_level: components["schemas"]["AgentAccessLevel"];
+			/**
+			 * Tool Ids
+			 * @description List of workflow IDs to use as tools
+			 */
+			tool_ids?: string[];
+			/**
+			 * Delegated Agent Ids
+			 * @description List of agent IDs this agent can delegate to
+			 */
+			delegated_agent_ids?: string[];
+			/**
+			 * Role Ids
+			 * @description List of role IDs that can access this agent (for role_based access)
+			 */
+			role_ids?: string[];
+		};
+		/**
+		 * AgentPublic
+		 * @description Agent output for API responses.
+		 */
+		AgentPublic: {
+			/** Id */
+			id: string | null;
+			/** Name */
+			name: string;
+			/** Description */
+			description?: string | null;
+			/** System Prompt */
+			system_prompt: string;
+			/** Channels */
+			channels: string[];
+			access_level: components["schemas"]["AgentAccessLevel"];
+			/** Organization Id */
+			organization_id?: string | null;
+			/** Is Active */
+			is_active: boolean;
+			/** File Path */
+			file_path?: string | null;
+			/** Created By */
+			created_by: string;
+			/** Created At */
+			created_at: string;
+			/** Updated At */
+			updated_at: string;
+			/** Tool Ids */
+			tool_ids?: string[];
+			/** Delegated Agent Ids */
+			delegated_agent_ids?: string[];
+			/** Role Ids */
+			role_ids?: string[];
+		};
+		/**
+		 * AgentSummary
+		 * @description Lightweight agent summary for listings.
+		 */
+		AgentSummary: {
+			/** Id */
+			id: string;
+			/** Name */
+			name: string;
+			/** Description */
+			description?: string | null;
+			/** Channels */
+			channels: string[];
+			/** Is Active */
+			is_active: boolean;
+		};
+		/**
+		 * AgentUpdate
+		 * @description Request model for updating an agent.
+		 */
+		AgentUpdate: {
+			/** Name */
+			name?: string | null;
+			/** Description */
+			description?: string | null;
+			/** System Prompt */
+			system_prompt?: string | null;
+			/** Channels */
+			channels?: components["schemas"]["AgentChannel"][] | null;
+			access_level?: components["schemas"]["AgentAccessLevel"] | null;
+			/** Is Active */
+			is_active?: boolean | null;
+			/**
+			 * Tool Ids
+			 * @description List of workflow IDs to use as tools
+			 */
+			tool_ids?: string[] | null;
+			/**
+			 * Delegated Agent Ids
+			 * @description List of agent IDs this agent can delegate to
+			 */
+			delegated_agent_ids?: string[] | null;
+			/**
+			 * Role Ids
+			 * @description List of role IDs that can access this agent (for role_based access)
+			 */
+			role_ids?: string[] | null;
+		};
+		/**
+		 * ApiKeyCreate
+		 * @description Create a new API key.
+		 */
+		ApiKeyCreate: {
+			/**
+			 * Name
+			 * @description Key name/description
+			 */
+			name: string;
+			/**
+			 * Expires In Days
+			 * @description Days until expiration
+			 */
+			expires_in_days?: number | null;
+		};
+		/**
+		 * ApiKeyCreated
+		 * @description Response when creating a new API key (includes the actual key).
+		 */
+		ApiKeyCreated: {
+			/**
+			 * Id
+			 * Format: uuid
+			 */
+			id: string;
+			/** Name */
+			name: string;
+			/** Key Prefix */
+			key_prefix: string;
+			/** Is Active */
+			is_active: boolean;
+			/** Expires At */
+			expires_at: string | null;
+			/** Last Used At */
+			last_used_at: string | null;
+			/** Use Count */
+			use_count: number;
+			/**
+			 * Created At
+			 * Format: date-time
+			 */
+			created_at: string;
+			/**
+			 * Key
+			 * @description The API key (only shown once)
+			 */
+			key: string;
+		};
+		/**
+		 * ApiKeyList
+		 * @description List of API keys.
+		 */
+		ApiKeyList: {
+			/** Keys */
+			keys: components["schemas"]["ApiKeyResponse"][];
+		};
+		/**
+		 * ApiKeyResponse
+		 * @description API key response (without the actual key).
+		 */
+		ApiKeyResponse: {
+			/**
+			 * Id
+			 * Format: uuid
+			 */
+			id: string;
+			/** Name */
+			name: string;
+			/** Key Prefix */
+			key_prefix: string;
+			/** Is Active */
+			is_active: boolean;
+			/** Expires At */
+			expires_at: string | null;
+			/** Last Used At */
+			last_used_at: string | null;
+			/** Use Count */
+			use_count: number;
+			/**
+			 * Created At
+			 * Format: date-time
+			 */
+			created_at: string;
+		};
+		/**
+		 * AssignAgentsToRoleRequest
+		 * @description Request for assigning agents to a role.
+		 */
+		AssignAgentsToRoleRequest: {
+			/** Agent Ids */
+			agent_ids: string[];
+		};
+		/**
+		 * AssignDelegationsToAgentRequest
+		 * @description Request for assigning delegation targets to an agent.
+		 */
+		AssignDelegationsToAgentRequest: {
+			/** Agent Ids */
+			agent_ids: string[];
+		};
+		/**
+		 * AssignFormsToRoleRequest
+		 * @description Request model for assigning forms to a role
+		 */
+		AssignFormsToRoleRequest: {
+			/**
+			 * Form Ids
+			 * @description List of form IDs to assign
+			 */
+			form_ids: string[];
+		};
+		/**
+		 * AssignToolsToAgentRequest
+		 * @description Request for assigning tools (workflows) to an agent.
+		 */
+		AssignToolsToAgentRequest: {
+			/** Workflow Ids */
+			workflow_ids: string[];
+		};
+		/**
+		 * AssignUsersToRoleRequest
+		 * @description Request model for assigning users to a role
+		 */
+		AssignUsersToRoleRequest: {
+			/**
+			 * User Ids
+			 * @description List of user IDs to assign
+			 */
+			user_ids: string[];
+		};
+		/**
+		 * AuthStatusResponse
+		 * @description Pre-login status response.
+		 *
+		 *     Provides all information the client needs to render the login page:
+		 *     - Whether initial setup is required (no users exist)
+		 *     - Whether password login is available
+		 *     - Whether MFA is required for password login
+		 *     - Available OAuth/SSO providers
+		 */
+		AuthStatusResponse: {
+			/** Needs Setup */
+			needs_setup: boolean;
+			/** Password Login Enabled */
+			password_login_enabled: boolean;
+			/** Mfa Required For Password */
+			mfa_required_for_password: boolean;
+			/** Oauth Providers */
+			oauth_providers: components["schemas"]["src__models__contracts__auth__OAuthProviderInfo"][];
+		};
+		/**
+		 * AuthorizeResponse
+		 * @description Response for initiating OAuth authorization.
+		 */
+		AuthorizeResponse: {
+			/**
+			 * Authorization Url
+			 * @description URL to redirect user for authorization
+			 */
+			authorization_url: string;
+			/**
+			 * State
+			 * @description State parameter for CSRF protection
+			 */
+			state: string;
+			/**
+			 * Message
+			 * @default Redirect user to authorization_url
+			 */
+			message: string;
+		};
+		/** Body_login_auth_login_post */
+		Body_login_auth_login_post: {
+			/** Grant Type */
+			grant_type?: string | null;
+			/** Username */
+			username: string;
+			/**
+			 * Password
+			 * Format: password
+			 */
+			password: string;
+			/**
+			 * Scope
+			 * @default
+			 */
+			scope: string;
+			/** Client Id */
+			client_id?: string | null;
+			/**
+			 * Client Secret
+			 * Format: password
+			 */
+			client_secret?: string | null;
+		};
+		/** Body_upload_avatar_api_profile_avatar_post */
+		Body_upload_avatar_api_profile_avatar_post: {
+			/**
+			 * File
+			 * Format: binary
+			 */
+			file: string;
+		};
+		/** Body_upload_logo_api_branding_logo__logo_type__post */
+		Body_upload_logo_api_branding_logo__logo_type__post: {
+			/**
+			 * File
+			 * Format: binary
+			 * @description Logo image file
+			 */
+			file: string;
+		};
+		/**
+		 * BrandingSettings
+		 * @description Global platform branding configuration
+		 */
+		BrandingSettings: {
+			/**
+			 * Square Logo Url
+			 * @description Square logo URL (for icons, 1:1 ratio)
+			 */
+			square_logo_url?: string | null;
+			/**
+			 * Rectangle Logo Url
+			 * @description Rectangle logo URL (for headers, 16:9 ratio)
+			 */
+			rectangle_logo_url?: string | null;
+			/**
+			 * Primary Color
+			 * @description Primary brand color (hex format, e.g., #FF5733)
+			 */
+			primary_color?: string | null;
+		};
+		/**
+		 * BrandingUpdateRequest
+		 * @description Request model for updating primary color only - logos use POST /logo/{type}
+		 */
+		BrandingUpdateRequest: {
+			/**
+			 * Primary Color
+			 * @description Primary color (hex code, e.g., #0066CC)
+			 */
+			primary_color?: string | null;
+		};
+		/**
+		 * CLIConfigDeleteRequest
+		 * @description Request to delete a config value via CLI.
+		 */
+		CLIConfigDeleteRequest: {
+			/**
+			 * Key
+			 * @description Configuration key
+			 */
+			key: string;
+			/**
+			 * Org Id
+			 * @description Organization ID (optional, uses context default)
+			 */
+			org_id?: string | null;
+		};
+		/**
+		 * CLIConfigGetRequest
+		 * @description Request to get a config value via CLI.
+		 */
+		CLIConfigGetRequest: {
+			/**
+			 * Key
+			 * @description Configuration key
+			 */
+			key: string;
+			/**
+			 * Org Id
+			 * @description Organization ID (optional, uses context default)
+			 */
+			org_id?: string | null;
+		};
+		/**
+		 * CLIConfigListRequest
+		 * @description Request to list config values via CLI.
+		 */
+		CLIConfigListRequest: {
+			/**
+			 * Org Id
+			 * @description Organization ID (optional, uses context default)
+			 */
+			org_id?: string | null;
+		};
+		/**
+		 * CLIConfigSetRequest
+		 * @description Request to set a config value via CLI.
+		 */
+		CLIConfigSetRequest: {
+			/**
+			 * Key
+			 * @description Configuration key
+			 */
+			key: string;
+			/**
+			 * Value
+			 * @description Configuration value
+			 */
+			value: unknown;
+			/**
+			 * Org Id
+			 * @description Organization ID (optional, uses context default)
+			 */
+			org_id?: string | null;
+			/**
+			 * Is Secret
+			 * @description Whether to encrypt the value
+			 * @default false
+			 */
+			is_secret: boolean;
+		};
+		/**
+		 * CLIConfigValue
+		 * @description Config value response from CLI.
+		 */
+		CLIConfigValue: {
+			/**
+			 * Key
+			 * @description Configuration key
+			 */
+			key: string;
+			/**
+			 * Value
+			 * @description Configuration value
+			 */
+			value: unknown;
+			/**
+			 * Config Type
+			 * @description Type of the config (string, int, bool, json, secret)
+			 */
+			config_type: string;
+		};
+		/**
+		 * CLIFileDeleteRequest
+		 * @description Request to delete a file or directory via CLI.
+		 */
+		CLIFileDeleteRequest: {
+			/**
+			 * Path
+			 * @description Path to file or directory
+			 */
+			path: string;
+			/**
+			 * Location
+			 * @description Storage location
+			 * @default workspace
+			 * @enum {string}
+			 */
+			location: "temp" | "workspace";
+		};
+		/**
+		 * CLIFileListRequest
+		 * @description Request to list files in a directory via CLI.
+		 */
+		CLIFileListRequest: {
+			/**
+			 * Directory
+			 * @description Directory path (relative)
+			 * @default
+			 */
+			directory: string;
+			/**
+			 * Location
+			 * @description Storage location
+			 * @default workspace
+			 * @enum {string}
+			 */
+			location: "temp" | "workspace";
+		};
+		/**
+		 * CLIFileReadRequest
+		 * @description Request to read a file via CLI.
+		 */
+		CLIFileReadRequest: {
+			/**
+			 * Path
+			 * @description Relative path to file
+			 */
+			path: string;
+			/**
+			 * Location
+			 * @description Storage location
+			 * @default workspace
+			 * @enum {string}
+			 */
+			location: "temp" | "workspace";
+		};
+		/**
+		 * CLIFileWriteRequest
+		 * @description Request to write a file via CLI.
+		 */
+		CLIFileWriteRequest: {
+			/**
+			 * Path
+			 * @description Relative path to file
+			 */
+			path: string;
+			/**
+			 * Content
+			 * @description File content (text)
+			 */
+			content: string;
+			/**
+			 * Location
+			 * @description Storage location
+			 * @default workspace
+			 * @enum {string}
+			 */
+			location: "temp" | "workspace";
+		};
+		/**
+		 * CLIOAuthGetRequest
+		 * @description Request to get OAuth connection data via CLI.
+		 */
+		CLIOAuthGetRequest: {
+			/**
+			 * Provider
+			 * @description OAuth provider/connection name
+			 */
+			provider: string;
+			/**
+			 * Org Id
+			 * @description Organization ID (optional, uses context default)
+			 */
+			org_id?: string | null;
+		};
+		/**
+		 * CLIOAuthGetResponse
+		 * @description OAuth connection data response from CLI.
+		 */
+		CLIOAuthGetResponse: {
+			/**
+			 * Connection Name
+			 * @description Connection/provider name
+			 */
+			connection_name: string;
+			/**
+			 * Client Id
+			 * @description OAuth client ID
+			 */
+			client_id: string;
+			/**
+			 * Client Secret
+			 * @description OAuth client secret (decrypted)
+			 */
+			client_secret?: string | null;
+			/**
+			 * Authorization Url
+			 * @description OAuth authorization URL
+			 */
+			authorization_url?: string | null;
+			/**
+			 * Token Url
+			 * @description OAuth token URL
+			 */
+			token_url?: string | null;
+			/**
+			 * Scopes
+			 * @description OAuth scopes
+			 */
+			scopes?: string[];
+			/**
+			 * Access Token
+			 * @description Current access token (decrypted)
+			 */
+			access_token?: string | null;
+			/**
+			 * Refresh Token
+			 * @description Refresh token (decrypted)
+			 */
+			refresh_token?: string | null;
+			/**
+			 * Expires At
+			 * @description Token expiration (ISO format)
+			 */
+			expires_at?: string | null;
+		};
+		/**
+		 * CLIRegisteredWorkflow
+		 * @description Workflow registered by CLI.
+		 */
+		CLIRegisteredWorkflow: {
+			/** Name */
+			name: string;
+			/** Description */
+			description: string;
+			/** Parameters */
+			parameters: components["schemas"]["WorkflowParameter"][];
+		};
+		/**
+		 * CLISessionContinueRequest
+		 * @description Request to continue workflow execution.
+		 */
+		CLISessionContinueRequest: {
+			/** Workflow Name */
+			workflow_name: string;
+			/** Params */
+			params: {
+				[key: string]: unknown;
+			};
+		};
+		/**
+		 * CLISessionContinueResponse
+		 * @description Response when continuing workflow execution.
+		 */
+		CLISessionContinueResponse: {
+			/** Status */
+			status: string;
+			/** Execution Id */
+			execution_id: string;
+			/** Workflow */
+			workflow: string;
+		};
+		/**
+		 * CLISessionExecutionSummary
+		 * @description Summary of an execution within a session.
+		 */
+		CLISessionExecutionSummary: {
+			/** Id */
+			id: string;
+			/** Workflow Name */
+			workflow_name: string;
+			/** Status */
+			status: string;
+			/**
+			 * Created At
+			 * Format: date-time
+			 */
+			created_at: string;
+			/** Duration Ms */
+			duration_ms?: number | null;
+		};
+		/**
+		 * CLISessionListResponse
+		 * @description Response for listing CLI sessions.
+		 */
+		CLISessionListResponse: {
+			/** Sessions */
+			sessions: components["schemas"]["CLISessionResponse"][];
+		};
+		/**
+		 * CLISessionLogRequest
+		 * @description Log entry from CLI.
+		 */
+		CLISessionLogRequest: {
+			/**
+			 * Level
+			 * @description Log level: DEBUG, INFO, WARNING, ERROR
+			 */
+			level: string;
+			/**
+			 * Message
+			 * @description Log message
+			 */
+			message: string;
+			/**
+			 * Timestamp
+			 * @description ISO timestamp
+			 */
+			timestamp?: string | null;
+			/**
+			 * Metadata
+			 * @description Additional metadata
+			 */
+			metadata?: {
+				[key: string]: unknown;
+			} | null;
+		};
+		/**
+		 * CLISessionPendingResponse
+		 * @description Response for CLI polling (when execution is pending).
+		 */
+		CLISessionPendingResponse: {
+			/** Execution Id */
+			execution_id: string;
+			/** Workflow Name */
+			workflow_name: string;
+			/** Params */
+			params: {
+				[key: string]: unknown;
+			};
+		};
+		/**
+		 * CLISessionRegisterRequest
+		 * @description Request to register/create a CLI session.
+		 */
+		CLISessionRegisterRequest: {
+			/**
+			 * Session Id
+			 * @description UUID generated by CLI
+			 */
+			session_id: string;
+			/**
+			 * File Path
+			 * @description Absolute path to workflow file
+			 */
+			file_path: string;
+			/** Workflows */
+			workflows: components["schemas"]["CLIRegisteredWorkflow"][];
+			/**
+			 * Selected Workflow
+			 * @description Pre-selected workflow name
+			 */
+			selected_workflow?: string | null;
+		};
+		/**
+		 * CLISessionResponse
+		 * @description Response for a CLI session.
+		 */
+		CLISessionResponse: {
+			/** Id */
+			id: string;
+			/** User Id */
+			user_id: string;
+			/** File Path */
+			file_path: string;
+			/** Workflows */
+			workflows: components["schemas"]["CLIRegisteredWorkflow"][];
+			/** Selected Workflow */
+			selected_workflow?: string | null;
+			/** Params */
+			params?: {
+				[key: string]: unknown;
+			} | null;
+			/**
+			 * Pending
+			 * @default false
+			 */
+			pending: boolean;
+			/** Last Seen */
+			last_seen?: string | null;
+			/**
+			 * Created At
+			 * Format: date-time
+			 */
+			created_at: string;
+			/**
+			 * Is Connected
+			 * @description True if CLI is actively connected (last_seen within 10s)
+			 */
+			is_connected: boolean;
+			/** Executions */
+			executions?: components["schemas"]["CLISessionExecutionSummary"][];
+		};
+		/**
+		 * CLISessionResultRequest
+		 * @description Result from CLI execution.
+		 */
+		CLISessionResultRequest: {
+			/**
+			 * Status
+			 * @description Success or Failed
+			 */
+			status: string;
+			/**
+			 * Result
+			 * @description Return value from workflow
+			 */
+			result?: unknown | null;
+			/**
+			 * Error Message
+			 * @description Error message if failed
+			 */
+			error_message?: string | null;
+			/**
+			 * Duration Ms
+			 * @description Execution duration in ms
+			 */
+			duration_ms?: number | null;
+			/**
+			 * Logs
+			 * @description All logs from execution (sent together to avoid race conditions)
+			 */
+			logs?: components["schemas"]["CLISessionLogRequest"][];
+		};
+		/**
+		 * ChatRequest
+		 * @description Request for sending a chat message.
+		 */
+		ChatRequest: {
+			/** Message */
+			message: string;
+			/**
+			 * Stream
+			 * @description Whether to stream the response
+			 * @default true
+			 */
+			stream: boolean;
+		};
+		/**
+		 * ChatResponse
+		 * @description Response from chat completion (non-streaming).
+		 */
+		ChatResponse: {
+			/** Message Id */
+			message_id: string;
+			/** Content */
+			content: string;
+			/** Tool Calls */
+			tool_calls?: components["schemas"]["ToolCall"][] | null;
+			/** Token Count Input */
+			token_count_input?: number | null;
+			/** Token Count Output */
+			token_count_output?: number | null;
+			/** Duration Ms */
+			duration_ms?: number | null;
+		};
+		/**
+		 * CleanupTriggeredResponse
+		 * @description Response model for cleanup trigger operation
+		 */
+		CleanupTriggeredResponse: {
+			/**
+			 * Cleaned
+			 * @description Total number of executions cleaned up
+			 */
+			cleaned: number;
+			/**
+			 * Pending
+			 * @description Number of pending executions timed out
+			 */
+			pending: number;
+			/**
+			 * Running
+			 * @description Number of running executions timed out
+			 */
+			running: number;
+			/**
+			 * Failed
+			 * @description Number of executions that failed to clean up
+			 */
+			failed: number;
+		};
+		/**
+		 * CommitHistoryResponse
+		 * @description Response with commit history and pagination
+		 */
+		CommitHistoryResponse: {
+			/**
+			 * Commits
+			 * @description List of commits (newest first)
+			 */
+			commits?: components["schemas"]["CommitInfo"][];
+			/**
+			 * Total Commits
+			 * @description Total number of commits in the entire history
+			 */
+			total_commits: number;
+			/**
+			 * Has More
+			 * @description Whether there are more commits to load
+			 */
+			has_more: boolean;
+		};
+		/**
+		 * CommitInfo
+		 * @description Information about a single commit
+		 */
+		CommitInfo: {
+			/**
+			 * Sha
+			 * @description Commit SHA
+			 */
+			sha: string;
+			/**
+			 * Message
+			 * @description Commit message
+			 */
+			message: string;
+			/**
+			 * Author
+			 * @description Commit author
+			 */
+			author: string;
+			/**
+			 * Timestamp
+			 * @description ISO 8601 timestamp
+			 */
+			timestamp: string;
+			/**
+			 * Is Pushed
+			 * @description Whether commit is pushed to remote
+			 */
+			is_pushed: boolean;
+		};
+		/**
+		 * ConfigResponse
+		 * @description Configuration entity response (global or org-specific)
+		 */
+		ConfigResponse: {
+			/** Key */
+			key: string;
+			/**
+			 * Value
+			 * @description Config value. For SECRET type, this will be '[SECRET]' in list responses.
+			 */
+			value: unknown;
+			/** @default string */
+			type: components["schemas"]["ConfigType"];
+			/**
+			 * Scope
+			 * @description GLOBAL for MSP-wide or 'org' for org-specific
+			 * @default org
+			 * @enum {string}
+			 */
+			scope: "GLOBAL" | "org";
+			/**
+			 * Org Id
+			 * @description Organization ID (only for org-specific config)
+			 */
+			org_id?: string | null;
+			/** Description */
+			description?: string | null;
+			/** Updated At */
+			updated_at?: string | null;
+			/** Updated By */
+			updated_by?: string | null;
+		};
+		/**
+		 * ConfigSchemaItem
+		 * @description Metadata for a single configuration item.
+		 *     Defines what configuration keys are available for an integration.
+		 *
+		 *     Note: Default values are stored in the configs table, not in the schema.
+		 *     Use the integration config endpoint to set defaults.
+		 */
+		ConfigSchemaItem: {
+			/**
+			 * Key
+			 * @description Configuration key (alphanumeric, underscores)
+			 */
+			key: string;
+			/**
+			 * Type
+			 * @description Configuration value type
+			 * @enum {string}
+			 */
+			type: "string" | "int" | "bool" | "json" | "secret";
+			/**
+			 * Required
+			 * @description Whether this configuration is required
+			 * @default false
+			 */
+			required: boolean;
+			/**
+			 * Description
+			 * @description Human-readable description of this config item
+			 */
+			description?: string | null;
+			/**
+			 * Options
+			 * @description List of valid string options for dropdown UI
+			 */
+			options?: string[] | null;
+		};
+		/**
+		 * ConfigType
+		 * @description Configuration value types
+		 * @enum {string}
+		 */
+		ConfigType: "string" | "int" | "bool" | "json" | "secret";
+		/**
+		 * ConflictInfo
+		 * @description Information about conflicts in a file (no markers written to disk)
+		 */
+		ConflictInfo: {
+			/**
+			 * File Path
+			 * @description Relative path to conflicted file
+			 */
+			file_path: string;
+			/**
+			 * Current Content
+			 * @description Local version of the file
+			 */
+			current_content: string;
+			/**
+			 * Incoming Content
+			 * @description Remote version of the file
+			 */
+			incoming_content: string;
+			/**
+			 * Base Content
+			 * @description Common ancestor version (if available)
+			 */
+			base_content?: string | null;
+		};
+		/**
+		 * ConversationCreate
+		 * @description Request model for creating a conversation.
+		 */
+		ConversationCreate: {
+			/**
+			 * Agent Id
+			 * @description ID of the agent to chat with (optional for agentless chat)
+			 */
+			agent_id?: string | null;
+			/** @default chat */
+			channel: components["schemas"]["AgentChannel"];
+			/** Title */
+			title?: string | null;
+		};
+		/**
+		 * ConversationPublic
+		 * @description Conversation output for API responses.
+		 */
+		ConversationPublic: {
+			/** Id */
+			id: string;
+			/** Agent Id */
+			agent_id?: string | null;
+			/** User Id */
+			user_id: string;
+			/** Channel */
+			channel: string;
+			/** Title */
+			title?: string | null;
+			/** Is Active */
+			is_active: boolean;
+			/** Created At */
+			created_at: string | null;
+			/** Updated At */
+			updated_at: string | null;
+			/** Message Count */
+			message_count?: number | null;
+			/** Last Message At */
+			last_message_at?: string | null;
+			/** Agent Name */
+			agent_name?: string | null;
+		};
+		/**
+		 * ConversationSummary
+		 * @description Lightweight conversation summary for sidebar listings.
+		 */
+		ConversationSummary: {
+			/** Id */
+			id: string;
+			/** Agent Id */
+			agent_id?: string | null;
+			/** Agent Name */
+			agent_name?: string | null;
+			/** Title */
+			title?: string | null;
+			/** Updated At */
+			updated_at: string;
+			/** Last Message Preview */
+			last_message_preview?: string | null;
+		};
+		/**
+		 * CreateOAuthConnectionRequest
+		 * @description Request model for creating a new OAuth connection
+		 *     POST /api/oauth/connections
+		 */
+		CreateOAuthConnectionRequest: {
+			/**
+			 * Integration Id
+			 * @description ID of the integration this OAuth connection belongs to
+			 */
+			integration_id: string;
+			/**
+			 * Description
+			 * @description Optional description of this OAuth connection
+			 */
+			description?: string | null;
+			/**
+			 * Oauth Flow Type
+			 * @description OAuth 2.0 flow type
+			 * @enum {string}
+			 */
+			oauth_flow_type:
+				| "authorization_code"
+				| "client_credentials"
+				| "refresh_token";
+			/**
+			 * Client Id
+			 * @description OAuth client ID (not sensitive)
+			 */
+			client_id: string;
+			/**
+			 * Client Secret
+			 * @description OAuth client secret (optional for PKCE flow, required for client_credentials, will be stored securely in Key Vault)
+			 */
+			client_secret?: string | null;
+			/**
+			 * Authorization Url
+			 * @description OAuth authorization endpoint URL (required for authorization_code, not used for client_credentials)
+			 */
+			authorization_url?: string | null;
+			/**
+			 * Token Url
+			 * @description OAuth token endpoint URL (must be HTTPS, may include {placeholders} for templating)
+			 */
+			token_url: string;
+			/**
+			 * Token Url Defaults
+			 * @description Default values for token_url placeholders (e.g., {'entity_id': 'common'})
+			 */
+			token_url_defaults?: {
+				[key: string]: string;
+			} | null;
+			/**
+			 * Scopes
+			 * @description Comma-separated list of OAuth scopes to request
+			 * @default
+			 */
+			scopes: string;
+			/**
+			 * Redirect Uri
+			 * @description OAuth redirect URI (defaults to /oauth/callback/{connection_name})
+			 */
+			redirect_uri?: string | null;
+		};
+		/**
+		 * CreateRepoRequest
+		 * @description Request to create a new GitHub repository
+		 */
+		CreateRepoRequest: {
+			/**
+			 * Name
+			 * @description Repository name
+			 */
+			name: string;
+			/**
+			 * Description
+			 * @description Repository description
+			 */
+			description?: string | null;
+			/**
+			 * Private
+			 * @description Whether repository should be private
+			 * @default true
+			 */
+			private: boolean;
+			/**
+			 * Organization
+			 * @description Organization name (if creating in an org)
+			 */
+			organization?: string | null;
+		};
+		/**
+		 * CreateRepoResponse
+		 * @description Response after creating a new repository
+		 */
+		CreateRepoResponse: {
+			/**
+			 * Full Name
+			 * @description Full repository name (owner/repo)
+			 */
+			full_name: string;
+			/**
+			 * Url
+			 * @description Repository URL
+			 */
+			url: string;
+			/**
+			 * Clone Url
+			 * @description HTTPS clone URL
+			 */
+			clone_url: string;
+		};
+		/**
+		 * DailyMetricsEntry
+		 * @description Single day's execution metrics.
+		 */
+		DailyMetricsEntry: {
+			/** Date */
+			date: string;
+			/** Organization Id */
+			organization_id?: string | null;
+			/** Organization Name */
+			organization_name?: string | null;
+			/** Execution Count */
+			execution_count: number;
+			/** Success Count */
+			success_count: number;
+			/** Failed Count */
+			failed_count: number;
+			/** Timeout Count */
+			timeout_count: number;
+			/** Cancelled Count */
+			cancelled_count: number;
+			/** Avg Duration Ms */
+			avg_duration_ms: number;
+			/** Max Duration Ms */
+			max_duration_ms: number;
+			/** Peak Memory Bytes */
+			peak_memory_bytes: number;
+			/** Total Memory Bytes */
+			total_memory_bytes: number;
+			/** Peak Cpu Seconds */
+			peak_cpu_seconds: number;
+			/** Total Cpu Seconds */
+			total_cpu_seconds: number;
+		};
+		/**
+		 * DailyMetricsResponse
+		 * @description Response for daily execution metrics trends.
+		 */
+		DailyMetricsResponse: {
+			/** Days */
+			days: components["schemas"]["DailyMetricsEntry"][];
+			/** Total Days */
+			total_days: number;
+		};
+		/**
+		 * DashboardMetricsResponse
+		 * @description Dashboard metrics response
+		 */
+		DashboardMetricsResponse: {
+			/** Workflow Count */
+			workflow_count: number;
+			/** Data Provider Count */
+			data_provider_count: number;
+			/** Form Count */
+			form_count: number;
+			execution_stats: components["schemas"]["ExecutionStats"];
+			/** Recent Failures */
+			recent_failures: components["schemas"]["RecentFailure"][];
+		};
+		/**
+		 * DataProviderInputConfig
+		 * @description Configuration for a single data provider input parameter (T006)
+		 */
+		DataProviderInputConfig: {
+			mode: components["schemas"]["DataProviderInputMode"];
+			/** Value */
+			value?: string | null;
+			/** Field Name */
+			field_name?: string | null;
+			/** Expression */
+			expression?: string | null;
+		};
+		/**
+		 * DataProviderInputMode
+		 * @description Data provider input configuration modes (T005)
+		 * @enum {string}
+		 */
+		DataProviderInputMode: "static" | "fieldRef" | "expression";
+		/**
+		 * DataProviderInvokeRequest
+		 * @description Request to invoke a data provider.
+		 */
+		DataProviderInvokeRequest: {
+			/**
+			 * Inputs
+			 * @description Input parameters for the data provider
+			 */
+			inputs?: {
+				[key: string]: unknown;
+			};
+		};
+		/**
+		 * DataProviderInvokeResponse
+		 * @description Response from invoking a data provider.
+		 */
+		DataProviderInvokeResponse: {
+			/**
+			 * Options
+			 * @description List of options from the provider
+			 */
+			options?: components["schemas"]["DataProviderOption"][];
+		};
+		/**
+		 * DataProviderMetadata
+		 * @description Data provider metadata from @data_provider decorator (T008)
+		 */
+		DataProviderMetadata: {
+			/**
+			 * Id
+			 * @description Data provider UUID (when loaded from database)
+			 */
+			id?: string | null;
+			/** Name */
+			name: string;
+			/** Description */
+			description?: string | null;
+			/**
+			 * Category
+			 * @default General
+			 */
+			category: string;
+			/**
+			 * Cache Ttl Seconds
+			 * @default 300
+			 */
+			cache_ttl_seconds: number;
+			/**
+			 * Parameters
+			 * @description Input parameters from @param decorators
+			 */
+			parameters?: components["schemas"]["WorkflowParameter"][];
+			/**
+			 * Source File Path
+			 * @description Full file path to the data provider source code
+			 */
+			source_file_path?: string | null;
+			/**
+			 * Relative File Path
+			 * @description Workspace-relative file path with /workspace/ prefix (e.g., '/workspace/data_providers/my_provider.py')
+			 */
+			relative_file_path?: string | null;
+		};
+		/**
+		 * DataProviderOption
+		 * @description A single option from a data provider.
+		 */
+		DataProviderOption: {
+			/**
+			 * Value
+			 * @description Option value
+			 */
+			value: string;
+			/**
+			 * Label
+			 * @description Option display label
+			 */
+			label: string;
+			/**
+			 * Description
+			 * @description Optional description
+			 */
+			description?: string | null;
+		};
+		/**
+		 * DecoratorInfo
+		 * @description Information about a discovered decorator in a source file.
+		 */
+		DecoratorInfo: {
+			/**
+			 * Decorator Type
+			 * @enum {string}
+			 */
+			decorator_type: "workflow" | "data_provider" | "tool";
+			/** Function Name */
+			function_name: string;
+			/**
+			 * Line Number
+			 * @default 0
+			 */
+			line_number: number;
+			/** Properties */
+			properties: {
+				[key: string]: unknown;
+			};
+			/**
+			 * Has Parentheses
+			 * @description True if decorator uses parentheses syntax: @workflow(...)
+			 */
+			has_parentheses: boolean;
+		};
+		/**
+		 * DecoratorPropertiesResponse
+		 * @description Response containing all decorators found in a file.
+		 */
+		DecoratorPropertiesResponse: {
+			/**
+			 * Path
+			 * @description File path
+			 */
+			path: string;
+			/**
+			 * Decorators
+			 * @description List of discovered decorators
+			 */
+			decorators: components["schemas"]["DecoratorInfo"][];
+		};
+		/**
+		 * DetailedHealthCheck
+		 * @description Detailed health check with component status.
+		 */
+		DetailedHealthCheck: {
+			/** Status */
+			status: string;
+			/**
+			 * Timestamp
+			 * Format: date-time
+			 */
+			timestamp: string;
+			/**
+			 * Version
+			 * @default 2.0.0
+			 */
+			version: string;
+			/** Environment */
+			environment: string;
+			/** Components */
+			components: {
+				[key: string]: {
+					[key: string]: unknown;
+				};
+			};
+		};
+		/**
+		 * DetectedRepoInfo
+		 * @description Information about auto-detected existing repository
+		 */
+		DetectedRepoInfo: {
+			/**
+			 * Full Name
+			 * @description Repository full name (owner/repo)
+			 */
+			full_name: string;
+			/**
+			 * Branch
+			 * @description Current branch
+			 */
+			branch: string;
+		};
+		/**
+		 * DeveloperContextResponse
+		 * @description Developer context for CLI initialization.
+		 */
+		DeveloperContextResponse: {
+			/**
+			 * User
+			 * @description User information
+			 */
+			user: {
+				[key: string]: unknown;
+			};
+			/**
+			 * Organization
+			 * @description Default organization
+			 */
+			organization: {
+				[key: string]: unknown;
+			} | null;
+			/**
+			 * Default Parameters
+			 * @description Default workflow parameters
+			 * @default {}
+			 */
+			default_parameters: {
+				[key: string]: unknown;
+			};
+			/**
+			 * Track Executions
+			 * @description Whether to track executions in history
+			 * @default true
+			 */
+			track_executions: boolean;
+		};
+		/**
+		 * DeveloperContextUpdate
+		 * @description Update developer context settings.
+		 */
+		DeveloperContextUpdate: {
+			/**
+			 * Default Org Id
+			 * @description Default organization ID
+			 */
+			default_org_id?: string | null;
+			/**
+			 * Default Parameters
+			 * @description Default workflow parameters
+			 */
+			default_parameters?: {
+				[key: string]: unknown;
+			} | null;
+			/**
+			 * Track Executions
+			 * @description Track executions in history
+			 */
+			track_executions?: boolean | null;
+		};
+		/**
+		 * DiscardCommitRequest
+		 * @description Request to discard a specific commit and all newer commits
+		 */
+		DiscardCommitRequest: {
+			/**
+			 * Commit Sha
+			 * @description SHA of the commit to discard (this commit and all newer commits will be discarded)
+			 */
+			commit_sha: string;
+		};
+		/**
+		 * DiscardUnpushedCommitsResponse
+		 * @description Response after discarding unpushed commits
+		 */
+		DiscardUnpushedCommitsResponse: {
+			/**
+			 * Success
+			 * @description Whether discard was successful
+			 */
+			success: boolean;
+			/**
+			 * Discarded Commits
+			 * @description List of commits that were discarded
+			 */
+			discarded_commits?: components["schemas"]["CommitInfo"][];
+			/**
+			 * New Head
+			 * @description New HEAD commit SHA after discard
+			 */
+			new_head?: string | null;
+			/**
+			 * Error
+			 * @description Error message if operation failed
+			 */
+			error?: string | null;
+		};
+		/**
+		 * EndpointExecuteResponse
+		 * @description Response for endpoint execution.
+		 */
+		EndpointExecuteResponse: {
+			/** Execution Id */
+			execution_id: string;
+			/** Status */
+			status: string;
+			/** Message */
+			message?: string | null;
+			/** Result */
+			result?: unknown;
+			/** Error */
+			error?: string | null;
+			/** Duration Ms */
+			duration_ms?: number | null;
+		};
+		/**
+		 * ExecutionLogPublic
+		 * @description Single log entry from workflow execution (API response model)
+		 */
+		ExecutionLogPublic: {
+			/** Timestamp */
+			timestamp: string;
+			/** Level */
+			level: string;
+			/** Message */
+			message: string;
+			/** Data */
+			data?: {
+				[key: string]: unknown;
+			} | null;
+		};
+		/**
+		 * ExecutionStats
+		 * @description Execution statistics for dashboard
+		 */
+		ExecutionStats: {
+			/** Total Executions */
+			total_executions: number;
+			/** Success Count */
+			success_count: number;
+			/** Failed Count */
+			failed_count: number;
+			/** Running Count */
+			running_count: number;
+			/** Pending Count */
+			pending_count: number;
+			/** Success Rate */
+			success_rate: number;
+			/** Avg Duration Seconds */
+			avg_duration_seconds: number;
+		};
+		/**
+		 * ExecutionStatus
+		 * @description Workflow execution status
+		 * @enum {string}
+		 */
+		ExecutionStatus:
+			| "Pending"
+			| "Running"
+			| "Success"
+			| "Failed"
+			| "Timeout"
+			| "CompletedWithErrors"
+			| "Cancelling"
+			| "Cancelled";
+		/**
+		 * ExecutionsListResponse
+		 * @description Response model for listing workflow executions with pagination
+		 */
+		ExecutionsListResponse: {
+			/**
+			 * Executions
+			 * @description List of workflow executions
+			 */
+			executions: components["schemas"]["WorkflowExecution"][];
+			/**
+			 * Continuation Token
+			 * @description Continuation token for next page (opaque, base64-encoded). Presence of token indicates more results available.
+			 */
+			continuation_token?: string | null;
+		};
+		/**
+		 * FileChange
+		 * @description Represents a changed file in Git
+		 */
+		FileChange: {
+			/**
+			 * Path
+			 * @description Relative path from workspace root
+			 */
+			path: string;
+			/** @description Git status of the file */
+			status: components["schemas"]["GitFileStatus"];
+			/**
+			 * Additions
+			 * @description Number of lines added
+			 */
+			additions?: number | null;
+			/**
+			 * Deletions
+			 * @description Number of lines deleted
+			 */
+			deletions?: number | null;
+		};
+		/**
+		 * FileConflictResponse
+		 * @description Response when file write encounters a conflict
+		 */
+		FileConflictResponse: {
+			/**
+			 * Reason
+			 * @description Type of conflict
+			 * @enum {string}
+			 */
+			reason: "content_changed" | "path_not_found";
+			/**
+			 * Message
+			 * @description Human-readable conflict description
+			 */
+			message: string;
+		};
+		/**
+		 * FileContentRequest
+		 * @description Request to write file content
+		 */
+		FileContentRequest: {
+			/**
+			 * Path
+			 * @description Relative path from /home/repo
+			 */
+			path: string;
+			/**
+			 * Content
+			 * @description File content (plain text or base64 encoded)
+			 */
+			content: string;
+			/**
+			 * Encoding
+			 * @description Content encoding (utf-8 or base64)
+			 * @default utf-8
+			 */
+			encoding: string;
+			/**
+			 * Expected Etag
+			 * @description Expected ETag for conflict detection (optional)
+			 */
+			expected_etag?: string | null;
+		};
+		/**
+		 * FileContentResponse
+		 * @description Response with file content
+		 */
+		FileContentResponse: {
+			/**
+			 * Path
+			 * @description Relative path from /home/repo
+			 */
+			path: string;
+			/**
+			 * Content
+			 * @description File content
+			 */
+			content: string;
+			/**
+			 * Encoding
+			 * @description Content encoding
+			 */
+			encoding: string;
+			/**
+			 * Size
+			 * @description Content size in bytes
+			 */
+			size: number;
+			/**
+			 * Etag
+			 * @description ETag for change detection
+			 */
+			etag: string;
+			/**
+			 * Modified
+			 * @description Last modified timestamp (ISO 8601)
+			 */
+			modified: string;
+			/**
+			 * Content Modified
+			 * @description True if server modified content (e.g., injected IDs). Client should update editor buffer.
+			 * @default false
+			 */
+			content_modified: boolean;
+			/**
+			 * Needs Indexing
+			 * @description True if file has decorators that need ID injection. Client should trigger indexing.
+			 * @default false
+			 */
+			needs_indexing: boolean;
+		};
+		/**
+		 * FileMetadata
+		 * @description File or folder metadata
+		 *     Used in directory listing responses
+		 */
+		FileMetadata: {
+			/**
+			 * Path
+			 * @description Relative path from /home/repo
+			 */
+			path: string;
+			/**
+			 * Name
+			 * @description File or folder name
+			 */
+			name: string;
+			/** @description File or folder */
+			type: components["schemas"]["FileType"];
+			/**
+			 * Size
+			 * @description Size in bytes (null for folders)
+			 */
+			size?: number | null;
+			/**
+			 * Extension
+			 * @description File extension (null for folders)
+			 */
+			extension?: string | null;
+			/**
+			 * Modified
+			 * @description Last modified timestamp (ISO 8601)
+			 */
+			modified: string;
+			/**
+			 * Is Workflow
+			 * @description True if file contains a @workflow decorator
+			 * @default false
+			 */
+			is_workflow: boolean;
+			/**
+			 * Is Data Provider
+			 * @description True if file contains a @data_provider decorator
+			 * @default false
+			 */
+			is_data_provider: boolean;
+		};
+		/**
+		 * FileType
+		 * @description File or folder type
+		 * @enum {string}
+		 */
+		FileType: "file" | "folder";
+		/**
+		 * FileUploadRequest
+		 * @description Request model for generating file upload SAS URL
+		 */
+		FileUploadRequest: {
+			/**
+			 * File Name
+			 * @description Original file name
+			 */
+			file_name: string;
+			/**
+			 * Content Type
+			 * @description MIME type of the file
+			 */
+			content_type: string;
+			/**
+			 * File Size
+			 * @description File size in bytes
+			 */
+			file_size: number;
+		};
+		/**
+		 * FileUploadResponse
+		 * @description Response model for file upload SAS URL generation
+		 */
+		FileUploadResponse: {
+			/**
+			 * Upload Url
+			 * @description URL for direct upload
+			 */
+			upload_url: string;
+			/**
+			 * Blob Uri
+			 * @description Final file URI
+			 */
+			blob_uri: string;
+			/**
+			 * Expires At
+			 * @description Token expiration timestamp (ISO format)
+			 */
+			expires_at: string;
+			/** @description Metadata for accessing the uploaded file in workflows */
+			file_metadata: components["schemas"]["UploadedFileMetadata"];
+		};
+		/**
+		 * FormAccessLevel
+		 * @description Form access control levels
+		 * @enum {string}
+		 */
+		FormAccessLevel: "public" | "authenticated" | "role_based";
+		/**
+		 * FormCreate
+		 * @description Input for creating a form.
+		 */
+		FormCreate: {
+			/** Name */
+			name: string;
+			/** Description */
+			description?: string | null;
+			/** Workflow Id */
+			workflow_id?: string | null;
+			/** Launch Workflow Id */
+			launch_workflow_id?: string | null;
+			/** Default Launch Params */
+			default_launch_params?: {
+				[key: string]: unknown;
+			} | null;
+			/** Allowed Query Params */
+			allowed_query_params?: string[] | null;
+			/** Form Schema */
+			form_schema:
+				| {
+						[key: string]: unknown;
+				  }
+				| components["schemas"]["FormSchema-Input"];
+			/** @default role_based */
+			access_level: components["schemas"]["FormAccessLevel"] | null;
+		};
+		/**
+		 * FormExecuteRequest
+		 * @description Request model for executing a form
+		 */
+		FormExecuteRequest: {
+			/**
+			 * Form Data
+			 * @description Form field values
+			 */
+			form_data?: {
+				[key: string]: unknown;
+			};
+			/**
+			 * Startup Data
+			 * @description Results from /startup call (launch workflow)
+			 */
+			startup_data?: {
+				[key: string]: unknown;
+			} | null;
+		};
+		/**
+		 * FormField
+		 * @description Form field definition
+		 */
+		"FormField-Input": {
+			/**
+			 * Name
+			 * @description Parameter name for workflow
+			 */
+			name: string;
+			/**
+			 * Label
+			 * @description Display label (optional for markdown/html types)
+			 */
+			label?: string | null;
+			type: components["schemas"]["FormFieldType"];
+			/**
+			 * Required
+			 * @default false
+			 */
+			required: boolean;
+			/** Validation */
+			validation?: {
+				[key: string]: unknown;
+			} | null;
+			/**
+			 * Data Provider Id
+			 * @description Data provider ID for dynamic options
+			 */
+			data_provider_id?: string | null;
+			/**
+			 * Data Provider Inputs
+			 * @description Input configurations for data provider parameters
+			 */
+			data_provider_inputs?: {
+				[key: string]: components["schemas"]["DataProviderInputConfig"];
+			} | null;
+			/** Default Value */
+			default_value?: unknown | null;
+			/** Placeholder */
+			placeholder?: string | null;
+			/** Help Text */
+			help_text?: string | null;
+			/**
+			 * Visibility Expression
+			 * @description JavaScript expression for conditional visibility (e.g., context.field.show === true)
+			 */
+			visibility_expression?: string | null;
+			/**
+			 * Options
+			 * @description Options for radio/select fields
+			 */
+			options?:
+				| {
+						[key: string]: string;
+				  }[]
+				| null;
+			/**
+			 * Allowed Types
+			 * @description Allowed MIME types for file uploads
+			 */
+			allowed_types?: string[] | null;
+			/**
+			 * Multiple
+			 * @description Allow multiple file uploads
+			 */
+			multiple?: boolean | null;
+			/**
+			 * Max Size Mb
+			 * @description Maximum file size in MB
+			 */
+			max_size_mb?: number | null;
+			/**
+			 * Content
+			 * @description Static content for markdown/HTML components
+			 */
+			content?: string | null;
+			/**
+			 * Allow As Query Param
+			 * @description Whether this field's value can be populated from URL query parameters
+			 */
+			allow_as_query_param?: boolean | null;
+		};
+		/**
+		 * FormField
+		 * @description Form field definition
+		 */
+		"FormField-Output": {
+			/**
+			 * Name
+			 * @description Parameter name for workflow
+			 */
+			name: string;
+			/**
+			 * Label
+			 * @description Display label (optional for markdown/html types)
+			 */
+			label?: string | null;
+			type: components["schemas"]["FormFieldType"];
+			/**
+			 * Required
+			 * @default false
+			 */
+			required: boolean;
+			/** Validation */
+			validation?: {
+				[key: string]: unknown;
+			} | null;
+			/**
+			 * Data Provider Id
+			 * @description Data provider ID for dynamic options
+			 */
+			data_provider_id?: string | null;
+			/**
+			 * Data Provider Inputs
+			 * @description Input configurations for data provider parameters
+			 */
+			data_provider_inputs?: {
+				[key: string]: components["schemas"]["DataProviderInputConfig"];
+			} | null;
+			/** Default Value */
+			default_value?: unknown | null;
+			/** Placeholder */
+			placeholder?: string | null;
+			/** Help Text */
+			help_text?: string | null;
+			/**
+			 * Visibility Expression
+			 * @description JavaScript expression for conditional visibility (e.g., context.field.show === true)
+			 */
+			visibility_expression?: string | null;
+			/**
+			 * Options
+			 * @description Options for radio/select fields
+			 */
+			options?:
+				| {
+						[key: string]: string;
+				  }[]
+				| null;
+			/**
+			 * Allowed Types
+			 * @description Allowed MIME types for file uploads
+			 */
+			allowed_types?: string[] | null;
+			/**
+			 * Multiple
+			 * @description Allow multiple file uploads
+			 */
+			multiple?: boolean | null;
+			/**
+			 * Max Size Mb
+			 * @description Maximum file size in MB
+			 */
+			max_size_mb?: number | null;
+			/**
+			 * Content
+			 * @description Static content for markdown/HTML components
+			 */
+			content?: string | null;
+			/**
+			 * Allow As Query Param
+			 * @description Whether this field's value can be populated from URL query parameters
+			 */
+			allow_as_query_param?: boolean | null;
+		};
+		/**
+		 * FormFieldType
+		 * @description Form field types
+		 * @enum {string}
+		 */
+		FormFieldType:
+			| "text"
+			| "email"
+			| "number"
+			| "select"
+			| "checkbox"
+			| "textarea"
+			| "radio"
+			| "datetime"
+			| "markdown"
+			| "html"
+			| "file";
+		/**
+		 * FormPublic
+		 * @description Form output for API responses.
+		 */
+		FormPublic: {
+			/**
+			 * Id
+			 * Format: uuid
+			 */
+			id: string;
+			/** Name */
+			name: string;
+			/** Description */
+			description?: string | null;
+			/** Workflow Id */
+			workflow_id?: string | null;
+			/** Launch Workflow Id */
+			launch_workflow_id?: string | null;
+			/** Default Launch Params */
+			default_launch_params?: {
+				[key: string]: unknown;
+			} | null;
+			/** Allowed Query Params */
+			allowed_query_params?: string[] | null;
+			/** Form Schema */
+			form_schema?:
+				| {
+						[key: string]: unknown;
+				  }
+				| components["schemas"]["FormSchema-Output"]
+				| null;
+			access_level?: components["schemas"]["FormAccessLevel"] | null;
+			/** Organization Id */
+			organization_id?: string | null;
+			/** Is Active */
+			is_active: boolean;
+			/**
+			 * File Path
+			 * @description Workspace-relative file path (e.g., 'forms/my-form-abc123.form.json')
+			 */
+			file_path?: string | null;
+			/** Created At */
+			created_at?: string | null;
+			/** Updated At */
+			updated_at?: string | null;
+		};
+		/**
+		 * FormSchema
+		 * @description Form schema with field definitions
+		 */
+		"FormSchema-Input": {
+			/**
+			 * Fields
+			 * @description Max 50 fields per form
+			 */
+			fields: components["schemas"]["FormField-Input"][];
+		};
+		/**
+		 * FormSchema
+		 * @description Form schema with field definitions
+		 */
+		"FormSchema-Output": {
+			/**
+			 * Fields
+			 * @description Max 50 fields per form
+			 */
+			fields: components["schemas"]["FormField-Output"][];
+		};
+		/**
+		 * FormStartupResponse
+		 * @description Response model for form startup/launch workflow execution
+		 */
+		FormStartupResponse: {
+			/**
+			 * Result
+			 * @description Workflow execution result
+			 */
+			result?:
+				| {
+						[key: string]: unknown;
+				  }
+				| unknown[]
+				| string
+				| null;
+		};
+		/**
+		 * FormUpdate
+		 * @description Input for updating a form.
+		 */
+		FormUpdate: {
+			/** Name */
+			name?: string | null;
+			/** Description */
+			description?: string | null;
+			/** Workflow Id */
+			workflow_id?: string | null;
+			/** Launch Workflow Id */
+			launch_workflow_id?: string | null;
+			/** Default Launch Params */
+			default_launch_params?: {
+				[key: string]: unknown;
+			} | null;
+			/** Allowed Query Params */
+			allowed_query_params?: string[] | null;
+			/** Form Schema */
+			form_schema?:
+				| {
+						[key: string]: unknown;
+				  }
+				| components["schemas"]["FormSchema-Input"]
+				| null;
+			/** Is Active */
+			is_active?: boolean | null;
+			access_level?: components["schemas"]["FormAccessLevel"] | null;
+		};
+		/**
+		 * GitFileStatus
+		 * @description Git file status
+		 * @enum {string}
+		 */
+		GitFileStatus: "M" | "A" | "D" | "U" | "C";
+		/**
+		 * GitHubBranchInfo
+		 * @description GitHub branch information
+		 */
+		GitHubBranchInfo: {
+			/**
+			 * Name
+			 * @description Branch name
+			 */
+			name: string;
+			/**
+			 * Protected
+			 * @description Whether branch is protected
+			 */
+			protected: boolean;
+			/**
+			 * Commit Sha
+			 * @description Latest commit SHA
+			 */
+			commit_sha: string;
+		};
+		/**
+		 * GitHubBranchesResponse
+		 * @description Response with list of branches
+		 */
+		GitHubBranchesResponse: {
+			/**
+			 * Branches
+			 * @description List of branches in repository
+			 */
+			branches: components["schemas"]["GitHubBranchInfo"][];
+		};
+		/**
+		 * GitHubConfigRequest
+		 * @description Request to configure GitHub integration - will always replace workspace with remote
+		 */
+		GitHubConfigRequest: {
+			/**
+			 * Repo Url
+			 * @description GitHub repository URL (e.g., https://github.com/user/repo)
+			 */
+			repo_url: string;
+			/**
+			 * Auth Token
+			 * @description GitHub personal access token
+			 */
+			auth_token: string;
+			/**
+			 * Branch
+			 * @description Branch to sync with
+			 * @default main
+			 */
+			branch: string;
+		};
+		/**
+		 * GitHubConfigResponse
+		 * @description Response after configuring GitHub
+		 */
+		GitHubConfigResponse: {
+			/**
+			 * Configured
+			 * @description Whether GitHub is fully configured
+			 */
+			configured: boolean;
+			/**
+			 * Token Saved
+			 * @description Whether a GitHub token has been validated and saved
+			 * @default false
+			 */
+			token_saved: boolean;
+			/**
+			 * Repo Url
+			 * @description Configured repository URL
+			 */
+			repo_url?: string | null;
+			/**
+			 * Branch
+			 * @description Configured branch
+			 */
+			branch?: string | null;
+			/**
+			 * Backup Path
+			 * @description Path to backup directory if workspace was backed up
+			 */
+			backup_path?: string | null;
+		};
+		/**
+		 * GitHubRepoInfo
+		 * @description GitHub repository information
+		 */
+		GitHubRepoInfo: {
+			/**
+			 * Name
+			 * @description Repository name (owner/repo)
+			 */
+			name: string;
+			/**
+			 * Full Name
+			 * @description Full repository name
+			 */
+			full_name: string;
+			/**
+			 * Description
+			 * @description Repository description
+			 */
+			description?: string | null;
+			/**
+			 * Url
+			 * @description Repository URL
+			 */
+			url: string;
+			/**
+			 * Private
+			 * @description Whether repository is private
+			 */
+			private: boolean;
+		};
+		/**
+		 * GitHubReposResponse
+		 * @description Response with list of GitHub repositories
+		 */
+		GitHubReposResponse: {
+			/**
+			 * Repositories
+			 * @description List of accessible repositories
+			 */
+			repositories: components["schemas"]["GitHubRepoInfo"][];
+			/** @description Auto-detected existing repository */
+			detected_repo?: components["schemas"]["DetectedRepoInfo"] | null;
+		};
+		/**
+		 * GitHubSetupResponse
+		 * @description Response after queueing GitHub setup job
+		 */
+		GitHubSetupResponse: {
+			/**
+			 * Job Id
+			 * @description Job ID for tracking the setup operation
+			 */
+			job_id: string;
+			/**
+			 * Notification Id
+			 * @description Notification ID for watching progress via WebSocket
+			 */
+			notification_id: string;
+			/**
+			 * Status
+			 * @description Job status (queued)
+			 * @default queued
+			 */
+			status: string;
+		};
+		/**
+		 * GitRefreshStatusResponse
+		 * @description Unified response after fetching and getting complete Git status.
+		 *     This combines fetch + status + commit history into a single response.
+		 */
+		GitRefreshStatusResponse: {
+			/**
+			 * Success
+			 * @description Whether refresh was successful
+			 */
+			success: boolean;
+			/**
+			 * Initialized
+			 * @description Whether Git repository is initialized
+			 */
+			initialized: boolean;
+			/**
+			 * Configured
+			 * @description Whether GitHub integration is configured
+			 */
+			configured: boolean;
+			/**
+			 * Current Branch
+			 * @description Current branch name
+			 */
+			current_branch?: string | null;
+			/**
+			 * Changed Files
+			 * @description List of locally changed files
+			 */
+			changed_files?: components["schemas"]["FileChange"][];
+			/**
+			 * Conflicts
+			 * @description List of merge conflicts
+			 */
+			conflicts?: components["schemas"]["ConflictInfo"][];
+			/**
+			 * Merging
+			 * @description Whether repository is in merge state (MERGE_HEAD exists)
+			 * @default false
+			 */
+			merging: boolean;
+			/**
+			 * Commits Ahead
+			 * @description Number of local commits ahead of remote (ready to push)
+			 * @default 0
+			 */
+			commits_ahead: number;
+			/**
+			 * Commits Behind
+			 * @description Number of commits behind remote (ready to pull)
+			 * @default 0
+			 */
+			commits_behind: number;
+			/**
+			 * Commit History
+			 * @description Recent commit history with pushed/unpushed status
+			 */
+			commit_history?: components["schemas"]["CommitInfo"][];
+			/**
+			 * Last Synced
+			 * @description ISO timestamp of when sync was performed
+			 */
+			last_synced: string;
+			/**
+			 * Error
+			 * @description Error message if sync failed
+			 */
+			error?: string | null;
+		};
+		/** HTTPValidationError */
+		HTTPValidationError: {
+			/** Detail */
+			detail?: components["schemas"]["ValidationError"][];
+		};
+		/**
+		 * HealthCheck
+		 * @description Health check response model.
+		 */
+		HealthCheck: {
+			/** Status */
+			status: string;
+			/**
+			 * Timestamp
+			 * Format: date-time
+			 */
+			timestamp: string;
+			/**
+			 * Version
+			 * @default 2.0.0
+			 */
+			version: string;
+			/** Environment */
+			environment: string;
+		};
+		/**
+		 * InstallPackageRequest
+		 * @description Request model for installing a package
+		 */
+		InstallPackageRequest: {
+			/**
+			 * Package Name
+			 * @description Package name (e.g., 'requests')
+			 */
+			package_name: string;
+			/**
+			 * Version
+			 * @description Version specifier (e.g., '>=2.28.0')
+			 */
+			version?: string | null;
+		};
+		/**
+		 * InstalledPackage
+		 * @description Installed package information
+		 */
+		InstalledPackage: {
+			/** Name */
+			name: string;
+			/** Version */
+			version: string;
+		};
+		/**
+		 * InstalledPackagesResponse
+		 * @description Response model for listing installed packages
+		 */
+		InstalledPackagesResponse: {
+			/** Packages */
+			packages: components["schemas"]["InstalledPackage"][];
+			/** Total Count */
+			total_count: number;
+		};
+		/**
+		 * IntegrationConfigResponse
+		 * @description Response model for integration config.
+		 */
+		IntegrationConfigResponse: {
+			/**
+			 * Integration Id
+			 * Format: uuid
+			 */
+			integration_id: string;
+			/** Config */
+			config: {
+				[key: string]: unknown;
+			};
+		};
+		/**
+		 * IntegrationConfigUpdate
+		 * @description Request model for updating integration default config values.
+		 */
+		IntegrationConfigUpdate: {
+			/**
+			 * Config
+			 * @description Default config values for this integration
+			 */
+			config: {
+				[key: string]: unknown;
+			};
+		};
+		/**
+		 * IntegrationCreate
+		 * @description Request model for creating a new integration.
+		 *     POST /api/integrations
+		 */
+		IntegrationCreate: {
+			/**
+			 * Name
+			 * @description Unique integration name (e.g., 'Microsoft Partner', 'QuickBooks Online')
+			 */
+			name: string;
+			/**
+			 * Config Schema
+			 * @description Optional schema defining available configuration for this integration
+			 */
+			config_schema?: components["schemas"]["ConfigSchemaItem"][] | null;
+			/**
+			 * Entity Id
+			 * @description Optional global entity ID for token URL templating (e.g., tenant ID, partner tenant ID)
+			 */
+			entity_id?: string | null;
+			/**
+			 * Entity Id Name
+			 * @description Optional display name for the global entity ID
+			 */
+			entity_id_name?: string | null;
+			/**
+			 * Default Entity Id
+			 * @description Default value for entity_id in URL templates (e.g., 'common' for Azure multi-tenant)
+			 */
+			default_entity_id?: string | null;
+		};
+		/**
+		 * IntegrationData
+		 * @description Integration data for SDK consumption.
+		 *     Returned by bifrost.integrations.get() in workflows.
+		 */
+		IntegrationData: {
+			/**
+			 * Integration Id
+			 * Format: uuid
+			 * @description Integration ID
+			 */
+			integration_id: string;
+			/**
+			 * Entity Id
+			 * @description Mapped external entity ID
+			 */
+			entity_id: string;
+			/**
+			 * Entity Name
+			 * @description Display name for the mapped entity
+			 */
+			entity_name?: string | null;
+			/**
+			 * Config
+			 * @description Merged configuration (schema defaults + org overrides)
+			 */
+			config?: {
+				[key: string]: unknown;
+			};
+			/**
+			 * Oauth Client Id
+			 * @description OAuth client ID (from provider or override)
+			 */
+			oauth_client_id?: string | null;
+			/**
+			 * Oauth Token Url
+			 * @description OAuth token URL (with {entity_id} placeholder if applicable)
+			 */
+			oauth_token_url?: string | null;
+			/**
+			 * Oauth Scopes
+			 * @description OAuth scopes for this integration
+			 */
+			oauth_scopes?: string | null;
+		};
+		/**
+		 * IntegrationDetailResponse
+		 * @description Detailed response model for a single integration.
+		 *     Includes mappings and OAuth configuration in a single response.
+		 *     GET /api/integrations/{integration_id}
+		 */
+		IntegrationDetailResponse: {
+			/**
+			 * Id
+			 * Format: uuid
+			 * @description Integration ID
+			 */
+			id: string;
+			/**
+			 * Name
+			 * @description Integration name
+			 */
+			name: string;
+			/**
+			 * List Entities Data Provider Id
+			 * @description Associated data provider ID for listing entities
+			 */
+			list_entities_data_provider_id?: string | null;
+			/**
+			 * Config Schema
+			 * @description Configuration schema for this integration
+			 */
+			config_schema?: components["schemas"]["ConfigSchemaItem"][] | null;
+			/**
+			 * Config Defaults
+			 * @description Integration-level default configuration values
+			 */
+			config_defaults?: {
+				[key: string]: unknown;
+			} | null;
+			/**
+			 * Entity Id
+			 * @description Global entity ID for token URL templating
+			 */
+			entity_id?: string | null;
+			/**
+			 * Entity Id Name
+			 * @description Display name for the global entity ID
+			 */
+			entity_id_name?: string | null;
+			/**
+			 * Default Entity Id
+			 * @description Default value for {entity_id} in URL templates (e.g., 'common' for Azure multi-tenant)
+			 */
+			default_entity_id?: string | null;
+			/**
+			 * Has Oauth Config
+			 * @description Whether OAuth configuration is set up for this integration
+			 * @default false
+			 */
+			has_oauth_config: boolean;
+			/**
+			 * Is Deleted
+			 * @description Soft delete flag
+			 * @default false
+			 */
+			is_deleted: boolean;
+			/**
+			 * Created At
+			 * Format: date-time
+			 * @description Creation timestamp
+			 */
+			created_at: string;
+			/**
+			 * Updated At
+			 * Format: date-time
+			 * @description Last update timestamp
+			 */
+			updated_at: string;
+			/**
+			 * Mappings
+			 * @description All organization mappings for this integration
+			 */
+			mappings?: components["schemas"]["IntegrationMappingResponse"][];
+			/** @description OAuth provider configuration and connection status */
+			oauth_config?: components["schemas"]["OAuthConfigSummary"] | null;
+		};
+		/**
+		 * IntegrationListResponse
+		 * @description Response model for listing integrations.
+		 *     GET /api/integrations
+		 */
+		IntegrationListResponse: {
+			/**
+			 * Items
+			 * @description List of integrations
+			 */
+			items: components["schemas"]["IntegrationResponse"][];
+			/**
+			 * Total
+			 * @description Total number of integrations
+			 */
+			total: number;
+		};
+		/**
+		 * IntegrationMappingCreate
+		 * @description Request model for creating an integration mapping.
+		 *     POST /api/integrations/{integration_id}/mappings
+		 */
+		IntegrationMappingCreate: {
+			/**
+			 * Organization Id
+			 * Format: uuid
+			 * @description Organization ID to map to this integration
+			 */
+			organization_id: string;
+			/**
+			 * Entity Id
+			 * @description External entity ID (e.g., tenant ID, company ID)
+			 */
+			entity_id: string;
+			/**
+			 * Entity Name
+			 * @description Display name for the external entity
+			 */
+			entity_name?: string | null;
+			/**
+			 * Oauth Token Id
+			 * @description Optional per-organization OAuth token override
+			 */
+			oauth_token_id?: string | null;
+			/**
+			 * Config
+			 * @description Per-organization integration configuration values
+			 */
+			config?: {
+				[key: string]: unknown;
+			} | null;
+		};
+		/**
+		 * IntegrationMappingListResponse
+		 * @description Response model for listing integration mappings.
+		 *     GET /api/integrations/{integration_id}/mappings
+		 */
+		IntegrationMappingListResponse: {
+			/**
+			 * Items
+			 * @description List of integration mappings
+			 */
+			items: components["schemas"]["IntegrationMappingResponse"][];
+			/**
+			 * Total
+			 * @description Total number of mappings
+			 */
+			total: number;
+		};
+		/**
+		 * IntegrationMappingResponse
+		 * @description Response model for a single integration mapping.
+		 *     GET /api/integrations/{integration_id}/mappings/{mapping_id}
+		 */
+		IntegrationMappingResponse: {
+			/**
+			 * Id
+			 * Format: uuid
+			 * @description Mapping ID
+			 */
+			id: string;
+			/**
+			 * Integration Id
+			 * Format: uuid
+			 * @description Associated integration ID
+			 */
+			integration_id: string;
+			/**
+			 * Organization Id
+			 * Format: uuid
+			 * @description Associated organization ID
+			 */
+			organization_id: string;
+			/**
+			 * Entity Id
+			 * @description External entity ID
+			 */
+			entity_id: string;
+			/**
+			 * Entity Name
+			 * @description Display name for the external entity
+			 */
+			entity_name?: string | null;
+			/**
+			 * Oauth Token Id
+			 * @description Per-organization OAuth token override ID
+			 */
+			oauth_token_id?: string | null;
+			/**
+			 * Config
+			 * @description Per-organization integration configuration
+			 */
+			config?: {
+				[key: string]: unknown;
+			} | null;
+			/**
+			 * Created At
+			 * Format: date-time
+			 * @description Creation timestamp
+			 */
+			created_at: string;
+			/**
+			 * Updated At
+			 * Format: date-time
+			 * @description Last update timestamp
+			 */
+			updated_at: string;
+		};
+		/**
+		 * IntegrationMappingUpdate
+		 * @description Request model for updating an integration mapping.
+		 *     PUT /api/integrations/{integration_id}/mappings/{mapping_id}
+		 */
+		IntegrationMappingUpdate: {
+			/**
+			 * Entity Id
+			 * @description External entity ID
+			 */
+			entity_id?: string | null;
+			/**
+			 * Entity Name
+			 * @description Display name for the external entity
+			 */
+			entity_name?: string | null;
+			/**
+			 * Oauth Token Id
+			 * @description Per-organization OAuth token override
+			 */
+			oauth_token_id?: string | null;
+			/**
+			 * Config
+			 * @description Per-organization integration configuration
+			 */
+			config?: {
+				[key: string]: unknown;
+			} | null;
+		};
+		/**
+		 * IntegrationResponse
+		 * @description Response model for a single integration.
+		 *     GET /api/integrations/{integration_id}
+		 */
+		IntegrationResponse: {
+			/**
+			 * Id
+			 * Format: uuid
+			 * @description Integration ID
+			 */
+			id: string;
+			/**
+			 * Name
+			 * @description Integration name
+			 */
+			name: string;
+			/**
+			 * List Entities Data Provider Id
+			 * @description Associated data provider ID for listing entities
+			 */
+			list_entities_data_provider_id?: string | null;
+			/**
+			 * Config Schema
+			 * @description Configuration schema for this integration
+			 */
+			config_schema?: components["schemas"]["ConfigSchemaItem"][] | null;
+			/**
+			 * Entity Id
+			 * @description Global entity ID for token URL templating
+			 */
+			entity_id?: string | null;
+			/**
+			 * Entity Id Name
+			 * @description Display name for the global entity ID
+			 */
+			entity_id_name?: string | null;
+			/**
+			 * Default Entity Id
+			 * @description Default value for entity_id in URL templates
+			 */
+			default_entity_id?: string | null;
+			/**
+			 * Has Oauth Config
+			 * @description Whether OAuth configuration is set up for this integration
+			 * @default false
+			 */
+			has_oauth_config: boolean;
+			/**
+			 * Is Deleted
+			 * @description Soft delete flag
+			 * @default false
+			 */
+			is_deleted: boolean;
+			/**
+			 * Created At
+			 * Format: date-time
+			 * @description Creation timestamp
+			 */
+			created_at: string;
+			/**
+			 * Updated At
+			 * Format: date-time
+			 * @description Last update timestamp
+			 */
+			updated_at: string;
+		};
+		/**
+		 * IntegrationUpdate
+		 * @description Request model for updating an integration.
+		 *     PUT /api/integrations/{integration_id}
+		 */
+		IntegrationUpdate: {
+			/**
+			 * Name
+			 * @description Integration name
+			 */
+			name?: string | null;
+			/**
+			 * List Entities Data Provider Id
+			 * @description Data provider ID for listing entities
+			 */
+			list_entities_data_provider_id?: string | null;
+			/**
+			 * Config Schema
+			 * @description Configuration schema
+			 */
+			config_schema?: components["schemas"]["ConfigSchemaItem"][] | null;
+			/**
+			 * Entity Id
+			 * @description Global entity ID for token URL templating
+			 */
+			entity_id?: string | null;
+			/**
+			 * Entity Id Name
+			 * @description Display name for the global entity ID
+			 */
+			entity_id_name?: string | null;
+			/**
+			 * Default Entity Id
+			 * @description Default value for entity_id in URL templates (e.g., 'common' for Azure multi-tenant)
+			 */
+			default_entity_id?: string | null;
+		};
+		/**
+		 * LLMConfigRequest
+		 * @description Request to set LLM configuration.
+		 */
+		LLMConfigRequest: {
+			/**
+			 * Provider
+			 * @description LLM provider type
+			 * @enum {string}
+			 */
+			provider: "openai" | "anthropic" | "custom";
+			/**
+			 * Model
+			 * @description Model identifier (e.g., 'gpt-4o', 'claude-sonnet-4-20250514')
+			 */
+			model: string;
+			/**
+			 * Api Key
+			 * @description API key for the provider
+			 */
+			api_key: string;
+			/**
+			 * Endpoint
+			 * @description Custom endpoint URL (for custom OpenAI-compatible providers)
+			 */
+			endpoint?: string | null;
+			/**
+			 * Max Tokens
+			 * @description Maximum tokens for completion
+			 * @default 4096
+			 */
+			max_tokens: number;
+			/**
+			 * Temperature
+			 * @description Temperature for sampling (0.0-2.0)
+			 * @default 0.7
+			 */
+			temperature: number;
+			/**
+			 * Default System Prompt
+			 * @description Default system prompt for agentless chat
+			 */
+			default_system_prompt?: string | null;
+		};
+		/**
+		 * LLMConfigResponse
+		 * @description LLM configuration response (API key is never returned).
+		 */
+		LLMConfigResponse: {
+			/**
+			 * Provider
+			 * @enum {string}
+			 */
+			provider: "openai" | "anthropic" | "custom";
+			/** Model */
+			model: string;
+			/** Endpoint */
+			endpoint?: string | null;
+			/**
+			 * Max Tokens
+			 * @default 4096
+			 */
+			max_tokens: number;
+			/**
+			 * Temperature
+			 * @default 0.7
+			 */
+			temperature: number;
+			/** Default System Prompt */
+			default_system_prompt?: string | null;
+			/**
+			 * Is Configured
+			 * @default true
+			 */
+			is_configured: boolean;
+			/**
+			 * Api Key Set
+			 * @default false
+			 */
+			api_key_set: boolean;
+		};
+		/**
+		 * LLMModelsResponse
+		 * @description Response listing available models.
+		 */
+		LLMModelsResponse: {
+			/** Models */
+			models: string[];
+			/** Provider */
+			provider: string;
+		};
+		/**
+		 * LLMTestRequest
+		 * @description Request to test LLM configuration before saving.
+		 */
+		LLMTestRequest: {
+			/**
+			 * Provider
+			 * @description LLM provider type
+			 * @enum {string}
+			 */
+			provider: "openai" | "anthropic" | "custom";
+			/**
+			 * Model
+			 * @description Model identifier
+			 */
+			model: string;
+			/**
+			 * Api Key
+			 * @description API key to test
+			 */
+			api_key: string;
+			/**
+			 * Endpoint
+			 * @description Custom endpoint URL
+			 */
+			endpoint?: string | null;
+		};
+		/**
+		 * LLMTestResponse
+		 * @description Response from testing LLM connection.
+		 */
+		LLMTestResponse: {
+			/** Success */
+			success: boolean;
+			/** Message */
+			message: string;
+			/** Models */
+			models?: string[] | null;
+		};
+		/**
+		 * LinkedAccountResponse
+		 * @description Linked OAuth account info.
+		 */
+		LinkedAccountResponse: {
+			/** Provider */
+			provider: string;
+			/** Provider Email */
+			provider_email: string;
+			/** Linked At */
+			linked_at: string;
+			/** Last Used At */
+			last_used_at?: string | null;
+		};
+		/**
+		 * LinkedAccountsResponse
+		 * @description List of linked OAuth accounts.
+		 */
+		LinkedAccountsResponse: {
+			/** Accounts */
+			accounts: components["schemas"]["LinkedAccountResponse"][];
+		};
+		/**
+		 * LoginResponse
+		 * @description Unified login response that can be Token or MFA response.
+		 */
+		LoginResponse: {
+			/** Access Token */
+			access_token?: string | null;
+			/** Refresh Token */
+			refresh_token?: string | null;
+			/**
+			 * Token Type
+			 * @default bearer
+			 */
+			token_type: string;
+			/**
+			 * Mfa Required
+			 * @default false
+			 */
+			mfa_required: boolean;
+			/**
+			 * Mfa Setup Required
+			 * @default false
+			 */
+			mfa_setup_required: boolean;
+			/** Mfa Token */
+			mfa_token?: string | null;
+			/** Available Methods */
+			available_methods?: string[] | null;
+			/** Expires In */
+			expires_in?: number | null;
+		};
+		/**
+		 * LogoutRequest
+		 * @description Logout request with optional refresh token.
+		 */
+		LogoutRequest: {
+			/** Refresh Token */
+			refresh_token?: string | null;
+		};
+		/**
+		 * LogoutResponse
+		 * @description Logout response model.
+		 */
+		LogoutResponse: {
+			/**
+			 * Message
+			 * @default Logged out successfully
+			 */
+			message: string;
+		};
+		/**
+		 * MFAEnrollVerifyResponse
+		 * @description Response after completing MFA enrollment.
+		 */
+		MFAEnrollVerifyResponse: {
+			/** Success */
+			success: boolean;
+			/** Recovery Codes */
+			recovery_codes: string[];
+			/** Access Token */
+			access_token: string;
+			/** Refresh Token */
+			refresh_token: string;
+			/**
+			 * Token Type
+			 * @default bearer
+			 */
+			token_type: string;
+		};
+		/**
+		 * MFARemoveRequest
+		 * @description Request to remove MFA method.
+		 */
+		MFARemoveRequest: {
+			/** Password */
+			password?: string | null;
+			/** Mfa Code */
+			mfa_code?: string | null;
+		};
+		/**
+		 * MFAStatusResponse
+		 * @description MFA status response.
+		 */
+		MFAStatusResponse: {
+			/** Mfa Enabled */
+			mfa_enabled: boolean;
+			/** Mfa Required */
+			mfa_required: boolean;
+			/** Enforcement Deadline */
+			enforcement_deadline?: string | null;
+			/** Enrolled Methods */
+			enrolled_methods: string[];
+			/** Recovery Codes Remaining */
+			recovery_codes_remaining: number;
+		};
+		/**
+		 * MFAVerifyResponse
+		 * @description MFA verification response.
+		 *
+		 *     For enrollment completion: includes recovery_codes and tokens (auto-login)
+		 *     For subsequent verifications: just success status
+		 */
+		MFAVerifyResponse: {
+			/** Success */
+			success: boolean;
+			/** Recovery Codes */
+			recovery_codes?: string[] | null;
+			/** Access Token */
+			access_token?: string | null;
+			/** Refresh Token */
+			refresh_token?: string | null;
+			/**
+			 * Token Type
+			 * @default bearer
+			 */
+			token_type: string;
+		};
+		/**
+		 * MaintenanceStatus
+		 * @description Current maintenance status of the workspace.
+		 */
+		MaintenanceStatus: {
+			/**
+			 * Files Needing Ids
+			 * @description List of Python files with decorators missing IDs
+			 */
+			files_needing_ids?: string[];
+			/**
+			 * Total Files
+			 * @description Total number of files in workspace
+			 * @default 0
+			 */
+			total_files: number;
+			/**
+			 * Last Reindex
+			 * @description Timestamp of last reindex operation
+			 */
+			last_reindex?: string | null;
+		};
+		/**
+		 * MessagePublic
+		 * @description Message output for API responses.
+		 */
+		MessagePublic: {
+			/** Id */
+			id: string;
+			/** Conversation Id */
+			conversation_id: string;
+			role: components["schemas"]["MessageRole"];
+			/** Content */
+			content?: string | null;
+			/** Tool Calls */
+			tool_calls?: components["schemas"]["ToolCall"][] | null;
+			/** Tool Call Id */
+			tool_call_id?: string | null;
+			/** Tool Name */
+			tool_name?: string | null;
+			/**
+			 * Execution Id
+			 * @description Execution ID for tool results (for fetching logs)
+			 */
+			execution_id?: string | null;
+			/** Token Count Input */
+			token_count_input?: number | null;
+			/** Token Count Output */
+			token_count_output?: number | null;
+			/** Model */
+			model?: string | null;
+			/** Duration Ms */
+			duration_ms?: number | null;
+			/** Sequence */
+			sequence: number;
+			/** Created At */
+			created_at: string;
+		};
+		/**
+		 * MessageRole
+		 * @description Message roles in chat conversations
+		 * @enum {string}
+		 */
+		MessageRole: "user" | "assistant" | "system" | "tool";
+		/**
+		 * NotificationCategory
+		 * @description Categories for grouping notifications.
+		 * @enum {string}
+		 */
+		NotificationCategory:
+			| "github_setup"
+			| "github_sync"
+			| "file_upload"
+			| "package_install"
+			| "system";
+		/**
+		 * NotificationListResponse
+		 * @description Response containing list of notifications.
+		 */
+		NotificationListResponse: {
+			/**
+			 * Notifications
+			 * @description Active notifications
+			 */
+			notifications?: components["schemas"]["NotificationPublic"][];
+		};
+		/**
+		 * NotificationPublic
+		 * @description Public representation of a notification.
+		 */
+		NotificationPublic: {
+			/**
+			 * Id
+			 * @description Unique notification ID
+			 */
+			id: string;
+			/** @description Notification category */
+			category: components["schemas"]["NotificationCategory"];
+			/**
+			 * Title
+			 * @description Notification title
+			 */
+			title: string;
+			/**
+			 * Description
+			 * @description Current status message
+			 */
+			description?: string | null;
+			/** @description Current status */
+			status: components["schemas"]["NotificationStatus"];
+			/**
+			 * Percent
+			 * @description Progress percentage. None = indeterminate, 0-100 = determinate.
+			 */
+			percent?: number | null;
+			/**
+			 * Error
+			 * @description Error message if failed
+			 */
+			error?: string | null;
+			/**
+			 * Result
+			 * @description Result data on completion
+			 */
+			result?: {
+				[key: string]: unknown;
+			} | null;
+			/**
+			 * Metadata
+			 * @description Additional metadata
+			 */
+			metadata?: {
+				[key: string]: unknown;
+			} | null;
+			/**
+			 * Created At
+			 * Format: date-time
+			 * @description When notification was created
+			 */
+			created_at: string;
+			/**
+			 * Updated At
+			 * Format: date-time
+			 * @description When notification was last updated
+			 */
+			updated_at: string;
+			/**
+			 * User Id
+			 * @description User who owns this notification
+			 */
+			user_id: string;
+		};
+		/**
+		 * NotificationStatus
+		 * @description Status of a notification/operation.
+		 * @enum {string}
+		 */
+		NotificationStatus:
+			| "pending"
+			| "running"
+			| "awaiting_action"
+			| "completed"
+			| "failed"
+			| "cancelled";
+		/**
+		 * OAuthAuthorizeResponse
+		 * @description Response model for OAuth authorization URL.
+		 */
+		OAuthAuthorizeResponse: {
+			/**
+			 * Authorization Url
+			 * @description URL to redirect user for authorization
+			 */
+			authorization_url: string;
+			/**
+			 * State
+			 * @description State parameter for CSRF protection
+			 */
+			state: string;
+			/**
+			 * Message
+			 * @default Redirect user to authorization_url to complete OAuth flow
+			 */
+			message: string;
+		};
+		/**
+		 * OAuthCallbackResponse
+		 * @description Response model for OAuth callback endpoint
+		 */
+		OAuthCallbackResponse: {
+			/**
+			 * Success
+			 * @description Whether the OAuth connection was successful
+			 */
+			success: boolean;
+			/**
+			 * Message
+			 * @description Status message
+			 */
+			message: string;
+			/**
+			 * Status
+			 * @description Connection status
+			 */
+			status: string;
+			/**
+			 * Connection Name
+			 * @description Name of the OAuth connection
+			 */
+			connection_name: string;
+			/**
+			 * Warning Message
+			 * @description Warning message displayed to user (e.g., missing refresh token)
+			 */
+			warning_message?: string | null;
+			/**
+			 * Error Message
+			 * @description Error message displayed to user
+			 */
+			error_message?: string | null;
+		};
+		/**
+		 * OAuthConfigResponse
+		 * @description Response model for OAuth provider configuration.
+		 */
+		OAuthConfigResponse: {
+			/**
+			 * Id
+			 * Format: uuid
+			 * @description OAuth provider ID
+			 */
+			id: string;
+			/**
+			 * Provider Name
+			 * @description Provider name
+			 */
+			provider_name: string;
+			/**
+			 * Display Name
+			 * @description Display name
+			 */
+			display_name?: string | null;
+			/**
+			 * Oauth Flow Type
+			 * @description OAuth flow type (authorization_code or client_credentials)
+			 */
+			oauth_flow_type: string;
+			/**
+			 * Client Id
+			 * @description OAuth client ID
+			 */
+			client_id: string;
+			/**
+			 * Authorization Url
+			 * @description OAuth authorization endpoint URL (only for authorization_code flow)
+			 */
+			authorization_url?: string | null;
+			/**
+			 * Token Url
+			 * @description OAuth token endpoint URL
+			 */
+			token_url: string | null;
+			/**
+			 * Scopes
+			 * @description OAuth scopes
+			 */
+			scopes?: string[];
+			/**
+			 * Created At
+			 * Format: date-time
+			 * @description Creation timestamp
+			 */
+			created_at: string;
+			/**
+			 * Updated At
+			 * Format: date-time
+			 * @description Last update timestamp
+			 */
+			updated_at: string;
+		};
+		/**
+		 * OAuthConfigSummary
+		 * @description OAuth configuration summary for integration detail response.
+		 *     Includes provider config and connection status.
+		 */
+		OAuthConfigSummary: {
+			/**
+			 * Provider Name
+			 * @description OAuth provider name
+			 */
+			provider_name: string;
+			/**
+			 * Oauth Flow Type
+			 * @description OAuth flow type (authorization_code, client_credentials)
+			 */
+			oauth_flow_type: string;
+			/**
+			 * Client Id
+			 * @description OAuth client ID
+			 */
+			client_id: string;
+			/**
+			 * Authorization Url
+			 * @description Authorization URL
+			 */
+			authorization_url?: string | null;
+			/**
+			 * Token Url
+			 * @description Token URL
+			 */
+			token_url: string;
+			/**
+			 * Scopes
+			 * @description OAuth scopes
+			 */
+			scopes?: string[];
+			/**
+			 * Status
+			 * @description Connection status
+			 * @default not_connected
+			 */
+			status: string;
+			/**
+			 * Status Message
+			 * @description Status message
+			 */
+			status_message?: string | null;
+			/**
+			 * Expires At
+			 * @description Token expiration time
+			 */
+			expires_at?: string | null;
+			/**
+			 * Last Refresh At
+			 * @description Last token refresh time
+			 */
+			last_refresh_at?: string | null;
+			/**
+			 * Has Refresh Token
+			 * @description Whether a refresh token is available
+			 * @default false
+			 */
+			has_refresh_token: boolean;
+		};
+		/**
+		 * OAuthConnectionDetail
+		 * @description Detailed model for OAuth connections (used in get/update responses)
+		 *     GET /api/oauth/connections/{connection_name}
+		 *
+		 *     Includes configuration details but masks sensitive fields
+		 */
+		OAuthConnectionDetail: {
+			/** Connection Name */
+			connection_name: string;
+			/**
+			 * Name
+			 * @description Display name for the connection
+			 */
+			name?: string | null;
+			/**
+			 * Provider
+			 * @description Provider identifier
+			 */
+			provider?: string | null;
+			/** Description */
+			description?: string | null;
+			/**
+			 * Oauth Flow Type
+			 * @enum {string}
+			 */
+			oauth_flow_type:
+				| "authorization_code"
+				| "client_credentials"
+				| "refresh_token";
+			/**
+			 * Client Id
+			 * @description OAuth client ID (safe to expose)
+			 */
+			client_id: string;
+			/**
+			 * Authorization Url
+			 * @description OAuth authorization endpoint (required for authorization_code, not used for client_credentials)
+			 */
+			authorization_url?: string | null;
+			/** Token Url */
+			token_url: string;
+			/** Scopes */
+			scopes: string;
+			/**
+			 * Status
+			 * @enum {string}
+			 */
+			status:
+				| "not_connected"
+				| "waiting_callback"
+				| "testing"
+				| "connected"
+				| "completed"
+				| "failed";
+			/** Status Message */
+			status_message?: string | null;
+			/**
+			 * Integration Id
+			 * @description ID of the integration this OAuth connection belongs to
+			 */
+			integration_id?: string | null;
+			/** Expires At */
+			expires_at?: string | null;
+			/** Last Refresh At */
+			last_refresh_at?: string | null;
+			/** Last Test At */
+			last_test_at?: string | null;
+			/**
+			 * Created At
+			 * Format: date-time
+			 */
+			created_at: string;
+			/** Created By */
+			created_by: string;
+			/**
+			 * Updated At
+			 * Format: date-time
+			 */
+			updated_at: string;
+		};
+		/**
+		 * OAuthCredentialsModel
+		 * @description OAuth credentials Pydantic model for API responses
+		 *     GET /api/oauth/credentials/{connection_name}
+		 *
+		 *     Contains actual access token and refresh token for use in API calls
+		 *     This model is only exposed to authenticated workflow contexts
+		 *
+		 *     Note: This is the Pydantic model for API responses. The regular OAuthCredentials
+		 *     class is used for workflow consumption with is_expired() and get_auth_header() methods.
+		 */
+		OAuthCredentialsModel: {
+			/**
+			 * Connection Name
+			 * @description Connection identifier
+			 */
+			connection_name: string;
+			/**
+			 * Access Token
+			 * @description Current OAuth access token
+			 */
+			access_token: string;
+			/**
+			 * Token Type
+			 * @description Token type (usually Bearer)
+			 * @default Bearer
+			 */
+			token_type: string;
+			/**
+			 * Expires At
+			 * @description ISO 8601 timestamp when token expires
+			 */
+			expires_at: string;
+			/**
+			 * Refresh Token
+			 * @description Refresh token if available
+			 */
+			refresh_token?: string | null;
+			/**
+			 * Scopes
+			 * @description Space-separated list of granted scopes
+			 * @default
+			 */
+			scopes: string;
+			/**
+			 * Integration Id
+			 * @description ID of the integration this OAuth connection belongs to
+			 */
+			integration_id?: string | null;
+		};
+		/**
+		 * OAuthCredentialsResponse
+		 * @description Response wrapper for OAuth credentials endpoint
+		 *     Includes connection status and metadata
+		 */
+		OAuthCredentialsResponse: {
+			/** Connection Name */
+			connection_name: string;
+			/** @description Credentials if connection is active, None if not connected */
+			credentials?: components["schemas"]["OAuthCredentialsModel"] | null;
+			/**
+			 * Status
+			 * @description Current connection status
+			 * @enum {string}
+			 */
+			status:
+				| "not_connected"
+				| "waiting_callback"
+				| "testing"
+				| "connected"
+				| "completed"
+				| "failed";
+			/**
+			 * Integration Id
+			 * @description ID of the integration this OAuth connection belongs to
+			 */
+			integration_id?: string | null;
+			/**
+			 * Expires At
+			 * @description ISO 8601 timestamp when token expires
+			 */
+			expires_at?: string | null;
+		};
+		/**
+		 * OAuthInitResponse
+		 * @description OAuth initialization response.
+		 */
+		OAuthInitResponse: {
+			/** Authorization Url */
+			authorization_url: string;
+			/** State */
+			state: string;
+		};
+		/**
+		 * OAuthProvidersResponse
+		 * @description Available OAuth providers.
+		 */
+		OAuthProvidersResponse: {
+			/** Providers */
+			providers: components["schemas"]["src__routers__oauth_sso__OAuthProviderInfo"][];
+		};
+		/**
+		 * OAuthTokenResponse
+		 * @description OAuth login token response.
+		 */
+		OAuthTokenResponse: {
+			/** Access Token */
+			access_token: string;
+			/** Refresh Token */
+			refresh_token: string;
+			/**
+			 * Token Type
+			 * @default bearer
+			 */
+			token_type: string;
+		};
+		/**
+		 * OrganizationCreate
+		 * @description Input for creating an organization.
+		 */
+		OrganizationCreate: {
+			/** Name */
+			name: string;
+			/** Domain */
+			domain?: string | null;
+			/**
+			 * Is Active
+			 * @default true
+			 */
+			is_active: boolean;
+			/** Settings */
+			settings?: {
+				[key: string]: unknown;
+			};
+		};
+		/**
+		 * OrganizationMetricsResponse
+		 * @description Response for organization metrics breakdown.
+		 */
+		OrganizationMetricsResponse: {
+			/** Organizations */
+			organizations: components["schemas"]["OrganizationMetricsSummary"][];
+			/** Total Organizations */
+			total_organizations: number;
+		};
+		/**
+		 * OrganizationMetricsSummary
+		 * @description Summary metrics for a single organization.
+		 */
+		OrganizationMetricsSummary: {
+			/** Organization Id */
+			organization_id: string;
+			/** Organization Name */
+			organization_name: string;
+			/** Total Executions */
+			total_executions: number;
+			/** Success Count */
+			success_count: number;
+			/** Failed Count */
+			failed_count: number;
+			/** Success Rate */
+			success_rate: number;
+			/** Total Memory Bytes */
+			total_memory_bytes: number;
+			/** Total Cpu Seconds */
+			total_cpu_seconds: number;
+			/** Avg Duration Ms */
+			avg_duration_ms: number;
+		};
+		/**
+		 * OrganizationPublic
+		 * @description Organization output for API responses.
+		 */
+		OrganizationPublic: {
+			/** Name */
+			name: string;
+			/** Domain */
+			domain?: string | null;
+			/**
+			 * Is Active
+			 * @default true
+			 */
+			is_active: boolean;
+			/** Settings */
+			settings?: {
+				[key: string]: unknown;
+			};
+			/**
+			 * Id
+			 * Format: uuid
+			 */
+			id: string;
+			/** Created At */
+			created_at: string | null;
+			/** Created By */
+			created_by: string;
+			/** Updated At */
+			updated_at: string | null;
+		};
+		/**
+		 * OrganizationUpdate
+		 * @description Input for updating an organization (all fields optional).
+		 */
+		OrganizationUpdate: {
+			/** Name */
+			name?: string | null;
+			/** Domain */
+			domain?: string | null;
+			/** Is Active */
+			is_active?: boolean | null;
+			/** Settings */
+			settings?: {
+				[key: string]: unknown;
+			} | null;
+		};
+		/**
+		 * PackageInstallResponse
+		 * @description Response model for package installation
+		 */
+		PackageInstallResponse: {
+			/** Package Name */
+			package_name: string;
+			/** Version */
+			version?: string | null;
+			/**
+			 * Status
+			 * @description Installation status (success, failed, in_progress)
+			 */
+			status: string;
+			/**
+			 * Message
+			 * @description Installation message
+			 */
+			message: string;
+		};
+		/**
+		 * PackageUpdate
+		 * @description Package update information
+		 */
+		PackageUpdate: {
+			/** Name */
+			name: string;
+			/** Current Version */
+			current_version: string;
+			/** Latest Version */
+			latest_version: string;
+		};
+		/**
+		 * PackageUpdatesResponse
+		 * @description Response model for package update check
+		 */
+		PackageUpdatesResponse: {
+			/** Updates Available */
+			updates_available: components["schemas"]["PackageUpdate"][];
+			/** Total Count */
+			total_count: number;
+		};
+		/**
+		 * PasskeyAuthOptionsRequest
+		 * @description Request to generate passkey authentication options.
+		 */
+		PasskeyAuthOptionsRequest: {
+			/**
+			 * Email
+			 * @description Optional email to target specific user's credentials. If None, uses discoverable credentials (passkey autofill).
+			 */
+			email?: string | null;
+		};
+		/**
+		 * PasskeyAuthOptionsResponse
+		 * @description Response with WebAuthn authentication options for the browser.
+		 */
+		PasskeyAuthOptionsResponse: {
+			/**
+			 * Challenge Id
+			 * @description Challenge ID to include in the verify request
+			 */
+			challenge_id: string;
+			/**
+			 * Options
+			 * @description WebAuthn authentication options JSON for navigator.credentials.get()
+			 */
+			options: {
+				[key: string]: unknown;
+			};
+		};
+		/**
+		 * PasskeyAuthVerifyRequest
+		 * @description Request to verify passkey authentication.
+		 */
+		PasskeyAuthVerifyRequest: {
+			/**
+			 * Challenge Id
+			 * @description Challenge ID from the options response
+			 */
+			challenge_id: string;
+			/**
+			 * Credential
+			 * @description WebAuthn authentication credential JSON from navigator.credentials.get()
+			 */
+			credential: {
+				[key: string]: unknown;
+			};
+		};
+		/**
+		 * PasskeyDeleteResponse
+		 * @description Response after deleting a passkey.
+		 */
+		PasskeyDeleteResponse: {
+			/**
+			 * Deleted
+			 * @description Whether the passkey was deleted
+			 */
+			deleted: boolean;
+			/**
+			 * Passkey Id
+			 * Format: uuid
+			 * @description ID of the deleted passkey
+			 */
+			passkey_id: string;
+		};
+		/**
+		 * PasskeyListResponse
+		 * @description Response with list of user's passkeys.
+		 */
+		PasskeyListResponse: {
+			/**
+			 * Passkeys
+			 * @description List of user's passkeys
+			 */
+			passkeys: components["schemas"]["PasskeyPublic"][];
+			/**
+			 * Count
+			 * @description Total number of passkeys
+			 */
+			count: number;
+		};
+		/**
+		 * PasskeyPublic
+		 * @description Public representation of a user's passkey.
+		 */
+		PasskeyPublic: {
+			/**
+			 * Id
+			 * Format: uuid
+			 * @description Passkey ID
+			 */
+			id: string;
+			/**
+			 * Name
+			 * @description User-friendly name for the passkey
+			 */
+			name: string;
+			/**
+			 * Device Type
+			 * @description Device type: 'singleDevice' or 'multiDevice'
+			 */
+			device_type: string;
+			/**
+			 * Backed Up
+			 * @description Whether the passkey is synced to cloud (iCloud Keychain, Google Password Manager, etc.)
+			 */
+			backed_up: boolean;
+			/**
+			 * Created At
+			 * Format: date-time
+			 * @description When the passkey was registered
+			 */
+			created_at: string;
+			/**
+			 * Last Used At
+			 * @description When the passkey was last used for authentication
+			 */
+			last_used_at: string | null;
+		};
+		/**
+		 * PasskeyRegistrationOptionsRequest
+		 * @description Request to generate passkey registration options.
+		 */
+		PasskeyRegistrationOptionsRequest: {
+			/**
+			 * Device Name
+			 * @description Optional friendly name for the passkey (e.g., 'MacBook Pro Touch ID')
+			 */
+			device_name?: string | null;
+		};
+		/**
+		 * PasskeyRegistrationOptionsResponse
+		 * @description Response with WebAuthn registration options for the browser.
+		 */
+		PasskeyRegistrationOptionsResponse: {
+			/**
+			 * Options
+			 * @description WebAuthn registration options JSON for navigator.credentials.create()
+			 */
+			options: {
+				[key: string]: unknown;
+			};
+		};
+		/**
+		 * PasskeyRegistrationVerifyRequest
+		 * @description Request to verify passkey registration.
+		 */
+		PasskeyRegistrationVerifyRequest: {
+			/**
+			 * Credential
+			 * @description WebAuthn registration credential JSON from navigator.credentials.create()
+			 */
+			credential: {
+				[key: string]: unknown;
+			};
+			/**
+			 * Device Name
+			 * @description Optional friendly name for the passkey
+			 */
+			device_name?: string | null;
+		};
+		/**
+		 * PasskeyRegistrationVerifyResponse
+		 * @description Response after successful passkey registration.
+		 */
+		PasskeyRegistrationVerifyResponse: {
+			/**
+			 * Verified
+			 * @description Whether registration was successful
+			 */
+			verified: boolean;
+			/**
+			 * Passkey Id
+			 * Format: uuid
+			 * @description ID of the newly created passkey
+			 */
+			passkey_id: string;
+			/**
+			 * Name
+			 * @description Name of the passkey
+			 */
+			name: string;
+		};
+		/**
+		 * PasswordChange
+		 * @description Request model for changing password.
+		 */
+		PasswordChange: {
+			/**
+			 * Current Password
+			 * @description Current password
+			 */
+			current_password: string;
+			/**
+			 * New Password
+			 * @description New password (minimum 8 characters)
+			 */
+			new_password: string;
+		};
+		/**
+		 * PlatformMetricsResponse
+		 * @description Platform metrics snapshot response.
+		 *
+		 *     Pre-computed metrics for instant dashboard loads.
+		 *     Refreshed by scheduler every 1-5 minutes.
+		 */
+		PlatformMetricsResponse: {
+			/** Workflow Count */
+			workflow_count: number;
+			/** Form Count */
+			form_count: number;
+			/** Data Provider Count */
+			data_provider_count: number;
+			/** Organization Count */
+			organization_count: number;
+			/** User Count */
+			user_count: number;
+			/** Total Executions */
+			total_executions: number;
+			/** Total Success */
+			total_success: number;
+			/** Total Failed */
+			total_failed: number;
+			/** Executions 24H */
+			executions_24h: number;
+			/** Success 24H */
+			success_24h: number;
+			/** Failed 24H */
+			failed_24h: number;
+			/** Running Count */
+			running_count: number;
+			/** Pending Count */
+			pending_count: number;
+			/** Avg Duration Ms 24H */
+			avg_duration_ms_24h: number;
+			/** Total Memory Bytes 24H */
+			total_memory_bytes_24h: number;
+			/** Total Cpu Seconds 24H */
+			total_cpu_seconds_24h: number;
+			/** Success Rate All Time */
+			success_rate_all_time: number;
+			/** Success Rate 24H */
+			success_rate_24h: number;
+			/** Refreshed At */
+			refreshed_at: string;
+		};
+		/**
+		 * ProfileResponse
+		 * @description Response model for user profile.
+		 */
+		ProfileResponse: {
+			/**
+			 * Id
+			 * Format: uuid
+			 */
+			id: string;
+			/** Email */
+			email: string;
+			/** Name */
+			name: string | null;
+			/** Has Avatar */
+			has_avatar: boolean;
+			/** User Type */
+			user_type: string;
+			/** Organization Id */
+			organization_id: string | null;
+			/** Is Superuser */
+			is_superuser: boolean;
+		};
+		/**
+		 * ProfileUpdate
+		 * @description Request model for updating user profile.
+		 */
+		ProfileUpdate: {
+			/**
+			 * Name
+			 * @description Display name
+			 */
+			name?: string | null;
+		};
+		/**
+		 * PullFromGitHubRequest
+		 * @description Request to pull from GitHub
+		 */
+		PullFromGitHubRequest: {
+			/**
+			 * Connection Id
+			 * @description WebPubSub connection ID for streaming logs
+			 */
+			connection_id?: string | null;
+		};
+		/**
+		 * PullFromGitHubResponse
+		 * @description Response after pulling from GitHub
+		 */
+		PullFromGitHubResponse: {
+			/**
+			 * Success
+			 * @description Whether pull succeeded
+			 */
+			success: boolean;
+			/**
+			 * Updated Files
+			 * @description List of updated file paths
+			 */
+			updated_files?: string[];
+			/**
+			 * Conflicts
+			 * @description List of conflicts (if any)
+			 */
+			conflicts?: components["schemas"]["ConflictInfo"][];
+			/**
+			 * Error
+			 * @description Error message if pull failed
+			 */
+			error?: string | null;
+		};
+		/**
+		 * PushToGitHubRequest
+		 * @description Request to push to GitHub
+		 */
+		PushToGitHubRequest: {
+			/**
+			 * Message
+			 * @description Commit message
+			 */
+			message?: string | null;
+			/**
+			 * Connection Id
+			 * @description WebPubSub connection ID for streaming logs
+			 */
+			connection_id?: string | null;
+		};
+		/**
+		 * PushToGitHubResponse
+		 * @description Response after pushing to GitHub
+		 */
+		PushToGitHubResponse: {
+			/**
+			 * Success
+			 * @description Whether push succeeded
+			 */
+			success: boolean;
+			/**
+			 * Error
+			 * @description Error message if push failed
+			 */
+			error?: string | null;
+		};
+		/**
+		 * RecentFailure
+		 * @description Recent failed execution info
+		 */
+		RecentFailure: {
+			/** Execution Id */
+			execution_id: string;
+			/** Workflow Name */
+			workflow_name: string;
+			/** Error Message */
+			error_message: string | null;
+			/** Started At */
+			started_at: string | null;
+		};
+		/**
+		 * RecoveryCodesCountResponse
+		 * @description Recovery codes count response.
+		 */
+		RecoveryCodesCountResponse: {
+			/** Total */
+			total: number;
+			/** Remaining */
+			remaining: number;
+		};
+		/**
+		 * RecoveryCodesResponse
+		 * @description Recovery codes response.
+		 */
+		RecoveryCodesResponse: {
+			/** Recovery Codes */
+			recovery_codes: string[];
+			/** Count */
+			count: number;
+		};
+		/**
+		 * RefreshAllResponse
+		 * @description Response for triggering refresh of all tokens.
+		 */
+		RefreshAllResponse: {
+			/** Triggered */
+			triggered: boolean;
+			/** Message */
+			message: string;
+			/**
+			 * Connections Queued
+			 * @default 0
+			 */
+			connections_queued: number;
+			/**
+			 * Refreshed Successfully
+			 * @default 0
+			 */
+			refreshed_successfully: number;
+			/**
+			 * Refresh Failed
+			 * @default 0
+			 */
+			refresh_failed: number;
+		};
+		/**
+		 * RefreshJobRun
+		 * @description Details of a single refresh job run.
+		 */
+		RefreshJobRun: {
+			/**
+			 * Status
+			 * @default completed
+			 */
+			status: string;
+			/** Start Time */
+			start_time?: string | null;
+			/** End Time */
+			end_time?: string | null;
+			/**
+			 * Connections Checked
+			 * @default 0
+			 */
+			connections_checked: number;
+			/**
+			 * Refreshed Successfully
+			 * @default 0
+			 */
+			refreshed_successfully: number;
+			/**
+			 * Refresh Failed
+			 * @default 0
+			 */
+			refresh_failed: number;
+			/**
+			 * Needs Refresh
+			 * @default 0
+			 */
+			needs_refresh: number;
+			/**
+			 * Total Connections
+			 * @default 0
+			 */
+			total_connections: number;
+			/** Error */
+			error?: string | null;
+			/** Errors */
+			errors?: string[];
+		};
+		/**
+		 * RefreshJobStatusResponse
+		 * @description Response for refresh job status.
+		 */
+		RefreshJobStatusResponse: {
+			/**
+			 * Enabled
+			 * @default true
+			 */
+			enabled: boolean;
+			last_run?: components["schemas"]["RefreshJobRun"] | null;
+			/** Next Run */
+			next_run?: string | null;
+		};
+		/**
+		 * RefreshTokenResponse
+		 * @description Response for token refresh.
+		 */
+		RefreshTokenResponse: {
+			/** Success */
+			success: boolean;
+			/** Message */
+			message: string;
+			/** Expires At */
+			expires_at?: string | null;
+		};
+		/**
+		 * RegenerateRecoveryCodesRequest
+		 * @description Request to regenerate recovery codes.
+		 */
+		RegenerateRecoveryCodesRequest: {
+			/** Mfa Code */
+			mfa_code: string;
+		};
+		/**
+		 * ReindexRequest
+		 * @description Request to start a workspace reindex operation.
+		 */
+		ReindexRequest: {
+			/**
+			 * Inject Ids
+			 * @description Whether to inject IDs into decorators that don't have them
+			 * @default true
+			 */
+			inject_ids: boolean;
+			/**
+			 * Notification Id
+			 * @description Optional notification ID to update with progress
+			 */
+			notification_id?: string | null;
+		};
+		/**
+		 * ReindexResponse
+		 * @description Response from starting or completing a reindex operation.
+		 */
+		ReindexResponse: {
+			/**
+			 * Status
+			 * @description Operation status: started, completed, failed
+			 */
+			status: string;
+			/**
+			 * Files Indexed
+			 * @description Number of files indexed
+			 * @default 0
+			 */
+			files_indexed: number;
+			/**
+			 * Files Needing Ids
+			 * @description Files that needed ID injection (for detection mode)
+			 */
+			files_needing_ids?: string[];
+			/**
+			 * Ids Injected
+			 * @description Number of files that had IDs injected (for inject mode)
+			 * @default 0
+			 */
+			ids_injected: number;
+			/**
+			 * Message
+			 * @description Human-readable status message
+			 */
+			message?: string | null;
+		};
+		/**
+		 * ResourceMetricsEntry
+		 * @description Resource usage metrics for a time period.
+		 */
+		ResourceMetricsEntry: {
+			/** Date */
+			date: string;
+			/** Peak Memory Bytes */
+			peak_memory_bytes: number;
+			/** Total Memory Bytes */
+			total_memory_bytes: number;
+			/** Avg Memory Bytes */
+			avg_memory_bytes: number;
+			/** Peak Cpu Seconds */
+			peak_cpu_seconds: number;
+			/** Total Cpu Seconds */
+			total_cpu_seconds: number;
+			/** Avg Cpu Seconds */
+			avg_cpu_seconds: number;
+			/** Execution Count */
+			execution_count: number;
+		};
+		/**
+		 * ResourceMetricsResponse
+		 * @description Response for resource usage trends.
+		 */
+		ResourceMetricsResponse: {
+			/** Days */
+			days: components["schemas"]["ResourceMetricsEntry"][];
+			/** Total Days */
+			total_days: number;
+		};
+		/**
+		 * RetryPolicy
+		 * @description Retry policy configuration for workflow execution
+		 */
+		RetryPolicy: {
+			/**
+			 * Max Attempts
+			 * @description Total attempts including initial execution
+			 * @default 3
+			 */
+			max_attempts: number;
+			/**
+			 * Backoff Seconds
+			 * @description Initial backoff duration in seconds
+			 * @default 2
+			 */
+			backoff_seconds: number;
+			/**
+			 * Max Backoff Seconds
+			 * @description Maximum backoff cap in seconds
+			 * @default 60
+			 */
+			max_backoff_seconds: number;
+		};
+		/**
+		 * RevokeAllResponse
+		 * @description Revoke all sessions response model.
+		 */
+		RevokeAllResponse: {
+			/** Message */
+			message: string;
+			/** Sessions Revoked */
+			sessions_revoked: number;
+		};
+		/**
+		 * RoleAgentsResponse
+		 * @description Response for getting agents assigned to a role.
+		 */
+		RoleAgentsResponse: {
+			/** Agent Ids */
+			agent_ids?: string[];
+		};
+		/**
+		 * RoleCreate
+		 * @description Input for creating a role.
+		 */
+		RoleCreate: {
+			/** Name */
+			name: string;
+			/** Description */
+			description?: string | null;
+			/**
+			 * Is Active
+			 * @default true
+			 */
+			is_active: boolean;
+			/** Organization Id */
+			organization_id?: string | null;
+		};
+		/**
+		 * RoleFormsResponse
+		 * @description Response model for getting forms assigned to a role
+		 */
+		RoleFormsResponse: {
+			/**
+			 * Form Ids
+			 * @description List of form IDs assigned to the role
+			 */
+			form_ids: string[];
+		};
+		/**
+		 * RolePublic
+		 * @description Role output for API responses.
+		 */
+		RolePublic: {
+			/** Name */
+			name: string;
+			/** Description */
+			description?: string | null;
+			/**
+			 * Is Active
+			 * @default true
+			 */
+			is_active: boolean;
+			/**
+			 * Id
+			 * Format: uuid
+			 */
+			id: string;
+			/** Organization Id */
+			organization_id: string | null;
+			/** Created By */
+			created_by: string;
+			/** Created At */
+			created_at: string | null;
+			/** Updated At */
+			updated_at: string | null;
+		};
+		/**
+		 * RoleUpdate
+		 * @description Input for updating a role.
+		 */
+		RoleUpdate: {
+			/** Name */
+			name?: string | null;
+			/** Description */
+			description?: string | null;
+			/** Is Active */
+			is_active?: boolean | null;
+		};
+		/**
+		 * RoleUsersResponse
+		 * @description Response model for getting users assigned to a role
+		 */
+		RoleUsersResponse: {
+			/**
+			 * User Ids
+			 * @description List of user IDs assigned to the role
+			 */
+			user_ids: string[];
+		};
+		/**
+		 * SDKIntegrationsGetRequest
+		 * @description Request to get integration configuration via SDK.
+		 */
+		SDKIntegrationsGetRequest: {
+			/**
+			 * Name
+			 * @description Integration name
+			 */
+			name: string;
+			/**
+			 * Org Id
+			 * @description Organization ID (optional, uses context default)
+			 */
+			org_id?: string | null;
+		};
+		/**
+		 * SDKIntegrationsGetResponse
+		 * @description Integration data response from SDK.
+		 */
+		SDKIntegrationsGetResponse: {
+			/**
+			 * Integration Id
+			 * @description Integration UUID
+			 */
+			integration_id: string;
+			/**
+			 * Entity Id
+			 * @description Mapped external entity ID (e.g., tenant ID)
+			 */
+			entity_id: string;
+			/**
+			 * Entity Name
+			 * @description Display name for the mapped entity
+			 */
+			entity_name?: string | null;
+			/**
+			 * Config
+			 * @description Merged configuration (schema defaults + org overrides)
+			 */
+			config?: {
+				[key: string]: unknown;
+			};
+			/**
+			 * Oauth Client Id
+			 * @description OAuth client ID
+			 */
+			oauth_client_id?: string | null;
+			/**
+			 * Oauth Token Url
+			 * @description OAuth token URL (with {entity_id} resolved)
+			 */
+			oauth_token_url?: string | null;
+			/**
+			 * Oauth Scopes
+			 * @description OAuth scopes (space-separated or None)
+			 */
+			oauth_scopes?: string | null;
+		};
+		/**
+		 * SDKIntegrationsListMappingsRequest
+		 * @description Request to list integration mappings via SDK.
+		 */
+		SDKIntegrationsListMappingsRequest: {
+			/**
+			 * Name
+			 * @description Integration name
+			 */
+			name: string;
+		};
+		/**
+		 * SDKIntegrationsListMappingsResponse
+		 * @description Response for listing integration mappings.
+		 */
+		SDKIntegrationsListMappingsResponse: {
+			/**
+			 * Items
+			 * @description List of mappings
+			 */
+			items: components["schemas"]["SDKIntegrationsMappingItem"][];
+		};
+		/**
+		 * SDKIntegrationsMappingItem
+		 * @description Single integration mapping in list response.
+		 */
+		SDKIntegrationsMappingItem: {
+			/**
+			 * Organization Id
+			 * @description Organization UUID
+			 */
+			organization_id: string;
+			/**
+			 * Entity Id
+			 * @description External entity ID
+			 */
+			entity_id: string;
+			/**
+			 * Entity Name
+			 * @description Display name
+			 */
+			entity_name?: string | null;
+			/**
+			 * Config
+			 * @description Organization-specific config
+			 */
+			config?: {
+				[key: string]: unknown;
+			} | null;
+		};
+		/**
+		 * ScheduleMetadata
+		 * @description Workflow metadata enriched with computed schedule-specific fields.
+		 *
+		 *     Extends WorkflowMetadata with validation, timing, and execution history.
+		 *     Used by the /api/schedules endpoint to return workflows with schedules.
+		 */
+		ScheduleMetadata: {
+			/**
+			 * Id
+			 * @description Workflow UUID
+			 */
+			id: string;
+			/**
+			 * Name
+			 * @description Workflow name (snake_case)
+			 */
+			name: string;
+			/**
+			 * Description
+			 * @description Human-readable description
+			 */
+			description?: string | null;
+			/**
+			 * Category
+			 * @description Category for organization
+			 * @default General
+			 */
+			category: string;
+			/**
+			 * Tags
+			 * @description Tags for categorization
+			 */
+			tags?: string[];
+			/**
+			 * Schedule
+			 * @description CRON expression
+			 */
+			schedule?: string | null;
+			/**
+			 * Source File Path
+			 * @description Full file path
+			 */
+			source_file_path?: string | null;
+			/**
+			 * Relative File Path
+			 * @description Workspace-relative path
+			 */
+			relative_file_path?: string | null;
+			/**
+			 * Validation Status
+			 * @description CRON validation status
+			 */
+			validation_status?: ("valid" | "warning" | "error") | null;
+			/**
+			 * Validation Message
+			 * @description Validation error/warning message
+			 */
+			validation_message?: string | null;
+			/**
+			 * Human Readable
+			 * @description Human-readable schedule (e.g., 'Every day at 9:00 AM')
+			 */
+			human_readable?: string | null;
+			/**
+			 * Next Run At
+			 * @description Next scheduled execution time
+			 */
+			next_run_at?: string | null;
+			/**
+			 * Is Overdue
+			 * @description Whether schedule is overdue (next_run_at <= now)
+			 * @default false
+			 */
+			is_overdue: boolean;
+			/**
+			 * Last Run At
+			 * @description Last execution completion time
+			 */
+			last_run_at?: string | null;
+			/**
+			 * Last Execution Id
+			 * @description ID of most recent execution
+			 */
+			last_execution_id?: string | null;
+			/**
+			 * Execution Count
+			 * @description Total number of executions
+			 * @default 0
+			 */
+			execution_count: number;
+		};
+		/**
+		 * SearchRequest
+		 * @description Search query request
+		 */
+		SearchRequest: {
+			/**
+			 * Query
+			 * @description Search text or regex pattern
+			 */
+			query: string;
+			/**
+			 * Case Sensitive
+			 * @description Case-sensitive matching
+			 * @default false
+			 */
+			case_sensitive: boolean;
+			/**
+			 * Is Regex
+			 * @description Treat query as regex
+			 * @default false
+			 */
+			is_regex: boolean;
+			/**
+			 * Include Pattern
+			 * @description Glob pattern for files to search
+			 * @default **\/*
+			 */
+			include_pattern: string | null;
+			/**
+			 * Max Results
+			 * @description Maximum results to return
+			 * @default 1000
+			 */
+			max_results: number;
+		};
+		/**
+		 * SearchResponse
+		 * @description Search results response
+		 */
+		SearchResponse: {
+			/**
+			 * Query
+			 * @description Original search query
+			 */
+			query: string;
+			/**
+			 * Total Matches
+			 * @description Total matches found
+			 */
+			total_matches: number;
+			/**
+			 * Files Searched
+			 * @description Number of files searched
+			 */
+			files_searched: number;
+			/**
+			 * Results
+			 * @description Array of search results
+			 */
+			results: components["schemas"]["SearchResult"][];
+			/**
+			 * Truncated
+			 * @description Whether results were truncated
+			 */
+			truncated: boolean;
+			/**
+			 * Search Time Ms
+			 * @description Search duration in milliseconds
+			 */
+			search_time_ms: number;
+		};
+		/**
+		 * SearchResult
+		 * @description Single search match result
+		 */
+		SearchResult: {
+			/**
+			 * File Path
+			 * @description Relative path to file containing match
+			 */
+			file_path: string;
+			/**
+			 * Line
+			 * @description Line number (1-indexed)
+			 */
+			line: number;
+			/**
+			 * Column
+			 * @description Column number (0-indexed)
+			 */
+			column: number;
+			/**
+			 * Match Text
+			 * @description The matched text
+			 */
+			match_text: string;
+			/**
+			 * Context Before
+			 * @description Line before match
+			 */
+			context_before?: string | null;
+			/**
+			 * Context After
+			 * @description Line after match
+			 */
+			context_after?: string | null;
+		};
+		/**
+		 * SetConfigRequest
+		 * @description Request model for setting config
+		 */
+		SetConfigRequest: {
+			/** Key */
+			key: string;
+			/**
+			 * Value
+			 * @description Config value. For SECRET type, this will be encrypted before storage.
+			 */
+			value: string;
+			type: components["schemas"]["ConfigType"];
+			/**
+			 * Description
+			 * @description Optional description of this config entry
+			 */
+			description?: string | null;
+		};
+		/**
+		 * StuckExecutionsResponse
+		 * @description Response model for stuck executions query
+		 */
+		StuckExecutionsResponse: {
+			/**
+			 * Executions
+			 * @description List of stuck executions
+			 */
+			executions: components["schemas"]["WorkflowExecution"][];
+			/**
+			 * Count
+			 * @description Number of stuck executions found
+			 */
+			count: number;
+		};
+		/**
+		 * SystemLog
+		 * @description System log entry (platform events, not workflow executions)
+		 */
+		SystemLog: {
+			/**
+			 * Event Id
+			 * @description Unique event ID (UUID)
+			 */
+			event_id: string;
+			/**
+			 * Timestamp
+			 * Format: date-time
+			 * @description When the event occurred (ISO 8601)
+			 */
+			timestamp: string;
+			/**
+			 * Category
+			 * @description Event category
+			 * @enum {string}
+			 */
+			category:
+				| "discovery"
+				| "organization"
+				| "user"
+				| "role"
+				| "config"
+				| "secret"
+				| "form"
+				| "oauth"
+				| "execution"
+				| "system"
+				| "error";
+			/**
+			 * Level
+			 * @description Event severity level
+			 * @enum {string}
+			 */
+			level: "info" | "warning" | "error" | "critical";
+			/**
+			 * Message
+			 * @description Human-readable event description
+			 */
+			message: string;
+			/**
+			 * Executed By
+			 * @description User ID or 'System'
+			 */
+			executed_by: string;
+			/**
+			 * Executed By Name
+			 * @description Display name or 'System'
+			 */
+			executed_by_name: string;
+			/**
+			 * Details
+			 * @description Additional event-specific data
+			 */
+			details?: {
+				[key: string]: unknown;
+			} | null;
+		};
+		/**
+		 * SystemLogsListResponse
+		 * @description Response model for listing system logs with pagination
+		 */
+		SystemLogsListResponse: {
+			/**
+			 * Logs
+			 * @description List of system log entries
+			 */
+			logs: components["schemas"]["SystemLog"][];
+			/**
+			 * Continuation Token
+			 * @description Continuation token for next page (opaque, base64-encoded)
+			 */
+			continuation_token?: string | null;
+		};
+		/**
+		 * Token
+		 * @description Token response model.
+		 */
+		Token: {
+			/** Access Token */
+			access_token: string;
+			/** Refresh Token */
+			refresh_token: string;
+			/**
+			 * Token Type
+			 * @default bearer
+			 */
+			token_type: string;
+		};
+		/**
+		 * TokenRefresh
+		 * @description Token refresh request model.
+		 */
+		TokenRefresh: {
+			/** Refresh Token */
+			refresh_token: string;
+		};
+		/**
+		 * ToolCall
+		 * @description Tool call from assistant message.
+		 */
+		ToolCall: {
+			/**
+			 * Id
+			 * @description Unique identifier for this tool call
+			 */
+			id: string;
+			/**
+			 * Name
+			 * @description Name of the tool to call
+			 */
+			name: string;
+			/**
+			 * Arguments
+			 * @description Arguments to pass to the tool
+			 */
+			arguments?: {
+				[key: string]: unknown;
+			};
+		};
+		/**
+		 * TrustedDeviceResponse
+		 * @description Trusted device info.
+		 */
+		TrustedDeviceResponse: {
+			/** Id */
+			id: string;
+			/** Device Name */
+			device_name: string | null;
+			/** Created At */
+			created_at: string;
+			/** Expires At */
+			expires_at: string;
+			/** Last Used At */
+			last_used_at: string | null;
+			/**
+			 * Is Current
+			 * @default false
+			 */
+			is_current: boolean;
+		};
+		/**
+		 * TrustedDevicesResponse
+		 * @description List of trusted devices.
+		 */
+		TrustedDevicesResponse: {
+			/** Devices */
+			devices: components["schemas"]["TrustedDeviceResponse"][];
+		};
+		/**
+		 * UpdateOAuthConnectionRequest
+		 * @description Request model for updating an OAuth connection
+		 *     PUT /api/oauth/connections/{connection_name}
+		 */
+		UpdateOAuthConnectionRequest: {
+			/**
+			 * Name
+			 * @description Display name
+			 */
+			name?: string | null;
+			/** Client Id */
+			client_id?: string | null;
+			/** Client Secret */
+			client_secret?: string | null;
+			/** Authorization Url */
+			authorization_url?: string | null;
+			/** Token Url */
+			token_url?: string | null;
+			/**
+			 * Token Url Defaults
+			 * @description Default values for token_url placeholders
+			 */
+			token_url_defaults?: {
+				[key: string]: string;
+			} | null;
+			/**
+			 * Scopes
+			 * @description List of OAuth scopes
+			 */
+			scopes?: string[] | null;
+		};
+		/**
+		 * UpdatePropertiesRequest
+		 * @description Request to update properties on a decorator.
+		 */
+		UpdatePropertiesRequest: {
+			/**
+			 * Path
+			 * @description File path
+			 */
+			path: string;
+			/**
+			 * Function Name
+			 * @description Target function name
+			 */
+			function_name: string;
+			/**
+			 * Properties
+			 * @description Properties to set/update
+			 */
+			properties: {
+				[key: string]: unknown;
+			};
+			/**
+			 * Expected Etag
+			 * @description ETag for optimistic concurrency control with Monaco editor
+			 */
+			expected_etag?: string | null;
+		};
+		/**
+		 * UpdatePropertiesResponse
+		 * @description Response after updating decorator properties.
+		 */
+		UpdatePropertiesResponse: {
+			/**
+			 * Modified
+			 * @description Whether any changes were made
+			 */
+			modified: boolean;
+			/**
+			 * Changes
+			 * @description Human-readable list of changes made
+			 */
+			changes: string[];
+			/**
+			 * New Etag
+			 * @description New ETag after modification
+			 */
+			new_etag: string;
+		};
+		/**
+		 * UploadLockInfo
+		 * @description Information about an active upload lock.
+		 */
+		UploadLockInfo: {
+			/**
+			 * Locked
+			 * @description Whether upload is currently locked
+			 */
+			locked: boolean;
+			/**
+			 * Owner User Id
+			 * @description User ID holding the lock
+			 */
+			owner_user_id?: string | null;
+			/**
+			 * Owner Email
+			 * @description Email of user holding the lock
+			 */
+			owner_email?: string | null;
+			/**
+			 * Operation
+			 * @description Description of the operation
+			 */
+			operation?: string | null;
+			/**
+			 * Locked At
+			 * @description When lock was acquired
+			 */
+			locked_at?: string | null;
+			/**
+			 * Expires At
+			 * @description When lock expires
+			 */
+			expires_at?: string | null;
+		};
+		/**
+		 * UploadedFileMetadata
+		 * @description Metadata for uploaded file that workflows can use to access the file
+		 */
+		UploadedFileMetadata: {
+			/**
+			 * Name
+			 * @description Original file name
+			 */
+			name: string;
+			/**
+			 * Container
+			 * @description Blob storage container name (e.g., 'uploads')
+			 */
+			container: string;
+			/**
+			 * Path
+			 * @description Blob path within container
+			 */
+			path: string;
+			/**
+			 * Content Type
+			 * @description MIME type of the file
+			 */
+			content_type: string;
+			/**
+			 * Size
+			 * @description File size in bytes
+			 */
+			size: number;
+		};
+		/**
+		 * UserFormsResponse
+		 * @description Response model for getting forms accessible to a user
+		 */
+		UserFormsResponse: {
+			/** @description User type (PLATFORM or ORG) */
+			user_type: components["schemas"]["UserType"];
+			/**
+			 * Has Access To All Forms
+			 * @description Whether user has access to all forms
+			 */
+			has_access_to_all_forms: boolean;
+			/**
+			 * Form Ids
+			 * @description List of form IDs user can access (empty if has_access_to_all_forms=true)
+			 */
+			form_ids?: string[];
+		};
+		/**
+		 * UserPublic
+		 * @description User output for API responses (excludes sensitive fields).
+		 */
+		UserPublic: {
+			/**
+			 * Email
+			 * Format: email
+			 */
+			email: string;
+			/** Name */
+			name?: string | null;
+			/**
+			 * Is Active
+			 * @default true
+			 */
+			is_active: boolean;
+			/**
+			 * Is Superuser
+			 * @default false
+			 */
+			is_superuser: boolean;
+			/**
+			 * Is Verified
+			 * @default false
+			 */
+			is_verified: boolean;
+			/**
+			 * Is Registered
+			 * @default true
+			 */
+			is_registered: boolean;
+			/**
+			 * Mfa Enabled
+			 * @default false
+			 */
+			mfa_enabled: boolean;
+			/** @default ORG */
+			user_type: components["schemas"]["UserType"];
+			/**
+			 * Id
+			 * Format: uuid
+			 */
+			id: string;
+			/** Organization Id */
+			organization_id: string | null;
+			/** Last Login */
+			last_login: string | null;
+			/** Created At */
+			created_at: string | null;
+			/** Updated At */
+			updated_at: string | null;
+		};
+		/**
+		 * UserResponse
+		 * @description User response model.
+		 */
+		UserResponse: {
+			/** Id */
+			id: string;
+			/** Email */
+			email: string;
+			/** Name */
+			name: string;
+			/** Is Active */
+			is_active: boolean;
+			/** Is Superuser */
+			is_superuser: boolean;
+			/** Is Verified */
+			is_verified: boolean;
+			/** User Type */
+			user_type: string;
+			/** Organization Id */
+			organization_id: string | null;
+			/**
+			 * Roles
+			 * @default []
+			 */
+			roles: string[];
+		};
+		/**
+		 * UserRolesResponse
+		 * @description Response model for getting roles assigned to a user
+		 */
+		UserRolesResponse: {
+			/**
+			 * Role Ids
+			 * @description List of role IDs assigned to the user
+			 */
+			role_ids: string[];
+		};
+		/**
+		 * UserType
+		 * @description User type - Platform admin, organization user, or system account
+		 * @enum {string}
+		 */
+		UserType: "PLATFORM" | "ORG" | "SYSTEM";
+		/**
+		 * UserUpdate
+		 * @description Input for updating a user.
+		 */
+		UserUpdate: {
+			/** Email */
+			email?: string | null;
+			/** Name */
+			name?: string | null;
+			/** Password */
+			password?: string | null;
+			/** Is Active */
+			is_active?: boolean | null;
+			/** Is Superuser */
+			is_superuser?: boolean | null;
+			/** Is Verified */
+			is_verified?: boolean | null;
+			/** Mfa Enabled */
+			mfa_enabled?: boolean | null;
+			/** Organization Id */
+			organization_id?: string | null;
+		};
+		/**
+		 * ValidateTokenRequest
+		 * @description Request to validate GitHub token
+		 */
+		ValidateTokenRequest: {
+			/**
+			 * Token
+			 * @description GitHub personal access token to validate
+			 */
+			token: string;
+		};
+		/** ValidationError */
+		ValidationError: {
+			/** Location */
+			loc: (string | number)[];
+			/** Message */
+			msg: string;
+			/** Error Type */
+			type: string;
+		};
+		/**
+		 * ValidationIssue
+		 * @description A single validation error or warning
+		 */
+		ValidationIssue: {
+			/**
+			 * Line
+			 * @description Line number where issue occurs (if applicable)
+			 */
+			line?: number | null;
+			/**
+			 * Message
+			 * @description Human-readable error or warning message
+			 */
+			message: string;
+			/**
+			 * Severity
+			 * @description Severity level
+			 * @enum {string}
+			 */
+			severity: "error" | "warning";
+		};
+		/**
+		 * WorkflowExecution
+		 * @description Workflow execution entity
+		 */
+		WorkflowExecution: {
+			/** Execution Id */
+			execution_id: string;
+			/** Workflow Name */
+			workflow_name: string;
+			/** Org Id */
+			org_id?: string | null;
+			/** Form Id */
+			form_id?: string | null;
+			/** Executed By */
+			executed_by: string;
+			/** Executed By Name */
+			executed_by_name: string;
+			status: components["schemas"]["ExecutionStatus"];
+			/** Input Data */
+			input_data: {
+				[key: string]: unknown;
+			};
+			/** Result */
+			result?:
+				| {
+						[key: string]: unknown;
+				  }
+				| unknown[]
+				| string
+				| null;
+			/** Result Type */
+			result_type?: string | null;
+			/** Error Message */
+			error_message?: string | null;
+			/** Duration Ms */
+			duration_ms?: number | null;
+			/** Started At */
+			started_at?: string | null;
+			/** Completed At */
+			completed_at?: string | null;
+			/** Logs */
+			logs?:
+				| {
+						[key: string]: unknown;
+				  }[]
+				| null;
+			/** Variables */
+			variables?: {
+				[key: string]: unknown;
+			} | null;
+			/** Session Id */
+			session_id?: string | null;
+			/** Peak Memory Bytes */
+			peak_memory_bytes?: number | null;
+			/** Cpu Total Seconds */
+			cpu_total_seconds?: number | null;
+		};
+		/**
+		 * WorkflowExecutionRequest
+		 * @description Request model for executing a workflow
+		 */
+		WorkflowExecutionRequest: {
+			/**
+			 * Workflow Id
+			 * @description UUID of the workflow to execute (required if code not provided)
+			 */
+			workflow_id?: string | null;
+			/**
+			 * Input Data
+			 * @description Workflow input parameters
+			 */
+			input_data?: {
+				[key: string]: unknown;
+			};
+			/**
+			 * Form Id
+			 * @description Optional form ID that triggered this execution
+			 */
+			form_id?: string | null;
+			/**
+			 * Transient
+			 * @description If true, skip database persistence (for code editor debugging)
+			 * @default false
+			 */
+			transient: boolean;
+			/**
+			 * Code
+			 * @description Optional: Python code to execute as script (base64 encoded). If provided, executes code instead of looking up workflow by ID.
+			 */
+			code?: string | null;
+			/**
+			 * Script Name
+			 * @description Optional: Name/identifier for the script (used for logging when code is provided)
+			 */
+			script_name?: string | null;
+		};
+		/**
+		 * WorkflowExecutionResponse
+		 * @description Response model for workflow execution
+		 */
+		WorkflowExecutionResponse: {
+			/** Execution Id */
+			execution_id: string;
+			/** Workflow Id */
+			workflow_id?: string | null;
+			/** Workflow Name */
+			workflow_name?: string | null;
+			status: components["schemas"]["ExecutionStatus"];
+			/** Result */
+			result?:
+				| {
+						[key: string]: unknown;
+				  }
+				| unknown[]
+				| string
+				| null;
+			/** Error */
+			error?: string | null;
+			/** Error Type */
+			error_type?: string | null;
+			/** Details */
+			details?: {
+				[key: string]: unknown;
+			} | null;
+			/** Duration Ms */
+			duration_ms?: number | null;
+			/** Started At */
+			started_at?: string | null;
+			/** Completed At */
+			completed_at?: string | null;
+			/** Logs */
+			logs?:
+				| {
+						[key: string]: unknown;
+				  }[]
+				| null;
+			/** Variables */
+			variables?: {
+				[key: string]: unknown;
+			} | null;
+			/**
+			 * Is Transient
+			 * @default false
+			 */
+			is_transient: boolean;
+		};
+		/**
+		 * WorkflowKeyCreateRequest
+		 * @description Request model for creating a workflow API key
+		 */
+		WorkflowKeyCreateRequest: {
+			/**
+			 * Workflow Name
+			 * @description Workflow-specific key, or None for global
+			 */
+			workflow_name?: string | null;
+			/**
+			 * Expires In Days
+			 * @description Days until key expires (default: no expiration)
+			 */
+			expires_in_days?: number | null;
+			/**
+			 * Description
+			 * @description Optional key description
+			 */
+			description?: string | null;
+			/**
+			 * Disable Global Key
+			 * @description If true, workflow opts out of global API keys
+			 * @default false
+			 */
+			disable_global_key: boolean;
+		};
+		/**
+		 * WorkflowKeyCreatedResponse
+		 * @description Response when creating a key - includes the raw key (shown only once).
+		 */
+		WorkflowKeyCreatedResponse: {
+			/** Id */
+			id: string;
+			/**
+			 * Raw Key
+			 * @default
+			 */
+			raw_key: string;
+			/**
+			 * Masked Key
+			 * @description Last 4 characters for display
+			 */
+			masked_key?: string | null;
+			/** Workflow Name */
+			workflow_name?: string | null;
+			/** Created By */
+			created_by: string;
+			/**
+			 * Created At
+			 * Format: date-time
+			 */
+			created_at: string;
+			/** Last Used At */
+			last_used_at?: string | null;
+			/** Revoked */
+			revoked: boolean;
+			/** Expires At */
+			expires_at?: string | null;
+			/** Description */
+			description?: string | null;
+			/**
+			 * Disable Global Key
+			 * @description If true, workflow opts out of global API keys
+			 * @default false
+			 */
+			disable_global_key: boolean;
+		};
+		/**
+		 * WorkflowKeyResponse
+		 * @description Response model for workflow key (includes raw key on creation only)
+		 */
+		WorkflowKeyResponse: {
+			/** Id */
+			id: string;
+			/**
+			 * Raw Key
+			 * @description Raw API key (only returned on creation)
+			 */
+			raw_key?: string | null;
+			/**
+			 * Masked Key
+			 * @description Last 4 characters for display
+			 */
+			masked_key?: string | null;
+			/** Workflow Name */
+			workflow_name?: string | null;
+			/** Created By */
+			created_by: string;
+			/**
+			 * Created At
+			 * Format: date-time
+			 */
+			created_at: string;
+			/** Last Used At */
+			last_used_at?: string | null;
+			/** Revoked */
+			revoked: boolean;
+			/** Expires At */
+			expires_at?: string | null;
+			/** Description */
+			description?: string | null;
+			/**
+			 * Disable Global Key
+			 * @description If true, workflow opts out of global API keys
+			 * @default false
+			 */
+			disable_global_key: boolean;
+		};
+		/**
+		 * WorkflowMetadata
+		 * @description Workflow metadata for discovery API
+		 */
+		WorkflowMetadata: {
+			/**
+			 * Id
+			 * @description Workflow UUID
+			 */
+			id: string;
+			/**
+			 * Name
+			 * @description Workflow name (snake_case)
+			 */
+			name: string;
+			/**
+			 * Description
+			 * @description Human-readable description
+			 */
+			description?: string | null;
+			/**
+			 * Category
+			 * @description Category for organization
+			 * @default General
+			 */
+			category: string;
+			/**
+			 * Tags
+			 * @description Tags for categorization and search
+			 */
+			tags?: string[];
+			/**
+			 * Parameters
+			 * @description Workflow parameters
+			 */
+			parameters?: components["schemas"]["WorkflowParameter"][];
+			/**
+			 * Execution Mode
+			 * @description Execution mode
+			 * @default sync
+			 * @enum {string}
+			 */
+			execution_mode: "sync" | "async";
+			/**
+			 * Timeout Seconds
+			 * @description Max execution time in seconds (default 30 min, max 2 hours)
+			 * @default 1800
+			 */
+			timeout_seconds: number;
+			/** @description Retry configuration */
+			retry_policy?: components["schemas"]["RetryPolicy"] | null;
+			/**
+			 * Schedule
+			 * @description Cron expression for scheduled execution
+			 */
+			schedule?: string | null;
+			/**
+			 * Endpoint Enabled
+			 * @description Whether workflow is exposed as HTTP endpoint
+			 * @default false
+			 */
+			endpoint_enabled: boolean;
+			/**
+			 * Allowed Methods
+			 * @description Allowed HTTP methods
+			 */
+			allowed_methods?: string[];
+			/**
+			 * Disable Global Key
+			 * @description If true, only workflow-specific API keys work
+			 * @default false
+			 */
+			disable_global_key: boolean;
+			/**
+			 * Public Endpoint
+			 * @description If true, skip authentication for webhooks
+			 * @default false
+			 */
+			public_endpoint: boolean;
+			/**
+			 * Is Tool
+			 * @description Whether workflow is available as an AI tool
+			 * @default false
+			 */
+			is_tool: boolean;
+			/**
+			 * Tool Description
+			 * @description Description optimized for AI tool selection
+			 */
+			tool_description?: string | null;
+			/**
+			 * Source File Path
+			 * @description Full file path to the workflow source code
+			 */
+			source_file_path?: string | null;
+			/**
+			 * Relative File Path
+			 * @description Workspace-relative file path with /workspace/ prefix (e.g., '/workspace/workflows/my_workflow.py')
+			 */
+			relative_file_path?: string | null;
+		};
+		/**
+		 * WorkflowMetricsResponse
+		 * @description Response for workflow metrics aggregations.
+		 */
+		WorkflowMetricsResponse: {
+			/** Workflows */
+			workflows: components["schemas"]["WorkflowMetricsSummary"][];
+			/** Total Workflows */
+			total_workflows: number;
+			/** Sort By */
+			sort_by: string;
+			/** Days */
+			days: number;
+		};
+		/**
+		 * WorkflowMetricsSummary
+		 * @description Aggregated metrics for a single workflow.
+		 */
+		WorkflowMetricsSummary: {
+			/** Workflow Name */
+			workflow_name: string;
+			/** Total Executions */
+			total_executions: number;
+			/** Success Count */
+			success_count: number;
+			/** Failed Count */
+			failed_count: number;
+			/** Success Rate */
+			success_rate: number;
+			/** Avg Memory Bytes */
+			avg_memory_bytes: number;
+			/** Avg Duration Ms */
+			avg_duration_ms: number;
+			/** Avg Cpu Seconds */
+			avg_cpu_seconds: number;
+			/** Peak Memory Bytes */
+			peak_memory_bytes: number;
+			/** Max Duration Ms */
+			max_duration_ms: number;
+		};
+		/**
+		 * WorkflowParameter
+		 * @description Workflow parameter metadata - derived from function signature.
+		 *
+		 *     Note: Form-specific fields like data_provider, help_text, validation
+		 *     belong on FormField, not here. Workflow parameters come from Python
+		 *     function signatures and don't have form-specific metadata.
+		 */
+		WorkflowParameter: {
+			/** Name */
+			name: string;
+			/** Type */
+			type: string;
+			/** Required */
+			required: boolean;
+			/** Label */
+			label?: string | null;
+			/** Default Value */
+			default_value?: unknown | null;
+			/** Description */
+			description?: string | null;
+			/** Options */
+			options?:
+				| {
+						[key: string]: string;
+				  }[]
+				| null;
+		};
+		/**
+		 * WorkflowValidationRequest
+		 * @description Request model for workflow validation endpoint
+		 */
+		WorkflowValidationRequest: {
+			/**
+			 * Path
+			 * @description Relative workspace path to the workflow file
+			 */
+			path: string;
+			/**
+			 * Content
+			 * @description File content to validate (if not provided, reads from disk)
+			 */
+			content?: string | null;
+		};
+		/**
+		 * WorkflowValidationResponse
+		 * @description Response model for workflow validation endpoint
+		 */
+		WorkflowValidationResponse: {
+			/**
+			 * Valid
+			 * @description True if workflow is valid and will be discovered
+			 */
+			valid: boolean;
+			/**
+			 * Issues
+			 * @description List of errors and warnings
+			 */
+			issues?: components["schemas"]["ValidationIssue"][];
+			/** @description Workflow metadata if valid */
+			metadata?: components["schemas"]["WorkflowMetadata"] | null;
+		};
+		/**
+		 * WorkspaceAnalysisResponse
+		 * @description Response with workspace analysis - simplified for replace-only strategy
+		 */
+		WorkspaceAnalysisResponse: {
+			/**
+			 * Workspace Status
+			 * @description Current state of the workspace directory
+			 * @enum {string}
+			 */
+			workspace_status:
+				| "empty"
+				| "has_files_no_git"
+				| "is_git_repo"
+				| "is_different_git_repo";
+			/**
+			 * File Count
+			 * @description Number of files in workspace (excluding .git)
+			 */
+			file_count: number;
+			/**
+			 * Existing Remote
+			 * @description URL of existing Git remote (if any)
+			 */
+			existing_remote?: string | null;
+			/**
+			 * Requires Confirmation
+			 * @description Whether user needs to confirm replacing workspace
+			 */
+			requires_confirmation: boolean;
+			/**
+			 * Backup Will Be Created
+			 * @description Indicates a backup will be created before replacing
+			 * @default true
+			 */
+			backup_will_be_created: boolean;
+		};
+		/**
+		 * OAuthProviderInfo
+		 * @description OAuth provider information for login page
+		 */
+		src__models__contracts__auth__OAuthProviderInfo: {
+			/** Name */
+			name: string;
+			/** Display Name */
+			display_name: string;
+			/** Icon */
+			icon?: string | null;
+		};
+		/**
+		 * OAuthCallbackRequest
+		 * @description Request model for OAuth callback endpoint
+		 */
+		src__models__contracts__oauth__OAuthCallbackRequest: {
+			/**
+			 * Code
+			 * @description Authorization code from OAuth provider
+			 */
+			code: string;
+			/**
+			 * State
+			 * @description State parameter for CSRF protection
+			 */
+			state?: string | null;
+			/**
+			 * Redirect Uri
+			 * @description Redirect URI used in authorization request
+			 */
+			redirect_uri?: string | null;
+		};
+		/**
+		 * UserCreate
+		 * @description Input for creating a user.
+		 */
+		src__models__contracts__users__UserCreate: {
+			/**
+			 * Email
+			 * Format: email
+			 */
+			email: string;
+			/** Name */
+			name?: string | null;
+			/** Password */
+			password?: string | null;
+			/**
+			 * Is Active
+			 * @default true
+			 */
+			is_active: boolean;
+			/**
+			 * Is Superuser
+			 * @default false
+			 */
+			is_superuser: boolean;
+			/** @default ORG */
+			user_type: components["schemas"]["UserType"];
+			/** Organization Id */
+			organization_id?: string | null;
+		};
+		/**
+		 * MFAVerifyRequest
+		 * @description Request to verify MFA code during login.
+		 */
+		src__routers__auth__MFAVerifyRequest: {
+			/** Mfa Token */
+			mfa_token: string;
+			/** Code */
+			code: string;
+			/**
+			 * Trust Device
+			 * @default false
+			 */
+			trust_device: boolean;
+			/** Device Name */
+			device_name?: string | null;
+		};
+		/**
+		 * UserCreate
+		 * @description User creation request model.
+		 */
+		src__routers__auth__UserCreate: {
+			/**
+			 * Email
+			 * Format: email
+			 */
+			email: string;
+			/** Password */
+			password: string;
+			/** Name */
+			name?: string | null;
+		};
+		/**
+		 * MFASetupResponse
+		 * @description MFA setup response with secret.
+		 */
+		src__routers__mfa__MFASetupResponse: {
+			/** Secret */
+			secret: string;
+			/** Qr Code Uri */
+			qr_code_uri: string;
+			/** Provisioning Uri */
+			provisioning_uri: string;
+			/** Issuer */
+			issuer: string;
+			/** Account Name */
+			account_name: string;
+		};
+		/**
+		 * MFAVerifyRequest
+		 * @description Request to verify MFA code.
+		 */
+		src__routers__mfa__MFAVerifyRequest: {
+			/** Code */
+			code: string;
+		};
+		/**
+		 * OAuthCallbackRequest
+		 * @description OAuth callback request (for when frontend handles callback).
+		 */
+		src__routers__oauth_sso__OAuthCallbackRequest: {
+			/** Provider */
+			provider: string;
+			/** Code */
+			code: string;
+			/** State */
+			state: string;
+		};
+		/**
+		 * OAuthProviderInfo
+		 * @description OAuth provider information.
+		 */
+		src__routers__oauth_sso__OAuthProviderInfo: {
+			/** Name */
+			name: string;
+			/** Display Name */
+			display_name: string;
+			/** Icon */
+			icon?: string | null;
+		};
+	};
+	responses: never;
+	parameters: never;
+	requestBodies: never;
+	headers: never;
+	pathItems: never;
 }
 export type $defs = Record<string, never>;
 export interface operations {
-    health_check_health_get: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HealthCheck"];
-                };
-            };
-        };
-    };
-    detailed_health_check_health_detailed_get: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["DetailedHealthCheck"];
-                };
-            };
-        };
-    };
-    login_auth_login_post: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/x-www-form-urlencoded": components["schemas"]["Body_login_auth_login_post"];
-            };
-        };
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["LoginResponse"];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    mfa_initial_setup_auth_mfa_setup_post: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["src__routers__mfa__MFASetupResponse"];
-                };
-            };
-        };
-    };
-    mfa_initial_verify_auth_mfa_verify_post: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["MFAEnrollVerifyResponse"];
-                };
-            };
-        };
-    };
-    verify_mfa_login_auth_mfa_login_post: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["src__routers__auth__MFAVerifyRequest"];
-            };
-        };
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["LoginResponse"];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    refresh_token_auth_refresh_post: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: {
-            content: {
-                "application/json": components["schemas"]["TokenRefresh"] | null;
-            };
-        };
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["Token"];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    get_current_user_info_auth_me_get: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["UserResponse"];
-                };
-            };
-        };
-    };
-    logout_auth_logout_post: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: {
-            content: {
-                "application/json": components["schemas"]["LogoutRequest"] | null;
-            };
-        };
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["LogoutResponse"];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    revoke_all_sessions_auth_revoke_all_post: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["RevokeAllResponse"];
-                };
-            };
-        };
-    };
-    admin_revoke_user_sessions_auth_admin_revoke_user_post: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["AdminRevokeRequest"];
-            };
-        };
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["RevokeAllResponse"];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    register_user_auth_register_post: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["src__routers__auth__UserCreate"];
-            };
-        };
-        responses: {
-            /** @description Successful Response */
-            201: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["UserResponse"];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    get_auth_status_auth_status_get: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["AuthStatusResponse"];
-                };
-            };
-        };
-    };
-    get_mfa_status_auth_mfa_status_get: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["MFAStatusResponse"];
-                };
-            };
-        };
-    };
-    setup_mfa_auth_mfa_totp_setup_post: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["src__routers__mfa__MFASetupResponse"];
-                };
-            };
-        };
-    };
-    verify_mfa_auth_mfa_totp_verify_post: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["src__routers__mfa__MFAVerifyRequest"];
-            };
-        };
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["MFAVerifyResponse"];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    remove_mfa_auth_mfa_delete: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["MFARemoveRequest"];
-            };
-        };
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": {
-                        [key: string]: unknown;
-                    };
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    regenerate_recovery_codes_auth_mfa_recovery_codes_regenerate_post: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["RegenerateRecoveryCodesRequest"];
-            };
-        };
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["RecoveryCodesResponse"];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    get_recovery_codes_count_auth_mfa_recovery_codes_count_get: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["RecoveryCodesCountResponse"];
-                };
-            };
-        };
-    };
-    list_trusted_devices_auth_mfa_trusted_devices_get: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["TrustedDevicesResponse"];
-                };
-            };
-        };
-    };
-    revoke_all_trusted_devices_auth_mfa_trusted_devices_delete: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": {
-                        [key: string]: unknown;
-                    };
-                };
-            };
-        };
-    };
-    revoke_trusted_device_auth_mfa_trusted_devices__device_id__delete: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                device_id: string;
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": {
-                        [key: string]: unknown;
-                    };
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    get_oauth_providers_auth_oauth_providers_get: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["OAuthProvidersResponse"];
-                };
-            };
-        };
-    };
-    init_oauth_auth_oauth_init__provider__get: {
-        parameters: {
-            query: {
-                /** @description Frontend callback URL */
-                redirect_uri: string;
-            };
-            header?: never;
-            path: {
-                provider: string;
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["OAuthInitResponse"];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    oauth_callback_auth_oauth_callback_post: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["src__routers__oauth_sso__OAuthCallbackRequest"];
-            };
-        };
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["OAuthTokenResponse"];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    get_linked_accounts_auth_oauth_accounts_get: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["LinkedAccountsResponse"];
-                };
-            };
-        };
-    };
-    unlink_oauth_account_auth_oauth_accounts__provider__delete: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                provider: string;
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": {
-                        [key: string]: unknown;
-                    };
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    get_registration_options_auth_passkeys_register_options_post: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["PasskeyRegistrationOptionsRequest"];
-            };
-        };
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["PasskeyRegistrationOptionsResponse"];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    verify_registration_auth_passkeys_register_verify_post: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["PasskeyRegistrationVerifyRequest"];
-            };
-        };
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["PasskeyRegistrationVerifyResponse"];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    get_authentication_options_auth_passkeys_authenticate_options_post: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["PasskeyAuthOptionsRequest"];
-            };
-        };
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["PasskeyAuthOptionsResponse"];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    verify_authentication_auth_passkeys_authenticate_verify_post: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["PasskeyAuthVerifyRequest"];
-            };
-        };
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["LoginResponse"];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    list_passkeys_auth_passkeys_get: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["PasskeyListResponse"];
-                };
-            };
-        };
-    };
-    delete_passkey_auth_passkeys__passkey_id__delete: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                passkey_id: string;
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["PasskeyDeleteResponse"];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    list_organizations_api_organizations_get: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["OrganizationPublic"][];
-                };
-            };
-        };
-    };
-    create_organization_api_organizations_post: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["OrganizationCreate"];
-            };
-        };
-        responses: {
-            /** @description Successful Response */
-            201: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["OrganizationPublic"];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    get_organization_api_organizations__org_id__get: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                org_id: string;
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["OrganizationPublic"];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    delete_organization_api_organizations__org_id__delete: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                org_id: string;
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            204: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    update_organization_api_organizations__org_id__patch: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                org_id: string;
-            };
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["OrganizationUpdate"];
-            };
-        };
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["OrganizationPublic"];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    list_users_api_users_get: {
-        parameters: {
-            query?: {
-                /** @description Filter by user type: 'platform' or 'org' */
-                type?: string | null;
-                /** @description Filter org users by organization ID */
-                orgId?: string | null;
-            };
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["UserPublic"][];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    create_user_api_users_post: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["src__models__contracts__users__UserCreate"];
-            };
-        };
-        responses: {
-            /** @description Successful Response */
-            201: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["UserPublic"];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    get_user_api_users__user_id__get: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                user_id: string;
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["UserPublic"];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    delete_user_api_users__user_id__delete: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                user_id: string;
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            204: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    update_user_api_users__user_id__patch: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                user_id: string;
-            };
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["UserUpdate"];
-            };
-        };
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["UserPublic"];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    get_user_roles_api_users__user_id__roles_get: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                user_id: string;
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["UserRolesResponse"];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    get_user_forms_api_users__user_id__forms_get: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                user_id: string;
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["UserFormsResponse"];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    list_roles_api_roles_get: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["RolePublic"][];
-                };
-            };
-        };
-    };
-    create_role_api_roles_post: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["RoleCreate"];
-            };
-        };
-        responses: {
-            /** @description Successful Response */
-            201: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["RolePublic"];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    get_role_api_roles__role_id__get: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                role_id: string;
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["RolePublic"];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    delete_role_api_roles__role_id__delete: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                role_id: string;
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            204: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    update_role_api_roles__role_id__patch: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                role_id: string;
-            };
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["RoleUpdate"];
-            };
-        };
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["RolePublic"];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    get_role_users_api_roles__role_id__users_get: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                role_id: string;
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["RoleUsersResponse"];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    assign_users_to_role_api_roles__role_id__users_post: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                role_id: string;
-            };
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["AssignUsersToRoleRequest"];
-            };
-        };
-        responses: {
-            /** @description Successful Response */
-            204: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    remove_user_from_role_api_roles__role_id__users__user_id__delete: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                role_id: string;
-                user_id: string;
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            204: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    get_role_forms_api_roles__role_id__forms_get: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                role_id: string;
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["RoleFormsResponse"];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    assign_forms_to_role_api_roles__role_id__forms_post: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                role_id: string;
-            };
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["AssignFormsToRoleRequest"];
-            };
-        };
-        responses: {
-            /** @description Successful Response */
-            204: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    remove_form_from_role_api_roles__role_id__forms__form_id__delete: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                role_id: string;
-                form_id: string;
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            204: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    get_role_agents_api_roles__role_id__agents_get: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                role_id: string;
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["RoleAgentsResponse"];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    assign_agents_to_role_api_roles__role_id__agents_post: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                role_id: string;
-            };
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["AssignAgentsToRoleRequest"];
-            };
-        };
-        responses: {
-            /** @description Successful Response */
-            204: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    remove_agent_from_role_api_roles__role_id__agents__agent_id__delete: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                role_id: string;
-                agent_id: string;
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            204: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    list_executions_api_executions_get: {
-        parameters: {
-            query?: {
-                /** @description Filter by workflow name */
-                workflowName?: string | null;
-                /** @description Filter by execution status */
-                status?: string | null;
-                /** @description Filter by start date (ISO format) */
-                startDate?: string | null;
-                /** @description Filter by end date (ISO format) */
-                endDate?: string | null;
-                /** @description Exclude local runner executions */
-                excludeLocal?: boolean;
-                /** @description Maximum number of results */
-                limit?: number;
-                /** @description Continuation token */
-                continuationToken?: string | null;
-            };
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ExecutionsListResponse"];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    get_execution_api_executions__execution_id__get: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                execution_id: string;
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["WorkflowExecution"];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    get_execution_result_api_executions__execution_id__result_get: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                execution_id: string;
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": unknown;
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    get_execution_logs_api_executions__execution_id__logs_get: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                execution_id: string;
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ExecutionLogPublic"][];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    get_execution_variables_api_executions__execution_id__variables_get: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                execution_id: string;
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": {
-                        [key: string]: unknown;
-                    };
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    cancel_execution_api_executions__execution_id__cancel_post: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                execution_id: string;
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["WorkflowExecution"] | {
-                        [key: string]: unknown;
-                    };
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    get_stuck_executions_api_executions_cleanup_stuck_get: {
-        parameters: {
-            query?: {
-                /** @description Hours since start to consider stuck */
-                hours?: number;
-            };
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["StuckExecutionsResponse"];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    trigger_cleanup_api_executions_cleanup_trigger_post: {
-        parameters: {
-            query?: {
-                /** @description Hours since start to consider stuck */
-                hours?: number;
-            };
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["CleanupTriggeredResponse"];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    cleanup_redis_orphans_api_executions_cleanup_redis_orphans_post: {
-        parameters: {
-            query?: {
-                /** @description Minutes since creation to consider orphaned */
-                minutes?: number;
-            };
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": {
-                        [key: string]: unknown;
-                    };
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    list_workflows_api_workflows_get: {
-        parameters: {
-            query?: {
-                is_tool?: boolean | null;
-            };
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["WorkflowMetadata"][];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    execute_workflow_api_workflows_execute_post: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["WorkflowExecutionRequest"];
-            };
-        };
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["WorkflowExecutionResponse"];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    validate_workflow_api_workflows_validate_post: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["WorkflowValidationRequest"];
-            };
-        };
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["WorkflowValidationResponse"];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    list_forms_api_forms_get: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["FormPublic"][];
-                };
-            };
-        };
-    };
-    create_form_api_forms_post: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["FormCreate"];
-            };
-        };
-        responses: {
-            /** @description Successful Response */
-            201: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["FormPublic"];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    get_form_api_forms__form_id__get: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                form_id: string;
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["FormPublic"];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    delete_form_api_forms__form_id__delete: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                form_id: string;
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            204: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    update_form_api_forms__form_id__patch: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                form_id: string;
-            };
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["FormUpdate"];
-            };
-        };
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["FormPublic"];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    execute_form_api_forms__form_id__execute_post: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                form_id: string;
-            };
-            cookie?: never;
-        };
-        requestBody?: {
-            content: {
-                "application/json": components["schemas"]["FormExecuteRequest"];
-            };
-        };
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["WorkflowExecutionResponse"];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    execute_startup_workflow_api_forms__form_id__startup_post: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                form_id: string;
-            };
-            cookie?: never;
-        };
-        requestBody?: {
-            content: {
-                "application/json": {
-                    [key: string]: unknown;
-                };
-            };
-        };
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["FormStartupResponse"];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    generate_upload_url_api_forms__form_id__upload_post: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                form_id: string;
-            };
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["FileUploadRequest"];
-            };
-        };
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["FileUploadResponse"];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    get_config_api_config_get: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ConfigResponse"][];
-                };
-            };
-        };
-    };
-    set_config_api_config_post: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["SetConfigRequest"];
-            };
-        };
-        responses: {
-            /** @description Successful Response */
-            201: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ConfigResponse"];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    delete_config_api_config__key__delete: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                key: string;
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            204: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    list_data_providers_api_data_providers_get: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["DataProviderMetadata"][];
-                };
-            };
-        };
-    };
-    invoke_data_provider_api_data_providers__provider_id__invoke_post: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                provider_id: string;
-            };
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["DataProviderInvokeRequest"];
-            };
-        };
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["DataProviderInvokeResponse"];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    get_branding_api_branding_get: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["BrandingSettings"];
-                };
-            };
-        };
-    };
-    update_branding_api_branding_put: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["BrandingUpdateRequest"];
-            };
-        };
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["BrandingSettings"];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    reset_all_branding_api_branding_delete: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["BrandingSettings"];
-                };
-            };
-        };
-    };
-    get_logo_api_branding_logo__logo_type__get: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                logo_type: string;
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": unknown;
-                    "image/png": unknown;
-                    "image/svg+xml": unknown;
-                    "image/jpeg": unknown;
-                };
-            };
-            /** @description Logo not found */
-            404: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    upload_logo_api_branding_logo__logo_type__post: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                logo_type: string;
-            };
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "multipart/form-data": components["schemas"]["Body_upload_logo_api_branding_logo__logo_type__post"];
-            };
-        };
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["BrandingSettings"];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    reset_logo_api_branding_logo__logo_type__delete: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                logo_type: string;
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["BrandingSettings"];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    reset_color_api_branding_color_delete: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["BrandingSettings"];
-                };
-            };
-        };
-    };
-    list_files_api_editor_files_get: {
-        parameters: {
-            query: {
-                /** @description Directory path relative to workspace root */
-                path: string;
-            };
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["FileMetadata"][];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    delete_file_or_directory_api_editor_files_delete: {
-        parameters: {
-            query: {
-                /** @description File or folder path relative to workspace root */
-                path: string;
-            };
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            204: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    get_file_content_api_editor_files_content_get: {
-        parameters: {
-            query: {
-                /** @description File path relative to workspace root */
-                path: string;
-            };
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["FileContentResponse"];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    put_file_content_api_editor_files_content_put: {
-        parameters: {
-            query?: {
-                /** @description If true, inject IDs into decorators. If false (default), detect if IDs needed and return needs_indexing=true. */
-                index?: boolean;
-            };
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["FileContentRequest"];
-            };
-        };
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["FileContentResponse"];
-                };
-            };
-            /** @description File conflict - content was modified or file was deleted */
-            409: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["FileConflictResponse"];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    create_new_folder_api_editor_files_folder_post: {
-        parameters: {
-            query: {
-                /** @description Folder path relative to workspace root */
-                path: string;
-            };
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            201: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["FileMetadata"];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    rename_or_move_api_editor_files_rename_post: {
-        parameters: {
-            query: {
-                /** @description Current path relative to workspace root */
-                old_path: string;
-                /** @description New path relative to workspace root */
-                new_path: string;
-            };
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["FileMetadata"];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    search_file_contents_api_editor_search_post: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["SearchRequest"];
-            };
-        };
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["SearchResponse"];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    list_schedules_api_schedules_get: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ScheduleMetadata"][];
-                };
-            };
-        };
-    };
-    list_keys_api_workflow_keys_get: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["WorkflowKeyResponse"][];
-                };
-            };
-        };
-    };
-    create_key_api_workflow_keys_post: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["WorkflowKeyCreateRequest"];
-            };
-        };
-        responses: {
-            /** @description Successful Response */
-            201: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["WorkflowKeyCreatedResponse"];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    revoke_key_api_workflow_keys__workflow_id__delete: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                workflow_id: string;
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            204: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    list_logs_api_logs_get: {
-        parameters: {
-            query?: {
-                /** @description Log category filter */
-                category?: string | null;
-                /** @description Start date filter */
-                start_date?: string | null;
-                /** @description End date filter */
-                end_date?: string | null;
-                /** @description Result limit */
-                limit?: number;
-                /** @description Result offset */
-                offset?: number;
-            };
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["SystemLogsListResponse"];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    get_log_api_logs__category___row_key__get: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                category: string;
-                row_key: string;
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["SystemLog"];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    get_metrics_api_metrics_get: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["DashboardMetricsResponse"];
-                };
-            };
-        };
-    };
-    get_metrics_snapshot_api_metrics_snapshot_get: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["PlatformMetricsResponse"];
-                };
-            };
-        };
-    };
-    get_daily_metrics_api_metrics_executions_daily_get: {
-        parameters: {
-            query?: {
-                /** @description Number of days to include */
-                days?: number;
-                /** @description Filter by organization */
-                organization_id?: string | null;
-            };
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["DailyMetricsResponse"];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    get_organization_metrics_api_metrics_organizations_get: {
-        parameters: {
-            query?: {
-                /** @description Number of days to include */
-                days?: number;
-                /** @description Max organizations to return */
-                limit?: number;
-            };
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["OrganizationMetricsResponse"];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    get_resource_metrics_api_metrics_resources_get: {
-        parameters: {
-            query?: {
-                /** @description Number of days to include */
-                days?: number;
-            };
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ResourceMetricsResponse"];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    get_workflow_metrics_api_metrics_workflows_get: {
-        parameters: {
-            query?: {
-                /** @description Number of days to include */
-                days?: number;
-                /** @description Sort by: executions, memory, duration, cpu */
-                sort_by?: string;
-                /** @description Max workflows to return */
-                limit?: number;
-            };
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["WorkflowMetricsResponse"];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    list_packages_api_packages_get: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["InstalledPackagesResponse"];
-                };
-            };
-        };
-    };
-    check_updates_api_packages_updates_get: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["PackageUpdatesResponse"];
-                };
-            };
-        };
-    };
-    install_package_api_packages_install_post: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["InstallPackageRequest"];
-            };
-        };
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["PackageInstallResponse"];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    uninstall_package_api_packages__package_name__delete: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                package_name: string;
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": {
-                        [key: string]: unknown;
-                    };
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    get_github_status_api_github_status_get: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["GitRefreshStatusResponse"];
-                };
-            };
-        };
-    };
-    refresh_github_status_api_github_refresh_post: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["GitRefreshStatusResponse"];
-                };
-            };
-        };
-    };
-    pull_from_github_api_github_pull_post: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: {
-            content: {
-                "application/json": components["schemas"]["PullFromGitHubRequest"] | null;
-            };
-        };
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["PullFromGitHubResponse"];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    push_to_github_api_github_push_post: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["PushToGitHubRequest"];
-            };
-        };
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["PushToGitHubResponse"];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    get_changes_api_github_changes_get: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["GitRefreshStatusResponse"];
-                };
-            };
-        };
-    };
-    init_repo_api_github_init_post: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["GitHubConfigRequest"];
-            };
-        };
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["GitRefreshStatusResponse"];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    commit_changes_api_github_commit_post: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["PushToGitHubRequest"];
-            };
-        };
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": {
-                        [key: string]: unknown;
-                    };
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    get_commits_api_github_commits_get: {
-        parameters: {
-            query?: {
-                /** @description Number of commits to return */
-                limit?: number;
-                /** @description Offset for pagination */
-                offset?: number;
-            };
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["CommitHistoryResponse"];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    get_conflicts_api_github_conflicts_get: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": {
-                        [key: string]: unknown;
-                    };
-                };
-            };
-        };
-    };
-    abort_merge_api_github_abort_merge_post: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": {
-                        [key: string]: unknown;
-                    };
-                };
-            };
-        };
-    };
-    discard_unpushed_commits_api_github_discard_unpushed_post: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["DiscardUnpushedCommitsResponse"];
-                };
-            };
-        };
-    };
-    discard_commit_api_github_discard_commit_post: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["DiscardCommitRequest"];
-            };
-        };
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["DiscardUnpushedCommitsResponse"];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    get_github_config_api_github_config_get: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["GitHubConfigResponse"];
-                };
-            };
-        };
-    };
-    validate_github_token_api_github_validate_post: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["ValidateTokenRequest"];
-            };
-        };
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["GitHubReposResponse"];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    configure_github_api_github_configure_post: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["GitHubConfigRequest"];
-            };
-        };
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["GitHubSetupResponse"];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    list_github_repos_api_github_repositories_get: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["GitHubReposResponse"];
-                };
-            };
-        };
-    };
-    list_github_branches_api_github_branches_get: {
-        parameters: {
-            query: {
-                /** @description Repository full name (owner/repo) */
-                repo: string;
-            };
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["GitHubBranchesResponse"];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    analyze_workspace_api_github_analyze_workspace_post: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["GitHubConfigRequest"];
-            };
-        };
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["WorkspaceAnalysisResponse"];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    create_github_repository_api_github_create_repository_post: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["CreateRepoRequest"];
-            };
-        };
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["CreateRepoResponse"];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    disconnect_github_api_github_disconnect_post: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": {
-                        [key: string]: unknown;
-                    };
-                };
-            };
-        };
-    };
-    get_connection_api_oauth_connections__connection_name__get: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                connection_name: string;
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["OAuthConnectionDetail"];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    update_connection_api_oauth_connections__connection_name__put: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                connection_name: string;
-            };
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["UpdateOAuthConnectionRequest"];
-            };
-        };
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["OAuthConnectionDetail"];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    delete_connection_api_oauth_connections__connection_name__delete: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                connection_name: string;
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            204: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    create_connection_api_oauth_connections_post: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["CreateOAuthConnectionRequest"];
-            };
-        };
-        responses: {
-            /** @description Successful Response */
-            201: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["OAuthConnectionDetail"];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    authorize_connection_api_oauth_connections__connection_name__authorize_post: {
-        parameters: {
-            query: {
-                /** @description Frontend callback URL for OAuth redirect */
-                redirect_uri: string;
-            };
-            header?: never;
-            path: {
-                connection_name: string;
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["AuthorizeResponse"];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    cancel_authorization_api_oauth_connections__connection_name__cancel_post: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                connection_name: string;
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["OAuthConnectionDetail"];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    refresh_token_api_oauth_connections__connection_name__refresh_post: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                connection_name: string;
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["RefreshTokenResponse"];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    oauth_callback_api_oauth_callback__connection_name__post: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                connection_name: string;
-            };
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["src__models__contracts__oauth__OAuthCallbackRequest"];
-            };
-        };
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["OAuthCallbackResponse"];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    get_credentials_api_oauth_credentials__connection_name__get: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                connection_name: string;
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["OAuthCredentialsResponse"];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    get_refresh_job_status_api_oauth_refresh_job_status_get: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["RefreshJobStatusResponse"];
-                };
-            };
-        };
-    };
-    trigger_refresh_all_api_oauth_refresh_all_post: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["RefreshAllResponse"];
-                };
-            };
-        };
-    };
-    execute_endpoint_api_endpoints__workflow_name__post: {
-        parameters: {
-            query?: never;
-            header: {
-                "X-Bifrost-Key": string;
-            };
-            path: {
-                workflow_name: string;
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["EndpointExecuteResponse"];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    execute_endpoint_api_endpoints__workflow_name__post: {
-        parameters: {
-            query?: never;
-            header: {
-                "X-Bifrost-Key": string;
-            };
-            path: {
-                workflow_name: string;
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["EndpointExecuteResponse"];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    execute_endpoint_api_endpoints__workflow_name__post: {
-        parameters: {
-            query?: never;
-            header: {
-                "X-Bifrost-Key": string;
-            };
-            path: {
-                workflow_name: string;
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["EndpointExecuteResponse"];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    execute_endpoint_api_endpoints__workflow_name__post: {
-        parameters: {
-            query?: never;
-            header: {
-                "X-Bifrost-Key": string;
-            };
-            path: {
-                workflow_name: string;
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["EndpointExecuteResponse"];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    get_dev_context_api_cli_context_get: {
-        parameters: {
-            query?: never;
-            header?: {
-                authorization?: string | null;
-            };
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["DeveloperContextResponse"];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    update_dev_context_api_cli_context_put: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["DeveloperContextUpdate"];
-            };
-        };
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["DeveloperContextResponse"];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    list_api_keys_api_cli_keys_get: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ApiKeyList"];
-                };
-            };
-        };
-    };
-    create_api_key_api_cli_keys_post: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["ApiKeyCreate"];
-            };
-        };
-        responses: {
-            /** @description Successful Response */
-            201: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ApiKeyCreated"];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    delete_api_key_api_cli_keys__key_id__delete: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                key_id: string;
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            204: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    revoke_api_key_api_cli_keys__key_id__revoke_patch: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                key_id: string;
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ApiKeyResponse"];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    cli_read_file_api_cli_files_read_post: {
-        parameters: {
-            query?: never;
-            header?: {
-                authorization?: string | null;
-            };
-            path?: never;
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["CLIFileReadRequest"];
-            };
-        };
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": string;
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    cli_write_file_api_cli_files_write_post: {
-        parameters: {
-            query?: never;
-            header?: {
-                authorization?: string | null;
-            };
-            path?: never;
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["CLIFileWriteRequest"];
-            };
-        };
-        responses: {
-            /** @description Successful Response */
-            204: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    cli_list_files_api_cli_files_list_post: {
-        parameters: {
-            query?: never;
-            header?: {
-                authorization?: string | null;
-            };
-            path?: never;
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["CLIFileListRequest"];
-            };
-        };
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": string[];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    cli_delete_file_api_cli_files_delete_post: {
-        parameters: {
-            query?: never;
-            header?: {
-                authorization?: string | null;
-            };
-            path?: never;
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["CLIFileDeleteRequest"];
-            };
-        };
-        responses: {
-            /** @description Successful Response */
-            204: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    cli_get_config_api_cli_config_get_post: {
-        parameters: {
-            query?: never;
-            header?: {
-                authorization?: string | null;
-            };
-            path?: never;
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["CLIConfigGetRequest"];
-            };
-        };
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["CLIConfigValue"] | null;
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    cli_set_config_api_cli_config_set_post: {
-        parameters: {
-            query?: never;
-            header?: {
-                authorization?: string | null;
-            };
-            path?: never;
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["CLIConfigSetRequest"];
-            };
-        };
-        responses: {
-            /** @description Successful Response */
-            204: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    cli_list_config_api_cli_config_list_post: {
-        parameters: {
-            query?: never;
-            header?: {
-                authorization?: string | null;
-            };
-            path?: never;
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["CLIConfigListRequest"];
-            };
-        };
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": {
-                        [key: string]: unknown;
-                    };
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    cli_delete_config_api_cli_config_delete_post: {
-        parameters: {
-            query?: never;
-            header?: {
-                authorization?: string | null;
-            };
-            path?: never;
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["CLIConfigDeleteRequest"];
-            };
-        };
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": boolean;
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    cli_get_oauth_api_cli_oauth_get_post: {
-        parameters: {
-            query?: never;
-            header?: {
-                authorization?: string | null;
-            };
-            path?: never;
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["CLIOAuthGetRequest"];
-            };
-        };
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["CLIOAuthGetResponse"] | null;
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    sdk_integrations_get_api_cli_integrations_get_post: {
-        parameters: {
-            query?: never;
-            header?: {
-                authorization?: string | null;
-            };
-            path?: never;
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["SDKIntegrationsGetRequest"];
-            };
-        };
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["SDKIntegrationsGetResponse"] | null;
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    sdk_integrations_list_mappings_api_cli_integrations_list_mappings_post: {
-        parameters: {
-            query?: never;
-            header?: {
-                authorization?: string | null;
-            };
-            path?: never;
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["SDKIntegrationsListMappingsRequest"];
-            };
-        };
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["SDKIntegrationsListMappingsResponse"] | null;
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    list_cli_sessions_api_cli_sessions_get: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["CLISessionListResponse"];
-                };
-            };
-        };
-    };
-    register_cli_session_api_cli_sessions_post: {
-        parameters: {
-            query?: never;
-            header?: {
-                authorization?: string | null;
-            };
-            path?: never;
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["CLISessionRegisterRequest"];
-            };
-        };
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["CLISessionResponse"];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    get_cli_session_api_cli_sessions__session_id__get: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                session_id: string;
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["CLISessionResponse"];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    delete_cli_session_api_cli_sessions__session_id__delete: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                session_id: string;
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            204: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    continue_cli_session_api_cli_sessions__session_id__continue_post: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                session_id: string;
-            };
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["CLISessionContinueRequest"];
-            };
-        };
-        responses: {
-            /** @description Successful Response */
-            202: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["CLISessionContinueResponse"];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    get_pending_execution_api_cli_sessions__session_id__pending_get: {
-        parameters: {
-            query?: never;
-            header?: {
-                authorization?: string | null;
-            };
-            path: {
-                session_id: string;
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["CLISessionPendingResponse"];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    session_heartbeat_api_cli_sessions__session_id__heartbeat_post: {
-        parameters: {
-            query?: never;
-            header?: {
-                authorization?: string | null;
-            };
-            path: {
-                session_id: string;
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            204: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    post_cli_log_api_cli_sessions__session_id__executions__execution_id__log_post: {
-        parameters: {
-            query?: never;
-            header?: {
-                authorization?: string | null;
-            };
-            path: {
-                session_id: string;
-                execution_id: string;
-            };
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["CLISessionLogRequest"];
-            };
-        };
-        responses: {
-            /** @description Successful Response */
-            204: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    post_cli_result_api_cli_sessions__session_id__executions__execution_id__result_post: {
-        parameters: {
-            query?: never;
-            header?: {
-                authorization?: string | null;
-            };
-            path: {
-                session_id: string;
-                execution_id: string;
-            };
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["CLISessionResultRequest"];
-            };
-        };
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": {
-                        [key: string]: unknown;
-                    };
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    download_cli_api_cli_download_get: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": unknown;
-                };
-            };
-        };
-    };
-    list_notifications_api_notifications_get: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["NotificationListResponse"];
-                };
-            };
-        };
-    };
-    get_notification_api_notifications__notification_id__get: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                notification_id: string;
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["NotificationPublic"];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    dismiss_notification_api_notifications__notification_id__delete: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                notification_id: string;
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            204: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    get_upload_lock_status_api_notifications_locks_upload_get: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["UploadLockInfo"];
-                };
-            };
-        };
-    };
-    force_release_upload_lock_api_notifications_locks_upload_delete: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            204: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-        };
-    };
-    get_profile_api_profile_get: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ProfileResponse"];
-                };
-            };
-        };
-    };
-    update_profile_api_profile_patch: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["ProfileUpdate"];
-            };
-        };
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ProfileResponse"];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    get_avatar_api_profile_avatar_get: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": unknown;
-                    "image/png": unknown;
-                    "image/jpeg": unknown;
-                };
-            };
-            /** @description No avatar set */
-            404: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-        };
-    };
-    upload_avatar_api_profile_avatar_post: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "multipart/form-data": components["schemas"]["Body_upload_avatar_api_profile_avatar_post"];
-            };
-        };
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ProfileResponse"];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    delete_avatar_api_profile_avatar_delete: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ProfileResponse"];
-                };
-            };
-        };
-    };
-    change_password_api_profile_password_post: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["PasswordChange"];
-            };
-        };
-        responses: {
-            /** @description Successful Response */
-            204: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    list_agents_api_agents_get: {
-        parameters: {
-            query?: {
-                category?: string | null;
-                active_only?: boolean;
-            };
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["AgentSummary"][];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    create_agent_api_agents_post: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["AgentCreate"];
-            };
-        };
-        responses: {
-            /** @description Successful Response */
-            201: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["AgentPublic"];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    get_agent_api_agents__agent_id__get: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                agent_id: string;
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["AgentPublic"];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    update_agent_api_agents__agent_id__put: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                agent_id: string;
-            };
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["AgentUpdate"];
-            };
-        };
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["AgentPublic"];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    delete_agent_api_agents__agent_id__delete: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                agent_id: string;
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            204: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    get_agent_tools_api_agents__agent_id__tools_get: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                agent_id: string;
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": {
-                        [key: string]: unknown;
-                    }[];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    assign_tools_to_agent_api_agents__agent_id__tools_post: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                agent_id: string;
-            };
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["AssignToolsToAgentRequest"];
-            };
-        };
-        responses: {
-            /** @description Successful Response */
-            201: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": {
-                        [key: string]: unknown;
-                    }[];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    remove_tool_from_agent_api_agents__agent_id__tools__workflow_id__delete: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                agent_id: string;
-                workflow_id: string;
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            204: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    get_agent_delegations_api_agents__agent_id__delegations_get: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                agent_id: string;
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["AgentSummary"][];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    assign_delegations_to_agent_api_agents__agent_id__delegations_post: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                agent_id: string;
-            };
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["AssignDelegationsToAgentRequest"];
-            };
-        };
-        responses: {
-            /** @description Successful Response */
-            201: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["AgentSummary"][];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    remove_delegation_from_agent_api_agents__agent_id__delegations__delegate_id__delete: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                agent_id: string;
-                delegate_id: string;
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            204: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    list_conversations_api_chat_conversations_get: {
-        parameters: {
-            query?: {
-                agent_id?: string | null;
-                active_only?: boolean;
-                limit?: number;
-                offset?: number;
-            };
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ConversationSummary"][];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    create_conversation_api_chat_conversations_post: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["ConversationCreate"];
-            };
-        };
-        responses: {
-            /** @description Successful Response */
-            201: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ConversationPublic"];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    get_conversation_api_chat_conversations__conversation_id__get: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                conversation_id: string;
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ConversationPublic"];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    delete_conversation_api_chat_conversations__conversation_id__delete: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                conversation_id: string;
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            204: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    get_messages_api_chat_conversations__conversation_id__messages_get: {
-        parameters: {
-            query?: {
-                limit?: number;
-                before_sequence?: number | null;
-            };
-            header?: never;
-            path: {
-                conversation_id: string;
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["MessagePublic"][];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    send_message_api_chat_conversations__conversation_id__messages_post: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                conversation_id: string;
-            };
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["ChatRequest"];
-            };
-        };
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ChatResponse"];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    get_llm_config_api_admin_llm_config_get: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["LLMConfigResponse"] | null;
-                };
-            };
-        };
-    };
-    set_llm_config_api_admin_llm_config_post: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["LLMConfigRequest"];
-            };
-        };
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["LLMConfigResponse"];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    delete_llm_config_api_admin_llm_config_delete: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            204: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-        };
-    };
-    test_llm_connection_api_admin_llm_test_post: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["LLMTestRequest"];
-            };
-        };
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["LLMTestResponse"];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    test_saved_llm_connection_api_admin_llm_test_saved_post: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["LLMTestResponse"];
-                };
-            };
-        };
-    };
-    list_llm_models_api_admin_llm_models_get: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["LLMModelsResponse"];
-                };
-            };
-        };
-    };
-    list_integrations_api_integrations_get: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["IntegrationListResponse"];
-                };
-            };
-        };
-    };
-    create_integration_api_integrations_post: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["IntegrationCreate"];
-            };
-        };
-        responses: {
-            /** @description Successful Response */
-            201: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["IntegrationResponse"];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    get_integration_api_integrations__integration_id__get: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                integration_id: string;
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["IntegrationDetailResponse"];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    update_integration_api_integrations__integration_id__put: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                integration_id: string;
-            };
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["IntegrationUpdate"];
-            };
-        };
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["IntegrationResponse"];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    delete_integration_api_integrations__integration_id__delete: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                integration_id: string;
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            204: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    get_integration_by_name_api_integrations_by_name__name__get: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                name: string;
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["IntegrationResponse"];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    get_integration_config_api_integrations__integration_id__config_get: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                integration_id: string;
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["IntegrationConfigResponse"];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    update_integration_config_api_integrations__integration_id__config_put: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                integration_id: string;
-            };
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["IntegrationConfigUpdate"];
-            };
-        };
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["IntegrationConfigResponse"];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    list_mappings_api_integrations__integration_id__mappings_get: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                integration_id: string;
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["IntegrationMappingListResponse"];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    create_mapping_api_integrations__integration_id__mappings_post: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                integration_id: string;
-            };
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["IntegrationMappingCreate"];
-            };
-        };
-        responses: {
-            /** @description Successful Response */
-            201: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["IntegrationMappingResponse"];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    get_mapping_api_integrations__integration_id__mappings__mapping_id__get: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                integration_id: string;
-                mapping_id: string;
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["IntegrationMappingResponse"];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    update_mapping_api_integrations__integration_id__mappings__mapping_id__put: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                integration_id: string;
-                mapping_id: string;
-            };
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["IntegrationMappingUpdate"];
-            };
-        };
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["IntegrationMappingResponse"];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    delete_mapping_api_integrations__integration_id__mappings__mapping_id__delete: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                integration_id: string;
-                mapping_id: string;
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            204: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    get_mapping_by_org_api_integrations__integration_id__mappings_by_org__org_id__get: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                integration_id: string;
-                org_id: string;
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["IntegrationMappingResponse"];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    get_oauth_config_api_integrations__integration_id__oauth_get: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                integration_id: string;
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["OAuthConfigResponse"];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    get_oauth_authorization_url_api_integrations__integration_id__oauth_authorize_get: {
-        parameters: {
-            query: {
-                /** @description Frontend callback URL for OAuth redirect */
-                redirect_uri: string;
-            };
-            header?: never;
-            path: {
-                integration_id: string;
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["OAuthAuthorizeResponse"];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    get_integration_sdk_data_api_integrations_sdk__name__get: {
-        parameters: {
-            query: {
-                /** @description Organization ID for resolving mapping */
-                org_id: string;
-            };
-            header?: never;
-            path: {
-                name: string;
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["IntegrationData"];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    get_decorator_properties_api_decorator_properties_get: {
-        parameters: {
-            query: {
-                /** @description File path relative to workspace root */
-                path: string;
-            };
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["DecoratorPropertiesResponse"];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    update_decorator_properties_api_decorator_properties_put: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["UpdatePropertiesRequest"];
-            };
-        };
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["UpdatePropertiesResponse"];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    get_maintenance_status_api_maintenance_status_get: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["MaintenanceStatus"];
-                };
-            };
-        };
-    };
-    run_reindex_api_maintenance_reindex_post: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["ReindexRequest"];
-            };
-        };
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ReindexResponse"];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    root__get: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": unknown;
-                };
-            };
-        };
-    };
+	health_check_health_get: {
+		parameters: {
+			query?: never;
+			header?: never;
+			path?: never;
+			cookie?: never;
+		};
+		requestBody?: never;
+		responses: {
+			/** @description Successful Response */
+			200: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					"application/json": components["schemas"]["HealthCheck"];
+				};
+			};
+		};
+	};
+	detailed_health_check_health_detailed_get: {
+		parameters: {
+			query?: never;
+			header?: never;
+			path?: never;
+			cookie?: never;
+		};
+		requestBody?: never;
+		responses: {
+			/** @description Successful Response */
+			200: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					"application/json": components["schemas"]["DetailedHealthCheck"];
+				};
+			};
+		};
+	};
+	login_auth_login_post: {
+		parameters: {
+			query?: never;
+			header?: never;
+			path?: never;
+			cookie?: never;
+		};
+		requestBody: {
+			content: {
+				"application/x-www-form-urlencoded": components["schemas"]["Body_login_auth_login_post"];
+			};
+		};
+		responses: {
+			/** @description Successful Response */
+			200: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					"application/json": components["schemas"]["LoginResponse"];
+				};
+			};
+			/** @description Validation Error */
+			422: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					"application/json": components["schemas"]["HTTPValidationError"];
+				};
+			};
+		};
+	};
+	mfa_initial_setup_auth_mfa_setup_post: {
+		parameters: {
+			query?: never;
+			header?: never;
+			path?: never;
+			cookie?: never;
+		};
+		requestBody?: never;
+		responses: {
+			/** @description Successful Response */
+			200: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					"application/json": components["schemas"]["src__routers__mfa__MFASetupResponse"];
+				};
+			};
+		};
+	};
+	mfa_initial_verify_auth_mfa_verify_post: {
+		parameters: {
+			query?: never;
+			header?: never;
+			path?: never;
+			cookie?: never;
+		};
+		requestBody?: never;
+		responses: {
+			/** @description Successful Response */
+			200: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					"application/json": components["schemas"]["MFAEnrollVerifyResponse"];
+				};
+			};
+		};
+	};
+	verify_mfa_login_auth_mfa_login_post: {
+		parameters: {
+			query?: never;
+			header?: never;
+			path?: never;
+			cookie?: never;
+		};
+		requestBody: {
+			content: {
+				"application/json": components["schemas"]["src__routers__auth__MFAVerifyRequest"];
+			};
+		};
+		responses: {
+			/** @description Successful Response */
+			200: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					"application/json": components["schemas"]["LoginResponse"];
+				};
+			};
+			/** @description Validation Error */
+			422: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					"application/json": components["schemas"]["HTTPValidationError"];
+				};
+			};
+		};
+	};
+	refresh_token_auth_refresh_post: {
+		parameters: {
+			query?: never;
+			header?: never;
+			path?: never;
+			cookie?: never;
+		};
+		requestBody?: {
+			content: {
+				"application/json":
+					| components["schemas"]["TokenRefresh"]
+					| null;
+			};
+		};
+		responses: {
+			/** @description Successful Response */
+			200: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					"application/json": components["schemas"]["Token"];
+				};
+			};
+			/** @description Validation Error */
+			422: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					"application/json": components["schemas"]["HTTPValidationError"];
+				};
+			};
+		};
+	};
+	get_current_user_info_auth_me_get: {
+		parameters: {
+			query?: never;
+			header?: never;
+			path?: never;
+			cookie?: never;
+		};
+		requestBody?: never;
+		responses: {
+			/** @description Successful Response */
+			200: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					"application/json": components["schemas"]["UserResponse"];
+				};
+			};
+		};
+	};
+	logout_auth_logout_post: {
+		parameters: {
+			query?: never;
+			header?: never;
+			path?: never;
+			cookie?: never;
+		};
+		requestBody?: {
+			content: {
+				"application/json":
+					| components["schemas"]["LogoutRequest"]
+					| null;
+			};
+		};
+		responses: {
+			/** @description Successful Response */
+			200: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					"application/json": components["schemas"]["LogoutResponse"];
+				};
+			};
+			/** @description Validation Error */
+			422: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					"application/json": components["schemas"]["HTTPValidationError"];
+				};
+			};
+		};
+	};
+	revoke_all_sessions_auth_revoke_all_post: {
+		parameters: {
+			query?: never;
+			header?: never;
+			path?: never;
+			cookie?: never;
+		};
+		requestBody?: never;
+		responses: {
+			/** @description Successful Response */
+			200: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					"application/json": components["schemas"]["RevokeAllResponse"];
+				};
+			};
+		};
+	};
+	admin_revoke_user_sessions_auth_admin_revoke_user_post: {
+		parameters: {
+			query?: never;
+			header?: never;
+			path?: never;
+			cookie?: never;
+		};
+		requestBody: {
+			content: {
+				"application/json": components["schemas"]["AdminRevokeRequest"];
+			};
+		};
+		responses: {
+			/** @description Successful Response */
+			200: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					"application/json": components["schemas"]["RevokeAllResponse"];
+				};
+			};
+			/** @description Validation Error */
+			422: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					"application/json": components["schemas"]["HTTPValidationError"];
+				};
+			};
+		};
+	};
+	register_user_auth_register_post: {
+		parameters: {
+			query?: never;
+			header?: never;
+			path?: never;
+			cookie?: never;
+		};
+		requestBody: {
+			content: {
+				"application/json": components["schemas"]["src__routers__auth__UserCreate"];
+			};
+		};
+		responses: {
+			/** @description Successful Response */
+			201: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					"application/json": components["schemas"]["UserResponse"];
+				};
+			};
+			/** @description Validation Error */
+			422: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					"application/json": components["schemas"]["HTTPValidationError"];
+				};
+			};
+		};
+	};
+	get_auth_status_auth_status_get: {
+		parameters: {
+			query?: never;
+			header?: never;
+			path?: never;
+			cookie?: never;
+		};
+		requestBody?: never;
+		responses: {
+			/** @description Successful Response */
+			200: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					"application/json": components["schemas"]["AuthStatusResponse"];
+				};
+			};
+		};
+	};
+	get_mfa_status_auth_mfa_status_get: {
+		parameters: {
+			query?: never;
+			header?: never;
+			path?: never;
+			cookie?: never;
+		};
+		requestBody?: never;
+		responses: {
+			/** @description Successful Response */
+			200: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					"application/json": components["schemas"]["MFAStatusResponse"];
+				};
+			};
+		};
+	};
+	setup_mfa_auth_mfa_totp_setup_post: {
+		parameters: {
+			query?: never;
+			header?: never;
+			path?: never;
+			cookie?: never;
+		};
+		requestBody?: never;
+		responses: {
+			/** @description Successful Response */
+			200: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					"application/json": components["schemas"]["src__routers__mfa__MFASetupResponse"];
+				};
+			};
+		};
+	};
+	verify_mfa_auth_mfa_totp_verify_post: {
+		parameters: {
+			query?: never;
+			header?: never;
+			path?: never;
+			cookie?: never;
+		};
+		requestBody: {
+			content: {
+				"application/json": components["schemas"]["src__routers__mfa__MFAVerifyRequest"];
+			};
+		};
+		responses: {
+			/** @description Successful Response */
+			200: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					"application/json": components["schemas"]["MFAVerifyResponse"];
+				};
+			};
+			/** @description Validation Error */
+			422: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					"application/json": components["schemas"]["HTTPValidationError"];
+				};
+			};
+		};
+	};
+	remove_mfa_auth_mfa_delete: {
+		parameters: {
+			query?: never;
+			header?: never;
+			path?: never;
+			cookie?: never;
+		};
+		requestBody: {
+			content: {
+				"application/json": components["schemas"]["MFARemoveRequest"];
+			};
+		};
+		responses: {
+			/** @description Successful Response */
+			200: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					"application/json": {
+						[key: string]: unknown;
+					};
+				};
+			};
+			/** @description Validation Error */
+			422: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					"application/json": components["schemas"]["HTTPValidationError"];
+				};
+			};
+		};
+	};
+	regenerate_recovery_codes_auth_mfa_recovery_codes_regenerate_post: {
+		parameters: {
+			query?: never;
+			header?: never;
+			path?: never;
+			cookie?: never;
+		};
+		requestBody: {
+			content: {
+				"application/json": components["schemas"]["RegenerateRecoveryCodesRequest"];
+			};
+		};
+		responses: {
+			/** @description Successful Response */
+			200: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					"application/json": components["schemas"]["RecoveryCodesResponse"];
+				};
+			};
+			/** @description Validation Error */
+			422: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					"application/json": components["schemas"]["HTTPValidationError"];
+				};
+			};
+		};
+	};
+	get_recovery_codes_count_auth_mfa_recovery_codes_count_get: {
+		parameters: {
+			query?: never;
+			header?: never;
+			path?: never;
+			cookie?: never;
+		};
+		requestBody?: never;
+		responses: {
+			/** @description Successful Response */
+			200: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					"application/json": components["schemas"]["RecoveryCodesCountResponse"];
+				};
+			};
+		};
+	};
+	list_trusted_devices_auth_mfa_trusted_devices_get: {
+		parameters: {
+			query?: never;
+			header?: never;
+			path?: never;
+			cookie?: never;
+		};
+		requestBody?: never;
+		responses: {
+			/** @description Successful Response */
+			200: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					"application/json": components["schemas"]["TrustedDevicesResponse"];
+				};
+			};
+		};
+	};
+	revoke_all_trusted_devices_auth_mfa_trusted_devices_delete: {
+		parameters: {
+			query?: never;
+			header?: never;
+			path?: never;
+			cookie?: never;
+		};
+		requestBody?: never;
+		responses: {
+			/** @description Successful Response */
+			200: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					"application/json": {
+						[key: string]: unknown;
+					};
+				};
+			};
+		};
+	};
+	revoke_trusted_device_auth_mfa_trusted_devices__device_id__delete: {
+		parameters: {
+			query?: never;
+			header?: never;
+			path: {
+				device_id: string;
+			};
+			cookie?: never;
+		};
+		requestBody?: never;
+		responses: {
+			/** @description Successful Response */
+			200: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					"application/json": {
+						[key: string]: unknown;
+					};
+				};
+			};
+			/** @description Validation Error */
+			422: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					"application/json": components["schemas"]["HTTPValidationError"];
+				};
+			};
+		};
+	};
+	get_oauth_providers_auth_oauth_providers_get: {
+		parameters: {
+			query?: never;
+			header?: never;
+			path?: never;
+			cookie?: never;
+		};
+		requestBody?: never;
+		responses: {
+			/** @description Successful Response */
+			200: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					"application/json": components["schemas"]["OAuthProvidersResponse"];
+				};
+			};
+		};
+	};
+	init_oauth_auth_oauth_init__provider__get: {
+		parameters: {
+			query: {
+				/** @description Frontend callback URL */
+				redirect_uri: string;
+			};
+			header?: never;
+			path: {
+				provider: string;
+			};
+			cookie?: never;
+		};
+		requestBody?: never;
+		responses: {
+			/** @description Successful Response */
+			200: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					"application/json": components["schemas"]["OAuthInitResponse"];
+				};
+			};
+			/** @description Validation Error */
+			422: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					"application/json": components["schemas"]["HTTPValidationError"];
+				};
+			};
+		};
+	};
+	oauth_callback_auth_oauth_callback_post: {
+		parameters: {
+			query?: never;
+			header?: never;
+			path?: never;
+			cookie?: never;
+		};
+		requestBody: {
+			content: {
+				"application/json": components["schemas"]["src__routers__oauth_sso__OAuthCallbackRequest"];
+			};
+		};
+		responses: {
+			/** @description Successful Response */
+			200: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					"application/json": components["schemas"]["OAuthTokenResponse"];
+				};
+			};
+			/** @description Validation Error */
+			422: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					"application/json": components["schemas"]["HTTPValidationError"];
+				};
+			};
+		};
+	};
+	get_linked_accounts_auth_oauth_accounts_get: {
+		parameters: {
+			query?: never;
+			header?: never;
+			path?: never;
+			cookie?: never;
+		};
+		requestBody?: never;
+		responses: {
+			/** @description Successful Response */
+			200: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					"application/json": components["schemas"]["LinkedAccountsResponse"];
+				};
+			};
+		};
+	};
+	unlink_oauth_account_auth_oauth_accounts__provider__delete: {
+		parameters: {
+			query?: never;
+			header?: never;
+			path: {
+				provider: string;
+			};
+			cookie?: never;
+		};
+		requestBody?: never;
+		responses: {
+			/** @description Successful Response */
+			200: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					"application/json": {
+						[key: string]: unknown;
+					};
+				};
+			};
+			/** @description Validation Error */
+			422: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					"application/json": components["schemas"]["HTTPValidationError"];
+				};
+			};
+		};
+	};
+	get_registration_options_auth_passkeys_register_options_post: {
+		parameters: {
+			query?: never;
+			header?: never;
+			path?: never;
+			cookie?: never;
+		};
+		requestBody: {
+			content: {
+				"application/json": components["schemas"]["PasskeyRegistrationOptionsRequest"];
+			};
+		};
+		responses: {
+			/** @description Successful Response */
+			200: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					"application/json": components["schemas"]["PasskeyRegistrationOptionsResponse"];
+				};
+			};
+			/** @description Validation Error */
+			422: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					"application/json": components["schemas"]["HTTPValidationError"];
+				};
+			};
+		};
+	};
+	verify_registration_auth_passkeys_register_verify_post: {
+		parameters: {
+			query?: never;
+			header?: never;
+			path?: never;
+			cookie?: never;
+		};
+		requestBody: {
+			content: {
+				"application/json": components["schemas"]["PasskeyRegistrationVerifyRequest"];
+			};
+		};
+		responses: {
+			/** @description Successful Response */
+			200: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					"application/json": components["schemas"]["PasskeyRegistrationVerifyResponse"];
+				};
+			};
+			/** @description Validation Error */
+			422: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					"application/json": components["schemas"]["HTTPValidationError"];
+				};
+			};
+		};
+	};
+	get_authentication_options_auth_passkeys_authenticate_options_post: {
+		parameters: {
+			query?: never;
+			header?: never;
+			path?: never;
+			cookie?: never;
+		};
+		requestBody: {
+			content: {
+				"application/json": components["schemas"]["PasskeyAuthOptionsRequest"];
+			};
+		};
+		responses: {
+			/** @description Successful Response */
+			200: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					"application/json": components["schemas"]["PasskeyAuthOptionsResponse"];
+				};
+			};
+			/** @description Validation Error */
+			422: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					"application/json": components["schemas"]["HTTPValidationError"];
+				};
+			};
+		};
+	};
+	verify_authentication_auth_passkeys_authenticate_verify_post: {
+		parameters: {
+			query?: never;
+			header?: never;
+			path?: never;
+			cookie?: never;
+		};
+		requestBody: {
+			content: {
+				"application/json": components["schemas"]["PasskeyAuthVerifyRequest"];
+			};
+		};
+		responses: {
+			/** @description Successful Response */
+			200: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					"application/json": components["schemas"]["LoginResponse"];
+				};
+			};
+			/** @description Validation Error */
+			422: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					"application/json": components["schemas"]["HTTPValidationError"];
+				};
+			};
+		};
+	};
+	list_passkeys_auth_passkeys_get: {
+		parameters: {
+			query?: never;
+			header?: never;
+			path?: never;
+			cookie?: never;
+		};
+		requestBody?: never;
+		responses: {
+			/** @description Successful Response */
+			200: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					"application/json": components["schemas"]["PasskeyListResponse"];
+				};
+			};
+		};
+	};
+	delete_passkey_auth_passkeys__passkey_id__delete: {
+		parameters: {
+			query?: never;
+			header?: never;
+			path: {
+				passkey_id: string;
+			};
+			cookie?: never;
+		};
+		requestBody?: never;
+		responses: {
+			/** @description Successful Response */
+			200: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					"application/json": components["schemas"]["PasskeyDeleteResponse"];
+				};
+			};
+			/** @description Validation Error */
+			422: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					"application/json": components["schemas"]["HTTPValidationError"];
+				};
+			};
+		};
+	};
+	list_organizations_api_organizations_get: {
+		parameters: {
+			query?: never;
+			header?: never;
+			path?: never;
+			cookie?: never;
+		};
+		requestBody?: never;
+		responses: {
+			/** @description Successful Response */
+			200: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					"application/json": components["schemas"]["OrganizationPublic"][];
+				};
+			};
+		};
+	};
+	create_organization_api_organizations_post: {
+		parameters: {
+			query?: never;
+			header?: never;
+			path?: never;
+			cookie?: never;
+		};
+		requestBody: {
+			content: {
+				"application/json": components["schemas"]["OrganizationCreate"];
+			};
+		};
+		responses: {
+			/** @description Successful Response */
+			201: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					"application/json": components["schemas"]["OrganizationPublic"];
+				};
+			};
+			/** @description Validation Error */
+			422: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					"application/json": components["schemas"]["HTTPValidationError"];
+				};
+			};
+		};
+	};
+	get_organization_api_organizations__org_id__get: {
+		parameters: {
+			query?: never;
+			header?: never;
+			path: {
+				org_id: string;
+			};
+			cookie?: never;
+		};
+		requestBody?: never;
+		responses: {
+			/** @description Successful Response */
+			200: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					"application/json": components["schemas"]["OrganizationPublic"];
+				};
+			};
+			/** @description Validation Error */
+			422: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					"application/json": components["schemas"]["HTTPValidationError"];
+				};
+			};
+		};
+	};
+	delete_organization_api_organizations__org_id__delete: {
+		parameters: {
+			query?: never;
+			header?: never;
+			path: {
+				org_id: string;
+			};
+			cookie?: never;
+		};
+		requestBody?: never;
+		responses: {
+			/** @description Successful Response */
+			204: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content?: never;
+			};
+			/** @description Validation Error */
+			422: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					"application/json": components["schemas"]["HTTPValidationError"];
+				};
+			};
+		};
+	};
+	update_organization_api_organizations__org_id__patch: {
+		parameters: {
+			query?: never;
+			header?: never;
+			path: {
+				org_id: string;
+			};
+			cookie?: never;
+		};
+		requestBody: {
+			content: {
+				"application/json": components["schemas"]["OrganizationUpdate"];
+			};
+		};
+		responses: {
+			/** @description Successful Response */
+			200: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					"application/json": components["schemas"]["OrganizationPublic"];
+				};
+			};
+			/** @description Validation Error */
+			422: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					"application/json": components["schemas"]["HTTPValidationError"];
+				};
+			};
+		};
+	};
+	list_users_api_users_get: {
+		parameters: {
+			query?: {
+				/** @description Filter by user type: 'platform' or 'org' */
+				type?: string | null;
+				/** @description Filter org users by organization ID */
+				orgId?: string | null;
+			};
+			header?: never;
+			path?: never;
+			cookie?: never;
+		};
+		requestBody?: never;
+		responses: {
+			/** @description Successful Response */
+			200: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					"application/json": components["schemas"]["UserPublic"][];
+				};
+			};
+			/** @description Validation Error */
+			422: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					"application/json": components["schemas"]["HTTPValidationError"];
+				};
+			};
+		};
+	};
+	create_user_api_users_post: {
+		parameters: {
+			query?: never;
+			header?: never;
+			path?: never;
+			cookie?: never;
+		};
+		requestBody: {
+			content: {
+				"application/json": components["schemas"]["src__models__contracts__users__UserCreate"];
+			};
+		};
+		responses: {
+			/** @description Successful Response */
+			201: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					"application/json": components["schemas"]["UserPublic"];
+				};
+			};
+			/** @description Validation Error */
+			422: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					"application/json": components["schemas"]["HTTPValidationError"];
+				};
+			};
+		};
+	};
+	get_user_api_users__user_id__get: {
+		parameters: {
+			query?: never;
+			header?: never;
+			path: {
+				user_id: string;
+			};
+			cookie?: never;
+		};
+		requestBody?: never;
+		responses: {
+			/** @description Successful Response */
+			200: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					"application/json": components["schemas"]["UserPublic"];
+				};
+			};
+			/** @description Validation Error */
+			422: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					"application/json": components["schemas"]["HTTPValidationError"];
+				};
+			};
+		};
+	};
+	delete_user_api_users__user_id__delete: {
+		parameters: {
+			query?: never;
+			header?: never;
+			path: {
+				user_id: string;
+			};
+			cookie?: never;
+		};
+		requestBody?: never;
+		responses: {
+			/** @description Successful Response */
+			204: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content?: never;
+			};
+			/** @description Validation Error */
+			422: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					"application/json": components["schemas"]["HTTPValidationError"];
+				};
+			};
+		};
+	};
+	update_user_api_users__user_id__patch: {
+		parameters: {
+			query?: never;
+			header?: never;
+			path: {
+				user_id: string;
+			};
+			cookie?: never;
+		};
+		requestBody: {
+			content: {
+				"application/json": components["schemas"]["UserUpdate"];
+			};
+		};
+		responses: {
+			/** @description Successful Response */
+			200: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					"application/json": components["schemas"]["UserPublic"];
+				};
+			};
+			/** @description Validation Error */
+			422: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					"application/json": components["schemas"]["HTTPValidationError"];
+				};
+			};
+		};
+	};
+	get_user_roles_api_users__user_id__roles_get: {
+		parameters: {
+			query?: never;
+			header?: never;
+			path: {
+				user_id: string;
+			};
+			cookie?: never;
+		};
+		requestBody?: never;
+		responses: {
+			/** @description Successful Response */
+			200: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					"application/json": components["schemas"]["UserRolesResponse"];
+				};
+			};
+			/** @description Validation Error */
+			422: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					"application/json": components["schemas"]["HTTPValidationError"];
+				};
+			};
+		};
+	};
+	get_user_forms_api_users__user_id__forms_get: {
+		parameters: {
+			query?: never;
+			header?: never;
+			path: {
+				user_id: string;
+			};
+			cookie?: never;
+		};
+		requestBody?: never;
+		responses: {
+			/** @description Successful Response */
+			200: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					"application/json": components["schemas"]["UserFormsResponse"];
+				};
+			};
+			/** @description Validation Error */
+			422: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					"application/json": components["schemas"]["HTTPValidationError"];
+				};
+			};
+		};
+	};
+	list_roles_api_roles_get: {
+		parameters: {
+			query?: never;
+			header?: never;
+			path?: never;
+			cookie?: never;
+		};
+		requestBody?: never;
+		responses: {
+			/** @description Successful Response */
+			200: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					"application/json": components["schemas"]["RolePublic"][];
+				};
+			};
+		};
+	};
+	create_role_api_roles_post: {
+		parameters: {
+			query?: never;
+			header?: never;
+			path?: never;
+			cookie?: never;
+		};
+		requestBody: {
+			content: {
+				"application/json": components["schemas"]["RoleCreate"];
+			};
+		};
+		responses: {
+			/** @description Successful Response */
+			201: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					"application/json": components["schemas"]["RolePublic"];
+				};
+			};
+			/** @description Validation Error */
+			422: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					"application/json": components["schemas"]["HTTPValidationError"];
+				};
+			};
+		};
+	};
+	get_role_api_roles__role_id__get: {
+		parameters: {
+			query?: never;
+			header?: never;
+			path: {
+				role_id: string;
+			};
+			cookie?: never;
+		};
+		requestBody?: never;
+		responses: {
+			/** @description Successful Response */
+			200: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					"application/json": components["schemas"]["RolePublic"];
+				};
+			};
+			/** @description Validation Error */
+			422: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					"application/json": components["schemas"]["HTTPValidationError"];
+				};
+			};
+		};
+	};
+	delete_role_api_roles__role_id__delete: {
+		parameters: {
+			query?: never;
+			header?: never;
+			path: {
+				role_id: string;
+			};
+			cookie?: never;
+		};
+		requestBody?: never;
+		responses: {
+			/** @description Successful Response */
+			204: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content?: never;
+			};
+			/** @description Validation Error */
+			422: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					"application/json": components["schemas"]["HTTPValidationError"];
+				};
+			};
+		};
+	};
+	update_role_api_roles__role_id__patch: {
+		parameters: {
+			query?: never;
+			header?: never;
+			path: {
+				role_id: string;
+			};
+			cookie?: never;
+		};
+		requestBody: {
+			content: {
+				"application/json": components["schemas"]["RoleUpdate"];
+			};
+		};
+		responses: {
+			/** @description Successful Response */
+			200: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					"application/json": components["schemas"]["RolePublic"];
+				};
+			};
+			/** @description Validation Error */
+			422: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					"application/json": components["schemas"]["HTTPValidationError"];
+				};
+			};
+		};
+	};
+	get_role_users_api_roles__role_id__users_get: {
+		parameters: {
+			query?: never;
+			header?: never;
+			path: {
+				role_id: string;
+			};
+			cookie?: never;
+		};
+		requestBody?: never;
+		responses: {
+			/** @description Successful Response */
+			200: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					"application/json": components["schemas"]["RoleUsersResponse"];
+				};
+			};
+			/** @description Validation Error */
+			422: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					"application/json": components["schemas"]["HTTPValidationError"];
+				};
+			};
+		};
+	};
+	assign_users_to_role_api_roles__role_id__users_post: {
+		parameters: {
+			query?: never;
+			header?: never;
+			path: {
+				role_id: string;
+			};
+			cookie?: never;
+		};
+		requestBody: {
+			content: {
+				"application/json": components["schemas"]["AssignUsersToRoleRequest"];
+			};
+		};
+		responses: {
+			/** @description Successful Response */
+			204: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content?: never;
+			};
+			/** @description Validation Error */
+			422: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					"application/json": components["schemas"]["HTTPValidationError"];
+				};
+			};
+		};
+	};
+	remove_user_from_role_api_roles__role_id__users__user_id__delete: {
+		parameters: {
+			query?: never;
+			header?: never;
+			path: {
+				role_id: string;
+				user_id: string;
+			};
+			cookie?: never;
+		};
+		requestBody?: never;
+		responses: {
+			/** @description Successful Response */
+			204: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content?: never;
+			};
+			/** @description Validation Error */
+			422: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					"application/json": components["schemas"]["HTTPValidationError"];
+				};
+			};
+		};
+	};
+	get_role_forms_api_roles__role_id__forms_get: {
+		parameters: {
+			query?: never;
+			header?: never;
+			path: {
+				role_id: string;
+			};
+			cookie?: never;
+		};
+		requestBody?: never;
+		responses: {
+			/** @description Successful Response */
+			200: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					"application/json": components["schemas"]["RoleFormsResponse"];
+				};
+			};
+			/** @description Validation Error */
+			422: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					"application/json": components["schemas"]["HTTPValidationError"];
+				};
+			};
+		};
+	};
+	assign_forms_to_role_api_roles__role_id__forms_post: {
+		parameters: {
+			query?: never;
+			header?: never;
+			path: {
+				role_id: string;
+			};
+			cookie?: never;
+		};
+		requestBody: {
+			content: {
+				"application/json": components["schemas"]["AssignFormsToRoleRequest"];
+			};
+		};
+		responses: {
+			/** @description Successful Response */
+			204: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content?: never;
+			};
+			/** @description Validation Error */
+			422: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					"application/json": components["schemas"]["HTTPValidationError"];
+				};
+			};
+		};
+	};
+	remove_form_from_role_api_roles__role_id__forms__form_id__delete: {
+		parameters: {
+			query?: never;
+			header?: never;
+			path: {
+				role_id: string;
+				form_id: string;
+			};
+			cookie?: never;
+		};
+		requestBody?: never;
+		responses: {
+			/** @description Successful Response */
+			204: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content?: never;
+			};
+			/** @description Validation Error */
+			422: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					"application/json": components["schemas"]["HTTPValidationError"];
+				};
+			};
+		};
+	};
+	get_role_agents_api_roles__role_id__agents_get: {
+		parameters: {
+			query?: never;
+			header?: never;
+			path: {
+				role_id: string;
+			};
+			cookie?: never;
+		};
+		requestBody?: never;
+		responses: {
+			/** @description Successful Response */
+			200: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					"application/json": components["schemas"]["RoleAgentsResponse"];
+				};
+			};
+			/** @description Validation Error */
+			422: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					"application/json": components["schemas"]["HTTPValidationError"];
+				};
+			};
+		};
+	};
+	assign_agents_to_role_api_roles__role_id__agents_post: {
+		parameters: {
+			query?: never;
+			header?: never;
+			path: {
+				role_id: string;
+			};
+			cookie?: never;
+		};
+		requestBody: {
+			content: {
+				"application/json": components["schemas"]["AssignAgentsToRoleRequest"];
+			};
+		};
+		responses: {
+			/** @description Successful Response */
+			204: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content?: never;
+			};
+			/** @description Validation Error */
+			422: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					"application/json": components["schemas"]["HTTPValidationError"];
+				};
+			};
+		};
+	};
+	remove_agent_from_role_api_roles__role_id__agents__agent_id__delete: {
+		parameters: {
+			query?: never;
+			header?: never;
+			path: {
+				role_id: string;
+				agent_id: string;
+			};
+			cookie?: never;
+		};
+		requestBody?: never;
+		responses: {
+			/** @description Successful Response */
+			204: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content?: never;
+			};
+			/** @description Validation Error */
+			422: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					"application/json": components["schemas"]["HTTPValidationError"];
+				};
+			};
+		};
+	};
+	list_executions_api_executions_get: {
+		parameters: {
+			query?: {
+				/** @description Filter by workflow name */
+				workflowName?: string | null;
+				/** @description Filter by execution status */
+				status?: string | null;
+				/** @description Filter by start date (ISO format) */
+				startDate?: string | null;
+				/** @description Filter by end date (ISO format) */
+				endDate?: string | null;
+				/** @description Exclude local runner executions */
+				excludeLocal?: boolean;
+				/** @description Maximum number of results */
+				limit?: number;
+				/** @description Continuation token */
+				continuationToken?: string | null;
+			};
+			header?: never;
+			path?: never;
+			cookie?: never;
+		};
+		requestBody?: never;
+		responses: {
+			/** @description Successful Response */
+			200: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					"application/json": components["schemas"]["ExecutionsListResponse"];
+				};
+			};
+			/** @description Validation Error */
+			422: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					"application/json": components["schemas"]["HTTPValidationError"];
+				};
+			};
+		};
+	};
+	get_execution_api_executions__execution_id__get: {
+		parameters: {
+			query?: never;
+			header?: never;
+			path: {
+				execution_id: string;
+			};
+			cookie?: never;
+		};
+		requestBody?: never;
+		responses: {
+			/** @description Successful Response */
+			200: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					"application/json": components["schemas"]["WorkflowExecution"];
+				};
+			};
+			/** @description Validation Error */
+			422: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					"application/json": components["schemas"]["HTTPValidationError"];
+				};
+			};
+		};
+	};
+	get_execution_result_api_executions__execution_id__result_get: {
+		parameters: {
+			query?: never;
+			header?: never;
+			path: {
+				execution_id: string;
+			};
+			cookie?: never;
+		};
+		requestBody?: never;
+		responses: {
+			/** @description Successful Response */
+			200: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					"application/json": unknown;
+				};
+			};
+			/** @description Validation Error */
+			422: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					"application/json": components["schemas"]["HTTPValidationError"];
+				};
+			};
+		};
+	};
+	get_execution_logs_api_executions__execution_id__logs_get: {
+		parameters: {
+			query?: never;
+			header?: never;
+			path: {
+				execution_id: string;
+			};
+			cookie?: never;
+		};
+		requestBody?: never;
+		responses: {
+			/** @description Successful Response */
+			200: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					"application/json": components["schemas"]["ExecutionLogPublic"][];
+				};
+			};
+			/** @description Validation Error */
+			422: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					"application/json": components["schemas"]["HTTPValidationError"];
+				};
+			};
+		};
+	};
+	get_execution_variables_api_executions__execution_id__variables_get: {
+		parameters: {
+			query?: never;
+			header?: never;
+			path: {
+				execution_id: string;
+			};
+			cookie?: never;
+		};
+		requestBody?: never;
+		responses: {
+			/** @description Successful Response */
+			200: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					"application/json": {
+						[key: string]: unknown;
+					};
+				};
+			};
+			/** @description Validation Error */
+			422: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					"application/json": components["schemas"]["HTTPValidationError"];
+				};
+			};
+		};
+	};
+	cancel_execution_api_executions__execution_id__cancel_post: {
+		parameters: {
+			query?: never;
+			header?: never;
+			path: {
+				execution_id: string;
+			};
+			cookie?: never;
+		};
+		requestBody?: never;
+		responses: {
+			/** @description Successful Response */
+			200: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					"application/json":
+						| components["schemas"]["WorkflowExecution"]
+						| {
+								[key: string]: unknown;
+						  };
+				};
+			};
+			/** @description Validation Error */
+			422: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					"application/json": components["schemas"]["HTTPValidationError"];
+				};
+			};
+		};
+	};
+	get_stuck_executions_api_executions_cleanup_stuck_get: {
+		parameters: {
+			query?: {
+				/** @description Hours since start to consider stuck */
+				hours?: number;
+			};
+			header?: never;
+			path?: never;
+			cookie?: never;
+		};
+		requestBody?: never;
+		responses: {
+			/** @description Successful Response */
+			200: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					"application/json": components["schemas"]["StuckExecutionsResponse"];
+				};
+			};
+			/** @description Validation Error */
+			422: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					"application/json": components["schemas"]["HTTPValidationError"];
+				};
+			};
+		};
+	};
+	trigger_cleanup_api_executions_cleanup_trigger_post: {
+		parameters: {
+			query?: {
+				/** @description Hours since start to consider stuck */
+				hours?: number;
+			};
+			header?: never;
+			path?: never;
+			cookie?: never;
+		};
+		requestBody?: never;
+		responses: {
+			/** @description Successful Response */
+			200: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					"application/json": components["schemas"]["CleanupTriggeredResponse"];
+				};
+			};
+			/** @description Validation Error */
+			422: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					"application/json": components["schemas"]["HTTPValidationError"];
+				};
+			};
+		};
+	};
+	cleanup_redis_orphans_api_executions_cleanup_redis_orphans_post: {
+		parameters: {
+			query?: {
+				/** @description Minutes since creation to consider orphaned */
+				minutes?: number;
+			};
+			header?: never;
+			path?: never;
+			cookie?: never;
+		};
+		requestBody?: never;
+		responses: {
+			/** @description Successful Response */
+			200: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					"application/json": {
+						[key: string]: unknown;
+					};
+				};
+			};
+			/** @description Validation Error */
+			422: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					"application/json": components["schemas"]["HTTPValidationError"];
+				};
+			};
+		};
+	};
+	list_workflows_api_workflows_get: {
+		parameters: {
+			query?: {
+				is_tool?: boolean | null;
+			};
+			header?: never;
+			path?: never;
+			cookie?: never;
+		};
+		requestBody?: never;
+		responses: {
+			/** @description Successful Response */
+			200: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					"application/json": components["schemas"]["WorkflowMetadata"][];
+				};
+			};
+			/** @description Validation Error */
+			422: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					"application/json": components["schemas"]["HTTPValidationError"];
+				};
+			};
+		};
+	};
+	execute_workflow_api_workflows_execute_post: {
+		parameters: {
+			query?: never;
+			header?: never;
+			path?: never;
+			cookie?: never;
+		};
+		requestBody: {
+			content: {
+				"application/json": components["schemas"]["WorkflowExecutionRequest"];
+			};
+		};
+		responses: {
+			/** @description Successful Response */
+			200: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					"application/json": components["schemas"]["WorkflowExecutionResponse"];
+				};
+			};
+			/** @description Validation Error */
+			422: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					"application/json": components["schemas"]["HTTPValidationError"];
+				};
+			};
+		};
+	};
+	validate_workflow_api_workflows_validate_post: {
+		parameters: {
+			query?: never;
+			header?: never;
+			path?: never;
+			cookie?: never;
+		};
+		requestBody: {
+			content: {
+				"application/json": components["schemas"]["WorkflowValidationRequest"];
+			};
+		};
+		responses: {
+			/** @description Successful Response */
+			200: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					"application/json": components["schemas"]["WorkflowValidationResponse"];
+				};
+			};
+			/** @description Validation Error */
+			422: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					"application/json": components["schemas"]["HTTPValidationError"];
+				};
+			};
+		};
+	};
+	list_forms_api_forms_get: {
+		parameters: {
+			query?: never;
+			header?: never;
+			path?: never;
+			cookie?: never;
+		};
+		requestBody?: never;
+		responses: {
+			/** @description Successful Response */
+			200: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					"application/json": components["schemas"]["FormPublic"][];
+				};
+			};
+		};
+	};
+	create_form_api_forms_post: {
+		parameters: {
+			query?: never;
+			header?: never;
+			path?: never;
+			cookie?: never;
+		};
+		requestBody: {
+			content: {
+				"application/json": components["schemas"]["FormCreate"];
+			};
+		};
+		responses: {
+			/** @description Successful Response */
+			201: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					"application/json": components["schemas"]["FormPublic"];
+				};
+			};
+			/** @description Validation Error */
+			422: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					"application/json": components["schemas"]["HTTPValidationError"];
+				};
+			};
+		};
+	};
+	get_form_api_forms__form_id__get: {
+		parameters: {
+			query?: never;
+			header?: never;
+			path: {
+				form_id: string;
+			};
+			cookie?: never;
+		};
+		requestBody?: never;
+		responses: {
+			/** @description Successful Response */
+			200: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					"application/json": components["schemas"]["FormPublic"];
+				};
+			};
+			/** @description Validation Error */
+			422: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					"application/json": components["schemas"]["HTTPValidationError"];
+				};
+			};
+		};
+	};
+	delete_form_api_forms__form_id__delete: {
+		parameters: {
+			query?: never;
+			header?: never;
+			path: {
+				form_id: string;
+			};
+			cookie?: never;
+		};
+		requestBody?: never;
+		responses: {
+			/** @description Successful Response */
+			204: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content?: never;
+			};
+			/** @description Validation Error */
+			422: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					"application/json": components["schemas"]["HTTPValidationError"];
+				};
+			};
+		};
+	};
+	update_form_api_forms__form_id__patch: {
+		parameters: {
+			query?: never;
+			header?: never;
+			path: {
+				form_id: string;
+			};
+			cookie?: never;
+		};
+		requestBody: {
+			content: {
+				"application/json": components["schemas"]["FormUpdate"];
+			};
+		};
+		responses: {
+			/** @description Successful Response */
+			200: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					"application/json": components["schemas"]["FormPublic"];
+				};
+			};
+			/** @description Validation Error */
+			422: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					"application/json": components["schemas"]["HTTPValidationError"];
+				};
+			};
+		};
+	};
+	execute_form_api_forms__form_id__execute_post: {
+		parameters: {
+			query?: never;
+			header?: never;
+			path: {
+				form_id: string;
+			};
+			cookie?: never;
+		};
+		requestBody?: {
+			content: {
+				"application/json": components["schemas"]["FormExecuteRequest"];
+			};
+		};
+		responses: {
+			/** @description Successful Response */
+			200: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					"application/json": components["schemas"]["WorkflowExecutionResponse"];
+				};
+			};
+			/** @description Validation Error */
+			422: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					"application/json": components["schemas"]["HTTPValidationError"];
+				};
+			};
+		};
+	};
+	execute_startup_workflow_api_forms__form_id__startup_post: {
+		parameters: {
+			query?: never;
+			header?: never;
+			path: {
+				form_id: string;
+			};
+			cookie?: never;
+		};
+		requestBody?: {
+			content: {
+				"application/json": {
+					[key: string]: unknown;
+				};
+			};
+		};
+		responses: {
+			/** @description Successful Response */
+			200: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					"application/json": components["schemas"]["FormStartupResponse"];
+				};
+			};
+			/** @description Validation Error */
+			422: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					"application/json": components["schemas"]["HTTPValidationError"];
+				};
+			};
+		};
+	};
+	generate_upload_url_api_forms__form_id__upload_post: {
+		parameters: {
+			query?: never;
+			header?: never;
+			path: {
+				form_id: string;
+			};
+			cookie?: never;
+		};
+		requestBody: {
+			content: {
+				"application/json": components["schemas"]["FileUploadRequest"];
+			};
+		};
+		responses: {
+			/** @description Successful Response */
+			200: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					"application/json": components["schemas"]["FileUploadResponse"];
+				};
+			};
+			/** @description Validation Error */
+			422: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					"application/json": components["schemas"]["HTTPValidationError"];
+				};
+			};
+		};
+	};
+	get_config_api_config_get: {
+		parameters: {
+			query?: never;
+			header?: never;
+			path?: never;
+			cookie?: never;
+		};
+		requestBody?: never;
+		responses: {
+			/** @description Successful Response */
+			200: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					"application/json": components["schemas"]["ConfigResponse"][];
+				};
+			};
+		};
+	};
+	set_config_api_config_post: {
+		parameters: {
+			query?: never;
+			header?: never;
+			path?: never;
+			cookie?: never;
+		};
+		requestBody: {
+			content: {
+				"application/json": components["schemas"]["SetConfigRequest"];
+			};
+		};
+		responses: {
+			/** @description Successful Response */
+			201: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					"application/json": components["schemas"]["ConfigResponse"];
+				};
+			};
+			/** @description Validation Error */
+			422: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					"application/json": components["schemas"]["HTTPValidationError"];
+				};
+			};
+		};
+	};
+	delete_config_api_config__key__delete: {
+		parameters: {
+			query?: never;
+			header?: never;
+			path: {
+				key: string;
+			};
+			cookie?: never;
+		};
+		requestBody?: never;
+		responses: {
+			/** @description Successful Response */
+			204: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content?: never;
+			};
+			/** @description Validation Error */
+			422: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					"application/json": components["schemas"]["HTTPValidationError"];
+				};
+			};
+		};
+	};
+	list_data_providers_api_data_providers_get: {
+		parameters: {
+			query?: never;
+			header?: never;
+			path?: never;
+			cookie?: never;
+		};
+		requestBody?: never;
+		responses: {
+			/** @description Successful Response */
+			200: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					"application/json": components["schemas"]["DataProviderMetadata"][];
+				};
+			};
+		};
+	};
+	invoke_data_provider_api_data_providers__provider_id__invoke_post: {
+		parameters: {
+			query?: never;
+			header?: never;
+			path: {
+				provider_id: string;
+			};
+			cookie?: never;
+		};
+		requestBody: {
+			content: {
+				"application/json": components["schemas"]["DataProviderInvokeRequest"];
+			};
+		};
+		responses: {
+			/** @description Successful Response */
+			200: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					"application/json": components["schemas"]["DataProviderInvokeResponse"];
+				};
+			};
+			/** @description Validation Error */
+			422: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					"application/json": components["schemas"]["HTTPValidationError"];
+				};
+			};
+		};
+	};
+	get_branding_api_branding_get: {
+		parameters: {
+			query?: never;
+			header?: never;
+			path?: never;
+			cookie?: never;
+		};
+		requestBody?: never;
+		responses: {
+			/** @description Successful Response */
+			200: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					"application/json": components["schemas"]["BrandingSettings"];
+				};
+			};
+		};
+	};
+	update_branding_api_branding_put: {
+		parameters: {
+			query?: never;
+			header?: never;
+			path?: never;
+			cookie?: never;
+		};
+		requestBody: {
+			content: {
+				"application/json": components["schemas"]["BrandingUpdateRequest"];
+			};
+		};
+		responses: {
+			/** @description Successful Response */
+			200: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					"application/json": components["schemas"]["BrandingSettings"];
+				};
+			};
+			/** @description Validation Error */
+			422: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					"application/json": components["schemas"]["HTTPValidationError"];
+				};
+			};
+		};
+	};
+	reset_all_branding_api_branding_delete: {
+		parameters: {
+			query?: never;
+			header?: never;
+			path?: never;
+			cookie?: never;
+		};
+		requestBody?: never;
+		responses: {
+			/** @description Successful Response */
+			200: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					"application/json": components["schemas"]["BrandingSettings"];
+				};
+			};
+		};
+	};
+	get_logo_api_branding_logo__logo_type__get: {
+		parameters: {
+			query?: never;
+			header?: never;
+			path: {
+				logo_type: string;
+			};
+			cookie?: never;
+		};
+		requestBody?: never;
+		responses: {
+			/** @description Successful Response */
+			200: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					"application/json": unknown;
+					"image/png": unknown;
+					"image/svg+xml": unknown;
+					"image/jpeg": unknown;
+				};
+			};
+			/** @description Logo not found */
+			404: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content?: never;
+			};
+			/** @description Validation Error */
+			422: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					"application/json": components["schemas"]["HTTPValidationError"];
+				};
+			};
+		};
+	};
+	upload_logo_api_branding_logo__logo_type__post: {
+		parameters: {
+			query?: never;
+			header?: never;
+			path: {
+				logo_type: string;
+			};
+			cookie?: never;
+		};
+		requestBody: {
+			content: {
+				"multipart/form-data": components["schemas"]["Body_upload_logo_api_branding_logo__logo_type__post"];
+			};
+		};
+		responses: {
+			/** @description Successful Response */
+			200: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					"application/json": components["schemas"]["BrandingSettings"];
+				};
+			};
+			/** @description Validation Error */
+			422: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					"application/json": components["schemas"]["HTTPValidationError"];
+				};
+			};
+		};
+	};
+	reset_logo_api_branding_logo__logo_type__delete: {
+		parameters: {
+			query?: never;
+			header?: never;
+			path: {
+				logo_type: string;
+			};
+			cookie?: never;
+		};
+		requestBody?: never;
+		responses: {
+			/** @description Successful Response */
+			200: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					"application/json": components["schemas"]["BrandingSettings"];
+				};
+			};
+			/** @description Validation Error */
+			422: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					"application/json": components["schemas"]["HTTPValidationError"];
+				};
+			};
+		};
+	};
+	reset_color_api_branding_color_delete: {
+		parameters: {
+			query?: never;
+			header?: never;
+			path?: never;
+			cookie?: never;
+		};
+		requestBody?: never;
+		responses: {
+			/** @description Successful Response */
+			200: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					"application/json": components["schemas"]["BrandingSettings"];
+				};
+			};
+		};
+	};
+	list_files_api_editor_files_get: {
+		parameters: {
+			query: {
+				/** @description Directory path relative to workspace root */
+				path: string;
+			};
+			header?: never;
+			path?: never;
+			cookie?: never;
+		};
+		requestBody?: never;
+		responses: {
+			/** @description Successful Response */
+			200: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					"application/json": components["schemas"]["FileMetadata"][];
+				};
+			};
+			/** @description Validation Error */
+			422: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					"application/json": components["schemas"]["HTTPValidationError"];
+				};
+			};
+		};
+	};
+	delete_file_or_directory_api_editor_files_delete: {
+		parameters: {
+			query: {
+				/** @description File or folder path relative to workspace root */
+				path: string;
+			};
+			header?: never;
+			path?: never;
+			cookie?: never;
+		};
+		requestBody?: never;
+		responses: {
+			/** @description Successful Response */
+			204: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content?: never;
+			};
+			/** @description Validation Error */
+			422: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					"application/json": components["schemas"]["HTTPValidationError"];
+				};
+			};
+		};
+	};
+	get_file_content_api_editor_files_content_get: {
+		parameters: {
+			query: {
+				/** @description File path relative to workspace root */
+				path: string;
+			};
+			header?: never;
+			path?: never;
+			cookie?: never;
+		};
+		requestBody?: never;
+		responses: {
+			/** @description Successful Response */
+			200: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					"application/json": components["schemas"]["FileContentResponse"];
+				};
+			};
+			/** @description Validation Error */
+			422: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					"application/json": components["schemas"]["HTTPValidationError"];
+				};
+			};
+		};
+	};
+	put_file_content_api_editor_files_content_put: {
+		parameters: {
+			query?: {
+				/** @description If true, inject IDs into decorators. If false (default), detect if IDs needed and return needs_indexing=true. */
+				index?: boolean;
+			};
+			header?: never;
+			path?: never;
+			cookie?: never;
+		};
+		requestBody: {
+			content: {
+				"application/json": components["schemas"]["FileContentRequest"];
+			};
+		};
+		responses: {
+			/** @description Successful Response */
+			200: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					"application/json": components["schemas"]["FileContentResponse"];
+				};
+			};
+			/** @description File conflict - content was modified or file was deleted */
+			409: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					"application/json": components["schemas"]["FileConflictResponse"];
+				};
+			};
+			/** @description Validation Error */
+			422: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					"application/json": components["schemas"]["HTTPValidationError"];
+				};
+			};
+		};
+	};
+	create_new_folder_api_editor_files_folder_post: {
+		parameters: {
+			query: {
+				/** @description Folder path relative to workspace root */
+				path: string;
+			};
+			header?: never;
+			path?: never;
+			cookie?: never;
+		};
+		requestBody?: never;
+		responses: {
+			/** @description Successful Response */
+			201: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					"application/json": components["schemas"]["FileMetadata"];
+				};
+			};
+			/** @description Validation Error */
+			422: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					"application/json": components["schemas"]["HTTPValidationError"];
+				};
+			};
+		};
+	};
+	rename_or_move_api_editor_files_rename_post: {
+		parameters: {
+			query: {
+				/** @description Current path relative to workspace root */
+				old_path: string;
+				/** @description New path relative to workspace root */
+				new_path: string;
+			};
+			header?: never;
+			path?: never;
+			cookie?: never;
+		};
+		requestBody?: never;
+		responses: {
+			/** @description Successful Response */
+			200: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					"application/json": components["schemas"]["FileMetadata"];
+				};
+			};
+			/** @description Validation Error */
+			422: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					"application/json": components["schemas"]["HTTPValidationError"];
+				};
+			};
+		};
+	};
+	search_file_contents_api_editor_search_post: {
+		parameters: {
+			query?: never;
+			header?: never;
+			path?: never;
+			cookie?: never;
+		};
+		requestBody: {
+			content: {
+				"application/json": components["schemas"]["SearchRequest"];
+			};
+		};
+		responses: {
+			/** @description Successful Response */
+			200: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					"application/json": components["schemas"]["SearchResponse"];
+				};
+			};
+			/** @description Validation Error */
+			422: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					"application/json": components["schemas"]["HTTPValidationError"];
+				};
+			};
+		};
+	};
+	list_schedules_api_schedules_get: {
+		parameters: {
+			query?: never;
+			header?: never;
+			path?: never;
+			cookie?: never;
+		};
+		requestBody?: never;
+		responses: {
+			/** @description Successful Response */
+			200: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					"application/json": components["schemas"]["ScheduleMetadata"][];
+				};
+			};
+		};
+	};
+	list_keys_api_workflow_keys_get: {
+		parameters: {
+			query?: never;
+			header?: never;
+			path?: never;
+			cookie?: never;
+		};
+		requestBody?: never;
+		responses: {
+			/** @description Successful Response */
+			200: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					"application/json": components["schemas"]["WorkflowKeyResponse"][];
+				};
+			};
+		};
+	};
+	create_key_api_workflow_keys_post: {
+		parameters: {
+			query?: never;
+			header?: never;
+			path?: never;
+			cookie?: never;
+		};
+		requestBody: {
+			content: {
+				"application/json": components["schemas"]["WorkflowKeyCreateRequest"];
+			};
+		};
+		responses: {
+			/** @description Successful Response */
+			201: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					"application/json": components["schemas"]["WorkflowKeyCreatedResponse"];
+				};
+			};
+			/** @description Validation Error */
+			422: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					"application/json": components["schemas"]["HTTPValidationError"];
+				};
+			};
+		};
+	};
+	revoke_key_api_workflow_keys__workflow_id__delete: {
+		parameters: {
+			query?: never;
+			header?: never;
+			path: {
+				workflow_id: string;
+			};
+			cookie?: never;
+		};
+		requestBody?: never;
+		responses: {
+			/** @description Successful Response */
+			204: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content?: never;
+			};
+			/** @description Validation Error */
+			422: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					"application/json": components["schemas"]["HTTPValidationError"];
+				};
+			};
+		};
+	};
+	list_logs_api_logs_get: {
+		parameters: {
+			query?: {
+				/** @description Log category filter */
+				category?: string | null;
+				/** @description Start date filter */
+				start_date?: string | null;
+				/** @description End date filter */
+				end_date?: string | null;
+				/** @description Result limit */
+				limit?: number;
+				/** @description Result offset */
+				offset?: number;
+			};
+			header?: never;
+			path?: never;
+			cookie?: never;
+		};
+		requestBody?: never;
+		responses: {
+			/** @description Successful Response */
+			200: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					"application/json": components["schemas"]["SystemLogsListResponse"];
+				};
+			};
+			/** @description Validation Error */
+			422: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					"application/json": components["schemas"]["HTTPValidationError"];
+				};
+			};
+		};
+	};
+	get_log_api_logs__category___row_key__get: {
+		parameters: {
+			query?: never;
+			header?: never;
+			path: {
+				category: string;
+				row_key: string;
+			};
+			cookie?: never;
+		};
+		requestBody?: never;
+		responses: {
+			/** @description Successful Response */
+			200: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					"application/json": components["schemas"]["SystemLog"];
+				};
+			};
+			/** @description Validation Error */
+			422: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					"application/json": components["schemas"]["HTTPValidationError"];
+				};
+			};
+		};
+	};
+	get_metrics_api_metrics_get: {
+		parameters: {
+			query?: never;
+			header?: never;
+			path?: never;
+			cookie?: never;
+		};
+		requestBody?: never;
+		responses: {
+			/** @description Successful Response */
+			200: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					"application/json": components["schemas"]["DashboardMetricsResponse"];
+				};
+			};
+		};
+	};
+	get_metrics_snapshot_api_metrics_snapshot_get: {
+		parameters: {
+			query?: never;
+			header?: never;
+			path?: never;
+			cookie?: never;
+		};
+		requestBody?: never;
+		responses: {
+			/** @description Successful Response */
+			200: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					"application/json": components["schemas"]["PlatformMetricsResponse"];
+				};
+			};
+		};
+	};
+	get_daily_metrics_api_metrics_executions_daily_get: {
+		parameters: {
+			query?: {
+				/** @description Number of days to include */
+				days?: number;
+				/** @description Filter by organization */
+				organization_id?: string | null;
+			};
+			header?: never;
+			path?: never;
+			cookie?: never;
+		};
+		requestBody?: never;
+		responses: {
+			/** @description Successful Response */
+			200: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					"application/json": components["schemas"]["DailyMetricsResponse"];
+				};
+			};
+			/** @description Validation Error */
+			422: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					"application/json": components["schemas"]["HTTPValidationError"];
+				};
+			};
+		};
+	};
+	get_organization_metrics_api_metrics_organizations_get: {
+		parameters: {
+			query?: {
+				/** @description Number of days to include */
+				days?: number;
+				/** @description Max organizations to return */
+				limit?: number;
+			};
+			header?: never;
+			path?: never;
+			cookie?: never;
+		};
+		requestBody?: never;
+		responses: {
+			/** @description Successful Response */
+			200: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					"application/json": components["schemas"]["OrganizationMetricsResponse"];
+				};
+			};
+			/** @description Validation Error */
+			422: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					"application/json": components["schemas"]["HTTPValidationError"];
+				};
+			};
+		};
+	};
+	get_resource_metrics_api_metrics_resources_get: {
+		parameters: {
+			query?: {
+				/** @description Number of days to include */
+				days?: number;
+			};
+			header?: never;
+			path?: never;
+			cookie?: never;
+		};
+		requestBody?: never;
+		responses: {
+			/** @description Successful Response */
+			200: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					"application/json": components["schemas"]["ResourceMetricsResponse"];
+				};
+			};
+			/** @description Validation Error */
+			422: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					"application/json": components["schemas"]["HTTPValidationError"];
+				};
+			};
+		};
+	};
+	get_workflow_metrics_api_metrics_workflows_get: {
+		parameters: {
+			query?: {
+				/** @description Number of days to include */
+				days?: number;
+				/** @description Sort by: executions, memory, duration, cpu */
+				sort_by?: string;
+				/** @description Max workflows to return */
+				limit?: number;
+			};
+			header?: never;
+			path?: never;
+			cookie?: never;
+		};
+		requestBody?: never;
+		responses: {
+			/** @description Successful Response */
+			200: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					"application/json": components["schemas"]["WorkflowMetricsResponse"];
+				};
+			};
+			/** @description Validation Error */
+			422: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					"application/json": components["schemas"]["HTTPValidationError"];
+				};
+			};
+		};
+	};
+	list_packages_api_packages_get: {
+		parameters: {
+			query?: never;
+			header?: never;
+			path?: never;
+			cookie?: never;
+		};
+		requestBody?: never;
+		responses: {
+			/** @description Successful Response */
+			200: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					"application/json": components["schemas"]["InstalledPackagesResponse"];
+				};
+			};
+		};
+	};
+	check_updates_api_packages_updates_get: {
+		parameters: {
+			query?: never;
+			header?: never;
+			path?: never;
+			cookie?: never;
+		};
+		requestBody?: never;
+		responses: {
+			/** @description Successful Response */
+			200: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					"application/json": components["schemas"]["PackageUpdatesResponse"];
+				};
+			};
+		};
+	};
+	install_package_api_packages_install_post: {
+		parameters: {
+			query?: never;
+			header?: never;
+			path?: never;
+			cookie?: never;
+		};
+		requestBody: {
+			content: {
+				"application/json": components["schemas"]["InstallPackageRequest"];
+			};
+		};
+		responses: {
+			/** @description Successful Response */
+			200: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					"application/json": components["schemas"]["PackageInstallResponse"];
+				};
+			};
+			/** @description Validation Error */
+			422: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					"application/json": components["schemas"]["HTTPValidationError"];
+				};
+			};
+		};
+	};
+	uninstall_package_api_packages__package_name__delete: {
+		parameters: {
+			query?: never;
+			header?: never;
+			path: {
+				package_name: string;
+			};
+			cookie?: never;
+		};
+		requestBody?: never;
+		responses: {
+			/** @description Successful Response */
+			200: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					"application/json": {
+						[key: string]: unknown;
+					};
+				};
+			};
+			/** @description Validation Error */
+			422: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					"application/json": components["schemas"]["HTTPValidationError"];
+				};
+			};
+		};
+	};
+	get_github_status_api_github_status_get: {
+		parameters: {
+			query?: never;
+			header?: never;
+			path?: never;
+			cookie?: never;
+		};
+		requestBody?: never;
+		responses: {
+			/** @description Successful Response */
+			200: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					"application/json": components["schemas"]["GitRefreshStatusResponse"];
+				};
+			};
+		};
+	};
+	refresh_github_status_api_github_refresh_post: {
+		parameters: {
+			query?: never;
+			header?: never;
+			path?: never;
+			cookie?: never;
+		};
+		requestBody?: never;
+		responses: {
+			/** @description Successful Response */
+			200: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					"application/json": components["schemas"]["GitRefreshStatusResponse"];
+				};
+			};
+		};
+	};
+	pull_from_github_api_github_pull_post: {
+		parameters: {
+			query?: never;
+			header?: never;
+			path?: never;
+			cookie?: never;
+		};
+		requestBody?: {
+			content: {
+				"application/json":
+					| components["schemas"]["PullFromGitHubRequest"]
+					| null;
+			};
+		};
+		responses: {
+			/** @description Successful Response */
+			200: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					"application/json": components["schemas"]["PullFromGitHubResponse"];
+				};
+			};
+			/** @description Validation Error */
+			422: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					"application/json": components["schemas"]["HTTPValidationError"];
+				};
+			};
+		};
+	};
+	push_to_github_api_github_push_post: {
+		parameters: {
+			query?: never;
+			header?: never;
+			path?: never;
+			cookie?: never;
+		};
+		requestBody: {
+			content: {
+				"application/json": components["schemas"]["PushToGitHubRequest"];
+			};
+		};
+		responses: {
+			/** @description Successful Response */
+			200: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					"application/json": components["schemas"]["PushToGitHubResponse"];
+				};
+			};
+			/** @description Validation Error */
+			422: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					"application/json": components["schemas"]["HTTPValidationError"];
+				};
+			};
+		};
+	};
+	get_changes_api_github_changes_get: {
+		parameters: {
+			query?: never;
+			header?: never;
+			path?: never;
+			cookie?: never;
+		};
+		requestBody?: never;
+		responses: {
+			/** @description Successful Response */
+			200: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					"application/json": components["schemas"]["GitRefreshStatusResponse"];
+				};
+			};
+		};
+	};
+	init_repo_api_github_init_post: {
+		parameters: {
+			query?: never;
+			header?: never;
+			path?: never;
+			cookie?: never;
+		};
+		requestBody: {
+			content: {
+				"application/json": components["schemas"]["GitHubConfigRequest"];
+			};
+		};
+		responses: {
+			/** @description Successful Response */
+			200: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					"application/json": components["schemas"]["GitRefreshStatusResponse"];
+				};
+			};
+			/** @description Validation Error */
+			422: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					"application/json": components["schemas"]["HTTPValidationError"];
+				};
+			};
+		};
+	};
+	commit_changes_api_github_commit_post: {
+		parameters: {
+			query?: never;
+			header?: never;
+			path?: never;
+			cookie?: never;
+		};
+		requestBody: {
+			content: {
+				"application/json": components["schemas"]["PushToGitHubRequest"];
+			};
+		};
+		responses: {
+			/** @description Successful Response */
+			200: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					"application/json": {
+						[key: string]: unknown;
+					};
+				};
+			};
+			/** @description Validation Error */
+			422: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					"application/json": components["schemas"]["HTTPValidationError"];
+				};
+			};
+		};
+	};
+	get_commits_api_github_commits_get: {
+		parameters: {
+			query?: {
+				/** @description Number of commits to return */
+				limit?: number;
+				/** @description Offset for pagination */
+				offset?: number;
+			};
+			header?: never;
+			path?: never;
+			cookie?: never;
+		};
+		requestBody?: never;
+		responses: {
+			/** @description Successful Response */
+			200: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					"application/json": components["schemas"]["CommitHistoryResponse"];
+				};
+			};
+			/** @description Validation Error */
+			422: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					"application/json": components["schemas"]["HTTPValidationError"];
+				};
+			};
+		};
+	};
+	get_conflicts_api_github_conflicts_get: {
+		parameters: {
+			query?: never;
+			header?: never;
+			path?: never;
+			cookie?: never;
+		};
+		requestBody?: never;
+		responses: {
+			/** @description Successful Response */
+			200: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					"application/json": {
+						[key: string]: unknown;
+					};
+				};
+			};
+		};
+	};
+	abort_merge_api_github_abort_merge_post: {
+		parameters: {
+			query?: never;
+			header?: never;
+			path?: never;
+			cookie?: never;
+		};
+		requestBody?: never;
+		responses: {
+			/** @description Successful Response */
+			200: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					"application/json": {
+						[key: string]: unknown;
+					};
+				};
+			};
+		};
+	};
+	discard_unpushed_commits_api_github_discard_unpushed_post: {
+		parameters: {
+			query?: never;
+			header?: never;
+			path?: never;
+			cookie?: never;
+		};
+		requestBody?: never;
+		responses: {
+			/** @description Successful Response */
+			200: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					"application/json": components["schemas"]["DiscardUnpushedCommitsResponse"];
+				};
+			};
+		};
+	};
+	discard_commit_api_github_discard_commit_post: {
+		parameters: {
+			query?: never;
+			header?: never;
+			path?: never;
+			cookie?: never;
+		};
+		requestBody: {
+			content: {
+				"application/json": components["schemas"]["DiscardCommitRequest"];
+			};
+		};
+		responses: {
+			/** @description Successful Response */
+			200: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					"application/json": components["schemas"]["DiscardUnpushedCommitsResponse"];
+				};
+			};
+			/** @description Validation Error */
+			422: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					"application/json": components["schemas"]["HTTPValidationError"];
+				};
+			};
+		};
+	};
+	get_github_config_api_github_config_get: {
+		parameters: {
+			query?: never;
+			header?: never;
+			path?: never;
+			cookie?: never;
+		};
+		requestBody?: never;
+		responses: {
+			/** @description Successful Response */
+			200: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					"application/json": components["schemas"]["GitHubConfigResponse"];
+				};
+			};
+		};
+	};
+	validate_github_token_api_github_validate_post: {
+		parameters: {
+			query?: never;
+			header?: never;
+			path?: never;
+			cookie?: never;
+		};
+		requestBody: {
+			content: {
+				"application/json": components["schemas"]["ValidateTokenRequest"];
+			};
+		};
+		responses: {
+			/** @description Successful Response */
+			200: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					"application/json": components["schemas"]["GitHubReposResponse"];
+				};
+			};
+			/** @description Validation Error */
+			422: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					"application/json": components["schemas"]["HTTPValidationError"];
+				};
+			};
+		};
+	};
+	configure_github_api_github_configure_post: {
+		parameters: {
+			query?: never;
+			header?: never;
+			path?: never;
+			cookie?: never;
+		};
+		requestBody: {
+			content: {
+				"application/json": components["schemas"]["GitHubConfigRequest"];
+			};
+		};
+		responses: {
+			/** @description Successful Response */
+			200: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					"application/json": components["schemas"]["GitHubSetupResponse"];
+				};
+			};
+			/** @description Validation Error */
+			422: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					"application/json": components["schemas"]["HTTPValidationError"];
+				};
+			};
+		};
+	};
+	list_github_repos_api_github_repositories_get: {
+		parameters: {
+			query?: never;
+			header?: never;
+			path?: never;
+			cookie?: never;
+		};
+		requestBody?: never;
+		responses: {
+			/** @description Successful Response */
+			200: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					"application/json": components["schemas"]["GitHubReposResponse"];
+				};
+			};
+		};
+	};
+	list_github_branches_api_github_branches_get: {
+		parameters: {
+			query: {
+				/** @description Repository full name (owner/repo) */
+				repo: string;
+			};
+			header?: never;
+			path?: never;
+			cookie?: never;
+		};
+		requestBody?: never;
+		responses: {
+			/** @description Successful Response */
+			200: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					"application/json": components["schemas"]["GitHubBranchesResponse"];
+				};
+			};
+			/** @description Validation Error */
+			422: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					"application/json": components["schemas"]["HTTPValidationError"];
+				};
+			};
+		};
+	};
+	analyze_workspace_api_github_analyze_workspace_post: {
+		parameters: {
+			query?: never;
+			header?: never;
+			path?: never;
+			cookie?: never;
+		};
+		requestBody: {
+			content: {
+				"application/json": components["schemas"]["GitHubConfigRequest"];
+			};
+		};
+		responses: {
+			/** @description Successful Response */
+			200: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					"application/json": components["schemas"]["WorkspaceAnalysisResponse"];
+				};
+			};
+			/** @description Validation Error */
+			422: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					"application/json": components["schemas"]["HTTPValidationError"];
+				};
+			};
+		};
+	};
+	create_github_repository_api_github_create_repository_post: {
+		parameters: {
+			query?: never;
+			header?: never;
+			path?: never;
+			cookie?: never;
+		};
+		requestBody: {
+			content: {
+				"application/json": components["schemas"]["CreateRepoRequest"];
+			};
+		};
+		responses: {
+			/** @description Successful Response */
+			200: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					"application/json": components["schemas"]["CreateRepoResponse"];
+				};
+			};
+			/** @description Validation Error */
+			422: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					"application/json": components["schemas"]["HTTPValidationError"];
+				};
+			};
+		};
+	};
+	disconnect_github_api_github_disconnect_post: {
+		parameters: {
+			query?: never;
+			header?: never;
+			path?: never;
+			cookie?: never;
+		};
+		requestBody?: never;
+		responses: {
+			/** @description Successful Response */
+			200: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					"application/json": {
+						[key: string]: unknown;
+					};
+				};
+			};
+		};
+	};
+	get_connection_api_oauth_connections__connection_name__get: {
+		parameters: {
+			query?: never;
+			header?: never;
+			path: {
+				connection_name: string;
+			};
+			cookie?: never;
+		};
+		requestBody?: never;
+		responses: {
+			/** @description Successful Response */
+			200: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					"application/json": components["schemas"]["OAuthConnectionDetail"];
+				};
+			};
+			/** @description Validation Error */
+			422: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					"application/json": components["schemas"]["HTTPValidationError"];
+				};
+			};
+		};
+	};
+	update_connection_api_oauth_connections__connection_name__put: {
+		parameters: {
+			query?: never;
+			header?: never;
+			path: {
+				connection_name: string;
+			};
+			cookie?: never;
+		};
+		requestBody: {
+			content: {
+				"application/json": components["schemas"]["UpdateOAuthConnectionRequest"];
+			};
+		};
+		responses: {
+			/** @description Successful Response */
+			200: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					"application/json": components["schemas"]["OAuthConnectionDetail"];
+				};
+			};
+			/** @description Validation Error */
+			422: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					"application/json": components["schemas"]["HTTPValidationError"];
+				};
+			};
+		};
+	};
+	delete_connection_api_oauth_connections__connection_name__delete: {
+		parameters: {
+			query?: never;
+			header?: never;
+			path: {
+				connection_name: string;
+			};
+			cookie?: never;
+		};
+		requestBody?: never;
+		responses: {
+			/** @description Successful Response */
+			204: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content?: never;
+			};
+			/** @description Validation Error */
+			422: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					"application/json": components["schemas"]["HTTPValidationError"];
+				};
+			};
+		};
+	};
+	create_connection_api_oauth_connections_post: {
+		parameters: {
+			query?: never;
+			header?: never;
+			path?: never;
+			cookie?: never;
+		};
+		requestBody: {
+			content: {
+				"application/json": components["schemas"]["CreateOAuthConnectionRequest"];
+			};
+		};
+		responses: {
+			/** @description Successful Response */
+			201: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					"application/json": components["schemas"]["OAuthConnectionDetail"];
+				};
+			};
+			/** @description Validation Error */
+			422: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					"application/json": components["schemas"]["HTTPValidationError"];
+				};
+			};
+		};
+	};
+	authorize_connection_api_oauth_connections__connection_name__authorize_post: {
+		parameters: {
+			query: {
+				/** @description Frontend callback URL for OAuth redirect */
+				redirect_uri: string;
+			};
+			header?: never;
+			path: {
+				connection_name: string;
+			};
+			cookie?: never;
+		};
+		requestBody?: never;
+		responses: {
+			/** @description Successful Response */
+			200: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					"application/json": components["schemas"]["AuthorizeResponse"];
+				};
+			};
+			/** @description Validation Error */
+			422: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					"application/json": components["schemas"]["HTTPValidationError"];
+				};
+			};
+		};
+	};
+	cancel_authorization_api_oauth_connections__connection_name__cancel_post: {
+		parameters: {
+			query?: never;
+			header?: never;
+			path: {
+				connection_name: string;
+			};
+			cookie?: never;
+		};
+		requestBody?: never;
+		responses: {
+			/** @description Successful Response */
+			200: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					"application/json": components["schemas"]["OAuthConnectionDetail"];
+				};
+			};
+			/** @description Validation Error */
+			422: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					"application/json": components["schemas"]["HTTPValidationError"];
+				};
+			};
+		};
+	};
+	refresh_token_api_oauth_connections__connection_name__refresh_post: {
+		parameters: {
+			query?: never;
+			header?: never;
+			path: {
+				connection_name: string;
+			};
+			cookie?: never;
+		};
+		requestBody?: never;
+		responses: {
+			/** @description Successful Response */
+			200: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					"application/json": components["schemas"]["RefreshTokenResponse"];
+				};
+			};
+			/** @description Validation Error */
+			422: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					"application/json": components["schemas"]["HTTPValidationError"];
+				};
+			};
+		};
+	};
+	oauth_callback_api_oauth_callback__connection_name__post: {
+		parameters: {
+			query?: never;
+			header?: never;
+			path: {
+				connection_name: string;
+			};
+			cookie?: never;
+		};
+		requestBody: {
+			content: {
+				"application/json": components["schemas"]["src__models__contracts__oauth__OAuthCallbackRequest"];
+			};
+		};
+		responses: {
+			/** @description Successful Response */
+			200: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					"application/json": components["schemas"]["OAuthCallbackResponse"];
+				};
+			};
+			/** @description Validation Error */
+			422: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					"application/json": components["schemas"]["HTTPValidationError"];
+				};
+			};
+		};
+	};
+	get_credentials_api_oauth_credentials__connection_name__get: {
+		parameters: {
+			query?: never;
+			header?: never;
+			path: {
+				connection_name: string;
+			};
+			cookie?: never;
+		};
+		requestBody?: never;
+		responses: {
+			/** @description Successful Response */
+			200: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					"application/json": components["schemas"]["OAuthCredentialsResponse"];
+				};
+			};
+			/** @description Validation Error */
+			422: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					"application/json": components["schemas"]["HTTPValidationError"];
+				};
+			};
+		};
+	};
+	get_refresh_job_status_api_oauth_refresh_job_status_get: {
+		parameters: {
+			query?: never;
+			header?: never;
+			path?: never;
+			cookie?: never;
+		};
+		requestBody?: never;
+		responses: {
+			/** @description Successful Response */
+			200: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					"application/json": components["schemas"]["RefreshJobStatusResponse"];
+				};
+			};
+		};
+	};
+	trigger_refresh_all_api_oauth_refresh_all_post: {
+		parameters: {
+			query?: never;
+			header?: never;
+			path?: never;
+			cookie?: never;
+		};
+		requestBody?: never;
+		responses: {
+			/** @description Successful Response */
+			200: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					"application/json": components["schemas"]["RefreshAllResponse"];
+				};
+			};
+		};
+	};
+	execute_endpoint_api_endpoints__workflow_name__post: {
+		parameters: {
+			query?: never;
+			header: {
+				"X-Bifrost-Key": string;
+			};
+			path: {
+				workflow_name: string;
+			};
+			cookie?: never;
+		};
+		requestBody?: never;
+		responses: {
+			/** @description Successful Response */
+			200: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					"application/json": components["schemas"]["EndpointExecuteResponse"];
+				};
+			};
+			/** @description Validation Error */
+			422: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					"application/json": components["schemas"]["HTTPValidationError"];
+				};
+			};
+		};
+	};
+	execute_endpoint_api_endpoints__workflow_name__post: {
+		parameters: {
+			query?: never;
+			header: {
+				"X-Bifrost-Key": string;
+			};
+			path: {
+				workflow_name: string;
+			};
+			cookie?: never;
+		};
+		requestBody?: never;
+		responses: {
+			/** @description Successful Response */
+			200: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					"application/json": components["schemas"]["EndpointExecuteResponse"];
+				};
+			};
+			/** @description Validation Error */
+			422: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					"application/json": components["schemas"]["HTTPValidationError"];
+				};
+			};
+		};
+	};
+	execute_endpoint_api_endpoints__workflow_name__post: {
+		parameters: {
+			query?: never;
+			header: {
+				"X-Bifrost-Key": string;
+			};
+			path: {
+				workflow_name: string;
+			};
+			cookie?: never;
+		};
+		requestBody?: never;
+		responses: {
+			/** @description Successful Response */
+			200: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					"application/json": components["schemas"]["EndpointExecuteResponse"];
+				};
+			};
+			/** @description Validation Error */
+			422: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					"application/json": components["schemas"]["HTTPValidationError"];
+				};
+			};
+		};
+	};
+	execute_endpoint_api_endpoints__workflow_name__post: {
+		parameters: {
+			query?: never;
+			header: {
+				"X-Bifrost-Key": string;
+			};
+			path: {
+				workflow_name: string;
+			};
+			cookie?: never;
+		};
+		requestBody?: never;
+		responses: {
+			/** @description Successful Response */
+			200: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					"application/json": components["schemas"]["EndpointExecuteResponse"];
+				};
+			};
+			/** @description Validation Error */
+			422: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					"application/json": components["schemas"]["HTTPValidationError"];
+				};
+			};
+		};
+	};
+	get_dev_context_api_cli_context_get: {
+		parameters: {
+			query?: never;
+			header?: {
+				authorization?: string | null;
+			};
+			path?: never;
+			cookie?: never;
+		};
+		requestBody?: never;
+		responses: {
+			/** @description Successful Response */
+			200: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					"application/json": components["schemas"]["DeveloperContextResponse"];
+				};
+			};
+			/** @description Validation Error */
+			422: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					"application/json": components["schemas"]["HTTPValidationError"];
+				};
+			};
+		};
+	};
+	update_dev_context_api_cli_context_put: {
+		parameters: {
+			query?: never;
+			header?: never;
+			path?: never;
+			cookie?: never;
+		};
+		requestBody: {
+			content: {
+				"application/json": components["schemas"]["DeveloperContextUpdate"];
+			};
+		};
+		responses: {
+			/** @description Successful Response */
+			200: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					"application/json": components["schemas"]["DeveloperContextResponse"];
+				};
+			};
+			/** @description Validation Error */
+			422: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					"application/json": components["schemas"]["HTTPValidationError"];
+				};
+			};
+		};
+	};
+	list_api_keys_api_cli_keys_get: {
+		parameters: {
+			query?: never;
+			header?: never;
+			path?: never;
+			cookie?: never;
+		};
+		requestBody?: never;
+		responses: {
+			/** @description Successful Response */
+			200: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					"application/json": components["schemas"]["ApiKeyList"];
+				};
+			};
+		};
+	};
+	create_api_key_api_cli_keys_post: {
+		parameters: {
+			query?: never;
+			header?: never;
+			path?: never;
+			cookie?: never;
+		};
+		requestBody: {
+			content: {
+				"application/json": components["schemas"]["ApiKeyCreate"];
+			};
+		};
+		responses: {
+			/** @description Successful Response */
+			201: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					"application/json": components["schemas"]["ApiKeyCreated"];
+				};
+			};
+			/** @description Validation Error */
+			422: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					"application/json": components["schemas"]["HTTPValidationError"];
+				};
+			};
+		};
+	};
+	delete_api_key_api_cli_keys__key_id__delete: {
+		parameters: {
+			query?: never;
+			header?: never;
+			path: {
+				key_id: string;
+			};
+			cookie?: never;
+		};
+		requestBody?: never;
+		responses: {
+			/** @description Successful Response */
+			204: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content?: never;
+			};
+			/** @description Validation Error */
+			422: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					"application/json": components["schemas"]["HTTPValidationError"];
+				};
+			};
+		};
+	};
+	revoke_api_key_api_cli_keys__key_id__revoke_patch: {
+		parameters: {
+			query?: never;
+			header?: never;
+			path: {
+				key_id: string;
+			};
+			cookie?: never;
+		};
+		requestBody?: never;
+		responses: {
+			/** @description Successful Response */
+			200: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					"application/json": components["schemas"]["ApiKeyResponse"];
+				};
+			};
+			/** @description Validation Error */
+			422: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					"application/json": components["schemas"]["HTTPValidationError"];
+				};
+			};
+		};
+	};
+	cli_read_file_api_cli_files_read_post: {
+		parameters: {
+			query?: never;
+			header?: {
+				authorization?: string | null;
+			};
+			path?: never;
+			cookie?: never;
+		};
+		requestBody: {
+			content: {
+				"application/json": components["schemas"]["CLIFileReadRequest"];
+			};
+		};
+		responses: {
+			/** @description Successful Response */
+			200: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					"application/json": string;
+				};
+			};
+			/** @description Validation Error */
+			422: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					"application/json": components["schemas"]["HTTPValidationError"];
+				};
+			};
+		};
+	};
+	cli_write_file_api_cli_files_write_post: {
+		parameters: {
+			query?: never;
+			header?: {
+				authorization?: string | null;
+			};
+			path?: never;
+			cookie?: never;
+		};
+		requestBody: {
+			content: {
+				"application/json": components["schemas"]["CLIFileWriteRequest"];
+			};
+		};
+		responses: {
+			/** @description Successful Response */
+			204: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content?: never;
+			};
+			/** @description Validation Error */
+			422: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					"application/json": components["schemas"]["HTTPValidationError"];
+				};
+			};
+		};
+	};
+	cli_list_files_api_cli_files_list_post: {
+		parameters: {
+			query?: never;
+			header?: {
+				authorization?: string | null;
+			};
+			path?: never;
+			cookie?: never;
+		};
+		requestBody: {
+			content: {
+				"application/json": components["schemas"]["CLIFileListRequest"];
+			};
+		};
+		responses: {
+			/** @description Successful Response */
+			200: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					"application/json": string[];
+				};
+			};
+			/** @description Validation Error */
+			422: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					"application/json": components["schemas"]["HTTPValidationError"];
+				};
+			};
+		};
+	};
+	cli_delete_file_api_cli_files_delete_post: {
+		parameters: {
+			query?: never;
+			header?: {
+				authorization?: string | null;
+			};
+			path?: never;
+			cookie?: never;
+		};
+		requestBody: {
+			content: {
+				"application/json": components["schemas"]["CLIFileDeleteRequest"];
+			};
+		};
+		responses: {
+			/** @description Successful Response */
+			204: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content?: never;
+			};
+			/** @description Validation Error */
+			422: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					"application/json": components["schemas"]["HTTPValidationError"];
+				};
+			};
+		};
+	};
+	cli_get_config_api_cli_config_get_post: {
+		parameters: {
+			query?: never;
+			header?: {
+				authorization?: string | null;
+			};
+			path?: never;
+			cookie?: never;
+		};
+		requestBody: {
+			content: {
+				"application/json": components["schemas"]["CLIConfigGetRequest"];
+			};
+		};
+		responses: {
+			/** @description Successful Response */
+			200: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					"application/json":
+						| components["schemas"]["CLIConfigValue"]
+						| null;
+				};
+			};
+			/** @description Validation Error */
+			422: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					"application/json": components["schemas"]["HTTPValidationError"];
+				};
+			};
+		};
+	};
+	cli_set_config_api_cli_config_set_post: {
+		parameters: {
+			query?: never;
+			header?: {
+				authorization?: string | null;
+			};
+			path?: never;
+			cookie?: never;
+		};
+		requestBody: {
+			content: {
+				"application/json": components["schemas"]["CLIConfigSetRequest"];
+			};
+		};
+		responses: {
+			/** @description Successful Response */
+			204: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content?: never;
+			};
+			/** @description Validation Error */
+			422: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					"application/json": components["schemas"]["HTTPValidationError"];
+				};
+			};
+		};
+	};
+	cli_list_config_api_cli_config_list_post: {
+		parameters: {
+			query?: never;
+			header?: {
+				authorization?: string | null;
+			};
+			path?: never;
+			cookie?: never;
+		};
+		requestBody: {
+			content: {
+				"application/json": components["schemas"]["CLIConfigListRequest"];
+			};
+		};
+		responses: {
+			/** @description Successful Response */
+			200: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					"application/json": {
+						[key: string]: unknown;
+					};
+				};
+			};
+			/** @description Validation Error */
+			422: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					"application/json": components["schemas"]["HTTPValidationError"];
+				};
+			};
+		};
+	};
+	cli_delete_config_api_cli_config_delete_post: {
+		parameters: {
+			query?: never;
+			header?: {
+				authorization?: string | null;
+			};
+			path?: never;
+			cookie?: never;
+		};
+		requestBody: {
+			content: {
+				"application/json": components["schemas"]["CLIConfigDeleteRequest"];
+			};
+		};
+		responses: {
+			/** @description Successful Response */
+			200: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					"application/json": boolean;
+				};
+			};
+			/** @description Validation Error */
+			422: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					"application/json": components["schemas"]["HTTPValidationError"];
+				};
+			};
+		};
+	};
+	cli_get_oauth_api_cli_oauth_get_post: {
+		parameters: {
+			query?: never;
+			header?: {
+				authorization?: string | null;
+			};
+			path?: never;
+			cookie?: never;
+		};
+		requestBody: {
+			content: {
+				"application/json": components["schemas"]["CLIOAuthGetRequest"];
+			};
+		};
+		responses: {
+			/** @description Successful Response */
+			200: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					"application/json":
+						| components["schemas"]["CLIOAuthGetResponse"]
+						| null;
+				};
+			};
+			/** @description Validation Error */
+			422: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					"application/json": components["schemas"]["HTTPValidationError"];
+				};
+			};
+		};
+	};
+	sdk_integrations_get_api_cli_integrations_get_post: {
+		parameters: {
+			query?: never;
+			header?: {
+				authorization?: string | null;
+			};
+			path?: never;
+			cookie?: never;
+		};
+		requestBody: {
+			content: {
+				"application/json": components["schemas"]["SDKIntegrationsGetRequest"];
+			};
+		};
+		responses: {
+			/** @description Successful Response */
+			200: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					"application/json":
+						| components["schemas"]["SDKIntegrationsGetResponse"]
+						| null;
+				};
+			};
+			/** @description Validation Error */
+			422: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					"application/json": components["schemas"]["HTTPValidationError"];
+				};
+			};
+		};
+	};
+	sdk_integrations_list_mappings_api_cli_integrations_list_mappings_post: {
+		parameters: {
+			query?: never;
+			header?: {
+				authorization?: string | null;
+			};
+			path?: never;
+			cookie?: never;
+		};
+		requestBody: {
+			content: {
+				"application/json": components["schemas"]["SDKIntegrationsListMappingsRequest"];
+			};
+		};
+		responses: {
+			/** @description Successful Response */
+			200: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					"application/json":
+						| components["schemas"]["SDKIntegrationsListMappingsResponse"]
+						| null;
+				};
+			};
+			/** @description Validation Error */
+			422: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					"application/json": components["schemas"]["HTTPValidationError"];
+				};
+			};
+		};
+	};
+	list_cli_sessions_api_cli_sessions_get: {
+		parameters: {
+			query?: never;
+			header?: never;
+			path?: never;
+			cookie?: never;
+		};
+		requestBody?: never;
+		responses: {
+			/** @description Successful Response */
+			200: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					"application/json": components["schemas"]["CLISessionListResponse"];
+				};
+			};
+		};
+	};
+	register_cli_session_api_cli_sessions_post: {
+		parameters: {
+			query?: never;
+			header?: {
+				authorization?: string | null;
+			};
+			path?: never;
+			cookie?: never;
+		};
+		requestBody: {
+			content: {
+				"application/json": components["schemas"]["CLISessionRegisterRequest"];
+			};
+		};
+		responses: {
+			/** @description Successful Response */
+			200: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					"application/json": components["schemas"]["CLISessionResponse"];
+				};
+			};
+			/** @description Validation Error */
+			422: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					"application/json": components["schemas"]["HTTPValidationError"];
+				};
+			};
+		};
+	};
+	get_cli_session_api_cli_sessions__session_id__get: {
+		parameters: {
+			query?: never;
+			header?: never;
+			path: {
+				session_id: string;
+			};
+			cookie?: never;
+		};
+		requestBody?: never;
+		responses: {
+			/** @description Successful Response */
+			200: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					"application/json": components["schemas"]["CLISessionResponse"];
+				};
+			};
+			/** @description Validation Error */
+			422: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					"application/json": components["schemas"]["HTTPValidationError"];
+				};
+			};
+		};
+	};
+	delete_cli_session_api_cli_sessions__session_id__delete: {
+		parameters: {
+			query?: never;
+			header?: never;
+			path: {
+				session_id: string;
+			};
+			cookie?: never;
+		};
+		requestBody?: never;
+		responses: {
+			/** @description Successful Response */
+			204: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content?: never;
+			};
+			/** @description Validation Error */
+			422: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					"application/json": components["schemas"]["HTTPValidationError"];
+				};
+			};
+		};
+	};
+	continue_cli_session_api_cli_sessions__session_id__continue_post: {
+		parameters: {
+			query?: never;
+			header?: never;
+			path: {
+				session_id: string;
+			};
+			cookie?: never;
+		};
+		requestBody: {
+			content: {
+				"application/json": components["schemas"]["CLISessionContinueRequest"];
+			};
+		};
+		responses: {
+			/** @description Successful Response */
+			202: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					"application/json": components["schemas"]["CLISessionContinueResponse"];
+				};
+			};
+			/** @description Validation Error */
+			422: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					"application/json": components["schemas"]["HTTPValidationError"];
+				};
+			};
+		};
+	};
+	get_pending_execution_api_cli_sessions__session_id__pending_get: {
+		parameters: {
+			query?: never;
+			header?: {
+				authorization?: string | null;
+			};
+			path: {
+				session_id: string;
+			};
+			cookie?: never;
+		};
+		requestBody?: never;
+		responses: {
+			/** @description Successful Response */
+			200: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					"application/json": components["schemas"]["CLISessionPendingResponse"];
+				};
+			};
+			/** @description Validation Error */
+			422: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					"application/json": components["schemas"]["HTTPValidationError"];
+				};
+			};
+		};
+	};
+	session_heartbeat_api_cli_sessions__session_id__heartbeat_post: {
+		parameters: {
+			query?: never;
+			header?: {
+				authorization?: string | null;
+			};
+			path: {
+				session_id: string;
+			};
+			cookie?: never;
+		};
+		requestBody?: never;
+		responses: {
+			/** @description Successful Response */
+			204: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content?: never;
+			};
+			/** @description Validation Error */
+			422: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					"application/json": components["schemas"]["HTTPValidationError"];
+				};
+			};
+		};
+	};
+	post_cli_log_api_cli_sessions__session_id__executions__execution_id__log_post: {
+		parameters: {
+			query?: never;
+			header?: {
+				authorization?: string | null;
+			};
+			path: {
+				session_id: string;
+				execution_id: string;
+			};
+			cookie?: never;
+		};
+		requestBody: {
+			content: {
+				"application/json": components["schemas"]["CLISessionLogRequest"];
+			};
+		};
+		responses: {
+			/** @description Successful Response */
+			204: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content?: never;
+			};
+			/** @description Validation Error */
+			422: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					"application/json": components["schemas"]["HTTPValidationError"];
+				};
+			};
+		};
+	};
+	post_cli_result_api_cli_sessions__session_id__executions__execution_id__result_post: {
+		parameters: {
+			query?: never;
+			header?: {
+				authorization?: string | null;
+			};
+			path: {
+				session_id: string;
+				execution_id: string;
+			};
+			cookie?: never;
+		};
+		requestBody: {
+			content: {
+				"application/json": components["schemas"]["CLISessionResultRequest"];
+			};
+		};
+		responses: {
+			/** @description Successful Response */
+			200: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					"application/json": {
+						[key: string]: unknown;
+					};
+				};
+			};
+			/** @description Validation Error */
+			422: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					"application/json": components["schemas"]["HTTPValidationError"];
+				};
+			};
+		};
+	};
+	download_cli_api_cli_download_get: {
+		parameters: {
+			query?: never;
+			header?: never;
+			path?: never;
+			cookie?: never;
+		};
+		requestBody?: never;
+		responses: {
+			/** @description Successful Response */
+			200: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					"application/json": unknown;
+				};
+			};
+		};
+	};
+	list_notifications_api_notifications_get: {
+		parameters: {
+			query?: never;
+			header?: never;
+			path?: never;
+			cookie?: never;
+		};
+		requestBody?: never;
+		responses: {
+			/** @description Successful Response */
+			200: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					"application/json": components["schemas"]["NotificationListResponse"];
+				};
+			};
+		};
+	};
+	get_notification_api_notifications__notification_id__get: {
+		parameters: {
+			query?: never;
+			header?: never;
+			path: {
+				notification_id: string;
+			};
+			cookie?: never;
+		};
+		requestBody?: never;
+		responses: {
+			/** @description Successful Response */
+			200: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					"application/json": components["schemas"]["NotificationPublic"];
+				};
+			};
+			/** @description Validation Error */
+			422: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					"application/json": components["schemas"]["HTTPValidationError"];
+				};
+			};
+		};
+	};
+	dismiss_notification_api_notifications__notification_id__delete: {
+		parameters: {
+			query?: never;
+			header?: never;
+			path: {
+				notification_id: string;
+			};
+			cookie?: never;
+		};
+		requestBody?: never;
+		responses: {
+			/** @description Successful Response */
+			204: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content?: never;
+			};
+			/** @description Validation Error */
+			422: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					"application/json": components["schemas"]["HTTPValidationError"];
+				};
+			};
+		};
+	};
+	get_upload_lock_status_api_notifications_locks_upload_get: {
+		parameters: {
+			query?: never;
+			header?: never;
+			path?: never;
+			cookie?: never;
+		};
+		requestBody?: never;
+		responses: {
+			/** @description Successful Response */
+			200: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					"application/json": components["schemas"]["UploadLockInfo"];
+				};
+			};
+		};
+	};
+	force_release_upload_lock_api_notifications_locks_upload_delete: {
+		parameters: {
+			query?: never;
+			header?: never;
+			path?: never;
+			cookie?: never;
+		};
+		requestBody?: never;
+		responses: {
+			/** @description Successful Response */
+			204: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content?: never;
+			};
+		};
+	};
+	get_profile_api_profile_get: {
+		parameters: {
+			query?: never;
+			header?: never;
+			path?: never;
+			cookie?: never;
+		};
+		requestBody?: never;
+		responses: {
+			/** @description Successful Response */
+			200: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					"application/json": components["schemas"]["ProfileResponse"];
+				};
+			};
+		};
+	};
+	update_profile_api_profile_patch: {
+		parameters: {
+			query?: never;
+			header?: never;
+			path?: never;
+			cookie?: never;
+		};
+		requestBody: {
+			content: {
+				"application/json": components["schemas"]["ProfileUpdate"];
+			};
+		};
+		responses: {
+			/** @description Successful Response */
+			200: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					"application/json": components["schemas"]["ProfileResponse"];
+				};
+			};
+			/** @description Validation Error */
+			422: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					"application/json": components["schemas"]["HTTPValidationError"];
+				};
+			};
+		};
+	};
+	get_avatar_api_profile_avatar_get: {
+		parameters: {
+			query?: never;
+			header?: never;
+			path?: never;
+			cookie?: never;
+		};
+		requestBody?: never;
+		responses: {
+			/** @description Successful Response */
+			200: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					"application/json": unknown;
+					"image/png": unknown;
+					"image/jpeg": unknown;
+				};
+			};
+			/** @description No avatar set */
+			404: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content?: never;
+			};
+		};
+	};
+	upload_avatar_api_profile_avatar_post: {
+		parameters: {
+			query?: never;
+			header?: never;
+			path?: never;
+			cookie?: never;
+		};
+		requestBody: {
+			content: {
+				"multipart/form-data": components["schemas"]["Body_upload_avatar_api_profile_avatar_post"];
+			};
+		};
+		responses: {
+			/** @description Successful Response */
+			200: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					"application/json": components["schemas"]["ProfileResponse"];
+				};
+			};
+			/** @description Validation Error */
+			422: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					"application/json": components["schemas"]["HTTPValidationError"];
+				};
+			};
+		};
+	};
+	delete_avatar_api_profile_avatar_delete: {
+		parameters: {
+			query?: never;
+			header?: never;
+			path?: never;
+			cookie?: never;
+		};
+		requestBody?: never;
+		responses: {
+			/** @description Successful Response */
+			200: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					"application/json": components["schemas"]["ProfileResponse"];
+				};
+			};
+		};
+	};
+	change_password_api_profile_password_post: {
+		parameters: {
+			query?: never;
+			header?: never;
+			path?: never;
+			cookie?: never;
+		};
+		requestBody: {
+			content: {
+				"application/json": components["schemas"]["PasswordChange"];
+			};
+		};
+		responses: {
+			/** @description Successful Response */
+			204: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content?: never;
+			};
+			/** @description Validation Error */
+			422: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					"application/json": components["schemas"]["HTTPValidationError"];
+				};
+			};
+		};
+	};
+	list_agents_api_agents_get: {
+		parameters: {
+			query?: {
+				category?: string | null;
+				active_only?: boolean;
+			};
+			header?: never;
+			path?: never;
+			cookie?: never;
+		};
+		requestBody?: never;
+		responses: {
+			/** @description Successful Response */
+			200: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					"application/json": components["schemas"]["AgentSummary"][];
+				};
+			};
+			/** @description Validation Error */
+			422: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					"application/json": components["schemas"]["HTTPValidationError"];
+				};
+			};
+		};
+	};
+	create_agent_api_agents_post: {
+		parameters: {
+			query?: never;
+			header?: never;
+			path?: never;
+			cookie?: never;
+		};
+		requestBody: {
+			content: {
+				"application/json": components["schemas"]["AgentCreate"];
+			};
+		};
+		responses: {
+			/** @description Successful Response */
+			201: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					"application/json": components["schemas"]["AgentPublic"];
+				};
+			};
+			/** @description Validation Error */
+			422: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					"application/json": components["schemas"]["HTTPValidationError"];
+				};
+			};
+		};
+	};
+	get_agent_api_agents__agent_id__get: {
+		parameters: {
+			query?: never;
+			header?: never;
+			path: {
+				agent_id: string;
+			};
+			cookie?: never;
+		};
+		requestBody?: never;
+		responses: {
+			/** @description Successful Response */
+			200: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					"application/json": components["schemas"]["AgentPublic"];
+				};
+			};
+			/** @description Validation Error */
+			422: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					"application/json": components["schemas"]["HTTPValidationError"];
+				};
+			};
+		};
+	};
+	update_agent_api_agents__agent_id__put: {
+		parameters: {
+			query?: never;
+			header?: never;
+			path: {
+				agent_id: string;
+			};
+			cookie?: never;
+		};
+		requestBody: {
+			content: {
+				"application/json": components["schemas"]["AgentUpdate"];
+			};
+		};
+		responses: {
+			/** @description Successful Response */
+			200: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					"application/json": components["schemas"]["AgentPublic"];
+				};
+			};
+			/** @description Validation Error */
+			422: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					"application/json": components["schemas"]["HTTPValidationError"];
+				};
+			};
+		};
+	};
+	delete_agent_api_agents__agent_id__delete: {
+		parameters: {
+			query?: never;
+			header?: never;
+			path: {
+				agent_id: string;
+			};
+			cookie?: never;
+		};
+		requestBody?: never;
+		responses: {
+			/** @description Successful Response */
+			204: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content?: never;
+			};
+			/** @description Validation Error */
+			422: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					"application/json": components["schemas"]["HTTPValidationError"];
+				};
+			};
+		};
+	};
+	get_agent_tools_api_agents__agent_id__tools_get: {
+		parameters: {
+			query?: never;
+			header?: never;
+			path: {
+				agent_id: string;
+			};
+			cookie?: never;
+		};
+		requestBody?: never;
+		responses: {
+			/** @description Successful Response */
+			200: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					"application/json": {
+						[key: string]: unknown;
+					}[];
+				};
+			};
+			/** @description Validation Error */
+			422: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					"application/json": components["schemas"]["HTTPValidationError"];
+				};
+			};
+		};
+	};
+	assign_tools_to_agent_api_agents__agent_id__tools_post: {
+		parameters: {
+			query?: never;
+			header?: never;
+			path: {
+				agent_id: string;
+			};
+			cookie?: never;
+		};
+		requestBody: {
+			content: {
+				"application/json": components["schemas"]["AssignToolsToAgentRequest"];
+			};
+		};
+		responses: {
+			/** @description Successful Response */
+			201: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					"application/json": {
+						[key: string]: unknown;
+					}[];
+				};
+			};
+			/** @description Validation Error */
+			422: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					"application/json": components["schemas"]["HTTPValidationError"];
+				};
+			};
+		};
+	};
+	remove_tool_from_agent_api_agents__agent_id__tools__workflow_id__delete: {
+		parameters: {
+			query?: never;
+			header?: never;
+			path: {
+				agent_id: string;
+				workflow_id: string;
+			};
+			cookie?: never;
+		};
+		requestBody?: never;
+		responses: {
+			/** @description Successful Response */
+			204: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content?: never;
+			};
+			/** @description Validation Error */
+			422: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					"application/json": components["schemas"]["HTTPValidationError"];
+				};
+			};
+		};
+	};
+	get_agent_delegations_api_agents__agent_id__delegations_get: {
+		parameters: {
+			query?: never;
+			header?: never;
+			path: {
+				agent_id: string;
+			};
+			cookie?: never;
+		};
+		requestBody?: never;
+		responses: {
+			/** @description Successful Response */
+			200: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					"application/json": components["schemas"]["AgentSummary"][];
+				};
+			};
+			/** @description Validation Error */
+			422: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					"application/json": components["schemas"]["HTTPValidationError"];
+				};
+			};
+		};
+	};
+	assign_delegations_to_agent_api_agents__agent_id__delegations_post: {
+		parameters: {
+			query?: never;
+			header?: never;
+			path: {
+				agent_id: string;
+			};
+			cookie?: never;
+		};
+		requestBody: {
+			content: {
+				"application/json": components["schemas"]["AssignDelegationsToAgentRequest"];
+			};
+		};
+		responses: {
+			/** @description Successful Response */
+			201: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					"application/json": components["schemas"]["AgentSummary"][];
+				};
+			};
+			/** @description Validation Error */
+			422: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					"application/json": components["schemas"]["HTTPValidationError"];
+				};
+			};
+		};
+	};
+	remove_delegation_from_agent_api_agents__agent_id__delegations__delegate_id__delete: {
+		parameters: {
+			query?: never;
+			header?: never;
+			path: {
+				agent_id: string;
+				delegate_id: string;
+			};
+			cookie?: never;
+		};
+		requestBody?: never;
+		responses: {
+			/** @description Successful Response */
+			204: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content?: never;
+			};
+			/** @description Validation Error */
+			422: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					"application/json": components["schemas"]["HTTPValidationError"];
+				};
+			};
+		};
+	};
+	list_conversations_api_chat_conversations_get: {
+		parameters: {
+			query?: {
+				agent_id?: string | null;
+				active_only?: boolean;
+				limit?: number;
+				offset?: number;
+			};
+			header?: never;
+			path?: never;
+			cookie?: never;
+		};
+		requestBody?: never;
+		responses: {
+			/** @description Successful Response */
+			200: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					"application/json": components["schemas"]["ConversationSummary"][];
+				};
+			};
+			/** @description Validation Error */
+			422: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					"application/json": components["schemas"]["HTTPValidationError"];
+				};
+			};
+		};
+	};
+	create_conversation_api_chat_conversations_post: {
+		parameters: {
+			query?: never;
+			header?: never;
+			path?: never;
+			cookie?: never;
+		};
+		requestBody: {
+			content: {
+				"application/json": components["schemas"]["ConversationCreate"];
+			};
+		};
+		responses: {
+			/** @description Successful Response */
+			201: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					"application/json": components["schemas"]["ConversationPublic"];
+				};
+			};
+			/** @description Validation Error */
+			422: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					"application/json": components["schemas"]["HTTPValidationError"];
+				};
+			};
+		};
+	};
+	get_conversation_api_chat_conversations__conversation_id__get: {
+		parameters: {
+			query?: never;
+			header?: never;
+			path: {
+				conversation_id: string;
+			};
+			cookie?: never;
+		};
+		requestBody?: never;
+		responses: {
+			/** @description Successful Response */
+			200: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					"application/json": components["schemas"]["ConversationPublic"];
+				};
+			};
+			/** @description Validation Error */
+			422: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					"application/json": components["schemas"]["HTTPValidationError"];
+				};
+			};
+		};
+	};
+	delete_conversation_api_chat_conversations__conversation_id__delete: {
+		parameters: {
+			query?: never;
+			header?: never;
+			path: {
+				conversation_id: string;
+			};
+			cookie?: never;
+		};
+		requestBody?: never;
+		responses: {
+			/** @description Successful Response */
+			204: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content?: never;
+			};
+			/** @description Validation Error */
+			422: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					"application/json": components["schemas"]["HTTPValidationError"];
+				};
+			};
+		};
+	};
+	get_messages_api_chat_conversations__conversation_id__messages_get: {
+		parameters: {
+			query?: {
+				limit?: number;
+				before_sequence?: number | null;
+			};
+			header?: never;
+			path: {
+				conversation_id: string;
+			};
+			cookie?: never;
+		};
+		requestBody?: never;
+		responses: {
+			/** @description Successful Response */
+			200: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					"application/json": components["schemas"]["MessagePublic"][];
+				};
+			};
+			/** @description Validation Error */
+			422: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					"application/json": components["schemas"]["HTTPValidationError"];
+				};
+			};
+		};
+	};
+	send_message_api_chat_conversations__conversation_id__messages_post: {
+		parameters: {
+			query?: never;
+			header?: never;
+			path: {
+				conversation_id: string;
+			};
+			cookie?: never;
+		};
+		requestBody: {
+			content: {
+				"application/json": components["schemas"]["ChatRequest"];
+			};
+		};
+		responses: {
+			/** @description Successful Response */
+			200: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					"application/json": components["schemas"]["ChatResponse"];
+				};
+			};
+			/** @description Validation Error */
+			422: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					"application/json": components["schemas"]["HTTPValidationError"];
+				};
+			};
+		};
+	};
+	get_llm_config_api_admin_llm_config_get: {
+		parameters: {
+			query?: never;
+			header?: never;
+			path?: never;
+			cookie?: never;
+		};
+		requestBody?: never;
+		responses: {
+			/** @description Successful Response */
+			200: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					"application/json":
+						| components["schemas"]["LLMConfigResponse"]
+						| null;
+				};
+			};
+		};
+	};
+	set_llm_config_api_admin_llm_config_post: {
+		parameters: {
+			query?: never;
+			header?: never;
+			path?: never;
+			cookie?: never;
+		};
+		requestBody: {
+			content: {
+				"application/json": components["schemas"]["LLMConfigRequest"];
+			};
+		};
+		responses: {
+			/** @description Successful Response */
+			200: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					"application/json": components["schemas"]["LLMConfigResponse"];
+				};
+			};
+			/** @description Validation Error */
+			422: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					"application/json": components["schemas"]["HTTPValidationError"];
+				};
+			};
+		};
+	};
+	delete_llm_config_api_admin_llm_config_delete: {
+		parameters: {
+			query?: never;
+			header?: never;
+			path?: never;
+			cookie?: never;
+		};
+		requestBody?: never;
+		responses: {
+			/** @description Successful Response */
+			204: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content?: never;
+			};
+		};
+	};
+	test_llm_connection_api_admin_llm_test_post: {
+		parameters: {
+			query?: never;
+			header?: never;
+			path?: never;
+			cookie?: never;
+		};
+		requestBody: {
+			content: {
+				"application/json": components["schemas"]["LLMTestRequest"];
+			};
+		};
+		responses: {
+			/** @description Successful Response */
+			200: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					"application/json": components["schemas"]["LLMTestResponse"];
+				};
+			};
+			/** @description Validation Error */
+			422: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					"application/json": components["schemas"]["HTTPValidationError"];
+				};
+			};
+		};
+	};
+	test_saved_llm_connection_api_admin_llm_test_saved_post: {
+		parameters: {
+			query?: never;
+			header?: never;
+			path?: never;
+			cookie?: never;
+		};
+		requestBody?: never;
+		responses: {
+			/** @description Successful Response */
+			200: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					"application/json": components["schemas"]["LLMTestResponse"];
+				};
+			};
+		};
+	};
+	list_llm_models_api_admin_llm_models_get: {
+		parameters: {
+			query?: never;
+			header?: never;
+			path?: never;
+			cookie?: never;
+		};
+		requestBody?: never;
+		responses: {
+			/** @description Successful Response */
+			200: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					"application/json": components["schemas"]["LLMModelsResponse"];
+				};
+			};
+		};
+	};
+	list_integrations_api_integrations_get: {
+		parameters: {
+			query?: never;
+			header?: never;
+			path?: never;
+			cookie?: never;
+		};
+		requestBody?: never;
+		responses: {
+			/** @description Successful Response */
+			200: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					"application/json": components["schemas"]["IntegrationListResponse"];
+				};
+			};
+		};
+	};
+	create_integration_api_integrations_post: {
+		parameters: {
+			query?: never;
+			header?: never;
+			path?: never;
+			cookie?: never;
+		};
+		requestBody: {
+			content: {
+				"application/json": components["schemas"]["IntegrationCreate"];
+			};
+		};
+		responses: {
+			/** @description Successful Response */
+			201: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					"application/json": components["schemas"]["IntegrationResponse"];
+				};
+			};
+			/** @description Validation Error */
+			422: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					"application/json": components["schemas"]["HTTPValidationError"];
+				};
+			};
+		};
+	};
+	get_integration_api_integrations__integration_id__get: {
+		parameters: {
+			query?: never;
+			header?: never;
+			path: {
+				integration_id: string;
+			};
+			cookie?: never;
+		};
+		requestBody?: never;
+		responses: {
+			/** @description Successful Response */
+			200: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					"application/json": components["schemas"]["IntegrationDetailResponse"];
+				};
+			};
+			/** @description Validation Error */
+			422: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					"application/json": components["schemas"]["HTTPValidationError"];
+				};
+			};
+		};
+	};
+	update_integration_api_integrations__integration_id__put: {
+		parameters: {
+			query?: never;
+			header?: never;
+			path: {
+				integration_id: string;
+			};
+			cookie?: never;
+		};
+		requestBody: {
+			content: {
+				"application/json": components["schemas"]["IntegrationUpdate"];
+			};
+		};
+		responses: {
+			/** @description Successful Response */
+			200: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					"application/json": components["schemas"]["IntegrationResponse"];
+				};
+			};
+			/** @description Validation Error */
+			422: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					"application/json": components["schemas"]["HTTPValidationError"];
+				};
+			};
+		};
+	};
+	delete_integration_api_integrations__integration_id__delete: {
+		parameters: {
+			query?: never;
+			header?: never;
+			path: {
+				integration_id: string;
+			};
+			cookie?: never;
+		};
+		requestBody?: never;
+		responses: {
+			/** @description Successful Response */
+			204: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content?: never;
+			};
+			/** @description Validation Error */
+			422: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					"application/json": components["schemas"]["HTTPValidationError"];
+				};
+			};
+		};
+	};
+	get_integration_by_name_api_integrations_by_name__name__get: {
+		parameters: {
+			query?: never;
+			header?: never;
+			path: {
+				name: string;
+			};
+			cookie?: never;
+		};
+		requestBody?: never;
+		responses: {
+			/** @description Successful Response */
+			200: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					"application/json": components["schemas"]["IntegrationResponse"];
+				};
+			};
+			/** @description Validation Error */
+			422: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					"application/json": components["schemas"]["HTTPValidationError"];
+				};
+			};
+		};
+	};
+	get_integration_config_api_integrations__integration_id__config_get: {
+		parameters: {
+			query?: never;
+			header?: never;
+			path: {
+				integration_id: string;
+			};
+			cookie?: never;
+		};
+		requestBody?: never;
+		responses: {
+			/** @description Successful Response */
+			200: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					"application/json": components["schemas"]["IntegrationConfigResponse"];
+				};
+			};
+			/** @description Validation Error */
+			422: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					"application/json": components["schemas"]["HTTPValidationError"];
+				};
+			};
+		};
+	};
+	update_integration_config_api_integrations__integration_id__config_put: {
+		parameters: {
+			query?: never;
+			header?: never;
+			path: {
+				integration_id: string;
+			};
+			cookie?: never;
+		};
+		requestBody: {
+			content: {
+				"application/json": components["schemas"]["IntegrationConfigUpdate"];
+			};
+		};
+		responses: {
+			/** @description Successful Response */
+			200: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					"application/json": components["schemas"]["IntegrationConfigResponse"];
+				};
+			};
+			/** @description Validation Error */
+			422: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					"application/json": components["schemas"]["HTTPValidationError"];
+				};
+			};
+		};
+	};
+	list_mappings_api_integrations__integration_id__mappings_get: {
+		parameters: {
+			query?: never;
+			header?: never;
+			path: {
+				integration_id: string;
+			};
+			cookie?: never;
+		};
+		requestBody?: never;
+		responses: {
+			/** @description Successful Response */
+			200: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					"application/json": components["schemas"]["IntegrationMappingListResponse"];
+				};
+			};
+			/** @description Validation Error */
+			422: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					"application/json": components["schemas"]["HTTPValidationError"];
+				};
+			};
+		};
+	};
+	create_mapping_api_integrations__integration_id__mappings_post: {
+		parameters: {
+			query?: never;
+			header?: never;
+			path: {
+				integration_id: string;
+			};
+			cookie?: never;
+		};
+		requestBody: {
+			content: {
+				"application/json": components["schemas"]["IntegrationMappingCreate"];
+			};
+		};
+		responses: {
+			/** @description Successful Response */
+			201: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					"application/json": components["schemas"]["IntegrationMappingResponse"];
+				};
+			};
+			/** @description Validation Error */
+			422: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					"application/json": components["schemas"]["HTTPValidationError"];
+				};
+			};
+		};
+	};
+	get_mapping_api_integrations__integration_id__mappings__mapping_id__get: {
+		parameters: {
+			query?: never;
+			header?: never;
+			path: {
+				integration_id: string;
+				mapping_id: string;
+			};
+			cookie?: never;
+		};
+		requestBody?: never;
+		responses: {
+			/** @description Successful Response */
+			200: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					"application/json": components["schemas"]["IntegrationMappingResponse"];
+				};
+			};
+			/** @description Validation Error */
+			422: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					"application/json": components["schemas"]["HTTPValidationError"];
+				};
+			};
+		};
+	};
+	update_mapping_api_integrations__integration_id__mappings__mapping_id__put: {
+		parameters: {
+			query?: never;
+			header?: never;
+			path: {
+				integration_id: string;
+				mapping_id: string;
+			};
+			cookie?: never;
+		};
+		requestBody: {
+			content: {
+				"application/json": components["schemas"]["IntegrationMappingUpdate"];
+			};
+		};
+		responses: {
+			/** @description Successful Response */
+			200: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					"application/json": components["schemas"]["IntegrationMappingResponse"];
+				};
+			};
+			/** @description Validation Error */
+			422: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					"application/json": components["schemas"]["HTTPValidationError"];
+				};
+			};
+		};
+	};
+	delete_mapping_api_integrations__integration_id__mappings__mapping_id__delete: {
+		parameters: {
+			query?: never;
+			header?: never;
+			path: {
+				integration_id: string;
+				mapping_id: string;
+			};
+			cookie?: never;
+		};
+		requestBody?: never;
+		responses: {
+			/** @description Successful Response */
+			204: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content?: never;
+			};
+			/** @description Validation Error */
+			422: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					"application/json": components["schemas"]["HTTPValidationError"];
+				};
+			};
+		};
+	};
+	get_mapping_by_org_api_integrations__integration_id__mappings_by_org__org_id__get: {
+		parameters: {
+			query?: never;
+			header?: never;
+			path: {
+				integration_id: string;
+				org_id: string;
+			};
+			cookie?: never;
+		};
+		requestBody?: never;
+		responses: {
+			/** @description Successful Response */
+			200: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					"application/json": components["schemas"]["IntegrationMappingResponse"];
+				};
+			};
+			/** @description Validation Error */
+			422: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					"application/json": components["schemas"]["HTTPValidationError"];
+				};
+			};
+		};
+	};
+	get_oauth_config_api_integrations__integration_id__oauth_get: {
+		parameters: {
+			query?: never;
+			header?: never;
+			path: {
+				integration_id: string;
+			};
+			cookie?: never;
+		};
+		requestBody?: never;
+		responses: {
+			/** @description Successful Response */
+			200: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					"application/json": components["schemas"]["OAuthConfigResponse"];
+				};
+			};
+			/** @description Validation Error */
+			422: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					"application/json": components["schemas"]["HTTPValidationError"];
+				};
+			};
+		};
+	};
+	get_oauth_authorization_url_api_integrations__integration_id__oauth_authorize_get: {
+		parameters: {
+			query: {
+				/** @description Frontend callback URL for OAuth redirect */
+				redirect_uri: string;
+			};
+			header?: never;
+			path: {
+				integration_id: string;
+			};
+			cookie?: never;
+		};
+		requestBody?: never;
+		responses: {
+			/** @description Successful Response */
+			200: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					"application/json": components["schemas"]["OAuthAuthorizeResponse"];
+				};
+			};
+			/** @description Validation Error */
+			422: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					"application/json": components["schemas"]["HTTPValidationError"];
+				};
+			};
+		};
+	};
+	get_integration_sdk_data_api_integrations_sdk__name__get: {
+		parameters: {
+			query: {
+				/** @description Organization ID for resolving mapping */
+				org_id: string;
+			};
+			header?: never;
+			path: {
+				name: string;
+			};
+			cookie?: never;
+		};
+		requestBody?: never;
+		responses: {
+			/** @description Successful Response */
+			200: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					"application/json": components["schemas"]["IntegrationData"];
+				};
+			};
+			/** @description Validation Error */
+			422: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					"application/json": components["schemas"]["HTTPValidationError"];
+				};
+			};
+		};
+	};
+	get_decorator_properties_api_decorator_properties_get: {
+		parameters: {
+			query: {
+				/** @description File path relative to workspace root */
+				path: string;
+			};
+			header?: never;
+			path?: never;
+			cookie?: never;
+		};
+		requestBody?: never;
+		responses: {
+			/** @description Successful Response */
+			200: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					"application/json": components["schemas"]["DecoratorPropertiesResponse"];
+				};
+			};
+			/** @description Validation Error */
+			422: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					"application/json": components["schemas"]["HTTPValidationError"];
+				};
+			};
+		};
+	};
+	update_decorator_properties_api_decorator_properties_put: {
+		parameters: {
+			query?: never;
+			header?: never;
+			path?: never;
+			cookie?: never;
+		};
+		requestBody: {
+			content: {
+				"application/json": components["schemas"]["UpdatePropertiesRequest"];
+			};
+		};
+		responses: {
+			/** @description Successful Response */
+			200: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					"application/json": components["schemas"]["UpdatePropertiesResponse"];
+				};
+			};
+			/** @description Validation Error */
+			422: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					"application/json": components["schemas"]["HTTPValidationError"];
+				};
+			};
+		};
+	};
+	get_maintenance_status_api_maintenance_status_get: {
+		parameters: {
+			query?: never;
+			header?: never;
+			path?: never;
+			cookie?: never;
+		};
+		requestBody?: never;
+		responses: {
+			/** @description Successful Response */
+			200: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					"application/json": components["schemas"]["MaintenanceStatus"];
+				};
+			};
+		};
+	};
+	run_reindex_api_maintenance_reindex_post: {
+		parameters: {
+			query?: never;
+			header?: never;
+			path?: never;
+			cookie?: never;
+		};
+		requestBody: {
+			content: {
+				"application/json": components["schemas"]["ReindexRequest"];
+			};
+		};
+		responses: {
+			/** @description Successful Response */
+			200: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					"application/json": components["schemas"]["ReindexResponse"];
+				};
+			};
+			/** @description Validation Error */
+			422: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					"application/json": components["schemas"]["HTTPValidationError"];
+				};
+			};
+		};
+	};
+	root__get: {
+		parameters: {
+			query?: never;
+			header?: never;
+			path?: never;
+			cookie?: never;
+		};
+		requestBody?: never;
+		responses: {
+			/** @description Successful Response */
+			200: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					"application/json": unknown;
+				};
+			};
+		};
+	};
 }

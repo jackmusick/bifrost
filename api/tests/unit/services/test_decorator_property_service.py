@@ -1,12 +1,9 @@
 """Unit tests for DecoratorPropertyService."""
 
-import pytest
 from uuid import UUID
 
 from src.services.decorator_property_service import (
     DecoratorPropertyService,
-    DecoratorPropertyTransformer,
-    DecoratorPropertyReader,
 )
 
 
@@ -221,7 +218,7 @@ async def my_workflow():
         result = service.inject_ids_if_missing(content)
 
         assert result.modified is True
-        # LibCST may add spaces around = like id = "..."
+        # LibCST adds spaces around = when creating new arguments like id = "..."
         assert "id" in result.new_content and '"' in result.new_content
         assert len(result.changes) == 1
         assert "Added id=" in result.changes[0]
@@ -243,7 +240,7 @@ async def my_workflow():
         result = service.inject_ids_if_missing(content)
 
         assert result.modified is True
-        # Check ID was added (LibCST may format with spaces around =)
+        # Check ID was added (LibCST adds spaces around = for new arguments)
         assert "id" in result.new_content
         # Original properties preserved
         assert "My Workflow" in result.new_content
@@ -325,7 +322,7 @@ async def my_workflow():
         )
 
         assert result.modified is True
-        # LibCST may format with spaces around =
+        # LibCST adds spaces around = when adding new properties
         assert "category" in result.new_content and "Updated Category" in result.new_content
         assert "Original" in result.new_content
 
@@ -360,7 +357,7 @@ async def my_workflow():
         )
 
         assert result.modified is True
-        # LibCST may format with spaces around =
+        # LibCST adds spaces around = for new arguments
         assert "@workflow(" in result.new_content
         assert "custom-id" in result.new_content
 
@@ -407,7 +404,7 @@ async def my_workflow():
         )
 
         assert result.modified is True
-        # LibCST may format with spaces around =
+        # LibCST adds spaces around = for new arguments
         assert "tags" in result.new_content
         assert "admin" in result.new_content
 
@@ -425,7 +422,7 @@ async def my_workflow():
         )
 
         assert result.modified is True
-        # LibCST may format with spaces around =
+        # LibCST adds spaces around = for new arguments
         assert "endpoint_enabled" in result.new_content
         assert "True" in result.new_content
 

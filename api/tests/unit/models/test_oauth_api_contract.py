@@ -23,7 +23,7 @@ class TestCreateOAuthConnectionRequest:
     def test_valid_authorization_code_flow(self):
         """Test valid request for authorization code flow"""
         request = CreateOAuthConnectionRequest(
-            connection_name="azure_csp_oauth",
+            integration_id="550e8400-e29b-41d4-a716-446655440000",
             oauth_flow_type="authorization_code",
             client_id="abc123",
             client_secret="secret456",
@@ -32,7 +32,7 @@ class TestCreateOAuthConnectionRequest:
             scopes="https://graph.microsoft.com/.default"
         )
 
-        assert request.connection_name == "azure_csp_oauth"
+        assert request.integration_id == "550e8400-e29b-41d4-a716-446655440000"
         assert request.oauth_flow_type == "authorization_code"
         assert request.client_id == "abc123"
         assert request.client_secret == "secret456"
@@ -41,7 +41,7 @@ class TestCreateOAuthConnectionRequest:
     def test_valid_client_credentials_flow(self):
         """Test valid request for client credentials flow"""
         request = CreateOAuthConnectionRequest(
-            connection_name="service_api",
+            integration_id="550e8400-e29b-41d4-a716-446655440001",
             oauth_flow_type="client_credentials",
             client_id="service123",
             client_secret="secret789",
@@ -51,59 +51,15 @@ class TestCreateOAuthConnectionRequest:
         )
 
         assert request.oauth_flow_type == "client_credentials"
+        assert request.integration_id == "550e8400-e29b-41d4-a716-446655440001"
 
-    def test_invalid_connection_name_with_spaces(self):
-        """Test that connection names with spaces are rejected"""
-
-        with pytest.raises(ValidationError) as exc_info:
-            CreateOAuthConnectionRequest(
-                connection_name="invalid name",
-                oauth_flow_type="authorization_code",
-                client_id="abc123",
-                client_secret="secret",
-                authorization_url="https://auth.com/authorize",
-                token_url="https://auth.com/token"
-            )
-
-        errors = exc_info.value.errors()
-        assert any(e["loc"] == ("connection_name",) for e in errors)
-
-    def test_invalid_connection_name_with_special_chars(self):
-        """Test that connection names with special characters are rejected"""
-
-        with pytest.raises(ValidationError) as exc_info:
-            CreateOAuthConnectionRequest(
-                connection_name="invalid@name!",
-                oauth_flow_type="authorization_code",
-                client_id="abc123",
-                client_secret="secret",
-                authorization_url="https://auth.com/authorize",
-                token_url="https://auth.com/token"
-            )
-
-        errors = exc_info.value.errors()
-        assert any(e["loc"] == ("connection_name",) for e in errors)
-
-    def test_valid_connection_name_with_underscores_hyphens(self):
-        """Test that connection names with underscores and hyphens are allowed"""
-
-        request = CreateOAuthConnectionRequest(
-            connection_name="valid_connection-name_123",
-            oauth_flow_type="authorization_code",
-            client_id="abc123",
-            client_secret="secret",
-            authorization_url="https://auth.com/authorize",
-            token_url="https://auth.com/token"
-        )
-
-        assert request.connection_name == "valid_connection-name_123"
 
     def test_invalid_oauth_flow_type(self):
         """Test that invalid OAuth flow types are rejected"""
 
         with pytest.raises(ValidationError) as exc_info:
             CreateOAuthConnectionRequest(
-                connection_name="test_connection",
+                integration_id="550e8400-e29b-41d4-a716-446655440002",
                 oauth_flow_type="invalid_flow",
                 client_id="abc123",
                 client_secret="secret",
@@ -119,7 +75,7 @@ class TestCreateOAuthConnectionRequest:
 
         with pytest.raises(ValidationError) as exc_info:
             CreateOAuthConnectionRequest(
-                connection_name="test_connection",
+                integration_id="550e8400-e29b-41d4-a716-446655440003",
                 oauth_flow_type="authorization_code",
                 client_id="abc123",
                 client_secret="secret",
@@ -135,7 +91,7 @@ class TestCreateOAuthConnectionRequest:
 
         with pytest.raises(ValidationError) as exc_info:
             CreateOAuthConnectionRequest(
-                connection_name="test_connection",
+                integration_id="550e8400-e29b-41d4-a716-446655440004",
                 oauth_flow_type="authorization_code",
                 client_id="abc123",
                 client_secret="secret",
@@ -151,13 +107,12 @@ class TestCreateOAuthConnectionRequest:
 
         with pytest.raises(ValidationError) as exc_info:
             CreateOAuthConnectionRequest(
-                connection_name="test"
-                # Missing: oauth_flow_type, client_id, token_url
+                # Missing: integration_id, oauth_flow_type, client_id, token_url
                 # authorization_url is optional (not needed for client_credentials)
             )
 
         errors = exc_info.value.errors()
-        required_fields = {"oauth_flow_type", "client_id", "token_url"}
+        required_fields = {"integration_id", "oauth_flow_type", "client_id", "token_url"}
         missing_fields = {e["loc"][0] for e in errors if e["type"] == "missing"}
         assert required_fields.issubset(missing_fields)
         # client_secret is optional (for PKCE flow)
@@ -167,7 +122,7 @@ class TestCreateOAuthConnectionRequest:
         """Test that scopes field is optional and defaults to empty string"""
 
         request = CreateOAuthConnectionRequest(
-            connection_name="test",
+            integration_id="550e8400-e29b-41d4-a716-446655440005",
             oauth_flow_type="client_credentials",
             client_id="abc",
             client_secret="secret",
@@ -181,7 +136,7 @@ class TestCreateOAuthConnectionRequest:
 
         with pytest.raises(ValidationError) as exc_info:
             CreateOAuthConnectionRequest(
-                connection_name="test",
+                integration_id="550e8400-e29b-41d4-a716-446655440006",
                 oauth_flow_type="client_credentials",
                 client_id="abc123",
                 token_url="https://auth.com/token"
@@ -195,7 +150,7 @@ class TestCreateOAuthConnectionRequest:
         """Test that client_credentials flow does not require authorization_url"""
 
         request = CreateOAuthConnectionRequest(
-            connection_name="test",
+            integration_id="550e8400-e29b-41d4-a716-446655440007",
             oauth_flow_type="client_credentials",
             client_id="abc123",
             client_secret="secret",
@@ -211,7 +166,7 @@ class TestCreateOAuthConnectionRequest:
 
         with pytest.raises(ValidationError) as exc_info:
             CreateOAuthConnectionRequest(
-                connection_name="test",
+                integration_id="550e8400-e29b-41d4-a716-446655440008",
                 oauth_flow_type="authorization_code",
                 client_id="abc123",
                 token_url="https://auth.com/token"
@@ -225,7 +180,7 @@ class TestCreateOAuthConnectionRequest:
         """Test that client_credentials flow accepts empty string for authorization_url"""
 
         request = CreateOAuthConnectionRequest(
-            connection_name="test",
+            integration_id="550e8400-e29b-41d4-a716-446655440009",
             oauth_flow_type="client_credentials",
             client_id="abc123",
             client_secret="secret",

@@ -184,7 +184,10 @@ function FormRendererInner({ form }: FormRendererProps) {
 		);
 
 		for (const field of selectFields) {
-			if (!field.data_provider_id || typeof field.data_provider_id !== "string")
+			if (
+				!field.data_provider_id ||
+				typeof field.data_provider_id !== "string"
+			)
 				continue;
 
 			const providerId = field.data_provider_id as string;
@@ -271,11 +274,7 @@ function FormRendererInner({ form }: FormRendererProps) {
 				}));
 			}
 		}
-	}, [
-		fields,
-		evaluateDataProviderInputs,
-		dataProviderState.loading,
-	]);
+	}, [fields, evaluateDataProviderInputs, dataProviderState.loading]);
 
 	// Load data providers on mount and when fieldBlurTrigger changes
 	useEffect(() => {

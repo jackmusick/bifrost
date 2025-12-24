@@ -61,7 +61,9 @@ export function useLaunchWorkflow({
 				const response = await executeFormStartup(form.id, inputData);
 
 				// Set workflow results in context (or empty object if no result)
-				setWorkflowResults((response.result as Record<string, unknown>) || {});
+				setWorkflowResults(
+					(response.result as Record<string, unknown>) || {},
+				);
 			} catch (error) {
 				console.error("Failed to execute launch workflow:", error);
 				// Set empty results on error so form still works

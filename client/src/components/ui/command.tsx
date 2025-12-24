@@ -103,7 +103,8 @@ function CommandList({
 				// Prevent the event from scrolling parent elements
 				const isAtTop = target.scrollTop === 0 && e.deltaY < 0;
 				const isAtBottom =
-					target.scrollTop + clientHeight >= scrollHeight && e.deltaY > 0;
+					target.scrollTop + clientHeight >= scrollHeight &&
+					e.deltaY > 0;
 
 				if (!isAtTop && !isAtBottom) {
 					e.preventDefault();

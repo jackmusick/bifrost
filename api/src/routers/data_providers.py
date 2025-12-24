@@ -22,7 +22,7 @@ from src.models.orm.forms import FormField as FormFieldORM, FormRole as FormRole
 from src.models.orm.users import UserRole as UserRoleORM
 from src.models.orm.integrations import Integration as IntegrationORM
 
-from src.core.auth import Context, CurrentActiveUser, CurrentSuperuser
+from src.core.auth import Context, CurrentActiveUser
 from src.core.database import DbSession
 
 logger = logging.getLogger(__name__)
@@ -71,7 +71,7 @@ def _convert_provider_orm_to_schema(provider: DataProviderORM) -> DataProviderMe
     description="Returns metadata for all registered data providers in the system",
 )
 async def list_data_providers(
-    user: CurrentSuperuser,
+    user: CurrentActiveUser,
     db: DbSession,
 ) -> list[DataProviderMetadata]:
     """List all registered data providers from the database.

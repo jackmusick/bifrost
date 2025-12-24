@@ -37,9 +37,8 @@ interface ChatSidebarProps {
 
 export function ChatSidebar({ className }: ChatSidebarProps) {
 	const [searchTerm, setSearchTerm] = useState("");
-	const [deleteTarget, setDeleteTarget] = useState<ConversationSummary | null>(
-		null,
-	);
+	const [deleteTarget, setDeleteTarget] =
+		useState<ConversationSummary | null>(null);
 
 	// Store state
 	const { activeConversationId, setActiveConversation, setActiveAgent } =
@@ -148,22 +147,28 @@ export function ChatSidebar({ className }: ChatSidebarProps) {
 								<Skeleton key={i} className="h-14 w-full" />
 							))}
 						</div>
-					) : filteredConversations && filteredConversations.length > 0 ? (
+					) : filteredConversations &&
+					  filteredConversations.length > 0 ? (
 						<div className="space-y-1">
 							{filteredConversations.map((conv) => (
 								<div
 									key={conv.id}
 									className={cn(
 										"group flex items-start gap-2 p-2 rounded-lg cursor-pointer hover:bg-accent transition-colors",
-										activeConversationId === conv.id && "bg-accent",
+										activeConversationId === conv.id &&
+											"bg-accent",
 									)}
-									onClick={() => handleSelectConversation(conv)}
+									onClick={() =>
+										handleSelectConversation(conv)
+									}
 								>
 									<MessageSquare className="h-4 w-4 mt-1 text-muted-foreground shrink-0" />
 									<div className="flex-1 min-w-0">
 										<div className="flex items-center justify-between gap-2">
 											<span className="font-medium text-sm truncate">
-												{conv.title || conv.agent_name || "Untitled"}
+												{conv.title ||
+													conv.agent_name ||
+													"Untitled"}
 											</span>
 											<span className="text-xs text-muted-foreground shrink-0">
 												{formatTime(conv.updated_at)}
@@ -206,11 +211,15 @@ export function ChatSidebar({ className }: ChatSidebarProps) {
 			>
 				<AlertDialogContent>
 					<AlertDialogHeader>
-						<AlertDialogTitle>Delete Conversation?</AlertDialogTitle>
+						<AlertDialogTitle>
+							Delete Conversation?
+						</AlertDialogTitle>
 						<AlertDialogDescription>
 							This will delete the conversation "
-							{deleteTarget?.title || deleteTarget?.agent_name || "Untitled"}".
-							This action cannot be undone.
+							{deleteTarget?.title ||
+								deleteTarget?.agent_name ||
+								"Untitled"}
+							". This action cannot be undone.
 						</AlertDialogDescription>
 					</AlertDialogHeader>
 					<AlertDialogFooter>

@@ -138,10 +138,10 @@ class TestFormsPlatformMode:
         assert len(result) == 2
 
         # Forms should be sorted by name
-        assert result[0]["name"] == "Contact Form"
-        assert result[1]["name"] == "Survey Form"
-        assert result[0]["id"] == form1_id
-        assert result[1]["id"] == form2_id
+        assert result[0].name == "Contact Form"
+        assert result[1].name == "Survey Form"
+        assert str(result[0].id) == form1_id
+        assert str(result[1].id) == form2_id
 
     @pytest.mark.asyncio
     async def test_list_returns_empty_list_when_no_forms(self, test_context, test_org_id, test_user_id):
@@ -207,7 +207,7 @@ class TestFormsPlatformMode:
 
         form1_id = str(uuid4())
         form2_id = str(uuid4())
-        form1_data = {"id": form1_id, "name": "Valid Form"}
+        form1_data = {"id": form1_id, "name": "Valid Form", "is_active": True}
 
         # Mock Redis client
         mock_redis = MagicMock()
@@ -223,7 +223,7 @@ class TestFormsPlatformMode:
 
         # Should only return the valid form
         assert len(result) == 1
-        assert result[0]["id"] == form1_id
+        assert str(result[0].id) == form1_id
 
     @pytest.mark.asyncio
     async def test_list_sorts_by_name(self, test_context, test_org_id, test_user_id):
@@ -237,9 +237,9 @@ class TestFormsPlatformMode:
         form3_id = str(uuid4())
 
         # Create forms with names out of order
-        zebra_form = {"id": form1_id, "name": "Zebra Form"}
-        apple_form = {"id": form2_id, "name": "Apple Form"}
-        banana_form = {"id": form3_id, "name": "Banana Form"}
+        zebra_form = {"id": form1_id, "name": "Zebra Form", "is_active": True}
+        apple_form = {"id": form2_id, "name": "Apple Form", "is_active": True}
+        banana_form = {"id": form3_id, "name": "Banana Form", "is_active": True}
 
         mock_redis = MagicMock()
         mock_redis.smembers = AsyncMock(return_value={form1_id, form2_id, form3_id})
@@ -256,9 +256,9 @@ class TestFormsPlatformMode:
 
         # Should be sorted alphabetically
         assert len(result) == 3
-        assert result[0]["name"] == "Apple Form"
-        assert result[1]["name"] == "Banana Form"
-        assert result[2]["name"] == "Zebra Form"
+        assert result[0].name == "Apple Form"
+        assert result[1].name == "Banana Form"
+        assert result[2].name == "Zebra Form"
 
     @pytest.mark.asyncio
     async def test_get_returns_form_data(self, test_context, test_org_id, test_user_id):
@@ -275,16 +275,18 @@ class TestFormsPlatformMode:
             "workflow_id": "test_workflow",
             "launch_workflow_id": "launch_test",
             "is_active": True,
-            "fields": [
-                {
-                    "id": str(uuid4()),
-                    "name": "email",
-                    "label": "Email Address",
-                    "type": "email",
-                    "required": True,
-                    "position": 0,
-                }
-            ],
+            "form_schema": {
+                "fields": [
+                    {
+                        "id": str(uuid4()),
+                        "name": "email",
+                        "label": "Email Address",
+                        "type": "email",
+                        "required": True,
+                        "position": 0,
+                    }
+                ]
+            },
         }
 
         # Mock Redis client
@@ -296,12 +298,18 @@ class TestFormsPlatformMode:
             result = await forms.get(form_id)
 
         assert result is not None
-        assert result["id"] == form_id
-        assert result["name"] == "Test Form"
-        assert result["description"] == "A test form"
-        assert result["workflow_id"] == "test_workflow"
-        assert len(result["fields"]) == 1
-        assert result["fields"][0]["name"] == "email"
+        assert str(result.id) == form_id
+        assert result.name == "Test Form"
+        assert result.description == "A test form"
+        assert result.workflow_id == "test_workflow"
+        assert result.form_schema is not None
+        # form_schema is either dict or FormSchema
+        if isinstance(result.form_schema, dict):
+            assert len(result.form_schema["fields"]) == 1
+            assert result.form_schema["fields"][0]["name"] == "email"
+        else:
+            assert len(result.form_schema.fields) == 1
+            assert result.form_schema.fields[0].name == "email"
 
     @pytest.mark.asyncio
     async def test_get_raises_value_error_when_form_not_found(self, test_context, test_org_id, test_user_id):
@@ -351,7 +359,7 @@ class TestFormsPlatformMode:
         set_execution_context(admin_context)
 
         form_id = str(uuid4())
-        form_data = {"id": form_id, "name": "Admin Form"}
+        form_data = {"id": form_id, "name": "Admin Form", "is_active": True}
 
         # Mock Redis client - admin has no forms in access list
         mock_redis = MagicMock()
@@ -362,8 +370,8 @@ class TestFormsPlatformMode:
             result = await forms.get(form_id)
 
         # Should return form even though not in access list
-        assert result["id"] == form_id
-        assert result["name"] == "Admin Form"
+        assert str(result.id) == form_id
+        assert result.name == "Admin Form"
 
     @pytest.mark.asyncio
     async def test_get_raises_value_error_on_invalid_json(
@@ -393,7 +401,7 @@ class TestFormsPlatformMode:
         set_execution_context(test_context)
 
         form_id = str(uuid4())
-        form_data = {"id": form_id, "name": "Test Form"}
+        form_data = {"id": form_id, "name": "Test Form", "is_active": True}
 
         mock_redis = MagicMock()
         mock_redis.smembers = AsyncMock(return_value={form_id})

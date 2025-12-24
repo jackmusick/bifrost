@@ -12,6 +12,7 @@ from uuid import UUID
 
 from fastapi import APIRouter, Query, WebSocket, WebSocketDisconnect
 from sqlalchemy import select
+from sqlalchemy.orm import selectinload
 
 from src.core.auth import UserPrincipal, get_current_user_ws
 from src.core.database import get_db_context
@@ -20,9 +21,6 @@ from src.models import Conversation, Execution
 from src.models.orm import Agent
 
 logger = logging.getLogger(__name__)
-
-
-from sqlalchemy.orm import selectinload
 
 
 async def can_access_conversation(user: UserPrincipal, conversation_id: str) -> tuple[bool, Conversation | None]:

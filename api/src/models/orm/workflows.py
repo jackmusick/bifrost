@@ -8,7 +8,7 @@ from datetime import datetime
 from typing import TYPE_CHECKING
 from uuid import UUID, uuid4
 
-from sqlalchemy import Boolean, DateTime, Index, String, Text, UniqueConstraint, text
+from sqlalchemy import Boolean, DateTime, Index, Integer, Numeric, String, Text, UniqueConstraint, text
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -53,6 +53,10 @@ class Workflow(Base):
     # Tool configuration (for AI agent tool calling)
     is_tool: Mapped[bool] = mapped_column(Boolean, default=False)
     tool_description: Mapped[str | None] = mapped_column(Text, default=None)
+
+    # Economics - value metrics for reporting
+    time_saved: Mapped[int] = mapped_column(Integer, default=0)  # Minutes saved per execution
+    value: Mapped[float] = mapped_column(Numeric(10, 2), default=0)  # Flexible value unit
 
     # API key (one per workflow, replaces workflow_keys table)
     api_key_hash: Mapped[str | None] = mapped_column(

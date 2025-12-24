@@ -267,113 +267,113 @@ export function Workflows() {
 				) : (
 					<div className="flex-1 min-h-0">
 						<DataTable className="max-h-full">
-						<DataTableHeader>
-							<DataTableRow>
-								<DataTableHead>Name</DataTableHead>
-								<DataTableHead>Description</DataTableHead>
-								<DataTableHead className="text-right">
-									Parameters
-								</DataTableHead>
-								<DataTableHead>Status</DataTableHead>
-								<DataTableHead className="text-right">
-									Actions
-								</DataTableHead>
-							</DataTableRow>
-						</DataTableHeader>
-						<DataTableBody>
-							{filteredWorkflows.map((workflow) => (
-								<DataTableRow key={workflow.name}>
-									<DataTableCell className="font-mono font-medium break-all max-w-xs">
-										{workflow.name}
-									</DataTableCell>
-									<DataTableCell className="max-w-xs break-words text-muted-foreground">
-										{workflow.description || (
-											<span className="italic">
-												No description
-											</span>
-										)}
-									</DataTableCell>
-									<DataTableCell className="text-right">
-										{workflow.parameters?.length ?? 0}
-									</DataTableCell>
-									<DataTableCell>
-										<div className="flex items-center gap-1">
-											{workflow.is_tool && (
-												<Badge
-													variant="secondary"
-													className="bg-purple-100 text-purple-700 dark:bg-purple-900 dark:text-purple-300 text-xs"
-													title={
-														workflow.tool_description ||
-														"Available as AI tool"
-													}
-												>
-													<Bot className="mr-1 h-2 w-2" />
-													Tool
-												</Badge>
-											)}
-											{workflow.endpoint_enabled && (
-												<Badge
-													variant={
-														workflow.public_endpoint
-															? "destructive"
-															: hasGlobalKey ||
-																  workflowsWithKeys.has(
-																		workflow.name ??
-																			"",
-																  )
-																? "default"
-																: "outline"
-													}
-													className={`cursor-pointer transition-colors text-xs ${
-														workflow.public_endpoint
-															? "bg-orange-600 hover:bg-orange-700 border-orange-600"
-															: hasGlobalKey ||
-																  workflowsWithKeys.has(
-																		workflow.name ??
-																			"",
-																  )
-																? "bg-green-600 hover:bg-green-700"
-																: "text-muted-foreground hover:bg-accent"
-													}`}
-													onClick={() =>
-														handleShowWebhook(
-															workflow,
-														)
-													}
-												>
-													{workflow.public_endpoint ? (
-														<AlertTriangle className="mr-1 h-2 w-2" />
-													) : (
-														<Webhook className="mr-1 h-2 w-2" />
-													)}
-													Endpoint
-												</Badge>
-											)}
-											{workflow.category && (
-												<Badge
-													variant="secondary"
-													className="text-xs"
-												>
-													{workflow.category}
-												</Badge>
-											)}
-										</div>
-									</DataTableCell>
-									<DataTableCell className="text-right">
-										<Button
-											size="sm"
-											onClick={() =>
-												handleExecute(
-													workflow.name ?? "",
-												)
-											}
-										>
-											<PlayCircle className="h-4 w-4" />
-										</Button>
-									</DataTableCell>
+							<DataTableHeader>
+								<DataTableRow>
+									<DataTableHead>Name</DataTableHead>
+									<DataTableHead>Description</DataTableHead>
+									<DataTableHead className="text-right">
+										Parameters
+									</DataTableHead>
+									<DataTableHead>Status</DataTableHead>
+									<DataTableHead className="text-right">
+										Actions
+									</DataTableHead>
 								</DataTableRow>
-							))}
-						</DataTableBody>
+							</DataTableHeader>
+							<DataTableBody>
+								{filteredWorkflows.map((workflow) => (
+									<DataTableRow key={workflow.name}>
+										<DataTableCell className="font-mono font-medium break-all max-w-xs">
+											{workflow.name}
+										</DataTableCell>
+										<DataTableCell className="max-w-xs break-words text-muted-foreground">
+											{workflow.description || (
+												<span className="italic">
+													No description
+												</span>
+											)}
+										</DataTableCell>
+										<DataTableCell className="text-right">
+											{workflow.parameters?.length ?? 0}
+										</DataTableCell>
+										<DataTableCell>
+											<div className="flex items-center gap-1">
+												{workflow.is_tool && (
+													<Badge
+														variant="secondary"
+														className="bg-purple-100 text-purple-700 dark:bg-purple-900 dark:text-purple-300 text-xs"
+														title={
+															workflow.tool_description ||
+															"Available as AI tool"
+														}
+													>
+														<Bot className="mr-1 h-2 w-2" />
+														Tool
+													</Badge>
+												)}
+												{workflow.endpoint_enabled && (
+													<Badge
+														variant={
+															workflow.public_endpoint
+																? "destructive"
+																: hasGlobalKey ||
+																	  workflowsWithKeys.has(
+																			workflow.name ??
+																				"",
+																	  )
+																	? "default"
+																	: "outline"
+														}
+														className={`cursor-pointer transition-colors text-xs ${
+															workflow.public_endpoint
+																? "bg-orange-600 hover:bg-orange-700 border-orange-600"
+																: hasGlobalKey ||
+																	  workflowsWithKeys.has(
+																			workflow.name ??
+																				"",
+																	  )
+																	? "bg-green-600 hover:bg-green-700"
+																	: "text-muted-foreground hover:bg-accent"
+														}`}
+														onClick={() =>
+															handleShowWebhook(
+																workflow,
+															)
+														}
+													>
+														{workflow.public_endpoint ? (
+															<AlertTriangle className="mr-1 h-2 w-2" />
+														) : (
+															<Webhook className="mr-1 h-2 w-2" />
+														)}
+														Endpoint
+													</Badge>
+												)}
+												{workflow.category && (
+													<Badge
+														variant="secondary"
+														className="text-xs"
+													>
+														{workflow.category}
+													</Badge>
+												)}
+											</div>
+										</DataTableCell>
+										<DataTableCell className="text-right">
+											<Button
+												size="sm"
+												onClick={() =>
+													handleExecute(
+														workflow.name ?? "",
+													)
+												}
+											>
+												<PlayCircle className="h-4 w-4" />
+											</Button>
+										</DataTableCell>
+									</DataTableRow>
+								))}
+							</DataTableBody>
 						</DataTable>
 					</div>
 				)
