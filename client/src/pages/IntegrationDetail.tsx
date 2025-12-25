@@ -15,6 +15,7 @@ import {
 	Pencil,
 	MoreVertical,
 	Trash2,
+	Code,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
@@ -87,6 +88,7 @@ import { useAutoMatch } from "@/hooks/useAutoMatch";
 import { EntitySelector } from "@/components/integrations/EntitySelector";
 import { AutoMatchControls } from "@/components/integrations/AutoMatchControls";
 import { MatchSuggestionBadge } from "@/components/integrations/MatchSuggestionBadge";
+import { GenerateSDKDialog } from "@/components/integrations/GenerateSDKDialog";
 
 // Format datetime with relative time for dates within 7 days
 const formatDateTime = (dateStr?: string | null) => {
@@ -174,6 +176,7 @@ export function IntegrationDetail() {
 	const [isSavingAll, setIsSavingAll] = useState(false);
 	const [editingOAuthConfig, setEditingOAuthConfig] = useState(false);
 	const [deleteOAuthDialogOpen, setDeleteOAuthDialogOpen] = useState(false);
+	const [generateSDKDialogOpen, setGenerateSDKDialogOpen] = useState(false);
 
 	// Fetch integration details (includes mappings and OAuth config)
 	const {
@@ -768,6 +771,15 @@ export function IntegrationDetail() {
 						</p>
 					</div>
 					<div className="flex items-center gap-2">
+						<Button
+							variant="outline"
+							size="sm"
+							onClick={() => setGenerateSDKDialogOpen(true)}
+							title="Generate SDK from OpenAPI spec"
+						>
+							<Code className="h-4 w-4 mr-2" />
+							Generate SDK
+						</Button>
 						<Button
 							variant="outline"
 							size="icon"
@@ -1598,6 +1610,17 @@ export function IntegrationDetail() {
 					</AlertDialogFooter>
 				</AlertDialogContent>
 			</AlertDialog>
+
+			{/* Generate SDK Dialog */}
+			{integrationId && (
+				<GenerateSDKDialog
+					open={generateSDKDialogOpen}
+					onOpenChange={setGenerateSDKDialogOpen}
+					integrationId={integrationId}
+					integrationName={integration?.name || ""}
+					hasOAuth={integration?.has_oauth_config || false}
+				/>
+			)}
 		</div>
 	);
 }

@@ -1298,3 +1298,124 @@ async def get_integration_sdk_data(
         oauth_token_url=oauth_token_url,
         oauth_scopes=oauth_scopes,
     )
+
+
+# =============================================================================
+# HTTP Endpoints - SDK Generation
+# =============================================================================
+
+
+class GenerateSDKRequest(BaseModel):
+    """Request model for generating an SDK from an OpenAPI spec."""
+
+    spec_url: str = Field(
+        ...,
+        description="URL to OpenAPI specification (JSON or YAML)",
+    )
+    auth_type: str = Field(
+        ...,
+        pattern="^(bearer|api_key|basic|oauth)$",
+        description="Authentication type: bearer, api_key, basic, or oauth",
+    )
+    module_name: str | None = Field(
+        default=None,
+        max_length=100,
+        pattern=r"^[a-z][a-z0-9_]*$",
+        description="Module name (lowercase, underscores). Defaults to spec title.",
+    )
+
+
+class GenerateSDKResponse(BaseModel):
+    """Response model for SDK generation."""
+
+    success: bool = Field(..., description="Whether generation succeeded")
+    module_name: str = Field(..., description="Generated module name")
+    module_path: str = Field(..., description="Path to generated module file")
+    class_name: str = Field(..., description="Generated client class name")
+    endpoint_count: int = Field(..., description="Number of API endpoints")
+    schema_count: int = Field(..., description="Number of data schemas")
+    usage_example: str = Field(..., description="Example code for using the SDK")
+
+
+@router.post(
+    "/{integration_id}/generate-sdk",
+    response_model=GenerateSDKResponse,
+    summary="Generate SDK from OpenAPI spec",
+    description="Generate a Python SDK module from an OpenAPI specification (Platform admin only)",
+)
+async def generate_sdk(
+    integration_id: UUID,
+    request: GenerateSDKRequest,
+    ctx: Context,
+    user: CurrentSuperuser,
+) -> GenerateSDKResponse:
+    """
+    Generate a Python SDK from an OpenAPI specification.
+
+    The generated SDK will automatically authenticate using this integration's
+    configuration (base_url, tokens, API keys, etc.).
+
+    The SDK is saved to the workspace modules/ folder and can be imported
+    directly in workflows:
+
+        from modules import example_api
+        result = await example_api.list_users()
+    """
+    from src.services.sdk_generator import generate_sdk_from_url
+    from src.core.workspace_sync import get_local_workspace_path
+
+    repo = IntegrationsRepository(ctx.db)
+
+    # Verify integration exists
+    integration = await repo.get_integration(integration_id)
+    if not integration:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Integration not found",
+        )
+
+    try:
+        # Generate the SDK
+        result = generate_sdk_from_url(
+            spec_url=request.spec_url,
+            integration_name=integration.name,
+            auth_type=request.auth_type,  # type: ignore
+            module_name=request.module_name,
+        )
+
+        # Write to workspace modules folder
+        workspace_path = get_local_workspace_path()
+        modules_dir = workspace_path / "modules"
+        modules_dir.mkdir(parents=True, exist_ok=True)
+
+        module_path = modules_dir / f"{result.module_name}.py"
+        module_path.write_text(result.code)
+
+        logger.info(
+            f"Generated SDK for integration {integration.name}: "
+            f"{module_path} ({result.endpoint_count} endpoints)"
+        )
+
+        # Build usage example
+        usage_example = f'''from modules import {result.module_name}
+
+# All methods are async and auto-authenticate via Bifrost integration
+result = await {result.module_name}.list_resources()
+print(result)'''
+
+        return GenerateSDKResponse(
+            success=True,
+            module_name=result.module_name,
+            module_path=f"modules/{result.module_name}.py",
+            class_name=result.class_name,
+            endpoint_count=result.endpoint_count,
+            schema_count=result.schema_count,
+            usage_example=usage_example,
+        )
+
+    except Exception as e:
+        logger.exception(f"SDK generation failed for integration {integration_id}")
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"SDK generation failed: {str(e)}",
+        )

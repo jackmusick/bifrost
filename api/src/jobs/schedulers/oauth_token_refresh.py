@@ -234,7 +234,7 @@ async def _refresh_single_token(
 
         # Update provider status
         provider.status = "completed"
-        provider.last_token_refresh = datetime.now(timezone.utc)
+        provider.last_token_refresh = datetime.utcnow()
         provider.status_message = None
 
         return True
