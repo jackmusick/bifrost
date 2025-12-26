@@ -231,6 +231,7 @@ from src.models.contracts.editor import (
     SearchRequest,
     SearchResponse,
     SearchResult,
+    WorkflowIdConflict,
 )
 
 # Common models
@@ -588,6 +589,7 @@ __all__ = [
     "FileContentRequest",
     "FileContentResponse",
     "FileConflictResponse",
+    "WorkflowIdConflict",
     "SearchRequest",
     "SearchResult",
     "SearchResponse",

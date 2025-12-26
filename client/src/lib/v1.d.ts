@@ -3026,22 +3026,22 @@ export interface paths {
          * Execute workflow via API key
          * @description Execute an endpoint-enabled workflow using an API key for authentication
          */
-        get: operations["execute_endpoint_api_endpoints__workflow_name__put"];
+        get: operations["execute_endpoint_api_endpoints__workflow_name__delete"];
         /**
          * Execute workflow via API key
          * @description Execute an endpoint-enabled workflow using an API key for authentication
          */
-        put: operations["execute_endpoint_api_endpoints__workflow_name__put"];
+        put: operations["execute_endpoint_api_endpoints__workflow_name__delete"];
         /**
          * Execute workflow via API key
          * @description Execute an endpoint-enabled workflow using an API key for authentication
          */
-        post: operations["execute_endpoint_api_endpoints__workflow_name__put"];
+        post: operations["execute_endpoint_api_endpoints__workflow_name__delete"];
         /**
          * Execute workflow via API key
          * @description Execute an endpoint-enabled workflow using an API key for authentication
          */
-        delete: operations["execute_endpoint_api_endpoints__workflow_name__put"];
+        delete: operations["execute_endpoint_api_endpoints__workflow_name__delete"];
         options?: never;
         head?: never;
         patch?: never;
@@ -4908,6 +4908,11 @@ export interface components {
              * @description Organization ID for knowledge search
              */
             org_id?: string | null;
+            /**
+             * Model
+             * @description Override model (e.g., 'gpt-4o', 'claude-sonnet-4-20250514')
+             */
+            model?: string | null;
         };
         /**
          * CLIAICompleteResponse
@@ -6514,6 +6519,11 @@ export interface components {
              * @default false
              */
             needs_indexing: boolean;
+            /**
+             * Workflow Id Conflicts
+             * @description List of workflows that would lose their existing IDs. Client should prompt user.
+             */
+            workflow_id_conflicts?: components["schemas"]["WorkflowIdConflict"][];
         };
         /**
          * FileDeleteRequest
@@ -10697,6 +10707,33 @@ export interface components {
             is_transient: boolean;
         };
         /**
+         * WorkflowIdConflict
+         * @description Conflict detected when a workflow file is being overwritten and
+         *     the new file lacks an ID that the database already has.
+         */
+        WorkflowIdConflict: {
+            /**
+             * Name
+             * @description Workflow display name from decorator
+             */
+            name: string;
+            /**
+             * Function Name
+             * @description Python function name
+             */
+            function_name: string;
+            /**
+             * Existing Id
+             * @description UUID from database that would be lost
+             */
+            existing_id: string;
+            /**
+             * File Path
+             * @description Path of the file being saved
+             */
+            file_path: string;
+        };
+        /**
          * WorkflowKeyCreateRequest
          * @description Request model for creating a workflow API key
          */
@@ -14165,6 +14202,8 @@ export interface operations {
             query: {
                 /** @description Directory path relative to workspace root */
                 path: string;
+                /** @description If true, return all files recursively */
+                recursive?: boolean;
             };
             header?: never;
             path?: never;
@@ -15757,7 +15796,7 @@ export interface operations {
             };
         };
     };
-    execute_endpoint_api_endpoints__workflow_name__put: {
+    execute_endpoint_api_endpoints__workflow_name__delete: {
         parameters: {
             query?: never;
             header: {
@@ -15790,7 +15829,7 @@ export interface operations {
             };
         };
     };
-    execute_endpoint_api_endpoints__workflow_name__put: {
+    execute_endpoint_api_endpoints__workflow_name__delete: {
         parameters: {
             query?: never;
             header: {
@@ -15823,7 +15862,7 @@ export interface operations {
             };
         };
     };
-    execute_endpoint_api_endpoints__workflow_name__put: {
+    execute_endpoint_api_endpoints__workflow_name__delete: {
         parameters: {
             query?: never;
             header: {
@@ -15856,7 +15895,7 @@ export interface operations {
             };
         };
     };
-    execute_endpoint_api_endpoints__workflow_name__put: {
+    execute_endpoint_api_endpoints__workflow_name__delete: {
         parameters: {
             query?: never;
             header: {

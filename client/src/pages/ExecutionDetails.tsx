@@ -1,4 +1,4 @@
-import { useParams, useNavigate } from "react-router-dom";
+import { useParams, useNavigate, useLocation } from "react-router-dom";
 import { motion, AnimatePresence } from "framer-motion";
 import {
 	ArrowLeft,
@@ -85,6 +85,7 @@ interface ExecutionDetailsProps {
 	embedded?: boolean;
 }
 
+
 export function ExecutionDetails({
 	executionId: propExecutionId,
 	embedded = false,
@@ -92,13 +93,31 @@ export function ExecutionDetails({
 	const { executionId: urlExecutionId } = useParams();
 	const executionId = propExecutionId || urlExecutionId;
 	const navigate = useNavigate();
+	const location = useLocation();
 	const { isPlatformAdmin } = useAuth();
 	const queryClient = useQueryClient();
+
+	// Check if we came from an execution trigger (has navigation state)
+	// If so, we defer the GET until WebSocket confirms the execution exists
+	const hasNavigationState = location.state != null;
 
 	const [signalrEnabled, setSignalrEnabled] = useState(false);
 	const logsEndRef = useRef<HTMLDivElement>(null);
 	const logsContainerRef = useRef<HTMLDivElement>(null);
 	const [autoScroll, setAutoScroll] = useState(true);
+
+	// Fallback timer - enable fetch after 5s if WebSocket hasn't received updates
+	const [fetchFallbackEnabled, setFetchFallbackEnabled] = useState(false);
+	useEffect(() => {
+		// If we have no navigation state (direct link), fetch immediately
+		if (!hasNavigationState) {
+			setFetchFallbackEnabled(true);
+			return;
+		}
+		// Otherwise, wait 5s as fallback in case WebSocket fails
+		const timer = setTimeout(() => setFetchFallbackEnabled(true), 5000);
+		return () => clearTimeout(timer);
+	}, [executionId, hasNavigationState]);
 
 	// Get streaming logs from store
 	// Use stable selector to avoid infinite loops
@@ -106,6 +125,11 @@ export function ExecutionDetails({
 		executionId ? state.streams[executionId] : undefined,
 	);
 	const streamingLogs = streamState?.streamingLogs ?? [];
+
+	// Determine if we should fetch from API
+	// Fetch when: stream received update (confirms DB write), OR fallback expired, OR no nav state
+	const hasReceivedUpdate = streamState?.hasReceivedUpdate ?? false;
+	const shouldFetchExecution = hasReceivedUpdate || fetchFallbackEnabled;
 
 	// State for confirmation dialogs
 	const [showCancelDialog, setShowCancelDialog] = useState(false);
@@ -123,12 +147,12 @@ export function ExecutionDetails({
 	const { data: metadataData } = useWorkflowsMetadata();
 	const metadata = metadataData as WorkflowsMetadataResponse | undefined;
 
-	// Fetch execution data (polling will be controlled by useExecution hook based on status)
+	// Fetch execution data - deferred until stream confirms DB write or fallback expires
 	const {
 		data: executionData,
 		isLoading,
 		error,
-	} = useExecution(executionId, signalrEnabled);
+	} = useExecution(shouldFetchExecution ? executionId : undefined, signalrEnabled);
 
 	// Cast execution data to the correct type
 	const execution = executionData as WorkflowExecution | undefined;

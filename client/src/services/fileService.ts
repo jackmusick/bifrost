@@ -24,11 +24,18 @@ export class FileConflictError extends Error {
 export const fileService = {
 	/**
 	 * List files and folders in a directory
+	 * @param path - Directory path relative to workspace root
+	 * @param recursive - If true, return all files recursively (not just direct children)
 	 */
-	async listFiles(path: string = ""): Promise<FileMetadata[]> {
-		const response = await authFetch(
-			`/api/files/editor?path=${encodeURIComponent(path)}`,
-		);
+	async listFiles(
+		path: string = "",
+		recursive: boolean = false,
+	): Promise<FileMetadata[]> {
+		const params = new URLSearchParams({ path });
+		if (recursive) {
+			params.set("recursive", "true");
+		}
+		const response = await authFetch(`/api/files/editor?${params}`);
 
 		if (!response.ok) {
 			throw new Error(`Failed to list files: ${response.statusText}`);
@@ -56,6 +63,7 @@ export const fileService = {
 	 * Write file content
 	 *
 	 * @param index - If true, inject IDs into decorators. If false (default), detect if IDs needed.
+	 * @param forceIds - Map of function_name -> ID to inject. Used when user chooses "Use Existing IDs".
 	 */
 	async writeFile(
 		path: string,
@@ -63,12 +71,16 @@ export const fileService = {
 		encoding: "utf-8" | "base64" = "utf-8",
 		expectedEtag?: string,
 		index: boolean = false,
+		forceIds?: Record<string, string>,
 	): Promise<FileContentResponse> {
-		const body: FileContentRequest = {
+		// Note: force_ids is a new field that may not be in the generated types yet
+		// until types are regenerated with npm run generate:types
+		const body: FileContentRequest & { force_ids?: Record<string, string> | null } = {
 			path,
 			content,
 			encoding,
 			expected_etag: expectedEtag ?? null,
+			force_ids: forceIds ?? null,
 		};
 
 		const url = index

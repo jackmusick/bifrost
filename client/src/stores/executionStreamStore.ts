@@ -26,6 +26,7 @@ export interface ExecutionStreamState {
 	expectedSequence: number; // Next expected sequence (starts at 1)
 	isComplete: boolean;
 	isConnected: boolean;
+	hasReceivedUpdate: boolean; // True once we've received any status update
 	variables?: Record<string, unknown>;
 	error?: string;
 	// Queue visibility fields
@@ -93,6 +94,7 @@ export const useExecutionStreamStore = create<ExecutionStreamStore>((set) => ({
 						expectedSequence: 1,
 						isComplete: false,
 						isConnected: false,
+						hasReceivedUpdate: false,
 					},
 				},
 			};
@@ -200,6 +202,7 @@ export const useExecutionStreamStore = create<ExecutionStreamStore>((set) => ({
 					[executionId]: {
 						...stream,
 						status,
+						hasReceivedUpdate: true, // Mark that we've received at least one update
 						// Update queue fields if provided, clear if not Pending
 						queuePosition: clearQueueFields
 							? undefined

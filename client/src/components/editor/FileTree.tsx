@@ -15,10 +15,14 @@ import { useFileTree, type FileTreeNode } from "@/hooks/useFileTree";
 import { useEditorStore } from "@/stores/editorStore";
 import { fileService, type FileMetadata } from "@/services/fileService";
 import { useUploadProgress } from "@/stores/uploadStore";
+import type { components } from "@/lib/v1";
+
+type WorkflowIdConflict = components["schemas"]["WorkflowIdConflict"];
 import { cn } from "@/lib/utils";
 import { isExcludedPath } from "@/lib/file-filter";
 import { Button } from "@/components/ui/button";
 import { toast } from "sonner";
+import { WorkflowIdConflictDialog } from "./WorkflowIdConflictDialog";
 
 /**
  * Interface for a file with its relative path from the drop target
@@ -184,6 +188,18 @@ export function FileTree() {
 		onCancel: () => void;
 		onReplaceAll: () => void;
 	} | null>(null); // Upload conflict dialog state
+
+	// Workflow ID conflict state for uploads
+	const [uploadWorkflowConflicts, setUploadWorkflowConflicts] = useState<{
+		conflicts: WorkflowIdConflict[];
+		files: Array<{
+			filePath: string;
+			content: string;
+			encoding: "utf-8" | "base64";
+			conflictIds: Record<string, string>;
+		}>;
+	} | null>(null);
+
 	const inputRef = useRef<HTMLInputElement>(null);
 	const renameInputRef = useRef<HTMLInputElement>(null);
 
@@ -659,8 +675,11 @@ export function FileTree() {
 				// Check for existing files that would be overwritten
 				try {
 					// Get all existing files recursively from the target path
-					const existingFiles =
-						await fileService.listFiles(targetPath);
+					// Use recursive=true to find files in all subdirectories
+					const existingFiles = await fileService.listFiles(
+						targetPath,
+						true,
+					);
 					const existingPaths = new Set(
 						existingFiles
 							.filter((f) => f.type === "file")
@@ -708,6 +727,14 @@ export function FileTree() {
 				startUpload(filesToUpload.length);
 				const uploadedFiles: FileMetadata[] = [];
 
+				// Collect workflow ID conflicts from all files
+				const allConflicts: Array<{
+					conflicts: WorkflowIdConflict[];
+					filePath: string;
+					content: string;
+					encoding: "utf-8" | "base64";
+				}> = [];
+
 				for (let i = 0; i < filesToUpload.length; i++) {
 					// Check for cancellation before each file
 					if (!shouldContinueUpload()) {
@@ -751,11 +778,27 @@ export function FileTree() {
 						}
 
 						// Upload file (backend creates parent directories automatically)
+						// Pass index=true to trigger workflow indexing during upload
 						const response = await fileService.writeFile(
 							filePath,
 							content,
 							encoding,
+							undefined, // no etag for new uploads
+							true, // index=true to inject workflow IDs and index
 						);
+
+						// Check for workflow ID conflicts
+						if (
+							response.workflow_id_conflicts &&
+							response.workflow_id_conflicts.length > 0
+						) {
+							allConflicts.push({
+								conflicts: response.workflow_id_conflicts,
+								filePath,
+								content,
+								encoding,
+							});
+						}
 
 						// Convert response to FileMetadata for optimistic update
 						const metadata = responseToMetadata(
@@ -779,6 +822,33 @@ export function FileTree() {
 				}
 
 				finishUpload();
+
+				// Handle collected workflow ID conflicts
+				if (allConflicts.length > 0) {
+					// Flatten all conflicts for the dialog
+					const flatConflicts = allConflicts.flatMap((c) => c.conflicts);
+
+					// Build file list with their conflict IDs for batch resolution
+					const filesWithConflicts = allConflicts.map((c) => ({
+						filePath: c.filePath,
+						content: c.content,
+						encoding: c.encoding,
+						conflictIds: c.conflicts.reduce(
+							(acc, conflict) => {
+								acc[conflict.function_name] = conflict.existing_id;
+								return acc;
+							},
+							{} as Record<string, string>,
+						),
+					}));
+
+					// Show the workflow ID conflict dialog
+					setUploadWorkflowConflicts({
+						conflicts: flatConflicts,
+						files: filesWithConflicts,
+					});
+				}
+
 				return;
 			}
 
@@ -1080,6 +1150,44 @@ export function FileTree() {
 					</AlertDialogFooter>
 				</AlertDialogContent>
 			</AlertDialog>
+
+			{/* Workflow ID Conflict Dialog for Uploads */}
+			<WorkflowIdConflictDialog
+				conflicts={uploadWorkflowConflicts?.conflicts ?? []}
+				open={uploadWorkflowConflicts !== null}
+				onUseExisting={async () => {
+					if (!uploadWorkflowConflicts) return;
+
+					// Re-save each file with the existing IDs
+					try {
+						for (const file of uploadWorkflowConflicts.files) {
+							await fileService.writeFile(
+								file.filePath,
+								file.content,
+								file.encoding,
+								undefined,
+								true, // index=true
+								file.conflictIds, // force_ids
+							);
+						}
+						toast.success("Existing workflow IDs preserved");
+					} catch (error) {
+						console.error("Failed to apply existing IDs:", error);
+						toast.error("Failed to preserve workflow IDs");
+					}
+
+					setUploadWorkflowConflicts(null);
+				}}
+				onGenerateNew={() => {
+					// Files already have new IDs generated, just close dialog
+					toast.info("New workflow IDs were generated");
+					setUploadWorkflowConflicts(null);
+				}}
+				onCancel={() => {
+					// User cancelled - files already have new IDs
+					setUploadWorkflowConflicts(null);
+				}}
+			/>
 		</div>
 	);
 }

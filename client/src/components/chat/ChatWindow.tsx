@@ -100,13 +100,19 @@ function StreamingMessageDisplay({
 function MessageWithToolCards({
 	message,
 	toolResultMessages,
+	conversationId,
 	onToolCallClick,
 }: {
 	message: MessagePublic;
 	/** Map of tool_call_id -> tool result message (for getting execution_id) */
 	toolResultMessages: Map<string, MessagePublic>;
+	/** Conversation ID for retrieving saved tool execution state */
+	conversationId: string;
 	onToolCallClick?: (toolCall: ToolCall) => void;
 }) {
+	// Get saved tool executions for this conversation
+	const getToolExecution = useChatStore((state) => state.getToolExecution);
+
 	// Check if this message has tool calls
 	const hasToolCalls = message.tool_calls && message.tool_calls.length > 0;
 	if (!hasToolCalls) {
@@ -120,9 +126,11 @@ function MessageWithToolCards({
 			{/* Tool Execution Cards - rendered above the text content */}
 			<div className="px-4 space-y-2">
 				{message.tool_calls!.map((tc) => {
+					// Get the tool result message for this tool call
+					const resultMsg = toolResultMessages.get(tc.id);
+
 					// Get execution_id from the tool result message
 					// Cast needed until types are regenerated after migration
-					const resultMsg = toolResultMessages.get(tc.id);
 					const executionId =
 						(
 							resultMsg as
@@ -130,11 +138,19 @@ function MessageWithToolCards({
 								| undefined
 						)?.execution_id ?? undefined;
 
+					// Get saved tool execution state (persisted after streaming completes)
+					const savedExecution = getToolExecution(
+						conversationId,
+						tc.id,
+					);
+
 					return (
 						<ToolExecutionCard
 							key={tc.id}
 							executionId={executionId}
 							toolCall={tc}
+							execution={savedExecution}
+							hasResultMessage={!!resultMsg}
 						/>
 					);
 				})}
@@ -430,6 +446,7 @@ export function ChatWindow({
 								key={item.data.id}
 								message={item.data}
 								toolResultMessages={toolResultMessages}
+								conversationId={conversationId}
 								onToolCallClick={onToolCallClick}
 							/>
 						) : (

@@ -24,6 +24,9 @@ export function useAutoSave() {
 	const setConflictState = useEditorStore((state) => state.setConflictState);
 	const setIndexing = useEditorStore((state) => state.setIndexing);
 	const updateTabContent = useEditorStore((state) => state.updateTabContent);
+	const setPendingWorkflowConflict = useEditorStore(
+		(state) => state.setPendingWorkflowConflict,
+	);
 
 	// Compute active tab values from subscribed state
 	const activeTab =
@@ -118,6 +121,25 @@ export function useAutoSave() {
 							currentTab.etag,
 							true, // index=true: inject IDs
 						);
+
+						// Check for workflow ID conflicts
+						if (
+							indexResponse.workflow_id_conflicts &&
+							indexResponse.workflow_id_conflicts.length > 0
+						) {
+							// Show conflict dialog - user must decide
+							setIndexing(false);
+							setPendingWorkflowConflict({
+								conflicts: indexResponse.workflow_id_conflicts,
+								filePath: openFile.path,
+								content: currentTab.content,
+								encoding: currentTab.encoding || "utf-8",
+								etag: currentTab.etag,
+								tabIndex: activeTabIndex,
+							});
+							indexingRef.current = false;
+							return;
+						}
 
 						// Update editor with indexed content
 						if (
@@ -239,6 +261,24 @@ export function useAutoSave() {
 						currentTab.etag,
 						true, // index=true: inject IDs
 					);
+
+					// Check for workflow ID conflicts
+					if (
+						indexResponse.workflow_id_conflicts &&
+						indexResponse.workflow_id_conflicts.length > 0
+					) {
+						// Show conflict dialog - user must decide
+						setIndexing(false);
+						setPendingWorkflowConflict({
+							conflicts: indexResponse.workflow_id_conflicts,
+							filePath: openFile.path,
+							content: currentTab.content,
+							encoding: currentTab.encoding || "utf-8",
+							etag: currentTab.etag,
+							tabIndex: activeTabIndex,
+						});
+						return;
+					}
 
 					// Update editor with indexed content
 					if (

@@ -28,6 +28,7 @@ from src.models import (
     FileType,
     SearchRequest,
     SearchResponse,
+    WorkflowIdConflict,
 )
 from src.services.editor.search import search_files
 from src.services.file_backend import FileBackend, LocalBackend, S3Backend, get_backend
@@ -248,6 +249,7 @@ async def list_files_editor(
     ctx: Context,
     user: CurrentSuperuser,
     path: str = Query(..., description="Directory path relative to workspace root"),
+    recursive: bool = Query(default=False, description="If true, return all files recursively"),
     db: AsyncSession = Depends(get_db),
 ) -> list[FileMetadata]:
     """
@@ -257,7 +259,7 @@ async def list_files_editor(
     """
     try:
         storage = FileStorageService(db)
-        workspace_files = await storage.list_files(path)
+        workspace_files = await storage.list_files(path, recursive=recursive)
 
         files = []
         for wf in workspace_files:
@@ -371,7 +373,9 @@ async def put_file_content_editor(
 
         # Write file
         updated_by = user.email if user else "system"
-        write_result = await storage.write_file(request.path, content, updated_by, index=index)
+        write_result = await storage.write_file(
+            request.path, content, updated_by, index=index, force_ids=request.force_ids
+        )
 
         etag = hashlib.md5(write_result.final_content).hexdigest()
 
@@ -384,6 +388,17 @@ async def put_file_content_editor(
             response_encoding = request.encoding
             response_size = len(content)
 
+        # Convert conflicts to response model
+        conflicts = []
+        if write_result.workflow_id_conflicts:
+            for c in write_result.workflow_id_conflicts:
+                conflicts.append(WorkflowIdConflict(
+                    name=c.name,
+                    function_name=c.function_name,
+                    existing_id=c.existing_id,
+                    file_path=c.file_path,
+                ))
+
         return FileContentResponse(
             path=request.path,
             content=response_content,
@@ -393,6 +408,7 @@ async def put_file_content_editor(
             modified=write_result.file_record.updated_at.isoformat(),
             content_modified=write_result.content_modified,
             needs_indexing=write_result.needs_indexing,
+            workflow_id_conflicts=conflicts,
         )
 
     except HTTPException:

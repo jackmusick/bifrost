@@ -120,6 +120,8 @@ interface ToolExecutionCardProps {
 	isStreaming?: boolean;
 	/** Legacy: Full execution state (deprecated, use executionId instead) */
 	execution?: ToolExecutionState;
+	/** Whether a tool result message exists (indicates completion for non-execution tools) */
+	hasResultMessage?: boolean;
 	className?: string;
 }
 
@@ -170,6 +172,7 @@ export function ToolExecutionCard({
 	streamingState,
 	isStreaming = false,
 	execution,
+	hasResultMessage = false,
 	className,
 }: ToolExecutionCardProps) {
 	// Auto-expand results when execution completes
@@ -186,13 +189,17 @@ export function ToolExecutionCard({
 		isStreaming, // Disable polling during streaming
 	);
 
-	// Determine status: streaming state > API data > legacy execution > pending
+	// Determine status: streaming state > API data > legacy execution > has result > pending
 	const status: ToolExecutionStatus =
 		isStreaming && streamingState
 			? streamingState.status
 			: apiExecution
 				? mapExecutionStatus(apiExecution.status)
-				: (execution?.status ?? "pending");
+				: execution?.status
+					? execution.status
+					: hasResultMessage
+						? "success"
+						: "pending";
 
 	// Determine completion status (needed for log fetching)
 	const isComplete =

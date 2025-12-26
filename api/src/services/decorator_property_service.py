@@ -279,6 +279,101 @@ class DecoratorPropertyTransformer(cst.CSTTransformer):
         return result
 
 
+class SpecificIdTransformer(cst.CSTTransformer):
+    """
+    LibCST transformer that injects specific IDs into decorators.
+
+    Unlike DecoratorPropertyTransformer which generates new UUIDs,
+    this transformer injects pre-specified IDs for specific functions.
+    Used when user wants to reuse existing workflow IDs.
+    """
+
+    SUPPORTED_DECORATORS = {"workflow", "data_provider", "tool"}
+
+    def __init__(self, function_ids: dict[str, str]):
+        """
+        Args:
+            function_ids: Map of function_name -> ID to inject
+        """
+        super().__init__()
+        self.function_ids = function_ids
+        self.changes_made: list[str] = []
+        self._current_function: str | None = None
+
+    def visit_FunctionDef(self, node: cst.FunctionDef) -> bool:
+        self._current_function = node.name.value
+        return True
+
+    def leave_FunctionDef(
+        self, original_node: cst.FunctionDef, updated_node: cst.FunctionDef
+    ) -> cst.FunctionDef:
+        self._current_function = None
+        return updated_node
+
+    def leave_Decorator(
+        self, original_node: cst.Decorator, updated_node: cst.Decorator
+    ) -> cst.Decorator:
+        # Skip if this function doesn't have a specific ID to inject
+        if self._current_function not in self.function_ids:
+            return updated_node
+
+        decorator = updated_node.decorator
+        decorator_name = self._get_decorator_name(decorator)
+
+        if decorator_name not in self.SUPPORTED_DECORATORS:
+            return updated_node
+
+        target_id = self.function_ids[self._current_function]
+
+        # Handle @workflow (no parentheses)
+        if isinstance(decorator, cst.Name):
+            new_decorator = cst.Call(
+                func=cst.Name(decorator_name),
+                args=[
+                    cst.Arg(
+                        keyword=cst.Name("id"),
+                        value=cst.SimpleString(f'"{target_id}"'),
+                    )
+                ],
+            )
+            self.changes_made.append(
+                f"Injected id='{target_id}' into @{decorator_name} on {self._current_function}"
+            )
+            return updated_node.with_changes(decorator=new_decorator)
+
+        # Handle @workflow(...) - add id if not present
+        elif isinstance(decorator, cst.Call):
+            existing_kwargs = {}
+            for arg in decorator.args:
+                if arg.keyword:
+                    existing_kwargs[arg.keyword.value] = arg
+
+            if "id" not in existing_kwargs:
+                # Insert id as first argument
+                new_args = list(decorator.args)
+                id_arg = cst.Arg(
+                    keyword=cst.Name("id"),
+                    value=cst.SimpleString(f'"{target_id}"'),
+                    comma=cst.Comma(whitespace_after=cst.SimpleWhitespace(" "))
+                    if new_args
+                    else cst.MaybeSentinel.DEFAULT,
+                )
+                new_args.insert(0, id_arg)
+                new_call = decorator.with_changes(args=new_args)
+                self.changes_made.append(
+                    f"Injected id='{target_id}' into @{decorator_name} on {self._current_function}"
+                )
+                return updated_node.with_changes(decorator=new_call)
+
+        return updated_node
+
+    def _get_decorator_name(self, decorator: cst.BaseExpression) -> str | None:
+        name = get_full_name_for_node(decorator)
+        if name:
+            return name.split(".")[-1]
+        return None
+
+
 class DecoratorPropertyReader(cst.CSTVisitor):
     """
     LibCST visitor that reads decorator properties without modification.
@@ -484,6 +579,41 @@ class DecoratorPropertyService:
             transformer = DecoratorPropertyTransformer(
                 inject_id_if_missing=True,
             )
+            new_module = module.visit(transformer)
+
+            return PropertyWriteResult(
+                modified=bool(transformer.changes_made),
+                new_content=new_module.code,
+                changes=transformer.changes_made,
+            )
+        except cst.ParserSyntaxError as e:
+            logger.error(f"Failed to parse Python source: {e}")
+            return PropertyWriteResult(
+                modified=False,
+                new_content=content,
+                changes=[f"Parse error: {e}"],
+            )
+
+    def inject_specific_ids(
+        self, content: str, function_ids: dict[str, str]
+    ) -> PropertyWriteResult:
+        """
+        Inject specific IDs into decorators for specified functions.
+
+        This is used when the user chooses to reuse existing workflow IDs
+        instead of generating new ones.
+
+        Args:
+            content: Python source code
+            function_ids: Map of function_name -> ID to inject
+
+        Returns:
+            PropertyWriteResult with modified content
+        """
+        try:
+            module = cst.parse_module(content)
+            # Use transformer to inject specific IDs
+            transformer = SpecificIdTransformer(function_ids)
             new_module = module.visit(transformer)
 
             return PropertyWriteResult(

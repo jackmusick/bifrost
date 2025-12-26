@@ -44,6 +44,23 @@ class FileContentRequest(BaseModel):
     content: str = Field(..., description="File content (plain text or base64 encoded)")
     encoding: str = Field(default="utf-8", description="Content encoding (utf-8 or base64)")
     expected_etag: str | None = Field(default=None, description="Expected ETag for conflict detection (optional)")
+    force_ids: dict[str, str] | None = Field(
+        default=None,
+        description="Map of function_name -> ID to inject. Used when user chooses 'Use Existing IDs' for workflow ID conflicts."
+    )
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+class WorkflowIdConflict(BaseModel):
+    """
+    Conflict detected when a workflow file is being overwritten and
+    the new file lacks an ID that the database already has.
+    """
+    name: str = Field(..., description="Workflow display name from decorator")
+    function_name: str = Field(..., description="Python function name")
+    existing_id: str = Field(..., description="UUID from database that would be lost")
+    file_path: str = Field(..., description="Path of the file being saved")
 
     model_config = ConfigDict(from_attributes=True)
 
@@ -63,6 +80,10 @@ class FileContentResponse(BaseModel):
     needs_indexing: bool = Field(
         default=False,
         description="True if file has decorators that need ID injection. Client should trigger indexing."
+    )
+    workflow_id_conflicts: list[WorkflowIdConflict] = Field(
+        default_factory=list,
+        description="List of workflows that would lose their existing IDs. Client should prompt user."
     )
 
     model_config = ConfigDict(from_attributes=True)

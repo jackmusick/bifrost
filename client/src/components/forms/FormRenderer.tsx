@@ -480,7 +480,14 @@ function FormRendererInner({ form }: FormRendererProps) {
 				params: { path: { form_id: form.id } },
 				body: data,
 			});
-			navigate(`/history/${result.execution_id}`);
+			// Navigate with context so execution details can display immediately
+			navigate(`/history/${result.execution_id}`, {
+				state: {
+					workflow_name: form.name,
+					form_id: form.id,
+					input_data: data,
+				},
+			});
 			// Don't reset isNavigating - component will unmount on navigation
 		} catch {
 			setIsNavigating(false); // Only re-enable button on error

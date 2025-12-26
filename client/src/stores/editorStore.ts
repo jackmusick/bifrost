@@ -1,7 +1,10 @@
 import { create } from "zustand";
 import { persist } from "zustand/middleware";
-import type { FileMetadata } from "@/services/fileService";
+import type { FileMetadata, FileContentResponse } from "@/services/fileService";
 import { fileService } from "@/services/fileService";
+import type { components } from "@/lib/v1";
+
+type WorkflowIdConflict = components["schemas"]["WorkflowIdConflict"];
 
 /**
  * Editor state store using Zustand with persistence
@@ -90,6 +93,16 @@ interface EditorState {
 	// Currently streaming execution ID (for terminal display)
 	currentStreamingExecutionId: string | null;
 
+	// Workflow ID conflict resolution state
+	pendingWorkflowConflict: {
+		conflicts: WorkflowIdConflict[];
+		filePath: string;
+		content: string;
+		encoding: "utf-8" | "base64";
+		etag?: string;
+		tabIndex: number;
+	} | null;
+
 	// Computed properties helpers
 	get activeTab(): EditorTab | null;
 	get openFile(): FileMetadata | null;
@@ -153,6 +166,21 @@ interface EditorState {
 
 	// Update tab content from server (for ID injection)
 	updateTabContent: (tabIndex: number, content: string, etag: string) => void;
+
+	// Workflow ID conflict resolution
+	setPendingWorkflowConflict: (
+		conflict: {
+			conflicts: WorkflowIdConflict[];
+			filePath: string;
+			content: string;
+			encoding: "utf-8" | "base64";
+			etag?: string;
+			tabIndex: number;
+		} | null,
+	) => void;
+	resolveWorkflowIdConflict: (
+		action: "use_existing" | "generate_new" | "cancel",
+	) => Promise<FileContentResponse | null>;
 }
 
 export const useEditorStore = create<EditorState>()(
@@ -175,6 +203,9 @@ export const useEditorStore = create<EditorState>()(
 
 			terminalOutput: null,
 			currentStreamingExecutionId: null,
+
+			// Workflow ID conflict resolution state
+			pendingWorkflowConflict: null,
 
 			// Computed properties
 			get activeTab(): EditorTab | null {
@@ -677,6 +708,59 @@ export const useEditorStore = create<EditorState>()(
 
 				set({ tabs: newTabs, activeTabIndex: newActiveIndex });
 				return closedCount;
+			},
+
+			// Workflow ID conflict resolution
+			setPendingWorkflowConflict: (conflict) =>
+				set({ pendingWorkflowConflict: conflict }),
+
+			resolveWorkflowIdConflict: async (action) => {
+				const state = get();
+				const conflict = state.pendingWorkflowConflict;
+				if (!conflict) return null;
+
+				// Clear the pending conflict first
+				set({ pendingWorkflowConflict: null });
+
+				if (action === "cancel") {
+					return null;
+				}
+
+				try {
+					if (action === "use_existing") {
+						// Build the force_ids map from conflicts
+						const forceIds: Record<string, string> = {};
+						for (const c of conflict.conflicts) {
+							forceIds[c.function_name] = c.existing_id;
+						}
+
+						// Re-save with force_ids to inject existing IDs
+						const response = await fileService.writeFile(
+							conflict.filePath,
+							conflict.content,
+							conflict.encoding,
+							conflict.etag,
+							true, // index=true to inject IDs
+							forceIds,
+						);
+
+						return response;
+					} else {
+						// generate_new: Just save normally, IDs will be auto-generated
+						const response = await fileService.writeFile(
+							conflict.filePath,
+							conflict.content,
+							conflict.encoding,
+							conflict.etag,
+							true, // index=true to inject new IDs
+						);
+
+						return response;
+					}
+				} catch (error) {
+					console.error("Failed to resolve workflow ID conflict:", error);
+					return null;
+				}
 			},
 		}),
 		{

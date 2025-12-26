@@ -13,6 +13,7 @@ import type * as Monaco from "monaco-editor";
 import { initializeMonaco } from "@/lib/monaco-setup";
 import { ConflictDiffView } from "./ConflictDiffView";
 import { IndexingOverlay } from "./IndexingOverlay";
+import { WorkflowIdConflictDialog } from "./WorkflowIdConflictDialog";
 
 /**
  * Monaco editor component wrapper
@@ -42,6 +43,15 @@ export function CodeEditor() {
 
 	// Indexing state for blocking overlay during ID injection
 	const isIndexing = useEditorStore((state) => state.isIndexing);
+
+	// Workflow ID conflict state
+	const pendingWorkflowConflict = useEditorStore(
+		(state) => state.pendingWorkflowConflict,
+	);
+	const resolveWorkflowIdConflict = useEditorStore(
+		(state) => state.resolveWorkflowIdConflict,
+	);
+	const updateTabContent = useEditorStore((state) => state.updateTabContent);
 
 	// Check for conflicts by comparing etags
 	const checkForConflict = useCallback(async () => {
@@ -446,6 +456,43 @@ export function CodeEditor() {
 				/>
 				{/* Indexing overlay blocks editor during ID injection */}
 				<IndexingOverlay />
+
+				{/* Workflow ID conflict dialog */}
+				<WorkflowIdConflictDialog
+					conflicts={pendingWorkflowConflict?.conflicts ?? []}
+					open={pendingWorkflowConflict !== null}
+					onUseExisting={async () => {
+						const response = await resolveWorkflowIdConflict("use_existing");
+						if (response && pendingWorkflowConflict) {
+							// Update tab with the new content (IDs injected)
+							if (response.content_modified && response.content) {
+								updateTabContent(
+									pendingWorkflowConflict.tabIndex,
+									response.content,
+									response.etag,
+								);
+							}
+							toast.success("Existing workflow IDs preserved");
+						}
+					}}
+					onGenerateNew={async () => {
+						const response = await resolveWorkflowIdConflict("generate_new");
+						if (response && pendingWorkflowConflict) {
+							// Update tab with the new content (new IDs generated)
+							if (response.content_modified && response.content) {
+								updateTabContent(
+									pendingWorkflowConflict.tabIndex,
+									response.content,
+									response.etag,
+								);
+							}
+							toast.info("New workflow IDs generated");
+						}
+					}}
+					onCancel={() => {
+						resolveWorkflowIdConflict("cancel");
+					}}
+				/>
 			</div>
 		</div>
 	);

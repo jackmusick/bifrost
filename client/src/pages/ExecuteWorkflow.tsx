@@ -44,8 +44,15 @@ export function ExecuteWorkflow() {
 				},
 			});
 
-			// Redirect directly to execution details page
-			navigate(`/history/${result.execution_id}`);
+			// Redirect directly to execution details page with context
+			// Pass workflow info so the page can display immediately without waiting for DB
+			navigate(`/history/${result.execution_id}`, {
+				state: {
+					workflow_name: workflow.name,
+					workflow_id: workflow.id,
+					input_data: parameters,
+				},
+			});
 			// Don't reset isNavigating - component will unmount on navigation
 		} catch (error) {
 			setIsNavigating(false); // Only re-enable button on error

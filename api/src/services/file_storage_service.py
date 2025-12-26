@@ -34,6 +34,16 @@ logger = logging.getLogger(__name__)
 
 
 @dataclass
+class WorkflowIdConflictInfo:
+    """Info about a workflow that would lose its ID on overwrite."""
+
+    name: str  # Workflow display name from decorator
+    function_name: str  # Python function name
+    existing_id: str  # UUID from database
+    file_path: str
+
+
+@dataclass
 class WriteResult:
     """Result of a file write operation."""
 
@@ -41,6 +51,7 @@ class WriteResult:
     final_content: bytes
     content_modified: bool  # True if server modified content (e.g., injected IDs)
     needs_indexing: bool = False  # True if file has decorators that need ID injection
+    workflow_id_conflicts: list[WorkflowIdConflictInfo] | None = None  # Workflows that would lose IDs
 
 
 class FileStorageService:
@@ -178,6 +189,7 @@ class FileStorageService:
         content: bytes,
         updated_by: str = "system",
         index: bool = True,
+        force_ids: dict[str, str] | None = None,
     ) -> WriteResult:
         """
         Write file content to storage and update index.
@@ -190,6 +202,8 @@ class FileStorageService:
             updated_by: User who made the change
             index: If True (default), inject IDs into decorators when needed.
                    If False, detect if IDs needed and return needs_indexing=True.
+            force_ids: Map of function_name -> ID to inject (for reusing existing IDs
+                       when user chooses "Use Existing IDs" for workflow conflicts)
 
         Returns:
             WriteResult containing file record, final content, modification flag,
@@ -249,8 +263,13 @@ class FileStorageService:
 
         # Extract metadata for workflows/forms (may inject IDs and modify content)
         # When index=False, skip ID injection and just detect if indexing is needed
-        final_content, content_modified, needs_indexing = await self._extract_metadata(
-            path, content, skip_id_injection=not index
+        (
+            final_content,
+            content_modified,
+            needs_indexing,
+            workflow_id_conflicts,
+        ) = await self._extract_metadata(
+            path, content, skip_id_injection=not index, force_ids=force_ids
         )
 
         # Publish to Redis pub/sub so other containers sync
@@ -270,6 +289,7 @@ class FileStorageService:
             final_content=final_content,
             content_modified=content_modified,
             needs_indexing=needs_indexing,
+            workflow_id_conflicts=workflow_id_conflicts,
         )
 
     async def _write_file_for_id_injection(
@@ -533,9 +553,10 @@ class FileStorageService:
         self,
         directory: str = "",
         include_deleted: bool = False,
+        recursive: bool = False,
     ) -> list[WorkspaceFile]:
         """
-        List files and folders in a directory (direct children only).
+        List files and folders in a directory.
 
         Works like S3 - synthesizes folders from file path prefixes.
         Returns both:
@@ -545,6 +566,7 @@ class FileStorageService:
         Args:
             directory: Directory path (empty for root)
             include_deleted: Whether to include soft-deleted files
+            recursive: If True, return all files under directory (not just direct children)
 
         Returns:
             List of WorkspaceFile records (files and folders)
@@ -568,6 +590,13 @@ class FileStorageService:
 
         result = await self.db.execute(stmt)
         all_files = list(result.scalars().all())
+
+        # If recursive mode, return all files under this prefix (excluding folders)
+        if recursive:
+            return [
+                f for f in all_files
+                if not is_excluded_path(f.path) and not f.path.endswith("/")
+            ]
 
         # Synthesize direct children (like S3 ListObjectsV2 with delimiter)
         direct_children: dict[str, WorkspaceFile] = {}
@@ -974,8 +1003,12 @@ class FileStorageService:
         return files_needing_ids
 
     async def _extract_metadata(
-        self, path: str, content: bytes, skip_id_injection: bool = False
-    ) -> tuple[bytes, bool, bool]:
+        self,
+        path: str,
+        content: bytes,
+        skip_id_injection: bool = False,
+        force_ids: dict[str, str] | None = None,
+    ) -> tuple[bytes, bool, bool, list[WorkflowIdConflictInfo] | None]:
         """
         Extract workflow/form/agent metadata from file content.
 
@@ -985,16 +1018,20 @@ class FileStorageService:
             path: Relative file path
             content: File content bytes
             skip_id_injection: If True, don't inject IDs into decorators (detect only)
+            force_ids: Map of function_name -> ID to inject (for reusing existing IDs)
 
         Returns:
-            Tuple of (final_content, content_modified, needs_indexing) where:
+            Tuple of (final_content, content_modified, needs_indexing, conflicts) where:
             - final_content: The content after any modifications (e.g., ID injection)
             - content_modified: True if the content was modified by the server
             - needs_indexing: True if IDs are needed but skip_id_injection was True
+            - conflicts: List of workflows that would lose their IDs (if any)
         """
         try:
             if path.endswith(".py"):
-                return await self._index_python_file(path, content, skip_id_injection)
+                return await self._index_python_file(
+                    path, content, skip_id_injection, force_ids
+                )
             elif path.endswith(".form.json"):
                 await self._index_form(path, content)
             elif path.endswith(".agent.json"):
@@ -1003,11 +1040,15 @@ class FileStorageService:
             # Log but don't fail the write
             logger.warning(f"Failed to extract metadata from {path}: {e}")
 
-        return content, False, False
+        return content, False, False, None
 
     async def _index_python_file(
-        self, path: str, content: bytes, skip_id_injection: bool = False
-    ) -> tuple[bytes, bool, bool]:
+        self,
+        path: str,
+        content: bytes,
+        skip_id_injection: bool = False,
+        force_ids: dict[str, str] | None = None,
+    ) -> tuple[bytes, bool, bool, list[WorkflowIdConflictInfo] | None]:
         """
         Extract and index workflows/providers from Python file.
 
@@ -1018,11 +1059,18 @@ class FileStorageService:
         Automatically injects stable UUIDs into decorators that don't have them
         (unless skip_id_injection is True, in which case it just detects).
 
+        Args:
+            path: File path
+            content: File content
+            skip_id_injection: If True, don't inject IDs, just detect
+            force_ids: Map of function_name -> ID to inject (for reusing existing IDs)
+
         Returns:
-            Tuple of (final_content, content_modified, needs_indexing) where:
+            Tuple of (final_content, content_modified, needs_indexing, conflicts) where:
             - final_content: The content after any modifications (e.g., ID injection)
             - content_modified: True if IDs were injected into decorators
             - needs_indexing: True if IDs are needed but skip_id_injection was True
+            - conflicts: List of workflows that would lose their IDs (if any)
         """
         from src.models import Workflow, DataProvider
 
@@ -1030,31 +1078,82 @@ class FileStorageService:
         final_content = content
         content_modified = False
         needs_indexing = False
+        workflow_id_conflicts: list[WorkflowIdConflictInfo] | None = None
 
         # Check if decorators need IDs
         try:
             from src.services.decorator_property_service import DecoratorPropertyService
 
             decorator_service = DecoratorPropertyService()
-            inject_result = decorator_service.inject_ids_if_missing(content_str)
 
-            if inject_result.modified:
-                if skip_id_injection:
-                    # Just detect - don't actually inject
+            # First, read existing decorators to find ones without IDs
+            existing_decorators = decorator_service.read_decorators(content_str)
+            decorators_without_ids = [
+                d for d in existing_decorators
+                if d.decorator_type == "workflow" and "id" not in d.properties
+            ]
+
+            # Check if any of these would overwrite existing workflows in DB
+            if decorators_without_ids and not force_ids:
+                conflicts = []
+                for dec in decorators_without_ids:
+                    # Query DB for existing workflow at this location
+                    stmt = select(Workflow).where(
+                        Workflow.file_path == path,
+                        Workflow.function_name == dec.function_name
+                    )
+                    result = await self.db.execute(stmt)
+                    existing_workflow = result.scalar_one_or_none()
+
+                    if existing_workflow:
+                        # This workflow already has an ID in DB but new file doesn't have it
+                        conflicts.append(WorkflowIdConflictInfo(
+                            name=dec.properties.get("name", dec.function_name),
+                            function_name=dec.function_name,
+                            existing_id=str(existing_workflow.id),
+                            file_path=path,
+                        ))
+
+                if conflicts:
+                    # Return conflicts without injecting IDs
+                    # Let the client decide whether to use existing IDs
+                    workflow_id_conflicts = conflicts
+                    logger.info(
+                        f"File {path} has {len(conflicts)} workflows that would lose their IDs"
+                    )
+                    # Don't inject new IDs, just proceed with indexing without ID injection
                     needs_indexing = True
-                    logger.debug(f"File {path} needs indexing (decorators without IDs)")
-                else:
-                    # Write back the modified content with IDs injected
-                    logger.info(f"Injecting IDs into decorators in {path}: {inject_result.changes}")
+
+            # If force_ids provided, inject those specific IDs
+            if force_ids:
+                inject_result = decorator_service.inject_specific_ids(content_str, force_ids)
+                if inject_result.modified:
+                    logger.info(f"Injecting specific IDs into decorators in {path}: {inject_result.changes}")
                     modified_content = inject_result.new_content.encode("utf-8")
-
-                    # Use internal write to avoid infinite recursion
                     await self._write_file_for_id_injection(path, modified_content)
-
-                    # Continue indexing with the modified content
                     content_str = inject_result.new_content
                     final_content = modified_content
                     content_modified = True
+            # Otherwise, if no conflicts, inject new IDs as usual
+            elif not workflow_id_conflicts:
+                inject_result = decorator_service.inject_ids_if_missing(content_str)
+                if inject_result.modified:
+                    if skip_id_injection:
+                        # Just detect - don't actually inject
+                        needs_indexing = True
+                        logger.debug(f"File {path} needs indexing (decorators without IDs)")
+                    else:
+                        # Write back the modified content with IDs injected
+                        logger.info(f"Injecting IDs into decorators in {path}: {inject_result.changes}")
+                        modified_content = inject_result.new_content.encode("utf-8")
+
+                        # Use internal write to avoid infinite recursion
+                        await self._write_file_for_id_injection(path, modified_content)
+
+                        # Continue indexing with the modified content
+                        content_str = inject_result.new_content
+                        final_content = modified_content
+                        content_modified = True
         except Exception as e:
             # Log but don't fail indexing if ID injection/detection fails
             logger.warning(f"Failed to process IDs for {path}: {e}")
@@ -1063,7 +1162,7 @@ class FileStorageService:
             tree = ast.parse(content_str, filename=path)
         except SyntaxError as e:
             logger.warning(f"Syntax error parsing {path}: {e}")
-            return final_content, content_modified, needs_indexing
+            return final_content, content_modified, needs_indexing, workflow_id_conflicts
 
         now = datetime.utcnow()
 
@@ -1196,7 +1295,7 @@ class FileStorageService:
         )
         await self.db.execute(stmt)
 
-        return final_content, content_modified, needs_indexing
+        return final_content, content_modified, needs_indexing, workflow_id_conflicts
 
     def _parse_decorator(self, decorator: ast.AST) -> tuple[str, dict[str, Any]] | None:
         """
