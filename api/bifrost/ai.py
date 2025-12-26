@@ -249,6 +249,7 @@ class ai:
         max_tokens: int | None = None,
         temperature: float | None = None,
         org_id: str | None = None,
+        model: str | None = None,
     ) -> AIResponse | T:
         """
         Generate an AI completion.
@@ -265,6 +266,7 @@ class ai:
             max_tokens: Override default max tokens
             temperature: Override default temperature (0.0-2.0)
             org_id: Organization scope for knowledge search
+            model: Override default model (must be compatible with configured provider)
 
         Returns:
             AIResponse with content, or parsed Pydantic model if response_format provided
@@ -284,6 +286,12 @@ class ai:
             ...     response_format=Answer
             ... )
             >>> print(result.answer, result.confidence)
+
+            >>> # Use a different model
+            >>> response = await ai.complete(
+            ...     "Complex reasoning task...",
+            ...     model="gpt-4o"
+            ... )
         """
         if prompt is None and messages is None:
             raise ValueError("Either 'prompt' or 'messages' must be provided")
@@ -308,6 +316,7 @@ class ai:
                 "max_tokens": max_tokens,
                 "temperature": temperature,
                 "org_id": org_id,
+                "model": model,
             }
         )
         response.raise_for_status()
@@ -334,6 +343,7 @@ class ai:
         max_tokens: int | None = None,
         temperature: float | None = None,
         org_id: str | None = None,
+        model: str | None = None,
     ) -> AsyncGenerator[AIStreamChunk, None]:
         """
         Generate a streaming AI completion.
@@ -348,6 +358,7 @@ class ai:
             max_tokens: Override default max tokens
             temperature: Override default temperature (0.0-2.0)
             org_id: Organization scope for knowledge search
+            model: Override default model (must be compatible with configured provider)
 
         Yields:
             AIStreamChunk objects with content deltas
@@ -359,6 +370,10 @@ class ai:
             ...         print(chunk.content, end="", flush=True)
             ...     if chunk.done:
             ...         print(f"\\nTokens: {chunk.input_tokens}/{chunk.output_tokens}")
+
+            >>> # Use a different model
+            >>> async for chunk in ai.stream("Write a story...", model="gpt-4o"):
+            ...     print(chunk.content, end="")
         """
         if prompt is None and messages is None:
             raise ValueError("Either 'prompt' or 'messages' must be provided")
@@ -380,6 +395,7 @@ class ai:
                 "max_tokens": max_tokens,
                 "temperature": temperature,
                 "org_id": org_id,
+                "model": model,
             }
         ) as response:
             async for line in response.aiter_lines():

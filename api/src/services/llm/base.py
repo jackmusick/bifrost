@@ -115,6 +115,7 @@ class BaseLLMClient(ABC):
         *,
         max_tokens: int | None = None,
         temperature: float | None = None,
+        model: str | None = None,
     ) -> LLMResponse:
         """
         Non-streaming completion.
@@ -124,6 +125,7 @@ class BaseLLMClient(ABC):
             tools: Optional list of tools the model can call
             max_tokens: Override default max tokens
             temperature: Override default temperature
+            model: Override default model (must be compatible with configured provider)
 
         Returns:
             LLMResponse with content and/or tool calls
@@ -138,6 +140,7 @@ class BaseLLMClient(ABC):
         *,
         max_tokens: int | None = None,
         temperature: float | None = None,
+        model: str | None = None,
     ) -> AsyncGenerator[LLMStreamChunk, None]:
         """
         Streaming completion.
@@ -147,6 +150,7 @@ class BaseLLMClient(ABC):
             tools: Optional list of tools the model can call
             max_tokens: Override default max tokens
             temperature: Override default temperature
+            model: Override default model (must be compatible with configured provider)
 
         Yields:
             LLMStreamChunk objects as they arrive

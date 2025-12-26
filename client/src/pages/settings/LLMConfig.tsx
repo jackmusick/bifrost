@@ -5,7 +5,7 @@
  * Flow: Provider → Endpoint (if custom) → API Key → Test → Model (loaded dynamically)
  */
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import {
 	Card,
 	CardContent,
@@ -106,12 +106,34 @@ export function LLMConfig() {
 			if (config.endpoint) {
 				setEndpoint(config.endpoint);
 			}
-			// If config exists with api key, we can show models as "loaded"
-			if (config.api_key_set) {
-				setModelsLoaded(true);
-			}
 		}
 	}, [config]);
+
+	// Track if we've already fetched models for this config
+	const modelsFetchedRef = useRef(false);
+
+	// Fetch available models when config has an API key set
+	useEffect(() => {
+		if (!config?.api_key_set || modelsFetchedRef.current) {
+			return;
+		}
+
+		const fetchModels = async () => {
+			modelsFetchedRef.current = true;
+			try {
+				const result = await testSavedMutation.mutateAsync({});
+				if (result.success && result.models && result.models.length > 0) {
+					setAvailableModels(result.models);
+				}
+				setModelsLoaded(true);
+			} catch {
+				// Silently fail - user can still manually test
+				setModelsLoaded(true);
+			}
+		};
+
+		fetchModels();
+	}, [config?.api_key_set, testSavedMutation]);
 
 	// Handle provider change
 	const handleProviderChange = (newProvider: Provider) => {

@@ -50,6 +50,7 @@ class AnthropicClient(BaseLLMClient):
         *,
         max_tokens: int | None = None,
         temperature: float | None = None,
+        model: str | None = None,
     ) -> LLMResponse:
         """Non-streaming completion via Anthropic API."""
         # Extract system message and convert rest
@@ -57,7 +58,7 @@ class AnthropicClient(BaseLLMClient):
         anthropic_tools = self._convert_tools(tools) if tools else None
 
         kwargs: dict[str, Any] = {
-            "model": self.config.model,
+            "model": model or self.config.model,
             "messages": anthropic_messages,
             "max_tokens": max_tokens or self.config.max_tokens,
             "temperature": temperature if temperature is not None else self.config.temperature,
@@ -103,13 +104,14 @@ class AnthropicClient(BaseLLMClient):
         *,
         max_tokens: int | None = None,
         temperature: float | None = None,
+        model: str | None = None,
     ) -> AsyncGenerator[LLMStreamChunk, None]:
         """Streaming completion via Anthropic API."""
         system_prompt, anthropic_messages = self._convert_messages(messages)
         anthropic_tools = self._convert_tools(tools) if tools else None
 
         kwargs: dict[str, Any] = {
-            "model": self.config.model,
+            "model": model or self.config.model,
             "messages": anthropic_messages,
             "max_tokens": max_tokens or self.config.max_tokens,
             "temperature": temperature if temperature is not None else self.config.temperature,

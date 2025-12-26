@@ -43,13 +43,14 @@ class OpenAIClient(BaseLLMClient):
         *,
         max_tokens: int | None = None,
         temperature: float | None = None,
+        model: str | None = None,
     ) -> LLMResponse:
         """Non-streaming completion via OpenAI API."""
         openai_messages = self._convert_messages(messages)
         openai_tools = self._convert_tools(tools) if tools else None
 
         kwargs: dict[str, Any] = {
-            "model": self.config.model,
+            "model": model or self.config.model,
             "messages": openai_messages,
             "max_tokens": max_tokens or self.config.max_tokens,
             "temperature": temperature if temperature is not None else self.config.temperature,
@@ -92,13 +93,14 @@ class OpenAIClient(BaseLLMClient):
         *,
         max_tokens: int | None = None,
         temperature: float | None = None,
+        model: str | None = None,
     ) -> AsyncGenerator[LLMStreamChunk, None]:
         """Streaming completion via OpenAI API."""
         openai_messages = self._convert_messages(messages)
         openai_tools = self._convert_tools(tools) if tools else None
 
         kwargs: dict[str, Any] = {
-            "model": self.config.model,
+            "model": model or self.config.model,
             "messages": openai_messages,
             "max_tokens": max_tokens or self.config.max_tokens,
             "temperature": temperature if temperature is not None else self.config.temperature,

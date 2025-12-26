@@ -1285,6 +1285,7 @@ async def cli_ai_complete(
             messages=llm_messages,
             max_tokens=request.max_tokens,
             temperature=request.temperature,
+            model=request.model,
         )
 
         logger.info(f"CLI AI complete: model={response.model}, tokens={response.input_tokens}/{response.output_tokens}")
@@ -1334,6 +1335,7 @@ async def cli_ai_stream(
                 messages=llm_messages,
                 max_tokens=request.max_tokens,
                 temperature=request.temperature,
+                model=request.model,
             ):
                 if chunk.type == "delta":
                     yield f"data: {json.dumps({'content': chunk.content})}\n\n"

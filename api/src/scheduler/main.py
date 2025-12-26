@@ -36,7 +36,8 @@ logging.basicConfig(
 )
 
 # Suppress noisy third-party loggers
-logging.getLogger("apscheduler").setLevel(logging.INFO)
+logging.getLogger("apscheduler").setLevel(logging.WARNING)
+logging.getLogger("apscheduler.executors").setLevel(logging.WARNING)
 
 logger = logging.getLogger(__name__)
 
@@ -82,6 +83,12 @@ class Scheduler:
         """Start APScheduler with all scheduled jobs."""
         scheduler = AsyncIOScheduler()
 
+        # Common job options for misfire handling
+        misfire_options = {
+            "misfire_grace_time": 60 * 10,  # 10 minute grace period
+            "coalesce": True,  # Combine missed runs into one
+        }
+
         # Schedule processor - every 5 minutes
         scheduler.add_job(
             process_scheduled_workflows,
@@ -89,6 +96,7 @@ class Scheduler:
             id="schedule_processor",
             name="Process scheduled workflows",
             replace_existing=True,
+            **misfire_options,
         )
 
         # Execution cleanup - every 5 minutes (run immediately at startup)
@@ -99,6 +107,7 @@ class Scheduler:
             name="Cleanup stuck executions",
             replace_existing=True,
             next_run_time=datetime.now(),  # Run immediately at startup
+            **misfire_options,
         )
 
         # OAuth token refresh - every 15 minutes (run immediately at startup)
@@ -111,22 +120,25 @@ class Scheduler:
                 name="Refresh expiring OAuth tokens",
                 replace_existing=True,
                 next_run_time=datetime.now(),  # Run immediately at startup
+                **misfire_options,
             )
-            logger.info("OAuth token refresh job scheduled")
+            logger.info("OAuth token refresh job scheduled (every 15 min)")
         except ImportError:
             logger.warning("OAuth token refresh job not available")
 
-        # Metrics snapshot refresh - every 2 minutes
+        # Metrics snapshot refresh - every 60 minutes (run immediately at startup)
         try:
             from src.jobs.schedulers.metrics_refresh import refresh_metrics_snapshot
             scheduler.add_job(
                 refresh_metrics_snapshot,
-                IntervalTrigger(minutes=2),
+                IntervalTrigger(minutes=60),
                 id="metrics_refresh",
                 name="Refresh platform metrics snapshot",
                 replace_existing=True,
+                next_run_time=datetime.now(),  # Run immediately at startup
+                **misfire_options,
             )
-            logger.info("Metrics snapshot refresh job scheduled")
+            logger.info("Metrics snapshot refresh job scheduled (every 60 min)")
         except ImportError:
             logger.warning("Metrics snapshot refresh job not available")
 

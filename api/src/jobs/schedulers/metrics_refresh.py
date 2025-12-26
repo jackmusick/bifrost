@@ -2,7 +2,7 @@
 Metrics Refresh Scheduler
 
 Refreshes the platform_metrics_snapshot table with current metrics.
-Runs every 1-5 minutes to keep dashboard data fresh without expensive queries.
+Runs hourly to keep dashboard data fresh without expensive queries.
 """
 
 import logging
@@ -37,7 +37,8 @@ async def refresh_metrics_snapshot() -> dict[str, Any]:
     Returns:
         Summary of refreshed metrics
     """
-    logger.info("Starting metrics snapshot refresh")
+    logger.info("▶ Metrics snapshot refresh starting")
+    start_time = datetime.utcnow()
 
     now = datetime.utcnow()
     yesterday = now - timedelta(hours=24)
@@ -186,13 +187,14 @@ async def refresh_metrics_snapshot() -> dict[str, Any]:
                 "refreshed_at": now.isoformat(),
             }
 
+            duration_seconds = (datetime.utcnow() - start_time).total_seconds()
             logger.info(
-                "Metrics snapshot refreshed",
-                extra=result,
+                f"✓ Metrics snapshot refreshed: "
+                f"{total_all_time} total executions, {total_24h} in 24h ({duration_seconds:.1f}s)"
             )
 
             return result
 
     except Exception as e:
-        logger.error("Error refreshing metrics snapshot", extra={"error": str(e)}, exc_info=True)
+        logger.error(f"✗ Metrics snapshot refresh failed: {e}", exc_info=True)
         return {"error": str(e)}

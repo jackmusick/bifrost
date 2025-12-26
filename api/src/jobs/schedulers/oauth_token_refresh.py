@@ -2,7 +2,7 @@
 OAuth Token Refresh Scheduler
 
 Automatically refreshes OAuth tokens that are about to expire.
-Runs every 15 minutes to check for tokens expiring within 30 minutes.
+Runs every 15 minutes to check for tokens expiring before the next run.
 
 Ported from Azure Functions timer trigger: functions/timer/oauth_refresh_timer.py
 """
@@ -12,6 +12,7 @@ from datetime import datetime, timedelta, timezone
 from typing import Any
 
 from sqlalchemy import select
+from sqlalchemy.orm import selectinload
 
 from src.core.database import get_db_context
 from src.core.security import decrypt_secret, encrypt_secret
@@ -20,18 +21,23 @@ from src.services.oauth_provider import OAuthProviderClient
 
 logger = logging.getLogger(__name__)
 
+# Refresh interval and buffer - tokens expiring within (interval + buffer) will be refreshed
+OAUTH_REFRESH_INTERVAL_MINUTES = 15
+REFRESH_BUFFER_MINUTES = 5
+
 
 async def refresh_expiring_tokens() -> dict[str, Any]:
     """
     Refresh OAuth tokens that are about to expire.
 
-    Finds all tokens expiring within 30 minutes and attempts to refresh them
-    using their associated provider's configuration.
+    Finds all tokens expiring before the next scheduled run (plus buffer)
+    and attempts to refresh them using their associated provider's configuration.
 
     Returns:
         Summary of refresh results
     """
-    return await run_refresh_job(trigger_type="automatic", refresh_threshold_minutes=30)
+    threshold = OAUTH_REFRESH_INTERVAL_MINUTES + REFRESH_BUFFER_MINUTES
+    return await run_refresh_job(trigger_type="automatic", refresh_threshold_minutes=threshold)
 
 
 async def run_refresh_job(
@@ -54,7 +60,7 @@ async def run_refresh_job(
         Dictionary with job results
     """
     start_time = datetime.now(timezone.utc)
-    logger.info(f"OAuth token refresh job started (trigger={trigger_type})")
+    logger.info(f"▶ OAuth token refresh starting (trigger={trigger_type})")
 
     results: dict[str, Any] = {
         "total_connections": 0,
@@ -68,16 +74,16 @@ async def run_refresh_job(
 
     try:
         async with get_db_context() as db:
-            # Get all tokens with refresh tokens
+            # Get all tokens with refresh tokens, eager-loading provider to avoid N+1
             query = (
                 select(OAuthToken)
+                .options(selectinload(OAuthToken.provider))
                 .where(OAuthToken.encrypted_refresh_token.isnot(None))
             )
             result = await db.execute(query)
             all_tokens = result.scalars().all()
 
             results["total_connections"] = len(all_tokens)
-            logger.info(f"Found {len(all_tokens)} total OAuth connections with refresh tokens")
 
             # Determine which tokens need refresh
             now = datetime.now(timezone.utc)
@@ -89,26 +95,18 @@ async def run_refresh_job(
                     t for t in all_tokens
                     if t.expires_at and t.expires_at <= refresh_threshold
                 ]
-                logger.info(f"Using refresh threshold: {refresh_threshold_minutes} minutes")
             else:
                 # Manual: refresh all completed connections
                 tokens_to_refresh = list(all_tokens)
-                logger.info("Manual trigger: refreshing all connections with tokens")
 
             results["needs_refresh"] = len(tokens_to_refresh)
-            logger.info(f"Found {len(tokens_to_refresh)} tokens needing refresh")
 
             for token in tokens_to_refresh:
                 try:
-                    # Get the provider configuration
-                    provider_query = select(OAuthProvider).where(
-                        OAuthProvider.id == token.provider_id
-                    )
-                    provider_result = await db.execute(provider_query)
-                    provider = provider_result.scalar_one_or_none()
+                    # Provider is already loaded via selectinload
+                    provider = token.provider
 
                     if not provider:
-                        logger.warning(f"Provider not found for token {token.id}")
                         results["errors"].append({
                             "token_id": str(token.id),
                             "error": "Provider not found",
@@ -121,7 +119,6 @@ async def run_refresh_job(
 
                     if success:
                         results["refreshed_successfully"] += 1
-                        logger.info(f"Refreshed token for provider '{provider.provider_name}'")
                     else:
                         results["refresh_failed"] += 1
                         results["errors"].append({
@@ -147,16 +144,22 @@ async def run_refresh_job(
         results["start_time"] = start_time.isoformat()
         results["end_time"] = end_time.isoformat()
 
-        logger.info(
-            f"OAuth token refresh completed in {duration_seconds:.2f}s: "
-            f"Total={results['total_connections']}, "
-            f"NeedsRefresh={results['needs_refresh']}, "
-            f"Success={results['refreshed_successfully']}, "
-            f"Failed={results['refresh_failed']}"
-        )
+        # Log completion with visual marker
+        success = results["refreshed_successfully"]
+        failed = results["refresh_failed"]
+        if failed > 0:
+            logger.warning(
+                f"⚠ OAuth token refresh completed with errors: "
+                f"{success} refreshed, {failed} failed ({duration_seconds:.1f}s)"
+            )
+        else:
+            logger.info(
+                f"✓ OAuth token refresh completed: "
+                f"{success} refreshed, {failed} failed ({duration_seconds:.1f}s)"
+            )
 
     except Exception as e:
-        logger.error(f"OAuth token refresh job failed: {e}", exc_info=True)
+        logger.error(f"✗ OAuth token refresh failed: {e}", exc_info=True)
         results["errors"].append({"error": str(e)})
 
     return results

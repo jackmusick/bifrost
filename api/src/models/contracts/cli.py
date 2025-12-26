@@ -279,6 +279,7 @@ class CLIAICompleteRequest(BaseModel):
     max_tokens: int | None = Field(default=None, description="Override max tokens")
     temperature: float | None = Field(default=None, description="Override temperature (0.0-2.0)")
     org_id: str | None = Field(default=None, description="Organization ID for knowledge search")
+    model: str | None = Field(default=None, description="Override model (e.g., 'gpt-4o', 'claude-sonnet-4-20250514')")
 
     model_config = ConfigDict(from_attributes=True)
 
