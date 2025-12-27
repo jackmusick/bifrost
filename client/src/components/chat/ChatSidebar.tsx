@@ -8,6 +8,7 @@
  */
 
 import { useState } from "react";
+import { useNavigate } from "react-router-dom";
 import { Plus, MessageSquare, Trash2, Search } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -36,6 +37,7 @@ interface ChatSidebarProps {
 }
 
 export function ChatSidebar({ className }: ChatSidebarProps) {
+	const navigate = useNavigate();
 	const [searchTerm, setSearchTerm] = useState("");
 	const [deleteTarget, setDeleteTarget] =
 		useState<ConversationSummary | null>(null);
@@ -66,16 +68,26 @@ export function ChatSidebar({ className }: ChatSidebarProps) {
 		setActiveAgent(null);
 		// Note: agent_id is optional for agentless chat
 		// The types will be updated after regenerating from API
-		createConversation.mutate({
-			// eslint-disable-next-line @typescript-eslint/no-explicit-any
-			body: { channel: "chat" } as any,
-		});
+		createConversation.mutate(
+			{
+				// eslint-disable-next-line @typescript-eslint/no-explicit-any
+				body: { channel: "chat" } as any,
+			},
+			{
+				onSuccess: (data) => {
+					// Navigate to the new conversation URL
+					navigate(`/chat/${data.id}`);
+				},
+			},
+		);
 	};
 
 	// Handle selecting existing conversation
 	const handleSelectConversation = (conv: ConversationSummary) => {
 		setActiveConversation(conv.id);
 		setActiveAgent(conv.agent_id ?? null);
+		// Update URL to enable bookmarking/sharing
+		navigate(`/chat/${conv.id}`);
 	};
 
 	// Handle delete confirmation

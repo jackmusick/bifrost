@@ -6,12 +6,13 @@
  */
 
 import { useState, useEffect } from "react";
-import { PanelLeftClose, PanelLeft } from "lucide-react";
+import { PanelLeftClose, PanelLeft, Cpu, DollarSign } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { ChatSidebar } from "./ChatSidebar";
 import { ChatWindow } from "./ChatWindow";
 import { useChatStore } from "@/stores/chatStore";
-import { useConversation } from "@/hooks/useChat";
+import { useConversation, useConversationStats } from "@/hooks/useChat";
+import { useUserPermissions } from "@/hooks/useUserPermissions";
 import { cn } from "@/lib/utils";
 import type { components } from "@/lib/v1";
 
@@ -47,6 +48,31 @@ export function ChatLayout({
 	const { data: conversation } = useConversation(
 		activeConversationId ?? undefined,
 	);
+
+	// Get conversation stats for platform admins
+	const conversationStats = useConversationStats(
+		activeConversationId ?? undefined,
+	);
+	const { isPlatformAdmin } = useUserPermissions();
+
+	// Format token count for display (e.g., 12450 -> "12.5k")
+	const formatTokens = (count: number): string => {
+		if (count >= 1_000_000) {
+			return `${(count / 1_000_000).toFixed(1)}M`;
+		}
+		if (count >= 1_000) {
+			return `${(count / 1_000).toFixed(1)}k`;
+		}
+		return count.toString();
+	};
+
+	// Format cost for display
+	const formatCost = (cost: number): string => {
+		if (cost < 0.01) {
+			return `$${cost.toFixed(4)}`;
+		}
+		return `$${cost.toFixed(2)}`;
+	};
 
 	return (
 		<div className="flex h-full overflow-hidden bg-background">
@@ -113,19 +139,50 @@ export function ChatLayout({
 							</Button>
 						)}
 						{activeConversationId && (
-							<div className="flex-1 min-w-0">
-								<h1 className="font-medium truncate">
-									{conversation?.title ||
-										conversation?.agent_name ||
-										"Chat"}
-								</h1>
-								{conversation?.agent_name &&
-									conversation?.title && (
+							<>
+								<div className="flex-1 min-w-0">
+									<h1 className="font-medium truncate">
+										{conversation?.title ||
+											conversation?.agent_name ||
+											"Chat"}
+									</h1>
+									{conversation?.agent_name && conversation?.title && (
 										<p className="text-xs text-muted-foreground truncate">
 											with {conversation.agent_name}
 										</p>
 									)}
-							</div>
+								</div>
+
+								{/* Platform Admin: Token/Cost Stats */}
+								{isPlatformAdmin && conversationStats && conversationStats.totalTokens > 0 && (
+									<div className="hidden sm:flex items-center gap-3 text-xs text-muted-foreground shrink-0">
+										{/* Model */}
+										{conversationStats.model && (
+											<div className="flex items-center gap-1" title="Model">
+												<Cpu className="h-3 w-3" />
+												<span className="font-mono">
+													{conversationStats.model.split("-").slice(0, 2).join("-")}
+												</span>
+											</div>
+										)}
+										{/* Tokens */}
+										<div className="flex items-center gap-1" title={`Input: ${conversationStats.totalInputTokens.toLocaleString()} | Output: ${conversationStats.totalOutputTokens.toLocaleString()}`}>
+											<span className="font-mono">
+												{formatTokens(conversationStats.totalTokens)} tokens
+											</span>
+										</div>
+										{/* Cost */}
+										{conversationStats.estimatedCostUsd !== null && (
+											<div className="flex items-center gap-1" title="Estimated cost">
+												<DollarSign className="h-3 w-3" />
+												<span className="font-mono">
+													{formatCost(conversationStats.estimatedCostUsd)}
+												</span>
+											</div>
+										)}
+									</div>
+								)}
+							</>
 						)}
 					</header>
 				)}

@@ -106,6 +106,7 @@ types-aiobotocore[s3]  # Type stubs for S3
 # =============================================================================
 openai  # OpenAI API client
 anthropic  # Anthropic Claude API client
+claude-agent-sdk  # Claude Agent SDK for coding mode
 
 # =============================================================================
 # Vector Store (Knowledge/RAG)

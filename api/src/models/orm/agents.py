@@ -45,6 +45,8 @@ class Agent(Base):
         ForeignKey("organizations.id"), default=None
     )
     is_active: Mapped[bool] = mapped_column(Boolean, default=True)
+    is_coding_mode: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+    is_system: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
     file_path: Mapped[str | None] = mapped_column(String(1000), default=None)
     # Knowledge namespaces this agent can search (RAG)
     knowledge_sources: Mapped[list[str]] = mapped_column(

@@ -5,12 +5,15 @@ import { authFetch } from "@/lib/api-client";
 interface UserDetails {
 	id: string;
 	email: string;
-	displayName: string;
-	userType: "PLATFORM" | "ORG";
-	isPlatformAdmin: boolean;
-	isActive: boolean;
-	lastLogin?: string;
-	createdAt: string;
+	name: string;
+	user_type: "PLATFORM" | "ORG";
+	is_superuser: boolean;
+	is_active: boolean;
+	is_verified: boolean;
+	last_login?: string;
+	created_at: string;
+	organization_id: string | null;
+	roles: string[];
 }
 
 /**
@@ -24,13 +27,11 @@ export function useUserPermissions() {
 		isLoading: detailsLoading,
 		error,
 	} = useQuery<UserDetails>({
-		queryKey: ["user", user?.id],
+		queryKey: ["user", "me"],
 		queryFn: async () => {
-			if (!user?.id) {
-				throw new Error("No user ID available");
-			}
-
-			const response = await authFetch(`/api/users/${user.id}`);
+			// Use /api/auth/me which works for any authenticated user
+			// (unlike /api/users/:id which requires platform admin)
+			const response = await authFetch("/api/auth/me");
 
 			if (!response.ok) {
 				// User doesn't exist in database - treat as unauthorized
@@ -46,8 +47,8 @@ export function useUserPermissions() {
 
 	return {
 		userDetails,
-		isPlatformAdmin: userDetails?.isPlatformAdmin ?? false,
-		isOrgUser: userDetails?.userType === "ORG",
+		isPlatformAdmin: userDetails?.is_superuser ?? false,
+		isOrgUser: userDetails?.user_type === "ORG",
 		isLoading: authLoading || detailsLoading,
 		error,
 		hasAccess: !!userDetails && !error,

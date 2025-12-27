@@ -111,6 +111,9 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     if settings.default_user_email and settings.default_user_password:
         await create_default_user()
 
+    # Ensure system agents exist (like Coding Assistant)
+    await ensure_system_agents()
+
     logger.info(f"Bifrost API started in {settings.environment} mode")
 
     yield
@@ -181,6 +184,23 @@ async def create_default_user() -> None:
             is_superuser=True,
         )
         logger.info(f"Created default admin user: {user.email} (id: {user.id})")
+
+
+async def ensure_system_agents() -> None:
+    """
+    Ensure all system agents exist in the database.
+
+    Called on application startup to create built-in agents like the Coding Assistant.
+    """
+    from src.core.database import get_db_context
+    from src.core.system_agents import ensure_system_agents as _ensure_system_agents
+
+    try:
+        async with get_db_context() as db:
+            await _ensure_system_agents(db)
+            logger.info("System agents initialized")
+    except Exception as e:
+        logger.warning(f"Failed to ensure system agents: {e}")
 
 
 def create_app() -> FastAPI:

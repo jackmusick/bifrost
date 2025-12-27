@@ -11,6 +11,7 @@ import { cn } from "@/lib/utils";
 import type { components } from "@/lib/v1";
 import { Badge } from "@/components/ui/badge";
 import ReactMarkdown from "react-markdown";
+import remarkGfm from "remark-gfm";
 import { Prism as SyntaxHighlighter } from "react-syntax-highlighter";
 import { oneDark } from "react-syntax-highlighter/dist/esm/styles/prism";
 
@@ -63,12 +64,14 @@ interface ChatMessageProps {
 	message: MessagePublic;
 	isStreaming?: boolean;
 	onToolCallClick?: (toolCall: ToolCall) => void;
+	hideToolBadges?: boolean;
 }
 
 export function ChatMessage({
 	message,
 	isStreaming,
 	onToolCallClick,
+	hideToolBadges,
 }: ChatMessageProps) {
 	const isUser = message.role === "user";
 
@@ -90,6 +93,7 @@ export function ChatMessage({
 				{/* Markdown Content */}
 				<div className="prose prose-slate dark:prose-invert max-w-none prose-p:my-2 prose-p:leading-7 prose-headings:font-semibold prose-h1:text-xl prose-h2:text-lg prose-h3:text-base prose-ul:my-2 prose-ol:my-2 prose-li:my-0.5 prose-pre:my-2 prose-pre:p-0 prose-pre:bg-transparent">
 					<ReactMarkdown
+						remarkPlugins={[remarkGfm]}
 						components={{
 							code({ className, children }) {
 								const match = /language-(\w+)/.exec(
@@ -195,8 +199,8 @@ export function ChatMessage({
 					</ReactMarkdown>
 				</div>
 
-				{/* Tool Calls - inline badges */}
-				{message.tool_calls && message.tool_calls.length > 0 && (
+				{/* Tool Calls - inline badges (hidden when cards are rendered separately) */}
+				{!hideToolBadges && message.tool_calls && message.tool_calls.length > 0 && (
 					<div className="mt-3 flex flex-wrap gap-2">
 						{message.tool_calls.map((tc) => (
 							<Badge

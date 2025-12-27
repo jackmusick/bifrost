@@ -12,6 +12,8 @@ from fastapi import APIRouter, HTTPException, status
 from src.core.auth import CurrentActiveUser, RequirePlatformAdmin
 from src.core.database import DbSession
 from src.models.contracts.llm import (
+    CodingConfigResponse,
+    CodingConfigUpdate,
     EmbeddingConfigRequest,
     EmbeddingConfigResponse,
     EmbeddingTestResponse,
@@ -177,6 +179,7 @@ async def test_llm_connection(
 async def test_saved_llm_connection(
     db: DbSession,
     user: CurrentActiveUser,
+    mode: str = "main",
 ) -> LLMTestResponse:
     """
     Test connection using saved LLM configuration.
@@ -184,7 +187,43 @@ async def test_saved_llm_connection(
     Tests the currently saved configuration.
     Also refreshes the model ID -> display name mapping cache.
     Requires platform admin access.
+
+    Args:
+        mode: Which config to test - "main" (default) or "coding" (for coding mode override)
     """
+    from src.services.llm.factory import get_coding_mode_config
+
+    if mode == "coding":
+        # Test coding mode config (uses override key if present, else main anthropic key)
+        coding_config = await get_coding_mode_config(db)
+        if not coding_config:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Coding mode configuration not found. Configure main LLM as Anthropic or add a coding mode API key override.",
+            )
+
+        # Test Anthropic connection with coding config
+        service = LLMConfigService(db)
+        # Temporarily save the coding config to test
+        await service.save_config(
+            provider="anthropic",
+            model=coding_config.model,
+            api_key=coding_config.api_key,
+            updated_by=user.email,
+        )
+        result = await service.test_connection()
+        await db.rollback()  # Don't persist the test config
+
+        if result.success and result.models:
+            await _cache_model_mapping_from_result("anthropic", result.models)
+
+        return LLMTestResponse(
+            success=result.success,
+            message=result.message,
+            models=[LLMModelInfo(id=m.id, display_name=m.display_name) for m in result.models] if result.models else None,
+        )
+
+    # Default: test main LLM config
     service = LLMConfigService(db)
     config = await service.get_config()
 
@@ -475,3 +514,174 @@ async def _cache_model_mapping_from_result(
         await cache_model_mapping(redis_client, provider, mapping)
     except Exception as e:
         logger.warning(f"Failed to cache model mapping for {provider}: {e}")
+
+
+# =============================================================================
+# Coding Mode Configuration Endpoints
+# =============================================================================
+
+
+@router.get("/coding-config")
+async def get_coding_config_endpoint(
+    db: DbSession,
+    user: CurrentActiveUser,
+) -> CodingConfigResponse:
+    """
+    Get coding mode configuration.
+
+    Returns the effective configuration (combining main LLM with any overrides).
+    Requires platform admin access.
+    """
+    from sqlalchemy import select
+
+    from src.models.orm import SystemConfig
+    from src.services.llm.factory import (
+        CODING_CONFIG_CATEGORY,
+        CODING_CONFIG_KEY,
+        get_coding_mode_config,
+        get_llm_config,
+    )
+
+    # Get effective config
+    config = await get_coding_mode_config(db)
+
+    # Get override values
+    result = await db.execute(
+        select(SystemConfig).where(
+            SystemConfig.category == CODING_CONFIG_CATEGORY,
+            SystemConfig.key == CODING_CONFIG_KEY,
+            SystemConfig.organization_id.is_(None),
+        )
+    )
+    override_row = result.scalars().first()
+    override_data = override_row.value_json if override_row else {}
+
+    # Check if main LLM is Anthropic
+    main_is_anthropic = False
+    try:
+        llm_config = await get_llm_config(db)
+        main_is_anthropic = llm_config.provider == "anthropic"
+    except ValueError:
+        pass
+
+    return CodingConfigResponse(
+        configured=config is not None,
+        model=config.model if config else None,
+        model_override=override_data.get("model"),
+        has_key_override=bool(override_data.get("encrypted_api_key")),
+        main_llm_is_anthropic=main_is_anthropic,
+    )
+
+
+@router.put("/coding-config", status_code=status.HTTP_200_OK)
+async def update_coding_config_endpoint(
+    request: CodingConfigUpdate,
+    db: DbSession,
+    user: CurrentActiveUser,
+) -> dict:
+    """
+    Update coding mode configuration overrides.
+
+    Set model and/or api_key to override main LLM settings.
+    Set clear_overrides=true to remove all overrides.
+    Requires platform admin access.
+    """
+    import base64
+
+    from cryptography.fernet import Fernet
+    from sqlalchemy import delete, select
+
+    from src.config import get_settings
+    from src.models.orm import SystemConfig
+    from src.services.llm.factory import CODING_CONFIG_CATEGORY, CODING_CONFIG_KEY
+
+    settings = get_settings()
+
+    if request.clear_overrides:
+        # Delete the override config
+        await db.execute(
+            delete(SystemConfig).where(
+                SystemConfig.category == CODING_CONFIG_CATEGORY,
+                SystemConfig.key == CODING_CONFIG_KEY,
+            )
+        )
+        await db.commit()
+        logger.info(f"Coding mode overrides cleared by {user.email}")
+        return {"status": "ok", "message": "Overrides cleared"}
+
+    # Get existing overrides
+    result = await db.execute(
+        select(SystemConfig).where(
+            SystemConfig.category == CODING_CONFIG_CATEGORY,
+            SystemConfig.key == CODING_CONFIG_KEY,
+            SystemConfig.organization_id.is_(None),
+        )
+    )
+    existing = result.scalars().first()
+    config_json: dict = existing.value_json if existing and existing.value_json else {}
+
+    # Update model override
+    if request.model is not None:
+        config_json["model"] = request.model
+
+    # Update API key override
+    if request.api_key is not None:
+        key_bytes = settings.secret_key.encode()[:32].ljust(32, b"0")
+        fernet = Fernet(base64.urlsafe_b64encode(key_bytes))
+        config_json["encrypted_api_key"] = fernet.encrypt(request.api_key.encode()).decode()
+
+    # Upsert the config
+    if existing:
+        existing.value_json = config_json
+        existing.updated_by = user.email
+    else:
+        new_config = SystemConfig(
+            category=CODING_CONFIG_CATEGORY,
+            key=CODING_CONFIG_KEY,
+            value_json=config_json,
+            created_by=user.email,
+            updated_by=user.email,
+        )
+        db.add(new_config)
+
+    await db.commit()
+    logger.info(f"Coding mode config updated by {user.email}: model_override={request.model is not None}, key_override={request.api_key is not None}")
+
+    return {"status": "ok"}
+
+
+@router.delete("/coding-config", status_code=status.HTTP_204_NO_CONTENT)
+async def delete_coding_config_endpoint(
+    db: DbSession,
+    user: CurrentActiveUser,
+) -> None:
+    """
+    Delete coding mode configuration overrides.
+
+    After deletion, coding mode will use main LLM config (if Anthropic).
+    Requires platform admin access.
+    """
+    from sqlalchemy import select
+
+    from src.models.orm import SystemConfig
+    from src.services.llm.factory import CODING_CONFIG_CATEGORY, CODING_CONFIG_KEY
+
+    result = await db.execute(
+        select(SystemConfig).where(
+            SystemConfig.category == CODING_CONFIG_CATEGORY,
+            SystemConfig.key == CODING_CONFIG_KEY,
+            SystemConfig.organization_id.is_(None),
+        )
+    )
+    existing = result.scalars().first()
+
+    if not existing:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Coding mode configuration not found",
+        )
+
+    await db.delete(existing)
+    await db.commit()
+
+    logger.info(f"Coding mode config deleted by {user.email}")

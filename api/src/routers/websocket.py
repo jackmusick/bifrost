@@ -7,11 +7,12 @@ Replaces Azure Web PubSub with native FastAPI WebSockets.
 
 import asyncio
 import logging
-from typing import Annotated
-from uuid import UUID
+from typing import Annotated, Any
+from uuid import UUID, uuid4
 
 from fastapi import APIRouter, Query, WebSocket, WebSocketDisconnect
 from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
 from src.core.auth import UserPrincipal, get_current_user_ws
@@ -386,6 +387,14 @@ async def _process_chat_message(
 
     Sends streaming chunks directly to the WebSocket, then broadcasts
     the final message to the chat channel for any other subscribers.
+
+    Routes to coding mode (Claude Agent SDK) if the agent has is_coding_mode=True.
+
+    Args:
+        websocket: The WebSocket connection
+        user: The authenticated user
+        conversation_id: The conversation ID
+        message: The user's message
     """
     from src.services.agent_executor import AgentExecutor
 
@@ -412,6 +421,27 @@ async def _process_chat_message(
                 })
                 return
 
+            # Route to coding mode if agent has is_coding_mode=True
+            if conversation.agent and conversation.agent.is_coding_mode:
+                # Coding mode requires platform admin
+                if not user.is_superuser:
+                    await websocket.send_json({
+                        "type": "error",
+                        "conversation_id": conversation_id,
+                        "error": "Coding mode requires platform admin access"
+                    })
+                    return
+
+                await _process_coding_mode_message(
+                    websocket=websocket,
+                    db=db,
+                    user=user,
+                    conversation_id=conversation_id,
+                    conversation=conversation,
+                    message=message,
+                )
+                return
+
             # Check if conversation needs a title (no title set yet)
             needs_title = conversation.title is None
 
@@ -423,7 +453,26 @@ async def _process_chat_message(
                 conversation=conversation,
                 user_message=message,
                 stream=True,
+                is_platform_admin=user.is_superuser,
             ):
+                # Check if we need to switch to coding mode
+                if chunk.type == "coding_mode_required":
+                    # Send agent switch event, then process via coding mode
+                    chunk_data = chunk.model_dump(exclude_none=True)
+                    chunk_data["conversation_id"] = conversation_id
+                    await websocket.send_json(chunk_data)
+
+                    # Re-route to coding mode handler
+                    await _process_coding_mode_message(
+                        websocket=websocket,
+                        db=db,
+                        user=user,
+                        conversation_id=conversation_id,
+                        conversation=conversation,
+                        message=message,
+                    )
+                    return  # Coding mode handles its own commit
+
                 # Send chunk to WebSocket with conversation_id for client routing
                 chunk_data = chunk.model_dump(exclude_none=True)
                 chunk_data["conversation_id"] = conversation_id
@@ -454,3 +503,238 @@ async def _process_chat_message(
             })
         except Exception:
             pass  # WebSocket may be closed
+
+
+# Cache of coding mode clients by conversation_id for session continuity
+_coding_clients: dict[str, Any] = {}
+
+
+async def _get_or_create_coding_client(
+    conversation_id: str,
+    user: UserPrincipal,
+    api_key: str,
+    model: str,
+) -> Any:
+    """
+    Get or create a coding mode client for a conversation.
+
+    Caches clients by conversation_id to maintain conversation context
+    across multiple chat() calls within the same session.
+
+    Args:
+        conversation_id: The conversation ID (used as cache key)
+        user: The authenticated user
+        api_key: Anthropic API key
+        model: Model to use
+
+    Returns:
+        CodingModeClient instance
+    """
+    from src.services.coding_mode import CodingModeClient
+
+    if conversation_id not in _coding_clients:
+        client = CodingModeClient(
+            user_id=user.user_id,
+            user_email=user.email or "",
+            user_name=user.name or user.email or "User",
+            api_key=api_key,
+            model=model,
+            org_id=user.organization_id,
+            is_platform_admin=True,
+            session_id=conversation_id,  # Use conversation ID as session ID
+        )
+        _coding_clients[conversation_id] = client
+        logger.info(f"Created new coding client for conversation {conversation_id}")
+    else:
+        logger.debug(f"Reusing cached coding client for conversation {conversation_id}")
+
+    return _coding_clients[conversation_id]
+
+
+async def _cleanup_coding_client(conversation_id: str) -> None:
+    """
+    Clean up a coding mode client when conversation ends.
+
+    Should be called when WebSocket disconnects or conversation is deleted.
+    """
+    if conversation_id in _coding_clients:
+        client = _coding_clients.pop(conversation_id)
+        try:
+            await client.close()
+            logger.info(f"Cleaned up coding client for conversation {conversation_id}")
+        except Exception as e:
+            logger.warning(f"Error cleaning up coding client: {e}")
+
+
+async def _process_coding_mode_message(
+    websocket: WebSocket,
+    db: AsyncSession,
+    user: UserPrincipal,
+    conversation_id: str,
+    conversation: Conversation,
+    message: str,
+) -> None:
+    """
+    Process a coding mode message using Claude Agent SDK.
+
+    Uses the Bifrost MCP server for workflow development capabilities.
+    Persists all messages to database for conversation history.
+    """
+    from sqlalchemy import func, select
+
+    from src.models.enums import MessageRole
+    from src.models.orm import Message
+    from src.services.llm.factory import get_coding_mode_config
+
+    async def get_next_sequence() -> int:
+        """Get the next sequence number for this conversation."""
+        result = await db.execute(
+            select(func.coalesce(func.max(Message.sequence), 0))
+            .where(Message.conversation_id == conversation.id)
+        )
+        return (result.scalar() or 0) + 1
+
+    try:
+        # Get coding mode config
+        coding_config = await get_coding_mode_config(db)
+        if not coding_config:
+            await websocket.send_json({
+                "type": "error",
+                "conversation_id": conversation_id,
+                "error": "Coding mode not configured. Please configure Anthropic API key in Settings > AI."
+            })
+            return
+
+        # Save user message first
+        user_msg = Message(
+            conversation_id=conversation.id,
+            role=MessageRole.USER,
+            content=message,
+            sequence=await get_next_sequence(),
+        )
+        db.add(user_msg)
+        await db.flush()
+
+        # Get or create coding mode client from cache
+        client = await _get_or_create_coding_client(
+            conversation_id=conversation_id,
+            user=user,
+            api_key=coding_config.api_key,
+            model=coding_config.model,
+        )
+
+        # Accumulators for message persistence
+        accumulated_content = ""
+        tool_calls_batch: list[dict] = []  # Collect tool calls for assistant message
+        model_used = coding_config.model
+
+        # Stream response from coding mode client
+        async for chunk in client.chat(message):
+            chunk_type = chunk.type
+
+            if chunk_type == "delta":
+                # Accumulate text content
+                if chunk.content:
+                    accumulated_content += chunk.content
+
+            elif chunk_type == "tool_call" and chunk.tool_call:
+                # Generate execution_id for tracking
+                tool_execution_id = str(uuid4())
+
+                # Collect tool calls for the assistant message
+                tool_calls_batch.append({
+                    "id": chunk.tool_call.id,
+                    "name": chunk.tool_call.name,
+                    "arguments": chunk.tool_call.arguments or {},
+                })
+
+                # Send tool_call chunk to client immediately (with execution_id)
+                chunk_data = chunk.model_dump(exclude_none=True)
+                chunk_data["conversation_id"] = conversation_id
+                chunk_data["execution_id"] = tool_execution_id
+                await websocket.send_json(chunk_data)
+
+                # Immediately send tool_progress to set status to "running"
+                # This enables the frontend to show the tool as actively executing
+                await websocket.send_json({
+                    "type": "tool_progress",
+                    "conversation_id": conversation_id,
+                    "tool_progress": {
+                        "tool_call_id": chunk.tool_call.id,
+                        "execution_id": tool_execution_id,
+                        "status": "running",
+                    }
+                })
+                continue  # Skip default send - we already sent it
+
+            elif chunk_type == "tool_result" and chunk.tool_result:
+                # If we have accumulated assistant content + tool calls, save as assistant message
+                if accumulated_content or tool_calls_batch:
+                    assistant_msg = Message(
+                        conversation_id=conversation.id,
+                        role=MessageRole.ASSISTANT,
+                        content=accumulated_content if accumulated_content else None,
+                        tool_calls=tool_calls_batch if tool_calls_batch else None,
+                        sequence=await get_next_sequence(),
+                        model=model_used,
+                    )
+                    db.add(assistant_msg)
+                    await db.flush()
+                    accumulated_content = ""
+                    tool_calls_batch = []
+
+                # Save tool result as separate message
+                tool_result_msg = Message(
+                    conversation_id=conversation.id,
+                    role=MessageRole.TOOL,
+                    content=str(chunk.tool_result.result) if chunk.tool_result.result else None,
+                    tool_call_id=chunk.tool_result.tool_call_id,
+                    sequence=await get_next_sequence(),
+                )
+                db.add(tool_result_msg)
+                await db.flush()
+
+            elif chunk_type == "done":
+                # Save final assistant message if we have accumulated content
+                if accumulated_content or tool_calls_batch:
+                    assistant_msg = Message(
+                        conversation_id=conversation.id,
+                        role=MessageRole.ASSISTANT,
+                        content=accumulated_content if accumulated_content else None,
+                        tool_calls=tool_calls_batch if tool_calls_batch else None,
+                        token_count_input=chunk.input_tokens,
+                        token_count_output=chunk.output_tokens,
+                        duration_ms=chunk.duration_ms,
+                        sequence=await get_next_sequence(),
+                        model=model_used,
+                    )
+                    db.add(assistant_msg)
+
+                # Commit all messages
+                await db.commit()
+
+            # Send chunk to WebSocket with conversation_id for client routing
+            chunk_data = chunk.model_dump(exclude_none=True)
+            chunk_data["conversation_id"] = conversation_id
+            await websocket.send_json(chunk_data)
+
+        # Check if conversation needs a title (no title set yet)
+        if conversation.title is None:
+            title = await _generate_conversation_title(db, conversation, message)
+            if title:
+                conversation.title = title
+                await db.commit()
+                # Send title update to client
+                await websocket.send_json({
+                    "type": "title_update",
+                    "conversation_id": conversation_id,
+                    "title": title,
+                })
+
+    except Exception as e:
+        logger.error(f"Coding mode error: {e}", exc_info=True)
+        await websocket.send_json({
+            "type": "error",
+            "conversation_id": conversation_id,
+            "error": str(e)
+        })

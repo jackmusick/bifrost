@@ -3,6 +3,10 @@ Chat Router
 
 Chat conversations and messaging for AI agents.
 Includes both HTTP and WebSocket endpoints for streaming.
+
+Supports two modes:
+- Regular chat: Uses AgentExecutor with configured agents/tools
+- Coding mode: Uses Claude Agent SDK for workflow development (platform admins only)
 """
 
 import json
@@ -10,7 +14,7 @@ import logging
 from datetime import datetime
 from uuid import UUID, uuid4
 
-from fastapi import APIRouter, HTTPException, WebSocket, WebSocketDisconnect, status
+from fastapi import APIRouter, HTTPException, Query, WebSocket, WebSocketDisconnect, status
 from sqlalchemy import func, select
 from sqlalchemy.orm import selectinload
 
@@ -384,6 +388,7 @@ async def send_message(
 async def websocket_chat(
     websocket: WebSocket,
     conversation_id: UUID,
+    coding_mode: bool = Query(False, description="Enable coding mode (platform admins only)"),
 ):
     """
     WebSocket endpoint for streaming chat.
@@ -397,6 +402,12 @@ async def websocket_chat(
     6. Server may send: {"type": "tool_result", "tool_result": {...}}
     7. Server sends: {"type": "done", ...} when complete
     8. Client can send another message to continue
+
+    Coding Mode (coding_mode=true):
+    - Platform admins only
+    - Uses Claude Agent SDK for workflow development
+    - Operates in /tmp/bifrost/workspace
+    - Has access to execute_workflow and list_integrations tools
     """
     await websocket.accept()
 
@@ -406,7 +417,10 @@ async def websocket_chat(
             # Verify conversation exists (basic check, user auth needed)
             result = await db.execute(
                 select(Conversation)
-                .options(selectinload(Conversation.agent).selectinload(Agent.tools))
+                .options(
+                    selectinload(Conversation.agent).selectinload(Agent.tools),
+                    selectinload(Conversation.user),
+                )
                 .where(Conversation.id == conversation_id)
                 .where(Conversation.is_active.is_(True))
             )
@@ -417,6 +431,24 @@ async def websocket_chat(
                 await websocket.close()
                 return
 
+            # Get user for permission check
+            user = conversation.user
+
+            # Coding mode requires platform admin (superuser)
+            if coding_mode:
+                if not user or not user.is_superuser:
+                    await websocket.send_json({
+                        "type": "error",
+                        "error": "Coding mode requires platform admin access"
+                    })
+                    await websocket.close()
+                    return
+
+                # Use coding mode client
+                await _handle_coding_mode(websocket, conversation, user, db)
+                return
+
+            # Regular chat mode
             # Agent is now optional - agentless chat uses default system prompt
 
             # Send connected message
@@ -462,6 +494,199 @@ async def websocket_chat(
             await websocket.close()
         except Exception:
             pass
+
+
+async def _handle_coding_mode(
+    websocket: WebSocket,
+    conversation: Conversation,
+    user,
+    db,
+) -> None:
+    """
+    Handle coding mode WebSocket session.
+
+    Uses Claude Agent SDK with Bifrost MCP server for workflow development.
+    Requires Anthropic API key (either from main LLM config or coding override).
+
+    Unlike regular chat, coding mode:
+    - Uses Claude Agent SDK instead of direct LLM calls
+    - Saves messages to DB for persistence and token tracking
+    - Records AI usage for cost reporting
+    """
+    from src.core.cache import get_shared_redis
+    from src.models.enums import MessageRole
+    from src.services.ai_usage_service import record_ai_usage
+    from src.services.coding_mode import CodingModeClient
+    from src.services.llm.factory import get_coding_mode_config
+
+    # Get coding mode config (validates Anthropic is configured)
+    config = await get_coding_mode_config(db)
+    if not config:
+        await websocket.send_json({
+            "type": "error",
+            "error": "Coding mode requires Anthropic API key",
+            "error_code": "ANTHROPIC_NOT_CONFIGURED",
+            "help": "Go to Settings > AI Configuration to set up Anthropic, or configure a dedicated coding API key.",
+        })
+        await websocket.close()
+        return
+
+    # Helper to get next message sequence number
+    async def get_next_sequence() -> int:
+        result = await db.execute(
+            select(func.coalesce(func.max(Message.sequence), 0))
+            .where(Message.conversation_id == conversation.id)
+        )
+        return (result.scalar() or 0) + 1
+
+    # Create coding mode client with config
+    client = CodingModeClient(
+        user_id=user.id,
+        user_email=user.email,
+        user_name=user.name or user.email,
+        api_key=config.api_key,
+        model=config.model,
+        org_id=user.organization_id,
+        is_platform_admin=True,
+        session_id=str(conversation.id),  # Use conversation ID as session ID
+    )
+
+    try:
+        # Send session start
+        await websocket.send_json({
+            "type": "session_start",
+            "session_id": client.session_id,
+            "conversation_id": str(conversation.id),
+            "mode": "coding",
+        })
+
+        # Message loop
+        while True:
+            try:
+                # Wait for message from client
+                data = await websocket.receive_json()
+                message_text = data.get("message", "")
+
+                if not message_text:
+                    await websocket.send_json({"type": "error", "error": "Empty message"})
+                    continue
+
+                # 1. Save user message to database
+                user_msg = Message(
+                    id=uuid4(),
+                    conversation_id=conversation.id,
+                    role=MessageRole.USER,
+                    content=message_text,
+                    sequence=await get_next_sequence(),
+                )
+                db.add(user_msg)
+                await db.flush()
+
+                # 2. Stream response and accumulate for persistence
+                assistant_content = ""
+                tool_calls_list = []
+                input_tokens = 0
+                output_tokens = 0
+                duration_ms = 0
+                message_id = uuid4()
+
+                async for chunk in client.chat(message_text):
+                    # Accumulate response and handle special chunk types
+                    if chunk.type == "delta" and chunk.content:
+                        assistant_content += chunk.content
+                        await websocket.send_json(chunk.model_dump(exclude_none=True))
+                    elif chunk.type == "tool_call" and chunk.tool_call:
+                        # Generate execution_id for tracking
+                        tool_execution_id = str(uuid4())
+                        tool_calls_list.append({
+                            "id": chunk.tool_call.id,
+                            "name": chunk.tool_call.name,
+                            "arguments": json.dumps(chunk.tool_call.arguments or {}),
+                        })
+                        # Send tool_call chunk with execution_id
+                        chunk_data = chunk.model_dump(exclude_none=True)
+                        chunk_data["execution_id"] = tool_execution_id
+                        await websocket.send_json(chunk_data)
+                        # Immediately send tool_progress to set status to "running"
+                        await websocket.send_json({
+                            "type": "tool_progress",
+                            "tool_progress": {
+                                "tool_call_id": chunk.tool_call.id,
+                                "execution_id": tool_execution_id,
+                                "status": "running",
+                            }
+                        })
+                    elif chunk.type == "tool_result" and chunk.tool_result:
+                        # Send tool_result then mark as success
+                        await websocket.send_json(chunk.model_dump(exclude_none=True))
+                        # Send tool_progress with success status
+                        if chunk.tool_result.tool_call_id:
+                            await websocket.send_json({
+                                "type": "tool_progress",
+                                "tool_progress": {
+                                    "tool_call_id": chunk.tool_result.tool_call_id,
+                                    "status": "success",
+                                }
+                            })
+                    elif chunk.type == "done":
+                        input_tokens = chunk.input_tokens or 0
+                        output_tokens = chunk.output_tokens or 0
+                        duration_ms = chunk.duration_ms or 0
+                        await websocket.send_json(chunk.model_dump(exclude_none=True))
+                    else:
+                        # Other chunk types (session_start, error, etc.)
+                        await websocket.send_json(chunk.model_dump(exclude_none=True))
+
+                # 3. Save assistant message with token counts
+                assistant_msg = Message(
+                    id=message_id,
+                    conversation_id=conversation.id,
+                    role=MessageRole.ASSISTANT,
+                    content=assistant_content or None,
+                    tool_calls=tool_calls_list if tool_calls_list else None,
+                    token_count_input=input_tokens if input_tokens > 0 else None,
+                    token_count_output=output_tokens if output_tokens > 0 else None,
+                    model=config.model,
+                    duration_ms=duration_ms if duration_ms > 0 else None,
+                    sequence=await get_next_sequence(),
+                )
+                db.add(assistant_msg)
+                await db.flush()
+
+                # 4. Record AI usage for cost tracking (if we have token counts)
+                if input_tokens > 0 or output_tokens > 0:
+                    try:
+                        redis_client = await get_shared_redis()
+                        await record_ai_usage(
+                            session=db,
+                            redis_client=redis_client,
+                            provider="anthropic",
+                            model=config.model,
+                            input_tokens=input_tokens,
+                            output_tokens=output_tokens,
+                            duration_ms=duration_ms if duration_ms > 0 else None,
+                            conversation_id=conversation.id,
+                            message_id=message_id,
+                            user_id=user.id,
+                        )
+                    except Exception as e:
+                        logger.warning(f"Failed to record AI usage: {e}")
+
+                await db.commit()
+
+            except WebSocketDisconnect:
+                logger.info(f"Coding mode WebSocket disconnected: {conversation.id}")
+                break
+            except json.JSONDecodeError:
+                await websocket.send_json({"type": "error", "error": "Invalid JSON"})
+            except Exception as e:
+                logger.error(f"Coding mode error: {e}", exc_info=True)
+                await websocket.send_json({"type": "error", "error": str(e)})
+                # Rollback on error to avoid partial state
+                await db.rollback()
+    finally:
+        # Clean up SDK client resources
+        await client.close()
 
 
 # =============================================================================

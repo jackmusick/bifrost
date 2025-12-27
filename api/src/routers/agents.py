@@ -505,6 +505,13 @@ async def delete_agent(
             detail=f"Agent {agent_id} not found",
         )
 
+    # Prevent deletion of system agents
+    if agent.is_system:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="System agents cannot be deleted",
+        )
+
     # Soft delete
     agent.is_active = False
     agent.updated_at = datetime.utcnow()

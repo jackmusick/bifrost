@@ -56,6 +56,7 @@ import {
 	Pencil,
 	X,
 	Check,
+	Code,
 } from "lucide-react";
 import { $api } from "@/lib/api-client";
 import {
@@ -684,6 +685,12 @@ export function LLMConfig() {
 			{/* Embedding Configuration Card */}
 			<EmbeddingConfigCard llmProvider={config?.provider} />
 
+			{/* Coding Mode Configuration Card */}
+			<CodingConfigCard
+				availableModels={availableModels}
+				llmProvider={config?.provider}
+			/>
+
 			{/* Model Pricing Card */}
 			<ModelPricingCard />
 
@@ -1109,6 +1116,459 @@ function EmbeddingConfigCard({ llmProvider }: { llmProvider?: string }) {
 						</DialogFooter>
 					</DialogContent>
 				</Dialog>
+			</CardContent>
+		</Card>
+	);
+}
+
+/**
+ * Coding Mode Configuration Component
+ *
+ * Configure the AI model for the Bifrost coding assistant (Claude Agent SDK).
+ * Falls back to main LLM config if using Anthropic, or allows dedicated config.
+ */
+function CodingConfigCard({
+	availableModels,
+	llmProvider,
+}: {
+	availableModels: ModelInfo[];
+	llmProvider?: string;
+}) {
+	const [modelOverride, setModelOverride] = useState("");
+	const [apiKeyOverride, setApiKeyOverride] = useState("");
+	const [saving, setSaving] = useState(false);
+	const [testing, setTesting] = useState(false);
+	const [showOverrideForm, setShowOverrideForm] = useState(false);
+	const [codingModels, setCodingModels] = useState<ModelInfo[]>([]);
+	const [testResult, setTestResult] = useState<{
+		success: boolean;
+		message: string;
+	} | null>(null);
+
+	// Load current coding mode configuration
+	const {
+		data: config,
+		isLoading,
+		refetch,
+	} = $api.useQuery("get", "/api/admin/llm/coding-config", undefined, {
+		staleTime: 5 * 60 * 1000,
+	});
+
+	// Mutations
+	const updateMutation = $api.useMutation("put", "/api/admin/llm/coding-config");
+	const testSavedMutation = $api.useMutation("post", "/api/admin/llm/test-saved");
+
+	// Use main LLM models if it's Anthropic, otherwise use coding-specific models
+	const effectiveModels =
+		llmProvider === "anthropic" && availableModels.length > 0
+			? availableModels
+			: codingModels;
+
+	// Initialize form with existing overrides
+	useEffect(() => {
+		if (config) {
+			setModelOverride(config.model_override || "");
+			// Show form if there are existing overrides
+			if (config.model_override || config.has_key_override) {
+				setShowOverrideForm(true);
+			}
+		}
+	}, [config]);
+
+	// Test connection and load models
+	const handleTestConnection = async () => {
+		setTesting(true);
+		setTestResult(null);
+
+		try {
+			const result = await testSavedMutation.mutateAsync({
+				params: { query: { mode: "coding" } },
+			});
+
+			setTestResult({ success: result.success, message: result.message });
+
+			if (result.success) {
+				toast.success("Connection successful", {
+					description: result.message,
+				});
+				// Load models from response
+				if (result.models && result.models.length > 0) {
+					const models = result.models as unknown as ModelInfo[];
+					setCodingModels(models);
+					// If no model selected yet, pick first
+					if (!modelOverride && models.length > 0) {
+						setModelOverride(models[0].id);
+					}
+				}
+			} else {
+				toast.error("Connection failed", {
+					description: result.message,
+				});
+			}
+		} catch (error) {
+			const message =
+				error instanceof Error ? error.message : "Unknown error";
+			setTestResult({ success: false, message });
+			toast.error("Connection test failed", { description: message });
+		} finally {
+			setTesting(false);
+		}
+	};
+
+	// Save overrides
+	const handleSave = async () => {
+		setSaving(true);
+		try {
+			await updateMutation.mutateAsync({
+				body: {
+					model: modelOverride || null,
+					api_key: apiKeyOverride || null,
+					clear_overrides: false,
+				},
+			});
+
+			toast.success("Coding mode configuration saved");
+			setApiKeyOverride("");
+			setTestResult(null);
+			refetch();
+		} catch (error) {
+			toast.error("Failed to save coding mode configuration", {
+				description: error instanceof Error ? error.message : "Unknown error",
+			});
+		} finally {
+			setSaving(false);
+		}
+	};
+
+	// Clear all overrides
+	const handleClearOverrides = async () => {
+		setSaving(true);
+		try {
+			await updateMutation.mutateAsync({
+				body: {
+					clear_overrides: true,
+				},
+			});
+
+			setModelOverride("");
+			setApiKeyOverride("");
+			setShowOverrideForm(false);
+			setCodingModels([]);
+			setTestResult(null);
+			toast.success("Coding mode overrides cleared");
+			refetch();
+		} catch (error) {
+			toast.error("Failed to clear overrides", {
+				description: error instanceof Error ? error.message : "Unknown error",
+			});
+		} finally {
+			setSaving(false);
+		}
+	};
+
+	if (isLoading) {
+		return (
+			<Card>
+				<CardContent className="flex items-center justify-center py-8">
+					<Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+				</CardContent>
+			</Card>
+		);
+	}
+
+	const hasOverrides = config?.model_override || config?.has_key_override;
+	const hasModels = effectiveModels.length > 0;
+	const canSave = modelOverride || apiKeyOverride;
+
+	return (
+		<Card>
+			<CardHeader>
+				<div className="flex items-center gap-2">
+					<Code className="h-5 w-5" />
+					<CardTitle>Coding Mode</CardTitle>
+				</div>
+				<CardDescription>
+					Configure the AI model for the Bifrost coding assistant.
+					{!config?.main_llm_is_anthropic && !config?.has_key_override && (
+						<span className="block mt-1 text-amber-600 dark:text-amber-400">
+							Coding mode requires Anthropic. Add a dedicated API key below.
+						</span>
+					)}
+				</CardDescription>
+			</CardHeader>
+			<CardContent className="space-y-4">
+				{/* Status Banner */}
+				{config?.configured ? (
+					<div className="rounded-lg border bg-green-50 dark:bg-green-950/20 border-green-200 dark:border-green-900 p-4">
+						<div className="flex items-center justify-between">
+							<div className="flex items-center gap-2">
+								<CheckCircle2 className="h-4 w-4 text-green-600" />
+								<span className="text-sm font-medium text-green-800 dark:text-green-200">
+									Coding Mode Configured
+								</span>
+							</div>
+							{hasOverrides && (
+								<Button
+									variant="ghost"
+									size="sm"
+									onClick={handleClearOverrides}
+									disabled={saving}
+									className="text-muted-foreground hover:text-foreground"
+								>
+									<X className="h-4 w-4 mr-1" />
+									Clear Overrides
+								</Button>
+							)}
+						</div>
+						<div className="mt-2 space-y-1">
+							<p className="text-sm text-green-700 dark:text-green-300">
+								<span className="font-medium">Model:</span> {config.model}
+							</p>
+							<p className="text-sm text-green-700 dark:text-green-300">
+								<span className="font-medium">Source:</span>{" "}
+								{hasOverrides
+									? "Custom override"
+									: "Using main AI config"}
+							</p>
+						</div>
+					</div>
+				) : (
+					<div className="rounded-lg border bg-amber-50 dark:bg-amber-950/20 border-amber-200 dark:border-amber-900 p-4">
+						<div className="flex items-center gap-2">
+							<AlertCircle className="h-4 w-4 text-amber-600" />
+							<span className="text-sm font-medium text-amber-800 dark:text-amber-200">
+								Coding Mode Not Configured
+							</span>
+						</div>
+						<p className="mt-1 text-sm text-amber-700 dark:text-amber-300">
+							{config?.main_llm_is_anthropic
+								? "Configure an Anthropic model in main AI settings, or add a custom override below."
+								: "Add an Anthropic API key to enable the coding assistant."}
+						</p>
+					</div>
+				)}
+
+				{/* Override Toggle */}
+				{!showOverrideForm && config?.main_llm_is_anthropic && (
+					<Button
+						variant="outline"
+						size="sm"
+						onClick={() => setShowOverrideForm(true)}
+					>
+						<Pencil className="h-4 w-4 mr-2" />
+						Override Settings
+					</Button>
+				)}
+
+				{/* Override Form */}
+				{(showOverrideForm || !config?.main_llm_is_anthropic) && (
+					<div className="space-y-4 pt-2 border-t">
+						<p className="text-sm text-muted-foreground">
+							{config?.main_llm_is_anthropic
+								? "Override the main AI config with custom settings for coding mode."
+								: "Configure a dedicated Anthropic API key for coding mode."}
+						</p>
+
+						{/* API Key Override - show first if not using main Anthropic */}
+						{!config?.main_llm_is_anthropic && (
+							<div className="space-y-2">
+								<Label htmlFor="coding-api-key">Anthropic API Key</Label>
+								<div className="flex gap-2">
+									<Input
+										id="coding-api-key"
+										type="password"
+										autoComplete="off"
+										placeholder={
+											config?.has_key_override
+												? "API key saved - enter new key to change"
+												: "sk-ant-..."
+										}
+										value={apiKeyOverride}
+										onChange={(e) => {
+											setApiKeyOverride(e.target.value);
+											setTestResult(null);
+										}}
+									/>
+									<Button
+										variant="secondary"
+										onClick={handleTestConnection}
+										disabled={testing || (!apiKeyOverride && !config?.has_key_override)}
+									>
+										{testing ? (
+											<>
+												<Loader2 className="h-4 w-4 mr-2 animate-spin" />
+												Testing...
+											</>
+										) : testResult?.success ? (
+											<>
+												<CheckCircle2 className="h-4 w-4 mr-2 text-green-600" />
+												Verified
+											</>
+										) : testResult?.success === false ? (
+											<>
+												<AlertCircle className="h-4 w-4 mr-2 text-destructive" />
+												Failed
+											</>
+										) : (
+											<>
+												<Zap className="h-4 w-4 mr-2" />
+												Test
+											</>
+										)}
+									</Button>
+								</div>
+								<p className="text-xs text-muted-foreground">
+									Get your API key from{" "}
+									<a
+										href="https://console.anthropic.com/settings/keys"
+										target="_blank"
+										rel="noopener noreferrer"
+										className="underline hover:text-foreground"
+									>
+										console.anthropic.com
+									</a>
+								</p>
+							</div>
+						)}
+
+						{/* Model Override - dropdown when models available */}
+						<div className="space-y-2">
+							<Label htmlFor="coding-model">
+								Model {config?.main_llm_is_anthropic ? "Override" : ""}
+								{!hasModels && !config?.main_llm_is_anthropic && (
+									<span className="text-muted-foreground font-normal ml-2">
+										(test API key first)
+									</span>
+								)}
+							</Label>
+							{hasModels ? (
+								<Select
+									value={modelOverride || "__default__"}
+									onValueChange={(v) => setModelOverride(v === "__default__" ? "" : v)}
+								>
+									<SelectTrigger id="coding-model">
+										<SelectValue placeholder="Select model">
+											{modelOverride
+												? effectiveModels.find((m) => m.id === modelOverride)?.display_name || modelOverride
+												: "Use main AI config model"}
+										</SelectValue>
+									</SelectTrigger>
+									<SelectContent>
+										{config?.main_llm_is_anthropic && (
+											<SelectItem value="__default__">
+												<span className="text-muted-foreground">
+													Use main AI config model
+												</span>
+											</SelectItem>
+										)}
+										{effectiveModels.map((m) => (
+											<SelectItem key={m.id} value={m.id}>
+												<div className="flex flex-col">
+													<span>{m.display_name}</span>
+													<span className="text-xs text-muted-foreground">
+														{m.id}
+													</span>
+												</div>
+											</SelectItem>
+										))}
+									</SelectContent>
+								</Select>
+							) : config?.main_llm_is_anthropic ? (
+								<Select
+									value={modelOverride || "__default__"}
+									onValueChange={(v) => setModelOverride(v === "__default__" ? "" : v)}
+								>
+									<SelectTrigger id="coding-model">
+										<SelectValue placeholder="Use main AI config model">
+											{modelOverride
+												? availableModels.find((m) => m.id === modelOverride)?.display_name || modelOverride
+												: "Use main AI config model"}
+										</SelectValue>
+									</SelectTrigger>
+									<SelectContent>
+										<SelectItem value="__default__">
+											<span className="text-muted-foreground">
+												Use main AI config model
+											</span>
+										</SelectItem>
+										{availableModels.map((m) => (
+											<SelectItem key={m.id} value={m.id}>
+												<div className="flex flex-col">
+													<span>{m.display_name}</span>
+													<span className="text-xs text-muted-foreground">
+														{m.id}
+													</span>
+												</div>
+											</SelectItem>
+										))}
+									</SelectContent>
+								</Select>
+							) : (
+								<Input
+									id="coding-model"
+									placeholder="Test API key to load available models"
+									disabled
+									value=""
+								/>
+							)}
+							{config?.main_llm_is_anthropic && (
+								<p className="text-xs text-muted-foreground">
+									Select a model to override, or keep default to use main config.
+								</p>
+							)}
+						</div>
+
+						{/* API Key Override for Anthropic main config - optional */}
+						{config?.main_llm_is_anthropic && (
+							<div className="space-y-2">
+								<Label htmlFor="coding-api-key">
+									API Key Override (Optional)
+								</Label>
+								<Input
+									id="coding-api-key"
+									type="password"
+									autoComplete="off"
+									placeholder={
+										config?.has_key_override
+											? "API key saved - enter new key to change"
+											: "Leave empty to use main AI key"
+									}
+									value={apiKeyOverride}
+									onChange={(e) => setApiKeyOverride(e.target.value)}
+								/>
+								<p className="text-xs text-muted-foreground">
+									Main LLM is Anthropic - no separate key needed unless you want to override.
+								</p>
+							</div>
+						)}
+
+						{/* Save Button */}
+						<div className="flex justify-end gap-2">
+							{showOverrideForm && config?.main_llm_is_anthropic && !hasOverrides && (
+								<Button
+									variant="outline"
+									onClick={() => {
+										setShowOverrideForm(false);
+										setModelOverride("");
+										setApiKeyOverride("");
+									}}
+								>
+									Cancel
+								</Button>
+							)}
+							<Button onClick={handleSave} disabled={!canSave || saving}>
+								{saving ? (
+									<>
+										<Loader2 className="h-4 w-4 mr-2 animate-spin" />
+										Saving...
+									</>
+								) : (
+									"Save"
+								)}
+							</Button>
+						</div>
+					</div>
+				)}
 			</CardContent>
 		</Card>
 	);

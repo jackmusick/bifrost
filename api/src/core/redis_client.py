@@ -364,6 +364,32 @@ class RedisClient:
             await self._redis.close()
             self._redis = None
 
+    # =========================================================================
+    # General Purpose Methods (for session management, etc.)
+    # =========================================================================
+
+    async def get(self, key: str) -> str | None:
+        """Get a value by key."""
+        redis_client = await self._get_redis()
+        return await redis_client.get(key)
+
+    async def setex(self, key: str, ttl: int, value: str) -> None:
+        """Set a value with TTL."""
+        redis_client = await self._get_redis()
+        await redis_client.setex(key, ttl, value)
+
+    async def delete(self, key: str) -> int:
+        """Delete a key. Returns number of keys deleted."""
+        redis_client = await self._get_redis()
+        return await redis_client.delete(key)
+
+    async def scan(
+        self, cursor: int, match: str | None = None, count: int = 10
+    ) -> tuple[int, list[str]]:
+        """Scan keys matching pattern."""
+        redis_client = await self._get_redis()
+        return await redis_client.scan(cursor, match=match, count=count)
+
 
 # Singleton instance
 _redis_client: RedisClient | None = None

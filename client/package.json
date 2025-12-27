@@ -78,6 +78,7 @@
 		"react-router-dom": "^7.9.3",
 		"react-syntax-highlighter": "^16.1.0",
 		"recharts": "^3.5.1",
+		"remark-gfm": "^4.0.1",
 		"sonner": "^2.0.7",
 		"tailwind-merge": "^3.3.1",
 		"tailwindcss": "^4.0.0",

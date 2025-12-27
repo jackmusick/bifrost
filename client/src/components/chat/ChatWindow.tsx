@@ -10,6 +10,7 @@ import { Bot, MessageSquare } from "lucide-react";
 import { ChatMessage } from "./ChatMessage";
 import { ChatInput } from "./ChatInput";
 import { ToolExecutionCard } from "./ToolExecutionCard";
+import { ToolExecutionBadge } from "./ToolExecutionBadge";
 import { ChatSystemEvent, type SystemEvent } from "./ChatSystemEvent";
 import {
 	useChatStore,
@@ -61,22 +62,18 @@ function StreamingMessageDisplay({
 
 	return (
 		<div className="space-y-3">
-			{/* Tool Execution Cards (streaming) */}
+			{/* Tool Execution Badges (streaming) - compact horizontal flow */}
 			{hasToolExecutions && (
-				<div className="px-4 space-y-2">
+				<div className="px-4 flex flex-wrap gap-2">
 					{toolExecutions.map((execution) => (
-						<ToolExecutionCard
+						<ToolExecutionBadge
 							key={execution.toolCall.id}
-							executionId={execution.executionId}
 							toolCall={execution.toolCall}
-							isStreaming={true}
-							streamingState={{
-								status: execution.status,
-								logs: execution.logs,
-								result: execution.result,
-								error: execution.error,
-								durationMs: execution.durationMs,
-							}}
+							status={execution.status}
+							result={execution.result}
+							error={execution.error}
+							durationMs={execution.durationMs}
+							logs={execution.logs}
 						/>
 					))}
 				</div>
@@ -121,46 +118,69 @@ function MessageWithToolCards({
 		);
 	}
 
+	// Determine if these are SDK tools (no workflow execution) or workflow tools
+	// SDK tools don't have execution_id that maps to workflow executions
+	const toolsInfo = message.tool_calls!.map((tc) => {
+		const resultMsg = toolResultMessages.get(tc.id);
+		const executionId =
+			(
+				resultMsg as { execution_id?: string | null } | undefined
+			)?.execution_id ?? undefined;
+		const savedExecution = getToolExecution(conversationId, tc.id);
+
+		// SDK tool if: no execution_id OR we have saved streaming state
+		// (saved state means it came from streaming, not workflow execution)
+		const isSDKTool = !executionId || !!savedExecution;
+
+		return { tc, resultMsg, executionId, savedExecution, isSDKTool };
+	});
+
+	// Check if all tools are SDK tools (use compact badges) or mixed/workflow (use cards)
+	const allSDKTools = toolsInfo.every((t) => t.isSDKTool);
+
 	return (
 		<div className="space-y-3">
-			{/* Tool Execution Cards - rendered above the text content */}
-			<div className="px-4 space-y-2">
-				{message.tool_calls!.map((tc) => {
-					// Get the tool result message for this tool call
-					const resultMsg = toolResultMessages.get(tc.id);
-
-					// Get execution_id from the tool result message
-					// Cast needed until types are regenerated after migration
-					const executionId =
-						(
-							resultMsg as
-								| { execution_id?: string | null }
-								| undefined
-						)?.execution_id ?? undefined;
-
-					// Get saved tool execution state (persisted after streaming completes)
-					const savedExecution = getToolExecution(
-						conversationId,
-						tc.id,
-					);
-
-					return (
-						<ToolExecutionCard
+			{/* SDK Tools - compact badges in horizontal flow */}
+			{allSDKTools ? (
+				<div className="px-4 flex flex-wrap gap-2">
+					{toolsInfo.map(({ tc, savedExecution, resultMsg }) => (
+						<ToolExecutionBadge
 							key={tc.id}
-							executionId={executionId}
 							toolCall={tc}
-							execution={savedExecution}
-							hasResultMessage={!!resultMsg}
+							status={
+								savedExecution?.status ??
+								(resultMsg ? "success" : "pending")
+							}
+							result={savedExecution?.result}
+							error={savedExecution?.error}
+							durationMs={savedExecution?.durationMs}
+							logs={savedExecution?.logs}
 						/>
-					);
-				})}
-			</div>
+					))}
+				</div>
+			) : (
+				/* Workflow Tools - full cards for execution details */
+				<div className="px-4 space-y-2">
+					{toolsInfo.map(
+						({ tc, executionId, savedExecution, resultMsg }) => (
+							<ToolExecutionCard
+								key={tc.id}
+								executionId={executionId}
+								toolCall={tc}
+								execution={savedExecution}
+								hasResultMessage={!!resultMsg}
+							/>
+						),
+					)}
+				</div>
+			)}
 
 			{/* Message text content (if any) */}
 			{message.content && message.content.trim().length > 0 && (
 				<ChatMessage
 					message={message}
 					onToolCallClick={onToolCallClick}
+					hideToolBadges={true}
 				/>
 			)}
 		</div>

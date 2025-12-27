@@ -7,6 +7,7 @@ Follows the same pattern as GitHub integration for SystemConfig storage.
 
 import base64
 import logging
+from dataclasses import dataclass
 from typing import Literal
 
 from cryptography.fernet import Fernet
@@ -32,6 +33,18 @@ DEFAULT_TEMPERATURE = 0.7
 # SystemConfig keys (follows GitHub integration pattern)
 LLM_CONFIG_CATEGORY = "llm"
 LLM_CONFIG_KEY = "provider_config"
+
+# Coding mode config - optional overrides for key and model
+CODING_CONFIG_CATEGORY = "coding"
+CODING_CONFIG_KEY = "config"
+
+
+@dataclass
+class CodingConfig:
+    """Coding mode configuration."""
+
+    api_key: str
+    model: str
 
 
 async def get_llm_config(session: AsyncSession) -> LLMConfig:
@@ -179,3 +192,59 @@ def create_llm_client(
         return AnthropicClient(config)
     else:
         raise ValueError(f"Unknown LLM provider: {provider}")
+
+
+async def get_coding_mode_config(session: AsyncSession) -> CodingConfig | None:
+    """
+    Get coding mode configuration.
+
+    Priority (for each field independently):
+    1. Coding override (if set)
+    2. Main LLM config (if Anthropic)
+
+    Returns None if no Anthropic API key is available.
+    """
+    settings = get_settings()
+    api_key: str | None = None
+    model: str | None = None
+
+    # Get main LLM config as base (if Anthropic)
+    try:
+        llm_config = await get_llm_config(session)
+        if llm_config.provider == "anthropic":
+            api_key = llm_config.api_key
+            model = llm_config.model
+    except ValueError:
+        pass
+
+    # Check for coding config overrides
+    result = await session.execute(
+        select(SystemConfig).where(
+            SystemConfig.category == CODING_CONFIG_CATEGORY,
+            SystemConfig.key == CODING_CONFIG_KEY,
+            SystemConfig.organization_id.is_(None),
+        )
+    )
+    config_row = result.scalars().first()
+
+    if config_row and config_row.value_json:
+        config_data = config_row.value_json
+
+        # Override model if set
+        if config_data.get("model"):
+            model = config_data["model"]
+
+        # Override API key if set
+        if config_data.get("encrypted_api_key"):
+            try:
+                key_bytes = settings.secret_key.encode()[:32].ljust(32, b"0")
+                fernet = Fernet(base64.urlsafe_b64encode(key_bytes))
+                api_key = fernet.decrypt(config_data["encrypted_api_key"].encode()).decode()
+            except Exception:
+                pass  # Use fallback key
+
+    # Must have both key and model
+    if not api_key or not model:
+        return None
+
+    return CodingConfig(api_key=api_key, model=model)

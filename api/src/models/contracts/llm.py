@@ -147,3 +147,49 @@ class EmbeddingTestResponse(BaseModel):
     success: bool
     message: str
     dimensions: int | None = None
+
+
+# =============================================================================
+# Coding Mode Configuration
+# =============================================================================
+
+
+class CodingConfigResponse(BaseModel):
+    """Coding mode configuration response."""
+
+    configured: bool = Field(
+        description="True if coding mode has both API key and model configured"
+    )
+    model: str | None = Field(
+        None,
+        description="Effective model (override or main LLM)"
+    )
+    model_override: str | None = Field(
+        None,
+        description="Explicit model override if set"
+    )
+    has_key_override: bool = Field(
+        False,
+        description="True if using a dedicated coding API key instead of main LLM"
+    )
+    main_llm_is_anthropic: bool = Field(
+        False,
+        description="True if main LLM config is Anthropic (can be used as fallback)"
+    )
+
+
+class CodingConfigUpdate(BaseModel):
+    """Request to update coding mode overrides."""
+
+    model: str | None = Field(
+        None,
+        description="Model override. Set to override main LLM model."
+    )
+    api_key: str | None = Field(
+        None,
+        description="API key override. Set to use a dedicated key instead of main LLM."
+    )
+    clear_overrides: bool = Field(
+        False,
+        description="Set true to remove all overrides and use main LLM config"
+    )

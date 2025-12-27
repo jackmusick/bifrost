@@ -67,6 +67,49 @@ class AgentExecutor:
         self.session = session
         self.tool_registry = ToolRegistry(session)
 
+    async def _switch_agent(
+        self,
+        conversation: Conversation,
+        new_agent: Agent,
+        reason: str,
+    ) -> AsyncIterator[ChatStreamChunk]:
+        """
+        Centralized agent switching with all rule checks.
+
+        All agent switching paths (@mention, AI routing, etc.) should funnel
+        through this method to ensure consistent behavior and rule enforcement.
+
+        Args:
+            conversation: The conversation to update
+            new_agent: The agent to switch to
+            reason: Why the switch happened ("@mention", "routed", etc.)
+
+        Yields:
+            - agent_switch event (always)
+            - coding_mode_required if agent.is_coding_mode
+            - (future: other agent-specific signals)
+        """
+        # 1. Emit agent switch event
+        yield ChatStreamChunk(
+            type="agent_switch",
+            agent_switch=AgentSwitch(
+                agent_id=str(new_agent.id),
+                agent_name=new_agent.name,
+                reason=reason,
+            ),
+        )
+
+        # 2. Persist to conversation
+        conversation.agent_id = new_agent.id
+        await self.session.flush()
+
+        # 3. Check agent-specific rules
+        if new_agent.is_coding_mode:
+            yield ChatStreamChunk(
+                type="coding_mode_required",
+                content=f"Switching to {new_agent.name}. Coding mode required.",
+            )
+
     async def chat(
         self,
         agent: Agent | None,
@@ -75,6 +118,7 @@ class AgentExecutor:
         *,
         stream: bool = True,
         enable_routing: bool = True,
+        is_platform_admin: bool = False,
     ) -> AsyncIterator[ChatStreamChunk]:
         """
         Process a user message and generate a response.
@@ -88,6 +132,7 @@ class AgentExecutor:
             user_message: The user's message text
             stream: Whether to stream the response (default True)
             enable_routing: Whether to enable @mention and AI routing (default True)
+            is_platform_admin: Whether user is platform admin (enables coding agent routing)
 
         Yields:
             ChatStreamChunk objects with response content, tool calls, etc.
@@ -102,41 +147,30 @@ class AgentExecutor:
             if enable_routing:
                 mentioned_agent = await router.parse_mention(user_message)
                 if mentioned_agent:
-                    agent = mentioned_agent
                     # Strip @mention from message for cleaner processing
                     user_message = router.strip_mention(user_message)
-                    # Emit agent switch event
-                    yield ChatStreamChunk(
-                        type="agent_switch",
-                        agent_switch=AgentSwitch(
-                            agent_id=str(mentioned_agent.id),
-                            agent_name=mentioned_agent.name,
-                            reason="@mention",
-                        ),
-                    )
-                    # Persist the mentioned agent to the conversation
-                    conversation.agent_id = mentioned_agent.id
-                    await self.session.flush()
+                    # Switch to mentioned agent (handles events, persistence, and rule checks)
+                    async for chunk in self._switch_agent(conversation, mentioned_agent, "@mention"):
+                        yield chunk
+                        if chunk.type == "coding_mode_required":
+                            return  # Hand off to coding mode handler
+                    agent = mentioned_agent
 
             # 2. AI-based routing for agentless chat (first message only)
             if enable_routing and agent is None:
                 # Check if this is the first user message in the conversation
                 is_first_message = await self._is_first_user_message(conversation.id)
                 if is_first_message:
-                    routed_agent = await router.route_message(user_message)
+                    routed_agent = await router.route_message(
+                        user_message, is_platform_admin=is_platform_admin
+                    )
                     if routed_agent:
+                        # Switch to routed agent (handles events, persistence, and rule checks)
+                        async for chunk in self._switch_agent(conversation, routed_agent, "routed"):
+                            yield chunk
+                            if chunk.type == "coding_mode_required":
+                                return  # Hand off to coding mode handler
                         agent = routed_agent
-                        yield ChatStreamChunk(
-                            type="agent_switch",
-                            agent_switch=AgentSwitch(
-                                agent_id=str(routed_agent.id),
-                                agent_name=routed_agent.name,
-                                reason="routed",
-                            ),
-                        )
-                        # Persist the routed agent to the conversation
-                        conversation.agent_id = routed_agent.id
-                        await self.session.flush()
 
             # 3. Save user message
             await self._save_message(

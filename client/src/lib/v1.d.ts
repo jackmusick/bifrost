@@ -3026,22 +3026,22 @@ export interface paths {
          * Execute workflow via API key
          * @description Execute an endpoint-enabled workflow using an API key for authentication
          */
-        get: operations["execute_endpoint_api_endpoints__workflow_name__get"];
+        get: operations["execute_endpoint_api_endpoints__workflow_name__delete"];
         /**
          * Execute workflow via API key
          * @description Execute an endpoint-enabled workflow using an API key for authentication
          */
-        put: operations["execute_endpoint_api_endpoints__workflow_name__get"];
+        put: operations["execute_endpoint_api_endpoints__workflow_name__delete"];
         /**
          * Execute workflow via API key
          * @description Execute an endpoint-enabled workflow using an API key for authentication
          */
-        post: operations["execute_endpoint_api_endpoints__workflow_name__get"];
+        post: operations["execute_endpoint_api_endpoints__workflow_name__delete"];
         /**
          * Execute workflow via API key
          * @description Execute an endpoint-enabled workflow using an API key for authentication
          */
-        delete: operations["execute_endpoint_api_endpoints__workflow_name__get"];
+        delete: operations["execute_endpoint_api_endpoints__workflow_name__delete"];
         options?: never;
         head?: never;
         patch?: never;
@@ -4048,6 +4048,9 @@ export interface paths {
          *     Tests the currently saved configuration.
          *     Also refreshes the model ID -> display name mapping cache.
          *     Requires platform admin access.
+         *
+         *     Args:
+         *         mode: Which config to test - "main" (default) or "coding" (for coding mode override)
          */
         post: operations["test_saved_llm_connection_api_admin_llm_test_saved_post"];
         delete?: never;
@@ -4137,6 +4140,44 @@ export interface paths {
          */
         post: operations["test_embedding_connection_api_admin_llm_embedding_test_post"];
         delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/admin/llm/coding-config": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Coding Config Endpoint
+         * @description Get coding mode configuration.
+         *
+         *     Returns the effective configuration (combining main LLM with any overrides).
+         *     Requires platform admin access.
+         */
+        get: operations["get_coding_config_endpoint_api_admin_llm_coding_config_get"];
+        /**
+         * Update Coding Config Endpoint
+         * @description Update coding mode configuration overrides.
+         *
+         *     Set model and/or api_key to override main LLM settings.
+         *     Set clear_overrides=true to remove all overrides.
+         *     Requires platform admin access.
+         */
+        put: operations["update_coding_config_endpoint_api_admin_llm_coding_config_put"];
+        post?: never;
+        /**
+         * Delete Coding Config Endpoint
+         * @description Delete coding mode configuration overrides.
+         *
+         *     After deletion, coding mode will use main LLM config (if Anthropic).
+         *     Requires platform admin access.
+         */
+        delete: operations["delete_coding_config_endpoint_api_admin_llm_coding_config_delete"];
         options?: never;
         head?: never;
         patch?: never;
@@ -6013,6 +6054,61 @@ export interface components {
              * @description Number of executions that failed to clean up
              */
             failed: number;
+        };
+        /**
+         * CodingConfigResponse
+         * @description Coding mode configuration response.
+         */
+        CodingConfigResponse: {
+            /**
+             * Configured
+             * @description True if coding mode has both API key and model configured
+             */
+            configured: boolean;
+            /**
+             * Model
+             * @description Effective model (override or main LLM)
+             */
+            model?: string | null;
+            /**
+             * Model Override
+             * @description Explicit model override if set
+             */
+            model_override?: string | null;
+            /**
+             * Has Key Override
+             * @description True if using a dedicated coding API key instead of main LLM
+             * @default false
+             */
+            has_key_override: boolean;
+            /**
+             * Main Llm Is Anthropic
+             * @description True if main LLM config is Anthropic (can be used as fallback)
+             * @default false
+             */
+            main_llm_is_anthropic: boolean;
+        };
+        /**
+         * CodingConfigUpdate
+         * @description Request to update coding mode overrides.
+         */
+        CodingConfigUpdate: {
+            /**
+             * Model
+             * @description Model override. Set to override main LLM model.
+             */
+            model?: string | null;
+            /**
+             * Api Key
+             * @description API key override. Set to use a dedicated key instead of main LLM.
+             */
+            api_key?: string | null;
+            /**
+             * Clear Overrides
+             * @description Set true to remove all overrides and use main LLM config
+             * @default false
+             */
+            clear_overrides: boolean;
         };
         /**
          * CommitHistoryResponse
@@ -16747,7 +16843,7 @@ export interface operations {
             };
         };
     };
-    execute_endpoint_api_endpoints__workflow_name__get: {
+    execute_endpoint_api_endpoints__workflow_name__delete: {
         parameters: {
             query?: never;
             header: {
@@ -16780,7 +16876,7 @@ export interface operations {
             };
         };
     };
-    execute_endpoint_api_endpoints__workflow_name__get: {
+    execute_endpoint_api_endpoints__workflow_name__delete: {
         parameters: {
             query?: never;
             header: {
@@ -16813,7 +16909,7 @@ export interface operations {
             };
         };
     };
-    execute_endpoint_api_endpoints__workflow_name__get: {
+    execute_endpoint_api_endpoints__workflow_name__delete: {
         parameters: {
             query?: never;
             header: {
@@ -16846,7 +16942,7 @@ export interface operations {
             };
         };
     };
-    execute_endpoint_api_endpoints__workflow_name__get: {
+    execute_endpoint_api_endpoints__workflow_name__delete: {
         parameters: {
             query?: never;
             header: {
@@ -18700,7 +18796,9 @@ export interface operations {
     };
     test_saved_llm_connection_api_admin_llm_test_saved_post: {
         parameters: {
-            query?: never;
+            query?: {
+                mode?: string;
+            };
             header?: never;
             path?: never;
             cookie?: never;
@@ -18714,6 +18812,15 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["LLMTestResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
                 };
             };
         };
@@ -18839,6 +18946,79 @@ export interface operations {
                 content: {
                     "application/json": components["schemas"]["HTTPValidationError"];
                 };
+            };
+        };
+    };
+    get_coding_config_endpoint_api_admin_llm_coding_config_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CodingConfigResponse"];
+                };
+            };
+        };
+    };
+    update_coding_config_endpoint_api_admin_llm_coding_config_put: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CodingConfigUpdate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    delete_coding_config_endpoint_api_admin_llm_coding_config_delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
             };
         };
     };
