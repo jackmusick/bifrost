@@ -7,14 +7,38 @@
 import { useQueryClient } from "@tanstack/react-query";
 import { $api, apiClient } from "@/lib/api-client";
 import type { components } from "@/lib/v1";
-import type { ConfigScope } from "@/lib/client-types";
 import { toast } from "sonner";
 
 type SetConfigRequest = components["schemas"]["SetConfigRequest"];
 type Config = components["schemas"]["ConfigResponse"];
 
-export function useConfigs(_scope: ConfigScope = "GLOBAL") {
-	return $api.useQuery("get", "/api/config", {});
+/**
+ * Hook to fetch all configs with optional organization filtering
+ * @param filterScope - Filter scope: undefined = all, null = global only, string = org UUID
+ *
+ * The scope query param controls filtering:
+ * - Omitted (undefined): show all configs (superusers) / user's org + global (org users)
+ * - "global": show only global configs (org_id IS NULL)
+ * - UUID string: show that org's configs + global configs
+ */
+export function useConfigs(filterScope?: string | null) {
+	// Build query params - scope is the new filter parameter
+	const queryParams: Record<string, string | undefined> = {};
+	if (filterScope === null) {
+		// null means "global only"
+		queryParams.scope = "global";
+	} else if (filterScope !== undefined) {
+		// UUID string means specific org
+		queryParams.scope = filterScope;
+	}
+	// undefined = don't send scope (show all)
+
+	return $api.useQuery("get", "/api/config", {
+		params: {
+			// Type assertion needed until types are regenerated
+			query: Object.keys(queryParams).length > 0 ? queryParams : undefined,
+		} as { query?: { scope?: string } },
+	});
 }
 
 export function useSetConfig() {

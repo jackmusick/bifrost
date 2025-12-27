@@ -1133,6 +1133,9 @@ function ModelPricingCard() {
 	}>({ input: "", output: "" });
 	const [saving, setSaving] = useState(false);
 	const [showAddDialog, setShowAddDialog] = useState(false);
+	const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
+	const [deletingPricing, setDeletingPricing] =
+		useState<AIModelPricingListItem | null>(null);
 	const [newPricing, setNewPricing] = useState<AIModelPricingCreate>({
 		provider: "openai",
 		model: "",
@@ -1245,13 +1248,25 @@ function ModelPricingCard() {
 		}
 	};
 
-	// Delete pricing
-	const handleDeletePricing = async (id: number) => {
+	// Show delete confirmation dialog
+	const handleDeletePricing = (item: AIModelPricingListItem) => {
+		setDeletingPricing(item);
+		setShowDeleteConfirm(true);
+	};
+
+	// Confirm delete
+	const confirmDeletePricing = async () => {
+		if (!deletingPricing?.id) return;
+
 		setSaving(true);
 		try {
-			await deletePricing(id);
-			toast.success("Pricing deleted");
+			await deletePricing(deletingPricing.id);
+			toast.success("Pricing deleted", {
+				description: `Removed pricing for ${deletingPricing.provider}/${deletingPricing.model}`,
+			});
 			await loadPricing();
+			setShowDeleteConfirm(false);
+			setDeletingPricing(null);
 		} catch (error) {
 			toast.error("Failed to delete pricing", {
 				description:
@@ -1488,9 +1503,7 @@ function ModelPricingCard() {
 															variant="ghost"
 															size="sm"
 															onClick={() =>
-																handleDeletePricing(
-																	item.id,
-																)
+																handleDeletePricing(item)
 															}
 															className="text-destructive hover:text-destructive"
 														>
@@ -1618,6 +1631,48 @@ function ModelPricingCard() {
 								</>
 							) : (
 								"Add Pricing"
+							)}
+						</Button>
+					</DialogFooter>
+				</DialogContent>
+			</Dialog>
+
+			{/* Delete Confirmation Dialog */}
+			<Dialog open={showDeleteConfirm} onOpenChange={setShowDeleteConfirm}>
+				<DialogContent>
+					<DialogHeader>
+						<DialogTitle>Delete Pricing Configuration</DialogTitle>
+						<DialogDescription>
+							Are you sure you want to delete pricing for{" "}
+							<span className="font-medium">
+								{deletingPricing?.provider}/{deletingPricing?.model}
+							</span>
+							? This action cannot be undone.
+						</DialogDescription>
+					</DialogHeader>
+					<DialogFooter>
+						<Button
+							variant="outline"
+							onClick={() => {
+								setShowDeleteConfirm(false);
+								setDeletingPricing(null);
+							}}
+							disabled={saving}
+						>
+							Cancel
+						</Button>
+						<Button
+							variant="destructive"
+							onClick={confirmDeletePricing}
+							disabled={saving}
+						>
+							{saving ? (
+								<>
+									<Loader2 className="h-4 w-4 mr-2 animate-spin" />
+									Deleting...
+								</>
+							) : (
+								"Delete"
 							)}
 						</Button>
 					</DialogFooter>

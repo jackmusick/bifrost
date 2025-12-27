@@ -10,7 +10,7 @@ Provides endpoints for OAuth/SSO authentication:
 
 import json
 import logging
-from datetime import datetime, timezone
+from datetime import datetime
 
 from fastapi import APIRouter, HTTPException, Query, Request, Response, status
 from pydantic import BaseModel

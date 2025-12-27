@@ -58,17 +58,9 @@ export function OrgScopeProvider({ children }: { children: ReactNode }) {
 		setRefreshTrigger((prev) => prev + 1);
 	};
 
-	// Persist to localStorage and sessionStorage when scope changes
+	// Persist to localStorage when scope changes
 	useEffect(() => {
 		localStorage.setItem(SCOPE_STORAGE_KEY, JSON.stringify(scope));
-
-		// Update sessionStorage for API client (used by api.ts for X-Organization-Id header)
-		if (scope.orgId) {
-			sessionStorage.setItem("current_org_id", scope.orgId);
-		} else {
-			// Remove org ID from sessionStorage when in Global scope
-			sessionStorage.removeItem("current_org_id");
-		}
 	}, [scope]);
 
 	// Track current loading request to avoid race conditions

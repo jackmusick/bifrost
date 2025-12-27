@@ -18,7 +18,7 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any, TYPE_CHECKING
 
-from sqlalchemy import select, update
+from sqlalchemy import delete, select, update
 from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -282,6 +282,14 @@ class FileStorageService:
             await publish_workspace_file_write(path, publish_content, publish_hash)
         except Exception as e:
             logger.warning(f"Failed to publish workspace file write event: {e}")
+
+        # Scan Python files for missing SDK references (config.get, integrations.get)
+        # and create platform admin notifications if issues are found
+        if path.endswith(".py"):
+            try:
+                await self._scan_for_sdk_issues(path, final_content)
+            except Exception as e:
+                logger.warning(f"Failed to scan for SDK issues in {path}: {e}")
 
         logger.info(f"File written: {path} ({size_bytes} bytes) by {updated_by}")
         return WriteResult(
@@ -1561,11 +1569,14 @@ class FileStorageService:
         If the JSON contains an 'id' field, uses that ID (for dual-write from API).
         Otherwise generates a new ID (for files synced from git/editor).
 
+        Updates form definition (name, description, workflow_id, form_schema, etc.)
+        but preserves environment-specific fields (organization_id, access_level).
+
         Uses ON CONFLICT on primary key (id) to update existing forms.
         """
         import json
-        from uuid import UUID
-        from src.models import Form
+        from uuid import UUID, uuid4
+        from src.models import Form, FormField as FormFieldORM
 
         try:
             form_data = json.loads(content.decode("utf-8"))
@@ -1585,75 +1596,100 @@ class FileStorageService:
                 form_id = UUID(form_id_str)
             except ValueError:
                 logger.warning(f"Invalid form ID in {path}: {form_id_str}")
-                form_id = None
+                form_id = uuid4()  # Generate new ID if invalid
         else:
-            form_id = None
+            form_id = uuid4()  # Generate new ID for files without one
 
         now = datetime.utcnow()
 
-        if form_id:
-            # Form has an ID - use upsert on primary key
-            # This handles dual-write from API (form already exists)
-            stmt = insert(Form).values(
-                id=form_id,
-                name=name,
-                description=form_data.get("description"),
-                workflow_id=form_data.get("workflow_id"),
-                default_launch_params=form_data.get("default_launch_params"),
-                allowed_query_params=form_data.get("allowed_query_params"),
-                file_path=path,
-                is_active=True,
-                last_seen_at=now,
-                created_by="file_sync",
-            ).on_conflict_do_update(
-                index_elements=[Form.id],
-                set_={
-                    "file_path": path,
-                    "is_active": True,
-                    "last_seen_at": now,
-                    "updated_at": now,
-                },
-            )
-        else:
-            # No ID - use upsert on file_path (for git sync / editor writes)
-            stmt = insert(Form).values(
-                name=name,
-                description=form_data.get("description"),
-                workflow_id=form_data.get("workflow_id"),
-                default_launch_params=form_data.get("default_launch_params"),
-                allowed_query_params=form_data.get("allowed_query_params"),
-                file_path=path,
-                is_active=True,
-                last_seen_at=now,
-                created_by="file_sync",
-            ).on_conflict_do_update(
-                index_elements=[Form.file_path],
-                set_={
-                    "name": name,
-                    "description": form_data.get("description"),
-                    "workflow_id": form_data.get("workflow_id"),
-                    "default_launch_params": form_data.get("default_launch_params"),
-                    "allowed_query_params": form_data.get("allowed_query_params"),
-                    "is_active": True,
-                    "last_seen_at": now,
-                    "updated_at": now,
-                },
-            )
+        # Upsert form - updates definition but NOT organization_id or access_level
+        # These env-specific fields are only set via the API, not from file sync
+        stmt = insert(Form).values(
+            id=form_id,
+            name=name,
+            description=form_data.get("description"),
+            workflow_id=form_data.get("workflow_id"),
+            launch_workflow_id=form_data.get("launch_workflow_id"),
+            default_launch_params=form_data.get("default_launch_params"),
+            allowed_query_params=form_data.get("allowed_query_params"),
+            file_path=path,
+            is_active=form_data.get("is_active", True),
+            last_seen_at=now,
+            created_by="file_sync",
+        ).on_conflict_do_update(
+            index_elements=[Form.id],
+            set_={
+                # Update definition fields from file
+                "name": name,
+                "description": form_data.get("description"),
+                "workflow_id": form_data.get("workflow_id"),
+                "launch_workflow_id": form_data.get("launch_workflow_id"),
+                "default_launch_params": form_data.get("default_launch_params"),
+                "allowed_query_params": form_data.get("allowed_query_params"),
+                "file_path": path,
+                "is_active": form_data.get("is_active", True),
+                "last_seen_at": now,
+                "updated_at": now,
+                # NOTE: organization_id and access_level are NOT updated
+                # These are preserved from the database (env-specific)
+            },
+        )
         await self.db.execute(stmt)
+
+        # Sync form_schema (fields) if present
+        form_schema = form_data.get("form_schema")
+        if form_schema and isinstance(form_schema, dict):
+            fields_data = form_schema.get("fields", [])
+            if isinstance(fields_data, list):
+                # Delete existing fields
+                await self.db.execute(
+                    delete(FormFieldORM).where(FormFieldORM.form_id == form_id)
+                )
+
+                # Create new fields from schema
+                for position, field in enumerate(fields_data):
+                    if not isinstance(field, dict) or not field.get("name"):
+                        continue
+
+                    field_orm = FormFieldORM(
+                        form_id=form_id,
+                        name=field.get("name"),
+                        label=field.get("label"),
+                        type=field.get("type", "text"),
+                        required=field.get("required", False),
+                        position=position,
+                        placeholder=field.get("placeholder"),
+                        help_text=field.get("help_text"),
+                        default_value=field.get("default_value"),
+                        options=field.get("options"),
+                        data_provider_id=field.get("data_provider_id"),
+                        data_provider_inputs=field.get("data_provider_inputs"),
+                        visibility_expression=field.get("visibility_expression"),
+                        validation=field.get("validation"),
+                        allowed_types=field.get("allowed_types"),
+                        multiple=field.get("multiple"),
+                        max_size_mb=field.get("max_size_mb"),
+                        content=field.get("content"),
+                    )
+                    self.db.add(field_orm)
+
+        logger.debug(f"Indexed form: {name} from {path}")
 
     async def _index_agent(self, path: str, content: bytes) -> None:
         """
         Parse and index agent from .agent.json file.
 
         If the JSON contains an 'id' field, uses that ID (for dual-write from API).
-        Otherwise uses upsert on file_path (for files synced from git/editor).
+        Otherwise generates a new ID (for files synced from git/editor).
+
+        Updates agent definition (name, description, system_prompt, tools, etc.)
+        but preserves environment-specific fields (organization_id, access_level).
 
         Uses ON CONFLICT to update existing agents.
         """
         import json
-        from uuid import UUID
-        from src.models.orm import Agent
-        from src.models.enums import AgentAccessLevel
+        from uuid import UUID, uuid4
+        from src.models.orm import Agent, AgentTool, AgentDelegation
 
         try:
             agent_data = json.loads(content.decode("utf-8"))
@@ -1678,73 +1714,82 @@ class FileStorageService:
                 agent_id = UUID(agent_id_str)
             except ValueError:
                 logger.warning(f"Invalid agent ID in {path}: {agent_id_str}")
-                agent_id = None
+                agent_id = uuid4()  # Generate new ID if invalid
         else:
-            agent_id = None
-
-        # Parse access level
-        access_level_str = agent_data.get("access_level", "role_based")
-        try:
-            access_level = AgentAccessLevel(access_level_str)
-        except ValueError:
-            access_level = AgentAccessLevel.ROLE_BASED
+            agent_id = uuid4()  # Generate new ID for files without one
 
         # Parse channels
         channels = agent_data.get("channels", ["chat"])
         if not isinstance(channels, list):
             channels = ["chat"]
 
+        # Get knowledge_sources (JSONB field)
+        knowledge_sources = agent_data.get("knowledge_sources", [])
+        if not isinstance(knowledge_sources, list):
+            knowledge_sources = []
+
         now = datetime.utcnow()
 
-        if agent_id:
-            # Agent has an ID - use upsert on primary key
-            stmt = insert(Agent).values(
-                id=agent_id,
-                name=name,
-                description=agent_data.get("description"),
-                system_prompt=system_prompt,
-                channels=channels,
-                access_level=access_level,
-                is_active=True,
-                file_path=path,
-                created_by="file_sync",
-            ).on_conflict_do_update(
-                index_elements=[Agent.id],
-                set_={
-                    "name": name,
-                    "description": agent_data.get("description"),
-                    "system_prompt": system_prompt,
-                    "channels": channels,
-                    "access_level": access_level,
-                    "file_path": path,
-                    "is_active": True,
-                    "updated_at": now,
-                },
-            )
-        else:
-            # No ID - use upsert on file_path
-            stmt = insert(Agent).values(
-                name=name,
-                description=agent_data.get("description"),
-                system_prompt=system_prompt,
-                channels=channels,
-                access_level=access_level,
-                is_active=True,
-                file_path=path,
-                created_by="file_sync",
-            ).on_conflict_do_update(
-                index_elements=["file_path"],
-                set_={
-                    "name": name,
-                    "description": agent_data.get("description"),
-                    "system_prompt": system_prompt,
-                    "channels": channels,
-                    "access_level": access_level,
-                    "is_active": True,
-                    "updated_at": now,
-                },
-            )
+        # Upsert agent - updates definition but NOT organization_id or access_level
+        # These env-specific fields are only set via the API, not from file sync
+        stmt = insert(Agent).values(
+            id=agent_id,
+            name=name,
+            description=agent_data.get("description"),
+            system_prompt=system_prompt,
+            channels=channels,
+            knowledge_sources=knowledge_sources,
+            is_active=agent_data.get("is_active", True),
+            file_path=path,
+            created_by="file_sync",
+        ).on_conflict_do_update(
+            index_elements=[Agent.id],
+            set_={
+                # Update definition fields from file
+                "name": name,
+                "description": agent_data.get("description"),
+                "system_prompt": system_prompt,
+                "channels": channels,
+                "knowledge_sources": knowledge_sources,
+                "file_path": path,
+                "is_active": agent_data.get("is_active", True),
+                "updated_at": now,
+                # NOTE: organization_id and access_level are NOT updated
+                # These are preserved from the database (env-specific)
+            },
+        )
         await self.db.execute(stmt)
+
+        # Sync tool associations (tool_ids in JSON are workflow IDs)
+        tool_ids = agent_data.get("tool_ids", [])
+        if isinstance(tool_ids, list):
+            # Delete existing tool associations
+            await self.db.execute(
+                delete(AgentTool).where(AgentTool.agent_id == agent_id)
+            )
+            # Create new tool associations
+            for tool_id_str in tool_ids:
+                try:
+                    workflow_id = UUID(tool_id_str)
+                    self.db.add(AgentTool(agent_id=agent_id, workflow_id=workflow_id))
+                except ValueError:
+                    logger.warning(f"Invalid tool_id in agent {name}: {tool_id_str}")
+
+        # Sync delegated agent associations
+        delegated_agent_ids = agent_data.get("delegated_agent_ids", [])
+        if isinstance(delegated_agent_ids, list):
+            # Delete existing delegations
+            await self.db.execute(
+                delete(AgentDelegation).where(AgentDelegation.parent_agent_id == agent_id)
+            )
+            # Create new delegations
+            for child_id_str in delegated_agent_ids:
+                try:
+                    child_agent_id = UUID(child_id_str)
+                    self.db.add(AgentDelegation(parent_agent_id=agent_id, child_agent_id=child_agent_id))
+                except ValueError:
+                    logger.warning(f"Invalid delegated_agent_id in agent {name}: {child_id_str}")
+
         logger.debug(f"Indexed agent: {name} from {path}")
 
     async def _refresh_workflow_endpoint(self, workflow: "Workflow") -> None:
@@ -1810,6 +1855,86 @@ class FileStorageService:
         await self.db.execute(
             update(Agent).where(Agent.file_path == path).values(is_active=False)
         )
+
+    async def _scan_for_sdk_issues(self, path: str, content: bytes) -> None:
+        """
+        Scan a Python file for missing SDK references and create notifications.
+
+        Detects config.get("key") and integrations.get("name") calls where
+        the key/name doesn't exist in the database. Creates platform admin
+        notifications with links to the file and line number.
+
+        Args:
+            path: Relative file path
+            content: File content as bytes
+        """
+        from pathlib import Path
+        from src.services.sdk_reference_scanner import SDKReferenceScanner
+        from src.services.notification_service import get_notification_service
+        from src.models.contracts.notifications import (
+            NotificationCreate,
+            NotificationCategory,
+            NotificationStatus,
+        )
+
+        try:
+            content_str = content.decode("utf-8", errors="replace")
+        except Exception as e:
+            logger.warning(f"Failed to decode content for SDK scan: {e}")
+            return
+
+        scanner = SDKReferenceScanner(self.db)
+        issues = await scanner.scan_file(path, content_str)
+
+        if not issues:
+            return
+
+        # Create platform admin notification
+        service = get_notification_service()
+
+        # Check for existing notification to avoid duplicates
+        file_name = Path(path).name
+        title = f"Missing SDK References: {file_name}"
+
+        existing = await service.find_admin_notification_by_title(
+            title=title,
+            category=NotificationCategory.SYSTEM,
+        )
+        if existing:
+            logger.debug(f"SDK notification already exists for {path}")
+            return
+
+        # Build description with first few issues
+        issue_keys = [i.key for i in issues[:3]]
+        description = f"{len(issues)} missing: {', '.join(issue_keys)}"
+        if len(issues) > 3:
+            description += "..."
+
+        await service.create_notification(
+            user_id="system",
+            request=NotificationCreate(
+                category=NotificationCategory.SYSTEM,
+                title=title,
+                description=description,
+                metadata={
+                    "action": "view_file",
+                    "file_path": path,
+                    "line_number": issues[0].line_number,
+                    "issues": [
+                        {
+                            "type": i.issue_type,
+                            "key": i.key,
+                            "line": i.line_number,
+                        }
+                        for i in issues
+                    ],
+                },
+            ),
+            for_admins=True,
+            initial_status=NotificationStatus.AWAITING_ACTION,
+        )
+
+        logger.info(f"Created SDK issues notification for {path}: {len(issues)} issues")
 
     async def update_git_status(
         self,

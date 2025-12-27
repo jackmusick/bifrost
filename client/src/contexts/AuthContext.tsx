@@ -403,7 +403,6 @@ export function AuthProvider({ children }: AuthProviderProps) {
 		localStorage.removeItem(ACCESS_TOKEN_KEY);
 		localStorage.removeItem(USER_KEY);
 		sessionStorage.removeItem("userId");
-		sessionStorage.removeItem("current_org_id");
 		setUser(null);
 		navigate("/login");
 	}, [navigate]);

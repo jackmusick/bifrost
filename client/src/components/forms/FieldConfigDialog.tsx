@@ -88,7 +88,7 @@ export function FieldConfigDialog({
 	return (
 		<Dialog open={open} onOpenChange={onClose}>
 			<FieldConfigDialogContent
-				key={field?.name || "new"}
+				key={field?.name || workflowInputData?.name || "new"}
 				field={field}
 				defaultType={defaultType}
 				workflowInputData={workflowInputData}
@@ -123,9 +123,16 @@ function FieldConfigDialogContent({
 	generateLabelFromName: (name: string) => string;
 }) {
 	// Initialize state based on props - these won't trigger effect warnings
-	// because the component remounts when field?.name changes (via key prop)
-	const [name, setName] = useState(() => field?.name ?? "");
-	const [label, setLabel] = useState(() => field?.label ?? "");
+	// because the component remounts when field?.name or workflowInputData?.name changes (via key prop)
+	const [name, setName] = useState(
+		() => field?.name ?? workflowInputData?.name ?? "",
+	);
+	const [label, setLabel] = useState(() =>
+		field?.label ??
+		(workflowInputData?.name
+			? generateLabelFromName(workflowInputData.name)
+			: ""),
+	);
 	const [type, setType] = useState<FormFieldType>(
 		() => field?.type ?? (defaultType as FormFieldType) ?? "text",
 	);
@@ -591,7 +598,7 @@ function FieldConfigDialogContent({
 											...dataProviders.map(
 												(provider: DataProvider) => ({
 													label: provider.name,
-													value: provider.name,
+													value: provider.id ?? provider.name,
 												}),
 											),
 										]}
@@ -632,13 +639,13 @@ function FieldConfigDialogContent({
 							{dataProvider &&
 								dataProviders.find(
 									(p: DataProvider) =>
-										p.name === dataProvider,
+										(p.id ?? p.name) === dataProvider,
 								) && (
 									<DataProviderInputsConfig
 										provider={
 											dataProviders.find(
 												(p: DataProvider) =>
-													p.name === dataProvider,
+													(p.id ?? p.name) === dataProvider,
 											)!
 										}
 										inputs={dataProviderInputs}

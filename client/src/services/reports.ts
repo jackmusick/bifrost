@@ -4,8 +4,10 @@
  * NOTE: These endpoints are implemented in the backend but not yet in the OpenAPI spec.
  * Run `npm run generate:types` after the next OpenAPI spec update to use typed endpoints.
  *
- * Organization filtering is handled via the X-Organization-Id header, which is
- * automatically injected by the API client based on the org switcher selection.
+ * Organization filtering is handled via the `scope` query parameter:
+ * - undefined/omit: Return data for all organizations
+ * - null/"global": Return only global (platform-level) data
+ * - string (UUID): Return data for the specified organization
  */
 
 import { $api } from "@/lib/api-client";
@@ -72,14 +74,19 @@ export interface ROITrends {
 
 /**
  * Hook to fetch ROI summary for a date range.
- * Organization filtering is controlled by the org switcher (X-Organization-Id header).
+ *
+ * @param startDate - Start date in YYYY-MM-DD format
+ * @param endDate - End date in YYYY-MM-DD format
+ * @param scope - Optional scope filter (undefined = all, null = global, string = specific org UUID)
  */
-export function useROISummary(startDate: string, endDate: string) {
+export function useROISummary(startDate: string, endDate: string, scope?: string | null) {
 	return $api.useQuery("get", "/api/reports/roi/summary", {
 		params: {
 			query: {
 				start_date: startDate,
 				end_date: endDate,
+				// Pass scope: 'global' for null, org UUID for string, omit for undefined (all)
+				...(scope === null ? { scope: "global" } : typeof scope === "string" ? { scope } : {}),
 			},
 		},
 	}) as { data: ROISummary | undefined; isLoading: boolean; error: unknown };
@@ -87,14 +94,18 @@ export function useROISummary(startDate: string, endDate: string) {
 
 /**
  * Hook to fetch ROI by workflow for a date range.
- * Organization filtering is controlled by the org switcher (X-Organization-Id header).
+ *
+ * @param startDate - Start date in YYYY-MM-DD format
+ * @param endDate - End date in YYYY-MM-DD format
+ * @param scope - Optional scope filter (undefined = all, null = global, string = specific org UUID)
  */
-export function useROIByWorkflow(startDate: string, endDate: string) {
+export function useROIByWorkflow(startDate: string, endDate: string, scope?: string | null) {
 	return $api.useQuery("get", "/api/reports/roi/by-workflow", {
 		params: {
 			query: {
 				start_date: startDate,
 				end_date: endDate,
+				...(scope === null ? { scope: "global" } : typeof scope === "string" ? { scope } : {}),
 			},
 		},
 	}) as {
@@ -125,12 +136,17 @@ export function useROIByOrganization(startDate: string, endDate: string) {
 
 /**
  * Hook to fetch ROI trends over time.
- * Organization filtering is controlled by the org switcher (X-Organization-Id header).
+ *
+ * @param startDate - Start date in YYYY-MM-DD format
+ * @param endDate - End date in YYYY-MM-DD format
+ * @param granularity - Time granularity (day, week, month)
+ * @param scope - Optional scope filter (undefined = all, null = global, string = specific org UUID)
  */
 export function useROITrends(
 	startDate: string,
 	endDate: string,
 	granularity: "day" | "week" | "month" = "day",
+	scope?: string | null,
 ) {
 	return $api.useQuery("get", "/api/reports/roi/trends", {
 		params: {
@@ -138,6 +154,7 @@ export function useROITrends(
 				start_date: startDate,
 				end_date: endDate,
 				granularity,
+				...(scope === null ? { scope: "global" } : typeof scope === "string" ? { scope } : {}),
 			},
 		},
 	}) as { data: ROITrends | undefined; isLoading: boolean; error: unknown };

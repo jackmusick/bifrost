@@ -62,6 +62,8 @@ import {
 import { useToolWorkflows } from "@/hooks/useWorkflows";
 import { useRoles } from "@/hooks/useRoles";
 import { useKnowledgeNamespaces } from "@/hooks/useKnowledge";
+import { useAuth } from "@/contexts/AuthContext";
+import { OrganizationSelect } from "@/components/forms/OrganizationSelect";
 import type { components } from "@/lib/v1";
 
 type AgentChannel = components["schemas"]["AgentChannel"];
@@ -78,11 +80,10 @@ const ACCESS_LEVELS: {
 	label: string;
 	description: string;
 }[] = [
-	{ value: "public", label: "Public", description: "Anyone can access" },
 	{
 		value: "authenticated",
 		label: "Authenticated",
-		description: "Any authenticated user",
+		description: "Available to all organizations",
 	},
 	{
 		value: "role_based",
@@ -102,7 +103,8 @@ const formSchema = z.object({
 		.optional(),
 	system_prompt: z.string().min(1, "System prompt is required"),
 	channels: z.array(z.enum(["chat", "voice", "teams", "slack"])),
-	access_level: z.enum(["public", "authenticated", "role_based"]),
+	access_level: z.enum(["authenticated", "role_based"]),
+	organization_id: z.string().nullable(),
 	tool_ids: z.array(z.string()),
 	delegated_agent_ids: z.array(z.string()),
 	role_ids: z.array(z.string()),
@@ -119,6 +121,7 @@ interface AgentDialogProps {
 
 export function AgentDialog({ agentId, open, onOpenChange }: AgentDialogProps) {
 	const isEditing = !!agentId;
+	const { isPlatformAdmin, user } = useAuth();
 	const { data: agent, isLoading: isLoadingAgent } = useAgent(
 		agentId ?? undefined,
 	);
@@ -135,6 +138,9 @@ export function AgentDialog({ agentId, open, onOpenChange }: AgentDialogProps) {
 	const [rolesOpen, setRolesOpen] = useState(false);
 	const [knowledgeOpen, setKnowledgeOpen] = useState(false);
 
+	// Default organization_id for org users is their org, for platform admins it's null (global)
+	const defaultOrgId = isPlatformAdmin ? null : (user?.organizationId ?? null);
+
 	const form = useForm<FormValues>({
 		resolver: zodResolver(formSchema),
 		defaultValues: {
@@ -143,6 +149,7 @@ export function AgentDialog({ agentId, open, onOpenChange }: AgentDialogProps) {
 			system_prompt: "",
 			channels: ["chat"],
 			access_level: "role_based",
+			organization_id: defaultOrgId,
 			tool_ids: [],
 			delegated_agent_ids: [],
 			role_ids: [],
@@ -150,17 +157,21 @@ export function AgentDialog({ agentId, open, onOpenChange }: AgentDialogProps) {
 		},
 	});
 
+	// eslint-disable-next-line react-hooks/incompatible-library -- React Hook Form's watch() is intentionally used for dynamic form state
 	const accessLevel = form.watch("access_level");
 
 	// Load existing agent data when editing
 	useEffect(() => {
 		if (agent && isEditing) {
+			// Cast agent to access organization_id which may exist on the response
+			const agentWithOrg = agent as typeof agent & { organization_id?: string | null };
 			form.reset({
 				name: agent.name,
 				description: agent.description ?? "",
 				system_prompt: agent.system_prompt,
 				channels: (agent.channels as AgentChannel[]) || ["chat"],
-				access_level: agent.access_level,
+				access_level: agent.access_level as "authenticated" | "role_based",
+				organization_id: agentWithOrg.organization_id ?? null,
 				tool_ids: agent.tool_ids ?? [],
 				delegated_agent_ids: agent.delegated_agent_ids ?? [],
 				role_ids: agent.role_ids ?? [],
@@ -173,13 +184,14 @@ export function AgentDialog({ agentId, open, onOpenChange }: AgentDialogProps) {
 				system_prompt: "",
 				channels: ["chat"],
 				access_level: "role_based",
+				organization_id: defaultOrgId,
 				tool_ids: [],
 				delegated_agent_ids: [],
 				role_ids: [],
 				knowledge_sources: [],
 			});
 		}
-	}, [agent, isEditing, form, open]);
+	}, [agent, isEditing, form, open, defaultOrgId]);
 
 	// Filter out current agent from delegation options
 	const delegationOptions = allAgents?.filter((a) => a.id !== agentId) ?? [];
@@ -191,34 +203,29 @@ export function AgentDialog({ agentId, open, onOpenChange }: AgentDialogProps) {
 
 	const onSubmit = async (values: FormValues) => {
 		try {
+			// Build the body with organization_id
+			// Cast to include organization_id which may not be in generated types yet
+			const bodyWithOrg = {
+				name: values.name,
+				description: values.description || null,
+				system_prompt: values.system_prompt,
+				channels: values.channels,
+				access_level: values.access_level,
+				organization_id: values.organization_id,
+				tool_ids: values.tool_ids,
+				delegated_agent_ids: values.delegated_agent_ids,
+				role_ids: values.role_ids,
+				knowledge_sources: values.knowledge_sources,
+			} as Parameters<typeof createAgent.mutateAsync>[0]["body"];
+
 			if (isEditing && agentId) {
 				await updateAgent.mutateAsync({
 					params: { path: { agent_id: agentId } },
-					body: {
-						name: values.name,
-						description: values.description || null,
-						system_prompt: values.system_prompt,
-						channels: values.channels,
-						access_level: values.access_level,
-						tool_ids: values.tool_ids,
-						delegated_agent_ids: values.delegated_agent_ids,
-						role_ids: values.role_ids,
-						knowledge_sources: values.knowledge_sources,
-					},
+					body: bodyWithOrg as Parameters<typeof updateAgent.mutateAsync>[0]["body"],
 				});
 			} else {
 				await createAgent.mutateAsync({
-					body: {
-						name: values.name,
-						description: values.description || null,
-						system_prompt: values.system_prompt,
-						channels: values.channels,
-						access_level: values.access_level,
-						tool_ids: values.tool_ids,
-						delegated_agent_ids: values.delegated_agent_ids,
-						role_ids: values.role_ids,
-						knowledge_sources: values.knowledge_sources,
-					},
+					body: bodyWithOrg,
 				});
 			}
 			handleClose();
@@ -285,6 +292,32 @@ export function AgentDialog({ agentId, open, onOpenChange }: AgentDialogProps) {
 
 								{/* Right column: Other fields */}
 								<div className="space-y-4">
+									{/* Organization Scope - Only show for platform admins */}
+									{isPlatformAdmin && (
+										<FormField
+											control={form.control}
+											name="organization_id"
+											render={({ field }) => (
+												<FormItem>
+													<FormLabel>
+														Organization
+													</FormLabel>
+													<FormControl>
+														<OrganizationSelect
+															value={field.value}
+															onChange={field.onChange}
+															showGlobal={true}
+														/>
+													</FormControl>
+													<FormDescription>
+														Global agents are available to all organizations
+													</FormDescription>
+													<FormMessage />
+												</FormItem>
+											)}
+										/>
+									)}
+
 									<FormField
 										control={form.control}
 										name="name"

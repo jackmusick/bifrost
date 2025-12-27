@@ -6,8 +6,10 @@ All org-scoped repositories should extend this class for consistent
 tenant isolation and access control.
 
 Scoping Patterns:
-    - Strict: Only resources belonging to the specific org (executions, audit_logs)
-    - Cascade: Org resources + global (NULL) resources (forms, secrets, roles, config)
+    - ALL: No filter, superuser sees everything
+    - GLOBAL_ONLY: Only global resources (NULL org_id)
+    - ORG_ONLY: Only specific org resources (no global fallback)
+    - ORG_PLUS_GLOBAL: Org resources + global (NULL) resources (cascade pattern)
 """
 
 from typing import Any, Generic, TypeVar
@@ -16,6 +18,7 @@ from uuid import UUID
 from sqlalchemy import Select, or_
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from src.core.org_filter import OrgFilterType
 from src.models import Base
 from src.repositories.base import BaseRepository
 
@@ -150,3 +153,57 @@ class OrgScopedRepository(BaseRepository[ModelT], Generic[ModelT]):
     def is_global_scope(self) -> bool:
         """Check if repository is operating in global scope."""
         return self.org_id is None
+
+    def apply_filter(
+        self,
+        query: Select[tuple[ModelT]],
+        filter_type: OrgFilterType,
+        filter_org: UUID | None = None,
+    ) -> Select[tuple[ModelT]]:
+        """
+        Apply organization filter based on filter type.
+
+        This is the unified filtering method that handles all OrgFilterType cases.
+        Use this in list endpoints that support the `scope` query parameter.
+
+        Args:
+            query: SQLAlchemy select query
+            filter_type: The type of filter to apply (from resolve_org_filter)
+            filter_org: Organization UUID for ORG_ONLY and ORG_PLUS_GLOBAL
+                        (defaults to self.org_id if not provided)
+
+        Returns:
+            Query with organization filter applied
+
+        Example:
+            filter_type, filter_org = resolve_org_filter(ctx.user, scope)
+            repo = MyRepository(ctx.db, filter_org)
+            query = select(Model)
+            query = repo.apply_filter(query, filter_type, filter_org)
+        """
+        # Use provided filter_org or fall back to instance org_id
+        org_id = filter_org if filter_org is not None else self.org_id
+
+        if filter_type == OrgFilterType.ALL:
+            # No filter - superuser sees everything
+            return query
+        elif filter_type == OrgFilterType.GLOBAL_ONLY:
+            # Only global resources (NULL org_id)
+            return query.where(_org_is_null(self.model))
+        elif filter_type == OrgFilterType.ORG_ONLY:
+            # Only specific org resources (no global fallback)
+            return query.where(_org_filter(self.model, org_id))
+        elif filter_type == OrgFilterType.ORG_PLUS_GLOBAL:
+            # Org resources + global (cascade pattern)
+            if org_id:
+                return query.where(
+                    or_(
+                        _org_filter(self.model, org_id),
+                        _org_is_null(self.model),
+                    )
+                )
+            # If no org_id, fall back to global only
+            return query.where(_org_is_null(self.model))
+        else:
+            # Unknown filter type - default to global only (safest)
+            return query.where(_org_is_null(self.model))

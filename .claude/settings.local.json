@@ -99,7 +99,8 @@
       "Bash(/Users/jack/GitHub/bifrost-api/api/test.sh tests/e2e/api/test_cli.py -v)",
       "Bash(/Users/jack/GitHub/bifrost-api/test.sh:*)",
       "Bash(/Users/jack/GitHub/bifrost-api/api/test.sh tests/integration/platform/test_sdk_from_workflow.py -v)",
-      "Bash({} ;)"
+      "Bash({} ;)",
+      "Bash(/Users/jack/GitHub/bifrost-api/api/test.sh:*)"
     ],
     "deny": [],
     "ask": [],

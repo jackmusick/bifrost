@@ -164,6 +164,11 @@ interface EditorState {
 	// Indexing state (blocks editor during ID injection)
 	setIndexing: (isIndexing: boolean, message?: string | null) => void;
 
+	// Line reveal (scroll to specific line after file loads)
+	pendingLineReveal: number | null;
+	revealLine: (line: number) => void;
+	clearPendingLineReveal: () => void;
+
 	// Update tab content from server (for ID injection)
 	updateTabContent: (tabIndex: number, content: string, etag: string) => void;
 
@@ -206,6 +211,9 @@ export const useEditorStore = create<EditorState>()(
 
 			// Workflow ID conflict resolution state
 			pendingWorkflowConflict: null,
+
+			// Line reveal state (for scrolling to specific line after file loads)
+			pendingLineReveal: null,
 
 			// Computed properties
 			get activeTab(): EditorTab | null {
@@ -605,6 +613,10 @@ export const useEditorStore = create<EditorState>()(
 			// Indexing state (blocks editor during ID injection)
 			setIndexing: (isIndexing, message = null) =>
 				set({ isIndexing, indexingMessage: message }),
+
+			// Line reveal actions (scroll to specific line after file loads)
+			revealLine: (line) => set({ pendingLineReveal: line }),
+			clearPendingLineReveal: () => set({ pendingLineReveal: null }),
 
 			// Update tab content from server (for ID injection)
 			updateTabContent: (tabIndex, content, etag) => {

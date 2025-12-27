@@ -7,7 +7,6 @@ Provides unified interface for file operations with two backends:
 """
 
 import asyncio
-import os
 from abc import ABC, abstractmethod
 from pathlib import Path
 from typing import Literal

@@ -148,7 +148,7 @@ class TestAIPricingRepository:
         """Test create_pricing adds new pricing record."""
         mock_session.refresh = AsyncMock()
 
-        result = await repository.create_pricing(
+        _result = await repository.create_pricing(
             provider="openai",
             model="gpt-4o-mini",
             input_price_per_million=Decimal("0.15"),
@@ -172,7 +172,7 @@ class TestAIPricingRepository:
         mock_session.execute.return_value = mock_result
         mock_session.refresh = AsyncMock()
 
-        result = await repository.update_pricing(
+        _result = await repository.update_pricing(
             pricing_id=1,
             input_price_per_million=Decimal("6.00"),
         )
@@ -235,7 +235,7 @@ class TestAIUsageRepository:
         execution_id = uuid4()
         mock_session.refresh = AsyncMock()
 
-        result = await repository.create_usage(
+        _result = await repository.create_usage(
             provider="openai",
             model="gpt-4o",
             input_tokens=1000,

@@ -3026,22 +3026,22 @@ export interface paths {
          * Execute workflow via API key
          * @description Execute an endpoint-enabled workflow using an API key for authentication
          */
-        get: operations["execute_endpoint_api_endpoints__workflow_name__delete"];
+        get: operations["execute_endpoint_api_endpoints__workflow_name__put"];
         /**
          * Execute workflow via API key
          * @description Execute an endpoint-enabled workflow using an API key for authentication
          */
-        put: operations["execute_endpoint_api_endpoints__workflow_name__delete"];
+        put: operations["execute_endpoint_api_endpoints__workflow_name__put"];
         /**
          * Execute workflow via API key
          * @description Execute an endpoint-enabled workflow using an API key for authentication
          */
-        post: operations["execute_endpoint_api_endpoints__workflow_name__delete"];
+        post: operations["execute_endpoint_api_endpoints__workflow_name__put"];
         /**
          * Execute workflow via API key
          * @description Execute an endpoint-enabled workflow using an API key for authentication
          */
-        delete: operations["execute_endpoint_api_endpoints__workflow_name__delete"];
+        delete: operations["execute_endpoint_api_endpoints__workflow_name__put"];
         options?: never;
         head?: never;
         patch?: never;
@@ -3756,8 +3756,15 @@ export interface paths {
          * List Agents
          * @description List agents the user has access to.
          *
-         *     Platform admins see all agents.
-         *     Users see agents based on role assignments.
+         *     Organization filtering:
+         *     - Superusers with scope omitted: show all agents
+         *     - Superusers with scope='global': show only global agents
+         *     - Superusers with scope={uuid}: show that org's agents only
+         *     - Org users: always show their org's agents + global agents (scope ignored)
+         *
+         *     Access level filtering (applied after org filter):
+         *     - Platform admins see all agents
+         *     - Users see AUTHENTICATED agents + ROLE_BASED agents assigned to their roles
          */
         get: operations["list_agents_api_agents_get"];
         put?: never;
@@ -4015,6 +4022,7 @@ export interface paths {
          *
          *     Tests the connection without saving the configuration.
          *     Useful for validating API keys before committing.
+         *     Also caches the model ID -> display name mapping for AI usage tracking.
          *     Requires platform admin access.
          */
         post: operations["test_llm_connection_api_admin_llm_test_post"];
@@ -4038,6 +4046,7 @@ export interface paths {
          * @description Test connection using saved LLM configuration.
          *
          *     Tests the currently saved configuration.
+         *     Also refreshes the model ID -> display name mapping cache.
          *     Requires platform admin access.
          */
         post: operations["test_saved_llm_connection_api_admin_llm_test_saved_post"];
@@ -4445,6 +4454,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/maintenance/scan-sdk": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Scan workspace for missing SDK references
+         * @description Scan all Python files for missing config.get() and integrations.get() references (Platform admin only)
+         */
+        post: operations["scan_sdk_references_api_maintenance_scan_sdk_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/admin/roi/settings": {
         parameters: {
             query?: never;
@@ -4617,6 +4646,67 @@ export interface paths {
          * @description Delete an existing model pricing entry.
          */
         delete: operations["delete_pricing_api_settings_ai_pricing__pricing_id__delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/admin/email/config": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Email Config
+         * @description Get current email workflow configuration.
+         *
+         *     Requires platform admin access.
+         */
+        get: operations["get_email_config_api_admin_email_config_get"];
+        put?: never;
+        /**
+         * Set Email Config
+         * @description Set email workflow configuration.
+         *
+         *     Validates the workflow has the correct signature before saving.
+         *     Requires platform admin access.
+         */
+        post: operations["set_email_config_api_admin_email_config_post"];
+        /**
+         * Delete Email Config
+         * @description Delete email workflow configuration.
+         *
+         *     Requires platform admin access.
+         */
+        delete: operations["delete_email_config_api_admin_email_config_delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/admin/email/validate/{workflow_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Validate Email Workflow
+         * @description Validate a workflow for use as email provider.
+         *
+         *     Checks that the workflow has the required signature:
+         *     - Required: recipient (str), subject (str), body (str)
+         *     - Optional: html_body (str | None)
+         *
+         *     Requires platform admin access.
+         */
+        post: operations["validate_email_workflow_api_admin_email_validate__workflow_id__post"];
+        delete?: never;
         options?: never;
         head?: never;
         patch?: never;
@@ -4851,7 +4941,7 @@ export interface components {
          * @description Agent access control levels
          * @enum {string}
          */
-        AgentAccessLevel: "public" | "authenticated" | "role_based";
+        AgentAccessLevel: "authenticated" | "role_based";
         /**
          * AgentChannel
          * @description Supported agent communication channels
@@ -4873,6 +4963,11 @@ export interface components {
             channels?: components["schemas"]["AgentChannel"][];
             /** @default role_based */
             access_level: components["schemas"]["AgentAccessLevel"];
+            /**
+             * Organization Id
+             * @description Organization ID (null = global resource)
+             */
+            organization_id?: string | null;
             /**
              * Tool Ids
              * @description List of workflow IDs to use as tools
@@ -4961,6 +5056,11 @@ export interface components {
             /** Channels */
             channels?: components["schemas"]["AgentChannel"][] | null;
             access_level?: components["schemas"]["AgentAccessLevel"] | null;
+            /**
+             * Organization Id
+             * @description Organization ID (null = global resource)
+             */
+            organization_id?: string | null;
             /** Is Active */
             is_active?: boolean | null;
             /**
@@ -6559,6 +6659,52 @@ export interface components {
             error?: string | null;
         };
         /**
+         * EmailWorkflowConfigRequest
+         * @description Request to set the email workflow.
+         */
+        EmailWorkflowConfigRequest: {
+            /**
+             * Workflow Id
+             * @description UUID of the workflow to use for sending emails
+             */
+            workflow_id: string;
+        };
+        /**
+         * EmailWorkflowConfigResponse
+         * @description Email workflow configuration response.
+         */
+        EmailWorkflowConfigResponse: {
+            /** Workflow Id */
+            workflow_id: string;
+            /** Workflow Name */
+            workflow_name: string;
+            /**
+             * Is Configured
+             * @default true
+             */
+            is_configured: boolean;
+            /** Configured At */
+            configured_at?: string | null;
+            /** Configured By */
+            configured_by?: string | null;
+        };
+        /**
+         * EmailWorkflowValidationResponse
+         * @description Response from validating a workflow for email sending.
+         */
+        EmailWorkflowValidationResponse: {
+            /** Valid */
+            valid: boolean;
+            /** Message */
+            message: string;
+            /** Workflow Name */
+            workflow_name?: string | null;
+            /** Missing Params */
+            missing_params?: string[] | null;
+            /** Extra Required Params */
+            extra_required_params?: string[] | null;
+        };
+        /**
          * EmbeddingConfigRequest
          * @description Request to set dedicated embedding configuration.
          */
@@ -7110,7 +7256,7 @@ export interface components {
          * @description Form access control levels
          * @enum {string}
          */
-        FormAccessLevel: "public" | "authenticated" | "role_based";
+        FormAccessLevel: "authenticated" | "role_based";
         /**
          * FormCreate
          * @description Input for creating a form.
@@ -7136,6 +7282,11 @@ export interface components {
             } | components["schemas"]["FormSchema-Input"];
             /** @default role_based */
             access_level: components["schemas"]["FormAccessLevel"] | null;
+            /**
+             * Organization Id
+             * @description Organization ID (null = global resource)
+             */
+            organization_id?: string | null;
         };
         /**
          * FormExecuteRequest
@@ -8312,12 +8463,22 @@ export interface components {
             api_key_set: boolean;
         };
         /**
+         * LLMModelInfo
+         * @description Model information with both ID and display name.
+         */
+        LLMModelInfo: {
+            /** Id */
+            id: string;
+            /** Display Name */
+            display_name: string;
+        };
+        /**
          * LLMModelsResponse
          * @description Response listing available models.
          */
         LLMModelsResponse: {
             /** Models */
-            models: string[];
+            models: components["schemas"]["LLMModelInfo"][];
             /** Provider */
             provider: string;
         };
@@ -8358,7 +8519,7 @@ export interface components {
             /** Message */
             message: string;
             /** Models */
-            models?: string[] | null;
+            models?: components["schemas"]["LLMModelInfo"][] | null;
         };
         /**
          * LinkedAccountResponse
@@ -10202,6 +10363,22 @@ export interface components {
              * @description Token expiration (ISO format)
              */
             expires_at?: string | null;
+        };
+        /**
+         * SDKScanResponse
+         * @description Response from SDK reference scan.
+         */
+        SDKScanResponse: {
+            /** Files Scanned */
+            files_scanned: number;
+            /** Issues Found */
+            issues_found: number;
+            /** Issues */
+            issues: {
+                [key: string]: unknown;
+            }[];
+            /** Notification Created */
+            notification_created: boolean;
         };
         /**
          * ScheduleMetadata
@@ -12845,8 +13022,8 @@ export interface operations {
             query?: {
                 /** @description Filter by user type: 'platform' or 'org' */
                 type?: string | null;
-                /** @description Filter org users by organization ID */
-                orgId?: string | null;
+                /** @description Filter scope: omit for all (superusers), 'global' for global only, or org UUID for specific org. */
+                scope?: string | null;
             };
             header?: never;
             path?: never;
@@ -13497,6 +13674,8 @@ export interface operations {
     list_executions_api_executions_get: {
         parameters: {
             query?: {
+                /** @description Filter scope: omit for all (superusers), 'global' for global only, or org UUID for specific org + global. */
+                scope?: string | null;
                 /** @description Filter by workflow name */
                 workflowName?: string | null;
                 /** @description Filter by execution status */
@@ -13894,7 +14073,10 @@ export interface operations {
     };
     list_forms_api_forms_get: {
         parameters: {
-            query?: never;
+            query?: {
+                /** @description Filter scope: omit for all (superusers), 'global' for global only, or org UUID for specific org + global. */
+                scope?: string | null;
+            };
             header?: never;
             path?: never;
             cookie?: never;
@@ -13908,6 +14090,15 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["FormPublic"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
                 };
             };
         };
@@ -14149,7 +14340,10 @@ export interface operations {
     };
     get_config_api_config_get: {
         parameters: {
-            query?: never;
+            query?: {
+                /** @description Filter scope: omit for all (superusers), 'global' for global only, or org UUID for specific org. */
+                scope?: string | null;
+            };
             header?: never;
             path?: never;
             cookie?: never;
@@ -14165,11 +14359,23 @@ export interface operations {
                     "application/json": components["schemas"]["ConfigResponse"][];
                 };
             };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
         };
     };
     set_config_api_config_post: {
         parameters: {
-            query?: never;
+            query?: {
+                /** @description Target scope: 'global' for global config, or org UUID for org-specific config. If omitted, uses the user's current organization context. */
+                scope?: string | null;
+            };
             header?: never;
             path?: never;
             cookie?: never;
@@ -16244,7 +16450,7 @@ export interface operations {
             };
         };
     };
-    execute_endpoint_api_endpoints__workflow_name__delete: {
+    execute_endpoint_api_endpoints__workflow_name__put: {
         parameters: {
             query?: never;
             header: {
@@ -16277,7 +16483,7 @@ export interface operations {
             };
         };
     };
-    execute_endpoint_api_endpoints__workflow_name__delete: {
+    execute_endpoint_api_endpoints__workflow_name__put: {
         parameters: {
             query?: never;
             header: {
@@ -16310,7 +16516,7 @@ export interface operations {
             };
         };
     };
-    execute_endpoint_api_endpoints__workflow_name__delete: {
+    execute_endpoint_api_endpoints__workflow_name__put: {
         parameters: {
             query?: never;
             header: {
@@ -16343,7 +16549,7 @@ export interface operations {
             };
         };
     };
-    execute_endpoint_api_endpoints__workflow_name__delete: {
+    execute_endpoint_api_endpoints__workflow_name__put: {
         parameters: {
             query?: never;
             header: {
@@ -17540,6 +17746,8 @@ export interface operations {
     list_agents_api_agents_get: {
         parameters: {
             query?: {
+                /** @description Filter scope: omit for all (superusers), 'global' for global only, or org UUID for specific org. */
+                scope?: string | null;
                 category?: string | null;
                 active_only?: boolean;
             };
@@ -19030,6 +19238,26 @@ export interface operations {
             };
         };
     };
+    scan_sdk_references_api_maintenance_scan_sdk_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SDKScanResponse"];
+                };
+            };
+        };
+    };
     get_roi_settings_api_admin_roi_settings_get: {
         parameters: {
             query?: never;
@@ -19090,6 +19318,8 @@ export interface operations {
                 start_date: string;
                 /** @description End date (inclusive) */
                 end_date: string;
+                /** @description Filter scope: omit for all, 'global' for global only, or org UUID for specific org. */
+                scope?: string | null;
             };
             header?: never;
             path?: never;
@@ -19126,6 +19356,8 @@ export interface operations {
                 end_date: string;
                 /** @description Max workflows to return */
                 limit?: number;
+                /** @description Filter scope: omit for all, 'global' for global only, or org UUID for specific org. */
+                scope?: string | null;
             };
             header?: never;
             path?: never;
@@ -19198,6 +19430,8 @@ export interface operations {
                 end_date: string;
                 /** @description Time granularity */
                 granularity?: "day" | "week" | "month";
+                /** @description Filter scope: omit for all, 'global' for global only, or org UUID for specific org. */
+                scope?: string | null;
             };
             header?: never;
             path?: never;
@@ -19368,6 +19602,108 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_email_config_api_admin_email_config_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EmailWorkflowConfigResponse"] | null;
+                };
+            };
+        };
+    };
+    set_email_config_api_admin_email_config_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["EmailWorkflowConfigRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EmailWorkflowConfigResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    delete_email_config_api_admin_email_config_delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    validate_email_workflow_api_admin_email_validate__workflow_id__post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                workflow_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EmailWorkflowValidationResponse"];
+                };
             };
             /** @description Validation Error */
             422: {

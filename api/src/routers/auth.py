@@ -1334,7 +1334,6 @@ async def request_device_code(
     client_ip = get_client_ip(request)
     await auth_limiter.check("device_code", client_ip)
 
-    settings = get_settings()
     r = await get_shared_redis()
 
     # Generate codes

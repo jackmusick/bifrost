@@ -28,7 +28,8 @@ from src.models import (
     ROITrendsResponse,
     ROITrendEntry,
 )
-from src.core.auth import Context, CurrentActiveUser, RequirePlatformAdmin
+from uuid import UUID
+from src.core.auth import CurrentActiveUser, RequirePlatformAdmin
 from src.models.orm import (
     ExecutionMetricsDaily,
     WorkflowROIDaily,
@@ -55,11 +56,15 @@ router = APIRouter(prefix="/api/reports/roi", tags=["ROI Reports"])
     dependencies=[RequirePlatformAdmin],
 )
 async def get_roi_summary(
-    ctx: Context,
     user: CurrentActiveUser,
     db: DbSession,
     start_date: date = Query(..., description="Start date (inclusive)"),
     end_date: date = Query(..., description="End date (inclusive)"),
+    scope: str | None = Query(
+        None,
+        description="Filter scope: omit for all, 'global' for global only, "
+        "or org UUID for specific org."
+    ),
 ) -> ROISummaryResponse:
     """
     Get ROI summary for a period.
@@ -67,17 +72,34 @@ async def get_roi_summary(
     Aggregates metrics from execution_metrics_daily table.
     Platform admin only.
 
-    Organization filtering is controlled via the X-Organization-Id header:
-    - If header is set: returns metrics for that specific organization
-    - If header is not set (global scope): returns platform-wide metrics (org_id is NULL)
+    Organization filtering is controlled via the scope query param:
+    - If param is omitted: returns platform-wide metrics (all organizations)
+    - If param is 'global': returns only global metrics (org_id IS NULL)
+    - If param is UUID: returns metrics for that specific organization
 
     Args:
         start_date: Start date (inclusive)
         end_date: End date (inclusive)
+        scope: Filter scope - None (all), "global", or org UUID string
 
     Returns:
         ROI summary including total executions, time saved, and value
     """
+    # Parse scope parameter
+    org_uuid: UUID | None = None
+    global_only = False
+    if scope:
+        if scope == "global":
+            global_only = True
+        else:
+            try:
+                org_uuid = UUID(scope)
+            except ValueError:
+                raise HTTPException(
+                    status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                    detail=f"Invalid scope value: {scope}",
+                )
+
     try:
         # Get ROI settings for units
         settings_service = ROISettingsService(db)
@@ -94,12 +116,12 @@ async def get_roi_summary(
             ExecutionMetricsDaily.date <= end_date,
         )
 
-        # Apply organization filter from context (X-Organization-Id header)
-        if ctx.org_id:
-            query = query.where(ExecutionMetricsDaily.organization_id == ctx.org_id)
-        else:
-            # Global scope: get platform-wide metrics (org_id is NULL)
+        # Apply organization filter from scope param
+        if global_only:
             query = query.where(ExecutionMetricsDaily.organization_id.is_(None))
+        elif org_uuid:
+            query = query.where(ExecutionMetricsDaily.organization_id == org_uuid)
+        # If no filter, return all metrics (platform admins see everything)
 
         result = await db.execute(query)
         row = result.one()
@@ -131,12 +153,16 @@ async def get_roi_summary(
     dependencies=[RequirePlatformAdmin],
 )
 async def get_roi_by_workflow(
-    ctx: Context,
     user: CurrentActiveUser,
     db: DbSession,
     start_date: date = Query(..., description="Start date (inclusive)"),
     end_date: date = Query(..., description="End date (inclusive)"),
     limit: int = Query(default=20, ge=1, le=100, description="Max workflows to return"),
+    scope: str | None = Query(
+        None,
+        description="Filter scope: omit for all, 'global' for global only, "
+        "or org UUID for specific org."
+    ),
 ) -> ROIByWorkflowResponse:
     """
     Get workflow breakdown of ROI.
@@ -144,18 +170,30 @@ async def get_roi_by_workflow(
     Aggregates metrics from workflow_roi_daily table.
     Platform admin only.
 
-    Organization filtering is controlled via the X-Organization-Id header:
-    - If header is set: returns workflow metrics for that specific organization
-    - If header is not set (global scope): returns workflow metrics across all organizations
-
     Args:
         start_date: Start date (inclusive)
         end_date: End date (inclusive)
         limit: Max workflows to return (default 20)
+        scope: Filter scope - None (all), "global", or org UUID string
 
     Returns:
         Workflow ROI breakdown sorted by total value (descending)
     """
+    # Parse scope parameter
+    org_uuid: UUID | None = None
+    global_only = False
+    if scope:
+        if scope == "global":
+            global_only = True
+        else:
+            try:
+                org_uuid = UUID(scope)
+            except ValueError:
+                raise HTTPException(
+                    status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                    detail=f"Invalid scope value: {scope}",
+                )
+
     try:
         # Get ROI settings for units
         settings_service = ROISettingsService(db)
@@ -188,9 +226,11 @@ async def get_roi_by_workflow(
             .limit(limit)
         )
 
-        # Apply organization filter from context (X-Organization-Id header)
-        if ctx.org_id:
-            query = query.where(WorkflowROIDaily.organization_id == ctx.org_id)
+        # Apply organization filter from scope param
+        if global_only:
+            query = query.where(WorkflowROIDaily.organization_id.is_(None))
+        elif org_uuid:
+            query = query.where(WorkflowROIDaily.organization_id == org_uuid)
 
         result = await db.execute(query)
         rows = result.all()
@@ -232,7 +272,6 @@ async def get_roi_by_workflow(
     dependencies=[RequirePlatformAdmin],
 )
 async def get_roi_by_organization(
-    ctx: Context,
     user: CurrentActiveUser,
     db: DbSession,
     start_date: date = Query(..., description="Start date (inclusive)"),
@@ -244,9 +283,6 @@ async def get_roi_by_organization(
 
     Aggregates metrics from execution_metrics_daily table grouped by organization.
     Platform admin only.
-
-    Note: This endpoint ignores X-Organization-Id header and always returns
-    data for all organizations (for the platform admin dashboard).
 
     Args:
         start_date: Start date (inclusive)
@@ -322,12 +358,16 @@ async def get_roi_by_organization(
     dependencies=[RequirePlatformAdmin],
 )
 async def get_roi_trends(
-    ctx: Context,
     user: CurrentActiveUser,
     db: DbSession,
     start_date: date = Query(..., description="Start date (inclusive)"),
     end_date: date = Query(..., description="End date (inclusive)"),
     granularity: Literal["day", "week", "month"] = Query(default="day", description="Time granularity"),
+    scope: str | None = Query(
+        None,
+        description="Filter scope: omit for all, 'global' for global only, "
+        "or org UUID for specific org."
+    ),
 ) -> ROITrendsResponse:
     """
     Get ROI trends over time.
@@ -335,18 +375,30 @@ async def get_roi_trends(
     Aggregates metrics from execution_metrics_daily table with time grouping.
     Platform admin only.
 
-    Organization filtering is controlled via the X-Organization-Id header:
-    - If header is set: returns trend data for that specific organization
-    - If header is not set (global scope): returns platform-wide trends (org_id is NULL)
-
     Args:
         start_date: Start date (inclusive)
         end_date: End date (inclusive)
         granularity: Time granularity (day, week, month)
+        scope: Filter scope - None (all), "global", or org UUID string
 
     Returns:
         Time series ROI data with the specified granularity
     """
+    # Parse scope parameter
+    org_uuid: UUID | None = None
+    global_only = False
+    if scope:
+        if scope == "global":
+            global_only = True
+        else:
+            try:
+                org_uuid = UUID(scope)
+            except ValueError:
+                raise HTTPException(
+                    status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                    detail=f"Invalid scope value: {scope}",
+                )
+
     try:
         # Get ROI settings for units
         settings_service = ROISettingsService(db)
@@ -379,12 +431,12 @@ async def get_roi_trends(
             .order_by(date_group)
         )
 
-        # Apply organization filter from context (X-Organization-Id header)
-        if ctx.org_id:
-            query = query.where(ExecutionMetricsDaily.organization_id == ctx.org_id)
-        else:
-            # Global scope: get platform-wide metrics (org_id is NULL)
+        # Apply organization filter from scope param
+        if global_only:
             query = query.where(ExecutionMetricsDaily.organization_id.is_(None))
+        elif org_uuid:
+            query = query.where(ExecutionMetricsDaily.organization_id == org_uuid)
+        # If no filter, return all metrics (platform admins see everything)
 
         result = await db.execute(query)
         rows = result.all()

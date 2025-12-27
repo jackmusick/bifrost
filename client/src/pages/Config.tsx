@@ -8,7 +8,6 @@ import {
 	Globe,
 	Building2,
 	AlertTriangle,
-	Info,
 	Loader2,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -29,7 +28,6 @@ import {
 	AlertDialogHeader,
 	AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
-import { Alert, AlertDescription } from "@/components/ui/alert";
 import {
 	DataTable,
 	DataTableBody,
@@ -45,28 +43,57 @@ import { useSearch } from "@/hooks/useSearch";
 import { useConfigs, useDeleteConfig } from "@/hooks/useConfig";
 import { ConfigDialog } from "@/components/config/ConfigDialog";
 import { useOrgScope } from "@/contexts/OrgScopeContext";
+import { useAuth } from "@/contexts/AuthContext";
+import { useOrganizations } from "@/hooks/useOrganizations";
+import { OrganizationSelect } from "@/components/forms/OrganizationSelect";
 import type { components } from "@/lib/v1";
+
 type ConfigType = components["schemas"]["ConfigResponse"];
+type Organization = components["schemas"]["OrganizationPublic"];
+
+// Extended type to include organization_id (supported by backend, pending type regeneration)
+type ConfigWithOrg = ConfigType & {
+	organization_id?: string | null;
+};
 
 export function Config() {
+	const { scope, isGlobalScope } = useOrgScope();
+	const { isPlatformAdmin } = useAuth();
+	const [filterOrgId, setFilterOrgId] = useState<string | null | undefined>(undefined);
 	const [selectedConfig, setSelectedConfig] = useState<
 		ConfigType | undefined
 	>();
 	const [isDialogOpen, setIsDialogOpen] = useState(false);
 	const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
-	const [configToDelete, setConfigToDelete] = useState<ConfigType | null>(
+	const [configToDelete, setConfigToDelete] = useState<ConfigWithOrg | null>(
 		null,
 	);
 	const [searchTerm, setSearchTerm] = useState("");
-	const { scope, isGlobalScope } = useOrgScope();
 
-	// Fetch configs based on current scope
-	const scopeParam = isGlobalScope ? "GLOBAL" : "org";
-	const { data: configs, isFetching, refetch } = useConfigs(scopeParam);
+	// Pass filterOrgId to backend for filtering (undefined = all, null = global only)
+	// For platform admins, undefined means show all. For non-admins, backend handles filtering.
+	const { data: configs, isFetching, refetch } = useConfigs(
+		isPlatformAdmin ? filterOrgId : undefined,
+	);
 	const deleteConfig = useDeleteConfig();
 
+	// Fetch organizations for the org name lookup (platform admins only)
+	const { data: organizations } = useOrganizations({
+		enabled: isPlatformAdmin,
+	});
+
+	// Helper to get organization name from ID
+	const getOrgName = (orgId: string | null | undefined): string => {
+		if (!orgId) return "Global";
+		const org = organizations?.find((o: Organization) => o.id === orgId);
+		return org?.name || orgId;
+	};
+
+	// Cast to extended type that includes organization_id (pending type regeneration)
+	const configsWithOrg = (configs || []) as ConfigWithOrg[];
+
 	// Apply search filter
-	const filteredConfigs = useSearch(configs || [], searchTerm, [
+	const filteredConfigs = useSearch(configsWithOrg, searchTerm, [
 		"key",
 		"value",
 		"type",
@@ -85,7 +112,7 @@ export function Config() {
 		setIsDialogOpen(true);
 	};
 
-	const handleDelete = (config: ConfigType) => {
+	const handleDelete = (config: ConfigWithOrg) => {
 		setConfigToDelete(config);
 		setDeleteDialogOpen(true);
 	};
@@ -163,7 +190,7 @@ export function Config() {
 					<p className="mt-2 text-muted-foreground">
 						{isGlobalScope
 							? "Platform-wide configuration values"
-							: `Configuration for ${scope.orgName}`}
+							: `Configuration for ${scope.orgName || "this organization"}`}
 					</p>
 				</div>
 				<div className="flex gap-2">
@@ -190,30 +217,32 @@ export function Config() {
 				</div>
 			</div>
 
-			{isGlobalScope && (
-				<Alert>
-					<Info className="h-4 w-4" />
-					<AlertDescription>
-						Showing configuration from the Global partition only.
-						Switch to an organization scope to see that
-						organization's configuration.
-					</AlertDescription>
-				</Alert>
-			)}
-
-			{/* Search Box */}
-			<SearchBox
-				value={searchTerm}
-				onChange={setSearchTerm}
-				placeholder="Search config by key, value, type, or description..."
-				className="max-w-md"
-			/>
+			{/* Search and Filters */}
+			<div className="flex items-center gap-4">
+				<SearchBox
+					value={searchTerm}
+					onChange={setSearchTerm}
+					placeholder="Search config by key, value, type, or description..."
+					className="max-w-md"
+				/>
+				{isPlatformAdmin && (
+					<div className="w-64">
+						<OrganizationSelect
+							value={filterOrgId}
+							onChange={setFilterOrgId}
+							showAll={true}
+							showGlobal={true}
+							placeholder="All organizations"
+						/>
+					</div>
+				)}
+			</div>
 
 			<Card>
 				<CardHeader>
 					<div>
 						<CardTitle>
-							{isGlobalScope ? "Global" : "OrganizationPublic"}{" "}
+							{isGlobalScope ? "Global" : "Organization"}{" "}
 							Configuration
 						</CardTitle>
 						<CardDescription>
@@ -233,8 +262,8 @@ export function Config() {
 							<DataTable>
 								<DataTableHeader className="sticky top-0 bg-background z-10">
 									<DataTableRow>
-										{isGlobalScope && (
-											<DataTableHead>Scope</DataTableHead>
+										{isPlatformAdmin && (
+											<DataTableHead>Organization</DataTableHead>
 										)}
 										<DataTableHead>Key</DataTableHead>
 										<DataTableHead>Value</DataTableHead>
@@ -252,15 +281,19 @@ export function Config() {
 										<DataTableRow
 											key={`${config.scope}-${config.key}`}
 										>
-											{isGlobalScope && (
+											{isPlatformAdmin && (
 												<DataTableCell>
-													<Badge
-														variant="default"
-														className="text-xs"
-													>
-														<Globe className="mr-1 h-3 w-3" />
-														Global
-													</Badge>
+													{config.organization_id ? (
+														<Badge variant="outline" className="text-xs">
+															<Building2 className="mr-1 h-3 w-3" />
+															{getOrgName(config.organization_id)}
+														</Badge>
+													) : (
+														<Badge variant="default" className="text-xs">
+															<Globe className="mr-1 h-3 w-3" />
+															Global
+														</Badge>
+													)}
 												</DataTableCell>
 											)}
 											<DataTableCell className="font-mono">

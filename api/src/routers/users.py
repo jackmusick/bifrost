@@ -13,6 +13,7 @@ from sqlalchemy import select
 
 from src.core.auth import CurrentSuperuser
 from src.core.database import DbSession
+from src.core.org_filter import resolve_org_filter, OrgFilterType
 from src.models import User as UserORM, UserRole as UserRoleORM, FormRole as FormRoleORM
 from src.models import (
     UserCreate,
@@ -38,9 +39,26 @@ async def list_users(
     user: CurrentSuperuser,
     db: DbSession,
     type: str | None = Query(None, description="Filter by user type: 'platform' or 'org'"),
-    orgId: UUID | None = Query(None, alias="orgId", description="Filter org users by organization ID"),
+    scope: str | None = Query(
+        None,
+        description="Filter scope: omit for all (superusers), 'global' for global only, "
+        "or org UUID for specific org."
+    ),
 ) -> list[UserPublic]:
-    """List users with optional filtering."""
+    """List users with optional filtering.
+
+    Superusers can filter by scope or see all users.
+    Note: Users are not org-scoped resources - they belong to one org.
+    """
+    # Resolve organization filter based on user permissions
+    try:
+        filter_type, filter_org = resolve_org_filter(user, scope)
+    except ValueError as e:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail=str(e),
+        )
+
     # Filter out system users (used for API key executions)
     query = select(UserORM).where(
         UserORM.is_active,
@@ -53,8 +71,18 @@ async def list_users(
         elif type.lower() == "org":
             query = query.where(UserORM.is_superuser.is_(False))
 
-    if orgId:
-        query = query.where(UserORM.organization_id == orgId)
+    # Apply org filter based on scope
+    # For users, GLOBAL_ONLY means users without an org (platform admins)
+    # ORG_ONLY and ORG_PLUS_GLOBAL filter to specific org
+    if filter_type == OrgFilterType.GLOBAL_ONLY:
+        query = query.where(UserORM.organization_id.is_(None))
+    elif filter_type == OrgFilterType.ORG_ONLY and filter_org is not None:
+        # Platform admin filtering to specific org - just that org's users
+        query = query.where(UserORM.organization_id == filter_org)
+    elif filter_type == OrgFilterType.ORG_PLUS_GLOBAL and filter_org is not None:
+        # Org user - their org's users only (users don't cascade like configs)
+        query = query.where(UserORM.organization_id == filter_org)
+    # ALL: no filter applied
 
     query = query.order_by(UserORM.email)
 

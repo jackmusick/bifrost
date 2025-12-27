@@ -23,17 +23,12 @@ import {
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { ThemeToggle } from "@/components/theme-toggle";
 import { useAuth } from "@/contexts/AuthContext";
-import { useScopeStore } from "@/stores/scopeStore";
-import { useOrganizations } from "@/hooks/useOrganizations";
-import { OrgScopeSwitcher } from "@/components/OrgScopeSwitcher";
 import { useEditorStore } from "@/stores/editorStore";
 import { useQuickAccessStore } from "@/stores/quickAccessStore";
 import { NotificationCenter } from "@/components/layout/NotificationCenter";
 import { profileService, type ProfileResponse } from "@/services/profile";
 import { webSocketService } from "@/services/websocket";
 import { cn } from "@/lib/utils";
-import type { components } from "@/lib/v1";
-type Organization = components["schemas"]["OrganizationPublic"];
 
 interface HeaderProps {
 	onMobileMenuToggle?: () => void;
@@ -49,9 +44,6 @@ export function Header({
 	const navigate = useNavigate();
 	const location = useLocation();
 	const { user, logout, isPlatformAdmin } = useAuth();
-	const scope = useScopeStore((state) => state.scope);
-	const setScope = useScopeStore((state) => state.setScope);
-	const isGlobalScope = useScopeStore((state) => state.isGlobalScope);
 	const openEditor = useEditorStore((state) => state.openEditor);
 	const openQuickAccess = useQuickAccessStore(
 		(state) => state.openQuickAccess,
@@ -63,16 +55,6 @@ export function Header({
 	// Track if there's an active CLI session
 	const [hasActiveCLISession, setHasActiveCLISession] = useState(false);
 	const isOnCLIPage = location.pathname.startsWith("/cli");
-
-	// Only fetch organizations if user is a platform admin
-	const { data: organizationData, isLoading: orgsLoading } = useOrganizations(
-		{
-			enabled: isPlatformAdmin,
-		},
-	);
-	const organizations: Organization[] = Array.isArray(organizationData)
-		? organizationData
-		: [];
 
 	// Profile and avatar state
 	const [profile, setProfile] = useState<ProfileResponse | null>(null);
@@ -172,19 +154,6 @@ export function Header({
 						<PanelLeftClose className="h-5 w-5" />
 					)}
 				</Button>
-
-				{/* Organization Scope Switcher (Platform Admin only) */}
-				{isPlatformAdmin && (
-					<div className="mr-2">
-						<OrgScopeSwitcher
-							scope={scope}
-							setScope={setScope}
-							organizations={organizations}
-							isLoading={orgsLoading}
-							isGlobalScope={isGlobalScope}
-						/>
-					</div>
-				)}
 
 				{/* Spacer */}
 				<div className="flex-1" />

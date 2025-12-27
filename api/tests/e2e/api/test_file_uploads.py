@@ -216,12 +216,12 @@ async def e2e_file_read_workflow(file_path: str):
         result = response.json()
 
         # Debug: print the full response
-        print(f"\n=== Workflow execution response ===")
+        print("\n=== Workflow execution response ===")
         print(f"Status: {result.get('status')}")
         print(f"Error: {result.get('error')}")
         print(f"Error Type: {result.get('error_type')}")
         print(f"Result: {result.get('result')}")
-        print(f"=== End response ===\n")
+        print("=== End response ===\n")
 
         # Verify the workflow could read the file content
         assert "result" in result, "Missing result in execution response"

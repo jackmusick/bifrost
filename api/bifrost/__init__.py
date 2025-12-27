@@ -114,7 +114,8 @@ try:
     from src.sdk.context import ExecutionContext
 except ImportError:
     # CLI/standalone mode - use local decorators
-    from .decorators import workflow, data_provider, WorkflowMetadata as _WFMeta
+    from .decorators import workflow, data_provider
+    _ = WorkflowMetadata  # noqa: F401 - re-exported from .models above
     # Provide a minimal ExecutionContext for CLI mode
     ExecutionContext = None  # type: ignore
 

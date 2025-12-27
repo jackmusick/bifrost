@@ -55,8 +55,8 @@ import {
 	type WorkflowROI,
 } from "@/services/reports";
 import { useAuth } from "@/contexts/AuthContext";
-import { useOrgScope } from "@/hooks/useOrgScope";
 import { useOrganizations } from "@/hooks/useOrganizations";
+import { OrganizationSelect } from "@/components/forms/OrganizationSelect";
 
 // ============================================================================
 // Demo Data Generation
@@ -275,10 +275,16 @@ type SortConfig = { by: string; dir: "asc" | "desc" };
 
 export function ROIReports() {
 	const { isPlatformAdmin } = useAuth();
-	const { isGlobalScope, scope } = useOrgScope();
+
+	// Organization filter state (platform admins only)
+	// undefined = all, null = global only, UUID string = specific org
+	const [filterOrgId, setFilterOrgId] = useState<string | null | undefined>(undefined);
+
+	// Derive isGlobalScope from filterOrgId for display logic
+	const isGlobalScope = filterOrgId === undefined || filterOrgId === null;
 
 	// Fetch real organizations for demo data generation
-	const { data: orgsData } = useOrganizations();
+	const { data: orgsData } = useOrganizations({ enabled: isPlatformAdmin });
 
 	// Demo mode state
 	const [showDemoData, setShowDemoData] = useState(false);
@@ -313,28 +319,29 @@ export function ROIReports() {
 	}, [orgsData]);
 
 	// Single source of demo data - already filtered by org like API would be
+	// Use filterOrgId for filtering (undefined/null means show all orgs)
 	const demoData = useMemo(() => {
 		if (!startDate || !endDate) return null;
 		return generateDemoData({
 			startDate,
 			endDate,
-			orgId: scope.orgId, // Apply org filter here, like API does
+			orgId: filterOrgId ?? null, // Apply org filter here, like API does
 			realOrgs,
 		});
-	}, [startDate, endDate, scope.orgId, realOrgs]);
+	}, [startDate, endDate, filterOrgId, realOrgs]);
 
 	// Fetch real data (only used when not in demo mode)
 	const {
 		data: realSummary,
 		isLoading: summaryLoading,
 		error: summaryError,
-	} = useROISummary(startDate, endDate);
+	} = useROISummary(startDate, endDate, filterOrgId);
 
 	const {
 		data: realByWorkflow,
 		isLoading: workflowLoading,
 		error: workflowError,
-	} = useROIByWorkflow(startDate, endDate);
+	} = useROIByWorkflow(startDate, endDate, filterOrgId);
 
 	const {
 		data: realByOrg,
@@ -346,7 +353,7 @@ export function ROIReports() {
 		data: realTrends,
 		isLoading: trendsLoading,
 		error: trendsError,
-	} = useROITrends(startDate, endDate);
+	} = useROITrends(startDate, endDate, "day", filterOrgId);
 
 	// Use demo or real data based on toggle
 	// Both have the same shape and filtering already applied - no additional processing needed
@@ -533,7 +540,7 @@ export function ROIReports() {
 				</Alert>
 			)}
 
-			{/* Date Range Picker */}
+			{/* Date Range Picker and Organization Filter */}
 			<Card>
 				<CardHeader>
 					<CardTitle>Report Period</CardTitle>
@@ -541,11 +548,24 @@ export function ROIReports() {
 						Select a date range for the ROI report
 					</CardDescription>
 				</CardHeader>
-				<CardContent>
-					<DateRangePicker
-						dateRange={dateRange}
-						onDateRangeChange={setDateRange}
-					/>
+				<CardContent className="space-y-4">
+					<div className="flex items-center gap-4">
+						<DateRangePicker
+							dateRange={dateRange}
+							onDateRangeChange={setDateRange}
+						/>
+						{isPlatformAdmin && (
+							<div className="w-64 ml-auto">
+								<OrganizationSelect
+									value={filterOrgId}
+									onChange={setFilterOrgId}
+									showAll={true}
+									showGlobal={true}
+									placeholder="All organizations"
+								/>
+							</div>
+						)}
+					</div>
 				</CardContent>
 			</Card>
 

@@ -38,6 +38,13 @@ import {
 	type IntegrationDetail,
 } from "@/services/integrations";
 import { useDataProviders } from "@/services/dataProviders";
+import { OrganizationSelect } from "@/components/forms/OrganizationSelect";
+import { useAuth } from "@/contexts/AuthContext";
+
+// Extended type to include organization_id (supported by backend, pending type regeneration)
+type IntegrationDetailWithOrg = IntegrationDetail & {
+	organization_id?: string | null;
+};
 
 interface CreateIntegrationDialogProps {
 	open: boolean;
@@ -57,6 +64,7 @@ function CreateIntegrationDialogContent({
 	initialData,
 }: Omit<CreateIntegrationDialogProps, "open">) {
 	const queryClient = useQueryClient();
+	const { isPlatformAdmin } = useAuth();
 
 	// Only fetch if we don't have initialData and we're editing
 	const { data: fetchedIntegration } = useIntegration(
@@ -64,7 +72,9 @@ function CreateIntegrationDialogContent({
 	);
 
 	// Use initialData if provided, otherwise use fetched data
-	const existingIntegration = initialData || fetchedIntegration;
+	// Cast to extended type that includes organization_id
+	const existingIntegration = (initialData ||
+		fetchedIntegration) as IntegrationDetailWithOrg | undefined;
 
 	// Fetch available data providers
 	const { data: dataProviders, isLoading: isLoadingProviders } =
@@ -77,6 +87,9 @@ function CreateIntegrationDialogContent({
 	const isLoading = createMutation.isPending || updateMutation.isPending;
 
 	// Initialize state from existing integration (or empty for new)
+	const [organizationId, setOrganizationId] = useState<string | null | undefined>(() => {
+		return existingIntegration?.organization_id ?? null;
+	});
 	const [name, setName] = useState(() => {
 		return existingIntegration?.name || "";
 	});
@@ -181,7 +194,9 @@ function CreateIntegrationDialogContent({
 						config_schema:
 							configSchema.length > 0 ? configSchema : undefined,
 						default_entity_id: defaultEntityId || undefined,
-					},
+						// organization_id is supported by backend, pending type regeneration
+						...(organizationId && { organization_id: organizationId }),
+					} as Parameters<typeof createMutation.mutateAsync>[0]["body"],
 				});
 				toast.success("Integration created successfully");
 			}
@@ -238,6 +253,24 @@ function CreateIntegrationDialogContent({
 				</DialogHeader>
 
 				<div className="space-y-4 py-4">
+					{/* Organization (platform admins only) */}
+					{isPlatformAdmin && (
+						<div className="space-y-2">
+							<Label htmlFor="organization">Organization</Label>
+							<OrganizationSelect
+								value={organizationId}
+								onChange={setOrganizationId}
+								showGlobal={true}
+								disabled={isEditing}
+							/>
+							<p className="text-xs text-muted-foreground">
+								{isEditing
+									? "Organization cannot be changed after creation"
+									: "Select Global for platform-wide integration or choose a specific organization"}
+							</p>
+						</div>
+					)}
+
 					{/* Name */}
 					<div className="space-y-2">
 						<Label htmlFor="name">Integration Name *</Label>

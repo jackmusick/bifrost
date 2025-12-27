@@ -74,11 +74,19 @@ class TestOrganizationAccess:
 class TestOrganizationIsolation:
     """Test organization isolation."""
 
-    def test_org1_user_cannot_see_org2_data(self, e2e_client, org1_user, org2):
-        """Org1 user should not be able to access org2's resources."""
-        # Try to access org2's data using explicit org header
+    def test_org1_user_only_sees_own_org_data(self, e2e_client, org1_user, org2):
+        """Org1 user only sees their own org's resources regardless of query param."""
+        # With the new query param approach, org users always see their own org's data
+        # The scope param is ignored for non-superusers (they can't filter other orgs)
         response = e2e_client.get(
             "/api/forms",
-            headers=org1_user.headers_with_org(org2["id"]),
+            params={"scope": org2["id"]},  # Try to filter by org2
+            headers=org1_user.headers,
         )
-        assert response.status_code == 403, "Cross-org access should be denied"
+        # Request succeeds but returns org1's forms (query param ignored for org users)
+        assert response.status_code == 200
+        # Verify no org2 data is returned - all forms should be org1's or global
+        forms = response.json()
+        for form in forms:
+            assert form.get("organization_id") in [None, str(org1_user.organization_id)], \
+                f"Org user should only see their own org's forms, not {form.get('organization_id')}"

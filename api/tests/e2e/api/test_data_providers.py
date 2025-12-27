@@ -220,7 +220,7 @@ async def e2e_parametrized_provider(category: str = "default"):
         provider_names = [p["name"] for p in providers]
 
         assert parametrized_provider_file["name"] in provider_names, \
-            f"Parametrized provider not discovered after file write"
+            "Parametrized provider not discovered after file write"
 
     def test_parametrized_provider_has_parameters(self, e2e_client, platform_admin, parametrized_provider_file):
         """Parametrized data provider includes parameter metadata."""

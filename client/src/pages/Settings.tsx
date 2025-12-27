@@ -4,10 +4,11 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { TabActions } from "@/components/ui/tab-actions";
 import { WorkflowKeys } from "@/pages/WorkflowKeys";
 import { Branding } from "@/pages/settings/Branding";
+import { Email } from "@/pages/settings/Email";
 import { GitHub } from "@/pages/settings/GitHub";
 import { LLMConfig } from "@/pages/settings/LLMConfig";
 import { Maintenance } from "@/pages/settings/Maintenance";
-import { Bot } from "lucide-react";
+import { Bot, Mail } from "lucide-react";
 
 export function Settings() {
 	const navigate = useNavigate();
@@ -48,6 +49,10 @@ export function Settings() {
 							AI
 						</TabsTrigger>
 						<TabsTrigger value="branding">Branding</TabsTrigger>
+						<TabsTrigger value="email">
+							<Mail className="h-4 w-4 mr-1" />
+							Email
+						</TabsTrigger>
 						<TabsTrigger value="github">GitHub</TabsTrigger>
 						<TabsTrigger value="workflow-keys">
 							Workflow Keys
@@ -66,6 +71,10 @@ export function Settings() {
 
 				<TabsContent value="branding" className="mt-6">
 					<Branding onActionsChange={setTabActions} />
+				</TabsContent>
+
+				<TabsContent value="email" className="mt-6">
+					<Email />
 				</TabsContent>
 
 				<TabsContent value="github" className="mt-6">

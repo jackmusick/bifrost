@@ -47,31 +47,20 @@ import {
 import { useForms, useDeleteForm, useUpdateForm } from "@/hooks/useForms";
 import { useOrgScope } from "@/contexts/OrgScopeContext";
 import { useAuth } from "@/contexts/AuthContext";
+import { useOrganizations } from "@/hooks/useOrganizations";
 import { SearchBox } from "@/components/search/SearchBox";
 import { useSearch } from "@/hooks/useSearch";
+import { OrganizationSelect } from "@/components/forms/OrganizationSelect";
 import type { components } from "@/lib/v1";
-import type { FormSchema } from "@/lib/client-types";
 
 type FormPublic = components["schemas"]["FormPublic"];
-
-// Type guard to check if form_schema is a FormSchema
-function isFormSchema(schema: unknown): schema is FormSchema {
-	return (
-		schema !== null &&
-		schema !== undefined &&
-		typeof schema === "object" &&
-		"fields" in schema &&
-		Array.isArray((schema as unknown as FormSchema).fields)
-	);
-}
+type Organization = components["schemas"]["OrganizationPublic"];
 
 export function Forms() {
 	const navigate = useNavigate();
 	const { scope, isGlobalScope } = useOrgScope();
-	const { data: forms, isLoading, refetch } = useForms();
-	const deleteForm = useDeleteForm();
-	const updateForm = useUpdateForm();
 	const { isPlatformAdmin } = useAuth();
+	const [filterOrgId, setFilterOrgId] = useState<string | null | undefined>(undefined);
 	const [searchTerm, setSearchTerm] = useState("");
 	const [viewMode, setViewMode] = useState<"grid" | "table">("grid");
 	const [isDisableDialogOpen, setIsDisableDialogOpen] = useState(false);
@@ -81,6 +70,26 @@ export function Forms() {
 		name: string;
 		isActive: boolean;
 	} | null>(null);
+
+	// Pass filterOrgId to backend for filtering (undefined = all, null = global only)
+	// For platform admins, undefined means show all. For non-admins, backend handles filtering.
+	const { data: forms, isLoading, refetch } = useForms(
+		isPlatformAdmin ? filterOrgId : undefined,
+	);
+	const deleteForm = useDeleteForm();
+	const updateForm = useUpdateForm();
+
+	// Fetch organizations for the org name lookup (platform admins only)
+	const { data: organizations } = useOrganizations({
+		enabled: isPlatformAdmin,
+	});
+
+	// Helper to get organization name from ID
+	const getOrgName = (orgId: string | null | undefined): string => {
+		if (!orgId) return "Global";
+		const org = organizations?.find((o: Organization) => o.id === orgId);
+		return org?.name || orgId;
+	};
 
 	// For now, only platform admins can manage forms
 	const canManageForms = isPlatformAdmin;
@@ -165,33 +174,17 @@ export function Forms() {
 		navigate(`/execute/${formId}`);
 	};
 
-	// Filter forms based on scope and validation
+	// Filter forms based on validation only (backend handles org filtering)
 	const scopeFilteredForms =
 		forms?.filter((form) => {
-			// First check validation - hide invalid forms from regular users
+			// Hide invalid forms from regular users
 			if (!isPlatformAdmin) {
 				const validation = formValidation.get(form.id);
 				if (validation && !validation.valid) {
-					return false; // Hide invalid forms from regular users
+					return false;
 				}
 			}
-
-			// Regular users: show all valid forms returned by backend (backend handles authorization)
-			if (!isPlatformAdmin) {
-				return true;
-			}
-
-			// Platform admin filtering based on scope switcher:
-			// - No org selected (global scope): show all forms (including invalid)
-			if (!scope.orgId) {
-				return true;
-			}
-			// - Global scope selected: show only global forms
-			if (isGlobalScope) {
-				return form.organization_id === null;
-			}
-			// - Org scope selected: show org-specific forms
-			return form.organization_id === scope.orgId;
+			return true;
 		}) || [];
 
 	// Apply search filter
@@ -281,13 +274,26 @@ export function Forms() {
 				</div>
 			</div>
 
-			{/* Search Box */}
-			<SearchBox
-				value={searchTerm}
-				onChange={setSearchTerm}
-				placeholder="Search forms by name, description, or workflow..."
-				className="max-w-md"
-			/>
+			{/* Search and Filters */}
+			<div className="flex items-center gap-4">
+				<SearchBox
+					value={searchTerm}
+					onChange={setSearchTerm}
+					placeholder="Search forms by name, description, or workflow..."
+					className="max-w-md"
+				/>
+				{isPlatformAdmin && (
+					<div className="w-64">
+						<OrganizationSelect
+							value={filterOrgId}
+							onChange={setFilterOrgId}
+							showAll={true}
+							showGlobal={true}
+							placeholder="All organizations"
+						/>
+					</div>
+				)}
+			</div>
 
 			{isLoading ? (
 				viewMode === "grid" || !canManageForms ? (
@@ -364,6 +370,23 @@ export function Forms() {
 									</div>
 								</CardHeader>
 								<CardContent className="flex-1 flex flex-col pt-0">
+									{/* Organization badge (platform admins only) */}
+									{isPlatformAdmin && (
+										<div className="mb-2">
+											{form.organization_id ? (
+												<Badge variant="outline" className="text-xs">
+													<Building2 className="mr-1 h-3 w-3" />
+													{getOrgName(form.organization_id)}
+												</Badge>
+											) : (
+												<Badge variant="default" className="text-xs">
+													<Globe className="mr-1 h-3 w-3" />
+													Global
+												</Badge>
+											)}
+										</div>
+									)}
+
 									{!formValidation.get(form.id)?.valid &&
 										canManageForms && (
 											<div className="mb-3 pb-3 border-b">
@@ -450,13 +473,11 @@ export function Forms() {
 						<DataTable className="max-h-full">
 							<DataTableHeader>
 								<DataTableRow>
+									{isPlatformAdmin && (
+										<DataTableHead>Organization</DataTableHead>
+									)}
 									<DataTableHead>Name</DataTableHead>
 									<DataTableHead>Description</DataTableHead>
-									<DataTableHead>Workflow</DataTableHead>
-									<DataTableHead className="text-right">
-										Fields
-									</DataTableHead>
-									<DataTableHead>Validation</DataTableHead>
 									<DataTableHead>Status</DataTableHead>
 									<DataTableHead className="text-right">
 										Actions
@@ -470,6 +491,21 @@ export function Forms() {
 									);
 									return (
 										<DataTableRow key={form.id}>
+											{isPlatformAdmin && (
+												<DataTableCell>
+													{form.organization_id ? (
+														<Badge variant="outline" className="text-xs">
+															<Building2 className="mr-1 h-3 w-3" />
+															{getOrgName(form.organization_id)}
+														</Badge>
+													) : (
+														<Badge variant="default" className="text-xs">
+															<Globe className="mr-1 h-3 w-3" />
+															Global
+														</Badge>
+													)}
+												</DataTableCell>
+											)}
 											<DataTableCell className="font-medium break-all max-w-xs">
 												{form.name}
 											</DataTableCell>
@@ -478,34 +514,6 @@ export function Forms() {
 													<span className="italic">
 														No description
 													</span>
-												)}
-											</DataTableCell>
-											<DataTableCell className="font-mono text-xs">
-												{form.workflow_id || "-"}
-											</DataTableCell>
-											<DataTableCell className="text-right">
-												{isFormSchema(form.form_schema)
-													? form.form_schema.fields
-															.length
-													: 0}
-											</DataTableCell>
-											<DataTableCell>
-												{!validation?.valid ? (
-													<Badge
-														variant="destructive"
-														className="gap-1 cursor-help"
-														title={`Missing: ${validation?.missingParams.join(", ")}`}
-													>
-														<AlertTriangle className="h-3 w-3" />
-														Invalid
-													</Badge>
-												) : (
-													<Badge
-														variant="outline"
-														className="gap-1"
-													>
-														Valid
-													</Badge>
 												)}
 											</DataTableCell>
 											<DataTableCell>

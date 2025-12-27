@@ -31,9 +31,10 @@ import { Check, ChevronsUpDown, X } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useWorkflowsMetadata } from "@/hooks/useWorkflows";
 import { useRoles } from "@/hooks/useRoles";
+import { useAuth } from "@/contexts/AuthContext";
+import { OrganizationSelect } from "@/components/forms/OrganizationSelect";
 import type { components } from "@/lib/v1";
 
-type FormAccessLevel = components["schemas"]["FormAccessLevel"];
 type WorkflowParameter = components["schemas"]["WorkflowParameter"];
 type Role = components["schemas"]["RolePublic"];
 type WorkflowMetadata = components["schemas"]["WorkflowMetadata"];
@@ -47,8 +48,9 @@ interface FormInfoDialogProps {
 		linkedWorkflow: string;
 		launchWorkflowId: string | null;
 		defaultLaunchParams: Record<string, unknown> | null;
-		accessLevel: "public" | "authenticated" | "role_based";
+		accessLevel: "authenticated" | "role_based";
 		selectedRoleIds: string[];
+		organizationId: string | null;
 	}) => void;
 	initialData?: {
 		formName: string;
@@ -56,9 +58,12 @@ interface FormInfoDialogProps {
 		linkedWorkflow: string;
 		launchWorkflowId?: string | null;
 		defaultLaunchParams?: Record<string, unknown> | null;
-		accessLevel?: "public" | "authenticated" | "role_based";
+		accessLevel?: "authenticated" | "role_based";
 		selectedRoleIds?: string[];
+		organizationId?: string | null;
 	};
+	/** Whether this is editing an existing form (org cannot be changed) */
+	isEditing?: boolean;
 }
 
 export function FormInfoDialog({
@@ -66,8 +71,10 @@ export function FormInfoDialog({
 	onClose,
 	onSave,
 	initialData,
+	isEditing = false,
 }: FormInfoDialogProps) {
 	const [rolesPopoverOpen, setRolesPopoverOpen] = useState(false);
+	const { isPlatformAdmin, user } = useAuth();
 
 	const { data: metadata, isLoading: metadataLoading } =
 		useWorkflowsMetadata() as {
@@ -77,6 +84,9 @@ export function FormInfoDialog({
 
 	// Fetch available roles using the hook
 	const { data: roles, isLoading: rolesLoading } = useRoles();
+
+	// Default organization_id for org users is their org, for platform admins it's null (global)
+	const defaultOrgId = isPlatformAdmin ? null : (user?.organizationId ?? null);
 
 	// Initialize form state from initialData
 	const [formName, setFormName] = useState(() => initialData?.formName || "");
@@ -96,11 +106,14 @@ export function FormInfoDialog({
 			(initialData?.defaultLaunchParams as Record<string, unknown>) || {},
 	);
 	const [accessLevel, setAccessLevel] = useState<
-		"public" | "authenticated" | "role_based"
+		"authenticated" | "role_based"
 	>(() => initialData?.accessLevel || "role_based");
 	const [selectedRoleIds, setSelectedRoleIds] = useState<string[]>(
 		() => initialData?.selectedRoleIds || [],
 	);
+	const [organizationId, setOrganizationId] = useState<
+		string | null | undefined
+	>(() => initialData?.organizationId ?? defaultOrgId ?? null);
 
 	// Get selected launch workflow metadata
 	const selectedLaunchWorkflow = metadata?.workflows?.find(
@@ -331,6 +344,7 @@ export function FormInfoDialog({
 			defaultLaunchParams: finalDefaultParams,
 			accessLevel,
 			selectedRoleIds,
+			organizationId: organizationId ?? null,
 		});
 		onClose();
 	};
@@ -369,6 +383,24 @@ export function FormInfoDialog({
 				</DialogHeader>
 
 				<div className="space-y-4">
+					{/* Organization Scope - Only show for platform admins */}
+					{isPlatformAdmin && (
+						<div className="space-y-2">
+							<Label htmlFor="organizationId">Organization</Label>
+							<OrganizationSelect
+								value={organizationId}
+								onChange={(value) => setOrganizationId(value ?? null)}
+								showGlobal={true}
+								disabled={isEditing}
+							/>
+							<p className="text-xs text-muted-foreground">
+								{isEditing
+									? "Organization cannot be changed after form creation"
+									: "Global forms are available to all organizations"}
+							</p>
+						</div>
+					)}
+
 					<div className="space-y-2">
 						<Label htmlFor="formName">Form Name *</Label>
 						<Input
@@ -434,7 +466,7 @@ export function FormInfoDialog({
 							id="accessLevel"
 							value={accessLevel}
 							onValueChange={(value: string) =>
-								setAccessLevel(value as FormAccessLevel)
+								setAccessLevel(value as "authenticated" | "role_based")
 							}
 							options={[
 								{
@@ -448,11 +480,6 @@ export function FormInfoDialog({
 									label: "Authenticated Users",
 									description:
 										"Any authenticated user can access",
-								},
-								{
-									value: "public",
-									label: "Public (Coming Soon)",
-									description: "Unauthenticated access",
 								},
 							]}
 							placeholder="Select access level"

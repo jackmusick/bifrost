@@ -7,11 +7,9 @@ Uses mocked dependencies for fast, isolated testing.
 
 import pytest
 from datetime import datetime
-from unittest.mock import AsyncMock, MagicMock, patch
-from contextlib import asynccontextmanager
+from unittest.mock import MagicMock
 from uuid import uuid4
 
-from bifrost._context import set_execution_context, clear_execution_context
 from src.models.enums import ExecutionStatus
 
 

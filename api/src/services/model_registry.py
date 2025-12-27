@@ -15,7 +15,6 @@ Redis Key Structure:
 
 import json
 import logging
-from typing import Any
 
 import httpx
 import redis.asyncio as redis
@@ -31,35 +30,48 @@ async def get_display_name(
     redis_client: redis.Redis,
     provider: str,
     model_id: str,
-    api_key: str | None = None,  # Kept for backward compatibility, no longer used
+    api_key: str | None = None,
 ) -> str:
     """
     Get display name for a model ID.
 
-    Checks Redis cache only - does NOT fetch from provider API on miss.
-    The cache is populated when saving LLM config (during test connection).
+    Checks Redis cache first. On cache miss, if an API key is available,
+    fetches display names from the provider API and populates the cache.
+    Falls back to normalize_model_name() only if no API key is available.
 
     Args:
         redis_client: Redis connection
         provider: LLM provider ("openai" or "anthropic")
         model_id: Versioned model ID from API response
-        api_key: Deprecated, kept for backward compatibility
+        api_key: Provider API key (used to refresh cache on miss)
 
     Returns:
-        Display name if cached, otherwise the original model_id
+        Display name (e.g., "Claude 3.5 Haiku") if available,
+        otherwise normalized model name with date stripped as fallback
     """
     cache_key = f"{MODEL_REGISTRY_KEY_PREFIX}{provider}"
 
+    # Check cache first
     try:
         cached = await redis_client.get(cache_key)
         if cached:
             mapping = json.loads(cached)
-            return mapping.get(model_id, model_id)
+            if model_id in mapping:
+                return mapping[model_id]
     except Exception as e:
         logger.warning(f"Redis cache read failed for model registry: {e}")
 
-    # Not cached - return model_id as-is (no API fetch during recording)
-    return model_id
+    # Cache miss - try to refresh from provider API if we have an API key
+    if api_key:
+        try:
+            mapping = await refresh_model_registry(redis_client, provider, api_key)
+            if model_id in mapping:
+                return mapping[model_id]
+        except Exception as e:
+            logger.warning(f"Failed to refresh model registry from API: {e}")
+
+    # Last resort fallback - normalize the model ID by stripping date suffixes
+    return normalize_model_name(model_id)
 
 
 async def cache_model_mapping(

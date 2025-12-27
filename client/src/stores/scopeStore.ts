@@ -15,15 +15,13 @@ interface ScopeState {
 	setHasHydrated: (hydrated: boolean) => void;
 }
 
-// Helper to sync sessionStorage
-const syncSessionStorage = (scope: OrgScope) => {
-	if (scope.orgId) {
-		sessionStorage.setItem("current_org_id", scope.orgId);
-	} else {
-		sessionStorage.removeItem("current_org_id");
-	}
-};
-
+/**
+ * Store for tracking the current organization scope selection.
+ *
+ * This is used for UI purposes (org switcher display, query cache keys)
+ * but does NOT affect API requests - organization filtering is done
+ * via query parameters on each endpoint.
+ */
 export const useScopeStore = create<ScopeState>()(
 	persist(
 		(set) => ({
@@ -31,9 +29,6 @@ export const useScopeStore = create<ScopeState>()(
 			isGlobalScope: true,
 			_hasHydrated: false,
 			setScope: (scope) => {
-				// Update sessionStorage for API client
-				syncSessionStorage(scope);
-
 				set({
 					scope,
 					isGlobalScope: scope.type === "global",
@@ -46,17 +41,9 @@ export const useScopeStore = create<ScopeState>()(
 		{
 			name: "msp-automation-org-scope",
 			storage: createJSONStorage(() => localStorage),
-			// On rehydration (initial load from localStorage), sync sessionStorage
-			onRehydrateStorage: () => (state, error) => {
-				// Always mark as hydrated, even if there's no stored state
-				// This ensures queries aren't blocked for users without stored scope
-
+			onRehydrateStorage: () => () => {
+				// Mark as hydrated when localStorage state is loaded
 				useScopeStore.setState({ _hasHydrated: true });
-
-				if (!error && state) {
-					// Sync sessionStorage immediately when rehydrating
-					syncSessionStorage(state.scope);
-				}
 			},
 		},
 	),

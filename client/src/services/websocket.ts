@@ -528,7 +528,7 @@ class WebSocketService {
 	 * Handle notification message from backend
 	 */
 	private handleNotification(payload: NotificationPayload) {
-		console.log(
+		console.warn(
 			"[WS] Notification received:",
 			payload.status,
 			payload.id,

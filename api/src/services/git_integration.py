@@ -1816,6 +1816,9 @@ class GitIntegrationService:
                         logger.info(f"Merge staged successfully, {len(updated_files)} file(s) ready to commit")
                         await send_log(f"✓ Merge prepared! {len(updated_files)} file(s) staged. Review and commit to complete the merge.", "success")
 
+                    # Scan updated Python files for missing SDK references
+                    await self._scan_updated_files_for_sdk_issues(updated_files)
+
                     return {
                         "success": True,
                         "updated_files": updated_files,
@@ -2301,6 +2304,104 @@ class GitIntegrationService:
                 "success": False,
                 "error": f"Failed to abort merge: {str(e)}"
             }
+
+    async def _scan_updated_files_for_sdk_issues(self, updated_files: list[str]) -> None:
+        """
+        Scan updated Python files for missing SDK references after git pull.
+
+        Creates platform admin notifications if issues are found.
+
+        Args:
+            updated_files: List of file paths that were updated during pull
+        """
+        python_files = [f for f in updated_files if f.endswith(".py")]
+        if not python_files:
+            return
+
+        try:
+            from src.core.database import get_session_factory
+            from src.services.sdk_reference_scanner import SDKReferenceScanner
+            from src.services.notification_service import get_notification_service
+            from src.models.contracts.notifications import (
+                NotificationCreate,
+                NotificationCategory,
+                NotificationStatus,
+            )
+
+            session_factory = get_session_factory()
+            async with session_factory() as db:
+                scanner = SDKReferenceScanner(db)
+                all_issues = []
+
+                for py_file in python_files:
+                    file_path = self.workspace_path / py_file
+                    if not file_path.exists():
+                        continue
+
+                    try:
+                        content = file_path.read_text(encoding="utf-8")
+                        issues = await scanner.scan_file(py_file, content)
+                        all_issues.extend(issues)
+                    except (OSError, UnicodeDecodeError) as e:
+                        logger.warning(f"Failed to scan {py_file} for SDK issues: {e}")
+
+                if not all_issues:
+                    return
+
+                # Create platform admin notification for all issues found in pull
+                service = get_notification_service()
+
+                # Build description with summary
+                files_with_issues = len({i.file_path for i in all_issues})
+                title = f"Missing SDK References: {files_with_issues} file(s) from Git pull"
+
+                # Check for existing notification to avoid duplicates
+                existing = await service.find_admin_notification_by_title(
+                    title=title,
+                    category=NotificationCategory.SYSTEM,
+                )
+                if existing:
+                    logger.debug("SDK notification for git pull already exists")
+                    return
+
+                # Build description with first few issues
+                issue_keys = [i.key for i in all_issues[:3]]
+                description = f"{len(all_issues)} missing: {', '.join(issue_keys)}"
+                if len(all_issues) > 3:
+                    description += "..."
+
+                await service.create_notification(
+                    user_id="system",
+                    request=NotificationCreate(
+                        category=NotificationCategory.SYSTEM,
+                        title=title,
+                        description=description,
+                        metadata={
+                            "action": "view_file",
+                            "file_path": all_issues[0].file_path,
+                            "line_number": all_issues[0].line_number,
+                            "issues": [
+                                {
+                                    "type": i.issue_type,
+                                    "key": i.key,
+                                    "line": i.line_number,
+                                    "file": i.file_path,
+                                }
+                                for i in all_issues
+                            ],
+                        },
+                    ),
+                    for_admins=True,
+                    initial_status=NotificationStatus.AWAITING_ACTION,
+                )
+
+                logger.info(
+                    f"Created SDK issues notification for git pull: "
+                    f"{len(all_issues)} issues in {files_with_issues} file(s)"
+                )
+
+        except Exception as e:
+            logger.warning(f"Failed to scan files for SDK issues after git pull: {e}")
 
     # GitHub API methods (these use PyGithub, not Git)
     def list_repositories(self, token: str, max_repos: int = 500) -> list[GitHubRepoInfo]:

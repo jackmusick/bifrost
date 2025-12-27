@@ -471,10 +471,6 @@ async def websocket_chat(
 
 async def _check_agent_access(db: DbSession, user, agent: Agent) -> bool:
     """Check if user has access to an agent based on its access level."""
-    # Public agents are accessible to everyone
-    if agent.access_level == AgentAccessLevel.PUBLIC:
-        return True
-
     # Authenticated agents are accessible to any logged-in user
     if agent.access_level == AgentAccessLevel.AUTHENTICATED:
         return True

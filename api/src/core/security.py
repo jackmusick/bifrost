@@ -349,8 +349,6 @@ def authenticate_engine() -> None:
 
     from bifrost.credentials import save_credentials
 
-    settings = get_settings()
-
     # Use a fixed UUID for the engine service account
     # This is a well-known UUID that represents the execution engine
     ENGINE_USER_ID = "00000000-0000-0000-0000-000000000001"

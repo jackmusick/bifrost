@@ -198,6 +198,9 @@ class FormCreate(BaseModel):
     allowed_query_params: list[str] | None = None
     form_schema: dict | FormSchema
     access_level: FormAccessLevel | None = FormAccessLevel.ROLE_BASED
+    organization_id: UUID | None = Field(
+        default=None, description="Organization ID (null = global resource)"
+    )
 
     @field_validator("form_schema", mode="before")
     @classmethod

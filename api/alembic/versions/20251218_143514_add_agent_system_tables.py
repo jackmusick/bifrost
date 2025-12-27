@@ -20,7 +20,7 @@ depends_on: Union[str, Sequence[str], None] = None
 
 # Define PostgreSQL enums (create_type=False since we create them manually)
 agent_access_level_enum = ENUM(
-    'public', 'authenticated', 'role_based',
+    'authenticated', 'role_based',
     name='agent_access_level',
     create_type=False
 )
@@ -69,7 +69,7 @@ def upgrade() -> None:
     # Create agent_access_level enum (idempotent - skip if exists)
     op.execute("""
         DO $$ BEGIN
-            CREATE TYPE agent_access_level AS ENUM ('public', 'authenticated', 'role_based');
+            CREATE TYPE agent_access_level AS ENUM ('authenticated', 'role_based');
         EXCEPTION
             WHEN duplicate_object THEN null;
         END $$;

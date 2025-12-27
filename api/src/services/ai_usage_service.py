@@ -469,7 +469,7 @@ async def _notify_missing_pricing(
                     "model": model,
                     "action": "configure_pricing",
                     "action_label": "Configure Pricing",
-                    "action_url": "/settings/llm",
+                    "action_url": "/settings/ai",
                 },
             ),
             for_admins=True,
@@ -481,3 +481,117 @@ async def _notify_missing_pricing(
     except Exception as e:
         # Don't let notification failures break AI usage recording
         logger.warning(f"Failed to create missing pricing notification: {e}")
+
+
+async def backfill_model_costs(
+    session: AsyncSession,
+    redis_client: redis.Redis,
+    provider: str,
+    model: str,
+    input_price_per_million: Decimal,
+    output_price_per_million: Decimal,
+) -> int:
+    """
+    Backfill costs for historical AI usage records that have cost=NULL.
+
+    Called when pricing is first configured for a model that was previously
+    used without pricing. Only updates records where cost IS NULL (not
+    records with existing costs from previous pricing).
+
+    Args:
+        session: Database session
+        redis_client: Redis connection
+        provider: LLM provider (e.g., 'openai', 'anthropic')
+        model: Model identifier (e.g., 'gpt-4o')
+        input_price_per_million: Price per million input tokens
+        output_price_per_million: Price per million output tokens
+
+    Returns:
+        Number of records updated
+    """
+    from sqlalchemy import update
+
+    from src.models.orm.ai_usage import AIUsage
+
+    try:
+        # Find all records for this model with NULL cost
+        # Use a batch update query for efficiency
+        result = await session.execute(
+            update(AIUsage)
+            .where(
+                AIUsage.provider == provider,
+                AIUsage.model == model,
+                AIUsage.cost.is_(None),
+            )
+            .values(
+                cost=(
+                    (AIUsage.input_tokens * input_price_per_million / Decimal(1_000_000))
+                    + (AIUsage.output_tokens * output_price_per_million / Decimal(1_000_000))
+                )
+            )
+        )
+
+        updated_count = result.rowcount
+        await session.flush()
+
+        if updated_count > 0:
+            logger.info(
+                f"Backfilled costs for {updated_count} records: "
+                f"provider={provider}, model={model}"
+            )
+
+            # Invalidate all usage totals caches for affected records
+            # Note: This is a simplified approach. For large datasets,
+            # a more targeted invalidation might be needed.
+            await _invalidate_all_usage_caches(redis_client)
+
+        return updated_count
+
+    except Exception as e:
+        logger.error(f"Failed to backfill costs for {provider}/{model}: {e}", exc_info=True)
+        raise
+
+
+async def _invalidate_all_usage_caches(redis_client: redis.Redis) -> None:
+    """
+    Invalidate all usage totals caches after a bulk update.
+
+    Uses SCAN to find and delete matching keys without blocking Redis.
+    """
+    try:
+        cursor = 0
+        deleted_count = 0
+
+        while True:
+            cursor, keys = await redis_client.scan(
+                cursor=cursor,
+                match=f"{USAGE_TOTALS_KEY_PREFIX}*",
+                count=100,
+            )
+            if keys:
+                await redis_client.delete(*keys)
+                deleted_count += len(keys)
+
+            if cursor == 0:
+                break
+
+        # Also scan conversation caches
+        cursor = 0
+        while True:
+            cursor, keys = await redis_client.scan(
+                cursor=cursor,
+                match=f"{USAGE_TOTALS_CONV_KEY_PREFIX}*",
+                count=100,
+            )
+            if keys:
+                await redis_client.delete(*keys)
+                deleted_count += len(keys)
+
+            if cursor == 0:
+                break
+
+        if deleted_count > 0:
+            logger.debug(f"Invalidated {deleted_count} usage cache keys after backfill")
+
+    except Exception as e:
+        logger.warning(f"Failed to invalidate usage caches: {e}")

@@ -198,7 +198,6 @@ class TestWebSocketSubscriptions:
     @pytest.fixture(scope="class")
     def execution_workflow(self, e2e_client, platform_admin):
         """Create a simple workflow for execution testing."""
-        import time
 
         workflow_content = '''"""E2E WebSocket Execution Workflow"""
 from bifrost import workflow

@@ -1269,7 +1269,7 @@ async def cli_ai_complete(
     db: AsyncSession = Depends(get_db),
 ) -> "CLIAICompleteResponse":
     """Generate an AI completion using platform-configured LLM."""
-    from src.models.contracts.cli import CLIAICompleteRequest, CLIAICompleteResponse
+    from src.models.contracts.cli import CLIAICompleteResponse
     from src.services.llm import get_llm_client, LLMMessage
 
     try:
@@ -1452,7 +1452,6 @@ async def cli_knowledge_store(
     db: AsyncSession = Depends(get_db),
 ) -> dict:
     """Store a document with its embedding in the knowledge store."""
-    from src.models.contracts.cli import CLIKnowledgeStoreRequest
     from src.repositories.knowledge import KnowledgeRepository
     from src.services.embeddings import get_embedding_client
 
@@ -1506,7 +1505,6 @@ async def cli_knowledge_store_many(
     db: AsyncSession = Depends(get_db),
 ) -> dict:
     """Store multiple documents with batch embedding."""
-    from src.models.contracts.cli import CLIKnowledgeStoreManyRequest
     from src.repositories.knowledge import KnowledgeRepository
     from src.services.embeddings import get_embedding_client
 
@@ -1566,7 +1564,7 @@ async def cli_knowledge_search(
     db: AsyncSession = Depends(get_db),
 ) -> list[CLIKnowledgeDocumentResponse]:
     """Search for similar documents using vector similarity."""
-    from src.models.contracts.cli import CLIKnowledgeSearchRequest, CLIKnowledgeDocumentResponse
+    from src.models.contracts.cli import CLIKnowledgeDocumentResponse
     from src.repositories.knowledge import KnowledgeRepository
     from src.services.embeddings import get_embedding_client
 
@@ -1628,7 +1626,6 @@ async def cli_knowledge_delete(
     db: AsyncSession = Depends(get_db),
 ) -> dict:
     """Delete a document by key from the knowledge store."""
-    from src.models.contracts.cli import CLIKnowledgeDeleteRequest
     from src.repositories.knowledge import KnowledgeRepository
 
     try:

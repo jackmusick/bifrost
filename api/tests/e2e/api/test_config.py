@@ -273,21 +273,134 @@ class TestConfigScoping:
         response = e2e_client.post(
             "/api/config",
             headers=platform_admin.headers,
+            params={"scope": org1["id"]},
             json={
                 "key": "e2e_org_config",
                 "value": "org-specific-value",
                 "type": "string",
                 "description": "Org-scoped config",
-                "org_id": org1["id"],
             },
         )
-        # API may return 201 for success or 422 if org_id not supported
-        assert response.status_code in [201, 422], \
-            f"Create org config unexpected status: {response.status_code}"
+        assert response.status_code == 201, \
+            f"Create org config failed: {response.status_code} - {response.text}"
 
-        if response.status_code == 201:
-            # Cleanup
-            e2e_client.delete(
-                "/api/config/e2e_org_config",
-                headers=platform_admin.headers,
-            )
+        # Cleanup
+        e2e_client.delete(
+            "/api/config/e2e_org_config",
+            headers=platform_admin.headers,
+        )
+
+
+@pytest.mark.e2e
+class TestConfigScopeFiltering:
+    """Test config scope filtering works correctly."""
+
+    @pytest.fixture
+    def scoped_configs(self, e2e_client, platform_admin, org1, org2):
+        """Create configs in different scopes for testing."""
+        configs = {}
+
+        # Create global config (no organization_id / scope=global)
+        response = e2e_client.post(
+            "/api/config",
+            headers=platform_admin.headers,
+            params={"scope": "global"},
+            json={
+                "key": "scope_test_global",
+                "value": "global-value",
+                "type": "string",
+                "description": "Global config for scope testing",
+            },
+        )
+        assert response.status_code == 201, f"Failed to create global config: {response.text}"
+        configs["global"] = response.json()
+
+        # Create org1 config
+        response = e2e_client.post(
+            "/api/config",
+            headers=platform_admin.headers,
+            params={"scope": org1["id"]},
+            json={
+                "key": "scope_test_org1",
+                "value": "org1-value",
+                "type": "string",
+                "description": "Org1 config for scope testing",
+            },
+        )
+        assert response.status_code == 201, f"Failed to create org1 config: {response.text}"
+        configs["org1"] = response.json()
+
+        # Create org2 config
+        response = e2e_client.post(
+            "/api/config",
+            headers=platform_admin.headers,
+            params={"scope": org2["id"]},
+            json={
+                "key": "scope_test_org2",
+                "value": "org2-value",
+                "type": "string",
+                "description": "Org2 config for scope testing",
+            },
+        )
+        assert response.status_code == 201, f"Failed to create org2 config: {response.text}"
+        configs["org2"] = response.json()
+
+        yield configs
+
+        # Cleanup
+        for key in ["scope_test_global", "scope_test_org1", "scope_test_org2"]:
+            try:
+                e2e_client.delete(
+                    f"/api/config/{key}",
+                    headers=platform_admin.headers,
+                )
+            except Exception:
+                pass
+
+    def test_platform_admin_no_scope_sees_all(
+        self, e2e_client, platform_admin, scoped_configs
+    ):
+        """Platform admin with no scope sees ALL configs."""
+        response = e2e_client.get(
+            "/api/config",
+            headers=platform_admin.headers,
+        )
+        assert response.status_code == 200
+        config_keys = [c["key"] for c in response.json()]
+
+        assert scoped_configs["global"]["key"] in config_keys, "Should see global config"
+        assert scoped_configs["org1"]["key"] in config_keys, "Should see org1 config"
+        assert scoped_configs["org2"]["key"] in config_keys, "Should see org2 config"
+
+    def test_platform_admin_scope_global_sees_only_global(
+        self, e2e_client, platform_admin, scoped_configs
+    ):
+        """Platform admin with scope=global sees ONLY global configs."""
+        response = e2e_client.get(
+            "/api/config",
+            params={"scope": "global"},
+            headers=platform_admin.headers,
+        )
+        assert response.status_code == 200
+        config_keys = [c["key"] for c in response.json()]
+
+        assert scoped_configs["global"]["key"] in config_keys, "Should see global config"
+        assert scoped_configs["org1"]["key"] not in config_keys, "Should NOT see org1 config"
+        assert scoped_configs["org2"]["key"] not in config_keys, "Should NOT see org2 config"
+
+    def test_platform_admin_scope_org_sees_only_that_org(
+        self, e2e_client, platform_admin, org1, scoped_configs
+    ):
+        """Platform admin with scope={org1} sees ONLY org1 configs (NOT global)."""
+        response = e2e_client.get(
+            "/api/config",
+            params={"scope": org1["id"]},
+            headers=platform_admin.headers,
+        )
+        assert response.status_code == 200
+        config_keys = [c["key"] for c in response.json()]
+
+        # KEY ASSERTION: Global should NOT be included when filtering by org
+        assert scoped_configs["global"]["key"] not in config_keys, "Should NOT see global config"
+        assert scoped_configs["org1"]["key"] in config_keys, "Should see org1 config"
+        assert scoped_configs["org2"]["key"] not in config_keys, "Should NOT see org2 config"

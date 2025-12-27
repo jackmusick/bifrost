@@ -4,11 +4,11 @@ import { useScopeStore } from "@/stores/scopeStore";
 
 /**
  * Invalidates all React Query caches when organization scope changes.
- * This ensures API data is refetched with the new X-Organization-Id header.
+ * This ensures API data is refetched when the user switches organizations.
  *
- * The API client middleware injects X-Organization-Id based on sessionStorage,
- * but React Query caches don't include org ID in their keys. This component
- * bridges that gap by invalidating all queries when the org changes.
+ * Some queries include org ID in their query keys (for filtering), while
+ * others are platform-wide. This component invalidates all queries to
+ * ensure a consistent view when the org scope changes.
  */
 export function OrgScopeQueryInvalidator() {
 	const queryClient = useQueryClient();

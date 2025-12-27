@@ -15,12 +15,13 @@ import re
 from datetime import datetime
 from uuid import UUID, uuid4
 
-from fastapi import APIRouter, HTTPException, status
+from fastapi import APIRouter, HTTPException, Query, status
 from sqlalchemy import delete, select
 from sqlalchemy.orm import selectinload
 
 from src.core.auth import CurrentActiveUser, CurrentSuperuser
 from src.core.database import DbSession
+from src.core.org_filter import resolve_org_filter
 from src.models.contracts.agents import (
     AgentCreate,
     AgentPublic,
@@ -31,6 +32,7 @@ from src.models.contracts.agents import (
 )
 from src.models.enums import AgentAccessLevel
 from src.models.orm import Agent, AgentDelegation, AgentRole, AgentTool, Role, Workflow
+from src.repositories.agents import AgentRepository
 
 logger = logging.getLogger(__name__)
 
@@ -91,13 +93,14 @@ async def _write_agent_to_file(
     tool_list = tools if tools is not None else agent.tools
     delegate_list = delegated_agents if delegated_agents is not None else agent.delegated_agents
 
+    # Note: access_level and organization_id are NOT written to JSON
+    # These are environment-specific and should only be set in the database
     agent_data = {
         "id": str(agent.id),
         "name": agent.name,
         "description": agent.description,
         "system_prompt": agent.system_prompt,
         "channels": agent.channels,
-        "access_level": agent.access_level.value,
         "is_active": agent.is_active,
         "tool_ids": [str(t.id) for t in tool_list],
         "delegated_agent_ids": [str(a.id) for a in delegate_list],
@@ -125,19 +128,38 @@ async def _write_agent_to_file(
 async def list_agents(
     db: DbSession,
     user: CurrentActiveUser,
+    scope: str | None = Query(
+        default=None,
+        description="Filter scope: omit for all (superusers), 'global' for global only, "
+        "or org UUID for specific org."
+    ),
     category: str | None = None,
     active_only: bool = True,
 ) -> list[AgentSummary]:
     """
     List agents the user has access to.
 
-    Platform admins see all agents.
-    Users see agents based on role assignments.
-    """
-    stmt = select(Agent).options(selectinload(Agent.tools))
+    Organization filtering:
+    - Superusers with scope omitted: show all agents
+    - Superusers with scope='global': show only global agents
+    - Superusers with scope={uuid}: show that org's agents only
+    - Org users: always show their org's agents + global agents (scope ignored)
 
-    if active_only:
-        stmt = stmt.where(Agent.is_active.is_(True))
+    Access level filtering (applied after org filter):
+    - Platform admins see all agents
+    - Users see AUTHENTICATED agents + ROLE_BASED agents assigned to their roles
+    """
+    # Apply organization filter using repository
+    try:
+        filter_type, filter_org_id = resolve_org_filter(user, scope)
+    except ValueError as e:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail=str(e),
+        )
+
+    repo = AgentRepository(db, filter_org_id)
+    agents = await repo.list_agents(filter_type, active_only=active_only)
 
     # Access control: Check if user is platform admin
     # user.roles is list[str] from JWT claims
@@ -147,31 +169,31 @@ async def list_agents(
     )
 
     if not is_admin:
-        # Non-admins see agents assigned to their roles
-        # user.roles is list[str] (role names), so we join through Role table
-        # to match by name
+        # Non-admins see:
+        # 1. All AUTHENTICATED agents (available to any logged-in user)
+        # 2. ROLE_BASED agents assigned to their roles
         if user.roles:
-            stmt = (
-                stmt
-                .join(AgentRole, Agent.id == AgentRole.agent_id)
+            # Get role-based agent IDs the user has access to
+            role_based_agents = (
+                select(AgentRole.agent_id)
                 .join(Role, AgentRole.role_id == Role.id)
                 .where(Role.name.in_(user.roles))
             )
+            result = await db.execute(role_based_agents)
+            accessible_agent_ids = set(result.scalars().all())
+
+            # Filter agents to AUTHENTICATED or role-assigned
+            agents = [
+                a for a in agents
+                if a.access_level == AgentAccessLevel.AUTHENTICATED
+                or a.id in accessible_agent_ids
+            ]
         else:
-            # User has no roles - only show PUBLIC agents
-            stmt = stmt.where(Agent.access_level == AgentAccessLevel.PUBLIC)
-
-    # Filter by access level
-    stmt = stmt.where(
-        Agent.access_level.in_([
-            AgentAccessLevel.PUBLIC,
-            AgentAccessLevel.AUTHENTICATED,
-            AgentAccessLevel.ROLE_BASED,
-        ])
-    )
-
-    result = await db.execute(stmt.order_by(Agent.name))
-    agents = result.scalars().unique().all()
+            # User has no roles - only show AUTHENTICATED agents
+            agents = [
+                a for a in agents
+                if a.access_level == AgentAccessLevel.AUTHENTICATED
+            ]
 
     return [
         AgentSummary(
@@ -207,6 +229,7 @@ async def create_agent(
         system_prompt=agent_data.system_prompt,
         channels=[c.value for c in agent_data.channels],
         access_level=agent_data.access_level,
+        organization_id=agent_data.organization_id,
         is_active=True,
         knowledge_sources=agent_data.knowledge_sources or [],
         created_by=user.email,
@@ -362,6 +385,8 @@ async def update_agent(
         agent.channels = [c.value for c in agent_data.channels]
     if agent_data.access_level is not None:
         agent.access_level = agent_data.access_level
+    if agent_data.organization_id is not None:
+        agent.organization_id = agent_data.organization_id
     if agent_data.is_active is not None:
         agent.is_active = agent_data.is_active
     if agent_data.knowledge_sources is not None:

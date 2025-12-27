@@ -116,25 +116,6 @@ class TestFormAccessLevels:
 
         e2e_client.delete(f"/api/forms/{form['id']}", headers=platform_admin.headers)
 
-    @pytest.fixture
-    def public_form(self, e2e_client, platform_admin):
-        """Create a public-access form."""
-        response = e2e_client.post(
-            "/api/forms",
-            headers=platform_admin.headers,
-            json={
-                "name": "Public Form",
-                "workflow_id": None,
-                "form_schema": {"fields": [{"name": "data", "type": "text", "label": "Data"}]},
-                "access_level": "public",
-            },
-        )
-        assert response.status_code == 201
-        form = response.json()
-
-        yield form
-
-        e2e_client.delete(f"/api/forms/{form['id']}", headers=platform_admin.headers)
 
     def test_authenticated_form_accessible_by_any_user(
         self, e2e_client, org1_user, authenticated_form
@@ -330,36 +311,500 @@ class TestFormFileSync:
         e2e_client.delete(f"/api/forms/{form_id}", headers=platform_admin.headers)
 
 
-@pytest.mark.e2e
-class TestFormExecution:
-    """Test form execution for different access levels."""
 
-    def test_any_user_can_execute_public_form(self, e2e_client, platform_admin):
-        """Public forms can be executed without authentication."""
-        # Create a public form
+
+@pytest.mark.e2e
+class TestFormScopeFiltering:
+    """Test form scope filtering works correctly."""
+
+    @pytest.fixture
+    def scoped_forms(self, e2e_client, platform_admin, org1, org2):
+        """Create forms in different scopes for testing."""
+        forms = {}
+
+        # Create global form (no organization_id)
         response = e2e_client.post(
             "/api/forms",
             headers=platform_admin.headers,
             json={
-                "name": "Public Execution Form",
-                "workflow_id": None,  # No workflow, just test form access
-                "form_schema": {
-                    "fields": [{"name": "data", "type": "text", "label": "Data"}]
-                },
-                "access_level": "public",
+                "name": "Global Form",
+                "workflow_id": None,
+                "form_schema": {"fields": [{"name": "data", "type": "text", "label": "Data"}]},
+                "access_level": "authenticated",
+                "organization_id": None,
             },
         )
-        assert response.status_code == 201
-        form = response.json()
-        form_id = form["id"]
+        assert response.status_code == 201, f"Failed to create global form: {response.text}"
+        forms["global"] = response.json()
 
-        try:
-            # Try to access form without authentication
-            response = e2e_client.get(f"/api/forms/{form_id}")
-            # Public forms should be accessible without auth
-            # The actual response depends on implementation
-            assert response.status_code in [200, 401, 403], \
-                f"Unexpected status for public form: {response.status_code}"
-        finally:
-            # Cleanup
-            e2e_client.delete(f"/api/forms/{form_id}", headers=platform_admin.headers)
+        # Create org1 form
+        response = e2e_client.post(
+            "/api/forms",
+            headers=platform_admin.headers,
+            json={
+                "name": "Org1 Form",
+                "workflow_id": None,
+                "form_schema": {"fields": [{"name": "data", "type": "text", "label": "Data"}]},
+                "access_level": "authenticated",
+                "organization_id": org1["id"],
+            },
+        )
+        assert response.status_code == 201, f"Failed to create org1 form: {response.text}"
+        forms["org1"] = response.json()
+
+        # Create org2 form
+        response = e2e_client.post(
+            "/api/forms",
+            headers=platform_admin.headers,
+            json={
+                "name": "Org2 Form",
+                "workflow_id": None,
+                "form_schema": {"fields": [{"name": "data", "type": "text", "label": "Data"}]},
+                "access_level": "authenticated",
+                "organization_id": org2["id"],
+            },
+        )
+        assert response.status_code == 201, f"Failed to create org2 form: {response.text}"
+        forms["org2"] = response.json()
+
+        yield forms
+
+        # Cleanup
+        for key, form in forms.items():
+            try:
+                e2e_client.delete(
+                    f"/api/forms/{form['id']}",
+                    headers=platform_admin.headers,
+                )
+            except Exception:
+                pass
+
+    def test_platform_admin_no_scope_sees_all(
+        self, e2e_client, platform_admin, scoped_forms
+    ):
+        """Platform admin with no scope sees ALL forms."""
+        response = e2e_client.get(
+            "/api/forms",
+            headers=platform_admin.headers,
+        )
+        assert response.status_code == 200
+        form_ids = [f["id"] for f in response.json()]
+
+        assert scoped_forms["global"]["id"] in form_ids, "Should see global form"
+        assert scoped_forms["org1"]["id"] in form_ids, "Should see org1 form"
+        assert scoped_forms["org2"]["id"] in form_ids, "Should see org2 form"
+
+    def test_platform_admin_scope_global_sees_only_global(
+        self, e2e_client, platform_admin, scoped_forms
+    ):
+        """Platform admin with scope=global sees ONLY global forms."""
+        response = e2e_client.get(
+            "/api/forms",
+            params={"scope": "global"},
+            headers=platform_admin.headers,
+        )
+        assert response.status_code == 200
+        form_ids = [f["id"] for f in response.json()]
+
+        assert scoped_forms["global"]["id"] in form_ids, "Should see global form"
+        assert scoped_forms["org1"]["id"] not in form_ids, "Should NOT see org1 form"
+        assert scoped_forms["org2"]["id"] not in form_ids, "Should NOT see org2 form"
+
+    def test_platform_admin_scope_org_sees_only_that_org(
+        self, e2e_client, platform_admin, org1, scoped_forms
+    ):
+        """Platform admin with scope={org1} sees ONLY org1 forms (NOT global)."""
+        response = e2e_client.get(
+            "/api/forms",
+            params={"scope": org1["id"]},
+            headers=platform_admin.headers,
+        )
+        assert response.status_code == 200
+        form_ids = [f["id"] for f in response.json()]
+
+        # KEY ASSERTION: Global should NOT be included when filtering by org
+        assert scoped_forms["global"]["id"] not in form_ids, "Should NOT see global form"
+        assert scoped_forms["org1"]["id"] in form_ids, "Should see org1 form"
+        assert scoped_forms["org2"]["id"] not in form_ids, "Should NOT see org2 form"
+
+    def test_org_user_sees_own_org_plus_global(
+        self, e2e_client, org1_user, scoped_forms
+    ):
+        """Org user (no scope param) sees their org + global."""
+        response = e2e_client.get(
+            "/api/forms",
+            headers=org1_user.headers,
+        )
+        assert response.status_code == 200
+        form_ids = [f["id"] for f in response.json()]
+
+        assert scoped_forms["global"]["id"] in form_ids, "Should see global form"
+        assert scoped_forms["org1"]["id"] in form_ids, "Should see org1 form"
+        assert scoped_forms["org2"]["id"] not in form_ids, "Should NOT see org2 form"
+
+
+@pytest.mark.e2e
+class TestFormComprehensive:
+    """Comprehensive form tests covering all field types, attributes, and features."""
+
+    @pytest.fixture(scope="class")
+    def data_provider_for_forms(self, e2e_client, platform_admin):
+        """Create a data provider to use in form field tests."""
+        dp_content = '''"""Data Provider for Form Tests"""
+from bifrost import data_provider
+
+@data_provider(
+    name="e2e_form_test_dp",
+    description="Data provider for comprehensive form tests"
+)
+async def e2e_form_test_dp(org_id: str | None = None):
+    """Returns test options for form fields."""
+    return [
+        {"value": "opt_1", "label": "Option 1"},
+        {"value": "opt_2", "label": "Option 2"},
+        {"value": "opt_3", "label": "Option 3"},
+    ]
+'''
+        response = e2e_client.put(
+            "/api/files/editor/content",
+            headers=platform_admin.headers,
+            json={
+                "path": "e2e_form_test_dp.py",
+                "content": dp_content,
+                "encoding": "utf-8",
+            },
+        )
+        assert response.status_code == 200, f"Create data provider failed: {response.text}"
+
+        # Get the data provider ID
+        response = e2e_client.get(
+            "/api/data-providers",
+            headers=platform_admin.headers,
+        )
+        assert response.status_code == 200
+        providers = response.json()
+        provider = next(
+            (p for p in providers if p["name"] == "e2e_form_test_dp"),
+            None
+        )
+        assert provider is not None, "Data provider not discovered"
+        assert provider.get("id"), "Data provider has no ID"
+
+        yield {
+            "id": provider["id"],
+            "name": provider["name"],
+            "path": "e2e_form_test_dp.py",
+        }
+
+        # Cleanup
+        e2e_client.delete(
+            "/api/files/editor?path=e2e_form_test_dp.py",
+            headers=platform_admin.headers,
+        )
+
+    @pytest.fixture(scope="class")
+    def comprehensive_form(self, e2e_client, platform_admin, data_provider_for_forms):
+        """Create a form with every possible feature and attribute."""
+        response = e2e_client.post(
+            "/api/forms",
+            headers=platform_admin.headers,
+            json={
+                "name": "E2E Comprehensive Form",
+                "description": "Form testing all features and attributes",
+                "workflow_id": None,  # No linked workflow for this test
+                "access_level": "authenticated",
+                "form_schema": {
+                    "fields": [
+                        {
+                            "name": "text_with_attrs",
+                            "type": "text",
+                            "label": "Text With Attributes",
+                            "placeholder": "Enter text here...",
+                            "help_text": "This is help text for the field",
+                            "default_value": "default_text",
+                            "required": True,
+                            "allow_as_query_param": True,
+                        },
+                        {
+                            "name": "select_with_dp",
+                            "type": "select",
+                            "label": "Select With Data Provider",
+                            "data_provider_id": data_provider_for_forms["id"],
+                            "data_provider_inputs": {
+                                "org_id": {
+                                    "mode": "static",
+                                    "value": "test_org_123"
+                                }
+                            },
+                            "required": True,
+                        },
+                        {
+                            "name": "conditional_field",
+                            "type": "text",
+                            "label": "Conditional Field",
+                            "visibility_expression": "field.select_with_dp == 'opt_1'",
+                            "required": False,
+                        },
+                        {
+                            "name": "email_field",
+                            "type": "email",
+                            "label": "Email Address",
+                            "placeholder": "user@example.com",
+                            "required": True,
+                        },
+                        {
+                            "name": "number_field",
+                            "type": "number",
+                            "label": "Number Field",
+                            "default_value": "42",
+                            "required": False,
+                        },
+                        {
+                            "name": "checkbox_field",
+                            "type": "checkbox",
+                            "label": "Checkbox Field",
+                            "help_text": "Check this box if applicable",
+                            "required": False,
+                        },
+                        {
+                            "name": "textarea_field",
+                            "type": "textarea",
+                            "label": "Textarea Field",
+                            "placeholder": "Enter long text...",
+                            "required": False,
+                        },
+                        {
+                            "name": "datetime_field",
+                            "type": "datetime",
+                            "label": "DateTime Field",
+                            "required": False,
+                        },
+                        {
+                            "name": "static_select",
+                            "type": "select",
+                            "label": "Static Select",
+                            "options": [
+                                {"value": "a", "label": "Choice A"},
+                                {"value": "b", "label": "Choice B"},
+                            ],
+                            "required": True,
+                        },
+                        {
+                            "name": "radio_field",
+                            "type": "radio",
+                            "label": "Radio Options",
+                            "options": [
+                                {"value": "r1", "label": "Radio 1"},
+                                {"value": "r2", "label": "Radio 2"},
+                            ],
+                            "required": True,
+                        },
+                    ]
+                },
+            },
+        )
+        assert response.status_code == 201, f"Create comprehensive form failed: {response.text}"
+        form = response.json()
+
+        yield form
+
+        # Cleanup
+        e2e_client.delete(
+            f"/api/forms/{form['id']}",
+            headers=platform_admin.headers,
+        )
+
+    def test_comprehensive_form_created(self, comprehensive_form):
+        """Verify comprehensive form was created successfully."""
+        assert comprehensive_form["id"]
+        assert comprehensive_form["name"] == "E2E Comprehensive Form"
+        assert comprehensive_form["description"] == "Form testing all features and attributes"
+        assert len(comprehensive_form["form_schema"]["fields"]) == 10
+
+    def test_form_data_provider_id_is_uuid(self, comprehensive_form, data_provider_for_forms):
+        """Verify data_provider_id is stored as UUID, not name."""
+        fields = comprehensive_form["form_schema"]["fields"]
+        dp_field = next((f for f in fields if f["name"] == "select_with_dp"), None)
+        assert dp_field is not None, "Data provider field not found"
+        assert dp_field["data_provider_id"] == data_provider_for_forms["id"], \
+            f"Expected UUID {data_provider_for_forms['id']}, got {dp_field.get('data_provider_id')}"
+
+    def test_form_data_provider_inputs_preserved(self, comprehensive_form):
+        """Verify data_provider_inputs are stored correctly."""
+        fields = comprehensive_form["form_schema"]["fields"]
+        dp_field = next((f for f in fields if f["name"] == "select_with_dp"), None)
+        assert dp_field is not None
+        assert dp_field.get("data_provider_inputs") is not None, "data_provider_inputs not preserved"
+        assert "org_id" in dp_field["data_provider_inputs"], "org_id input not found"
+        assert dp_field["data_provider_inputs"]["org_id"]["mode"] == "static"
+        assert dp_field["data_provider_inputs"]["org_id"]["value"] == "test_org_123"
+
+    def test_form_visibility_expression_preserved(self, comprehensive_form):
+        """Verify visibility_expression is stored correctly."""
+        fields = comprehensive_form["form_schema"]["fields"]
+        conditional = next((f for f in fields if f["name"] == "conditional_field"), None)
+        assert conditional is not None
+        assert conditional.get("visibility_expression") == "field.select_with_dp == 'opt_1'", \
+            f"Visibility expression not preserved: {conditional.get('visibility_expression')}"
+
+    def test_form_field_attributes_preserved(self, comprehensive_form):
+        """Verify all field attributes are preserved."""
+        fields = comprehensive_form["form_schema"]["fields"]
+        text_field = next((f for f in fields if f["name"] == "text_with_attrs"), None)
+        assert text_field is not None
+
+        assert text_field.get("placeholder") == "Enter text here...", "placeholder not preserved"
+        assert text_field.get("help_text") == "This is help text for the field", "help_text not preserved"
+        assert text_field.get("default_value") == "default_text", "default_value not preserved"
+        assert text_field.get("required") is True, "required not preserved"
+        # Note: allow_as_query_param is in the contract but not yet in the database schema
+        # This would require a migration to add the column - skipping for now
+
+    def test_form_static_options_preserved(self, comprehensive_form):
+        """Verify static options on select/radio fields are preserved."""
+        fields = comprehensive_form["form_schema"]["fields"]
+
+        static_select = next((f for f in fields if f["name"] == "static_select"), None)
+        assert static_select is not None
+        assert static_select.get("options") is not None, "options not preserved"
+        assert len(static_select["options"]) == 2
+        assert static_select["options"][0]["value"] == "a"
+        assert static_select["options"][0]["label"] == "Choice A"
+
+        radio = next((f for f in fields if f["name"] == "radio_field"), None)
+        assert radio is not None
+        assert radio.get("options") is not None
+        assert len(radio["options"]) == 2
+
+    def test_update_form_preserves_all_attributes(
+        self, e2e_client, platform_admin, comprehensive_form
+    ):
+        """Update form and verify all field attributes are preserved."""
+        # Update just the description
+        response = e2e_client.patch(
+            f"/api/forms/{comprehensive_form['id']}",
+            headers=platform_admin.headers,
+            json={
+                "description": "Updated description",
+            },
+        )
+        assert response.status_code == 200, f"Update form failed: {response.text}"
+        updated = response.json()
+
+        # Verify description changed
+        assert updated["description"] == "Updated description"
+
+        # Verify all field attributes preserved
+        fields = updated["form_schema"]["fields"]
+
+        # Check data provider field
+        dp_field = next((f for f in fields if f["name"] == "select_with_dp"), None)
+        assert dp_field is not None
+        assert dp_field.get("data_provider_id") is not None, "data_provider_id lost on update"
+        assert dp_field.get("data_provider_inputs") is not None, "data_provider_inputs lost on update"
+
+        # Check visibility expression
+        conditional = next((f for f in fields if f["name"] == "conditional_field"), None)
+        assert conditional is not None
+        assert conditional.get("visibility_expression") == "field.select_with_dp == 'opt_1'", \
+            "visibility_expression lost on update"
+
+        # Check other attributes
+        text_field = next((f for f in fields if f["name"] == "text_with_attrs"), None)
+        assert text_field is not None
+        assert text_field.get("placeholder") == "Enter text here...", "placeholder lost on update"
+        assert text_field.get("help_text") == "This is help text for the field", "help_text lost on update"
+
+    def test_get_form_returns_all_attributes(
+        self, e2e_client, platform_admin, comprehensive_form
+    ):
+        """GET /forms/{id} returns all field attributes."""
+        response = e2e_client.get(
+            f"/api/forms/{comprehensive_form['id']}",
+            headers=platform_admin.headers,
+        )
+        assert response.status_code == 200
+        form = response.json()
+
+        fields = form["form_schema"]["fields"]
+
+        # Verify all 10 fields present
+        assert len(fields) == 10
+
+        # Sample check of attributes
+        dp_field = next((f for f in fields if f["name"] == "select_with_dp"), None)
+        assert dp_field.get("data_provider_id") is not None
+        assert dp_field.get("data_provider_inputs") is not None
+
+
+@pytest.mark.e2e
+class TestFormValidation:
+    """Test form validation and error handling."""
+
+    def test_create_form_invalid_data_provider_id_fails(
+        self, e2e_client, platform_admin
+    ):
+        """Creating form with string data_provider_id (not UUID) returns 422."""
+        response = e2e_client.post(
+            "/api/forms",
+            headers=platform_admin.headers,
+            json={
+                "name": "Invalid DP Form",
+                "form_schema": {
+                    "fields": [
+                        {
+                            "name": "bad_field",
+                            "type": "select",
+                            "label": "Bad Data Provider",
+                            "data_provider_id": "not_a_uuid_string",
+                            "required": True,
+                        }
+                    ]
+                },
+                "access_level": "authenticated",
+            },
+        )
+        assert response.status_code == 422, \
+            f"Expected 422 for invalid data_provider_id, got {response.status_code}: {response.text}"
+
+    def test_create_form_missing_required_fields_fails(
+        self, e2e_client, platform_admin
+    ):
+        """Creating form without name fails validation."""
+        response = e2e_client.post(
+            "/api/forms",
+            headers=platform_admin.headers,
+            json={
+                # Missing "name"
+                "form_schema": {"fields": []},
+                "access_level": "authenticated",
+            },
+        )
+        assert response.status_code == 422
+
+    def test_create_form_with_fields_succeeds(
+        self, e2e_client, platform_admin
+    ):
+        """Creating form with valid fields succeeds."""
+        response = e2e_client.post(
+            "/api/forms",
+            headers=platform_admin.headers,
+            json={
+                "name": "Valid Form Test",
+                "form_schema": {
+                    "fields": [
+                        {
+                            "name": "valid_field",
+                            "type": "text",
+                            "label": "Valid Label",
+                        }
+                    ]
+                },
+                "access_level": "authenticated",
+            },
+        )
+        assert response.status_code == 201, f"Create form failed: {response.text}"
+        form = response.json()
+
+        # Cleanup
+        e2e_client.delete(f"/api/forms/{form['id']}", headers=platform_admin.headers)

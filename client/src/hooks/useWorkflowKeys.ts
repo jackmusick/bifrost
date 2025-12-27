@@ -1,6 +1,6 @@
 /**
  * React Query hooks for workflow key management
- * All hooks use the centralized api client which handles X-Organization-Id automatically
+ * Uses org scope for cache key differentiation
  */
 
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";

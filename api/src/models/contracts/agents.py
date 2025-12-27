@@ -41,6 +41,9 @@ class AgentCreate(BaseModel):
     system_prompt: str = Field(..., min_length=1, max_length=50000)
     channels: list[AgentChannel] = Field(default_factory=lambda: [AgentChannel.CHAT])
     access_level: AgentAccessLevel = Field(default=AgentAccessLevel.ROLE_BASED)
+    organization_id: UUID | None = Field(
+        default=None, description="Organization ID (null = global resource)"
+    )
     tool_ids: list[str] = Field(default_factory=list, description="List of workflow IDs to use as tools")
     delegated_agent_ids: list[str] = Field(default_factory=list, description="List of agent IDs this agent can delegate to")
     role_ids: list[str] = Field(default_factory=list, description="List of role IDs that can access this agent (for role_based access)")
@@ -54,6 +57,9 @@ class AgentUpdate(BaseModel):
     system_prompt: str | None = Field(default=None, min_length=1, max_length=50000)
     channels: list[AgentChannel] | None = None
     access_level: AgentAccessLevel | None = None
+    organization_id: UUID | None = Field(
+        default=None, description="Organization ID (null = global resource)"
+    )
     is_active: bool | None = None
     tool_ids: list[str] | None = Field(default=None, description="List of workflow IDs to use as tools")
     delegated_agent_ids: list[str] | None = Field(default=None, description="List of agent IDs this agent can delegate to")

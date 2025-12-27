@@ -31,6 +31,8 @@ import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { useSetConfig } from "@/hooks/useConfig";
+import { useAuth } from "@/contexts/AuthContext";
+import { OrganizationSelect } from "@/components/forms/OrganizationSelect";
 import type { components } from "@/lib/v1";
 
 type Config = components["schemas"]["ConfigResponse"];
@@ -43,6 +45,7 @@ const formSchema = z.object({
 	value: z.string().min(1, "Value is required"),
 	type: z.enum(["string", "int", "bool", "json", "secret"]),
 	description: z.string().optional(),
+	organization_id: z.string().nullable(),
 });
 
 type FormValues = z.infer<typeof formSchema>;
@@ -55,7 +58,11 @@ interface ConfigDialogProps {
 
 export function ConfigDialog({ config, open, onClose }: ConfigDialogProps) {
 	const setConfig = useSetConfig();
+	const { isPlatformAdmin, user } = useAuth();
 	const isEditing = !!config;
+
+	// Default organization_id for org users is their org, for platform admins it's null (global)
+	const defaultOrgId = isPlatformAdmin ? null : (user?.organizationId ?? null);
 
 	const form = useForm<FormValues>({
 		resolver: zodResolver(formSchema),
@@ -64,6 +71,7 @@ export function ConfigDialog({ config, open, onClose }: ConfigDialogProps) {
 			value: "",
 			type: "string",
 			description: "",
+			organization_id: defaultOrgId,
 		},
 	});
 
@@ -72,6 +80,8 @@ export function ConfigDialog({ config, open, onClose }: ConfigDialogProps) {
 
 	useEffect(() => {
 		if (config) {
+			// Cast config to access org_id which may exist on the response
+			const configWithOrg = config as typeof config & { org_id?: string | null };
 			form.reset({
 				key: config.key,
 				// For secrets, we don't show the actual value - user must enter new value to update
@@ -79,6 +89,7 @@ export function ConfigDialog({ config, open, onClose }: ConfigDialogProps) {
 					config.type === "secret" ? "" : String(config.value ?? ""),
 				type: config.type,
 				description: config.description ?? "",
+				organization_id: configWithOrg.org_id ?? null,
 			});
 		} else {
 			form.reset({
@@ -86,19 +97,22 @@ export function ConfigDialog({ config, open, onClose }: ConfigDialogProps) {
 				value: "",
 				type: "string",
 				description: "",
+				organization_id: defaultOrgId,
 			});
 		}
-	}, [config, form, open]);
+	}, [config, form, open, defaultOrgId]);
 
 	const onSubmit = async (values: FormValues) => {
-		await setConfig.mutateAsync({
-			body: {
-				key: values.key,
-				value: values.value,
-				type: values.type,
-				description: values.description ?? null,
-			},
-		});
+		// Build body with organization_id (may not be in generated types yet)
+		const body = {
+			key: values.key,
+			value: values.value,
+			type: values.type,
+			description: values.description ?? null,
+			organization_id: values.organization_id,
+		} as Parameters<typeof setConfig.mutateAsync>[0]["body"];
+
+		await setConfig.mutateAsync({ body });
 		onClose();
 	};
 
@@ -121,6 +135,30 @@ export function ConfigDialog({ config, open, onClose }: ConfigDialogProps) {
 						onSubmit={form.handleSubmit(onSubmit)}
 						className="space-y-4"
 					>
+						{/* Organization Scope - Only show for platform admins */}
+						{isPlatformAdmin && (
+							<FormField
+								control={form.control}
+								name="organization_id"
+								render={({ field }) => (
+									<FormItem>
+										<FormLabel>Organization</FormLabel>
+										<FormControl>
+											<OrganizationSelect
+												value={field.value}
+												onChange={field.onChange}
+												showGlobal={true}
+											/>
+										</FormControl>
+										<FormDescription>
+											Global config is available to all organizations
+										</FormDescription>
+										<FormMessage />
+									</FormItem>
+								)}
+							/>
+						)}
+
 						<FormField
 							control={form.control}
 							name="key"

@@ -39,7 +39,13 @@ Start the development stack:
 ./debug.sh  # Starts all services with hot reload enabled
 ```
 
-This launches: PostgreSQL, RabbitMQ, Redis, MinIO, API (port 8000), Client (port 3000), Scheduler, Workers
+This uses `docker-compose.dev.yml` and launches containers prefixed with `bifrost-dev-` or `bifrost-`:
+- PostgreSQL, RabbitMQ, Redis, MinIO (infrastructure)
+- API (internal port 8000, accessed via Vite proxy)
+- Client (port 3000 - **this is your entry point**)
+- Scheduler, Workers
+
+**Access the app at http://localhost:3000** - Vite proxies API requests to the backend.
 
 ### Hot Reload is Automatic
 
@@ -163,11 +169,13 @@ export async function getDataProviders() {
 # Type Generation (requires dev stack running via ./debug.sh)
 cd client && npm run generate:types       # Regenerate TypeScript types from API
 
-# Individual Container Operations (when needed)
-docker compose restart api                # Restart API (for migrations, new deps)
-docker compose restart scheduler          # Restart scheduler
-docker compose logs -f api                # Follow API logs
-docker compose logs -f worker             # Follow worker logs
+# Individual Container Operations (uses docker-compose.dev.yml via ./debug.sh)
+# If ./debug.sh is running, use these commands:
+docker compose -f docker-compose.dev.yml restart api      # Restart API
+docker compose -f docker-compose.dev.yml logs -f api      # Follow API logs
+docker compose -f docker-compose.dev.yml logs -f worker   # Follow worker logs
+# Or check container status:
+docker ps --filter "name=bifrost"                         # List running containers
 
 # Quality Checks
 cd api && pyright                         # Type check Python
@@ -192,4 +200,35 @@ cd client && npm run lint                 # Lint TypeScript
 
 **After adding a Python dependency:**
 1. Add to `api/requirements.txt`
-2. Rebuild and restart: `docker compose up --build api`
+2. Rebuild and restart: `docker compose -f docker-compose.dev.yml up --build api`
+
+## Pre-Completion Verification (REQUIRED)
+
+Before marking any significant work complete, run this verification sequence:
+
+```bash
+# 1. Ensure dev stack is running
+docker ps --filter "name=bifrost" | grep -q "bifrost-dev-api" || ./debug.sh
+
+# 2. Backend checks (from api/ directory)
+cd api
+pyright                    # Type checking - must pass with 0 errors
+ruff check .               # Linting - must pass
+
+# 3. Regenerate frontend types (from client/ directory)
+cd ../client
+npm run generate:types     # Requires API to be running at localhost:3000
+
+# 4. Frontend checks
+npm run tsc                # Type checking - must pass
+npm run lint               # Linting - must pass
+
+# 5. Run tests
+cd ..
+./test.sh                  # All tests must pass
+```
+
+**This is mandatory for any changes that touch:**
+- Backend API endpoints or models
+- Frontend components or hooks
+- Database schema or migrations

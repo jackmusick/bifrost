@@ -55,9 +55,12 @@ import {
 import { useExecutions, cancelExecution } from "@/hooks/useExecutions";
 import { useExecutionHistory } from "@/hooks/useExecutionStream";
 import { useScopeStore } from "@/stores/scopeStore";
+import { useAuth } from "@/contexts/AuthContext";
+import { useOrganizations } from "@/hooks/useOrganizations";
 import { formatDate } from "@/lib/utils";
 import { SearchBox } from "@/components/search/SearchBox";
 import { useSearch } from "@/hooks/useSearch";
+import { OrganizationSelect } from "@/components/forms/OrganizationSelect";
 import { apiClient } from "@/lib/api-client";
 import { toast } from "sonner";
 import type { ExecutionFilters } from "@/lib/client-types";
@@ -71,8 +74,9 @@ import {
 } from "@/components/ui/pagination";
 import { DateRangePicker } from "@/components/ui/date-range-picker";
 import type { DateRange } from "react-day-picker";
-// import { useOrganizations } from '@/hooks/useOrganizations'
 import type { components } from "@/lib/v1";
+
+type Organization = components["schemas"]["OrganizationPublic"];
 type ExecutionStatus =
 	| components["schemas"]["ExecutionStatus"]
 	| "Cancelling"
@@ -97,6 +101,8 @@ interface StuckExecution {
 
 export function ExecutionHistory() {
 	const navigate = useNavigate();
+	const { isPlatformAdmin } = useAuth();
+	const [filterOrgId, setFilterOrgId] = useState<string | null | undefined>(undefined);
 	const [statusFilter, setStatusFilter] = useState<ExecutionStatus | "all">(
 		"all",
 	);
@@ -120,8 +126,18 @@ export function ExecutionHistory() {
 	const [currentToken, setCurrentToken] = useState<string | undefined>(
 		undefined,
 	);
-	// const { data: organization } = useOrganizations()
-	// const organizations = organization ? [organization] : []
+
+	// Fetch organizations for the org name lookup (platform admins only)
+	const { data: organizations } = useOrganizations({
+		enabled: isPlatformAdmin,
+	});
+
+	// Helper to get organization name from ID
+	const getOrgName = (orgId: string | null | undefined): string => {
+		if (!orgId) return "Global";
+		const org = organizations?.find((o: Organization) => o.id === orgId);
+		return org?.name || orgId;
+	};
 
 	// Build filters including date range and local executions toggle
 	const filters = useMemo(() => {
@@ -151,11 +167,17 @@ export function ExecutionHistory() {
 		return baseFilters;
 	}, [statusFilter, dateRange, showLocal]);
 
+	// Pass filterOrgId to backend for filtering (undefined = all, null = global only)
+	// For platform admins, undefined means show all. For non-admins, backend handles filtering.
 	const {
 		data: response,
 		isFetching,
 		refetch,
-	} = useExecutions(filters as ExecutionFilters, currentToken);
+	} = useExecutions(
+		isPlatformAdmin ? filterOrgId : undefined,
+		filters as ExecutionFilters,
+		currentToken,
+	);
 
 	// Memoize executions to prevent dependency issues
 	const executions = useMemo(
@@ -178,13 +200,6 @@ export function ExecutionHistory() {
 
 	// Polling disabled - users can manually refresh to see status updates
 	const isPolling = false;
-
-	// Helper to get organization name from orgId (currently unused since orgId not available in Execution schema)
-	// const getOrgName = (orgId?: string) => {
-	//   if (!orgId || orgId === 'GLOBAL') return 'Global'
-	//   const org = organizations?.find(o => o.id === orgId)
-	//   return org?.name || orgId
-	// }
 
 	const getStatusBadge = (status: ExecutionStatus) => {
 		switch (status) {
@@ -350,7 +365,7 @@ export function ExecutionHistory() {
 	useEffect(() => {
 		setPageStack([]);
 		setCurrentToken(undefined);
-	}, [statusFilter, dateRange, showLocal]);
+	}, [statusFilter, dateRange, showLocal, filterOrgId]);
 
 	return (
 		<div className="flex flex-col h-[calc(100vh-8rem)] space-y-6">
@@ -587,6 +602,19 @@ export function ExecutionHistory() {
 										Show Local Executions
 									</Label>
 								</div>
+
+								{/* Organization Filter (platform admins only) */}
+								{isPlatformAdmin && (
+									<div className="w-64">
+										<OrganizationSelect
+											value={filterOrgId}
+											onChange={setFilterOrgId}
+											showAll={true}
+											showGlobal={true}
+											placeholder="All organizations"
+										/>
+									</div>
+								)}
 							</div>
 
 							{/* Filter Tabs */}
@@ -617,9 +645,9 @@ export function ExecutionHistory() {
 								<DataTable fixedHeight>
 									<DataTableHeader>
 										<DataTableRow>
-											{isGlobalScope && (
+											{isPlatformAdmin && (
 												<DataTableHead>
-													Scope
+													Organization
 												</DataTableHead>
 											)}
 											<DataTableHead>
@@ -659,8 +687,8 @@ export function ExecutionHistory() {
 														)
 													: null;
 
-											// For now, treat all executions as global since orgId is not available in Execution schema
-											const isGlobalExecution = true;
+											// Use actual org_id from execution to determine scope
+											const isGlobalExecution = !execution.org_id;
 
 											return (
 												<DataTableRow
@@ -672,28 +700,25 @@ export function ExecutionHistory() {
 														)
 													}
 												>
-													{isGlobalScope && (
+													{isPlatformAdmin && (
 														<DataTableCell>
-															<Badge
-																variant={
-																	isGlobalExecution
-																		? "default"
-																		: "outline"
-																}
-																className="text-xs"
-															>
-																{isGlobalExecution ? (
-																	<>
-																		<Globe className="mr-1 h-3 w-3" />
-																		Global
-																	</>
-																) : (
-																	<>
-																		<Building2 className="mr-1 h-3 w-3" />
-																		Global
-																	</>
-																)}
-															</Badge>
+															{isGlobalExecution ? (
+																<Badge
+																	variant="default"
+																	className="text-xs"
+																>
+																	<Globe className="mr-1 h-3 w-3" />
+																	Global
+																</Badge>
+															) : (
+																<Badge
+																	variant="outline"
+																	className="text-xs"
+																>
+																	<Building2 className="mr-1 h-3 w-3" />
+																	{getOrgName(execution.org_id)}
+																</Badge>
+															)}
 														</DataTableCell>
 													)}
 													<DataTableCell className="font-mono text-sm">

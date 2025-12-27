@@ -1,4 +1,4 @@
-import { useState, useMemo } from "react";
+import { useState, useMemo, useEffect } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import { ArrowLeft, Save, Eye, Pencil, Info, Play } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -37,13 +37,16 @@ export function FormBuilder() {
 	const navigate = useNavigate();
 	const { formId } = useParams();
 	const isEditing = !!formId;
-	const { isGlobalScope, scope } = useOrgScope();
-	const { user } = useAuth();
+	const { scope } = useOrgScope();
+	const { user, isPlatformAdmin } = useAuth();
 
 	const { data: existingForm } = useFormQuery(formId);
 	const createForm = useCreateForm();
 	const updateForm = useUpdateForm();
 	const { data: workflowsMetadata } = useWorkflowsMetadata();
+
+	// Default organization_id for org users is their org, for platform admins it's null (global)
+	const defaultOrgId = isPlatformAdmin ? null : (user?.organizationId ?? null);
 
 	// Form state - initialize from existingForm
 	const [formName, setFormName] = useState(() => existingForm?.name || "");
@@ -53,11 +56,11 @@ export function FormBuilder() {
 	const [linkedWorkflow, setLinkedWorkflow] = useState(
 		() => existingForm?.workflow_id || "",
 	);
-	// Determine if form is global based on edit state and existing form data
-	const isGlobal =
-		isEditing && existingForm
-			? !existingForm.organization_id
-			: isGlobalScope;
+	const [organizationId, setOrganizationId] = useState<string | null>(
+		() => existingForm?.organization_id ?? defaultOrgId,
+	);
+	// Determine if form is global based on organizationId
+	const isGlobal = organizationId === null;
 	const [launchWorkflowId, setLaunchWorkflowId] = useState<string | null>(
 		() => existingForm?.launch_workflow_id || null,
 	);
@@ -66,8 +69,8 @@ export function FormBuilder() {
 		unknown
 	> | null>(() => existingForm?.default_launch_params || null);
 	const [accessLevel, setAccessLevel] = useState<
-		"public" | "authenticated" | "role_based"
-	>(() => existingForm?.access_level || "role_based");
+		"authenticated" | "role_based"
+	>(() => (existingForm?.access_level as "authenticated" | "role_based") || "role_based");
 	const [selectedRoleIds, setSelectedRoleIds] = useState<string[]>([]);
 	const [fields, setFields] = useState<FormField[]>(() => {
 		if (existingForm?.form_schema) {
@@ -96,6 +99,32 @@ export function FormBuilder() {
 		unknown
 	> | null>(null);
 	const [isTestingWorkflow, setIsTestingWorkflow] = useState(false);
+
+	// Sync state when existingForm data loads (for edit mode)
+	useEffect(() => {
+		if (existingForm) {
+			setFormName(existingForm.name || "");
+			setFormDescription(existingForm.description || "");
+			setLinkedWorkflow(existingForm.workflow_id || "");
+			setOrganizationId(existingForm.organization_id ?? defaultOrgId);
+			setLaunchWorkflowId(existingForm.launch_workflow_id || null);
+			setDefaultLaunchParams(
+				(existingForm.default_launch_params as Record<string, unknown>) || null,
+			);
+			setAccessLevel(
+				(existingForm.access_level as "authenticated" | "role_based") ||
+					"role_based",
+			);
+			if (
+				existingForm.form_schema &&
+				typeof existingForm.form_schema === "object" &&
+				"fields" in existingForm.form_schema
+			) {
+				const schema = existingForm.form_schema as { fields: unknown[] };
+				setFields(schema.fields as FormField[]);
+			}
+		}
+	}, [existingForm, defaultOrgId]);
 
 	// Note: Opening info dialog for new forms is handled by checking
 	// isEditing and formName state at render time to avoid effect loops
@@ -142,6 +171,7 @@ export function FormBuilder() {
 					workflow_id: linkedWorkflow || null,
 					form_schema: { fields },
 					access_level: accessLevel,
+					organization_id: organizationId,
 					// NEW MVP fields
 					launch_workflow_id: launchWorkflowId || null,
 					allowed_query_params:
@@ -468,6 +498,7 @@ export function FormBuilder() {
 					setDefaultLaunchParams(info.defaultLaunchParams);
 					setAccessLevel(info.accessLevel);
 					setSelectedRoleIds(info.selectedRoleIds);
+					setOrganizationId(info.organizationId);
 				}}
 				initialData={{
 					formName,
@@ -477,7 +508,9 @@ export function FormBuilder() {
 					defaultLaunchParams,
 					accessLevel,
 					selectedRoleIds,
+					organizationId,
 				}}
+				isEditing={isEditing}
 			/>
 
 			<Dialog

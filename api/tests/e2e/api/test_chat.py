@@ -404,7 +404,7 @@ def test_chat_agent(e2e_client, platform_admin):
             "description": "Agent for chat E2E testing",
             "system_prompt": "You are a helpful test assistant. Keep your responses brief.",
             "channels": ["chat"],
-            "access_level": "public",
+            "access_level": "authenticated",
         },
         headers=platform_admin.headers,
     )

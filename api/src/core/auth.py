@@ -263,68 +263,31 @@ RequirePlatformAdmin = Depends(get_current_superuser)
 
 
 async def get_execution_context(
-    request: Request,
     user: Annotated[UserPrincipal, Depends(get_current_active_user)],
     db: DbSession,
 ) -> ExecutionContext:
     """
     Get execution context with organization scope.
 
-    Organization context is determined by:
-    1. X-Organization-Id header (if user is superuser or member of that org)
-    2. User's default organization
-    3. None (global scope) for superusers without org header
+    Organization context is determined by user's assigned organization:
+    - Superusers: org_id = None (global scope)
+    - Org users: org_id = user's organization
+
+    Note: Organization filtering for list endpoints should use query parameters
+    with the resolve_org_filter() helper, not this context.
 
     Args:
-        request: FastAPI request object
         user: Current active user
         db: Database session
 
     Returns:
         ExecutionContext with user and organization scope
-
-    Raises:
-        HTTPException: If org access is denied
     """
-    # Get org from header
-    org_header = request.headers.get("X-Organization-Id")
-    org_id: UUID | None = None
-
-    if org_header:
-        try:
-            org_id = UUID(org_header)
-        except ValueError:
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail="Invalid X-Organization-Id header"
-            )
-
-        # Verify organization exists in database
-        from src.repositories.organizations import OrganizationRepository
-        org_repo = OrganizationRepository(db)
-        org = await org_repo.get_by_id(org_id)
-        if not org:
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail=f"Organization {org_id} not found"
-            )
-
-        # Verify access to organization
-        if not user.is_superuser:
-            # Non-superusers can only access their own org
-            if user.organization_id != org_id:
-                raise HTTPException(
-                    status_code=status.HTTP_403_FORBIDDEN,
-                    detail="Access denied to organization"
-                )
+    # Superusers get global scope, org users get their organization
+    if user.is_superuser:
+        org_id = None
     else:
-        # No header - superusers get GLOBAL scope, org users get their org
-        if user.is_superuser:
-            org_id = None  # Platform admins without X-Organization-Id use GLOBAL scope
-            logger.info(f"Superuser {user.email} using GLOBAL scope (no X-Organization-Id header)")
-        else:
-            org_id = user.organization_id
-            logger.info(f"User {user.email} using org scope: {org_id}")
+        org_id = user.organization_id
 
     return ExecutionContext(
         user=user,

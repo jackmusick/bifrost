@@ -28,7 +28,6 @@ class UserType(str, Enum):
 
 class FormAccessLevel(str, Enum):
     """Form access control levels"""
-    PUBLIC = "public"
     AUTHENTICATED = "authenticated"
     ROLE_BASED = "role_based"
 
@@ -82,7 +81,6 @@ class GitStatus(str, Enum):
 
 class AgentAccessLevel(str, Enum):
     """Agent access control levels"""
-    PUBLIC = "public"
     AUTHENTICATED = "authenticated"
     ROLE_BASED = "role_based"
 

@@ -15,7 +15,6 @@ from uuid import uuid4
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from src.models.orm.ai_usage import AIModelPricing
 from src.repositories.ai_usage import AIPricingRepository
 
 

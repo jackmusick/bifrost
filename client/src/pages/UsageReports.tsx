@@ -55,8 +55,8 @@ import {
 	type UsageTrend,
 } from "@/services/usage";
 import { useAuth } from "@/contexts/AuthContext";
-import { useOrgScope } from "@/hooks/useOrgScope";
 import { useOrganizations } from "@/hooks/useOrganizations";
+import { OrganizationSelect } from "@/components/forms/OrganizationSelect";
 
 // ============================================================================
 // Formatting Utilities
@@ -397,10 +397,16 @@ type SortConfig = { by: string; dir: "asc" | "desc" };
 
 export function UsageReports() {
 	const { isPlatformAdmin } = useAuth();
-	const { isGlobalScope, scope } = useOrgScope();
+
+	// Organization filter state (platform admins only)
+	// undefined = all, null = global only, UUID string = specific org
+	const [filterOrgId, setFilterOrgId] = useState<string | null | undefined>(undefined);
+
+	// Derive isGlobalScope from filterOrgId for display logic
+	const isGlobalScope = filterOrgId === undefined || filterOrgId === null;
 
 	// Fetch real organizations for demo data generation
-	const { data: orgsData } = useOrganizations();
+	const { data: orgsData } = useOrganizations({ enabled: isPlatformAdmin });
 
 	// Demo mode state
 	const [showDemoData, setShowDemoData] = useState(false);
@@ -441,23 +447,24 @@ export function UsageReports() {
 	}, [orgsData]);
 
 	// Demo data - pre-filtered like API
+	// Use filterOrgId for filtering (undefined/null means show all orgs)
 	const demoData = useMemo(() => {
 		if (!startDate || !endDate) return null;
 		return generateDemoData({
 			startDate,
 			endDate,
-			orgId: scope.orgId,
+			orgId: filterOrgId ?? null,
 			source,
 			realOrgs,
 		});
-	}, [startDate, endDate, scope.orgId, source, realOrgs]);
+	}, [startDate, endDate, filterOrgId, source, realOrgs]);
 
 	// Fetch real data
 	const {
 		data: realData,
 		isLoading,
 		error,
-	} = useUsageReport(startDate, endDate, source);
+	} = useUsageReport(startDate, endDate, source, filterOrgId);
 
 	// Use demo or real data
 	const data = showDemoData ? demoData : realData;
@@ -706,7 +713,7 @@ export function UsageReports() {
 				</Alert>
 			)}
 
-			{/* Filters: Date Range and Source Tabs */}
+			{/* Filters: Date Range, Source Tabs, and Organization */}
 			<Card>
 				<CardHeader>
 					<CardTitle>Report Period</CardTitle>
@@ -732,6 +739,17 @@ export function UsageReports() {
 								<TabsTrigger value="chat">Chat</TabsTrigger>
 							</TabsList>
 						</Tabs>
+						{isPlatformAdmin && (
+							<div className="w-64 ml-auto">
+								<OrganizationSelect
+									value={filterOrgId}
+									onChange={setFilterOrgId}
+									showAll={true}
+									showGlobal={true}
+									placeholder="All organizations"
+								/>
+							</div>
+						)}
 					</div>
 				</CardContent>
 			</Card>

@@ -36,6 +36,7 @@ from src.routers.roi_settings import router as roi_settings_router
 from src.routers.roi_reports import router as roi_reports_router
 from src.routers.usage_reports import router as usage_reports_router
 from src.routers.ai_pricing import router as ai_pricing_router
+from src.routers.email_config import router as email_config_router
 
 __all__ = [
     "auth_router",
@@ -75,4 +76,5 @@ __all__ = [
     "roi_reports_router",
     "usage_reports_router",
     "ai_pricing_router",
+    "email_config_router",
 ]

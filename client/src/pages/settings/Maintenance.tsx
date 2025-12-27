@@ -2,10 +2,10 @@
  * Workspace Maintenance Settings
  *
  * Platform admin page for managing workspace maintenance operations.
- * Shows files needing ID injection and allows running reindex.
+ * Provides tools for ID injection and SDK reference scanning.
  */
 
-import { useState, useEffect, useCallback } from "react";
+import { useState, useCallback } from "react";
 import {
 	Card,
 	CardContent,
@@ -20,18 +20,19 @@ import {
 	CheckCircle2,
 	Loader2,
 	Play,
-	RefreshCw,
+	Search,
 	FileCode,
 	AlertTriangle,
+	Settings2,
+	Link2,
 } from "lucide-react";
 import { toast } from "sonner";
 import { authFetch } from "@/lib/api-client";
+import { useEditorStore } from "@/stores/editorStore";
+import { fileService } from "@/services/fileService";
+import type { components } from "@/lib/v1";
 
-interface MaintenanceStatus {
-	files_needing_ids: string[];
-	total_files: number;
-	last_reindex: string | null;
-}
+type FileMetadata = components["schemas"]["FileMetadata"];
 
 interface ReindexResponse {
 	status: string;
@@ -41,37 +42,101 @@ interface ReindexResponse {
 	message: string | null;
 }
 
+interface SDKIssue {
+	file_path: string;
+	line_number: number;
+	issue_type: "config" | "integration";
+	key: string;
+}
+
+interface SDKScanResponse {
+	files_scanned: number;
+	issues_found: number;
+	issues: SDKIssue[];
+	notification_created: boolean;
+}
+
+type ScanResultType = "none" | "ids" | "sdk";
+
 export function Maintenance() {
-	const [status, setStatus] = useState<MaintenanceStatus | null>(null);
-	const [statusLoading, setStatusLoading] = useState(true);
-	const [isRunning, setIsRunning] = useState(false);
+	// Scan states
+	const [isIdScanning, setIsIdScanning] = useState(false);
+	const [isIdInjecting, setIsIdInjecting] = useState(false);
+	const [isSdkScanning, setIsSdkScanning] = useState(false);
 
-	const fetchStatus = useCallback(async () => {
-		setStatusLoading(true);
-		try {
-			const response = await authFetch("/api/maintenance/status");
-			if (response.ok) {
-				const data = await response.json();
-				setStatus(data);
-			} else {
-				toast.error("Failed to load maintenance status");
+	// Results
+	const [lastScanType, setLastScanType] = useState<ScanResultType>("none");
+	const [idScanResult, setIdScanResult] = useState<ReindexResponse | null>(
+		null
+	);
+	const [sdkScanResult, setSdkScanResult] = useState<SDKScanResponse | null>(
+		null
+	);
+
+	const isAnyRunning = isIdScanning || isIdInjecting || isSdkScanning;
+
+	// Editor store actions
+	const openFileInTab = useEditorStore((state) => state.openFileInTab);
+	const openEditor = useEditorStore((state) => state.openEditor);
+	const revealLine = useEditorStore((state) => state.revealLine);
+
+	const openFileInEditor = useCallback(
+		async (filePath: string, lineNumber?: number) => {
+			try {
+				// Get file name and extension from path
+				const fileName = filePath.split("/").pop() || filePath;
+				const extension = fileName.includes(".")
+					? fileName.split(".").pop() || ""
+					: "";
+
+				// Create minimal FileMetadata
+				const fileMetadata: FileMetadata = {
+					name: fileName,
+					path: filePath,
+					type: "file",
+					size: 0,
+					extension,
+					modified: new Date().toISOString(),
+					is_workflow: false,
+					is_data_provider: false,
+				};
+
+				// Fetch file content
+				const response = await fileService.readFile(filePath);
+
+				// Open in editor
+				openFileInTab(
+					fileMetadata,
+					response.content,
+					response.encoding as "utf-8" | "base64",
+					response.etag
+				);
+
+				// Queue line reveal if provided (will execute after editor loads)
+				if (lineNumber) {
+					revealLine(lineNumber);
+				}
+
+				openEditor();
+
+				toast.success("Opened in editor");
+			} catch (err) {
+				toast.error("Failed to open file", {
+					description:
+						err instanceof Error ? err.message : "Unknown error",
+				});
 			}
-		} catch (err) {
-			toast.error("Failed to load maintenance status", {
-				description:
-					err instanceof Error ? err.message : "Unknown error",
-			});
-		} finally {
-			setStatusLoading(false);
+		},
+		[openFileInTab, openEditor, revealLine]
+	);
+
+	const handleIdScan = async (injectIds: boolean) => {
+		if (injectIds) {
+			setIsIdInjecting(true);
+		} else {
+			setIsIdScanning(true);
 		}
-	}, []);
 
-	useEffect(() => {
-		fetchStatus();
-	}, [fetchStatus]);
-
-	const handleReindex = async (injectIds: boolean) => {
-		setIsRunning(true);
 		try {
 			const response = await authFetch("/api/maintenance/reindex", {
 				method: "POST",
@@ -80,196 +145,350 @@ export function Maintenance() {
 
 			if (!response.ok) {
 				const errorData = await response.json().catch(() => ({}));
-				toast.error("Reindex failed", {
+				toast.error(injectIds ? "ID injection failed" : "ID scan failed", {
 					description: errorData.detail || "Unknown error",
 				});
 				return;
 			}
 
 			const data: ReindexResponse = await response.json();
-			toast.success(data.message || "Reindex completed", {
+			setIdScanResult(data);
+			setLastScanType("ids");
+
+			toast.success(data.message || "Completed", {
 				description: injectIds
 					? `Injected IDs into ${data.ids_injected} files`
 					: `Found ${data.files_needing_ids?.length || 0} files needing IDs`,
 			});
-			// Refresh status after reindex
-			fetchStatus();
 		} catch (err) {
-			toast.error("Reindex failed", {
+			toast.error(injectIds ? "ID injection failed" : "ID scan failed", {
 				description:
-					err instanceof Error
-						? err.message
-						: "Unknown error occurred",
+					err instanceof Error ? err.message : "Unknown error occurred",
 			});
 		} finally {
-			setIsRunning(false);
+			setIsIdScanning(false);
+			setIsIdInjecting(false);
 		}
 	};
 
-	const filesNeedingIds = status?.files_needing_ids || [];
-	const totalFiles = status?.total_files || 0;
-	const hasFilesNeedingIds = filesNeedingIds.length > 0;
+	const handleSdkScan = async () => {
+		setIsSdkScanning(true);
+
+		try {
+			const response = await authFetch("/api/maintenance/scan-sdk", {
+				method: "POST",
+			});
+
+			if (!response.ok) {
+				const errorData = await response.json().catch(() => ({}));
+				toast.error("SDK scan failed", {
+					description: errorData.detail || "Unknown error",
+				});
+				return;
+			}
+
+			const data: SDKScanResponse = await response.json();
+			setSdkScanResult(data);
+			setLastScanType("sdk");
+
+			if (data.issues_found === 0) {
+				toast.success("No SDK issues found", {
+					description: `Scanned ${data.files_scanned} files`,
+				});
+			} else {
+				toast.warning("SDK issues found", {
+					description: `Found ${data.issues_found} missing references in ${data.files_scanned} files`,
+				});
+			}
+		} catch (err) {
+			toast.error("SDK scan failed", {
+				description:
+					err instanceof Error ? err.message : "Unknown error occurred",
+			});
+		} finally {
+			setIsSdkScanning(false);
+		}
+	};
 
 	return (
 		<div className="space-y-6">
-			{/* Status Card */}
-			<Card>
-				<CardHeader>
-					<div className="flex items-center justify-between">
-						<div>
-							<CardTitle className="flex items-center gap-2">
-								Workspace Status
-								{statusLoading && (
-									<Loader2 className="h-4 w-4 animate-spin" />
-								)}
-							</CardTitle>
-							<CardDescription>
-								Current state of workflow file indexing
-							</CardDescription>
-						</div>
-						<Button
-							variant="outline"
-							size="sm"
-							onClick={() => fetchStatus()}
-							disabled={statusLoading}
-						>
-							<RefreshCw
-								className={`h-4 w-4 mr-2 ${statusLoading ? "animate-spin" : ""}`}
-							/>
-							Refresh
-						</Button>
-					</div>
-				</CardHeader>
-				<CardContent>
-					{statusLoading ? (
-						<div className="flex items-center justify-center py-8">
-							<Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
-						</div>
-					) : (
-						<div className="space-y-4">
-							{/* Summary */}
-							<div className="flex items-center gap-4">
-								{hasFilesNeedingIds ? (
-									<div className="flex items-center gap-2 text-amber-600">
-										<AlertTriangle className="h-5 w-5" />
-										<span className="font-medium">
-											{filesNeedingIds.length} file
-											{filesNeedingIds.length !== 1
-												? "s"
-												: ""}{" "}
-											need indexing
-										</span>
-									</div>
-								) : (
-									<div className="flex items-center gap-2 text-green-600">
-										<CheckCircle2 className="h-5 w-5" />
-										<span className="font-medium">
-											All files indexed
-										</span>
-									</div>
-								)}
-								<Badge variant="secondary">
-									{totalFiles} total file
-									{totalFiles !== 1 ? "s" : ""}
-								</Badge>
-							</div>
-
-							{/* Files needing IDs */}
-							{hasFilesNeedingIds && (
-								<div className="space-y-2">
-									<h4 className="text-sm font-medium text-muted-foreground">
-										Files needing ID injection:
-									</h4>
-									<div className="max-h-48 overflow-y-auto rounded-md border bg-muted/50 p-3">
-										<ul className="space-y-1 text-sm font-mono">
-											{filesNeedingIds.map((file) => (
-												<li
-													key={file}
-													className="flex items-center gap-2"
-												>
-													<FileCode className="h-4 w-4 text-muted-foreground flex-shrink-0" />
-													<span className="truncate">
-														{file}
-													</span>
-												</li>
-											))}
-										</ul>
-									</div>
-								</div>
-							)}
-						</div>
-					)}
-				</CardContent>
-			</Card>
-
 			{/* Actions Card */}
 			<Card>
 				<CardHeader>
-					<CardTitle>Maintenance Actions</CardTitle>
+					<CardTitle className="flex items-center gap-2">
+						<Settings2 className="h-5 w-5" />
+						Maintenance Actions
+					</CardTitle>
 					<CardDescription>
 						Run workspace maintenance operations
 					</CardDescription>
 				</CardHeader>
-				<CardContent className="space-y-4">
-					{/* Info about ID injection */}
-					<div className="flex items-start gap-3 rounded-lg border border-blue-200 bg-blue-50 p-4 dark:border-blue-900 dark:bg-blue-950">
-						<AlertCircle className="h-5 w-5 text-blue-600 dark:text-blue-400 flex-shrink-0 mt-0.5" />
-						<div className="text-sm text-blue-800 dark:text-blue-200">
-							<p className="font-medium mb-1">
-								About ID Injection
-							</p>
-							<p className="text-blue-700 dark:text-blue-300">
-								Workflow, tool, and data provider decorators
-								need unique IDs for proper tracking. Running
-								"Inject IDs" will add UUIDs to any decorators
-								that are missing them. This is a safe,
-								non-destructive operation that preserves your
-								code formatting.
-							</p>
+				<CardContent className="space-y-6">
+					{/* ID Injection Section */}
+					<div className="space-y-4">
+						<h3 className="text-sm font-medium">Decorator ID Injection</h3>
+						<div className="flex items-start gap-3 rounded-lg border border-blue-200 bg-blue-50 p-4 dark:border-blue-900 dark:bg-blue-950">
+							<AlertCircle className="h-5 w-5 text-blue-600 dark:text-blue-400 flex-shrink-0 mt-0.5" />
+							<div className="text-sm text-blue-800 dark:text-blue-200">
+								<p className="text-blue-700 dark:text-blue-300">
+									Workflow, tool, and data provider decorators need
+									unique IDs for proper tracking. Scan to find
+									decorators missing IDs, or inject to add them
+									automatically.
+								</p>
+							</div>
+						</div>
+						<div className="flex flex-wrap gap-3">
+							<Button
+								onClick={() => handleIdScan(false)}
+								disabled={isAnyRunning}
+								variant="outline"
+							>
+								{isIdScanning ? (
+									<Loader2 className="h-4 w-4 mr-2 animate-spin" />
+								) : (
+									<Search className="h-4 w-4 mr-2" />
+								)}
+								Scan for Missing IDs
+							</Button>
+							<Button
+								onClick={() => handleIdScan(true)}
+								disabled={isAnyRunning}
+							>
+								{isIdInjecting ? (
+									<Loader2 className="h-4 w-4 mr-2 animate-spin" />
+								) : (
+									<Play className="h-4 w-4 mr-2" />
+								)}
+								Inject IDs
+							</Button>
 						</div>
 					</div>
 
-					{/* Action buttons */}
-					<div className="flex flex-wrap gap-3">
+					{/* Divider */}
+					<div className="border-t" />
+
+					{/* SDK Reference Section */}
+					<div className="space-y-4">
+						<h3 className="text-sm font-medium">SDK Reference Scan</h3>
+						<div className="flex items-start gap-3 rounded-lg border border-blue-200 bg-blue-50 p-4 dark:border-blue-900 dark:bg-blue-950">
+							<Link2 className="h-5 w-5 text-blue-600 dark:text-blue-400 flex-shrink-0 mt-0.5" />
+							<div className="text-sm text-blue-800 dark:text-blue-200">
+								<p className="text-blue-700 dark:text-blue-300">
+									Scan Python files for <code className="px-1 py-0.5 bg-blue-100 dark:bg-blue-900 rounded">config.get()</code> and{" "}
+									<code className="px-1 py-0.5 bg-blue-100 dark:bg-blue-900 rounded">integrations.get()</code> calls
+									that reference missing configurations or integrations.
+								</p>
+							</div>
+						</div>
 						<Button
-							onClick={() => handleReindex(false)}
-							disabled={isRunning || statusLoading}
+							onClick={handleSdkScan}
+							disabled={isAnyRunning}
 							variant="outline"
 						>
-							{isRunning ? (
+							{isSdkScanning ? (
 								<Loader2 className="h-4 w-4 mr-2 animate-spin" />
 							) : (
-								<RefreshCw className="h-4 w-4 mr-2" />
+								<Search className="h-4 w-4 mr-2" />
 							)}
-							Scan Only
+							Scan SDK References
 						</Button>
-
-						<Button
-							onClick={() => handleReindex(true)}
-							disabled={isRunning || statusLoading}
-						>
-							{isRunning ? (
-								<Loader2 className="h-4 w-4 mr-2 animate-spin" />
-							) : (
-								<Play className="h-4 w-4 mr-2" />
-							)}
-							Inject IDs
-						</Button>
-					</div>
-
-					{/* Button descriptions */}
-					<div className="text-xs text-muted-foreground space-y-1">
-						<p>
-							<strong>Scan Only:</strong> Check which files need
-							IDs without making changes
-						</p>
-						<p>
-							<strong>Inject IDs:</strong> Add missing IDs to
-							decorators and update the workspace
-						</p>
 					</div>
 				</CardContent>
 			</Card>
+
+			{/* Results Card */}
+			<Card>
+				<CardHeader>
+					<CardTitle>Scan Results</CardTitle>
+					<CardDescription>
+						Results from the most recent scan operation
+					</CardDescription>
+				</CardHeader>
+				<CardContent>
+					{lastScanType === "none" ? (
+						<div className="flex items-center justify-center py-8 text-muted-foreground">
+							<p>No scan results yet. Run a scan above.</p>
+						</div>
+					) : lastScanType === "ids" && idScanResult ? (
+						<IdScanResults result={idScanResult} onOpenFile={openFileInEditor} />
+					) : lastScanType === "sdk" && sdkScanResult ? (
+						<SdkScanResults result={sdkScanResult} onOpenFile={openFileInEditor} />
+					) : null}
+				</CardContent>
+			</Card>
+		</div>
+	);
+}
+
+function IdScanResults({
+	result,
+	onOpenFile,
+}: {
+	result: ReindexResponse;
+	onOpenFile: (path: string, line?: number) => void;
+}) {
+	const filesNeedingIds = result.files_needing_ids || [];
+	const hasFilesNeedingIds = filesNeedingIds.length > 0;
+
+	return (
+		<div className="space-y-4">
+			{/* Summary */}
+			<div className="flex items-center gap-4">
+				{hasFilesNeedingIds ? (
+					<div className="flex items-center gap-2 text-amber-600">
+						<AlertTriangle className="h-5 w-5" />
+						<span className="font-medium">
+							{filesNeedingIds.length} file
+							{filesNeedingIds.length !== 1 ? "s" : ""} need
+							indexing
+						</span>
+					</div>
+				) : (
+					<div className="flex items-center gap-2 text-green-600">
+						<CheckCircle2 className="h-5 w-5" />
+						<span className="font-medium">All files indexed</span>
+					</div>
+				)}
+				<Badge variant="secondary">
+					{result.files_indexed} file
+					{result.files_indexed !== 1 ? "s" : ""} scanned
+				</Badge>
+				{result.ids_injected > 0 && (
+					<Badge variant="default">
+						{result.ids_injected} ID
+						{result.ids_injected !== 1 ? "s" : ""} injected
+					</Badge>
+				)}
+			</div>
+
+			{/* Files needing IDs */}
+			{hasFilesNeedingIds && (
+				<div className="space-y-2">
+					<h4 className="text-sm font-medium text-muted-foreground">
+						Files needing ID injection:
+					</h4>
+					<div className="max-h-48 overflow-y-auto rounded-md border bg-muted/50 p-3">
+						<ul className="space-y-1 text-sm font-mono">
+							{filesNeedingIds.map((file) => (
+								<li
+									key={file}
+									className="flex items-center gap-2"
+								>
+									<FileCode className="h-4 w-4 text-muted-foreground flex-shrink-0" />
+									<button
+										type="button"
+										onClick={() => onOpenFile(file)}
+										className="truncate text-left hover:text-primary hover:underline"
+									>
+										{file}
+									</button>
+								</li>
+							))}
+						</ul>
+					</div>
+				</div>
+			)}
+		</div>
+	);
+}
+
+function SdkScanResults({
+	result,
+	onOpenFile,
+}: {
+	result: SDKScanResponse;
+	onOpenFile: (path: string, line?: number) => void;
+}) {
+	const hasIssues = result.issues_found > 0;
+
+	// Group issues by file
+	const issuesByFile = result.issues.reduce(
+		(acc, issue) => {
+			if (!acc[issue.file_path]) {
+				acc[issue.file_path] = [];
+			}
+			acc[issue.file_path].push(issue);
+			return acc;
+		},
+		{} as Record<string, SDKIssue[]>
+	);
+
+	return (
+		<div className="space-y-4">
+			{/* Summary */}
+			<div className="flex items-center gap-4">
+				{hasIssues ? (
+					<div className="flex items-center gap-2 text-amber-600">
+						<AlertTriangle className="h-5 w-5" />
+						<span className="font-medium">
+							{result.issues_found} missing reference
+							{result.issues_found !== 1 ? "s" : ""}
+						</span>
+					</div>
+				) : (
+					<div className="flex items-center gap-2 text-green-600">
+						<CheckCircle2 className="h-5 w-5" />
+						<span className="font-medium">
+							No missing references
+						</span>
+					</div>
+				)}
+				<Badge variant="secondary">
+					{result.files_scanned} file
+					{result.files_scanned !== 1 ? "s" : ""} scanned
+				</Badge>
+			</div>
+
+			{/* Issues by file */}
+			{hasIssues && (
+				<div className="space-y-2">
+					<h4 className="text-sm font-medium text-muted-foreground">
+						Missing SDK references:
+					</h4>
+					<div className="max-h-64 overflow-y-auto rounded-md border bg-muted/50 p-3 space-y-3">
+						{Object.entries(issuesByFile).map(([filePath, issues]) => (
+							<div key={filePath} className="space-y-1">
+								<div className="flex items-center gap-2 text-sm font-mono font-medium">
+									<FileCode className="h-4 w-4 text-muted-foreground flex-shrink-0" />
+									<button
+										type="button"
+										onClick={() => onOpenFile(filePath, issues[0]?.line_number)}
+										className="truncate text-left hover:text-primary hover:underline"
+									>
+										{filePath}
+									</button>
+								</div>
+								<ul className="ml-6 space-y-0.5">
+									{issues.map((issue, idx) => (
+										<li
+											key={`${issue.key}-${idx}`}
+											className="text-sm text-muted-foreground flex items-center gap-2"
+										>
+											<Badge
+												variant="outline"
+												className="text-xs px-1.5 py-0"
+											>
+												{issue.issue_type}
+											</Badge>
+											<code className="text-xs bg-muted px-1 py-0.5 rounded">
+												{issue.key}
+											</code>
+											<button
+												type="button"
+												onClick={() => onOpenFile(filePath, issue.line_number)}
+												className="text-xs hover:text-primary hover:underline"
+											>
+												line {issue.line_number}
+											</button>
+										</li>
+									))}
+								</ul>
+							</div>
+						))}
+					</div>
+				</div>
+			)}
 		</div>
 	);
 }

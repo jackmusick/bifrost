@@ -304,7 +304,6 @@ export function IntegrationDetail() {
 		mappings,
 		isLoadingOrgs,
 		isLoadingIntegration,
-		integration,
 		dirtyEdits,
 	]);
 

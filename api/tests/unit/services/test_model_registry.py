@@ -87,8 +87,8 @@ class TestGetDisplayName:
         mock_redis.get.assert_called_once_with(f"{MODEL_REGISTRY_KEY_PREFIX}anthropic")
 
     @pytest.mark.asyncio
-    async def test_returns_model_id_when_not_in_cache_mapping(self, mock_redis):
-        """Test returns model_id when model is not in cached mapping."""
+    async def test_returns_normalized_name_when_not_in_cache_mapping(self, mock_redis):
+        """Test returns normalized name when model is not in cached mapping."""
         cache_data = {"other-model": "Other Model"}
         mock_redis.get.return_value = json.dumps(cache_data)
 
@@ -96,22 +96,41 @@ class TestGetDisplayName:
             mock_redis, "anthropic", "unknown-model-20251001"
         )
 
-        # Should return original model_id if not found in mapping
-        assert result == "unknown-model-20251001"
+        # Should return normalized name (date stripped) if not found in mapping
+        assert result == "unknown-model"
 
     @pytest.mark.asyncio
-    async def test_returns_model_id_on_cache_miss(self, mock_redis):
-        """Test returns model_id when cache miss (no API fetch)."""
+    async def test_fetches_from_api_on_cache_miss_with_api_key(self, mock_redis):
+        """Test fetches from provider API on cache miss when API key is available."""
+        mock_redis.get.return_value = None
+
+        with patch(
+            "src.services.model_registry.refresh_model_registry"
+        ) as mock_refresh:
+            mock_refresh.return_value = {
+                "claude-opus-4-5-20251101": "Claude Opus 4.5",
+                "claude-sonnet-4-20250514": "Claude Sonnet 4",
+            }
+
+            result = await get_display_name(
+                mock_redis, "anthropic", "claude-opus-4-5-20251101", api_key="test-key"
+            )
+
+            # Should return display name from API fetch
+            assert result == "Claude Opus 4.5"
+            mock_refresh.assert_called_once_with(mock_redis, "anthropic", "test-key")
+
+    @pytest.mark.asyncio
+    async def test_returns_normalized_name_on_cache_miss_without_api_key(self, mock_redis):
+        """Test returns normalized name when cache miss and no API key."""
         mock_redis.get.return_value = None
 
         result = await get_display_name(
-            mock_redis, "anthropic", "claude-opus-4-5-20251101", api_key="test-key"
+            mock_redis, "anthropic", "claude-opus-4-5-20251101"
         )
 
-        # No longer fetches on miss - returns original model_id
-        assert result == "claude-opus-4-5-20251101"
-        # Should not attempt to cache
-        mock_redis.setex.assert_not_called()
+        # Should return normalized name as fallback (no API key to refresh)
+        assert result == "claude-opus-4-5"
 
     @pytest.mark.asyncio
     async def test_handles_redis_read_error(self, mock_redis):
@@ -122,8 +141,26 @@ class TestGetDisplayName:
             mock_redis, "anthropic", "claude-opus-4-5-20251101"
         )
 
-        # Should fall back to model_id on error
-        assert result == "claude-opus-4-5-20251101"
+        # Should fall back to normalized name on error
+        assert result == "claude-opus-4-5"
+
+    @pytest.mark.asyncio
+    async def test_handles_api_refresh_error(self, mock_redis):
+        """Test graceful handling of API refresh errors."""
+        mock_redis.get.return_value = None
+
+        with patch(
+            "src.services.model_registry.refresh_model_registry"
+        ) as mock_refresh:
+            mock_refresh.side_effect = Exception("API error")
+
+            result = await get_display_name(
+                mock_redis, "anthropic", "claude-opus-4-5-20251101", api_key="test-key"
+            )
+
+            # Should fall back to normalized name when API refresh fails
+            assert result == "claude-opus-4-5"
+            mock_refresh.assert_called_once()
 
 
 class TestCacheModelMapping:

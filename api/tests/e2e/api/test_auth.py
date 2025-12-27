@@ -244,21 +244,22 @@ class TestCSRFProtection:
 
 @pytest.mark.e2e
 class TestOrgValidation:
-    """Test organization ID validation."""
+    """Test organization scope validation via query params."""
 
-    def test_invalid_org_id_rejected(self, e2e_client, platform_admin):
-        """Invalid organization ID in header should be rejected."""
+    def test_invalid_scope_returns_empty(self, e2e_client, platform_admin):
+        """Valid but non-existent org UUID in scope returns empty results (org filtering)."""
         fake_org_id = str(uuid4())
 
+        # With scope param filtering, a non-existent org just returns no results
+        # rather than a 400 error (the org is used for filtering, not validation)
         response = e2e_client.get(
             "/api/config",
-            headers={
-                **platform_admin.headers,
-                "X-Organization-Id": fake_org_id,
-            },
+            params={"scope": fake_org_id},
+            headers=platform_admin.headers,
         )
-        assert response.status_code == 400, f"Non-existent org should be rejected: {response.text}"
-        assert "not found" in response.json().get("detail", "").lower()
+        # Platform admins can filter by any org - returns empty if org doesn't exist
+        assert response.status_code == 200
+        assert response.json() == []
 
 
 @pytest.mark.e2e

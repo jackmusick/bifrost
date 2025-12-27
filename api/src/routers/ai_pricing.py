@@ -13,11 +13,13 @@ Endpoint Structure:
 
 import logging
 from datetime import datetime
+from decimal import Decimal
 
 from fastapi import APIRouter, HTTPException, status
 from sqlalchemy import select
 
 from src.core.auth import CurrentActiveUser, RequirePlatformAdmin
+from src.core.cache import get_shared_redis
 from src.core.database import DbSession
 from src.models import (
     AIModelPricingCreate,
@@ -27,6 +29,7 @@ from src.models import (
     AIModelPricingUpdate,
 )
 from src.models.orm import AIModelPricing, AIUsage
+from src.services.ai_usage_service import backfill_model_costs
 
 logger = logging.getLogger(__name__)
 
@@ -58,11 +61,14 @@ async def list_pricing(
     pricing_entries = pricing_result.scalars().all()
 
     # Get distinct models that have been used (from ai_usage table)
+    # The ai_usage.model column should already contain display names (not model IDs)
     used_models_query = select(
         AIUsage.provider, AIUsage.model
     ).distinct()
     used_result = await db.execute(used_models_query)
-    used_models = {(row.provider, row.model) for row in used_result.all()}
+    used_models: set[tuple[str, str]] = {
+        (row.provider, row.model) for row in used_result.all()
+    }
 
     # Build pricing list with is_used flag
     pricing_list: list[AIModelPricingListItem] = []
@@ -138,6 +144,27 @@ async def create_pricing(
     await db.refresh(pricing)
 
     logger.info(f"Created pricing for {data.provider}/{data.model} by {user.email}")
+
+    # Backfill costs for historical usage records with NULL cost
+    # This updates past executions/chats that used this model before pricing was configured
+    try:
+        redis_client = await get_shared_redis()
+        backfilled_count = await backfill_model_costs(
+            session=db,
+            redis_client=redis_client,
+            provider=data.provider,
+            model=data.model,
+            input_price_per_million=Decimal(str(data.input_price_per_million)),
+            output_price_per_million=Decimal(str(data.output_price_per_million)),
+        )
+        if backfilled_count > 0:
+            logger.info(
+                f"Backfilled costs for {backfilled_count} historical records "
+                f"for {data.provider}/{data.model}"
+            )
+    except Exception as e:
+        # Log but don't fail the pricing creation if backfill fails
+        logger.warning(f"Failed to backfill costs for {data.provider}/{data.model}: {e}")
 
     return AIModelPricingPublic.model_validate(pricing)
 

@@ -42,7 +42,7 @@ class TestAgentsCRUD:
                 "description": "A helpful test assistant",
                 "system_prompt": "You are a helpful assistant for testing.",
                 "channels": ["chat"],
-                "access_level": "public",
+                "access_level": "authenticated",
             },
             headers=platform_admin.headers,
         )
@@ -167,7 +167,7 @@ class TestAgentsAccessControl:
                 "name": "Unauthorized Agent",
                 "system_prompt": "Test prompt",
                 "channels": ["chat"],
-                "access_level": "public",
+                "access_level": "authenticated",
             },
             headers=org1_user.headers,
         )
@@ -200,18 +200,151 @@ class TestAgentsAccessControl:
         )
         assert response.status_code in [401, 403]
 
-    def test_org_user_can_list_public_agents(
+    def test_org_user_can_list_authenticated_agents(
         self,
         e2e_client,
         org1_user,
     ):
-        """Test that org users can list agents."""
+        """Test that org users can list authenticated agents."""
         response = e2e_client.get(
             "/api/agents",
             headers=org1_user.headers,
         )
         # Should succeed - access control filters results
         assert response.status_code == 200
+
+
+@pytest.mark.e2e
+class TestAgentScopeFiltering:
+    """Test agent scope filtering works correctly."""
+
+    @pytest.fixture
+    def scoped_agents(self, e2e_client, platform_admin, org1, org2):
+        """Create agents in different scopes for testing."""
+        agents = {}
+
+        # Create global agent (no organization_id)
+        response = e2e_client.post(
+            "/api/agents",
+            json={
+                "name": "Global Agent",
+                "description": "A global agent for testing",
+                "system_prompt": "You are a global test assistant.",
+                "channels": ["chat"],
+                "access_level": "authenticated",
+                "organization_id": None,
+            },
+            headers=platform_admin.headers,
+        )
+        assert response.status_code == 201, f"Failed to create global agent: {response.text}"
+        agents["global"] = response.json()
+
+        # Create org1 agent
+        response = e2e_client.post(
+            "/api/agents",
+            json={
+                "name": "Org1 Agent",
+                "description": "An org1 agent for testing",
+                "system_prompt": "You are an org1 test assistant.",
+                "channels": ["chat"],
+                "access_level": "authenticated",
+                "organization_id": org1["id"],
+            },
+            headers=platform_admin.headers,
+        )
+        assert response.status_code == 201, f"Failed to create org1 agent: {response.text}"
+        agents["org1"] = response.json()
+
+        # Create org2 agent
+        response = e2e_client.post(
+            "/api/agents",
+            json={
+                "name": "Org2 Agent",
+                "description": "An org2 agent for testing",
+                "system_prompt": "You are an org2 test assistant.",
+                "channels": ["chat"],
+                "access_level": "authenticated",
+                "organization_id": org2["id"],
+            },
+            headers=platform_admin.headers,
+        )
+        assert response.status_code == 201, f"Failed to create org2 agent: {response.text}"
+        agents["org2"] = response.json()
+
+        yield agents
+
+        # Cleanup
+        for key, agent in agents.items():
+            try:
+                e2e_client.delete(
+                    f"/api/agents/{agent['id']}",
+                    headers=platform_admin.headers,
+                )
+            except Exception:
+                pass
+
+    def test_platform_admin_no_scope_sees_all(
+        self, e2e_client, platform_admin, scoped_agents
+    ):
+        """Platform admin with no scope sees ALL agents."""
+        response = e2e_client.get(
+            "/api/agents",
+            headers=platform_admin.headers,
+        )
+        assert response.status_code == 200
+        agent_ids = [a["id"] for a in response.json()]
+
+        assert scoped_agents["global"]["id"] in agent_ids, "Should see global agent"
+        assert scoped_agents["org1"]["id"] in agent_ids, "Should see org1 agent"
+        assert scoped_agents["org2"]["id"] in agent_ids, "Should see org2 agent"
+
+    def test_platform_admin_scope_global_sees_only_global(
+        self, e2e_client, platform_admin, scoped_agents
+    ):
+        """Platform admin with scope=global sees ONLY global agents."""
+        response = e2e_client.get(
+            "/api/agents",
+            params={"scope": "global"},
+            headers=platform_admin.headers,
+        )
+        assert response.status_code == 200
+        agent_ids = [a["id"] for a in response.json()]
+
+        assert scoped_agents["global"]["id"] in agent_ids, "Should see global agent"
+        assert scoped_agents["org1"]["id"] not in agent_ids, "Should NOT see org1 agent"
+        assert scoped_agents["org2"]["id"] not in agent_ids, "Should NOT see org2 agent"
+
+    def test_platform_admin_scope_org_sees_only_that_org(
+        self, e2e_client, platform_admin, org1, scoped_agents
+    ):
+        """Platform admin with scope={org1} sees ONLY org1 agents (NOT global)."""
+        response = e2e_client.get(
+            "/api/agents",
+            params={"scope": org1["id"]},
+            headers=platform_admin.headers,
+        )
+        assert response.status_code == 200
+        agent_ids = [a["id"] for a in response.json()]
+
+        # KEY ASSERTION: Global should NOT be included when filtering by org
+        assert scoped_agents["global"]["id"] not in agent_ids, "Should NOT see global agent"
+        assert scoped_agents["org1"]["id"] in agent_ids, "Should see org1 agent"
+        assert scoped_agents["org2"]["id"] not in agent_ids, "Should NOT see org2 agent"
+
+    def test_org_user_sees_own_org_plus_global(
+        self, e2e_client, org1_user, scoped_agents
+    ):
+        """Org user (no scope param) sees their org + global."""
+        response = e2e_client.get(
+            "/api/agents",
+            headers=org1_user.headers,
+        )
+        assert response.status_code == 200
+        agent_ids = [a["id"] for a in response.json()]
+
+        assert scoped_agents["global"]["id"] in agent_ids, "Should see global agent"
+        assert scoped_agents["org1"]["id"] in agent_ids, "Should see org1 agent"
+        assert scoped_agents["org2"]["id"] not in agent_ids, "Should NOT see org2 agent"
 
 
 # =============================================================================
@@ -229,7 +362,7 @@ def test_agent(e2e_client, platform_admin):
             "description": "Agent for E2E testing",
             "system_prompt": "You are a test assistant.",
             "channels": ["chat"],
-            "access_level": "public",
+            "access_level": "authenticated",
         },
         headers=platform_admin.headers,
     )

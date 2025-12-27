@@ -10,12 +10,32 @@ import { useQueryClient } from "@tanstack/react-query";
 // Re-export types for convenience
 export type { ExecutionFilters };
 
+/**
+ * Hook to fetch executions with optional organization filtering
+ * @param filterScope - Filter scope: undefined = all, null = global only, string = org UUID
+ * @param filters - Additional execution filters
+ * @param continuationToken - Pagination token
+ *
+ * The scope query param controls filtering:
+ * - Omitted (undefined): show all executions (superusers) / user's org (org users)
+ * - "global": show only global executions (org_id IS NULL) - not commonly used
+ * - UUID string: show that org's executions only
+ */
 export function useExecutions(
+	filterScope?: string | null,
 	filters?: ExecutionFilters,
 	continuationToken?: string,
 ) {
 	// Build query params
 	const queryParams: Record<string, string> = {};
+	// Convert filterScope to scope param
+	if (filterScope === null) {
+		queryParams["scope"] = "global";
+	} else if (filterScope !== undefined) {
+		queryParams["scope"] = filterScope;
+	}
+	// undefined = don't send scope (show all)
+
 	if (filters?.workflow_name)
 		queryParams["workflow_name"] = filters.workflow_name;
 	if (filters?.status) queryParams["status"] = filters.status;

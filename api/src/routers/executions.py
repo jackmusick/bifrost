@@ -27,6 +27,7 @@ from src.models.contracts.executions import AIUsagePublicSimple, AIUsageTotalsSi
 from src.models.orm.ai_usage import AIUsage
 
 from src.core.auth import Context, UserPrincipal
+from src.core.org_filter import resolve_org_filter, OrgFilterType
 from src.core.pubsub import publish_execution_update
 from src.core.redis_client import get_redis_client
 from src.models import Execution as ExecutionModel
@@ -415,6 +416,11 @@ class ExecutionRepository:
 )
 async def list_executions(
     ctx: Context,
+    scope: str | None = Query(
+        None,
+        description="Filter scope: omit for all (superusers), 'global' for global only, "
+        "or org UUID for specific org + global."
+    ),
     workflowName: str | None = Query(None, description="Filter by workflow name"),
     status: str | None = Query(None, description="Filter by execution status"),
     startDate: str | None = Query(None, description="Filter by start date (ISO format)"),
@@ -423,7 +429,29 @@ async def list_executions(
     limit: int = Query(25, ge=1, le=1000, description="Maximum number of results"),
     continuationToken: str | None = Query(None, description="Continuation token"),
 ) -> ExecutionsListResponse:
-    """List workflow executions."""
+    """List workflow executions.
+
+    Superusers can filter by scope or see all executions.
+    Org users see only their organization's executions.
+    """
+    # Resolve organization filter based on user permissions
+    try:
+        filter_type, filter_org = resolve_org_filter(ctx.user, scope)
+    except ValueError as e:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail=str(e),
+        )
+
+    # For executions, we only use filter_org (global executions don't really make sense)
+    # If filter_type is ALL, filter_org will be None (show all)
+    # If filter_type is GLOBAL_ONLY, we still use None (executions always have an org)
+    # If filter_type is ORG_ONLY or ORG_PLUS_GLOBAL, we filter to that org
+    if filter_type in (OrgFilterType.ORG_ONLY, OrgFilterType.ORG_PLUS_GLOBAL):
+        org_filter = filter_org
+    else:
+        org_filter = None  # Show all (no org filter)
+
     repo = ExecutionRepository(ctx.db)
 
     # Parse continuation token as offset
@@ -436,7 +464,7 @@ async def list_executions(
 
     executions, next_token = await repo.list_executions(
         user=ctx.user,
-        org_id=ctx.org_id,
+        org_id=org_filter,
         workflow_name=workflowName,
         status_filter=status,
         start_date=startDate,

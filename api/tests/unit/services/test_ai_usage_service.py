@@ -13,11 +13,10 @@ import pytest
 
 from src.services.ai_usage_service import (
     PRICING_KEY_PREFIX,
-    PRICING_NOTIFIED_KEY_PREFIX,
-    PRICING_TTL,
     USED_MODELS_KEY,
     USAGE_TOTALS_CONV_KEY_PREFIX,
     USAGE_TOTALS_KEY_PREFIX,
+    backfill_model_costs,
     calculate_cost,
     get_cached_price,
     get_usage_totals,
@@ -650,4 +649,122 @@ class TestRecordAIUsage:
                 model="gpt-4o",
                 input_tokens=1000,
                 output_tokens=500,
+            )
+
+
+class TestBackfillModelCosts:
+    """Tests for backfill_model_costs function."""
+
+    @pytest.fixture
+    def mock_redis(self):
+        """Create mock Redis client."""
+        redis = AsyncMock()
+        # Default: no keys to scan
+        redis.scan.return_value = (0, [])
+        return redis
+
+    @pytest.fixture
+    def mock_session(self):
+        """Create mock database session."""
+        session = AsyncMock()
+        return session
+
+    @pytest.mark.asyncio
+    async def test_updates_records_with_null_cost(self, mock_redis, mock_session):
+        """Test updates records that have NULL cost."""
+        # Mock update result with 5 rows updated
+        mock_result = MagicMock()
+        mock_result.rowcount = 5
+        mock_session.execute.return_value = mock_result
+
+        count = await backfill_model_costs(
+            session=mock_session,
+            redis_client=mock_redis,
+            provider="openai",
+            model="gpt-4o",
+            input_price_per_million=Decimal("5.00"),
+            output_price_per_million=Decimal("15.00"),
+        )
+
+        assert count == 5
+        mock_session.execute.assert_called_once()
+        mock_session.flush.assert_called_once()
+
+    @pytest.mark.asyncio
+    async def test_returns_zero_when_no_records_to_update(self, mock_redis, mock_session):
+        """Test returns 0 when no records have NULL cost."""
+        mock_result = MagicMock()
+        mock_result.rowcount = 0
+        mock_session.execute.return_value = mock_result
+
+        count = await backfill_model_costs(
+            session=mock_session,
+            redis_client=mock_redis,
+            provider="openai",
+            model="gpt-4o",
+            input_price_per_million=Decimal("5.00"),
+            output_price_per_million=Decimal("15.00"),
+        )
+
+        assert count == 0
+
+    @pytest.mark.asyncio
+    async def test_invalidates_caches_when_records_updated(self, mock_redis, mock_session):
+        """Test invalidates usage caches when records are updated."""
+        mock_result = MagicMock()
+        mock_result.rowcount = 10
+        mock_session.execute.return_value = mock_result
+
+        # Mock scan returning some keys to delete
+        mock_redis.scan.side_effect = [
+            (0, [f"{USAGE_TOTALS_KEY_PREFIX}exec1", f"{USAGE_TOTALS_KEY_PREFIX}exec2"]),
+        ]
+
+        await backfill_model_costs(
+            session=mock_session,
+            redis_client=mock_redis,
+            provider="openai",
+            model="gpt-4o",
+            input_price_per_million=Decimal("5.00"),
+            output_price_per_million=Decimal("15.00"),
+        )
+
+        # Should have scanned for keys to delete
+        mock_redis.scan.assert_called()
+        # Should have deleted the found keys
+        mock_redis.delete.assert_called()
+
+    @pytest.mark.asyncio
+    async def test_does_not_invalidate_caches_when_no_updates(self, mock_redis, mock_session):
+        """Test does not invalidate caches when no records were updated."""
+        mock_result = MagicMock()
+        mock_result.rowcount = 0
+        mock_session.execute.return_value = mock_result
+
+        await backfill_model_costs(
+            session=mock_session,
+            redis_client=mock_redis,
+            provider="openai",
+            model="gpt-4o",
+            input_price_per_million=Decimal("5.00"),
+            output_price_per_million=Decimal("15.00"),
+        )
+
+        # Should not scan/delete when no updates
+        mock_redis.scan.assert_not_called()
+        mock_redis.delete.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_raises_on_db_error(self, mock_redis, mock_session):
+        """Test raises exception on database error."""
+        mock_session.execute.side_effect = Exception("DB connection error")
+
+        with pytest.raises(Exception, match="DB connection error"):
+            await backfill_model_costs(
+                session=mock_session,
+                redis_client=mock_redis,
+                provider="openai",
+                model="gpt-4o",
+                input_price_per_million=Decimal("5.00"),
+                output_price_per_million=Decimal("15.00"),
             )

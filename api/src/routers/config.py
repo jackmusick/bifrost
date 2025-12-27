@@ -8,8 +8,9 @@ Uses OrgScopedRepository for standardized org scoping.
 
 import logging
 from datetime import datetime
+from uuid import UUID
 
-from fastapi import APIRouter, HTTPException, status
+from fastapi import APIRouter, HTTPException, Query, status
 from sqlalchemy import select
 
 # Import existing Pydantic models for API compatibility
@@ -20,6 +21,7 @@ from src.models import (
 )
 
 from src.core.auth import Context, CurrentSuperuser
+from src.core.org_filter import resolve_org_filter, OrgFilterType
 from src.models import Config as ConfigModel
 from src.models.enums import ConfigType as ConfigTypeEnum
 from src.repositories.org_scoped import OrgScopedRepository
@@ -52,10 +54,17 @@ class ConfigRepository(OrgScopedRepository[ConfigModel]):  # type: ignore[type-v
 
     model = ConfigModel
 
-    async def list_configs(self) -> list[ConfigResponse]:
-        """List all configs visible to current org scope."""
+    async def list_configs(
+        self,
+        filter_type: OrgFilterType = OrgFilterType.ORG_PLUS_GLOBAL,
+    ) -> list[ConfigResponse]:
+        """List configs with specified filter type.
+
+        Args:
+            filter_type: How to filter by organization scope
+        """
         query = select(self.model)
-        query = self.filter_cascade(query)
+        query = self.apply_filter(query, filter_type, self.org_id)
         query = query.order_by(self.model.key)
 
         result = await self.session.execute(query)
@@ -192,10 +201,28 @@ class ConfigRepository(OrgScopedRepository[ConfigModel]):  # type: ignore[type-v
 async def get_config(
     ctx: Context,
     user: CurrentSuperuser,
+    scope: str | None = Query(
+        None,
+        description="Filter scope: omit for all (superusers), 'global' for global only, "
+        "or org UUID for specific org."
+    ),
 ) -> list[ConfigResponse]:
-    """Get configuration for current scope."""
-    repo = ConfigRepository(ctx.db, ctx.org_id)
-    return await repo.list_configs()
+    """Get configuration for current scope.
+
+    Superusers can filter by scope or see all configs.
+    """
+    # Resolve organization filter based on user permissions
+    try:
+        filter_type, filter_org = resolve_org_filter(ctx.user, scope)
+    except ValueError as e:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail=str(e),
+        )
+
+    # Use repository for all filtering - centralized in apply_filter()
+    repo = ConfigRepository(ctx.db, filter_org)
+    return await repo.list_configs(filter_type)
 
 
 @router.post(
@@ -209,16 +236,39 @@ async def set_config(
     request: SetConfigRequest,
     ctx: Context,
     user: CurrentSuperuser,
+    scope: str | None = Query(
+        default=None,
+        description="Target scope: 'global' for global config, or org UUID for org-specific config. "
+        "If omitted, uses the user's current organization context.",
+    ),
 ) -> ConfigResponse:
-    """Set a configuration key-value pair."""
-    repo = ConfigRepository(ctx.db, ctx.org_id)
+    """Set a configuration key-value pair.
+
+    Superusers can specify a scope to create configs in a specific organization
+    or explicitly create global configs.
+    """
+    # Determine target organization for the config
+    target_org_id = ctx.org_id
+    if user.is_superuser and scope is not None:
+        if scope == "global":
+            target_org_id = None
+        else:
+            try:
+                target_org_id = UUID(scope)
+            except ValueError:
+                raise HTTPException(
+                    status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                    detail=f"Invalid scope value: {scope}",
+                )
+
+    repo = ConfigRepository(ctx.db, target_org_id)
 
     try:
         result = await repo.set_config(request, updated_by=user.email)
 
         # Invalidate cache after successful write
         if CACHE_INVALIDATION_AVAILABLE and invalidate_config:
-            org_id = str(ctx.org_id) if ctx.org_id else None
+            org_id = str(target_org_id) if target_org_id else None
             await invalidate_config(org_id, request.key)
 
         return result

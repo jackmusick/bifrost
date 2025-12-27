@@ -224,13 +224,21 @@ class TestOrgUserCapabilities:
 class TestOrgIsolation:
     """Test that organizations are properly isolated from each other."""
 
-    def test_org1_user_cannot_access_org2_resources(self, e2e_client, org1_user, org2):
-        """Org1 user should not be able to access org2's resources."""
+    def test_org1_user_only_sees_own_resources(self, e2e_client, org1_user, org2):
+        """Org1 user only sees their own org's resources regardless of filter param."""
+        # With query param filtering, org users always get their own org's data
+        # The scope param is ignored for non-superusers
         response = e2e_client.get(
             "/api/forms",
-            headers=org1_user.headers_with_org(org2["id"]),
+            params={"scope": org2["id"]},  # Try to filter by org2
+            headers=org1_user.headers,
         )
-        assert response.status_code == 403
+        # Request succeeds but returns only org1's resources
+        assert response.status_code == 200
+        forms = response.json()
+        for form in forms:
+            assert form.get("organization_id") in [None, str(org1_user.organization_id)], \
+                "Org user should only see their own org's forms"
 
 
 @pytest.mark.e2e

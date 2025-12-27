@@ -53,6 +53,12 @@ export function CodeEditor() {
 	);
 	const updateTabContent = useEditorStore((state) => state.updateTabContent);
 
+	// Line reveal state (for scrolling to specific line when opening from maintenance page, etc.)
+	const pendingLineReveal = useEditorStore((state) => state.pendingLineReveal);
+	const clearPendingLineReveal = useEditorStore(
+		(state) => state.clearPendingLineReveal,
+	);
+
 	// Check for conflicts by comparing etags
 	const checkForConflict = useCallback(async () => {
 		// Get fresh state from store (not from closure)
@@ -181,6 +187,19 @@ export function CodeEditor() {
 	const handleEditorMount: OnMount = async (editor, monaco) => {
 		editorRef.current = editor;
 
+		// Check for pending line reveal and execute it
+		// This handles the case when opening a new file with a line number
+		const pendingLine = useEditorStore.getState().pendingLineReveal;
+		if (pendingLine) {
+			// Small delay to ensure content is fully rendered
+			setTimeout(() => {
+				editor.revealLineInCenter(pendingLine);
+				editor.setPosition({ lineNumber: pendingLine, column: 1 });
+				editor.focus();
+				useEditorStore.getState().clearPendingLineReveal();
+			}, 50);
+		}
+
 		// Track cursor position
 		editor.onDidChangeCursorPosition((e) => {
 			setCursorPosition({
@@ -238,6 +257,28 @@ export function CodeEditor() {
 			}
 		};
 	}, [openFile?.path]);
+
+	// Handle pending line reveal (scroll to specific line after file loads)
+	useEffect(() => {
+		if (!editorRef.current || !pendingLineReveal || isLoadingFile || !openFile) {
+			return;
+		}
+
+		// Small delay to ensure editor content is fully rendered
+		const timeoutId = setTimeout(() => {
+			if (editorRef.current) {
+				editorRef.current.revealLineInCenter(pendingLineReveal);
+				editorRef.current.setPosition({
+					lineNumber: pendingLineReveal,
+					column: 1,
+				});
+				editorRef.current.focus();
+			}
+			clearPendingLineReveal();
+		}, 100);
+
+		return () => clearTimeout(timeoutId);
+	}, [pendingLineReveal, isLoadingFile, openFile, clearPendingLineReveal]);
 
 	if (isLoadingFile) {
 		return (

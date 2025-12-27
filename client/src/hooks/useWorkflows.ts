@@ -5,7 +5,7 @@
 
 import { useEffect, useMemo } from "react";
 import { useQueryClient } from "@tanstack/react-query";
-import { $api, apiClient, withContext } from "@/lib/api-client";
+import { $api, apiClient, withUserContext } from "@/lib/api-client";
 import { useWorkflowsStore } from "@/stores/workflowsStore";
 import type { components } from "@/lib/v1";
 
@@ -117,7 +117,7 @@ export function useReloadWorkflowFile() {
 }
 
 /**
- * Execute a workflow with context override (admin only)
+ * Execute a workflow with user context override (admin only)
  * Used when re-running executions from ExecutionDetails page
  *
  * @param workflowId - UUID of the workflow to execute (required if code not provided)
@@ -125,7 +125,7 @@ export function useReloadWorkflowFile() {
  * @param transient - If true, skip database persistence (for debugging)
  * @param code - Optional Python code to execute instead of a workflow
  * @param scriptName - Name for the script (used for logging when code is provided)
- * @param options - Optional org/user context override
+ * @param options - Optional user context override (orgId is ignored, org filtering uses query params)
  */
 export async function executeWorkflowWithContext(
 	workflowId: string | undefined,
@@ -135,10 +135,9 @@ export async function executeWorkflowWithContext(
 	scriptName?: string,
 	options?: { orgId?: string; userId?: string },
 ) {
-	const client =
-		options?.orgId && options?.userId
-			? withContext(options.orgId, options.userId)
-			: apiClient;
+	const client = options?.userId
+		? withUserContext(options.userId)
+		: apiClient;
 
 	const { data, error } = await client.POST("/api/workflows/execute", {
 		body: {

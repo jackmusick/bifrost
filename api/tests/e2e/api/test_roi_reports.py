@@ -73,7 +73,7 @@ class TestROIReports:
             headers=platform_admin.headers,
             params={
                 **test_date_range,
-                "organization_id": org1["id"],
+                "scope": org1["id"],
             },
         )
         assert response.status_code == 200, f"Get summary failed: {response.text}"
@@ -82,21 +82,20 @@ class TestROIReports:
         assert "total_executions" in data
         assert isinstance(data["total_executions"], int)
 
-    def test_get_roi_summary_with_invalid_org_header(
+    def test_get_roi_summary_with_invalid_scope_param(
         self, e2e_client, platform_admin, test_date_range
     ):
-        """Invalid X-Organization-Id header should return 400."""
-        # Create headers with invalid organization ID
-        headers = platform_admin.headers.copy()
-        headers["X-Organization-Id"] = "invalid-uuid-format"
+        """Invalid scope query param should return 422."""
+        # Use query param for scope filter
+        params = {**test_date_range, "scope": "invalid-uuid-format"}
 
         response = e2e_client.get(
             "/api/reports/roi/summary",
-            headers=headers,
-            params=test_date_range,
+            headers=platform_admin.headers,
+            params=params,
         )
-        # Should return 400 or 422 for invalid UUID format
-        assert response.status_code in [400, 422]
+        # Should return 422 for invalid scope value
+        assert response.status_code == 422
 
     def test_get_roi_by_workflow_requires_platform_admin(
         self, e2e_client, org1_user, test_date_range
@@ -170,7 +169,7 @@ class TestROIReports:
             headers=platform_admin.headers,
             params={
                 **test_date_range,
-                "organization_id": org1["id"],
+                "scope": org1["id"],
             },
         )
         assert response.status_code == 200, f"Get by workflow failed: {response.text}"
@@ -333,7 +332,7 @@ class TestROIReports:
             headers=platform_admin.headers,
             params={
                 **test_date_range,
-                "organization_id": org1["id"],
+                "scope": org1["id"],
                 "granularity": "day",
             },
         )

@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { useNavigate } from "react-router-dom";
 import {
 	Bell,
 	X,
@@ -97,8 +98,18 @@ const notificationStatusConfig: Record<
 };
 
 // Action handler for notification actions
-async function handleNotificationAction(notification: Notification) {
+async function handleNotificationAction(
+	notification: Notification,
+	navigate: ReturnType<typeof useNavigate>,
+) {
 	const action = notification.metadata?.action as string | undefined;
+	const actionUrl = notification.metadata?.action_url as string | undefined;
+
+	// Handle navigation actions (e.g., configure_pricing)
+	if (actionUrl) {
+		navigate(actionUrl);
+		return;
+	}
 
 	if (action === "run_maintenance") {
 		try {
@@ -129,9 +140,11 @@ async function handleNotificationAction(notification: Notification) {
 function ProgressNotificationItem({
 	notification,
 	onDismiss,
+	onAction,
 }: {
 	notification: Notification;
 	onDismiss: () => void;
+	onAction: (notification: Notification) => Promise<void>;
 }) {
 	const [isActionLoading, setIsActionLoading] = useState(false);
 	const Icon = categoryIcons[notification.category] || Cog;
@@ -147,7 +160,7 @@ function ProgressNotificationItem({
 	const handleAction = async () => {
 		setIsActionLoading(true);
 		try {
-			await handleNotificationAction(notification);
+			await onAction(notification);
 		} finally {
 			setIsActionLoading(false);
 		}
@@ -274,10 +287,20 @@ function AlertNotificationItem({
 
 export function NotificationCenter() {
 	const [isOpen, setIsOpen] = useState(false);
+	const navigate = useNavigate();
 	const { notifications, dismiss, clearAll } = useNotifications();
 	const alerts = useNotificationStore((state) => state.alerts);
 	const removeAlert = useNotificationStore((state) => state.removeAlert);
 	const clearAlerts = useNotificationStore((state) => state.clearAlerts);
+
+	// Handler for notification actions (navigation, maintenance, etc.)
+	const handleAction = async (notification: Notification) => {
+		await handleNotificationAction(notification, navigate);
+		// Close popover after navigation action
+		if (notification.metadata?.action_url) {
+			setIsOpen(false);
+		}
+	};
 
 	const notificationCounts = getNotificationCounts(notifications);
 	const alertCounts = getAlertCounts(alerts);
@@ -386,6 +409,7 @@ export function NotificationCenter() {
 									key={notification.id}
 									notification={notification}
 									onDismiss={() => dismiss(notification.id)}
+									onAction={handleAction}
 								/>
 							))}
 

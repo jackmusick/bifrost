@@ -21,16 +21,17 @@ export type UsageSource = "executions" | "chat" | "all";
 
 /**
  * Hook to fetch usage report for a date range.
- * Organization filtering is controlled by the org switcher (X-Organization-Id header).
  *
  * @param startDate - Start date in YYYY-MM-DD format
  * @param endDate - End date in YYYY-MM-DD format
  * @param source - Filter by source: executions, chat, or all
+ * @param orgId - Optional organization ID filter (undefined = all, null = global, string = specific org)
  */
 export function useUsageReport(
 	startDate: string,
 	endDate: string,
 	source: UsageSource = "all",
+	orgId?: string | null,
 ) {
 	return $api.useQuery(
 		"get",
@@ -41,6 +42,8 @@ export function useUsageReport(
 					start_date: startDate,
 					end_date: endDate,
 					source,
+					// Only pass org_id if it's a specific org (string), not undefined or null
+					...(typeof orgId === "string" ? { org_id: orgId } : {}),
 				},
 			},
 		},

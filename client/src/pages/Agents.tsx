@@ -51,19 +51,23 @@ import {
 import { useAgents, useDeleteAgent, useUpdateAgent } from "@/hooks/useAgents";
 import { useOrgScope } from "@/contexts/OrgScopeContext";
 import { useAuth } from "@/contexts/AuthContext";
+import { useOrganizations } from "@/hooks/useOrganizations";
 import { SearchBox } from "@/components/search/SearchBox";
 import { useSearch } from "@/hooks/useSearch";
 import { AgentDialog } from "@/components/agents/AgentDialog";
+import { OrganizationSelect } from "@/components/forms/OrganizationSelect";
 import type { components } from "@/lib/v1";
 
-type AgentSummary = components["schemas"]["AgentSummary"];
+// Extended type to include organization_id (supported by backend, pending type regeneration)
+type AgentSummary = components["schemas"]["AgentSummary"] & {
+	organization_id?: string | null;
+};
+type Organization = components["schemas"]["OrganizationPublic"];
 
 export function Agents() {
 	const { scope, isGlobalScope } = useOrgScope();
-	const { data: agents, isLoading, refetch } = useAgents();
-	const deleteAgent = useDeleteAgent();
-	const updateAgent = useUpdateAgent();
 	const { isPlatformAdmin } = useAuth();
+	const [filterOrgId, setFilterOrgId] = useState<string | null | undefined>(undefined);
 	const [searchTerm, setSearchTerm] = useState("");
 	const [viewMode, setViewMode] = useState<"grid" | "table">("grid");
 	const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false);
@@ -73,12 +77,32 @@ export function Agents() {
 	);
 	const [editAgentId, setEditAgentId] = useState<string | null>(null);
 
+	// Pass filterOrgId to backend for filtering (undefined = all, null = global only)
+	// For platform admins, undefined means show all. For non-admins, backend handles filtering.
+	const { data: agents, isLoading, refetch } = useAgents(
+		isPlatformAdmin ? filterOrgId : undefined,
+	);
+	const deleteAgent = useDeleteAgent();
+	const updateAgent = useUpdateAgent();
+
+	// Fetch organizations for the org name lookup (platform admins only)
+	const { data: organizations } = useOrganizations({
+		enabled: isPlatformAdmin,
+	});
+
+	// Helper to get organization name from ID
+	const getOrgName = (orgId: string | null | undefined): string => {
+		if (!orgId) return "Global";
+		const org = organizations?.find((o: Organization) => o.id === orgId);
+		return org?.name || orgId;
+	};
+
 	// Only platform admins can manage agents
 	const canManageAgents = isPlatformAdmin;
 
-	// Scope-based filtering for platform admins
-	// Note: Backend handles authorization. Frontend filtering may be added later for org scope.
-	const scopeFilteredAgents = agents ?? [];
+	// Use agents from API directly (backend handles org filtering)
+	// Cast to extended type that includes organization_id (pending type regeneration)
+	const scopeFilteredAgents = (agents ?? []) as AgentSummary[];
 
 	// Search filtering
 	const filteredAgents = useSearch(scopeFilteredAgents, searchTerm, [
@@ -203,13 +227,26 @@ export function Agents() {
 				</div>
 			</div>
 
-			{/* Search Box */}
-			<SearchBox
-				value={searchTerm}
-				onChange={setSearchTerm}
-				placeholder="Search agents by name or description..."
-				className="max-w-md"
-			/>
+			{/* Search and Filters */}
+			<div className="flex items-center gap-4">
+				<SearchBox
+					value={searchTerm}
+					onChange={setSearchTerm}
+					placeholder="Search agents by name or description..."
+					className="max-w-md"
+				/>
+				{isPlatformAdmin && (
+					<div className="w-64">
+						<OrganizationSelect
+							value={filterOrgId}
+							onChange={setFilterOrgId}
+							showAll={true}
+							showGlobal={true}
+							placeholder="All organizations"
+						/>
+					</div>
+				)}
+			</div>
 
 			{/* Content */}
 			{isLoading ? (
@@ -270,6 +307,23 @@ export function Agents() {
 									</div>
 								</CardHeader>
 								<CardContent className="pt-0 mt-auto">
+									{/* Organization badge (platform admins only) */}
+									{isPlatformAdmin && (
+										<div className="mb-2">
+											{agent.organization_id ? (
+												<Badge variant="outline" className="text-xs">
+													<Building2 className="mr-1 h-3 w-3" />
+													{getOrgName(agent.organization_id)}
+												</Badge>
+											) : (
+												<Badge variant="default" className="text-xs">
+													<Globe className="mr-1 h-3 w-3" />
+													Global
+												</Badge>
+											)}
+										</div>
+									)}
+
 									{/* Channel badges */}
 									<div className="flex flex-wrap gap-1 mb-3">
 										{agent.channels?.map((channel) => (
@@ -319,6 +373,9 @@ export function Agents() {
 						<DataTable className="max-h-full">
 							<DataTableHeader>
 								<DataTableRow>
+									{isPlatformAdmin && (
+										<DataTableHead>Organization</DataTableHead>
+									)}
 									<DataTableHead>Name</DataTableHead>
 									<DataTableHead>Description</DataTableHead>
 									<DataTableHead>Channels</DataTableHead>
@@ -331,6 +388,21 @@ export function Agents() {
 							<DataTableBody>
 								{filteredAgents.map((agent) => (
 									<DataTableRow key={agent.id}>
+										{isPlatformAdmin && (
+											<DataTableCell>
+												{agent.organization_id ? (
+													<Badge variant="outline" className="text-xs">
+														<Building2 className="mr-1 h-3 w-3" />
+														{getOrgName(agent.organization_id)}
+													</Badge>
+												) : (
+													<Badge variant="default" className="text-xs">
+														<Globe className="mr-1 h-3 w-3" />
+														Global
+													</Badge>
+												)}
+											</DataTableCell>
+										)}
 										<DataTableCell className="font-medium">
 											<div className="flex items-center gap-2">
 												<Bot className="h-4 w-4 text-muted-foreground" />

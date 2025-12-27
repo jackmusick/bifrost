@@ -16,13 +16,15 @@ import re
 from datetime import datetime, timedelta
 from uuid import UUID, uuid4
 
-from fastapi import APIRouter, Body, HTTPException, status
+from fastapi import APIRouter, Body, HTTPException, Query, status
 from sqlalchemy import delete, select, or_
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
 from src.core.auth import Context, CurrentActiveUser, CurrentSuperuser
 from src.core.database import DbSession
+from src.core.org_filter import resolve_org_filter
+from src.repositories.forms import FormRepository
 from src.models import Form as FormORM, FormField as FormFieldORM, FormRole as FormRoleORM, UserRole as UserRoleORM
 from src.models import FormCreate, FormUpdate, FormPublic
 from src.models import WorkflowExecutionResponse
@@ -81,6 +83,14 @@ def _form_schema_to_fields(form_schema: dict, form_id: UUID) -> list[FormFieldOR
 
     fields = []
     for position, field in enumerate(schema.fields):
+        # Convert data_provider_inputs Pydantic models to plain dicts for JSON storage
+        dp_inputs = None
+        if field.data_provider_inputs:
+            dp_inputs = {
+                key: config.model_dump(mode="json")
+                for key, config in field.data_provider_inputs.items()
+            }
+
         field_orm = FormFieldORM(
             form_id=form_id,
             name=field.name,
@@ -93,7 +103,7 @@ def _form_schema_to_fields(form_schema: dict, form_id: UUID) -> list[FormFieldOR
             default_value=field.default_value,
             options=field.options,
             data_provider_id=field.data_provider_id,
-            data_provider_inputs=field.data_provider_inputs,
+            data_provider_inputs=dp_inputs,
             visibility_expression=field.visibility_expression,
             validation=field.validation,
             allowed_types=field.allowed_types,
@@ -186,6 +196,8 @@ async def _write_form_to_file(form: FormORM, db: AsyncSession) -> str:
     # Convert fields to form_schema format for file storage
     form_schema = _fields_to_form_schema(form.fields)
 
+    # Note: org_id, is_global, access_level are NOT written to JSON
+    # These are environment-specific and should only be set in the database
     form_data = {
         "id": str(form.id),
         "name": form.name,
@@ -194,9 +206,6 @@ async def _write_form_to_file(form: FormORM, db: AsyncSession) -> str:
         "launch_workflow_id": form.launch_workflow_id,
         "form_schema": form_schema,
         "is_active": form.is_active,
-        "is_global": form.organization_id is None,
-        "org_id": str(form.organization_id) if form.organization_id else "GLOBAL",
-        "access_level": form.access_level.value if form.access_level else "role_based",
         "created_by": form.created_by,
         "created_at": form.created_at.isoformat() + "Z",
         "updated_at": form.updated_at.isoformat() + "Z",
@@ -269,6 +278,8 @@ async def _deactivate_form_file(form: FormORM, db: AsyncSession) -> None:
         file_path = f"forms/{filename}"
 
     # Build form JSON with is_active=False
+    # Note: org_id, is_global, access_level are NOT written to JSON
+    # These are environment-specific and should only be set in the database
     form_schema = _fields_to_form_schema(form.fields)
 
     form_data = {
@@ -279,9 +290,6 @@ async def _deactivate_form_file(form: FormORM, db: AsyncSession) -> None:
         "launch_workflow_id": form.launch_workflow_id,
         "form_schema": form_schema,
         "is_active": False,  # Deactivated
-        "is_global": form.organization_id is None,
-        "org_id": str(form.organization_id) if form.organization_id else "GLOBAL",
-        "access_level": form.access_level.value if form.access_level else "role_based",
         "created_by": form.created_by,
         "created_at": form.created_at.isoformat() + "Z",
         "updated_at": datetime.utcnow().isoformat() + "Z",
@@ -310,24 +318,38 @@ async def _deactivate_form_file(form: FormORM, db: AsyncSession) -> None:
 async def list_forms(
     ctx: Context,
     db: DbSession,
+    scope: str | None = Query(
+        None,
+        description="Filter scope: omit for all (superusers), 'global' for global only, "
+        "or org UUID for specific org + global."
+    ),
 ) -> list[FormPublic]:
     """List all forms visible to the user.
 
-    - Platform admins see all forms
+    - Platform admins see all forms (or filter by scope if provided)
     - Org users see: their org's forms + global forms (org_id IS NULL)
-    - Access is further filtered by access_level (public, authenticated, role_based)
+    - Access is further filtered by access_level (authenticated, role_based)
 
     This endpoint uses a single optimized query with SQL-level filtering
     instead of multiple roundtrips and Python filtering.
     """
-    # Platform admins see all forms
-    if ctx.user.is_superuser:
-        query = select(FormORM).options(selectinload(FormORM.fields)).order_by(FormORM.name)
-        result = await db.execute(query)
-        return [FormPublic.model_validate(f) for f in result.scalars().all()]
+    # Resolve organization filter based on user permissions
+    try:
+        filter_type, filter_org = resolve_org_filter(ctx.user, scope)
+    except ValueError as e:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail=str(e),
+        )
 
+    # Platform admins bypass access level filtering - they see all forms within org scope
+    if ctx.user.is_superuser:
+        repo = FormRepository(db, filter_org)
+        forms = await repo.list_forms(filter_type, active_only=False)
+        return [FormPublic.model_validate(f) for f in forms]
+
+    # For org users, we need additional access-level filtering on top of org filtering
     # Build subquery for forms accessible via user's roles
-    # This finds form IDs where the user has a matching role
     user_accessible_forms_subquery = (
         select(FormRoleORM.form_id)
         .join(UserRoleORM, UserRoleORM.role_id == FormRoleORM.role_id)
@@ -335,40 +357,30 @@ async def list_forms(
         .distinct()
     )
 
-    # Build main query with all access logic in SQL
+    # Get org-filtered forms first via repository, then apply access-level filtering
+    repo = FormRepository(db, filter_org)
+
+    # Build main query with all access logic in SQL for org users
     # A form is visible if:
     # 1. It's active AND
     # 2. It belongs to user's org OR is global (org_id IS NULL) AND
-    # 3. Access level is 'public' OR 'authenticated' OR
+    # 3. Access level is 'authenticated' OR
     #    (access level is 'role_based' AND user has a matching role)
-    if ctx.org_id:
-        org_filter = or_(
-            FormORM.organization_id == ctx.org_id,
-            FormORM.organization_id.is_(None)
-        )
-    else:
-        # User has no org - only global forms visible
-        org_filter = FormORM.organization_id.is_(None)
-
-    query = (
-        select(FormORM)
-        .options(selectinload(FormORM.fields))
-        .where(FormORM.is_active)
-        .where(org_filter)
-        .where(
+    query = select(FormORM).options(selectinload(FormORM.fields))
+    query = query.where(FormORM.is_active)
+    query = repo.apply_filter(query, filter_type, filter_org)
+    query = query.where(
+        or_(
+            FormORM.access_level == "authenticated",
+            # role_based access: user must have a role assigned to the form
+            # Also include forms with NULL access_level (defaults to role_based)
             or_(
-                FormORM.access_level == "public",
-                FormORM.access_level == "authenticated",
-                # role_based access: user must have a role assigned to the form
-                # Also include forms with NULL access_level (defaults to role_based)
-                or_(
-                    FormORM.access_level == "role_based",
-                    FormORM.access_level.is_(None)
-                ) & FormORM.id.in_(user_accessible_forms_subquery)
-            )
+                FormORM.access_level == "role_based",
+                FormORM.access_level.is_(None)
+            ) & FormORM.id.in_(user_accessible_forms_subquery)
         )
-        .order_by(FormORM.name)
     )
+    query = query.order_by(FormORM.name)
 
     result = await db.execute(query)
     return [FormPublic.model_validate(f) for f in result.scalars().all()]
@@ -406,6 +418,7 @@ async def create_form(
         default_launch_params=request.default_launch_params,
         allowed_query_params=request.allowed_query_params,
         access_level=request.access_level,
+        organization_id=request.organization_id,
         is_active=True,
         created_by=ctx.user.email,
         created_at=now,
@@ -499,7 +512,7 @@ async def get_form(
 
     # Check access level
     access_level = form.access_level or "role_based"
-    if access_level == "public" or access_level == "authenticated":
+    if access_level == "authenticated":
         return FormPublic.model_validate(form)
 
     # Role-based: check if user has a role assigned to this form
@@ -707,7 +720,6 @@ async def _check_form_access(
     Check if user has access to execute a form.
 
     Access levels:
-    - 'public': Anyone can access (not recommended for production)
     - 'authenticated': Any logged-in user can access
     - 'role_based': User must be assigned to a role that has this form
     """
@@ -716,9 +728,6 @@ async def _check_form_access(
         return True
 
     access_level = form.access_level or "authenticated"
-
-    if access_level == "public":
-        return True
 
     if access_level == "authenticated":
         return True  # User is already authenticated to reach this point

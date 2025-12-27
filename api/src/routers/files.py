@@ -31,7 +31,7 @@ from src.models import (
     WorkflowIdConflict,
 )
 from src.services.editor.search import search_files
-from src.services.file_backend import FileBackend, LocalBackend, S3Backend, get_backend
+from src.services.file_backend import get_backend
 from src.services.file_storage_service import FileStorageService
 
 logger = logging.getLogger(__name__)
@@ -363,7 +363,7 @@ async def put_file_content_editor(
                 if existing_etag != request.expected_etag:
                     raise HTTPException(
                         status_code=status.HTTP_409_CONFLICT,
-                        detail={"reason": "content_changed", "message": f"File has been modified"}
+                        detail={"reason": "content_changed", "message": "File has been modified"}
                     )
             except FileNotFoundError:
                 raise HTTPException(

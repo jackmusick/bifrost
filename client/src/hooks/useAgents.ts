@@ -31,9 +31,33 @@ function getErrorMessage(error: unknown, fallback: string): string {
 
 // ==================== Query Hooks ====================
 
-/** Hook to fetch all agents */
-export function useAgents() {
-	return $api.useQuery("get", "/api/agents", {});
+/**
+ * Hook to fetch all agents with optional organization filtering
+ * @param filterScope - Filter scope: undefined = all, null = global only, string = org UUID
+ *
+ * The scope query param controls filtering:
+ * - Omitted (undefined): show all agents (superusers) / user's org + global (org users)
+ * - "global": show only global agents (org_id IS NULL)
+ * - UUID string: show that org's agents + global agents
+ */
+export function useAgents(filterScope?: string | null) {
+	// Build query params - scope is the new filter parameter
+	const queryParams: Record<string, string | boolean | undefined> = {};
+	if (filterScope === null) {
+		// null means "global only"
+		queryParams.scope = "global";
+	} else if (filterScope !== undefined) {
+		// UUID string means specific org
+		queryParams.scope = filterScope;
+	}
+	// undefined = don't send scope (show all)
+
+	return $api.useQuery("get", "/api/agents", {
+		params: {
+			// Type assertion needed until types are regenerated
+			query: Object.keys(queryParams).length > 0 ? queryParams : undefined,
+		} as { query?: { category?: string | null; active_only?: boolean; scope?: string } },
+	});
 }
 
 /** Hook to fetch a specific agent */

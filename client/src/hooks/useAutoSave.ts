@@ -331,6 +331,7 @@ export function useAutoSave() {
 		setIndexing,
 		updateTabContent,
 		reloadWorkflowFile,
+		setPendingWorkflowConflict,
 	]);
 
 	return { manualSave };

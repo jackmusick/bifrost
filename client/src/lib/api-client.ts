@@ -1,6 +1,5 @@
 /**
  * Type-safe API client using openapi-fetch and openapi-react-query
- * Automatically handles X-Organization-Id and X-User-Id headers from session storage
  * Includes CSRF protection for cookie-based authentication
  *
  * Usage:
@@ -110,7 +109,6 @@ async function refreshAccessToken(): Promise<boolean> {
  */
 function handleAuthFailure(): void {
 	sessionStorage.removeItem("userId");
-	sessionStorage.removeItem("current_org_id");
 	localStorage.removeItem(ACCESS_TOKEN_KEY);
 
 	const currentPath = window.location.pathname;
@@ -159,7 +157,7 @@ const baseClient = createClient<paths>({
 	baseUrl: "",
 });
 
-// Middleware to automatically inject organization and user context headers,
+// Middleware to automatically inject user context headers,
 // CSRF tokens, handle token refresh, and handle authentication errors
 baseClient.use({
 	async onRequest({ request }) {
@@ -180,12 +178,6 @@ baseClient.use({
 				// Throw to prevent the request from proceeding
 				throw new Error("Authentication required");
 			}
-		}
-
-		// Get organization ID from session storage (set by org switcher)
-		const orgId = sessionStorage.getItem("current_org_id");
-		if (orgId) {
-			request.headers.set("X-Organization-Id", orgId);
 		}
 
 		// Get user ID from session storage (set by auth provider)
@@ -304,51 +296,6 @@ async function handleAuthResponse(
 }
 
 /**
- * Helper to override organization context for admin operations
- */
-export function withOrgContext(orgId: string) {
-	const client = createClient<paths>({
-		baseUrl: "",
-	});
-
-	client.use({
-		async onRequest({ request }) {
-			// Ensure valid token before request
-			const hasValidToken = await ensureValidToken();
-			if (!hasValidToken) {
-				const currentPath = window.location.pathname;
-				if (currentPath !== "/login" && currentPath !== "/setup") {
-					window.location.href = `/login?returnTo=${encodeURIComponent(currentPath)}`;
-				}
-				throw new Error("Authentication required");
-			}
-
-			request.headers.set("X-Organization-Id", orgId);
-
-			const userId = sessionStorage.getItem("userId");
-			if (userId) {
-				request.headers.set("X-User-Id", userId);
-			}
-
-			// Add CSRF token for mutating requests
-			if (requiresCsrf(request.method)) {
-				const csrfToken = getCsrfToken();
-				if (csrfToken) {
-					request.headers.set("X-CSRF-Token", csrfToken);
-				}
-			}
-
-			return request;
-		},
-		async onResponse({ request, response }) {
-			return handleAuthResponse(request, response);
-		},
-	});
-
-	return client;
-}
-
-/**
  * Helper to override user context for admin operations
  */
 export function withUserContext(userId: string) {
@@ -368,52 +315,6 @@ export function withUserContext(userId: string) {
 				throw new Error("Authentication required");
 			}
 
-			const orgId = sessionStorage.getItem("current_org_id");
-			if (orgId) {
-				request.headers.set("X-Organization-Id", orgId);
-			}
-
-			request.headers.set("X-User-Id", userId);
-
-			// Add CSRF token for mutating requests
-			if (requiresCsrf(request.method)) {
-				const csrfToken = getCsrfToken();
-				if (csrfToken) {
-					request.headers.set("X-CSRF-Token", csrfToken);
-				}
-			}
-
-			return request;
-		},
-		async onResponse({ request, response }) {
-			return handleAuthResponse(request, response);
-		},
-	});
-
-	return client;
-}
-
-/**
- * Helper to set both org and user context (for admin operations)
- */
-export function withContext(orgId: string, userId: string) {
-	const client = createClient<paths>({
-		baseUrl: "",
-	});
-
-	client.use({
-		async onRequest({ request }) {
-			// Ensure valid token before request
-			const hasValidToken = await ensureValidToken();
-			if (!hasValidToken) {
-				const currentPath = window.location.pathname;
-				if (currentPath !== "/login" && currentPath !== "/setup") {
-					window.location.href = `/login?returnTo=${encodeURIComponent(currentPath)}`;
-				}
-				throw new Error("Authentication required");
-			}
-
-			request.headers.set("X-Organization-Id", orgId);
 			request.headers.set("X-User-Id", userId);
 
 			// Add CSRF token for mutating requests
@@ -471,12 +372,6 @@ export async function authFetch(
 
 	// Auth via cookie (sent automatically by browser)
 	// No need to manually add Authorization header
-
-	// Add org context
-	const orgId = sessionStorage.getItem("current_org_id");
-	if (orgId) {
-		headers.set("X-Organization-Id", orgId);
-	}
 
 	// Add user context
 	const userId = sessionStorage.getItem("userId");
