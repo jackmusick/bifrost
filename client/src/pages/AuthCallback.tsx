@@ -67,7 +67,15 @@ export function AuthCallback() {
 				await loginWithOAuth(provider, code, state);
 
 				// Redirect to original destination
-				navigate(redirectFrom, { replace: true });
+				// Use full page navigation for API routes (bypasses React Router),
+				// React Router for normal app routes
+				if (redirectFrom.startsWith("/api/")) {
+					// Small delay to ensure cookies are fully set before redirect
+					await new Promise((resolve) => setTimeout(resolve, 100));
+					window.location.href = redirectFrom;
+				} else {
+					navigate(redirectFrom, { replace: true });
+				}
 			} catch (err) {
 				setError(
 					err instanceof Error ? err.message : "OAuth login failed",

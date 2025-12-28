@@ -10,8 +10,8 @@ from datetime import datetime, timedelta
 import jwt
 
 
-# Test environment JWT settings (must match src/config.py defaults and tests/conftest.py)
-TEST_SECRET_KEY = "test-secret-key-for-testing-must-be-32-chars"
+# Test environment JWT settings (must match docker-compose.test.yml and src/config.py)
+TEST_SECRET_KEY = "test-secret-key-for-e2e-testing-must-be-32-chars"
 TEST_JWT_ISSUER = "bifrost-api"
 TEST_JWT_AUDIENCE = "bifrost-client"
 TEST_ALGORITHM = "HS256"

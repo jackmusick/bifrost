@@ -41,6 +41,11 @@ CSRF_EXEMPT_PATHS = {
     "/health",
     "/ready",
     "/",
+    # MCP OAuth endpoints (called by external MCP clients)
+    "/authorize",
+    "/token",
+    "/register",
+    "/mcp/callback",
 }
 
 

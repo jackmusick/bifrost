@@ -103,6 +103,9 @@ const MFASetup = lazy(() =>
 const AuthCallback = lazy(() =>
 	import("@/pages/AuthCallback").then((m) => ({ default: m.AuthCallback })),
 );
+const MCPCallback = lazy(() =>
+	import("@/pages/MCPCallback").then((m) => ({ default: m.MCPCallback })),
+);
 const CLI = lazy(() => import("@/pages/CLI").then((m) => ({ default: m.CLI })));
 const Workbench = lazy(() =>
 	import("@/pages/Workbench").then((m) => ({ default: m.Workbench })),
@@ -172,6 +175,7 @@ function AppRoutes() {
 					<Route path="setup" element={<Setup />} />
 					<Route path="mfa-setup" element={<MFASetup />} />
 					<Route path="auth/callback/:provider" element={<AuthCallback />} />
+					<Route path="mcp/callback" element={<MCPCallback />} />
 
 					{/* Device authorization - requires auth, handles redirect internally */}
 					<Route path="device" element={<DevicePage />} />

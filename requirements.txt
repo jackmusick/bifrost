@@ -109,6 +109,11 @@ anthropic  # Anthropic Claude API client
 claude-agent-sdk  # Claude Agent SDK for coding mode
 
 # =============================================================================
+# MCP (Model Context Protocol)
+# =============================================================================
+fastmcp>=2.0,<3  # FastMCP for MCP server (internal + external access)
+
+# =============================================================================
 # Vector Store (Knowledge/RAG)
 # =============================================================================
 pgvector  # PostgreSQL vector extension for semantic search

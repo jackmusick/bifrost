@@ -8,8 +8,9 @@ import { Email } from "@/pages/settings/Email";
 import { OAuth } from "@/pages/settings/OAuth";
 import { GitHub } from "@/pages/settings/GitHub";
 import { LLMConfig } from "@/pages/settings/LLMConfig";
+import { MCP } from "@/pages/settings/MCP";
 import { Maintenance } from "@/pages/settings/Maintenance";
-import { Bot, Mail, Shield } from "lucide-react";
+import { Bot, Mail, Plug, Shield } from "lucide-react";
 
 export function Settings() {
 	const navigate = useNavigate();
@@ -49,6 +50,10 @@ export function Settings() {
 							<Bot className="h-4 w-4 mr-1" />
 							AI
 						</TabsTrigger>
+						<TabsTrigger value="mcp">
+							<Plug className="h-4 w-4 mr-1" />
+							MCP
+						</TabsTrigger>
 						<TabsTrigger value="branding">Branding</TabsTrigger>
 						<TabsTrigger value="email">
 							<Mail className="h-4 w-4 mr-1" />
@@ -72,6 +77,10 @@ export function Settings() {
 
 				<TabsContent value="ai" className="mt-6">
 					<LLMConfig />
+				</TabsContent>
+
+				<TabsContent value="mcp" className="mt-6">
+					<MCP />
 				</TabsContent>
 
 				<TabsContent value="branding" className="mt-6">

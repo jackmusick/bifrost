@@ -107,8 +107,8 @@ export default defineConfig({
 		host: "0.0.0.0",
 		port: 3000,
 		strictPort: true, // Fail if port is already in use
-		// Allow Docker container hostnames for E2E testing
-		allowedHosts: ["localhost", "client", "bifrost-test-client"],
+		// Allow all hosts in development (ngrok, tunnels, etc.)
+		allowedHosts: true,
 		hmr: {
 			// When running in Docker, HMR connects directly to Vite
 			// When running behind SWA proxy, set clientPort: 4280
@@ -119,6 +119,29 @@ export default defineConfig({
 		},
 		proxy: {
 			// Use API_URL env var for Docker (api:8000) or default to localhost:8000 for local dev
+			// OAuth discovery endpoints for MCP clients (Claude Desktop)
+			"/.well-known": {
+				target: process.env.API_URL || "http://localhost:8000",
+				changeOrigin: true,
+			},
+			// MCP OAuth endpoints for external LLM clients
+			"/register": {
+				target: process.env.API_URL || "http://localhost:8000",
+				changeOrigin: true,
+			},
+			"/authorize": {
+				target: process.env.API_URL || "http://localhost:8000",
+				changeOrigin: true,
+			},
+			"/token": {
+				target: process.env.API_URL || "http://localhost:8000",
+				changeOrigin: true,
+			},
+			// MCP protocol endpoint for external LLM clients (Claude Desktop)
+			"/mcp": {
+				target: process.env.API_URL || "http://localhost:8000",
+				changeOrigin: true,
+			},
 			// Proxy OpenAPI spec for type generation
 			"/openapi.json": {
 				target: process.env.API_URL || "http://localhost:8000",

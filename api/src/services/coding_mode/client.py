@@ -124,11 +124,14 @@ class CodingModeClient:
         self.session_manager = SessionManager()
         self._system_tools = system_tools or []
 
-        # Create MCP context
+        # Create MCP context with all fields
         self._mcp_context = MCPContext(
             user_id=self.user_id,
             org_id=self.org_id,
             is_platform_admin=self.is_platform_admin,
+            user_email=self.user_email,
+            user_name=self.user_name,
+            enabled_system_tools=self._system_tools,
         )
 
         # Create Bifrost MCP server

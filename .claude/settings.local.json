@@ -102,7 +102,9 @@
       "Bash({} ;)",
       "Bash(/Users/jack/GitHub/bifrost-api/api/test.sh:*)",
       "WebFetch(domain:gofastmcp.com)",
-      "WebFetch(domain:www.buildwithmatija.com)"
+      "WebFetch(domain:www.buildwithmatija.com)",
+      "WebFetch(domain:www.twilio.com)",
+      "WebFetch(domain:spec.modelcontextprotocol.io)"
     ],
     "deny": [],
     "ask": [],

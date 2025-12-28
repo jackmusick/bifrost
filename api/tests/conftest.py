@@ -74,7 +74,7 @@ def setup_test_environment(tmp_path_factory):
     os.environ["BIFROST_DATABASE_URL_SYNC"] = TEST_DATABASE_URL_SYNC
     os.environ["BIFROST_RABBITMQ_URL"] = TEST_RABBITMQ_URL
     os.environ["BIFROST_REDIS_URL"] = TEST_REDIS_URL
-    os.environ["BIFROST_SECRET_KEY"] = "test-secret-key-for-testing-must-be-32-chars"
+    os.environ["BIFROST_SECRET_KEY"] = "test-secret-key-for-e2e-testing-must-be-32-chars"
 
     # Set up workspace and temp locations for tests
     # These are now hardcoded paths - create them for test isolation

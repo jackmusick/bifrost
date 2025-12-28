@@ -259,6 +259,14 @@ class Settings(BaseSettings):
     )
 
     # ==========================================================================
+    # MCP (Model Context Protocol)
+    # ==========================================================================
+    mcp_base_url: str = Field(
+        default="http://localhost:8000",
+        description="Public URL for MCP OAuth endpoints (e.g., ngrok URL for external access)"
+    )
+
+    # ==========================================================================
     # Server
     # ==========================================================================
     host: str = Field(

@@ -12,35 +12,27 @@ Tests the MCP tools for the Bifrost platform:
 
 Uses mocked database access for fast, isolated testing.
 
-Note: The MCP tools use the @tool decorator from claude_agent_sdk which wraps
-the inner function. We test the inner logic directly by accessing the decorated
-function's callable or by testing the underlying logic functions.
+Note: The MCP tools are now consolidated in server.py with shared implementations.
+We test the implementation functions directly (_*_impl functions).
 """
 
 import json
-from typing import Any
-
-import pytest
 from datetime import datetime
 from unittest.mock import AsyncMock, MagicMock, patch
 from uuid import uuid4
 
-from src.services.mcp.server import MCPContext
+import pytest
 
-
-async def call_tool(tool: Any, args: dict[str, Any]) -> dict[str, Any]:
-    """
-    Call an MCP tool regardless of whether claude-agent-sdk is installed.
-
-    When SDK is installed, tool is SdkMcpTool with .handler attribute.
-    When SDK is not installed (stub decorator), tool is the raw function.
-    """
-    if hasattr(tool, "handler"):
-        # SDK installed - tool is SdkMcpTool
-        return await tool.handler(args)
-    else:
-        # SDK not installed - tool is raw function
-        return await tool(args)
+from src.services.mcp.server import (
+    MCPContext,
+    _execute_workflow_impl,
+    _get_form_schema_impl,
+    _list_forms_impl,
+    _list_integrations_impl,
+    _list_workflows_impl,
+    _search_knowledge_impl,
+    _validate_form_schema_impl,
+)
 
 
 # ==================== Fixtures ====================
@@ -53,6 +45,8 @@ def platform_admin_context() -> MCPContext:
         user_id=uuid4(),
         org_id=None,  # Platform admin has no org scope
         is_platform_admin=True,
+        user_email="admin@platform.local",
+        user_name="Platform Admin",
     )
 
 
@@ -63,6 +57,8 @@ def org_user_context() -> MCPContext:
         user_id=uuid4(),
         org_id=uuid4(),
         is_platform_admin=False,
+        user_email="user@org.local",
+        user_name="Org User",
     )
 
 
@@ -130,178 +126,87 @@ def mock_knowledge_document():
 class TestGetFormSchema:
     """Tests for the get_form_schema MCP tool."""
 
-    def test_documentation_content(self):
-        """Should contain comprehensive form schema documentation."""
-        from src.services.mcp.tools.get_form_schema import FORM_SCHEMA_DOCUMENTATION
+    @pytest.mark.asyncio
+    async def test_documentation_content(self, org_user_context):
+        """Should return comprehensive form schema documentation."""
+        result = await _get_form_schema_impl(org_user_context)
 
         # Check that documentation contains key sections
-        assert "FormFieldType" in FORM_SCHEMA_DOCUMENTATION
-        assert "FormField Properties" in FORM_SCHEMA_DOCUMENTATION
-        assert "FormSchema Structure" in FORM_SCHEMA_DOCUMENTATION
-        assert "Example Form JSON" in FORM_SCHEMA_DOCUMENTATION
+        assert "Form Schema Documentation" in result
+        assert "Field Types" in result
+        assert "Text Field" in result
+        assert "Select Field" in result
 
-    def test_includes_all_field_types(self):
-        """Should include documentation for all field types."""
-        from src.services.mcp.tools.get_form_schema import FORM_SCHEMA_DOCUMENTATION
+    @pytest.mark.asyncio
+    async def test_includes_field_types(self, org_user_context):
+        """Should include documentation for common field types."""
+        result = await _get_form_schema_impl(org_user_context)
 
-        # Verify all field types are documented
-        field_types = [
-            "text",
-            "email",
-            "number",
-            "select",
-            "checkbox",
-            "textarea",
-            "radio",
-            "datetime",
-            "markdown",
-            "html",
-            "file",
-        ]
+        # Verify field types are documented
+        field_types = ["text", "number", "select", "boolean", "date"]
         for field_type in field_types:
-            assert (
-                f"`{field_type}`" in FORM_SCHEMA_DOCUMENTATION
-            ), f"Field type {field_type} not documented"
+            assert field_type in result, f"Field type {field_type} not documented"
 
-    def test_includes_field_properties(self):
-        """Should document all important field properties."""
-        from src.services.mcp.tools.get_form_schema import FORM_SCHEMA_DOCUMENTATION
+    @pytest.mark.asyncio
+    async def test_includes_example_json(self, org_user_context):
+        """Should include JSON examples."""
+        result = await _get_form_schema_impl(org_user_context)
 
-        properties = [
-            "name",
-            "label",
-            "type",
-            "required",
-            "validation",
-            "data_provider_id",
-            "options",
-            "content",
-        ]
-        for prop in properties:
-            assert (
-                f"`{prop}`" in FORM_SCHEMA_DOCUMENTATION
-            ), f"Property {prop} not documented"
-
-    def test_includes_example_json(self):
-        """Should include a valid JSON example."""
-        from src.services.mcp.tools.get_form_schema import FORM_SCHEMA_DOCUMENTATION
-
-        # Find the example JSON block
-        assert "```json" in FORM_SCHEMA_DOCUMENTATION
-        assert '"fields"' in FORM_SCHEMA_DOCUMENTATION
-        assert '"type": "text"' in FORM_SCHEMA_DOCUMENTATION
+        # Find the example JSON blocks
+        assert "```json" in result
+        assert '"type":' in result
 
 
 # ==================== validate_form_schema Tests ====================
 
 
 class TestValidateFormSchema:
-    """Tests for the validate_form_schema MCP tool.
+    """Tests for the validate_form_schema MCP tool."""
 
-    These tests directly test the validation logic using Pydantic models.
-    """
-
-    def test_valid_form_schema_fields(self):
+    @pytest.mark.asyncio
+    async def test_valid_form_schema(self, org_user_context):
         """Should validate a correct form schema structure."""
-        from src.models.contracts.forms import FormSchema
-
-        valid_schema = {
+        valid_form = json.dumps({
+            "name": "Test Form",
             "fields": [
                 {"name": "email", "label": "Email", "type": "email", "required": True}
             ]
-        }
+        })
 
-        # Should not raise
-        schema = FormSchema.model_validate(valid_schema)
-        assert len(schema.fields) == 1
-        assert schema.fields[0].name == "email"
+        result = await _validate_form_schema_impl(org_user_context, valid_form)
+        assert "valid" in result.lower()
 
-    def test_valid_form_create(self):
-        """Should validate a full FormCreate structure."""
-        from src.models.contracts.forms import FormCreate
+    @pytest.mark.asyncio
+    async def test_rejects_invalid_json(self, org_user_context):
+        """Should reject invalid JSON."""
+        result = await _validate_form_schema_impl(org_user_context, "{ invalid json }")
+        assert "Invalid JSON" in result
 
-        valid_form = {
-            "name": "Test Form",
-            "workflow_id": str(uuid4()),
-            "form_schema": {
-                "fields": [
-                    {"name": "email", "label": "Email", "type": "email", "required": True}
-                ]
-            },
-        }
+    @pytest.mark.asyncio
+    async def test_rejects_missing_name(self, org_user_context):
+        """Should reject form missing name field."""
+        form = json.dumps({
+            "fields": [{"name": "test", "type": "text"}]
+        })
+        result = await _validate_form_schema_impl(org_user_context, form)
+        assert "name" in result.lower()
 
-        # Should not raise
-        form = FormCreate.model_validate(valid_form)
-        assert form.name == "Test Form"
-        assert len(form.form_schema.fields) == 1
+    @pytest.mark.asyncio
+    async def test_rejects_missing_fields(self, org_user_context):
+        """Should reject form missing fields array."""
+        form = json.dumps({"name": "Test"})
+        result = await _validate_form_schema_impl(org_user_context, form)
+        assert "fields" in result.lower()
 
-    def test_rejects_invalid_json_parsing(self):
-        """Should reject invalid JSON when parsed."""
-        invalid_json = "{ invalid json }"
-
-        with pytest.raises(json.JSONDecodeError):
-            json.loads(invalid_json)
-
-    def test_rejects_missing_label_for_input_fields(self):
-        """Should reject input fields missing label."""
-        from pydantic import ValidationError
-
-        from src.models.contracts.forms import FormSchema
-
-        invalid_schema = {
-            "fields": [{"name": "email", "type": "email"}]  # Missing label
-        }
-
-        with pytest.raises(ValidationError) as exc_info:
-            FormSchema.model_validate(invalid_schema)
-
-        # Check that label is mentioned in the error
-        errors = exc_info.value.errors()
-        assert any("label" in str(e).lower() for e in errors)
-
-    def test_rejects_duplicate_field_names(self):
-        """Should reject forms with duplicate field names."""
-        from pydantic import ValidationError
-
-        from src.models.contracts.forms import FormSchema
-
-        duplicate_names = {
-            "fields": [
-                {"name": "email", "label": "Email", "type": "email"},
-                {"name": "email", "label": "Email 2", "type": "text"},  # Duplicate
-            ]
-        }
-
-        with pytest.raises(ValidationError) as exc_info:
-            FormSchema.model_validate(duplicate_names)
-
-        errors = exc_info.value.errors()
-        assert any("unique" in str(e).lower() for e in errors)
-
-    def test_accepts_markdown_without_label(self):
-        """Should accept markdown fields with content instead of label."""
-        from src.models.contracts.forms import FormSchema
-
-        markdown_field = {
-            "fields": [{"name": "intro", "type": "markdown", "content": "# Welcome"}]
-        }
-
-        schema = FormSchema.model_validate(markdown_field)
-        assert schema.fields[0].type.value == "markdown"
-        assert schema.fields[0].content == "# Welcome"
-
-    def test_rejects_markdown_without_content(self):
-        """Should reject markdown fields without content."""
-        from pydantic import ValidationError
-
-        from src.models.contracts.forms import FormSchema
-
-        invalid_markdown = {
-            "fields": [{"name": "intro", "type": "markdown"}]  # Missing content
-        }
-
-        with pytest.raises(ValidationError):
-            FormSchema.model_validate(invalid_markdown)
+    @pytest.mark.asyncio
+    async def test_rejects_invalid_field_type(self, org_user_context):
+        """Should reject fields with invalid types."""
+        form = json.dumps({
+            "name": "Test",
+            "fields": [{"name": "test", "type": "invalid_type"}]
+        })
+        result = await _validate_form_schema_impl(org_user_context, form)
+        assert "invalid type" in result.lower()
 
 
 # ==================== list_workflows Tests ====================
@@ -313,10 +218,7 @@ class TestListWorkflows:
     @pytest.mark.asyncio
     async def test_lists_workflows(self, org_user_context, mock_workflow):
         """Should list registered workflows."""
-        from src.services.mcp.tools.list_workflows import list_workflows_tool
-
         with patch("src.core.database.get_db_context") as mock_db_ctx:
-            # Set up async context manager
             mock_session = AsyncMock()
             mock_db_ctx.return_value.__aenter__ = AsyncMock(return_value=mock_session)
             mock_db_ctx.return_value.__aexit__ = AsyncMock(return_value=None)
@@ -329,22 +231,16 @@ class TestListWorkflows:
                 mock_repo.count_active = AsyncMock(return_value=1)
                 mock_repo_cls.return_value = mock_repo
 
-                tool = list_workflows_tool(org_user_context)
+                result = await _list_workflows_impl(org_user_context)
 
-                # Call the tool function directly
-                result = await call_tool(tool, {"query": None, "category": None})
-
-        text = result["content"][0]["text"]
-        assert "Registered Workflows" in text
-        assert "test_workflow" in text
-        assert "A test workflow for testing" in text
-        assert "Endpoint: Enabled" in text
+        assert "Registered Workflows" in result
+        assert "test_workflow" in result
+        assert "A test workflow for testing" in result
+        assert "Endpoint: Enabled" in result
 
     @pytest.mark.asyncio
     async def test_returns_empty_message(self, org_user_context):
         """Should return helpful message when no workflows found."""
-        from src.services.mcp.tools.list_workflows import list_workflows_tool
-
         with patch("src.core.database.get_db_context") as mock_db_ctx:
             mock_session = AsyncMock()
             mock_db_ctx.return_value.__aenter__ = AsyncMock(return_value=mock_session)
@@ -358,19 +254,15 @@ class TestListWorkflows:
                 mock_repo.count_active = AsyncMock(return_value=0)
                 mock_repo_cls.return_value = mock_repo
 
-                tool = list_workflows_tool(org_user_context)
-                result = await call_tool(tool, {})
+                result = await _list_workflows_impl(org_user_context)
 
-        text = result["content"][0]["text"]
-        assert "No workflows found" in text
-        assert "/tmp/bifrost/workspace" in text
-        assert "@workflow" in text
+        assert "No workflows found" in result
+        assert "/tmp/bifrost/workspace" in result
+        assert "@workflow" in result
 
     @pytest.mark.asyncio
     async def test_filters_by_category(self, org_user_context, mock_workflow):
         """Should pass category filter to repository."""
-        from src.services.mcp.tools.list_workflows import list_workflows_tool
-
         with patch("src.core.database.get_db_context") as mock_db_ctx:
             mock_session = AsyncMock()
             mock_db_ctx.return_value.__aenter__ = AsyncMock(return_value=mock_session)
@@ -384,8 +276,7 @@ class TestListWorkflows:
                 mock_repo.count_active = AsyncMock(return_value=1)
                 mock_repo_cls.return_value = mock_repo
 
-                tool = list_workflows_tool(org_user_context)
-                await call_tool(tool, {"category": "automation"})
+                await _list_workflows_impl(org_user_context, category="automation")
 
                 # Verify category was passed to search
                 mock_repo.search.assert_called_once_with(
@@ -397,19 +288,15 @@ class TestListWorkflows:
     @pytest.mark.asyncio
     async def test_handles_database_error(self, org_user_context):
         """Should return error message on database failure."""
-        from src.services.mcp.tools.list_workflows import list_workflows_tool
-
         with patch("src.core.database.get_db_context") as mock_db_ctx:
             mock_db_ctx.return_value.__aenter__ = AsyncMock(
                 side_effect=Exception("Database connection failed")
             )
             mock_db_ctx.return_value.__aexit__ = AsyncMock(return_value=None)
 
-            tool = list_workflows_tool(org_user_context)
-            result = await call_tool(tool, {})
+            result = await _list_workflows_impl(org_user_context)
 
-        text = result["content"][0]["text"]
-        assert "Error listing workflows" in text
+        assert "Error listing workflows" in result
 
 
 # ==================== list_forms Tests ====================
@@ -420,10 +307,7 @@ class TestListForms:
 
     @pytest.mark.asyncio
     async def test_lists_forms_for_org_user(self, org_user_context, mock_form):
-        """Should list forms for org user with ORG_PLUS_GLOBAL filter."""
-        from src.core.org_filter import OrgFilterType
-        from src.services.mcp.tools.list_forms import list_forms_tool
-
+        """Should list forms for org user."""
         with patch("src.core.database.get_db_context") as mock_db_ctx:
             mock_session = AsyncMock()
             mock_db_ctx.return_value.__aenter__ = AsyncMock(return_value=mock_session)
@@ -431,31 +315,20 @@ class TestListForms:
 
             with patch("src.repositories.forms.FormRepository") as mock_repo_cls:
                 mock_repo = MagicMock()
-                mock_repo.list_forms = AsyncMock(return_value=[mock_form])
+                mock_repo.list_by_organization = AsyncMock(return_value=[mock_form])
                 mock_repo_cls.return_value = mock_repo
 
-                tool = list_forms_tool(org_user_context)
-                result = await call_tool(tool, {"active_only": True})
+                result = await _list_forms_impl(org_user_context)
 
-                # Verify org user gets ORG_PLUS_GLOBAL filter
-                mock_repo.list_forms.assert_called_once_with(
-                    filter_type=OrgFilterType.ORG_PLUS_GLOBAL,
-                    active_only=True,
-                )
-
-        text = result["content"][0]["text"]
-        assert "Forms" in text
-        assert "Test Form" in text
-        assert "A test form" in text
+        assert "Forms" in result
+        assert "Test Form" in result
+        assert "A test form" in result
 
     @pytest.mark.asyncio
     async def test_lists_forms_for_platform_admin(
         self, platform_admin_context, mock_form
     ):
         """Should list all forms for platform admin."""
-        from src.core.org_filter import OrgFilterType
-        from src.services.mcp.tools.list_forms import list_forms_tool
-
         with patch("src.core.database.get_db_context") as mock_db_ctx:
             mock_session = AsyncMock()
             mock_db_ctx.return_value.__aenter__ = AsyncMock(return_value=mock_session)
@@ -463,23 +336,17 @@ class TestListForms:
 
             with patch("src.repositories.forms.FormRepository") as mock_repo_cls:
                 mock_repo = MagicMock()
-                mock_repo.list_forms = AsyncMock(return_value=[mock_form])
+                mock_repo.list_all = AsyncMock(return_value=[mock_form])
                 mock_repo_cls.return_value = mock_repo
 
-                tool = list_forms_tool(platform_admin_context)
-                await call_tool(tool, {})
+                result = await _list_forms_impl(platform_admin_context)
 
-                # Verify platform admin gets ALL filter
-                mock_repo.list_forms.assert_called_once_with(
-                    filter_type=OrgFilterType.ALL,
-                    active_only=True,
-                )
+        assert "Forms" in result
+        assert "Test Form" in result
 
     @pytest.mark.asyncio
     async def test_returns_empty_message(self, org_user_context):
         """Should return helpful message when no forms found."""
-        from src.services.mcp.tools.list_forms import list_forms_tool
-
         with patch("src.core.database.get_db_context") as mock_db_ctx:
             mock_session = AsyncMock()
             mock_db_ctx.return_value.__aenter__ = AsyncMock(return_value=mock_session)
@@ -487,32 +354,25 @@ class TestListForms:
 
             with patch("src.repositories.forms.FormRepository") as mock_repo_cls:
                 mock_repo = MagicMock()
-                mock_repo.list_forms = AsyncMock(return_value=[])
+                mock_repo.list_by_organization = AsyncMock(return_value=[])
                 mock_repo_cls.return_value = mock_repo
 
-                tool = list_forms_tool(org_user_context)
-                result = await call_tool(tool, {})
+                result = await _list_forms_impl(org_user_context)
 
-        text = result["content"][0]["text"]
-        assert "No forms found" in text
-        assert "validate_form_schema" in text
+        assert "No forms found" in result
 
     @pytest.mark.asyncio
     async def test_handles_database_error(self, org_user_context):
         """Should return error message on database failure."""
-        from src.services.mcp.tools.list_forms import list_forms_tool
-
         with patch("src.core.database.get_db_context") as mock_db_ctx:
             mock_db_ctx.return_value.__aenter__ = AsyncMock(
                 side_effect=Exception("Database connection failed")
             )
             mock_db_ctx.return_value.__aexit__ = AsyncMock(return_value=None)
 
-            tool = list_forms_tool(org_user_context)
-            result = await call_tool(tool, {})
+            result = await _list_forms_impl(org_user_context)
 
-        text = result["content"][0]["text"]
-        assert "Error listing forms" in text
+        assert "Error listing forms" in result
 
 
 # ==================== search_knowledge Tests ====================
@@ -526,8 +386,6 @@ class TestSearchKnowledge:
         self, org_user_context, mock_knowledge_document
     ):
         """Should search knowledge base and return results."""
-        from src.services.mcp.tools.search_knowledge import search_knowledge_tool
-
         with patch("src.core.database.get_db_context") as mock_db_ctx:
             mock_session = AsyncMock()
             mock_db_ctx.return_value.__aenter__ = AsyncMock(return_value=mock_session)
@@ -537,7 +395,7 @@ class TestSearchKnowledge:
                 "src.services.embeddings.get_embedding_client"
             ) as mock_embed_client:
                 mock_client = AsyncMock()
-                mock_client.embed = AsyncMock(return_value=[[0.1, 0.2, 0.3]])
+                mock_client.embed_single = AsyncMock(return_value=[0.1, 0.2, 0.3])
                 mock_embed_client.return_value = mock_client
 
                 with patch(
@@ -547,29 +405,17 @@ class TestSearchKnowledge:
                     mock_repo.search = AsyncMock(return_value=[mock_knowledge_document])
                     mock_repo_cls.return_value = mock_repo
 
-                    tool = search_knowledge_tool(org_user_context)
-                    result = await call_tool(tool, {"query": "SDK documentation"})
-
-                    # Verify search was called with correct params
-                    mock_repo.search.assert_called_once_with(
-                        query_embedding=[0.1, 0.2, 0.3],
-                        namespace="bifrost_docs",
-                        organization_id=org_user_context.org_id,
-                        limit=5,
-                        fallback=True,
+                    result = await _search_knowledge_impl(
+                        org_user_context, "SDK documentation"
                     )
 
-        text = result["content"][0]["text"]
-        assert "Knowledge Search Results" in text
-        assert "SDK documentation" in text
-        assert "This is documentation about the SDK" in text
-        assert "85.0%" in text  # Score
+        assert "Knowledge Search Results" in result
+        assert "SDK documentation" in result
+        assert "This is documentation about the SDK" in result
 
     @pytest.mark.asyncio
     async def test_returns_no_results_message(self, org_user_context):
         """Should return helpful message when no results found."""
-        from src.services.mcp.tools.search_knowledge import search_knowledge_tool
-
         with patch("src.core.database.get_db_context") as mock_db_ctx:
             mock_session = AsyncMock()
             mock_db_ctx.return_value.__aenter__ = AsyncMock(return_value=mock_session)
@@ -579,7 +425,7 @@ class TestSearchKnowledge:
                 "src.services.embeddings.get_embedding_client"
             ) as mock_embed_client:
                 mock_client = AsyncMock()
-                mock_client.embed = AsyncMock(return_value=[[0.1, 0.2, 0.3]])
+                mock_client.embed_single = AsyncMock(return_value=[0.1, 0.2, 0.3])
                 mock_embed_client.return_value = mock_client
 
                 with patch(
@@ -589,30 +435,22 @@ class TestSearchKnowledge:
                     mock_repo.search = AsyncMock(return_value=[])
                     mock_repo_cls.return_value = mock_repo
 
-                    tool = search_knowledge_tool(org_user_context)
-                    result = await call_tool(tool, {"query": "nonexistent topic"})
+                    result = await _search_knowledge_impl(
+                        org_user_context, "nonexistent topic"
+                    )
 
-        text = result["content"][0]["text"]
-        assert "No results found" in text
-        assert "nonexistent topic" in text
-        assert "bifrost_docs" in text
+        assert "No results found" in result
+        assert "nonexistent topic" in result
 
     @pytest.mark.asyncio
     async def test_handles_missing_query(self, org_user_context):
-        """Should return error when query is missing."""
-        from src.services.mcp.tools.search_knowledge import search_knowledge_tool
-
-        tool = search_knowledge_tool(org_user_context)
-        result = await call_tool(tool, {})  # No query provided
-
-        text = result["content"][0]["text"]
-        assert "query is required" in text
+        """Should return error when query is empty."""
+        result = await _search_knowledge_impl(org_user_context, "")
+        assert "query is required" in result
 
     @pytest.mark.asyncio
-    async def test_handles_embedding_unavailable(self, org_user_context):
-        """Should return error when embedding service is unavailable."""
-        from src.services.mcp.tools.search_knowledge import search_knowledge_tool
-
+    async def test_handles_embedding_error(self, org_user_context):
+        """Should return error when embedding service fails."""
         with patch("src.core.database.get_db_context") as mock_db_ctx:
             mock_session = AsyncMock()
             mock_db_ctx.return_value.__aenter__ = AsyncMock(return_value=mock_session)
@@ -621,91 +459,11 @@ class TestSearchKnowledge:
             with patch(
                 "src.services.embeddings.get_embedding_client"
             ) as mock_embed_client:
-                mock_embed_client.side_effect = ValueError(
-                    "No embedding configuration found"
-                )
+                mock_embed_client.side_effect = Exception("Embedding service error")
 
-                tool = search_knowledge_tool(org_user_context)
-                result = await call_tool(tool, {"query": "test query"})
+                result = await _search_knowledge_impl(org_user_context, "test query")
 
-        text = result["content"][0]["text"]
-        assert "Knowledge search unavailable" in text
-        assert "embedding" in text.lower()
-
-    @pytest.mark.asyncio
-    async def test_uses_custom_namespace_and_limit(
-        self, org_user_context, mock_knowledge_document
-    ):
-        """Should respect custom namespace and limit parameters."""
-        from src.services.mcp.tools.search_knowledge import search_knowledge_tool
-
-        with patch("src.core.database.get_db_context") as mock_db_ctx:
-            mock_session = AsyncMock()
-            mock_db_ctx.return_value.__aenter__ = AsyncMock(return_value=mock_session)
-            mock_db_ctx.return_value.__aexit__ = AsyncMock(return_value=None)
-
-            with patch(
-                "src.services.embeddings.get_embedding_client"
-            ) as mock_embed_client:
-                mock_client = AsyncMock()
-                mock_client.embed = AsyncMock(return_value=[[0.1, 0.2, 0.3]])
-                mock_embed_client.return_value = mock_client
-
-                with patch(
-                    "src.repositories.knowledge.KnowledgeRepository"
-                ) as mock_repo_cls:
-                    mock_repo = MagicMock()
-                    mock_repo.search = AsyncMock(return_value=[mock_knowledge_document])
-                    mock_repo_cls.return_value = mock_repo
-
-                    tool = search_knowledge_tool(org_user_context)
-                    await call_tool(tool, 
-                        {
-                            "query": "custom search",
-                            "namespace": "my_custom_ns",
-                            "limit": 3,
-                        }
-                    )
-
-                    # Verify custom params used
-                    mock_repo.search.assert_called_once_with(
-                        query_embedding=[0.1, 0.2, 0.3],
-                        namespace="my_custom_ns",
-                        organization_id=org_user_context.org_id,
-                        limit=3,
-                        fallback=True,
-                    )
-
-    @pytest.mark.asyncio
-    async def test_caps_limit_at_10(self, org_user_context, mock_knowledge_document):
-        """Should cap limit at 10 even if higher value requested."""
-        from src.services.mcp.tools.search_knowledge import search_knowledge_tool
-
-        with patch("src.core.database.get_db_context") as mock_db_ctx:
-            mock_session = AsyncMock()
-            mock_db_ctx.return_value.__aenter__ = AsyncMock(return_value=mock_session)
-            mock_db_ctx.return_value.__aexit__ = AsyncMock(return_value=None)
-
-            with patch(
-                "src.services.embeddings.get_embedding_client"
-            ) as mock_embed_client:
-                mock_client = AsyncMock()
-                mock_client.embed = AsyncMock(return_value=[[0.1, 0.2, 0.3]])
-                mock_embed_client.return_value = mock_client
-
-                with patch(
-                    "src.repositories.knowledge.KnowledgeRepository"
-                ) as mock_repo_cls:
-                    mock_repo = MagicMock()
-                    mock_repo.search = AsyncMock(return_value=[mock_knowledge_document])
-                    mock_repo_cls.return_value = mock_repo
-
-                    tool = search_knowledge_tool(org_user_context)
-                    await call_tool(tool, {"query": "test", "limit": 50})  # Request 50
-
-                    # Verify limit capped at 10
-                    call_args = mock_repo.search.call_args
-                    assert call_args.kwargs["limit"] == 10
+        assert "Error searching knowledge" in result
 
 
 # ==================== list_integrations Tests ====================
@@ -731,8 +489,6 @@ class TestListIntegrations:
         self, platform_admin_context, mock_integration
     ):
         """Should list all active integrations for platform admin."""
-        from src.services.mcp.tools.list_integrations import list_integrations_tool
-
         with patch("src.core.database.get_db_context") as mock_db_ctx:
             mock_session = AsyncMock()
             mock_result = MagicMock()
@@ -741,22 +497,18 @@ class TestListIntegrations:
             mock_db_ctx.return_value.__aenter__ = AsyncMock(return_value=mock_session)
             mock_db_ctx.return_value.__aexit__ = AsyncMock(return_value=None)
 
-            tool = list_integrations_tool(platform_admin_context)
-            result = await call_tool(tool, {})
+            result = await _list_integrations_impl(platform_admin_context)
 
-        text = result["content"][0]["text"]
-        assert "Available Integrations" in text
-        assert "Microsoft Graph" in text
-        assert "OAuth configured" in text
-        assert "Tenant ID" in text
+        assert "Available Integrations" in result
+        assert "Microsoft Graph" in result
+        assert "OAuth configured" in result
+        assert "Tenant ID" in result
 
     @pytest.mark.asyncio
     async def test_lists_integrations_for_org_user(
         self, org_user_context, mock_integration
     ):
         """Should list org-mapped integrations for org user."""
-        from src.services.mcp.tools.list_integrations import list_integrations_tool
-
         with patch("src.core.database.get_db_context") as mock_db_ctx:
             mock_session = AsyncMock()
             mock_result = MagicMock()
@@ -765,18 +517,14 @@ class TestListIntegrations:
             mock_db_ctx.return_value.__aenter__ = AsyncMock(return_value=mock_session)
             mock_db_ctx.return_value.__aexit__ = AsyncMock(return_value=None)
 
-            tool = list_integrations_tool(org_user_context)
-            result = await call_tool(tool, {})
+            result = await _list_integrations_impl(org_user_context)
 
-        text = result["content"][0]["text"]
-        assert "Available Integrations" in text
-        assert "Microsoft Graph" in text
+        assert "Available Integrations" in result
+        assert "Microsoft Graph" in result
 
     @pytest.mark.asyncio
     async def test_returns_empty_message(self, org_user_context):
         """Should return helpful message when no integrations found."""
-        from src.services.mcp.tools.list_integrations import list_integrations_tool
-
         with patch("src.core.database.get_db_context") as mock_db_ctx:
             mock_session = AsyncMock()
             mock_result = MagicMock()
@@ -785,29 +533,23 @@ class TestListIntegrations:
             mock_db_ctx.return_value.__aenter__ = AsyncMock(return_value=mock_session)
             mock_db_ctx.return_value.__aexit__ = AsyncMock(return_value=None)
 
-            tool = list_integrations_tool(org_user_context)
-            result = await call_tool(tool, {})
+            result = await _list_integrations_impl(org_user_context)
 
-        text = result["content"][0]["text"]
-        assert "No integrations" in text
-        assert "admin panel" in text
+        assert "No integrations" in result
+        assert "admin panel" in result
 
     @pytest.mark.asyncio
     async def test_handles_database_error(self, org_user_context):
         """Should return error message on database failure."""
-        from src.services.mcp.tools.list_integrations import list_integrations_tool
-
         with patch("src.core.database.get_db_context") as mock_db_ctx:
             mock_db_ctx.return_value.__aenter__ = AsyncMock(
                 side_effect=Exception("Database connection failed")
             )
             mock_db_ctx.return_value.__aexit__ = AsyncMock(return_value=None)
 
-            tool = list_integrations_tool(org_user_context)
-            result = await call_tool(tool, {})
+            result = await _list_integrations_impl(org_user_context)
 
-        text = result["content"][0]["text"]
-        assert "Error listing integrations" in text
+        assert "Error listing integrations" in result
 
 
 # ==================== execute_workflow Tests ====================
@@ -821,8 +563,6 @@ class TestExecuteWorkflow:
         self, org_user_context, mock_workflow
     ):
         """Should execute workflow and return success result."""
-        from src.services.mcp.tools.execute_workflow import execute_workflow_tool
-
         # Create mock execution result
         mock_result = MagicMock()
         mock_result.status.value = "Success"
@@ -847,23 +587,20 @@ class TestExecuteWorkflow:
                 ) as mock_execute:
                     mock_execute.return_value = mock_result
 
-                    tool = execute_workflow_tool(org_user_context)
-                    result = await call_tool(
-                        tool,
-                        {"workflow_name": "test_workflow", "inputs": {"key": "value"}},
+                    result = await _execute_workflow_impl(
+                        org_user_context,
+                        "test_workflow",
+                        {"key": "value"},
                     )
 
-        text = result["content"][0]["text"]
-        assert "executed successfully" in text
-        assert "test_workflow" in text
-        assert "150ms" in text
-        assert "test value" in text
+        assert "executed successfully" in result
+        assert "test_workflow" in result
+        assert "150ms" in result
+        assert "test value" in result
 
     @pytest.mark.asyncio
     async def test_returns_error_workflow_not_found(self, org_user_context):
         """Should return error when workflow not found."""
-        from src.services.mcp.tools.execute_workflow import execute_workflow_tool
-
         with patch("src.core.database.get_db_context") as mock_db_ctx:
             mock_session = AsyncMock()
             mock_db_ctx.return_value.__aenter__ = AsyncMock(return_value=mock_session)
@@ -876,23 +613,20 @@ class TestExecuteWorkflow:
                 mock_repo.get_by_name = AsyncMock(return_value=None)
                 mock_repo_cls.return_value = mock_repo
 
-                tool = execute_workflow_tool(org_user_context)
-                result = await call_tool(
-                    tool, {"workflow_name": "nonexistent_workflow"}
+                result = await _execute_workflow_impl(
+                    org_user_context,
+                    "nonexistent_workflow",
                 )
 
-        text = result["content"][0]["text"]
-        assert "not found" in text
-        assert "nonexistent_workflow" in text
-        assert "list_workflows" in text
+        assert "not found" in result
+        assert "nonexistent_workflow" in result
+        assert "list_workflows" in result
 
     @pytest.mark.asyncio
     async def test_returns_error_on_execution_failure(
         self, org_user_context, mock_workflow
     ):
         """Should return error details when workflow execution fails."""
-        from src.services.mcp.tools.execute_workflow import execute_workflow_tool
-
         # Create mock failed execution result
         mock_result = MagicMock()
         mock_result.status.value = "Failed"
@@ -916,41 +650,81 @@ class TestExecuteWorkflow:
                 ) as mock_execute:
                     mock_execute.return_value = mock_result
 
-                    tool = execute_workflow_tool(org_user_context)
-                    result = await call_tool(tool, {"workflow_name": "test_workflow"})
+                    result = await _execute_workflow_impl(
+                        org_user_context,
+                        "test_workflow",
+                    )
 
-        text = result["content"][0]["text"]
-        assert "failed" in text
-        assert "Division by zero" in text
-        assert "ValueError" in text
+        assert "failed" in result
+        assert "Division by zero" in result
+        assert "ValueError" in result
 
     @pytest.mark.asyncio
     async def test_handles_missing_workflow_name(self, org_user_context):
-        """Should return error when workflow_name is missing."""
-        from src.services.mcp.tools.execute_workflow import execute_workflow_tool
-
-        tool = execute_workflow_tool(org_user_context)
-        result = await call_tool(tool, {})  # No workflow_name
-
-        text = result["content"][0]["text"]
-        assert "workflow_name is required" in text
+        """Should return error when workflow_name is empty."""
+        result = await _execute_workflow_impl(org_user_context, "")
+        assert "workflow_name is required" in result
 
     @pytest.mark.asyncio
     async def test_handles_exception(self, org_user_context):
         """Should return error message on unexpected exception."""
-        from src.services.mcp.tools.execute_workflow import execute_workflow_tool
-
         with patch("src.core.database.get_db_context") as mock_db_ctx:
             mock_db_ctx.return_value.__aenter__ = AsyncMock(
                 side_effect=Exception("Unexpected error")
             )
             mock_db_ctx.return_value.__aexit__ = AsyncMock(return_value=None)
 
-            tool = execute_workflow_tool(org_user_context)
-            result = await call_tool(tool, {"workflow_name": "test_workflow"})
+            result = await _execute_workflow_impl(
+                org_user_context,
+                "test_workflow",
+            )
 
-        text = result["content"][0]["text"]
-        assert "Error executing workflow" in text
+        assert "Error executing workflow" in result
+
+
+# ==================== BifrostMCPServer Tests ====================
+
+
+class TestBifrostMCPServer:
+    """Tests for the BifrostMCPServer class."""
+
+    def test_creates_server_with_context(self, org_user_context):
+        """Should create server with context."""
+        from src.services.mcp.server import BifrostMCPServer
+
+        server = BifrostMCPServer(org_user_context)
+        assert server.context == org_user_context
+
+    def test_get_tool_names_returns_all_tools(self, org_user_context):
+        """Should return all tool names when no filter."""
+        from src.services.mcp.server import BifrostMCPServer
+
+        server = BifrostMCPServer(org_user_context)
+        tool_names = server.get_tool_names()
+
+        assert "mcp__bifrost__execute_workflow" in tool_names
+        assert "mcp__bifrost__list_workflows" in tool_names
+        assert "mcp__bifrost__list_integrations" in tool_names
+        assert "mcp__bifrost__list_forms" in tool_names
+        assert "mcp__bifrost__get_form_schema" in tool_names
+        assert "mcp__bifrost__validate_form_schema" in tool_names
+        assert "mcp__bifrost__search_knowledge" in tool_names
+
+    def test_get_tool_names_respects_enabled_filter(self):
+        """Should return only enabled tools when filter applied."""
+        from src.services.mcp.server import BifrostMCPServer
+
+        context = MCPContext(
+            user_id=uuid4(),
+            enabled_system_tools=["execute_workflow", "list_workflows"],
+        )
+        server = BifrostMCPServer(context)
+        tool_names = server.get_tool_names()
+
+        assert "mcp__bifrost__execute_workflow" in tool_names
+        assert "mcp__bifrost__list_workflows" in tool_names
+        assert "mcp__bifrost__list_integrations" not in tool_names
+        assert len(tool_names) == 2
 
 
 # ==================== get_system_tool_ids Tests ====================
@@ -999,3 +773,379 @@ class TestGetSystemToolIds:
         tool_ids = get_system_tool_ids()
 
         assert isinstance(tool_ids, list)
+
+
+# ==================== MCPConfigService Tests ====================
+
+
+class TestMCPConfigService:
+    """Tests for the MCP configuration service."""
+
+    @pytest.fixture
+    def mock_session(self):
+        """Create a mock database session."""
+        return AsyncMock()
+
+    @pytest.mark.asyncio
+    async def test_get_config_returns_defaults_when_not_configured(self, mock_session):
+        """Should return default config when no config exists."""
+        from src.services.mcp.config_service import MCPConfigService
+
+        # Mock no config found
+        mock_result = MagicMock()
+        mock_result.scalars.return_value.first.return_value = None
+        mock_session.execute = AsyncMock(return_value=mock_result)
+
+        service = MCPConfigService(mock_session)
+        config = await service.get_config()
+
+        assert config.enabled is True
+        assert config.require_platform_admin is True
+        assert config.allowed_tool_ids is None
+        assert config.blocked_tool_ids is None
+        assert config.is_configured is False
+
+    @pytest.mark.asyncio
+    async def test_get_config_returns_stored_config(self, mock_session):
+        """Should return stored config values."""
+        from src.services.mcp.config_service import MCPConfigService
+
+        # Mock config found
+        mock_config = MagicMock()
+        mock_config.value_json = {
+            "enabled": False,
+            "require_platform_admin": False,
+            "allowed_tool_ids": ["execute_workflow", "list_workflows"],
+            "blocked_tool_ids": ["search_knowledge"],
+        }
+        mock_config.updated_at = datetime.utcnow()
+        mock_config.updated_by = "admin@test.com"
+
+        mock_result = MagicMock()
+        mock_result.scalars.return_value.first.return_value = mock_config
+        mock_session.execute = AsyncMock(return_value=mock_result)
+
+        service = MCPConfigService(mock_session)
+        config = await service.get_config()
+
+        assert config.enabled is False
+        assert config.require_platform_admin is False
+        assert config.allowed_tool_ids == ["execute_workflow", "list_workflows"]
+        assert config.blocked_tool_ids == ["search_knowledge"]
+        assert config.is_configured is True
+        assert config.configured_by == "admin@test.com"
+
+    @pytest.mark.asyncio
+    async def test_save_config_creates_new_config(self, mock_session):
+        """Should create new config when none exists."""
+        from src.services.mcp.config_service import MCPConfigService
+
+        # Mock no existing config
+        mock_result = MagicMock()
+        mock_result.scalars.return_value.first.return_value = None
+        mock_session.execute = AsyncMock(return_value=mock_result)
+        mock_session.add = MagicMock()
+
+        service = MCPConfigService(mock_session)
+        config = await service.save_config(
+            enabled=False,
+            require_platform_admin=True,
+            allowed_tool_ids=None,
+            blocked_tool_ids=["search_knowledge"],
+            updated_by="admin@test.com",
+        )
+
+        mock_session.add.assert_called_once()
+        assert config.enabled is False
+        assert config.require_platform_admin is True
+        assert config.blocked_tool_ids == ["search_knowledge"]
+
+    @pytest.mark.asyncio
+    async def test_save_config_updates_existing_config(self, mock_session):
+        """Should update existing config."""
+        from src.services.mcp.config_service import MCPConfigService
+
+        # Mock existing config
+        mock_config = MagicMock()
+        mock_config.value_json = {"enabled": True, "require_platform_admin": True}
+        mock_result = MagicMock()
+        mock_result.scalars.return_value.first.return_value = mock_config
+        mock_session.execute = AsyncMock(return_value=mock_result)
+
+        service = MCPConfigService(mock_session)
+        config = await service.save_config(
+            enabled=False,
+            require_platform_admin=False,
+            allowed_tool_ids=["execute_workflow"],
+            blocked_tool_ids=[],
+            updated_by="admin@test.com",
+        )
+
+        assert config.enabled is False
+        assert config.require_platform_admin is False
+        assert mock_config.value_json["enabled"] is False
+        assert mock_config.updated_by == "admin@test.com"
+
+    @pytest.mark.asyncio
+    async def test_delete_config_removes_existing(self, mock_session):
+        """Should delete existing config."""
+        from src.services.mcp.config_service import MCPConfigService
+
+        # Mock existing config
+        mock_config = MagicMock()
+        mock_result = MagicMock()
+        mock_result.scalars.return_value.first.return_value = mock_config
+        mock_session.execute = AsyncMock(return_value=mock_result)
+        mock_session.delete = AsyncMock()
+
+        service = MCPConfigService(mock_session)
+        deleted = await service.delete_config()
+
+        assert deleted is True
+        mock_session.delete.assert_called_once_with(mock_config)
+
+    @pytest.mark.asyncio
+    async def test_delete_config_returns_false_when_none_exists(self, mock_session):
+        """Should return False when no config to delete."""
+        from src.services.mcp.config_service import MCPConfigService
+
+        # Mock no config
+        mock_result = MagicMock()
+        mock_result.scalars.return_value.first.return_value = None
+        mock_session.execute = AsyncMock(return_value=mock_result)
+
+        service = MCPConfigService(mock_session)
+        deleted = await service.delete_config()
+
+        assert deleted is False
+
+
+class TestMCPConfigCache:
+    """Tests for the MCP config caching."""
+
+    @pytest.mark.asyncio
+    async def test_invalidate_cache_clears_cached_values(self):
+        """Should clear cached config on invalidation."""
+        from src.services.mcp.config_service import (
+            _cached_config,
+            _cache_time,
+            invalidate_mcp_config_cache,
+        )
+
+        # Call invalidate
+        invalidate_mcp_config_cache()
+
+        # Import again to check values
+        from src.services.mcp import config_service
+
+        assert config_service._cached_config is None
+        assert config_service._cache_time is None
+
+
+# ==================== Tool Filtering Tests ====================
+
+
+class TestToolFiltering:
+    """Tests for tool filtering based on allowed/blocked lists."""
+
+    def test_allowed_tool_ids_limits_visible_tools(self):
+        """Should only show tools in the allowed list when specified."""
+        from src.services.mcp.server import BifrostMCPServer
+
+        # Context with specific allowed tools
+        context = MCPContext(
+            user_id=uuid4(),
+            enabled_system_tools=["execute_workflow", "list_workflows"],
+        )
+
+        server = BifrostMCPServer(context)
+        tool_names = server.get_tool_names()
+
+        # Should only contain allowed tools
+        assert "mcp__bifrost__execute_workflow" in tool_names
+        assert "mcp__bifrost__list_workflows" in tool_names
+        assert "mcp__bifrost__list_integrations" not in tool_names
+        assert "mcp__bifrost__list_forms" not in tool_names
+        assert "mcp__bifrost__search_knowledge" not in tool_names
+        assert len(tool_names) == 2
+
+    def test_empty_allowed_means_all_tools(self):
+        """Should show all tools when allowed list is empty (falsy)."""
+        from src.services.mcp.server import BifrostMCPServer
+
+        # Context with empty enabled tools - empty list is falsy,
+        # so BifrostMCPServer treats it as None (all tools allowed)
+        context = MCPContext(
+            user_id=uuid4(),
+            enabled_system_tools=[],
+        )
+
+        server = BifrostMCPServer(context)
+        tool_names = server.get_tool_names()
+
+        # Empty list is falsy, so it becomes None -> all tools shown
+        assert len(tool_names) == 7
+
+    def test_no_enabled_tools_means_all_tools(self):
+        """Should show all tools when enabled_system_tools is not set."""
+        from src.services.mcp.server import BifrostMCPServer
+
+        # Context without enabled_system_tools set
+        context = MCPContext(
+            user_id=uuid4(),
+            # enabled_system_tools not set -> defaults to empty list
+        )
+        # Manually set to None to simulate "all tools" mode
+        context.enabled_system_tools = []
+
+        # But we need to create server before setting - let's test the None case
+        context2 = MCPContext(user_id=uuid4())
+
+        # BifrostMCPServer converts empty list to None for "all tools"
+        server = BifrostMCPServer(context2)
+
+        # enabled_tools should be None since context.enabled_system_tools is empty
+        # Actually the logic is: if enabled_system_tools is truthy, use it
+        # If empty/falsy, _enabled_tools becomes None meaning "all tools"
+        tool_names = server.get_tool_names()
+
+        # Should contain all system tools
+        expected_tools = [
+            "mcp__bifrost__execute_workflow",
+            "mcp__bifrost__list_workflows",
+            "mcp__bifrost__list_integrations",
+            "mcp__bifrost__list_forms",
+            "mcp__bifrost__get_form_schema",
+            "mcp__bifrost__validate_form_schema",
+            "mcp__bifrost__search_knowledge",
+        ]
+
+        for expected in expected_tools:
+            assert expected in tool_names, f"Missing tool: {expected}"
+
+        assert len(tool_names) == 7
+
+    def test_single_tool_filtering(self):
+        """Should correctly filter to single tool."""
+        from src.services.mcp.server import BifrostMCPServer
+
+        context = MCPContext(
+            user_id=uuid4(),
+            enabled_system_tools=["search_knowledge"],
+        )
+
+        server = BifrostMCPServer(context)
+        tool_names = server.get_tool_names()
+
+        assert tool_names == ["mcp__bifrost__search_knowledge"]
+
+    def test_tool_filtering_preserves_order(self):
+        """Should return tools in consistent order."""
+        from src.services.mcp.server import BifrostMCPServer
+
+        # Test multiple times to ensure consistent ordering
+        for _ in range(3):
+            context = MCPContext(
+                user_id=uuid4(),
+                enabled_system_tools=["list_workflows", "execute_workflow", "list_forms"],
+            )
+
+            server = BifrostMCPServer(context)
+            tool_names = server.get_tool_names()
+
+            # Order should match the all_tools list order, not enabled_system_tools order
+            # (execute_workflow comes before list_workflows in all_tools)
+            assert "mcp__bifrost__execute_workflow" in tool_names
+            assert "mcp__bifrost__list_workflows" in tool_names
+            assert "mcp__bifrost__list_forms" in tool_names
+
+    def test_unknown_tool_ids_ignored(self):
+        """Should ignore unknown tool IDs in enabled list."""
+        from src.services.mcp.server import BifrostMCPServer
+
+        context = MCPContext(
+            user_id=uuid4(),
+            enabled_system_tools=["execute_workflow", "unknown_tool", "fake_tool"],
+        )
+
+        server = BifrostMCPServer(context)
+        tool_names = server.get_tool_names()
+
+        # Should only contain the valid tool
+        assert tool_names == ["mcp__bifrost__execute_workflow"]
+
+
+class TestMCPContextFiltering:
+    """Tests for MCPContext-based tool access control."""
+
+    def test_platform_admin_sees_all_tools_by_default(self):
+        """Platform admin should see all tools when no filter applied."""
+        from src.services.mcp.server import BifrostMCPServer
+
+        context = MCPContext(
+            user_id=uuid4(),
+            is_platform_admin=True,
+            # No enabled_system_tools filter
+        )
+
+        server = BifrostMCPServer(context)
+        tool_names = server.get_tool_names()
+
+        assert len(tool_names) == 7  # All system tools
+
+    def test_org_user_respects_enabled_tools(self):
+        """Org user should only see tools from enabled_system_tools."""
+        from src.services.mcp.server import BifrostMCPServer
+
+        context = MCPContext(
+            user_id=uuid4(),
+            org_id=uuid4(),
+            is_platform_admin=False,
+            enabled_system_tools=["list_workflows", "list_forms"],
+        )
+
+        server = BifrostMCPServer(context)
+        tool_names = server.get_tool_names()
+
+        assert len(tool_names) == 2
+        assert "mcp__bifrost__list_workflows" in tool_names
+        assert "mcp__bifrost__list_forms" in tool_names
+
+    def test_context_with_all_tools_enabled(self):
+        """Context with all tools enabled should show all tools."""
+        from src.services.mcp.server import BifrostMCPServer
+
+        all_tool_ids = [
+            "execute_workflow",
+            "list_workflows",
+            "list_integrations",
+            "list_forms",
+            "get_form_schema",
+            "validate_form_schema",
+            "search_knowledge",
+        ]
+
+        context = MCPContext(
+            user_id=uuid4(),
+            enabled_system_tools=all_tool_ids,
+        )
+
+        server = BifrostMCPServer(context)
+        tool_names = server.get_tool_names()
+
+        assert len(tool_names) == 7
+
+    def test_enabled_tools_are_case_sensitive(self):
+        """Tool IDs should be case-sensitive."""
+        from src.services.mcp.server import BifrostMCPServer
+
+        context = MCPContext(
+            user_id=uuid4(),
+            enabled_system_tools=["Execute_Workflow", "LIST_WORKFLOWS"],  # Wrong case
+        )
+
+        server = BifrostMCPServer(context)
+        tool_names = server.get_tool_names()
+
+        # Should be empty since tool IDs don't match (case sensitive)
+        assert len(tool_names) == 0

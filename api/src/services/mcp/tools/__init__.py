@@ -1,24 +1,30 @@
 """
 Bifrost MCP Tools
 
-Individual tool implementations for the Bifrost MCP server.
-Each tool is a decorated async function that can be registered with the server.
+This module previously contained individual tool implementations.
+All tools have been consolidated into src/services/mcp/server.py
+for unified SDK and FastMCP support.
+
+The tool implementations are now in server.py as:
+- _execute_workflow_impl
+- _list_workflows_impl
+- _list_integrations_impl
+- _list_forms_impl
+- _get_form_schema_impl
+- _validate_form_schema_impl
+- _search_knowledge_impl
+
+These are exposed via BifrostMCPServer.get_sdk_server() for SDK use
+and BifrostMCPServer.get_fastmcp_server() for external HTTP access.
 """
 
-from src.services.mcp.tools.execute_workflow import execute_workflow_tool
-from src.services.mcp.tools.get_form_schema import get_form_schema_tool
-from src.services.mcp.tools.list_forms import list_forms_tool
-from src.services.mcp.tools.list_integrations import list_integrations_tool
-from src.services.mcp.tools.list_workflows import list_workflows_tool
-from src.services.mcp.tools.search_knowledge import search_knowledge_tool
-from src.services.mcp.tools.validate_form_schema import validate_form_schema_tool
+# Re-export from server for backwards compatibility if needed
+from src.services.mcp.server import (
+    BifrostMCPServer,
+    MCPContext,
+)
 
 __all__ = [
-    "execute_workflow_tool",
-    "get_form_schema_tool",
-    "list_forms_tool",
-    "list_integrations_tool",
-    "list_workflows_tool",
-    "search_knowledge_tool",
-    "validate_form_schema_tool",
+    "BifrostMCPServer",
+    "MCPContext",
 ]

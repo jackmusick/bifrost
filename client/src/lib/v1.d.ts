@@ -4925,6 +4925,93 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/mcp/status": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Mcp Status
+         * @description Get MCP server status and available tools for the current user.
+         *
+         *     This is a REST endpoint (not MCP protocol) for debugging and discovery.
+         *     Returns information about which tools the user has access to.
+         */
+        get: operations["mcp_status_api_mcp_status_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/mcp/config": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Mcp Config
+         * @description Get MCP external access configuration.
+         *
+         *     Returns the current configuration for external MCP access,
+         *     including whether it's enabled and what restrictions apply.
+         */
+        get: operations["get_mcp_config_api_mcp_config_get"];
+        /**
+         * Update Mcp Config
+         * @description Update MCP external access configuration.
+         *
+         *     Allows platform admins to configure:
+         *     - Whether MCP is enabled
+         *     - Whether platform admin is required
+         *     - Which tools are allowed/blocked
+         */
+        put: operations["update_mcp_config_api_mcp_config_put"];
+        post?: never;
+        /**
+         * Delete Mcp Config
+         * @description Delete MCP configuration and revert to defaults.
+         *
+         *     This removes any custom configuration and reverts to:
+         *     - enabled: True
+         *     - require_platform_admin: True
+         *     - all tools allowed
+         */
+        delete: operations["delete_mcp_config_api_mcp_config_delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/mcp/tools": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Mcp Tools
+         * @description List all available MCP tools.
+         *
+         *     Returns information about each tool that can be exposed via MCP,
+         *     useful for configuring allowed/blocked tool lists.
+         */
+        get: operations["list_mcp_tools_api_mcp_tools_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/": {
         parameters: {
             query?: never;
@@ -5399,7 +5486,7 @@ export interface components {
             /** Mfa Required For Password */
             mfa_required_for_password: boolean;
             /** Oauth Providers */
-            oauth_providers: components["schemas"]["src__models__contracts__auth__OAuthProviderInfo"][];
+            oauth_providers: components["schemas"]["OAuthProviderInfo"][];
         };
         /**
          * AuthorizeResponse
@@ -8916,6 +9003,113 @@ export interface components {
             message: string;
         };
         /**
+         * MCPConfigRequest
+         * @description Request model for updating MCP configuration.
+         */
+        MCPConfigRequest: {
+            /**
+             * Enabled
+             * @description Whether external MCP access is enabled
+             * @default true
+             */
+            enabled: boolean;
+            /**
+             * Require Platform Admin
+             * @description Whether only platform admins can access MCP
+             * @default true
+             */
+            require_platform_admin: boolean;
+            /**
+             * Allowed Tool Ids
+             * @description List of allowed tool IDs (None = all tools allowed)
+             */
+            allowed_tool_ids?: string[] | null;
+            /**
+             * Blocked Tool Ids
+             * @description List of blocked tool IDs
+             */
+            blocked_tool_ids?: string[];
+        };
+        /**
+         * MCPConfigResponse
+         * @description Response model for MCP configuration (no sensitive data).
+         */
+        MCPConfigResponse: {
+            /**
+             * Enabled
+             * @description Whether external MCP access is enabled
+             */
+            enabled: boolean;
+            /**
+             * Require Platform Admin
+             * @description Whether only platform admins can access MCP
+             */
+            require_platform_admin: boolean;
+            /**
+             * Allowed Tool Ids
+             * @description List of allowed tool IDs (None = all tools allowed)
+             */
+            allowed_tool_ids?: string[] | null;
+            /**
+             * Blocked Tool Ids
+             * @description List of blocked tool IDs
+             */
+            blocked_tool_ids?: string[];
+            /**
+             * Is Configured
+             * @description Whether MCP has been explicitly configured
+             */
+            is_configured: boolean;
+            /**
+             * Configured At
+             * @description When the configuration was last updated
+             */
+            configured_at?: string | null;
+            /**
+             * Configured By
+             * @description Email of user who last configured
+             */
+            configured_by?: string | null;
+        };
+        /**
+         * MCPToolInfo
+         * @description Information about an available MCP tool.
+         */
+        MCPToolInfo: {
+            /**
+             * Id
+             * @description Tool identifier
+             */
+            id: string;
+            /**
+             * Name
+             * @description Tool display name
+             */
+            name: string;
+            /**
+             * Description
+             * @description Tool description
+             */
+            description: string;
+            /**
+             * Is System
+             * @description Whether this is a built-in system tool
+             * @default true
+             */
+            is_system: boolean;
+        };
+        /**
+         * MCPToolsResponse
+         * @description Response model for listing MCP tools.
+         */
+        MCPToolsResponse: {
+            /**
+             * Tools
+             * @description List of available MCP tools
+             */
+            tools: components["schemas"]["MCPToolInfo"][];
+        };
+        /**
          * MFAEnrollVerifyResponse
          * @description Response after completing MFA enrollment.
          */
@@ -8945,6 +9139,22 @@ export interface components {
             mfa_code?: string | null;
         };
         /**
+         * MFASetupResponse
+         * @description MFA setup response with secret.
+         */
+        MFASetupResponse: {
+            /** Secret */
+            secret: string;
+            /** Qr Code Uri */
+            qr_code_uri: string;
+            /** Provisioning Uri */
+            provisioning_uri: string;
+            /** Issuer */
+            issuer: string;
+            /** Account Name */
+            account_name: string;
+        };
+        /**
          * MFAStatusResponse
          * @description MFA status response.
          */
@@ -8959,6 +9169,23 @@ export interface components {
             enrolled_methods: string[];
             /** Recovery Codes Remaining */
             recovery_codes_remaining: number;
+        };
+        /**
+         * MFAVerifyRequest
+         * @description Request to verify MFA code during login.
+         */
+        MFAVerifyRequest: {
+            /** Mfa Token */
+            mfa_token: string;
+            /** Code */
+            code: string;
+            /**
+             * Trust Device
+             * @default false
+             */
+            trust_device: boolean;
+            /** Device Name */
+            device_name?: string | null;
         };
         /**
          * MFAVerifyResponse
@@ -9177,6 +9404,27 @@ export interface components {
              * @default Redirect user to authorization_url to complete OAuth flow
              */
             message: string;
+        };
+        /**
+         * OAuthCallbackRequest
+         * @description Request model for OAuth callback endpoint
+         */
+        OAuthCallbackRequest: {
+            /**
+             * Code
+             * @description Authorization code from OAuth provider
+             */
+            code: string;
+            /**
+             * State
+             * @description State parameter for CSRF protection
+             */
+            state?: string | null;
+            /**
+             * Redirect Uri
+             * @description Redirect URI used in authorization request
+             */
+            redirect_uri?: string | null;
         };
         /**
          * OAuthCallbackResponse
@@ -9603,6 +9851,18 @@ export interface components {
              * @description OIDC display name for login button
              */
             display_name?: string | null;
+        };
+        /**
+         * OAuthProviderInfo
+         * @description OAuth provider information for login page
+         */
+        OAuthProviderInfo: {
+            /** Name */
+            name: string;
+            /** Display Name */
+            display_name: string;
+            /** Icon */
+            icon?: string | null;
         };
         /**
          * OAuthProvidersResponse
@@ -11507,6 +11767,35 @@ export interface components {
             output_tokens: number;
         };
         /**
+         * UserCreate
+         * @description Input for creating a user.
+         */
+        UserCreate: {
+            /**
+             * Email
+             * Format: email
+             */
+            email: string;
+            /** Name */
+            name?: string | null;
+            /** Password */
+            password?: string | null;
+            /**
+             * Is Active
+             * @default true
+             */
+            is_active: boolean;
+            /**
+             * Is Superuser
+             * @default false
+             */
+            is_superuser: boolean;
+            /** @default ORG */
+            user_type: components["schemas"]["UserType"];
+            /** Organization Id */
+            organization_id?: string | null;
+        };
+        /**
          * UserFormsResponse
          * @description Response model for getting forms accessible to a user
          */
@@ -12262,85 +12551,6 @@ export interface components {
             backup_will_be_created: boolean;
         };
         /**
-         * OAuthProviderInfo
-         * @description OAuth provider information for login page
-         */
-        src__models__contracts__auth__OAuthProviderInfo: {
-            /** Name */
-            name: string;
-            /** Display Name */
-            display_name: string;
-            /** Icon */
-            icon?: string | null;
-        };
-        /**
-         * OAuthCallbackRequest
-         * @description Request model for OAuth callback endpoint
-         */
-        src__models__contracts__oauth__OAuthCallbackRequest: {
-            /**
-             * Code
-             * @description Authorization code from OAuth provider
-             */
-            code: string;
-            /**
-             * State
-             * @description State parameter for CSRF protection
-             */
-            state?: string | null;
-            /**
-             * Redirect Uri
-             * @description Redirect URI used in authorization request
-             */
-            redirect_uri?: string | null;
-        };
-        /**
-         * UserCreate
-         * @description Input for creating a user.
-         */
-        src__models__contracts__users__UserCreate: {
-            /**
-             * Email
-             * Format: email
-             */
-            email: string;
-            /** Name */
-            name?: string | null;
-            /** Password */
-            password?: string | null;
-            /**
-             * Is Active
-             * @default true
-             */
-            is_active: boolean;
-            /**
-             * Is Superuser
-             * @default false
-             */
-            is_superuser: boolean;
-            /** @default ORG */
-            user_type: components["schemas"]["UserType"];
-            /** Organization Id */
-            organization_id?: string | null;
-        };
-        /**
-         * MFAVerifyRequest
-         * @description Request to verify MFA code during login.
-         */
-        src__routers__auth__MFAVerifyRequest: {
-            /** Mfa Token */
-            mfa_token: string;
-            /** Code */
-            code: string;
-            /**
-             * Trust Device
-             * @default false
-             */
-            trust_device: boolean;
-            /** Device Name */
-            device_name?: string | null;
-        };
-        /**
          * UserCreate
          * @description User creation request model.
          */
@@ -12354,22 +12564,6 @@ export interface components {
             password: string;
             /** Name */
             name?: string | null;
-        };
-        /**
-         * MFASetupResponse
-         * @description MFA setup response with secret.
-         */
-        src__routers__mfa__MFASetupResponse: {
-            /** Secret */
-            secret: string;
-            /** Qr Code Uri */
-            qr_code_uri: string;
-            /** Provisioning Uri */
-            provisioning_uri: string;
-            /** Issuer */
-            issuer: string;
-            /** Account Name */
-            account_name: string;
         };
         /**
          * MFAVerifyRequest
@@ -12500,7 +12694,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["src__routers__mfa__MFASetupResponse"];
+                    "application/json": components["schemas"]["MFASetupResponse"];
                 };
             };
         };
@@ -12534,7 +12728,7 @@ export interface operations {
         };
         requestBody: {
             content: {
-                "application/json": components["schemas"]["src__routers__auth__MFAVerifyRequest"];
+                "application/json": components["schemas"]["MFAVerifyRequest"];
             };
         };
         responses: {
@@ -12871,7 +13065,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["src__routers__mfa__MFASetupResponse"];
+                    "application/json": components["schemas"]["MFASetupResponse"];
                 };
             };
         };
@@ -13586,7 +13780,7 @@ export interface operations {
         };
         requestBody: {
             content: {
-                "application/json": components["schemas"]["src__models__contracts__users__UserCreate"];
+                "application/json": components["schemas"]["UserCreate"];
             };
         };
         responses: {
@@ -16881,7 +17075,7 @@ export interface operations {
         };
         requestBody: {
             content: {
-                "application/json": components["schemas"]["src__models__contracts__oauth__OAuthCallbackRequest"];
+                "application/json": components["schemas"]["OAuthCallbackRequest"];
             };
         };
         responses: {
@@ -20590,6 +20784,123 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["ToolsResponse"];
+                };
+            };
+        };
+    };
+    mcp_status_api_mcp_status_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+        };
+    };
+    get_mcp_config_api_mcp_config_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MCPConfigResponse"];
+                };
+            };
+        };
+    };
+    update_mcp_config_api_mcp_config_put: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["MCPConfigRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MCPConfigResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    delete_mcp_config_api_mcp_config_delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+        };
+    };
+    list_mcp_tools_api_mcp_tools_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MCPToolsResponse"];
                 };
             };
         };

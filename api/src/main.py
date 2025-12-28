@@ -57,6 +57,7 @@ from src.routers import (
     email_config_router,
     oauth_config_router,
     tools_router,
+    mcp_router,
 )
 
 # Configure logging
@@ -79,11 +80,11 @@ logger = logging.getLogger(__name__)
 
 
 @asynccontextmanager
-async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
+async def app_lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     """
-    Application lifespan manager.
+    Core application lifespan manager.
 
-    Handles startup and shutdown events.
+    Handles startup and shutdown events for the main application.
     """
     # Startup
     logger.info("Starting Bifrost API...")
@@ -127,6 +128,40 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     await pubsub_manager.close()
     await close_db()
     logger.info("Bifrost API shutdown complete")
+
+
+# MCP ASGI app cached at module level for lifespan access
+_mcp_asgi_app = None
+
+
+def _get_mcp_asgi_app():
+    """Get or create the MCP ASGI app (cached)."""
+    global _mcp_asgi_app
+    if _mcp_asgi_app is None:
+        try:
+            from src.routers.mcp import get_mcp_asgi_app
+            _mcp_asgi_app = get_mcp_asgi_app()
+        except Exception as e:
+            logger.warning(f"Could not create MCP ASGI app: {e}")
+    return _mcp_asgi_app
+
+
+@asynccontextmanager
+async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
+    """
+    Combined lifespan manager for FastAPI and FastMCP.
+
+    Handles both the main app lifespan and MCP session manager initialization.
+    """
+    mcp_app = _get_mcp_asgi_app()
+
+    # Combine both lifespans - app first, then MCP
+    async with app_lifespan(app):
+        if mcp_app and hasattr(mcp_app, 'lifespan'):
+            async with mcp_app.lifespan(app):
+                yield
+        else:
+            yield
 
 
 async def register_dynamic_workflow_endpoints(app: FastAPI) -> None:
@@ -270,6 +305,30 @@ def create_app() -> FastAPI:
     app.include_router(email_config_router)
     app.include_router(oauth_config_router)
     app.include_router(tools_router)
+    app.include_router(mcp_router)
+
+    # Mount MCP OAuth routes at root level (required by RFC 8414/9728)
+    # These must be registered BEFORE the FastMCP ASGI mount
+    try:
+        from src.services.mcp.auth import create_bifrost_auth_provider
+        auth_provider = create_bifrost_auth_provider()
+        for route in auth_provider.get_routes():
+            app.add_api_route(
+                route.path,
+                route.endpoint,
+                methods=list(route.methods) if route.methods else ["GET"],
+                include_in_schema=False,  # Don't clutter OpenAPI docs
+            )
+        logger.info(f"Mounted {len(auth_provider.get_routes())} MCP OAuth routes")
+    except Exception as e:
+        logger.warning(f"Could not mount MCP OAuth routes: {e}")
+
+    # Mount FastMCP ASGI app at root - FastMCP handles /mcp internally
+    # This must be mounted AFTER all other routers since it catches unmatched routes
+    mcp_asgi_app = _get_mcp_asgi_app()
+    if mcp_asgi_app:
+        app.mount("", mcp_asgi_app)
+        logger.info("Mounted FastMCP ASGI app at root (MCP handles /mcp)")
 
     # Root endpoint
     @app.get("/")
