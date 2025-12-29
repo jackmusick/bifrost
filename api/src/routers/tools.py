@@ -72,6 +72,27 @@ SYSTEM_TOOLS: list[ToolInfo] = [
         default_enabled_for_coding_agent=True,
     ),
     ToolInfo(
+        id="create_form",
+        name="Create Form",
+        description="Create a new form with fields linked to a workflow",
+        type="system",
+        default_enabled_for_coding_agent=False,  # File ops for coding agent
+    ),
+    ToolInfo(
+        id="get_form",
+        name="Get Form",
+        description="Get detailed information about a specific form including all fields",
+        type="system",
+        default_enabled_for_coding_agent=True,
+    ),
+    ToolInfo(
+        id="update_form",
+        name="Update Form",
+        description="Update an existing form's properties or fields",
+        type="system",
+        default_enabled_for_coding_agent=False,  # File ops for coding agent
+    ),
+    ToolInfo(
         id="search_knowledge",
         name="Search Knowledge",
         description="Search the Bifrost knowledge base for documentation and examples",

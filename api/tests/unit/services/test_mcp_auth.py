@@ -125,7 +125,7 @@ class TestGetRoutes:
         assert "/authorize" in paths
         assert "/token" in paths
         assert "/register" in paths
-        assert "/api/mcp/callback" in paths
+        assert "/mcp/callback" in paths
 
 
 class TestAuthorizationServerMetadata:
@@ -165,7 +165,7 @@ class TestProtectedResourceMetadata:
         import json
         metadata = json.loads(data)
 
-        assert metadata["resource"] == "https://test.example.com/api/mcp"
+        assert metadata["resource"] == "https://test.example.com/mcp"
         assert "https://test.example.com" in metadata["authorization_servers"]
         assert "mcp:access" in metadata["scopes_supported"]
         assert "header" in metadata["bearer_methods_supported"]

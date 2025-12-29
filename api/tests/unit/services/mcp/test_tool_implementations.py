@@ -98,6 +98,37 @@ class TestSearchFilesImpl:
         assert "Error: query is required" in result
 
 
+class TestSearchKnowledgeImpl:
+    """Tests for _search_knowledge_impl()."""
+
+    @pytest.mark.asyncio
+    async def test_returns_error_when_query_empty(self, context):
+        """Should return error message when query is empty."""
+        from src.services.mcp.server import _search_knowledge_impl
+
+        result = await _search_knowledge_impl(context, "")
+        assert "Error: query is required" in result
+
+    @pytest.mark.asyncio
+    async def test_returns_error_when_no_namespaces_accessible(self, context):
+        """Should return error when user has no accessible namespaces."""
+        from src.services.mcp.server import _search_knowledge_impl
+
+        # Context has empty accessible_namespaces by default
+        result = await _search_knowledge_impl(context, "test query")
+        assert "No knowledge sources available" in result
+
+    @pytest.mark.asyncio
+    async def test_returns_access_denied_for_unauthorized_namespace(self, context):
+        """Should deny access to namespace not in accessible list."""
+        from src.services.mcp.server import _search_knowledge_impl
+
+        context.accessible_namespaces = ["allowed-ns"]
+        result = await _search_knowledge_impl(context, "test query", namespace="forbidden-ns")
+        assert "Access denied" in result
+        assert "forbidden-ns" in result
+
+
 class TestCreateFolderImpl:
     """Tests for _create_folder_impl()."""
 

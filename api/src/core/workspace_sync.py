@@ -185,11 +185,14 @@ class WorkspaceSyncService:
             return
 
         try:
-            async for message in self._pubsub.listen():
-                if not self._running:
-                    break
-
-                if message["type"] == "message":
+            while self._running:
+                # Use get_message with timeout instead of blocking listen()
+                # This allows the task to check for cancellation periodically
+                message = await self._pubsub.get_message(
+                    ignore_subscribe_messages=True,
+                    timeout=0.5  # Check for cancellation every 500ms
+                )
+                if message and message["type"] == "message":
                     try:
                         data = json.loads(message["data"])
                         await self._handle_event(data)
@@ -199,7 +202,7 @@ class WorkspaceSyncService:
                         logger.error(f"Error handling workspace sync event: {e}")
 
         except asyncio.CancelledError:
-            pass
+            logger.debug("Workspace sync listener cancelled")
         except Exception as e:
             logger.error(f"Workspace sync listener error: {e}")
 

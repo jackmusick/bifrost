@@ -5,6 +5,8 @@ Tests that orphaned workflows (those whose source files no longer exist)
 are properly marked as inactive during workspace reindexing.
 """
 
+import sys
+
 import pytest
 import pytest_asyncio
 from pathlib import Path
@@ -15,7 +17,33 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.models import Workflow, DataProvider, WorkspaceFile, Execution
 from src.models.enums import GitStatus
-from src.services.file_storage_service import FileStorageService
+
+
+def get_file_storage_service(db_session):
+    """
+    Get a fresh FileStorageService with clean libcst state.
+
+    This function clears the libcst module cache before importing FileStorageService
+    to ensure the libcst parser is not in a corrupted state from previous tests.
+    """
+    # Remove all libcst modules from cache
+    libcst_modules = [k for k in list(sys.modules.keys()) if k.startswith('libcst')]
+    for mod in libcst_modules:
+        del sys.modules[mod]
+
+    # Also remove decorator_property_service to force reimport with fresh libcst
+    service_key = 'src.services.decorator_property_service'
+    if service_key in sys.modules:
+        del sys.modules[service_key]
+
+    # Remove file_storage_service to force reimport with fresh decorator_property_service
+    storage_key = 'src.services.file_storage_service'
+    if storage_key in sys.modules:
+        del sys.modules[storage_key]
+
+    # Now import FileStorageService fresh
+    from src.services.file_storage_service import FileStorageService
+    return FileStorageService(db_session)
 
 
 # Use hardcoded test workspace path for isolation
@@ -97,9 +125,9 @@ def test_workflow():
         await db_session.commit()
         orphaned_id = orphaned_workflow.id
 
-        # 3. Call reindex_workspace_files
-        storage = FileStorageService(db_session)
-        counts = await storage.reindex_workspace_files(workspace)
+        # 3. Call reindex_workspace_files with inject_ids=True to inject IDs into decorators
+        storage = get_file_storage_service(db_session)
+        counts = await storage.reindex_workspace_files(workspace, inject_ids=True)
         await db_session.commit()
 
         # 4. Verify the orphaned workflow is now inactive
@@ -155,7 +183,7 @@ def test_provider():
         orphaned_id = orphaned_provider.id
 
         # 3. Call reindex_workspace_files
-        storage = FileStorageService(db_session)
+        storage = get_file_storage_service(db_session)
         counts = await storage.reindex_workspace_files(workspace)
         await db_session.commit()
 
@@ -197,7 +225,7 @@ def test_provider():
         real_file.write_text("# Real file content")
 
         # 3. Call reindex_workspace_files
-        storage = FileStorageService(db_session)
+        storage = get_file_storage_service(db_session)
         counts = await storage.reindex_workspace_files(workspace)
         await db_session.commit()
 
@@ -245,7 +273,7 @@ def test_provider():
         await db_session.commit()
 
         # 2. Call reindex_workspace_files
-        storage = FileStorageService(db_session)
+        storage = get_file_storage_service(db_session)
         counts = await storage.reindex_workspace_files(workspace)
         await db_session.commit()
 
@@ -287,9 +315,9 @@ def documented_workflow(message: str, count: int = 5):
     pass
 """)
 
-        # 2. Call reindex_workspace_files
-        storage = FileStorageService(db_session)
-        await storage.reindex_workspace_files(workspace)
+        # 2. Call reindex_workspace_files with inject_ids=True to inject IDs into decorators
+        storage = get_file_storage_service(db_session)
+        await storage.reindex_workspace_files(workspace, inject_ids=True)
         await db_session.commit()
 
         # 3. Verify workflow was created with correct metadata

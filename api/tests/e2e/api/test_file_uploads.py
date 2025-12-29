@@ -169,7 +169,7 @@ async def e2e_file_read_workflow(file_path: str):
     }
 '''
         response = e2e_client.put(
-            "/api/files/editor/content",
+            "/api/files/editor/content?index=true",
             headers=platform_admin.headers,
             json={
                 "path": "e2e_file_read_workflow.py",
@@ -179,7 +179,7 @@ async def e2e_file_read_workflow(file_path: str):
         )
         assert response.status_code == 200, f"Create workflow failed: {response.text}"
 
-        # Wait for workflow to be discovered
+        # Discovery happens synchronously during file write - just poll for workflow
         workflow_id = None
         max_attempts = 30
         for _ in range(max_attempts):

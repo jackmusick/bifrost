@@ -147,13 +147,19 @@ class ConnectionManager:
             return
 
         try:
-            async for message in self._pubsub.listen():
-                if message["type"] == "pmessage":
+            while True:
+                # Use get_message with timeout instead of blocking listen()
+                # This allows the task to check for cancellation periodically
+                message = await self._pubsub.get_message(
+                    ignore_subscribe_messages=True,
+                    timeout=0.5  # Check for cancellation every 500ms
+                )
+                if message and message["type"] == "pmessage":
                     channel = message["channel"].decode().replace("bifrost:", "")
                     data = json.loads(message["data"])
                     await self._send_local(channel, data)
         except asyncio.CancelledError:
-            pass
+            logger.debug("Redis listener cancelled")
         except Exception as e:
             logger.error(f"Redis listener error: {e}")
 

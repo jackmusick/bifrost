@@ -28,6 +28,7 @@ class MCPToolAccessResult:
 
     tools: list[ToolInfo]
     accessible_agent_ids: list[UUID]
+    accessible_namespaces: list[str]  # Knowledge namespaces from accessible agents
 
 
 class MCPToolAccessService:
@@ -128,9 +129,16 @@ class MCPToolAccessService:
         config = await config_service.get_config()
         tools = self._apply_config_filters(tools, config)
 
+        # Collect knowledge namespaces from accessible agents
+        seen_namespaces: set[str] = set()
+        for agent in accessible_agents:
+            for ns in agent.knowledge_sources or []:
+                seen_namespaces.add(ns)
+
         return MCPToolAccessResult(
             tools=tools,
             accessible_agent_ids=[agent.id for agent in accessible_agents],
+            accessible_namespaces=list(seen_namespaces),
         )
 
     async def _get_accessible_agents(

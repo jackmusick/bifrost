@@ -420,6 +420,7 @@ def handle_run(args: list[str]) -> int:
     workflow_file = args[0]
     selected_workflow: str | None = None
     no_browser = False
+    inline_params: dict[str, Any] | None = None
 
     # Parse arguments
     i = 1
@@ -429,6 +430,16 @@ def handle_run(args: list[str]) -> int:
                 print("Error: --workflow requires a value", file=sys.stderr)
                 return 1
             selected_workflow = args[i + 1]
+            i += 2
+        elif args[i] in ("--params", "-p"):
+            if i + 1 >= len(args):
+                print("Error: --params requires a JSON value", file=sys.stderr)
+                return 1
+            try:
+                inline_params = json.loads(args[i + 1])
+            except json.JSONDecodeError as e:
+                print(f"Error: Invalid JSON for --params: {e}", file=sys.stderr)
+                return 1
             i += 2
         elif args[i] in ("--no-browser", "-n"):
             no_browser = True
@@ -480,7 +491,28 @@ def handle_run(args: list[str]) -> int:
         )
         return 1
 
-    # Ensure user is authenticated
+    # If --params is provided with --workflow, run in standalone mode (no API required)
+    if inline_params is not None:
+        if not selected_workflow:
+            # If only one workflow, use it; otherwise require --workflow
+            if len(workflows) == 1:
+                selected_workflow = list(workflows.keys())[0]
+            else:
+                print("Error: --params requires --workflow when multiple workflows exist", file=sys.stderr)
+                return 1
+
+        print(f"Running in standalone mode: {selected_workflow}")
+        workflow_fn = workflows[selected_workflow]
+
+        try:
+            result = asyncio.run(workflow_fn(**inline_params))
+            print(f"Result: {json.dumps(result, indent=2, default=str)}")
+            return 0
+        except Exception as e:
+            print(f"Error executing workflow: {e}", file=sys.stderr)
+            return 1
+
+    # Ensure user is authenticated (only needed for API-based flow)
     try:
         client = BifrostClient.get_instance(require_auth=True)
     except RuntimeError as e:
@@ -669,11 +701,11 @@ def print_run_help() -> None:
     print("""
 Usage: bifrost run <file> [options]
 
-Run a workflow file with web-based parameter input.
+Run a workflow file with web-based parameter input or standalone execution.
 
 This command:
 1. Discovers @workflow decorated functions in your file
-2. Opens a browser to the DevRun page
+2. Opens a browser to the DevRun page (or runs standalone with --params)
 3. Waits for you to select a workflow and enter parameters
 4. Executes the workflow locally and shows results
 
@@ -681,14 +713,16 @@ Arguments:
   file                  Python file containing @workflow decorated functions
 
 Options:
-  --workflow, -w NAME   Pre-select a workflow (optional)
+  --workflow, -w NAME   Pre-select a workflow (required with --params if multiple workflows)
+  --params, -p JSON     Run in standalone mode with JSON parameters (no API required)
   --no-browser, -n      Don't automatically open browser
   --help, -h            Show this help message
 
 Examples:
-  bifrost run my_workflow.py
-  bifrost run my_workflow.py --workflow greet
-  bifrost run my_workflow.py --no-browser
+  bifrost run workflow.py                                                  # Interactive mode with browser
+  bifrost run workflow.py --workflow greet                                 # Pre-select workflow
+  bifrost run workflow.py --workflow greet --params '{"name": "World"}'    # Standalone mode
+  bifrost run workflow.py --no-browser                                     # No auto-open browser
 """.strip())
 
 

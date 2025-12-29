@@ -90,6 +90,9 @@ class MCPContext:
     # System tools enabled for this context (from agent.system_tools)
     enabled_system_tools: list[str] = field(default_factory=list)
 
+    # Knowledge namespaces accessible to this user (from agent.knowledge_sources)
+    accessible_namespaces: list[str] = field(default_factory=list)
+
 
 # =============================================================================
 # Tool Implementations (shared between SDK and FastMCP)
@@ -431,20 +434,498 @@ async def _validate_form_schema_impl(context: MCPContext, form_json: str) -> str
     return "✓ Form schema is valid!"
 
 
+async def _create_form_impl(
+    context: MCPContext,
+    name: str,
+    workflow_id: str,
+    fields: list[dict[str, Any]],
+    description: str | None = None,
+    launch_workflow_id: str | None = None,
+) -> str:
+    """Create a new form with fields linked to a workflow.
+
+    Args:
+        context: MCP context with user permissions
+        name: Form name (1-200 chars)
+        workflow_id: UUID of workflow to execute on form submit
+        fields: Array of field definitions
+        description: Optional form description
+        launch_workflow_id: Optional UUID of workflow to run before form display
+
+    Returns:
+        Formatted confirmation with form ID/URL
+    """
+    from datetime import datetime
+    from uuid import UUID as UUID_TYPE
+
+    from sqlalchemy import select
+    from sqlalchemy.orm import selectinload
+
+    from src.core.database import get_db_context
+    from src.models import Form as FormORM
+    from src.models import FormSchema
+    from src.repositories.workflows import WorkflowRepository
+    from src.routers.forms import _form_schema_to_fields, _write_form_to_file
+
+    logger.info(f"MCP create_form called: name={name}, workflow_id={workflow_id}")
+
+    # Validate inputs
+    if not name:
+        return "Error: name is required"
+    if not workflow_id:
+        return "Error: workflow_id is required"
+    if not fields:
+        return "Error: fields array is required"
+    if len(name) > 200:
+        return "Error: name must be 200 characters or less"
+
+    # Validate workflow_id is a valid UUID
+    try:
+        UUID_TYPE(workflow_id)
+    except ValueError:
+        return f"Error: workflow_id '{workflow_id}' is not a valid UUID"
+
+    # Validate launch_workflow_id if provided
+    if launch_workflow_id:
+        try:
+            UUID_TYPE(launch_workflow_id)
+        except ValueError:
+            return f"Error: launch_workflow_id '{launch_workflow_id}' is not a valid UUID"
+
+    try:
+        async with get_db_context() as db:
+            # Verify workflow exists
+            workflow_repo = WorkflowRepository(db)
+            workflow = await workflow_repo.get(UUID_TYPE(workflow_id))
+            if not workflow:
+                return f"Error: Workflow '{workflow_id}' not found. Use list_workflows to see available workflows."
+
+            # Verify launch workflow if provided
+            if launch_workflow_id:
+                launch_workflow = await workflow_repo.get(UUID_TYPE(launch_workflow_id))
+                if not launch_workflow:
+                    return f"Error: Launch workflow '{launch_workflow_id}' not found."
+
+            # Validate form schema
+            try:
+                FormSchema.model_validate({"fields": fields})
+            except Exception as e:
+                return f"Error validating form schema: {str(e)}"
+
+            # Create form record
+            now = datetime.utcnow()
+            org_id = UUID_TYPE(str(context.org_id)) if context.org_id else None
+
+            form = FormORM(
+                name=name,
+                description=description,
+                workflow_id=workflow_id,
+                launch_workflow_id=launch_workflow_id,
+                access_level="role_based",
+                organization_id=org_id,
+                is_active=True,
+                created_by=context.user_email or "mcp@bifrost.local",
+                created_at=now,
+                updated_at=now,
+            )
+
+            db.add(form)
+            await db.flush()  # Get the form ID
+
+            # Convert form_schema to FormField records
+            field_records = _form_schema_to_fields({"fields": fields}, form.id)
+            for field in field_records:
+                db.add(field)
+
+            await db.flush()
+
+            # Reload form with fields eager-loaded
+            result = await db.execute(
+                select(FormORM)
+                .options(selectinload(FormORM.fields))
+                .where(FormORM.id == form.id)
+            )
+            form = result.scalar_one()
+
+            # Write to file system (dual-write pattern)
+            try:
+                file_path = await _write_form_to_file(form, db)
+                form.file_path = file_path
+                await db.flush()
+            except Exception as e:
+                logger.error(f"Failed to write form file for {form.id}: {e}", exc_info=True)
+                # Continue - database write succeeded
+
+            logger.info(f"Created form {form.id}: {form.name}")
+
+            return (
+                f"✓ Form '{name}' created successfully!\n\n"
+                f"**Form ID:** {form.id}\n"
+                f"**URL:** `/forms/{form.id}`\n"
+                f"**Linked Workflow:** {workflow.name}\n"
+                f"**Fields:** {len(fields)}\n"
+                + (f"**Launch Workflow:** {launch_workflow.name}\n" if launch_workflow_id else "")
+                + (f"**File Path:** {form.file_path}\n" if form.file_path else "")
+            )
+
+    except Exception as e:
+        logger.exception(f"Error creating form via MCP: {e}")
+        return f"Error creating form: {str(e)}"
+
+
+async def _get_form_impl(
+    context: MCPContext,
+    form_id: str | None = None,
+    form_name: str | None = None,
+) -> str:
+    """Get detailed information about a specific form.
+
+    Args:
+        context: MCP context with user permissions
+        form_id: Form UUID (preferred)
+        form_name: Form name (alternative to ID)
+
+    Returns:
+        Formatted markdown with form details
+    """
+    from uuid import UUID as UUID_TYPE
+
+    from sqlalchemy import select
+    from sqlalchemy.orm import selectinload
+
+    from src.core.database import get_db_context
+    from src.models import Form as FormORM
+    from src.repositories.workflows import WorkflowRepository
+
+    logger.info(f"MCP get_form called: form_id={form_id}, form_name={form_name}")
+
+    if not form_id and not form_name:
+        return "Error: Either form_id or form_name is required"
+
+    try:
+        async with get_db_context() as db:
+            # Build query
+            query = select(FormORM).options(selectinload(FormORM.fields))
+
+            if form_id:
+                try:
+                    uuid_id = UUID_TYPE(form_id)
+                except ValueError:
+                    return f"Error: '{form_id}' is not a valid UUID"
+                query = query.where(FormORM.id == uuid_id)
+            else:
+                query = query.where(FormORM.name == form_name)
+
+            # Apply org scoping for non-admins
+            if not context.is_platform_admin and context.org_id:
+                from sqlalchemy import or_
+                org_uuid = UUID_TYPE(str(context.org_id))
+                query = query.where(
+                    or_(
+                        FormORM.organization_id == org_uuid,
+                        FormORM.organization_id.is_(None)  # Global forms
+                    )
+                )
+
+            result = await db.execute(query)
+            form = result.scalar_one_or_none()
+
+            if not form:
+                identifier = form_id or form_name
+                return f"Error: Form '{identifier}' not found. Use list_forms to see available forms."
+
+            # Get workflow names
+            workflow_repo = WorkflowRepository(db)
+            workflow_name = None
+            launch_workflow_name = None
+
+            if form.workflow_id:
+                try:
+                    workflow = await workflow_repo.get(UUID_TYPE(form.workflow_id))
+                    workflow_name = workflow.name if workflow else None
+                except Exception:
+                    pass
+
+            if form.launch_workflow_id:
+                try:
+                    launch_workflow = await workflow_repo.get(UUID_TYPE(form.launch_workflow_id))
+                    launch_workflow_name = launch_workflow.name if launch_workflow else None
+                except Exception:
+                    pass
+
+            # Build output
+            lines = [f"# {form.name}\n"]
+
+            if form.description:
+                lines.append(f"{form.description}\n")
+
+            lines.append("## Details\n")
+            lines.append(f"- **ID:** `{form.id}`")
+            lines.append(f"- **URL:** `/forms/{form.id}`")
+            lines.append(f"- **Active:** {'Yes' if form.is_active else 'No'}")
+            lines.append(f"- **Access Level:** {form.access_level or 'role_based'}")
+
+            if form.organization_id:
+                lines.append(f"- **Organization:** `{form.organization_id}`")
+            else:
+                lines.append("- **Scope:** Global")
+
+            lines.append("")
+            lines.append("## Linked Workflows\n")
+            if workflow_name:
+                lines.append(f"- **Submit Workflow:** {workflow_name} (`{form.workflow_id}`)")
+            else:
+                lines.append(f"- **Submit Workflow ID:** `{form.workflow_id}`")
+
+            if form.launch_workflow_id:
+                if launch_workflow_name:
+                    lines.append(f"- **Launch Workflow:** {launch_workflow_name} (`{form.launch_workflow_id}`)")
+                else:
+                    lines.append(f"- **Launch Workflow ID:** `{form.launch_workflow_id}`")
+
+            # Fields
+            if form.fields:
+                lines.append("")
+                lines.append(f"## Fields ({len(form.fields)})\n")
+
+                # Sort by position
+                sorted_fields = sorted(form.fields, key=lambda f: f.position)
+
+                for field in sorted_fields:
+                    required_marker = " **(required)**" if field.required else ""
+                    lines.append(f"### {field.label or field.name}{required_marker}")
+                    lines.append(f"- **Name:** `{field.name}`")
+                    lines.append(f"- **Type:** `{field.type}`")
+
+                    if field.placeholder:
+                        lines.append(f"- **Placeholder:** {field.placeholder}")
+                    if field.help_text:
+                        lines.append(f"- **Help:** {field.help_text}")
+                    if field.default_value is not None:
+                        lines.append(f"- **Default:** `{field.default_value}`")
+                    if field.options:
+                        import json
+                        lines.append(f"- **Options:** `{json.dumps(field.options)}`")
+                    if field.data_provider_id:
+                        lines.append(f"- **Data Provider:** `{field.data_provider_id}`")
+
+                    lines.append("")
+
+            return "\n".join(lines)
+
+    except Exception as e:
+        logger.exception(f"Error getting form via MCP: {e}")
+        return f"Error getting form: {str(e)}"
+
+
+async def _update_form_impl(
+    context: MCPContext,
+    form_id: str,
+    name: str | None = None,
+    description: str | None = None,
+    workflow_id: str | None = None,
+    launch_workflow_id: str | None = None,
+    fields: list[dict[str, Any]] | None = None,
+    is_active: bool | None = None,
+) -> str:
+    """Update an existing form.
+
+    Args:
+        context: MCP context with user permissions
+        form_id: Form UUID (required)
+        name: New form name
+        description: New description
+        workflow_id: New workflow UUID
+        launch_workflow_id: New launch workflow UUID
+        fields: New field definitions (replaces all fields)
+        is_active: Enable/disable the form
+
+    Returns:
+        Formatted confirmation
+    """
+    from datetime import datetime
+    from uuid import UUID as UUID_TYPE
+
+    from sqlalchemy import delete, select
+    from sqlalchemy.orm import selectinload
+
+    from src.core.database import get_db_context
+    from src.models import Form as FormORM, FormField as FormFieldORM
+    from src.models import FormSchema
+    from src.repositories.workflows import WorkflowRepository
+    from src.routers.forms import _form_schema_to_fields, _update_form_file
+
+    logger.info(f"MCP update_form called: form_id={form_id}")
+
+    if not form_id:
+        return "Error: form_id is required"
+
+    # Validate form_id is a valid UUID
+    try:
+        uuid_id = UUID_TYPE(form_id)
+    except ValueError:
+        return f"Error: '{form_id}' is not a valid UUID"
+
+    try:
+        async with get_db_context() as db:
+            # Get existing form
+            result = await db.execute(
+                select(FormORM)
+                .options(selectinload(FormORM.fields))
+                .where(FormORM.id == uuid_id)
+            )
+            form = result.scalar_one_or_none()
+
+            if not form:
+                return f"Error: Form '{form_id}' not found. Use list_forms to see available forms."
+
+            # Check access for non-admins
+            if not context.is_platform_admin:
+                if form.organization_id:
+                    if context.org_id and str(form.organization_id) != str(context.org_id):
+                        return "Error: You don't have permission to update this form."
+                # Global forms can only be updated by admins
+                if form.organization_id is None:
+                    return "Error: Only platform admins can update global forms."
+
+            old_file_path = form.file_path
+            updates_made = []
+
+            # Apply updates
+            if name is not None:
+                if len(name) > 200:
+                    return "Error: name must be 200 characters or less"
+                form.name = name
+                updates_made.append("name")
+
+            if description is not None:
+                form.description = description
+                updates_made.append("description")
+
+            if workflow_id is not None:
+                try:
+                    UUID_TYPE(workflow_id)
+                except ValueError:
+                    return f"Error: workflow_id '{workflow_id}' is not a valid UUID"
+
+                workflow_repo = WorkflowRepository(db)
+                workflow = await workflow_repo.get(UUID_TYPE(workflow_id))
+                if not workflow:
+                    return f"Error: Workflow '{workflow_id}' not found."
+                form.workflow_id = workflow_id
+                updates_made.append("workflow_id")
+
+            if launch_workflow_id is not None:
+                if launch_workflow_id == "":
+                    # Clear launch workflow
+                    form.launch_workflow_id = None
+                    updates_made.append("launch_workflow_id (cleared)")
+                else:
+                    try:
+                        UUID_TYPE(launch_workflow_id)
+                    except ValueError:
+                        return f"Error: launch_workflow_id '{launch_workflow_id}' is not a valid UUID"
+
+                    workflow_repo = WorkflowRepository(db)
+                    launch_workflow = await workflow_repo.get(UUID_TYPE(launch_workflow_id))
+                    if not launch_workflow:
+                        return f"Error: Launch workflow '{launch_workflow_id}' not found."
+                    form.launch_workflow_id = launch_workflow_id
+                    updates_made.append("launch_workflow_id")
+
+            if is_active is not None:
+                form.is_active = is_active
+                updates_made.append(f"is_active ({is_active})")
+
+            if fields is not None:
+                # Validate new fields
+                try:
+                    FormSchema.model_validate({"fields": fields})
+                except Exception as e:
+                    return f"Error validating form schema: {str(e)}"
+
+                # Delete existing fields
+                await db.execute(
+                    delete(FormFieldORM).where(FormFieldORM.form_id == form.id)
+                )
+
+                # Add new fields
+                field_records = _form_schema_to_fields({"fields": fields}, form.id)
+                for field in field_records:
+                    db.add(field)
+
+                updates_made.append(f"fields ({len(fields)} fields)")
+
+            if not updates_made:
+                return "No updates provided. Specify at least one field to update."
+
+            form.updated_at = datetime.utcnow()
+            await db.flush()
+
+            # Reload form with fields
+            result = await db.execute(
+                select(FormORM)
+                .options(selectinload(FormORM.fields))
+                .where(FormORM.id == form.id)
+            )
+            form = result.scalar_one()
+
+            # Update file
+            try:
+                new_file_path = await _update_form_file(form, old_file_path, db)
+                form.file_path = new_file_path
+                await db.flush()
+            except Exception as e:
+                logger.error(f"Failed to update form file for {form.id}: {e}", exc_info=True)
+
+            logger.info(f"Updated form {form.id}: {', '.join(updates_made)}")
+
+            return (
+                f"✓ Form '{form.name}' updated successfully!\n\n"
+                f"**Form ID:** {form.id}\n"
+                f"**Updates:** {', '.join(updates_made)}\n"
+                + (f"**File Path:** {form.file_path}\n" if form.file_path else "")
+            )
+
+    except Exception as e:
+        logger.exception(f"Error updating form via MCP: {e}")
+        return f"Error updating form: {str(e)}"
+
+
 async def _search_knowledge_impl(
     context: MCPContext,
     query: str,
+    namespace: str | None = None,
     limit: int = 5,
 ) -> str:
-    """Search the knowledge base."""
+    """Search the knowledge base.
+
+    Args:
+        context: MCP context with user permissions
+        query: Search query text
+        namespace: Optional specific namespace to search (must be accessible)
+        limit: Maximum number of results
+    """
     from src.core.database import get_db_context
     from src.repositories.knowledge import KnowledgeRepository
     from src.services.embeddings import get_embedding_client
 
-    logger.info(f"MCP search_knowledge called with query={query}")
+    logger.info(f"MCP search_knowledge called with query={query}, namespace={namespace}")
 
     if not query:
         return "Error: query is required"
+
+    # Validate namespace access
+    accessible = context.accessible_namespaces
+    if not accessible:
+        return "No knowledge sources available. No agents with knowledge access configured."
+
+    if namespace:
+        if namespace not in accessible:
+            return f"Access denied: namespace '{namespace}' is not accessible."
+        namespaces_to_search = [namespace]
+    else:
+        namespaces_to_search = accessible
 
     try:
         async with get_db_context() as db:
@@ -456,7 +937,7 @@ async def _search_knowledge_impl(
             repo = KnowledgeRepository(db)
             results = await repo.search(
                 query_embedding=query_embedding,
-                namespace=None,  # Search all namespaces
+                namespace=namespaces_to_search,
                 organization_id=context.org_id if context.org_id else None,
                 limit=limit,
                 fallback=True,
@@ -609,9 +1090,9 @@ async def _search_files_impl(
         lines.append(f"Found {len(results)} matches\n")
 
         for result in results[:20]:  # Limit to 20 results in output
-            lines.append(f"## {result.file_path}:{result.line_number}")
+            lines.append(f"## {result.file_path}:{result.line}")
             lines.append("```")
-            lines.append(result.line_content.strip())
+            lines.append(result.match_text.strip())
             lines.append("```\n")
 
         if len(results) > 20:
@@ -1052,6 +1533,101 @@ def _create_sdk_tools(context: MCPContext, enabled_tools: set[str] | None) -> li
             return {"content": [{"type": "text", "text": result}]}
         tools.append(validate_form_schema)
 
+    # Form CRUD operations (not enabled for coding agent by default - uses file system)
+    if enabled_tools is not None and "create_form" in enabled_tools:
+        @sdk_tool(
+            name="create_form",
+            description="Create a new form with fields linked to a workflow.",
+            input_schema={
+                "type": "object",
+                "properties": {
+                    "name": {"type": "string", "description": "Form name (1-200 chars)"},
+                    "workflow_id": {"type": "string", "description": "UUID of workflow to execute on form submit"},
+                    "fields": {
+                        "type": "array",
+                        "description": "Array of field definitions",
+                        "items": {
+                            "type": "object",
+                            "properties": {
+                                "name": {"type": "string"},
+                                "type": {"type": "string", "enum": ["text", "email", "number", "select", "checkbox", "textarea", "radio", "datetime", "file"]},
+                                "label": {"type": "string"},
+                                "required": {"type": "boolean"},
+                                "placeholder": {"type": "string"},
+                                "help_text": {"type": "string"},
+                                "options": {"type": "array", "items": {"type": "object"}}
+                            },
+                            "required": ["name", "type", "label"]
+                        }
+                    },
+                    "description": {"type": "string", "description": "Optional form description"},
+                    "launch_workflow_id": {"type": "string", "description": "Optional UUID of workflow to run before form display"}
+                },
+                "required": ["name", "workflow_id", "fields"],
+            },
+        )
+        async def create_form(args: dict[str, Any]) -> dict[str, Any]:
+            result = await _create_form_impl(
+                context,
+                args.get("name", ""),
+                args.get("workflow_id", ""),
+                args.get("fields", []),
+                args.get("description"),
+                args.get("launch_workflow_id"),
+            )
+            return {"content": [{"type": "text", "text": result}]}
+        tools.append(create_form)
+
+    if enabled_tools is None or "get_form" in enabled_tools:
+        @sdk_tool(
+            name="get_form",
+            description="Get detailed information about a specific form including all fields.",
+            input_schema={
+                "type": "object",
+                "properties": {
+                    "form_id": {"type": "string", "description": "Form UUID"},
+                    "form_name": {"type": "string", "description": "Form name (alternative to ID)"},
+                },
+                "required": [],
+            },
+        )
+        async def get_form(args: dict[str, Any]) -> dict[str, Any]:
+            result = await _get_form_impl(context, args.get("form_id"), args.get("form_name"))
+            return {"content": [{"type": "text", "text": result}]}
+        tools.append(get_form)
+
+    if enabled_tools is not None and "update_form" in enabled_tools:
+        @sdk_tool(
+            name="update_form",
+            description="Update an existing form's properties or fields.",
+            input_schema={
+                "type": "object",
+                "properties": {
+                    "form_id": {"type": "string", "description": "Form UUID (required)"},
+                    "name": {"type": "string", "description": "New form name"},
+                    "description": {"type": "string", "description": "New description"},
+                    "workflow_id": {"type": "string", "description": "New workflow UUID"},
+                    "launch_workflow_id": {"type": "string", "description": "New launch workflow UUID (empty string to clear)"},
+                    "fields": {"type": "array", "description": "New field definitions (replaces all fields)"},
+                    "is_active": {"type": "boolean", "description": "Enable/disable the form"},
+                },
+                "required": ["form_id"],
+            },
+        )
+        async def update_form(args: dict[str, Any]) -> dict[str, Any]:
+            result = await _update_form_impl(
+                context,
+                args.get("form_id", ""),
+                args.get("name"),
+                args.get("description"),
+                args.get("workflow_id"),
+                args.get("launch_workflow_id"),
+                args.get("fields"),
+                args.get("is_active"),
+            )
+            return {"content": [{"type": "text", "text": result}]}
+        tools.append(update_form)
+
     if enabled_tools is None or "search_knowledge" in enabled_tools:
         @sdk_tool(
             name="search_knowledge",
@@ -1060,13 +1636,19 @@ def _create_sdk_tools(context: MCPContext, enabled_tools: set[str] | None) -> li
                 "type": "object",
                 "properties": {
                     "query": {"type": "string", "description": "Search query"},
+                    "namespace": {"type": "string", "description": "Optional namespace to search (default: all accessible)"},
                     "limit": {"type": "integer", "description": "Maximum results to return (default: 5)"},
                 },
                 "required": ["query"],
             },
         )
         async def search_knowledge(args: dict[str, Any]) -> dict[str, Any]:
-            result = await _search_knowledge_impl(context, args.get("query", ""), args.get("limit", 5))
+            result = await _search_knowledge_impl(
+                context,
+                args.get("query", ""),
+                args.get("namespace"),
+                args.get("limit", 5),
+            )
             return {"content": [{"type": "text", "text": result}]}
         tools.append(search_knowledge)
 
@@ -1298,6 +1880,51 @@ def _get_context_from_token() -> MCPContext:
         is_platform_admin=token.claims.get("is_superuser", False),
         user_email=token.claims.get("email", ""),
         user_name=token.claims.get("name", ""),
+    )
+
+
+async def _get_context_with_namespaces() -> MCPContext:
+    """
+    Get MCPContext with accessible knowledge namespaces.
+
+    This extends the basic token context with accessible namespaces
+    queried from the database based on user's agent access.
+
+    Returns:
+        MCPContext with accessible_namespaces populated
+    """
+    from src.core.database import get_db_context
+    from src.services.mcp.tool_access import MCPToolAccessService
+    from fastmcp.server.dependencies import get_access_token  # type: ignore[import-not-found]
+    from fastmcp.exceptions import ToolError  # type: ignore[import-not-found]
+
+    token = get_access_token()
+    if token is None:
+        raise ToolError("Authentication required")
+
+    user_roles = token.claims.get("roles", [])
+    is_superuser = token.claims.get("is_superuser", False)
+
+    # Query accessible namespaces from agents
+    accessible_namespaces: list[str] = []
+    try:
+        async with get_db_context() as db:
+            service = MCPToolAccessService(db)
+            result = await service.get_accessible_tools(
+                user_roles=user_roles,
+                is_superuser=is_superuser,
+            )
+            accessible_namespaces = result.accessible_namespaces
+    except Exception as e:
+        logger.warning(f"Failed to get accessible namespaces: {e}")
+
+    return MCPContext(
+        user_id=token.claims.get("user_id", ""),
+        org_id=token.claims.get("org_id"),
+        is_platform_admin=is_superuser,
+        user_email=token.claims.get("email", ""),
+        user_name=token.claims.get("name", ""),
+        accessible_namespaces=accessible_namespaces,
     )
 
 
@@ -1723,13 +2350,57 @@ def _register_fastmcp_tools(mcp: "FastMCP", context: MCPContext, enabled_tools: 
         async def validate_form_schema(form_json: str) -> str:
             return await _validate_form_schema_impl(_get_context(), form_json)
 
+    # Form CRUD operations (for external access like Claude Desktop)
+    if enabled_tools is None or "create_form" in enabled_tools:
+        @mcp.tool(
+            name="create_form",
+            description="Create a new form with fields linked to a workflow.",
+        )
+        async def create_form(
+            name: str,
+            workflow_id: str,
+            fields: list[dict[str, Any]],
+            description: str | None = None,
+            launch_workflow_id: str | None = None,
+        ) -> str:
+            return await _create_form_impl(
+                _get_context(), name, workflow_id, fields, description, launch_workflow_id
+            )
+
+    if enabled_tools is None or "get_form" in enabled_tools:
+        @mcp.tool(
+            name="get_form",
+            description="Get detailed information about a specific form including all fields.",
+        )
+        async def get_form(form_id: str | None = None, form_name: str | None = None) -> str:
+            return await _get_form_impl(_get_context(), form_id, form_name)
+
+    if enabled_tools is None or "update_form" in enabled_tools:
+        @mcp.tool(
+            name="update_form",
+            description="Update an existing form's properties or fields.",
+        )
+        async def update_form(
+            form_id: str,
+            name: str | None = None,
+            description: str | None = None,
+            workflow_id: str | None = None,
+            launch_workflow_id: str | None = None,
+            fields: list[dict[str, Any]] | None = None,
+            is_active: bool | None = None,
+        ) -> str:
+            return await _update_form_impl(
+                _get_context(), form_id, name, description, workflow_id, launch_workflow_id, fields, is_active
+            )
+
     if enabled_tools is None or "search_knowledge" in enabled_tools:
         @mcp.tool(
             name="search_knowledge",
             description="Search the Bifrost knowledge base.",
         )
-        async def search_knowledge(query: str, limit: int = 5) -> str:
-            return await _search_knowledge_impl(_get_context(), query, limit)
+        async def search_knowledge(query: str, namespace: str | None = None, limit: int = 5) -> str:
+            context = await _get_context_with_namespaces()
+            return await _search_knowledge_impl(context, query, namespace, limit)
 
     # File Operations (for external access like Claude Desktop)
     if enabled_tools is None or "read_file" in enabled_tools:

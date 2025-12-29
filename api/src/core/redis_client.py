@@ -30,9 +30,11 @@ RESULT_KEY_PREFIX = "bifrost:result:"
 PENDING_KEY_PREFIX = "bifrost:exec:"
 PENDING_KEY_SUFFIX = ":pending"
 ENDPOINT_WORKFLOW_CACHE_PREFIX = "bifrost:endpoint:workflow:"
+WORKFLOW_METADATA_CACHE_PREFIX = "bifrost:workflow:"
 
-# Endpoint workflow cache TTL (5 minutes)
-ENDPOINT_WORKFLOW_CACHE_TTL_SECONDS = 300
+# Cache TTLs
+ENDPOINT_WORKFLOW_CACHE_TTL_SECONDS = 300  # 5 minutes (by name, for endpoints)
+WORKFLOW_METADATA_CACHE_TTL_SECONDS = 300  # 5 minutes (by id, for execution)
 
 # Default timeout for sync execution (5 minutes)
 DEFAULT_TIMEOUT_SECONDS = 300
@@ -488,6 +490,100 @@ class RedisClient:
         except Exception as e:
             logger.warning(f"Failed to invalidate all endpoint workflow caches: {e}")
             return 0
+
+    # =========================================================================
+    # Workflow Metadata Cache (for fast execution - cached by workflow_id)
+    # =========================================================================
+
+    async def get_workflow_metadata_cache(self, workflow_id: str) -> dict[str, Any] | None:
+        """
+        Get cached workflow metadata by ID.
+
+        Used by execution service to skip DB lookup for workflow metadata.
+        Returns: {id, name, file_path, timeout_seconds, time_saved, value, execution_mode}
+
+        Args:
+            workflow_id: Workflow UUID
+
+        Returns:
+            Cached metadata dict or None if not cached
+        """
+        redis_client = await self._get_redis()
+        key = f"{WORKFLOW_METADATA_CACHE_PREFIX}{workflow_id}"
+
+        try:
+            data = await redis_client.get(key)
+            if data is None:
+                return None
+            return json.loads(data)
+        except Exception as e:
+            logger.warning(f"Failed to get workflow metadata cache for {workflow_id}: {e}")
+            return None
+
+    async def set_workflow_metadata_cache(
+        self,
+        workflow_id: str,
+        name: str,
+        file_path: str,
+        timeout_seconds: int,
+        time_saved: int,
+        value: float,
+        execution_mode: str,
+    ) -> None:
+        """
+        Cache workflow metadata.
+
+        Called after loading workflow from DB to speed up future lookups.
+
+        Args:
+            workflow_id: Workflow UUID
+            name: Workflow name
+            file_path: Relative file path
+            timeout_seconds: Execution timeout
+            time_saved: ROI time saved value
+            value: ROI monetary value
+            execution_mode: "sync" or "async"
+        """
+        redis_client = await self._get_redis()
+        key = f"{WORKFLOW_METADATA_CACHE_PREFIX}{workflow_id}"
+
+        data = {
+            "id": workflow_id,
+            "name": name,
+            "file_path": file_path,
+            "timeout_seconds": timeout_seconds,
+            "time_saved": time_saved,
+            "value": value,
+            "execution_mode": execution_mode,
+        }
+
+        try:
+            await redis_client.setex(
+                key,
+                WORKFLOW_METADATA_CACHE_TTL_SECONDS,
+                json.dumps(data),
+            )
+            logger.debug(f"Cached workflow metadata: {workflow_id}")
+        except Exception as e:
+            logger.warning(f"Failed to cache workflow metadata {workflow_id}: {e}")
+
+    async def invalidate_workflow_metadata_cache(self, workflow_id: str) -> None:
+        """
+        Invalidate cached workflow metadata.
+
+        Called when workflow is modified or deleted.
+
+        Args:
+            workflow_id: Workflow UUID to invalidate
+        """
+        redis_client = await self._get_redis()
+        key = f"{WORKFLOW_METADATA_CACHE_PREFIX}{workflow_id}"
+
+        try:
+            await redis_client.delete(key)
+            logger.debug(f"Invalidated workflow metadata cache: {workflow_id}")
+        except Exception as e:
+            logger.warning(f"Failed to invalidate workflow metadata cache {workflow_id}: {e}")
 
     # =========================================================================
     # General Purpose Methods (for session management, etc.)

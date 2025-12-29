@@ -58,7 +58,7 @@ from .redis_client import (
     get_shared_redis,
 )
 
-# Invalidation functions
+# Invalidation and upsert functions
 from .invalidation import (
     cleanup_execution_cache,
     invalidate_all_config,
@@ -70,6 +70,8 @@ from .invalidation import (
     invalidate_role,
     invalidate_role_forms,
     invalidate_role_users,
+    upsert_config,
+    upsert_org,
 )
 
 # Pre-warming
@@ -115,7 +117,7 @@ __all__ = [
     "CacheError",
     "CacheConnectionError",
     "CacheOperationError",
-    # Invalidation
+    # Invalidation and upsert
     "invalidate_config",
     "invalidate_all_config",
     "invalidate_form",
@@ -126,6 +128,8 @@ __all__ = [
     "invalidate_org",
     "invalidate_all_orgs",
     "cleanup_execution_cache",
+    "upsert_config",
+    "upsert_org",
     # Pre-warming
     "prewarm_sdk_cache",
     # Data provider cache

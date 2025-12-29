@@ -212,7 +212,7 @@ async def e2e_ws_exec_workflow(message: str = "test"):
     return {"status": "success", "message": message}
 '''
         e2e_client.put(
-            "/api/files/editor/content",
+            "/api/files/editor/content?index=true",
             headers=platform_admin.headers,
             json={
                 "path": "e2e_ws_exec_workflow.py",

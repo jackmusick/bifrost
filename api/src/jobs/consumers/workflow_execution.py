@@ -153,10 +153,11 @@ class WorkflowExecutionConsumer(BaseConsumer):
             roi_value = 0.0
 
             if not is_script and workflow_id:
-                from src.services.execution.service import get_workflow_by_id, WorkflowNotFoundError, WorkflowLoadError
+                from src.services.execution.service import get_workflow_metadata_only, WorkflowNotFoundError
 
                 try:
-                    _, metadata = await get_workflow_by_id(workflow_id)
+                    # Use metadata-only lookup (Redis-first, no module loading)
+                    metadata = await get_workflow_metadata_only(workflow_id)
                     workflow_name = metadata.name
                     timeout_seconds = metadata.timeout_seconds if metadata else 1800
                     # Initialize ROI from workflow defaults
@@ -194,38 +195,9 @@ class WorkflowExecutionConsumer(BaseConsumer):
                             duration_ms=duration_ms,
                         )
                     return
-                except WorkflowLoadError as e:
-                    logger.error(f"Failed to load workflow {workflow_id}: {e}")
-                    duration_ms = int((datetime.utcnow() - start_time).total_seconds() * 1000)
-                    error_msg = str(e)
-                    await create_execution(
-                        execution_id=execution_id,
-                        workflow_name="unknown",
-                        parameters=parameters,
-                        org_id=org_id,
-                        user_id=user_id,
-                        user_name=user_name,
-                        form_id=form_id,
-                        api_key_id=api_key_id,
-                        status=ExecutionStatus.FAILED,
-                    )
-                    await update_execution(
-                        execution_id=execution_id,
-                        status=ExecutionStatus.FAILED,
-                        result={"error": "WorkflowLoadError", "message": error_msg},
-                        duration_ms=duration_ms,
-                    )
-                    await publish_execution_update(execution_id, "Failed", {"error": error_msg})
-                    await self._redis_client.delete_pending_execution(execution_id)
-                    if is_sync:
-                        await self._redis_client.push_result(
-                            execution_id=execution_id,
-                            status="Failed",
-                            error=error_msg,
-                            error_type="WorkflowLoadError",
-                            duration_ms=duration_ms,
-                        )
-                    return
+                # Note: WorkflowLoadError is not caught here since get_workflow_metadata_only()
+                # only queries DB/cache and doesn't load the module. Load errors will be
+                # caught by the execution pool when it actually loads the workflow.
 
             # Create PostgreSQL record with RUNNING status
             await create_execution(

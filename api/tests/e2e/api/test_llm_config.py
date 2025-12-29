@@ -403,7 +403,7 @@ class TestLLMModelListing:
         assert len(data["models"]) > 0
         # Should include known Anthropic models
         model_names = data["models"]
-        assert any("claude" in m.lower() for m in model_names)
+        assert any("claude" in m["id"].lower() for m in model_names)
 
     def test_list_models_openai(
         self,
@@ -425,7 +425,7 @@ class TestLLMModelListing:
         assert len(data["models"]) > 0
         # Should include GPT models
         model_names = data["models"]
-        assert any("gpt" in m.lower() for m in model_names)
+        assert any("gpt" in m["id"].lower() for m in model_names)
 
     def test_list_models_not_configured(
         self,

@@ -1,13 +1,14 @@
 """
 Module Loader
 Pure functions for loading workflows, data providers, and forms at runtime.
-No singletons, no caching - always fresh imports.
 
 Note: Metadata discovery (for DB sync) is handled by FileStorageService at write time.
 This module is only for runtime loading of Python code for execution.
+
+Since all workflow/data provider executions run in fresh subprocess workers,
+we don't need any module cache clearing - sys.modules starts empty.
 """
 
-import importlib
 import importlib.util
 import json
 import logging
@@ -17,7 +18,7 @@ from dataclasses import dataclass, field
 from datetime import datetime
 from pathlib import Path
 from types import ModuleType
-from typing import Any, Callable, Literal, Sequence
+from typing import Any, Callable, Literal
 
 logger = logging.getLogger(__name__)
 
@@ -151,110 +152,13 @@ def get_workspace_paths() -> list[Path]:
     return paths
 
 
-def _is_in_workspace(file_path: str, workspace_paths: Sequence[Path | str]) -> bool:
-    """Check if a file path is within any workspace directory."""
-    file_path_resolved = str(Path(file_path).resolve())
-    for wp in workspace_paths:
-        # Handle both Path objects and strings
-        wp_resolved = str(Path(wp).resolve()) if isinstance(wp, str) else str(wp.resolve())
-        if file_path_resolved.startswith(wp_resolved):
-            return True
-    return False
-
-
-def _clear_all_workspace_pyc(workspace_paths: Sequence[Path | str]) -> int:
+def import_module(file_path: Path) -> ModuleType:
     """
-    Delete ALL .pyc files in workspace directories.
+    Import a Python module from a file path.
 
-    This is critical for ensuring new functions in helper modules are found.
-    Unlike the old approach that only deleted .pyc for loaded modules,
-    this deletes ALL .pyc files to handle the case of a new function
-    in a module that wasn't previously imported.
-
-    Returns:
-        Number of .pyc files deleted
-    """
-    deleted_count = 0
-    for workspace_path in workspace_paths:
-        # Handle both Path objects and strings
-        wp = Path(workspace_path) if isinstance(workspace_path, str) else workspace_path
-        for pycache_dir in wp.rglob('__pycache__'):
-            for pyc_file in pycache_dir.glob('*.pyc'):
-                try:
-                    pyc_file.unlink()
-                    deleted_count += 1
-                except OSError:
-                    pass  # Ignore permission errors
-    return deleted_count
-
-
-def _clear_workspace_modules(workspace_paths: Sequence[Path | str]) -> int:
-    """
-    Clear all workspace modules from sys.modules.
-
-    Returns:
-        Number of modules cleared
-    """
-    cleared_count = 0
-    for mod_name in list(sys.modules.keys()):
-        mod = sys.modules.get(mod_name)
-        if mod is None:
-            continue
-        if not hasattr(mod, '__file__') or mod.__file__ is None:
-            continue
-
-        try:
-            mod_file = str(Path(mod.__file__).resolve())
-            # Check if module is in any workspace path
-            if _is_in_workspace(mod_file, workspace_paths):
-                # Skip .packages directory (user-installed third-party packages)
-                if '.packages' in mod_file:
-                    continue
-                del sys.modules[mod_name]
-                cleared_count += 1
-        except (OSError, ValueError):
-            continue
-
-    return cleared_count
-
-
-def _invalidate_workspace_import_caches(workspace_paths: Sequence[Path | str]) -> None:
-    """
-    Drop importer cache entries for workspace paths only.
-
-    Global importlib.invalidate_caches() calls have been observed to corrupt
-    libcst's parser in tests. Clearing the caches for our workspace paths is
-    sufficient for fresh imports without touching third-party importer state.
-    """
-    resolved_workspace_paths = []
-    for wp in workspace_paths:
-        try:
-            resolved_workspace_paths.append(str(Path(wp).resolve()))
-        except (OSError, ValueError):
-            continue
-
-    for cache_path in list(sys.path_importer_cache.keys()):
-        try:
-            resolved_cache_path = str(Path(cache_path).resolve())
-        except (OSError, ValueError):
-            continue
-
-        if any(resolved_cache_path.startswith(wp) for wp in resolved_workspace_paths):
-            sys.path_importer_cache.pop(cache_path, None)
-
-
-def reload_module(file_path: Path) -> ModuleType:
-    """
-    Reload a module fresh from disk, clearing all caches.
-
-    This function:
-    1. Clears ALL workspace modules from sys.modules
-    2. Deletes ALL .pyc files in workspace directories
-    3. Invalidates import caches
-    4. Imports the module fresh
-
-    Use this function whenever you need to execute user code from the workspace.
-    It guarantees the latest version of the file is loaded - no stale code.
+    Since workflow executions run in fresh subprocess workers, sys.modules
+    starts empty - no cache clearing needed. Python's import machinery
+    handles .pyc files correctly (regenerates if stale).
 
     Args:
         file_path: Path to the Python file to import
@@ -267,19 +171,7 @@ def reload_module(file_path: Path) -> ModuleType:
     """
     workspace_paths = get_workspace_paths()
 
-    # 1. Clear all workspace modules from sys.modules
-    modules_cleared = _clear_workspace_modules(workspace_paths)
-
-    # 2. Delete ALL .pyc files in workspace directories
-    pyc_deleted = _clear_all_workspace_pyc(workspace_paths)
-
-    # 3. Invalidate Python's import caches for workspace paths
-    _invalidate_workspace_import_caches(workspace_paths)
-
-    if modules_cleared > 0 or pyc_deleted > 0:
-        logger.debug(f"Fresh import prep: cleared {modules_cleared} modules, {pyc_deleted} .pyc files")
-
-    # 4. Calculate module name
+    # Calculate module name from workspace-relative path
     module_name = None
     for workspace_path in workspace_paths:
         try:
@@ -293,15 +185,14 @@ def reload_module(file_path: Path) -> ModuleType:
     if not module_name:
         module_name = file_path.stem
 
-    # 5. Add workspace paths to sys.path for relative imports (e.g., from modules.rewst import ...)
-    # NOTE: We keep these paths in sys.path permanently (like function_app.py did on Azure)
-    # because workflows need them during execution, not just during import
+    # Ensure workspace paths are in sys.path for relative imports
+    # (e.g., from modules.helpers import foo)
     for wp in workspace_paths:
         wp_str = str(wp)
         if wp_str not in sys.path:
             sys.path.insert(0, wp_str)
 
-    # 6. Fresh import
+    # Import the module
     spec = importlib.util.spec_from_file_location(module_name, file_path)
     if not spec or not spec.loader:
         raise ImportError(f"Could not create module spec for {file_path}")
@@ -321,8 +212,9 @@ def reload_module(file_path: Path) -> ModuleType:
 
 
 # Aliases for backward compatibility
-import_module_fresh = reload_module
-reload_single_module = reload_module
+reload_module = import_module
+import_module_fresh = import_module
+reload_single_module = import_module
 
 
 # ==================== WORKFLOW DISCOVERY ====================
@@ -332,7 +224,7 @@ def scan_all_workflows() -> list[WorkflowMetadata]:
     """
     Scan all workspace directories and return workflow metadata.
 
-    Imports each Python file fresh and extracts workflows with
+    Imports each Python file and extracts workflows with
     the _workflow_metadata attribute set by @workflow decorator.
 
     Returns:
@@ -345,11 +237,6 @@ def scan_all_workflows() -> list[WorkflowMetadata]:
         logger.warning("No workspace paths found")
         return workflows
 
-    # First clear everything for a clean slate
-    _clear_workspace_modules(workspace_paths)
-    _clear_all_workspace_pyc(workspace_paths)
-    _invalidate_workspace_import_caches(workspace_paths)
-
     for workspace_path in workspace_paths:
         for py_file in workspace_path.rglob("*.py"):
             # Skip __init__.py and private files
@@ -360,7 +247,7 @@ def scan_all_workflows() -> list[WorkflowMetadata]:
                 continue
 
             try:
-                module = reload_module(py_file)
+                module = import_module(py_file)
 
                 # Scan module for decorated functions
                 for attr_name in dir(module):
@@ -386,7 +273,7 @@ def load_workflow(name: str) -> tuple[Callable, WorkflowMetadata] | None:
     """
     Find and load a specific workflow by name.
 
-    Scans workspace directories, imports fresh, and returns the
+    Scans workspace directories, imports, and returns the
     function and metadata for the named workflow.
 
     Args:
@@ -400,11 +287,6 @@ def load_workflow(name: str) -> tuple[Callable, WorkflowMetadata] | None:
     if not workspace_paths:
         return None
 
-    # Clear everything for fresh imports
-    _clear_workspace_modules(workspace_paths)
-    _clear_all_workspace_pyc(workspace_paths)
-    _invalidate_workspace_import_caches(workspace_paths)
-
     for workspace_path in workspace_paths:
         for py_file in workspace_path.rglob("*.py"):
             if py_file.name.startswith("_"):
@@ -413,7 +295,7 @@ def load_workflow(name: str) -> tuple[Callable, WorkflowMetadata] | None:
                 continue
 
             try:
-                module = reload_module(py_file)
+                module = import_module(py_file)
 
                 for attr_name in dir(module):
                     attr = getattr(module, attr_name)
@@ -447,11 +329,6 @@ def scan_all_data_providers() -> list[DataProviderMetadata]:
     if not workspace_paths:
         return providers
 
-    # Clear everything for a clean slate
-    _clear_workspace_modules(workspace_paths)
-    _clear_all_workspace_pyc(workspace_paths)
-    _invalidate_workspace_import_caches(workspace_paths)
-
     for workspace_path in workspace_paths:
         for py_file in workspace_path.rglob("*.py"):
             if py_file.name.startswith("_"):
@@ -460,7 +337,7 @@ def scan_all_data_providers() -> list[DataProviderMetadata]:
                 continue
 
             try:
-                module = reload_module(py_file)
+                module = import_module(py_file)
 
                 for attr_name in dir(module):
                     attr = getattr(module, attr_name)
@@ -495,11 +372,6 @@ def load_data_provider(name: str) -> tuple[Callable, DataProviderMetadata] | Non
     if not workspace_paths:
         return None
 
-    # Clear everything for fresh imports
-    _clear_workspace_modules(workspace_paths)
-    _clear_all_workspace_pyc(workspace_paths)
-    _invalidate_workspace_import_caches(workspace_paths)
-
     for workspace_path in workspace_paths:
         for py_file in workspace_path.rglob("*.py"):
             if py_file.name.startswith("_"):
@@ -508,7 +380,7 @@ def load_data_provider(name: str) -> tuple[Callable, DataProviderMetadata] | Non
                 continue
 
             try:
-                module = reload_module(py_file)
+                module = import_module(py_file)
 
                 for attr_name in dir(module):
                     attr = getattr(module, attr_name)
@@ -736,74 +608,7 @@ def _convert_parameters(params: list) -> list[WorkflowParameter]:
     return result
 
 
-# ==================== EFFICIENT SINGLE-FILE LOADING ====================
-# These use the watchdog index for O(1) lookup, then import just one file
-
-
-def _clear_single_module(file_path: Path, workspace_paths: Sequence[Path | str]) -> str | None:
-    """
-    Clear a single module from sys.modules (if loaded).
-
-    Unlike _clear_workspace_modules which clears ALL workspace modules,
-    this only clears the specific module for the given file path.
-
-    Args:
-        file_path: Path to the Python file
-        workspace_paths: List of workspace root paths
-
-    Returns:
-        Module name that was cleared, or None if not found
-    """
-    # Calculate expected module name
-    module_name = None
-    for workspace_path in workspace_paths:
-        wp = Path(workspace_path) if isinstance(workspace_path, str) else workspace_path
-        try:
-            relative_path = file_path.relative_to(wp)
-            module_parts = list(relative_path.parts[:-1]) + [file_path.stem]
-            module_name = '.'.join(module_parts) if module_parts else file_path.stem
-            break
-        except ValueError:
-            continue
-
-    if not module_name:
-        module_name = file_path.stem
-
-    # Clear this specific module from sys.modules
-    if module_name in sys.modules:
-        del sys.modules[module_name]
-        logger.debug(f"Cleared module from cache: {module_name}")
-        return module_name
-
-    return None
-
-
-def _clear_single_pyc(file_path: Path) -> bool:
-    """
-    Clear the .pyc file for a single Python file.
-
-    Args:
-        file_path: Path to the .py file
-
-    Returns:
-        True if a .pyc file was deleted, False otherwise
-    """
-    # .pyc files are in __pycache__/<name>.cpython-<version>.pyc
-    pycache_dir = file_path.parent / "__pycache__"
-    if not pycache_dir.exists():
-        return False
-
-    # Match any cpython version
-    pattern = f"{file_path.stem}.cpython-*.pyc"
-    deleted = False
-    for pyc_file in pycache_dir.glob(pattern):
-        try:
-            pyc_file.unlink()
-            deleted = True
-        except OSError:
-            pass
-
-    return deleted
+# ==================== DIRECT FILE LOADING ====================
 
 
 def load_workflow_by_file_path(
@@ -813,12 +618,8 @@ def load_workflow_by_file_path(
     """
     Load a specific workflow from a known file path.
 
-    This is the FAST path for workflow loading:
-    - Only clears the specific module from sys.modules (not all modules)
-    - Loads a single file (not full workspace scan)
-    - Preserves freshness: file is always read from disk
-
-    Use this when you already know the file path (from database or cache).
+    Use this when you already know the file path (from database or cache)
+    to skip the filesystem scan that load_workflow() does.
 
     Args:
         file_path: Path to the workflow Python file (relative or absolute)
@@ -827,8 +628,6 @@ def load_workflow_by_file_path(
     Returns:
         Tuple of (function, metadata) or None if not found
     """
-    workspace_paths = get_workspace_paths()
-
     # Resolve to absolute path if relative
     if isinstance(file_path, str):
         file_path = Path(file_path)
@@ -841,49 +640,8 @@ def load_workflow_by_file_path(
         logger.warning(f"Workflow file not found: {file_path}")
         return None
 
-    # Clear only this specific module (not all workspace modules)
-    _clear_single_module(file_path, workspace_paths)
-
-    # Clear only this file's .pyc (not all workspace .pyc files)
-    _clear_single_pyc(file_path)
-
-    # Ensure workspace paths are in sys.path
-    for wp in workspace_paths:
-        wp_str = str(wp)
-        if wp_str not in sys.path:
-            sys.path.insert(0, wp_str)
-
-    # Import the module fresh
     try:
-        # Calculate module name
-        module_name = None
-        for workspace_path in workspace_paths:
-            try:
-                relative_path = file_path.relative_to(workspace_path)
-                module_parts = list(relative_path.parts[:-1]) + [file_path.stem]
-                module_name = '.'.join(module_parts) if module_parts else file_path.stem
-                break
-            except ValueError:
-                continue
-
-        if not module_name:
-            module_name = file_path.stem
-
-        spec = importlib.util.spec_from_file_location(module_name, file_path)
-        if not spec or not spec.loader:
-            logger.error(f"Could not create module spec for {file_path}")
-            return None
-
-        module = importlib.util.module_from_spec(spec)
-        sys.modules[module_name] = module
-
-        try:
-            spec.loader.exec_module(module)
-        except Exception as e:
-            if module_name in sys.modules:
-                del sys.modules[module_name]
-            logger.error(f"Failed to import {file_path}: {e}")
-            return None
+        module = import_module(file_path)
 
         # Find the workflow function by name
         for attr_name in dir(module):

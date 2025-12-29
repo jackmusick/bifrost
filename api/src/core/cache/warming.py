@@ -99,8 +99,11 @@ async def _prewarm_configs(
     r: Any,
     org_uuid: UUID | None,
 ) -> None:
-    """Pre-warm all config values for the organization."""
-    from src.core.security import decrypt_secret
+    """Pre-warm all config values for the organization.
+
+    SECURITY: Secrets are stored ENCRYPTED in Redis cache.
+    Decryption only happens at read time in ConfigResolver.get_config().
+    """
     from src.models import Config
 
     # Query org-specific + global configs
@@ -128,15 +131,9 @@ async def _prewarm_configs(
         )
         config_type = config.config_type.value if config.config_type else "string"
 
-        # Decrypt secrets at pre-warm time
-        if config_type == "secret":
-            try:
-                decrypted = decrypt_secret(raw_value)
-                cache_value = {"value": decrypted, "type": "secret"}
-            except Exception:
-                continue  # Skip if decryption fails
-        else:
-            cache_value = {"value": raw_value, "type": config_type}
+        # Store secrets ENCRYPTED - decryption happens at read time
+        # This prevents plaintext secrets from being stored in Redis
+        cache_value = {"value": raw_value, "type": config_type}
 
         # Use config key as hash field
         # For org-specific, it overrides global (last write wins)

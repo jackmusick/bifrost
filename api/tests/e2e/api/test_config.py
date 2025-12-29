@@ -226,8 +226,8 @@ class TestConfigAccess:
             headers=org1_user.headers,
             json={"value": "hacked"},
         )
-        # 403 = forbidden, 405 = method not allowed (PUT not supported)
-        assert response.status_code in [403, 405], \
+        # 403 = forbidden, 404 = route doesn't exist (PUT not implemented), 405 = method not allowed
+        assert response.status_code in [403, 404, 405], \
             f"Org user should not modify config: {response.status_code}"
 
         # Cleanup

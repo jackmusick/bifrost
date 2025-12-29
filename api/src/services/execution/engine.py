@@ -12,7 +12,7 @@ from dataclasses import dataclass, field
 from datetime import datetime
 from io import StringIO
 from pathlib import Path
-from typing import Any
+from typing import Any, get_type_hints, get_origin, get_args, Union
 
 from pydantic import BaseModel
 
@@ -133,6 +133,72 @@ class ExecutionResult:
     # Data provider specific
     cached: bool = False
     cache_expires_at: str | None = None
+
+
+def _coerce_params_to_type_hints(func: Any, params: dict[str, Any]) -> dict[str, Any]:
+    """
+    Coerce parameter values to match function type hints.
+
+    GET query parameters are always strings, but workflow functions may expect
+    int, float, bool, etc. This function inspects the function signature and
+    converts parameters accordingly.
+
+    Args:
+        func: The workflow function to get type hints from
+        params: Dictionary of parameters (may be strings from query params)
+
+    Returns:
+        Dictionary with parameters coerced to the correct types
+    """
+    if not params:
+        return {}
+
+    result: dict[str, Any] = {}
+
+    # Get type hints from the workflow function
+    try:
+        hints = get_type_hints(func)
+    except Exception:
+        # If we can't get type hints, return params as-is
+        return dict(params)
+
+    for key, value in params.items():
+        if key not in hints:
+            # No type hint, keep as-is
+            result[key] = value
+            continue
+
+        expected_type = hints[key]
+
+        # Handle Optional types (Union[X, None])
+        origin = get_origin(expected_type)
+        if origin is Union:
+            # Filter out NoneType from Union args
+            args = get_args(expected_type)
+            non_none_types = [t for t in args if t is not type(None)]
+            if non_none_types:
+                expected_type = non_none_types[0]
+
+        # Only coerce string values
+        if not isinstance(value, str):
+            result[key] = value
+            continue
+
+        # Coerce based on expected type
+        try:
+            if expected_type is int:
+                result[key] = int(value)
+            elif expected_type is float:
+                result[key] = float(value)
+            elif expected_type is bool:
+                result[key] = value.lower() in ("true", "1", "yes", "on")
+            else:
+                result[key] = value
+        except (ValueError, TypeError):
+            # Coercion failed, keep as string (will fail validation later)
+            result[key] = value
+
+    return result
 
 
 async def execute(request: ExecutionRequest) -> ExecutionResult:
@@ -885,7 +951,8 @@ async def _execute_workflow_with_trace(
 
         if has_var_keyword:
             # Function accepts **kwargs, pass everything
-            accepted_params = parameters
+            # Still coerce types for known parameters
+            accepted_params = _coerce_params_to_type_hints(func, parameters)
             extra_params: dict[str, Any] = {}
         else:
             # Split parameters into accepted (match function signature) and extra
@@ -895,6 +962,9 @@ async def _execute_workflow_with_trace(
             extra_params = {
                 k: v for k, v in parameters.items() if k not in accepted_param_names
             }
+
+        # Coerce string parameters to expected types (for GET query params)
+        accepted_params = _coerce_params_to_type_hints(func, accepted_params)
 
         # Store extra params in context.parameters instead of injecting into globals
         # This avoids race conditions when concurrent workflows share the same module

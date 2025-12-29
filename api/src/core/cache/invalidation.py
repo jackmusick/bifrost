@@ -1,21 +1,28 @@
 """
-Cache invalidation functions for Bifrost.
+Cache invalidation and upsert functions for Bifrost.
 
-Used by API routes to invalidate Redis cache after write operations.
+Used by API routes to maintain Redis cache after write operations.
 All functions are async and use the shared Redis client.
 
-Pattern:
+Pattern (Dual-Write):
     1. API route writes to Postgres
+    2. API route calls upsert_* to update Redis cache with the new value
+    3. Reads check Redis first, fall back to Postgres on miss
+
+Pattern (Invalidation):
+    1. API route deletes from Postgres
     2. API route calls invalidate_* to clear Redis cache
-    3. Next execution pre-warms fresh data from Postgres
 """
 
 from __future__ import annotations
 
+import json
 import logging
 from typing import TYPE_CHECKING
 
 from .keys import (
+    TTL_CONFIG,
+    TTL_ORGS,
     config_hash_key,
     config_key,
     form_key,
@@ -36,8 +43,46 @@ logger = logging.getLogger(__name__)
 
 
 # =============================================================================
-# Config Invalidation
+# Config Cache (Dual-Write)
 # =============================================================================
+
+
+async def upsert_config(
+    org_id: str | None,
+    key: str,
+    value: str,
+    config_type: str,
+) -> None:
+    """
+    Upsert a config value to Redis cache after a DB write.
+
+    Secrets are stored ENCRYPTED - decryption happens at read time.
+
+    Args:
+        org_id: Organization ID or None for global config
+        key: Config key
+        value: Config value (encrypted for secrets)
+        config_type: Config type ("string", "int", "bool", "json", "secret")
+    """
+    try:
+        r = await get_shared_redis()
+        hash_key = config_hash_key(org_id)
+
+        # Store as JSON with type info for proper parsing at read time
+        cache_value = json.dumps({"value": value, "type": config_type})
+
+        # HSET the field in the hash
+        await r.hset(hash_key, key, cache_value)  # type: ignore[misc]
+
+        # Ensure TTL is set (HSET doesn't reset TTL, so check if key exists)
+        ttl = await r.ttl(hash_key)
+        if ttl < 0:  # -1 = no TTL, -2 = key doesn't exist
+            await r.expire(hash_key, TTL_CONFIG)
+
+        logger.debug(f"Upserted config to cache: org={org_id}, key={key}")
+    except Exception as e:
+        # Log but don't fail - cache is best-effort
+        logger.warning(f"Failed to upsert config cache: {e}")
 
 
 async def invalidate_config(org_id: str | None, key: str | None = None) -> None:
@@ -175,8 +220,45 @@ async def invalidate_role_forms(org_id: str | None, role_id: str) -> None:
 
 
 # =============================================================================
-# Organization Invalidation
+# Organization Cache (Dual-Write)
 # =============================================================================
+
+
+async def upsert_org(
+    org_id: str,
+    name: str,
+    domain: str | None,
+    is_active: bool,
+) -> None:
+    """
+    Upsert an organization to Redis cache after a DB write.
+
+    Args:
+        org_id: Organization UUID as string
+        name: Organization name
+        domain: Organization domain (optional)
+        is_active: Whether the organization is active
+    """
+    try:
+        r = await get_shared_redis()
+        redis_key = org_key(org_id)
+
+        cache_value = json.dumps({
+            "id": org_id,
+            "name": name,
+            "domain": domain,
+            "is_active": is_active,
+        })
+
+        await r.set(redis_key, cache_value, ex=TTL_ORGS)
+
+        # Also invalidate the orgs list since it may contain this org
+        await r.delete(orgs_list_key())
+
+        logger.debug(f"Upserted org to cache: org_id={org_id}")
+    except Exception as e:
+        # Log but don't fail - cache is best-effort
+        logger.warning(f"Failed to upsert org cache: {e}")
 
 
 async def invalidate_org(org_id: str) -> None:

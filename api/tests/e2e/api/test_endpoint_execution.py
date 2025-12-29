@@ -84,9 +84,9 @@ def endpoint_workflow_file(e2e_client, platform_admin):
     This fixture creates the workflow file, waits for discovery,
     and cleans up after tests.
     """
-    # Create workflow file
+    # Create workflow file with index=true to enable synchronous ID injection
     response = e2e_client.put(
-        "/api/files/editor/content",
+        "/api/files/editor/content?index=true",
         headers=platform_admin.headers,
         json={
             "path": "e2e_endpoint_workflow.py",
@@ -96,7 +96,7 @@ def endpoint_workflow_file(e2e_client, platform_admin):
     )
     assert response.status_code == 200, f"Failed to create workflow file: {response.text}"
 
-    # Wait for workflow to be discovered
+    # Discovery happens synchronously during file write - just fetch the workflow
     workflow = _wait_for_workflow(e2e_client, platform_admin, "e2e_endpoint_workflow")
     assert workflow is not None, "Workflow e2e_endpoint_workflow not discovered after 30s"
     assert workflow.get("endpoint_enabled"), "Workflow should have endpoint_enabled=True"
@@ -115,9 +115,9 @@ def post_only_workflow_file(e2e_client, platform_admin):
     """
     Create the POST-only endpoint workflow file via Editor API.
     """
-    # Create workflow file
+    # Create workflow file with index=true to enable synchronous ID injection
     response = e2e_client.put(
-        "/api/files/editor/content",
+        "/api/files/editor/content?index=true",
         headers=platform_admin.headers,
         json={
             "path": "e2e_endpoint_post_only.py",
@@ -127,7 +127,7 @@ def post_only_workflow_file(e2e_client, platform_admin):
     )
     assert response.status_code == 200, f"Failed to create workflow file: {response.text}"
 
-    # Wait for workflow to be discovered
+    # Discovery happens synchronously during file write - just fetch the workflow
     workflow = _wait_for_workflow(e2e_client, platform_admin, "e2e_endpoint_post_only")
     assert workflow is not None, "Workflow e2e_endpoint_post_only not discovered after 30s"
 

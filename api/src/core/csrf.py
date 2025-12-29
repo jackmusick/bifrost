@@ -79,10 +79,12 @@ class CSRFMiddleware(BaseHTTPMiddleware):
 
         # Only enforce CSRF for cookie-based auth
         has_cookie_auth = "access_token" in request.cookies
-        has_bearer_auth = "authorization" in {k.lower() for k in request.headers.keys()}
+        header_keys_lower = {k.lower() for k in request.headers.keys()}
+        has_bearer_auth = "authorization" in header_keys_lower
+        has_api_key_auth = "x-bifrost-key" in header_keys_lower
 
-        # If using Bearer token, CSRF is not needed
-        if has_bearer_auth:
+        # If using Bearer token or API key, CSRF is not needed
+        if has_bearer_auth or has_api_key_auth:
             return await call_next(request)
 
         # If using cookie auth, CSRF is required

@@ -1,10 +1,14 @@
 """
-Configuration resolver with transparent secret handling.
+Configuration resolver with transparent secret handling and Redis caching.
 
-This module provides unified configuration access that automatically decrypts
-secret values stored in the Config table.
+This module provides unified configuration access that:
+- Checks Redis cache first for fast reads
+- Falls back to PostgreSQL on cache miss
+- Populates cache on miss for subsequent reads
+- Automatically decrypts secret values (secrets are stored encrypted in cache)
 """
 
+import json
 import logging
 from typing import Any, TYPE_CHECKING
 
@@ -151,7 +155,9 @@ class ConfigResolver:
 
     async def get_organization(self, org_id: str) -> "Organization | None":
         """
-        Get organization by ID from PostgreSQL.
+        Get organization by ID.
+
+        Uses Redis cache first, falls back to PostgreSQL on miss.
 
         Args:
             org_id: Organization ID (UUID or "ORG:uuid" format)
@@ -160,9 +166,6 @@ class ConfigResolver:
             Organization object or None if not found
         """
         from uuid import UUID
-        from sqlalchemy import select
-        from src.core.database import get_session_factory
-        from src.models import Organization as OrgModel
         from src.sdk.context import Organization
 
         # Parse org_id - may be "ORG:uuid" or just "uuid"
@@ -172,11 +175,29 @@ class ConfigResolver:
             org_uuid = org_id
 
         try:
-            org_uuid_obj = UUID(org_uuid)
+            UUID(org_uuid)  # Validate format
         except ValueError:
             logger.warning(f"Invalid organization ID format: {org_id}")
             return None
 
+        # Try Redis cache first
+        cached = await self._get_org_from_cache(org_uuid)
+        if cached is not None:
+            logger.debug(f"Org cache hit for org_id={org_uuid}")
+            return Organization(
+                id=cached["id"],
+                name=cached["name"],
+                is_active=cached["is_active"],
+            )
+
+        # Cache miss - load from PostgreSQL
+        logger.debug(f"Org cache miss for org_id={org_uuid}, loading from DB")
+
+        from sqlalchemy import select
+        from src.core.database import get_session_factory
+        from src.models import Organization as OrgModel
+
+        org_uuid_obj = UUID(org_uuid)
         session_factory = get_session_factory()
 
         async with session_factory() as db:
@@ -189,15 +210,79 @@ class ConfigResolver:
                 logger.debug(f"Organization not found: {org_id}")
                 return None
 
+            # Populate cache for next time
+            await self._set_org_cache(
+                org_id=str(org_entity.id),
+                name=org_entity.name,
+                domain=org_entity.domain,
+                is_active=org_entity.is_active,
+            )
+
             return Organization(
                 id=str(org_entity.id),
                 name=org_entity.name,
                 is_active=org_entity.is_active,
             )
 
+    async def _get_org_from_cache(self, org_id: str) -> dict[str, Any] | None:
+        """
+        Get organization from Redis cache.
+
+        Returns None on cache miss or error.
+        """
+        try:
+            from src.core.cache import get_shared_redis, org_key
+
+            r = await get_shared_redis()
+            redis_key = org_key(org_id)
+
+            data = await r.get(redis_key)
+            if not data:
+                return None
+
+            # Handle bytes from Redis
+            data_str = data.decode() if isinstance(data, bytes) else data
+            return json.loads(data_str)
+
+        except Exception as e:
+            logger.warning(f"Failed to get org from cache: {e}")
+            return None
+
+    async def _set_org_cache(
+        self,
+        org_id: str,
+        name: str,
+        domain: str | None,
+        is_active: bool,
+    ) -> None:
+        """
+        Populate Redis cache with org data.
+        """
+        try:
+            from src.core.cache import get_shared_redis, org_key, TTL_ORGS
+
+            r = await get_shared_redis()
+            redis_key = org_key(org_id)
+
+            cache_value = json.dumps({
+                "id": org_id,
+                "name": name,
+                "domain": domain,
+                "is_active": is_active,
+            })
+
+            await r.set(redis_key, cache_value, ex=TTL_ORGS)
+            logger.debug(f"Populated org cache for org_id={org_id}")
+
+        except Exception as e:
+            logger.warning(f"Failed to populate org cache: {e}")
+
     async def load_config_for_scope(self, scope: str) -> dict[str, Any]:
         """
-        Load all config for a scope (org_id or "GLOBAL") from PostgreSQL.
+        Load all config for a scope (org_id or "GLOBAL").
+
+        Uses Redis cache first, falls back to PostgreSQL on miss.
+        Secrets are stored encrypted in cache and decrypted at get_config() time.
 
         Returns config as dict: {key: {"value": v, "type": t}, ...}
 
@@ -208,6 +293,24 @@ class ConfigResolver:
             Configuration dictionary
         """
         from uuid import UUID
+
+        # Normalize org_id for cache key
+        if scope == "GLOBAL":
+            org_id_for_cache = None
+        elif scope.startswith("ORG:"):
+            org_id_for_cache = scope[4:]
+        else:
+            org_id_for_cache = scope
+
+        # Try Redis cache first
+        cached = await self._get_config_from_cache(org_id_for_cache)
+        if cached is not None:
+            logger.debug(f"Config cache hit for scope={scope}")
+            return cached
+
+        # Cache miss - load from PostgreSQL
+        logger.debug(f"Config cache miss for scope={scope}, loading from DB")
+
         from sqlalchemy import select
         from src.core.database import get_session_factory
         from src.models import Config
@@ -223,14 +326,8 @@ class ConfigResolver:
                     select(Config).where(Config.organization_id.is_(None))
                 )
             else:
-                # Parse org_id
-                if scope.startswith("ORG:"):
-                    org_uuid = scope[4:]
-                else:
-                    org_uuid = scope
-
                 try:
-                    org_uuid_obj = UUID(org_uuid)
+                    org_uuid_obj = UUID(org_id_for_cache) if org_id_for_cache else None
                 except ValueError:
                     logger.warning(f"Invalid scope format: {scope}")
                     return config_dict
@@ -256,4 +353,69 @@ class ConfigResolver:
                     "type": config.config_type.value if config.config_type else "string",
                 }
 
+        # Populate cache for next time
+        await self._set_config_cache(org_id_for_cache, config_dict)
+
         return config_dict
+
+    async def _get_config_from_cache(self, org_id: str | None) -> dict[str, Any] | None:
+        """
+        Get all config from Redis cache.
+
+        Returns None on cache miss or error.
+        """
+        try:
+            from src.core.cache import get_shared_redis, config_hash_key
+
+            r = await get_shared_redis()
+            hash_key = config_hash_key(org_id)
+
+            # Get all fields from the hash
+            data = await r.hgetall(hash_key)  # type: ignore[misc]
+            if not data:
+                return None
+
+            # Parse JSON values
+            config_dict: dict[str, Any] = {}
+            for key, value in data.items():
+                # Handle bytes from Redis
+                key_str = key.decode() if isinstance(key, bytes) else key
+                value_str = value.decode() if isinstance(value, bytes) else value
+                try:
+                    config_dict[key_str] = json.loads(value_str)
+                except json.JSONDecodeError:
+                    # Fallback for plain string values
+                    config_dict[key_str] = {"value": value_str, "type": "string"}
+
+            return config_dict
+
+        except Exception as e:
+            logger.warning(f"Failed to get config from cache: {e}")
+            return None
+
+    async def _set_config_cache(self, org_id: str | None, config_dict: dict[str, Any]) -> None:
+        """
+        Populate Redis cache with config data.
+        """
+        if not config_dict:
+            return
+
+        try:
+            from src.core.cache import get_shared_redis, config_hash_key, TTL_CONFIG
+
+            r = await get_shared_redis()
+            hash_key = config_hash_key(org_id)
+
+            # Convert to JSON strings for Redis
+            mapping = {
+                key: json.dumps(value) for key, value in config_dict.items()
+            }
+
+            # Set all fields in the hash
+            await r.hset(hash_key, mapping=mapping)  # type: ignore[misc]
+            await r.expire(hash_key, TTL_CONFIG)
+
+            logger.debug(f"Populated config cache for org={org_id}, keys={len(config_dict)}")
+
+        except Exception as e:
+            logger.warning(f"Failed to populate config cache: {e}")

@@ -386,6 +386,9 @@ class TestSearchKnowledge:
         self, org_user_context, mock_knowledge_document
     ):
         """Should search knowledge base and return results."""
+        # Add accessible namespaces to allow knowledge search
+        org_user_context.accessible_namespaces = ["test-namespace"]
+
         with patch("src.core.database.get_db_context") as mock_db_ctx:
             mock_session = AsyncMock()
             mock_db_ctx.return_value.__aenter__ = AsyncMock(return_value=mock_session)
@@ -416,6 +419,9 @@ class TestSearchKnowledge:
     @pytest.mark.asyncio
     async def test_returns_no_results_message(self, org_user_context):
         """Should return helpful message when no results found."""
+        # Add accessible namespaces to allow knowledge search
+        org_user_context.accessible_namespaces = ["test-namespace"]
+
         with patch("src.core.database.get_db_context") as mock_db_ctx:
             mock_session = AsyncMock()
             mock_db_ctx.return_value.__aenter__ = AsyncMock(return_value=mock_session)
@@ -451,6 +457,9 @@ class TestSearchKnowledge:
     @pytest.mark.asyncio
     async def test_handles_embedding_error(self, org_user_context):
         """Should return error when embedding service fails."""
+        # Add accessible namespaces to allow knowledge search
+        org_user_context.accessible_namespaces = ["test-namespace"]
+
         with patch("src.core.database.get_db_context") as mock_db_ctx:
             mock_session = AsyncMock()
             mock_db_ctx.return_value.__aenter__ = AsyncMock(return_value=mock_session)
@@ -984,7 +993,7 @@ class TestToolFiltering:
         tool_names = server.get_tool_names()
 
         # Empty list is falsy, so it becomes None -> all tools shown
-        assert len(tool_names) == 7
+        assert len(tool_names) == 18
 
     def test_no_enabled_tools_means_all_tools(self):
         """Should show all tools when enabled_system_tools is not set."""
@@ -1023,7 +1032,8 @@ class TestToolFiltering:
         for expected in expected_tools:
             assert expected in tool_names, f"Missing tool: {expected}"
 
-        assert len(tool_names) == 7
+        # All 18 tools (7 original + 6 file ops + 5 workflow/execution tools)
+        assert len(tool_names) == 18
 
     def test_single_tool_filtering(self):
         """Should correctly filter to single tool."""
@@ -1091,7 +1101,7 @@ class TestMCPContextFiltering:
         server = BifrostMCPServer(context)
         tool_names = server.get_tool_names()
 
-        assert len(tool_names) == 7  # All system tools
+        assert len(tool_names) == 18  # All system tools
 
     def test_org_user_respects_enabled_tools(self):
         """Org user should only see tools from enabled_system_tools."""

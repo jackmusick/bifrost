@@ -97,6 +97,7 @@ class CodingModeClient:
         is_platform_admin: bool = True,
         session_id: str | None = None,
         system_tools: list[str] | None = None,
+        knowledge_sources: list[str] | None = None,
     ):
         """
         Initialize coding mode client.
@@ -112,6 +113,7 @@ class CodingModeClient:
             session_id: Optional session ID to resume
             system_tools: List of enabled system tool IDs (e.g., ["execute_workflow", "list_integrations"]).
                          If empty or None, no system MCP tools will be available.
+            knowledge_sources: List of knowledge namespaces this agent can search.
         """
         self.user_id = str(user_id)
         self.user_email = user_email
@@ -123,6 +125,7 @@ class CodingModeClient:
         self.session_id = session_id or str(uuid4())
         self.session_manager = SessionManager()
         self._system_tools = system_tools or []
+        self._knowledge_sources = knowledge_sources or []
 
         # Create MCP context with all fields
         self._mcp_context = MCPContext(
@@ -132,6 +135,7 @@ class CodingModeClient:
             user_email=self.user_email,
             user_name=self.user_name,
             enabled_system_tools=self._system_tools,
+            accessible_namespaces=self._knowledge_sources,
         )
 
         # Create Bifrost MCP server

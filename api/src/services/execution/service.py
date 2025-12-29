@@ -18,7 +18,7 @@ import uuid
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Callable
 
-from src.services.execution.module_loader import get_data_provider, WorkflowMetadata, reload_module
+from src.services.execution.module_loader import get_data_provider, WorkflowMetadata, import_module
 from src.models import WorkflowExecutionResponse
 from src.models.enums import ExecutionStatus
 
@@ -53,6 +53,88 @@ class DataProviderLoadError(Exception):
     """Raised when a data provider fails to load."""
 
     pass
+
+
+async def get_workflow_metadata_only(
+    workflow_id: str,
+) -> WorkflowMetadata:
+    """
+    Get workflow metadata by ID without loading the module.
+
+    Uses Redis cache first, falls back to DB on miss, populates cache on miss.
+    This is much faster than get_workflow_by_id() since it skips module loading.
+
+    Args:
+        workflow_id: Workflow UUID from database
+
+    Returns:
+        WorkflowMetadata with id, name, file_path, timeout, etc.
+
+    Raises:
+        WorkflowNotFoundError: If workflow doesn't exist in database
+    """
+    from src.core.redis_client import get_redis_client
+
+    redis_client = get_redis_client()
+
+    # Try Redis cache first
+    cached = await redis_client.get_workflow_metadata_cache(workflow_id)
+    if cached:
+        logger.debug(f"Workflow metadata cache hit: {workflow_id}")
+        metadata = WorkflowMetadata(
+            name=cached["name"],
+            timeout_seconds=cached.get("timeout_seconds", 1800),
+            time_saved=cached.get("time_saved", 0),
+            value=cached.get("value", 0.0),
+            execution_mode=cached.get("execution_mode", "async"),
+        )
+        metadata.id = cached["id"]
+        metadata.source_file_path = cached["file_path"]
+        return metadata
+
+    # Cache miss - query DB
+    logger.debug(f"Workflow metadata cache miss: {workflow_id}, loading from DB")
+
+    from sqlalchemy import select
+    from src.core.database import get_session_factory
+    from src.models import Workflow as WorkflowORM
+
+    session_factory = get_session_factory()
+    async with session_factory() as db:
+        stmt = select(WorkflowORM).where(
+            WorkflowORM.id == workflow_id,
+            WorkflowORM.is_active == True,  # noqa: E712
+        )
+        result = await db.execute(stmt)
+        workflow_record = result.scalar_one_or_none()
+
+    if not workflow_record:
+        raise WorkflowNotFoundError(f"Workflow with ID '{workflow_id}' not found")
+
+    # Build metadata from DB record
+    metadata = WorkflowMetadata(
+        name=workflow_record.name,
+        timeout_seconds=workflow_record.timeout_seconds or 1800,
+        time_saved=workflow_record.time_saved or 0,
+        value=float(workflow_record.value) if workflow_record.value else 0.0,
+        execution_mode=workflow_record.execution_mode or "async",
+    )
+    metadata.id = str(workflow_record.id)
+    metadata.source_file_path = workflow_record.file_path
+
+    # Populate cache for next time
+    await redis_client.set_workflow_metadata_cache(
+        workflow_id=str(workflow_record.id),
+        name=workflow_record.name,
+        file_path=workflow_record.file_path,
+        timeout_seconds=workflow_record.timeout_seconds or 1800,
+        time_saved=workflow_record.time_saved or 0,
+        value=float(workflow_record.value) if workflow_record.value else 0.0,
+        execution_mode=workflow_record.execution_mode or "async",
+    )
+
+    logger.debug(f"Loaded workflow metadata from DB: {workflow_id} -> {workflow_record.name}")
+    return metadata
 
 
 async def get_workflow_by_id(
@@ -96,9 +178,9 @@ async def get_workflow_by_id(
             "Workspace may be out of sync."
         )
 
-    # Import the module using reload_module for fresh imports and proper sys.path setup
+    # Import the module
     try:
-        module = reload_module(file_path)
+        module = import_module(file_path)
     except ImportError as e:
         raise WorkflowLoadError(f"Failed to load workflow module: {e}")
 
@@ -161,19 +243,17 @@ async def run_workflow(
     """
     parameters = input_data or {}
 
-    # Validate workflow exists by looking it up (worker will also look it up)
+    # Validate workflow exists using metadata-only lookup (Redis-first, no module loading)
     try:
-        _, workflow_metadata = await get_workflow_by_id(workflow_id)
+        workflow_metadata = await get_workflow_metadata_only(workflow_id)
         logger.debug(
             f"Validated workflow by ID: {workflow_id} -> {workflow_metadata.name}"
         )
     except WorkflowNotFoundError:
         raise
-    except WorkflowLoadError:
-        raise
     except Exception as e:
         logger.error(f"Failed to validate workflow {workflow_id}: {e}", exc_info=True)
-        raise WorkflowLoadError(
+        raise WorkflowNotFoundError(
             f"Failed to validate workflow '{workflow_id}': {str(e)}"
         )
 

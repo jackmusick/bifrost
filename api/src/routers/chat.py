@@ -572,8 +572,9 @@ async def _handle_coding_mode(
         await websocket.close()
         return
 
-    # Get enabled system tools from the coding agent
+    # Get enabled system tools and knowledge sources from the coding agent
     system_tools = coding_agent.system_tools if coding_agent else []
+    knowledge_sources = coding_agent.knowledge_sources if coding_agent else []
 
     # Create coding mode client with config
     client = CodingModeClient(
@@ -586,6 +587,7 @@ async def _handle_coding_mode(
         is_platform_admin=True,
         session_id=str(conversation_id),  # Use conversation ID as session ID
         system_tools=system_tools,
+        knowledge_sources=knowledge_sources,
     )
 
     try:

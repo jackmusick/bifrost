@@ -1,10 +1,39 @@
 """Unit tests for DecoratorPropertyService."""
 
+import importlib
+import sys
 from uuid import UUID
 
-from src.services.decorator_property_service import (
-    DecoratorPropertyService,
-)
+import pytest
+
+
+@pytest.fixture(autouse=True)
+def reset_libcst_and_service():
+    """
+    Force a fresh import of libcst and DecoratorPropertyService before each test.
+
+    This is necessary because libcst's native parser can get into a corrupted
+    state when other tests in the suite trigger parsing errors. The parser
+    maintains internal state that can persist incorrectly across calls.
+    """
+    # Remove all libcst modules from cache
+    libcst_modules = [k for k in list(sys.modules.keys()) if k.startswith('libcst')]
+    for mod in libcst_modules:
+        del sys.modules[mod]
+
+    # Also remove the decorator property service to force reimport with fresh libcst
+    service_key = 'src.services.decorator_property_service'
+    if service_key in sys.modules:
+        del sys.modules[service_key]
+
+    yield
+
+
+def get_service():
+    """Import and return a fresh DecoratorPropertyService instance."""
+    # Import fresh each time to get fresh libcst
+    from src.services.decorator_property_service import DecoratorPropertyService
+    return DecoratorPropertyService()
 
 
 class TestDecoratorPropertyReader:
@@ -17,7 +46,7 @@ class TestDecoratorPropertyReader:
 async def my_workflow():
     pass
 '''
-        service = DecoratorPropertyService()
+        service = get_service()
         decorators = service.read_decorators(content)
 
         assert len(decorators) == 1
@@ -33,7 +62,7 @@ async def my_workflow():
 async def my_workflow():
     pass
 '''
-        service = DecoratorPropertyService()
+        service = get_service()
         decorators = service.read_decorators(content)
 
         assert len(decorators) == 1
@@ -47,7 +76,7 @@ async def my_workflow():
 async def my_workflow():
     pass
 '''
-        service = DecoratorPropertyService()
+        service = get_service()
         decorators = service.read_decorators(content)
 
         assert len(decorators) == 1
@@ -65,7 +94,7 @@ async def my_workflow():
 async def get_users():
     pass
 '''
-        service = DecoratorPropertyService()
+        service = get_service()
         decorators = service.read_decorators(content)
 
         assert len(decorators) == 1
@@ -83,7 +112,7 @@ async def get_users():
 async def search_users(query: str):
     pass
 '''
-        service = DecoratorPropertyService()
+        service = get_service()
         decorators = service.read_decorators(content)
 
         assert len(decorators) == 1
@@ -105,7 +134,7 @@ async def workflow_b():
 async def provider_a():
     pass
 '''
-        service = DecoratorPropertyService()
+        service = get_service()
         decorators = service.read_decorators(content)
 
         assert len(decorators) == 3
@@ -135,7 +164,7 @@ async def workflow_a():
 async def workflow_b():
     pass
 '''
-        service = DecoratorPropertyService()
+        service = get_service()
 
         props_a = service.read_properties(content, "workflow_a", "workflow")
         assert props_a == {"id": "aaa", "name": "Workflow A"}
@@ -153,7 +182,7 @@ async def workflow_b():
 async def my_workflow():
     pass
 '''
-        service = DecoratorPropertyService()
+        service = get_service()
         decorators = service.read_decorators(content)
 
         assert decorators[0].properties == {
@@ -168,7 +197,7 @@ async def my_workflow():
 async def my_workflow():
     pass
 '''
-        service = DecoratorPropertyService()
+        service = get_service()
         decorators = service.read_decorators(content)
 
         assert decorators[0].properties == {"timeout_seconds": 3600}
@@ -182,7 +211,7 @@ async def my_workflow():
 async def my_workflow():
     pass
 '''
-        service = DecoratorPropertyService()
+        service = get_service()
         decorators = service.read_decorators(content)
 
         # Should only find the @workflow decorator
@@ -198,7 +227,7 @@ async def my_workflow():
 async def my_workflow():
     pass
 '''
-        service = DecoratorPropertyService()
+        service = get_service()
         decorators = service.read_decorators(content)
 
         # Should return empty list, not crash
@@ -214,7 +243,7 @@ class TestDecoratorPropertyTransformer:
 async def my_workflow():
     pass
 '''
-        service = DecoratorPropertyService()
+        service = get_service()
         result = service.inject_ids_if_missing(content)
 
         assert result.modified is True
@@ -236,7 +265,7 @@ async def my_workflow():
 async def my_workflow():
     pass
 '''
-        service = DecoratorPropertyService()
+        service = get_service()
         result = service.inject_ids_if_missing(content)
 
         assert result.modified is True
@@ -252,7 +281,7 @@ async def my_workflow():
 async def my_workflow():
     pass
 '''
-        service = DecoratorPropertyService()
+        service = get_service()
         result = service.inject_ids_if_missing(content)
 
         assert result.modified is False
@@ -273,7 +302,7 @@ async def workflow_b():
 async def provider_a():
     pass
 '''
-        service = DecoratorPropertyService()
+        service = get_service()
         result = service.inject_ids_if_missing(content)
 
         assert result.modified is True
@@ -298,7 +327,7 @@ async def my_workflow():
     """Docstring preserved."""
     pass
 '''
-        service = DecoratorPropertyService()
+        service = get_service()
         result = service.inject_ids_if_missing(content)
 
         # Should preserve:
@@ -314,7 +343,7 @@ async def my_workflow():
 async def my_workflow():
     pass
 '''
-        service = DecoratorPropertyService()
+        service = get_service()
         result = service.write_properties(
             content,
             "my_workflow",
@@ -332,7 +361,7 @@ async def my_workflow():
 async def my_workflow():
     pass
 '''
-        service = DecoratorPropertyService()
+        service = get_service()
         result = service.write_properties(
             content,
             "my_workflow",
@@ -349,7 +378,7 @@ async def my_workflow():
 async def my_workflow():
     pass
 '''
-        service = DecoratorPropertyService()
+        service = get_service()
         result = service.write_properties(
             content,
             "my_workflow",
@@ -371,7 +400,7 @@ async def workflow_a():
 async def workflow_b():
     pass
 '''
-        service = DecoratorPropertyService()
+        service = get_service()
         result = service.write_properties(
             content,
             "workflow_a",
@@ -396,7 +425,7 @@ async def workflow_b():
 async def my_workflow():
     pass
 '''
-        service = DecoratorPropertyService()
+        service = get_service()
         result = service.write_properties(
             content,
             "my_workflow",
@@ -414,7 +443,7 @@ async def my_workflow():
 async def my_workflow():
     pass
 '''
-        service = DecoratorPropertyService()
+        service = get_service()
         result = service.write_properties(
             content,
             "my_workflow",
@@ -434,7 +463,7 @@ async def my_workflow():
 async def my_workflow():
     pass
 '''
-        service = DecoratorPropertyService()
+        service = get_service()
         result = service.write_properties(
             content,
             "my_workflow",
@@ -459,7 +488,7 @@ async def wf1():
 async def wf2():
     pass
 '''
-        service = DecoratorPropertyService()
+        service = get_service()
         result = service.inject_ids_if_missing(content)
 
         decorators = service.read_decorators(result.new_content)
@@ -483,7 +512,7 @@ async def wf2():
 async def wf3():
     pass
 '''
-        service = DecoratorPropertyService()
+        service = get_service()
         result = service.inject_ids_if_missing(content)
 
         decorators = service.read_decorators(result.new_content)
@@ -498,7 +527,7 @@ class TestEdgeCases:
 
     def test_empty_file(self):
         """Test handling of empty file."""
-        service = DecoratorPropertyService()
+        service = get_service()
         decorators = service.read_decorators("")
         assert decorators == []
 
@@ -516,7 +545,7 @@ class MyClass:
     def method(self):
         pass
 '''
-        service = DecoratorPropertyService()
+        service = get_service()
         decorators = service.read_decorators(content)
         assert decorators == []
 
@@ -531,7 +560,7 @@ def outer():
     async def inner():
         pass
 '''
-        service = DecoratorPropertyService()
+        service = get_service()
         result = service.inject_ids_if_missing(content)
 
         # Should still find and inject ID
@@ -548,7 +577,7 @@ class MyWorkflows:
     async def my_method(self):
         pass
 '''
-        service = DecoratorPropertyService()
+        service = get_service()
         result = service.inject_ids_if_missing(content)
 
         # Should find and inject ID
@@ -566,7 +595,7 @@ import bifrost
 async def my_workflow():
     pass
 '''
-        service = DecoratorPropertyService()
+        service = get_service()
         decorators = service.read_decorators(content)
 
         # Should recognize bifrost.workflow as workflow

@@ -5,12 +5,35 @@ Tests the reindexing of workspace files and reconciliation of orphaned
 workflows and data providers.
 """
 
+import sys
+
 import pytest
 from pathlib import Path
 from unittest.mock import AsyncMock, MagicMock, patch
 from uuid import uuid4
 
-from src.services.file_storage_service import FileStorageService
+
+def clear_libcst_modules():
+    """
+    Clear libcst and dependent modules from sys.modules to get fresh parser state.
+
+    This function clears the libcst module cache before importing FileStorageService
+    to ensure the libcst parser is not in a corrupted state from previous tests.
+    """
+    # Remove all libcst modules from cache
+    libcst_modules = [k for k in list(sys.modules.keys()) if k.startswith('libcst')]
+    for mod in libcst_modules:
+        del sys.modules[mod]
+
+    # Also remove decorator_property_service to force reimport with fresh libcst
+    service_key = 'src.services.decorator_property_service'
+    if service_key in sys.modules:
+        del sys.modules[service_key]
+
+    # Remove file_storage_service to force reimport with fresh decorator_property_service
+    storage_key = 'src.services.file_storage_service'
+    if storage_key in sys.modules:
+        del sys.modules[storage_key]
 
 
 @pytest.fixture
@@ -43,7 +66,7 @@ def temp_workspace(tmp_path):
     workflow_file.write_text("""
 from bifrost import workflow
 
-@workflow(name="Test Workflow", description="A test workflow")
+@workflow(id="12345678-1234-5678-1234-567812345678", name="Test Workflow", description="A test workflow")
 def my_workflow():
     pass
 """)
@@ -54,7 +77,7 @@ def my_workflow():
     provider_file.write_text("""
 from bifrost import data_provider
 
-@data_provider(name="Test Provider")
+@data_provider(id="87654321-4321-8765-4321-876543218765", name="Test Provider")
 def my_provider():
     return []
 """)
@@ -78,7 +101,10 @@ class TestReindexWorkspaceFiles:
         # Setup mock responses
         mock_db.execute.return_value = MagicMock(rowcount=0, scalars=MagicMock(return_value=MagicMock(all=MagicMock(return_value=[]))))
 
+        # Clear modules first, THEN apply patch, THEN import
+        clear_libcst_modules()
         with patch("src.services.file_storage_service.get_workspace_cache", return_value=mock_workspace_cache):
+            from src.services.file_storage_service import FileStorageService
             storage = FileStorageService(mock_db)
             counts = await storage.reindex_workspace_files(temp_workspace)
 
@@ -95,7 +121,10 @@ class TestReindexWorkspaceFiles:
         mock_result.scalars = MagicMock(return_value=MagicMock(all=MagicMock(return_value=[])))
         mock_db.execute.return_value = mock_result
 
+        # Clear modules first, THEN apply patch, THEN import
+        clear_libcst_modules()
         with patch("src.services.file_storage_service.get_workspace_cache", return_value=mock_workspace_cache):
+            from src.services.file_storage_service import FileStorageService
             storage = FileStorageService(mock_db)
             counts = await storage.reindex_workspace_files(temp_workspace)
 
@@ -125,7 +154,10 @@ class TestReindexWorkspaceFiles:
 
         mock_db.execute.side_effect = mock_results
 
+        # Clear modules first, THEN apply patch, THEN import
+        clear_libcst_modules()
         with patch("src.services.file_storage_service.get_workspace_cache", return_value=mock_workspace_cache):
+            from src.services.file_storage_service import FileStorageService
             storage = FileStorageService(mock_db)
             # Mock _extract_metadata to avoid complex AST parsing in unit test
             storage._extract_metadata = AsyncMock()
@@ -143,7 +175,10 @@ class TestReindexWorkspaceFiles:
             scalars=MagicMock(return_value=MagicMock(all=MagicMock(return_value=[])))
         )
 
+        # Clear modules first, THEN apply patch, THEN import
+        clear_libcst_modules()
         with patch("src.services.file_storage_service.get_workspace_cache", return_value=mock_workspace_cache):
+            from src.services.file_storage_service import FileStorageService
             storage = FileStorageService(mock_db)
             storage._extract_metadata = AsyncMock()
 
@@ -160,7 +195,10 @@ class TestReindexWorkspaceFiles:
             scalars=MagicMock(return_value=MagicMock(all=MagicMock(return_value=[])))
         )
 
+        # Clear modules first, THEN apply patch, THEN import
+        clear_libcst_modules()
         with patch("src.services.file_storage_service.get_workspace_cache", return_value=mock_workspace_cache):
+            from src.services.file_storage_service import FileStorageService
             storage = FileStorageService(mock_db)
             storage._extract_metadata = AsyncMock()
 
@@ -186,7 +224,10 @@ class TestReindexWorkspaceFiles:
             scalars=MagicMock(return_value=MagicMock(all=MagicMock(return_value=[])))
         )
 
+        # Clear modules first, THEN apply patch, THEN import
+        clear_libcst_modules()
         with patch("src.services.file_storage_service.get_workspace_cache", return_value=mock_workspace_cache):
+            from src.services.file_storage_service import FileStorageService
             storage = FileStorageService(mock_db)
             storage._extract_metadata = AsyncMock()
 
@@ -210,7 +251,10 @@ class TestReindexWorkspaceFiles:
         ]
         mock_db.execute.side_effect = mock_results
 
+        # Clear modules first, THEN apply patch, THEN import
+        clear_libcst_modules()
         with patch("src.services.file_storage_service.get_workspace_cache", return_value=mock_workspace_cache):
+            from src.services.file_storage_service import FileStorageService
             storage = FileStorageService(mock_db)
             counts = await storage.reindex_workspace_files(empty_workspace)
 
@@ -244,9 +288,12 @@ class TestReindexWorkspaceFiles:
 
         mock_db.execute.side_effect = mock_results
 
+        # Clear modules first, THEN apply patch, THEN import
+        clear_libcst_modules()
         with patch("src.services.file_storage_service.get_workspace_cache", return_value=mock_workspace_cache):
             with patch("src.services.openapi_endpoints.remove_workflow_endpoint") as mock_remove:
                 with patch("src.main.app"):  # Mock the FastAPI app
+                    from src.services.file_storage_service import FileStorageService
                     storage = FileStorageService(mock_db)
                     storage._extract_metadata = AsyncMock()
 
@@ -275,8 +322,11 @@ class TestReindexWorkspaceFiles:
             scalars=MagicMock(return_value=MagicMock(all=MagicMock(return_value=[])))
         )
 
+        # Clear modules first, THEN apply patch, THEN import
+        clear_libcst_modules()
         with patch("src.services.file_storage_service.get_workspace_cache", return_value=mock_workspace_cache):
             with patch.object(Path, "read_bytes", mock_read_bytes):
+                from src.services.file_storage_service import FileStorageService
                 storage = FileStorageService(mock_db)
                 storage._extract_metadata = AsyncMock()
 

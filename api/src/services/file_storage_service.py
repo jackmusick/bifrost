@@ -1340,15 +1340,28 @@ class FileStorageService:
                     if endpoint_enabled:
                         await self._refresh_workflow_endpoint(workflow)
 
-                    # Invalidate endpoint workflow cache for this workflow
-                    # This ensures stale cached metadata is cleared when workflow is modified
+                    # Update Redis caches for this workflow
                     try:
                         from src.core.redis_client import get_redis_client
                         redis_client = get_redis_client()
+
+                        # Invalidate endpoint workflow cache (keyed by name)
                         await redis_client.invalidate_endpoint_workflow_cache(workflow_name)
                         logger.debug(f"Invalidated endpoint cache for workflow: {workflow_name}")
+
+                        # Upsert workflow metadata cache (keyed by ID)
+                        await redis_client.set_workflow_metadata_cache(
+                            workflow_id=str(workflow_uuid),
+                            name=workflow_name,
+                            file_path=path,
+                            timeout_seconds=kwargs.get("timeout_seconds", 1800),
+                            time_saved=time_saved,
+                            value=value,
+                            execution_mode=execution_mode,
+                        )
+                        logger.debug(f"Upserted workflow metadata cache: {workflow_name}")
                     except Exception as e:
-                        logger.warning(f"Failed to invalidate endpoint cache for {workflow_name}: {e}")
+                        logger.warning(f"Failed to update caches for workflow {workflow_name}: {e}")
 
                 elif decorator_name == "data_provider":
                     found_data_provider = True

@@ -31,7 +31,7 @@ async def e2e_exec_sync_workflow(message: str, count: int = 1):
     }
 '''
     e2e_client.put(
-        "/api/files/editor/content",
+        "/api/files/editor/content?index=true",
         headers=platform_admin.headers,
         json={
             "path": "e2e_exec_sync_workflow.py",
@@ -40,7 +40,7 @@ async def e2e_exec_sync_workflow(message: str, count: int = 1):
         },
     )
 
-    # Discovery happens synchronously during file write - just fetch the workflow
+    # Discovery happens synchronously during file write (with index=true) - just fetch the workflow
     response = e2e_client.get("/api/workflows", headers=platform_admin.headers)
     workflows = response.json()
     workflow = next((w for w in workflows if w["name"] == "e2e_exec_sync_workflow"), None)
@@ -73,7 +73,7 @@ async def e2e_exec_async_workflow(delay_seconds: int = 1):
     return {"status": "completed", "delayed": delay_seconds}
 '''
     e2e_client.put(
-        "/api/files/editor/content",
+        "/api/files/editor/content?index=true",
         headers=platform_admin.headers,
         json={
             "path": "e2e_exec_async_workflow.py",
@@ -82,7 +82,7 @@ async def e2e_exec_async_workflow(delay_seconds: int = 1):
         },
     )
 
-    # Discovery happens synchronously during file write - just fetch the workflow
+    # Discovery happens synchronously during file write (with index=true) - just fetch the workflow
     response = e2e_client.get("/api/workflows", headers=platform_admin.headers)
     workflows = response.json()
     workflow = next((w for w in workflows if w["name"] == "e2e_exec_async_workflow"), None)
@@ -266,7 +266,7 @@ async def e2e_cancellation_workflow(sleep_seconds: int = 30):
     return {"status": "completed", "slept_for": sleep_seconds}
 '''
         e2e_client.put(
-            "/api/files/editor/content",
+            "/api/files/editor/content?index=true",
             headers=platform_admin.headers,
             json={
                 "path": "e2e_cancellation_workflow.py",

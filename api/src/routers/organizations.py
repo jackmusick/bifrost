@@ -16,6 +16,15 @@ from src.core.database import DbSession
 from src.models import Organization as OrganizationORM
 from src.models import OrganizationCreate, OrganizationPublic, OrganizationUpdate
 
+# Import cache functions
+try:
+    from src.core.cache import upsert_org, invalidate_org
+    CACHE_AVAILABLE = True
+except ImportError:
+    CACHE_AVAILABLE = False
+    upsert_org = None  # type: ignore
+    invalidate_org = None  # type: ignore
+
 logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/api/organizations", tags=["Organizations"])
@@ -66,6 +75,15 @@ async def create_organization(
     db.add(org)
     await db.flush()
     await db.refresh(org)
+
+    # Upsert to cache after successful write
+    if CACHE_AVAILABLE and upsert_org:
+        await upsert_org(
+            org_id=str(org.id),
+            name=org.name,
+            domain=org.domain,
+            is_active=org.is_active,
+        )
 
     logger.info(f"Created organization {org.id}: {org.name}")
     return OrganizationPublic.model_validate(org)
@@ -135,6 +153,15 @@ async def update_organization(
     await db.flush()
     await db.refresh(org)
 
+    # Upsert to cache after successful update
+    if CACHE_AVAILABLE and upsert_org:
+        await upsert_org(
+            org_id=str(org.id),
+            name=org.name,
+            domain=org.domain,
+            is_active=org.is_active,
+        )
+
     logger.info(f"Updated organization {org_id}")
     return OrganizationPublic.model_validate(org)
 
@@ -166,4 +193,9 @@ async def delete_organization(
     org.updated_at = datetime.utcnow()
 
     await db.flush()
+
+    # Invalidate cache after soft delete
+    if CACHE_AVAILABLE and invalidate_org:
+        await invalidate_org(str(org_id))
+
     logger.info(f"Soft deleted organization {org_id}")

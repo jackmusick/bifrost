@@ -1,5 +1,5 @@
 """
-Tests for MCP JSON-RPC protocol endpoint at /api/mcp.
+Tests for MCP JSON-RPC protocol endpoint at /mcp.
 
 These tests verify the FastMCP server is properly mounted and accepting
 authenticated requests via the JSON-RPC 2.0 protocol.
@@ -32,9 +32,9 @@ class TestMCPProtocol:
     """Test MCP JSON-RPC 2.0 protocol endpoint."""
 
     def test_mcp_requires_auth(self):
-        """POST /api/mcp without auth should return 401."""
+        """POST /mcp without auth should return 401."""
         response = requests.post(
-            f"{TEST_API_URL}/api/mcp",
+            f"{TEST_API_URL}/mcp",
             json={
                 "jsonrpc": "2.0",
                 "id": 1,
@@ -58,7 +58,7 @@ class TestMCPProtocol:
         headers = mcp_headers(token)
 
         response = requests.post(
-            f"{TEST_API_URL}/api/mcp",
+            f"{TEST_API_URL}/mcp",
             json={
                 "jsonrpc": "2.0",
                 "id": 1,
@@ -89,7 +89,7 @@ class TestMCPProtocol:
 
         # First initialize to get session ID
         init_response = requests.post(
-            f"{TEST_API_URL}/api/mcp",
+            f"{TEST_API_URL}/mcp",
             json={
                 "jsonrpc": "2.0",
                 "id": 1,
@@ -111,7 +111,7 @@ class TestMCPProtocol:
         # Then list tools with session ID
         headers["Mcp-Session-Id"] = session_id
         response = requests.post(
-            f"{TEST_API_URL}/api/mcp",
+            f"{TEST_API_URL}/mcp",
             json={
                 "jsonrpc": "2.0",
                 "id": 2,
@@ -141,7 +141,7 @@ class TestMCPProtocol:
         headers = mcp_headers(token)
 
         response = requests.post(
-            f"{TEST_API_URL}/api/mcp",
+            f"{TEST_API_URL}/mcp",
             json={
                 "jsonrpc": "2.0",
                 "id": 1,
@@ -167,7 +167,7 @@ class TestMCPProtocol:
         }
 
         response = requests.post(
-            f"{TEST_API_URL}/api/mcp",
+            f"{TEST_API_URL}/mcp",
             json={
                 "jsonrpc": "2.0",
                 "id": 1,

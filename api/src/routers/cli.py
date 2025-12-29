@@ -21,7 +21,7 @@ from typing import Any
 from uuid import UUID, uuid4
 
 from fastapi import APIRouter, Depends, HTTPException, status
-from fastapi.responses import StreamingResponse
+from fastapi.responses import Response, StreamingResponse
 from pydantic import BaseModel, Field
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -1850,10 +1850,12 @@ async def download_cli() -> StreamingResponse:
                 tar.add(file_path, arcname=arcname)
 
     await asyncio.to_thread(_generate_tarball)
-    buffer.seek(0)
 
-    return StreamingResponse(
-        buffer,
+    # Get the complete tarball content after it's fully finalized
+    tarball_content = buffer.getvalue()
+
+    return Response(
+        content=tarball_content,
         media_type="application/gzip",
         headers={
             "Content-Disposition": "attachment; filename=bifrost-cli-2.0.0.tar.gz",

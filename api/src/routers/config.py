@@ -26,13 +26,14 @@ from src.models import Config as ConfigModel
 from src.models.enums import ConfigType as ConfigTypeEnum
 from src.repositories.org_scoped import OrgScopedRepository
 
-# Import cache invalidation
+# Import cache functions
 try:
-    from src.core.cache import invalidate_config
-    CACHE_INVALIDATION_AVAILABLE = True
+    from src.core.cache import invalidate_config, upsert_config
+    CACHE_AVAILABLE = True
 except ImportError:
-    CACHE_INVALIDATION_AVAILABLE = False
+    CACHE_AVAILABLE = False
     invalidate_config = None  # type: ignore
+    upsert_config = None  # type: ignore
 
 logger = logging.getLogger(__name__)
 
@@ -266,10 +267,13 @@ async def set_config(
     try:
         result = await repo.set_config(request, updated_by=user.email)
 
-        # Invalidate cache after successful write
-        if CACHE_INVALIDATION_AVAILABLE and invalidate_config:
-            org_id = str(target_org_id) if target_org_id else None
-            await invalidate_config(org_id, request.key)
+        # Upsert to cache after successful write (dual-write pattern)
+        if CACHE_AVAILABLE and upsert_config:
+            org_id_str = str(target_org_id) if target_org_id else None
+            config_type_str = request.type.value if request.type else "string"
+            # Note: For secrets, stored_value is already encrypted by the repository
+            stored_value = result.value
+            await upsert_config(org_id_str, request.key, stored_value, config_type_str)
 
         return result
     except Exception as e:
@@ -302,6 +306,6 @@ async def delete_config(
         )
 
     # Invalidate cache after successful delete
-    if CACHE_INVALIDATION_AVAILABLE and invalidate_config:
-        org_id = str(ctx.org_id) if ctx.org_id else None
-        await invalidate_config(org_id, key)
+    if CACHE_AVAILABLE and invalidate_config:
+        org_id_str = str(ctx.org_id) if ctx.org_id else None
+        await invalidate_config(org_id_str, key)
