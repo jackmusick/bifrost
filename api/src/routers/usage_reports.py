@@ -25,11 +25,14 @@ from src.models import (
     WorkflowUsage,
     ConversationUsage,
     OrganizationUsage,
+    KnowledgeStorageUsage,
+    KnowledgeStorageTrend,
 )
 from src.models.orm import (
     AIUsage,
     Conversation,
     Execution,
+    KnowledgeStorageDaily,
     Organization,
 )
 
@@ -278,10 +281,90 @@ async def get_usage_report(
         for row in org_result.all()
     ]
 
+    # 6. Get knowledge storage usage
+    knowledge_storage: list[KnowledgeStorageUsage] = []
+    knowledge_storage_trends: list[KnowledgeStorageTrend] = []
+    knowledge_storage_as_of: date | None = None
+
+    # Get the latest snapshot date
+    latest_date_query = select(func.max(KnowledgeStorageDaily.snapshot_date))
+    latest_date_result = await db.execute(latest_date_query)
+    latest_date = latest_date_result.scalar()
+
+    if latest_date:
+        knowledge_storage_as_of = latest_date
+
+        # Get latest snapshot with org names
+        storage_query = (
+            select(
+                KnowledgeStorageDaily.organization_id,
+                func.coalesce(Organization.name, "Global").label("org_name"),
+                KnowledgeStorageDaily.namespace,
+                KnowledgeStorageDaily.document_count,
+                KnowledgeStorageDaily.size_bytes,
+            )
+            .outerjoin(
+                Organization, KnowledgeStorageDaily.organization_id == Organization.id
+            )
+            .where(KnowledgeStorageDaily.snapshot_date == latest_date)
+            .order_by(KnowledgeStorageDaily.size_bytes.desc())
+        )
+
+        # Apply org filter if specified
+        if filter_org_id:
+            storage_query = storage_query.where(
+                KnowledgeStorageDaily.organization_id == filter_org_id
+            )
+
+        storage_result = await db.execute(storage_query)
+        knowledge_storage = [
+            KnowledgeStorageUsage(
+                organization_id=str(row.organization_id) if row.organization_id else None,
+                organization_name=row.org_name,
+                namespace=row.namespace,
+                document_count=row.document_count,
+                size_bytes=row.size_bytes,
+                size_mb=round(row.size_bytes / 1048576, 2),
+            )
+            for row in storage_result.all()
+        ]
+
+        # Get storage trends for the date range
+        trends_storage_query = (
+            select(
+                KnowledgeStorageDaily.snapshot_date,
+                func.sum(KnowledgeStorageDaily.document_count).label("docs"),
+                func.sum(KnowledgeStorageDaily.size_bytes).label("bytes"),
+            )
+            .where(KnowledgeStorageDaily.snapshot_date >= start_date)
+            .where(KnowledgeStorageDaily.snapshot_date <= end_date)
+            .group_by(KnowledgeStorageDaily.snapshot_date)
+            .order_by(KnowledgeStorageDaily.snapshot_date)
+        )
+
+        if filter_org_id:
+            trends_storage_query = trends_storage_query.where(
+                KnowledgeStorageDaily.organization_id == filter_org_id
+            )
+
+        trends_storage_result = await db.execute(trends_storage_query)
+        knowledge_storage_trends = [
+            KnowledgeStorageTrend(
+                date=row.snapshot_date,
+                total_documents=int(row.docs or 0),
+                total_size_bytes=int(row.bytes or 0),
+                total_size_mb=round((row.bytes or 0) / 1048576, 2),
+            )
+            for row in trends_storage_result.all()
+        ]
+
     return UsageReportResponse(
         summary=summary,
         trends=trends,
         by_workflow=by_workflow,
         by_conversation=by_conversation,
         by_organization=by_organization,
+        knowledge_storage=knowledge_storage,
+        knowledge_storage_trends=knowledge_storage_trends,
+        knowledge_storage_as_of=knowledge_storage_as_of,
     )

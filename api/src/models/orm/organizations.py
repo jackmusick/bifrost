@@ -20,6 +20,7 @@ if TYPE_CHECKING:
     from src.models.orm.executions import Execution
     from src.models.orm.forms import Form
     from src.models.orm.knowledge import KnowledgeStore
+    from src.models.orm.metrics import KnowledgeStorageDaily
     from src.models.orm.users import User
 
 
@@ -54,6 +55,9 @@ class Organization(Base):
         back_populates="organization"
     )
     knowledge_entries: Mapped[list["KnowledgeStore"]] = relationship(
+        back_populates="organization"
+    )
+    knowledge_storage_snapshots: Mapped[list["KnowledgeStorageDaily"]] = relationship(
         back_populates="organization"
     )
 

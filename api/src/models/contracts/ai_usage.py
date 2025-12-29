@@ -221,6 +221,30 @@ class OrganizationUsage(BaseModel):
         return str(d)
 
 
+class KnowledgeStorageUsage(BaseModel):
+    """Knowledge storage usage by organization and namespace."""
+
+    organization_id: str | None = None
+    organization_name: str
+    namespace: str
+    document_count: int = Field(default=0)
+    size_bytes: int = Field(default=0)
+    size_mb: float = Field(default=0.0)
+
+
+class KnowledgeStorageTrend(BaseModel):
+    """Daily knowledge storage trend data point."""
+
+    date: date
+    total_documents: int = Field(default=0)
+    total_size_bytes: int = Field(default=0)
+    total_size_mb: float = Field(default=0.0)
+
+    @field_serializer("date")
+    def serialize_trend_date(self, d: dt.date) -> str:
+        return d.isoformat()
+
+
 class UsageReportResponse(BaseModel):
     """Complete usage report response."""
 
@@ -229,6 +253,13 @@ class UsageReportResponse(BaseModel):
     by_workflow: list[WorkflowUsage] = Field(default_factory=list)
     by_conversation: list[ConversationUsage] = Field(default_factory=list)
     by_organization: list[OrganizationUsage] = Field(default_factory=list)
+    knowledge_storage: list[KnowledgeStorageUsage] = Field(default_factory=list)
+    knowledge_storage_trends: list[KnowledgeStorageTrend] = Field(default_factory=list)
+    knowledge_storage_as_of: date | None = None
+
+    @field_serializer("knowledge_storage_as_of")
+    def serialize_storage_date(self, d: dt.date | None) -> str | None:
+        return d.isoformat() if d else None
 
 
 # ==================== PRICING LIST MODELS ====================

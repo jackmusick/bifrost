@@ -67,36 +67,41 @@ async def mcp_status(
     Get MCP server status and available tools for the current user.
 
     This is a REST endpoint (not MCP protocol) for debugging and discovery.
-    Returns information about which tools the user has access to.
+    Returns information about which tools the user has access to based on
+    their agent access permissions.
     """
-    from src.services.mcp.server import BifrostMCPServer, MCPContext
+    from src.services.mcp.tool_access import MCPToolAccessService
 
-    # Check if user is platform admin (initial restriction)
-    if not current_user.is_superuser:
+    # Check MCP config for access control
+    config_service = MCPConfigService(db)
+    config = await config_service.get_config()
+
+    if not config.enabled:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
-            detail="MCP access is currently restricted to platform administrators"
+            detail="External MCP access is disabled",
         )
 
-    # Create context for this user
-    context = MCPContext(
-        user_id=current_user.user_id,
-        org_id=current_user.organization_id,
-        is_platform_admin=current_user.is_superuser,
-        user_email=current_user.email,
-        user_name=current_user.name or current_user.email,
-    )
+    if config.require_platform_admin and not current_user.is_superuser:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="MCP access is currently restricted to platform administrators",
+        )
 
-    # Get tool names
-    server = BifrostMCPServer(context)
-    tool_names = server.get_tool_names()
+    # Get accessible tools based on user's agent access
+    tool_service = MCPToolAccessService(db)
+    result = await tool_service.get_accessible_tools(
+        user_roles=current_user.roles,
+        is_superuser=current_user.is_superuser,
+    )
 
     return {
         "status": "available",
         "user_id": str(current_user.user_id),
         "is_platform_admin": current_user.is_superuser,
-        "tools_count": len(tool_names),
-        "tools": [name.replace("mcp__bifrost__", "") for name in tool_names],
+        "tools_count": len(result.tools),
+        "tools": [tool.id for tool in result.tools],
+        "accessible_agents_count": len(result.accessible_agent_ids),
         "mcp_endpoint": "/mcp",
         "transport": "streamable-http",
         "auth": "oauth2.1",
@@ -130,6 +135,8 @@ def get_mcp_asgi_app():
     Returns:
         ASGI application from FastMCP
     """
+    from contextlib import asynccontextmanager
+
     from src.services.mcp.server import HAS_FASTMCP
 
     if not HAS_FASTMCP:
@@ -137,7 +144,11 @@ def get_mcp_asgi_app():
         return None
 
     # Import here to avoid circular imports and only when FastMCP is available
-    from src.services.mcp.server import BifrostMCPServer, MCPContext
+    from src.services.mcp.server import (
+        BifrostMCPServer,
+        MCPContext,
+        _register_workflow_tools,
+    )
 
     # Create OAuth 2.1 auth provider for Bifrost
     try:
@@ -158,12 +169,38 @@ def get_mcp_asgi_app():
     server = BifrostMCPServer(default_context)
     fastmcp_server = server.get_fastmcp_server(auth=auth_provider)
 
+    # Add tool filtering middleware to filter tools/list based on user permissions
+    try:
+        from src.services.mcp.middleware import ToolFilterMiddleware
+        fastmcp_server.add_middleware(ToolFilterMiddleware())
+        logger.info("Added ToolFilterMiddleware for per-user tool filtering")
+    except ImportError as e:
+        logger.warning(f"Could not add ToolFilterMiddleware: {e}")
+
     # Create ASGI app with default path="/mcp" - we mount at root so FastMCP
     # handles /mcp directly without Starlette's trailing slash redirect
     mcp_app = fastmcp_server.http_app(json_response=True)
 
     # Store original lifespan before wrapping
     original_lifespan = getattr(mcp_app, 'lifespan', None)
+
+    # Create combined lifespan that registers workflow tools on startup
+    @asynccontextmanager
+    async def combined_lifespan(app):
+        """Combined lifespan that registers workflow tools and runs FastMCP lifespan."""
+        # Register workflow tools on startup
+        try:
+            count = await _register_workflow_tools(fastmcp_server, default_context)
+            logger.info(f"Registered {count} workflow tools during MCP startup")
+        except Exception as e:
+            logger.warning(f"Failed to register workflow tools: {e}")
+
+        # Run original FastMCP lifespan if present
+        if original_lifespan:
+            async with original_lifespan(app):
+                yield
+        else:
+            yield
 
     # Wrap with CORS middleware to expose Mcp-Session-Id header
     # Required for browser-based clients like MCP Inspector to read session ID
@@ -176,9 +213,8 @@ def get_mcp_asgi_app():
         expose_headers=["Mcp-Session-Id"],
     )
 
-    # Preserve FastMCP lifespan on the wrapper for main.py to find
-    if original_lifespan:
-        cors_app.lifespan = original_lifespan  # type: ignore[attr-defined]
+    # Store combined lifespan on the wrapper for main.py to find
+    cors_app.lifespan = combined_lifespan  # type: ignore[attr-defined]
 
     logger.info("Created FastMCP ASGI application with OAuth 2.1 auth and CORS")
 
@@ -304,42 +340,45 @@ async def list_mcp_tools(
     db: DbSession,
 ) -> MCPToolsResponse:
     """
-    List all available MCP tools.
+    List all MCP tools available to the current user.
 
-    Returns information about each tool that can be exposed via MCP,
-    useful for configuring allowed/blocked tool lists.
+    Returns tools from agents the user can access, filtered by
+    global MCP config allowlist/blocklist.
     """
-    from src.services.mcp.server import BifrostMCPServer, MCPContext
+    from src.services.mcp.tool_access import MCPToolAccessService
 
-    # Only platform admins can view tools
-    if not current_user.is_superuser:
+    # Check MCP config for access control
+    config_service = MCPConfigService(db)
+    config = await config_service.get_config()
+
+    if not config.enabled:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
-            detail="Only platform administrators can view MCP tools"
+            detail="External MCP access is disabled",
         )
 
-    # Create context showing all tools
-    context = MCPContext(
-        user_id=current_user.user_id,
-        org_id=current_user.organization_id,
-        is_platform_admin=True,  # Show all tools
-        user_email=current_user.email,
-        user_name=current_user.name or current_user.email,
+    if config.require_platform_admin and not current_user.is_superuser:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="MCP access is currently restricted to platform administrators",
+        )
+
+    # Get accessible tools based on user's agent access
+    tool_service = MCPToolAccessService(db)
+    result = await tool_service.get_accessible_tools(
+        user_roles=current_user.roles,
+        is_superuser=current_user.is_superuser,
     )
 
-    server = BifrostMCPServer(context)
-    tool_names = server.get_tool_names()
-
-    # Build tool info list
-    tools = []
-    for name in tool_names:
-        # Remove prefix for display
-        display_name = name.replace("mcp__bifrost__", "")
-        tools.append(MCPToolInfo(
-            id=display_name,
-            name=display_name.replace("_", " ").title(),
-            description=f"MCP tool: {display_name}",
-            is_system=True,
-        ))
+    # Convert ToolInfo to MCPToolInfo for response
+    tools = [
+        MCPToolInfo(
+            id=tool.id,
+            name=tool.name,
+            description=tool.description,
+            is_system=(tool.type == "system"),
+        )
+        for tool in result.tools
+    ]
 
     return MCPToolsResponse(tools=tools)

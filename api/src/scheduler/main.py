@@ -142,6 +142,24 @@ class Scheduler:
         except ImportError:
             logger.warning("Metrics snapshot refresh job not available")
 
+        # Knowledge storage refresh - daily at 2:00 AM UTC (run immediately at startup)
+        try:
+            from src.jobs.schedulers.knowledge_storage_refresh import (
+                refresh_knowledge_storage_daily,
+            )
+            scheduler.add_job(
+                refresh_knowledge_storage_daily,
+                CronTrigger(hour=2, minute=0),  # Daily at 2:00 AM UTC
+                id="knowledge_storage_refresh",
+                name="Refresh knowledge storage daily metrics",
+                replace_existing=True,
+                next_run_time=datetime.now(),  # Run immediately at startup
+                **misfire_options,
+            )
+            logger.info("Knowledge storage refresh job scheduled (daily at 2:00 AM)")
+        except ImportError:
+            logger.warning("Knowledge storage refresh job not available")
+
         scheduler.start()
         self._scheduler = scheduler
         logger.info("APScheduler started with scheduled jobs")

@@ -426,6 +426,8 @@ from src.models.contracts.ai_usage import (
     WorkflowUsage,
     ConversationUsage,
     OrganizationUsage,
+    KnowledgeStorageUsage,
+    KnowledgeStorageTrend,
     UsageReportResponse,
 )
 
@@ -766,6 +768,8 @@ __all__ = [
     "WorkflowUsage",
     "ConversationUsage",
     "OrganizationUsage",
+    "KnowledgeStorageUsage",
+    "KnowledgeStorageTrend",
     "UsageReportResponse",
     # SDK Response Models
     "ConfigData",

@@ -16,6 +16,8 @@ export type UsageTrend = components["schemas"]["UsageTrend"];
 export type WorkflowUsage = components["schemas"]["WorkflowUsage"];
 export type ConversationUsage = components["schemas"]["ConversationUsage"];
 export type OrganizationUsage = components["schemas"]["OrganizationUsage"];
+export type KnowledgeStorageUsage = components["schemas"]["KnowledgeStorageUsage"];
+export type KnowledgeStorageTrend = components["schemas"]["KnowledgeStorageTrend"];
 
 export type UsageSource = "executions" | "chat" | "all";
 

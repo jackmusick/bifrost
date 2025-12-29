@@ -601,15 +601,418 @@ def _create_sdk_tools(context: MCPContext, enabled_tools: set[str] | None) -> li
 # FastMCP Tool Registration (for external HTTP access)
 # =============================================================================
 
+
+def _get_context_from_token() -> MCPContext:
+    """
+    Get MCPContext from authenticated FastMCP token.
+
+    This extracts user information from the validated JWT token set by
+    FastMCP's authentication middleware. Used by tool execution to get
+    the actual authenticated user instead of the default startup context.
+
+    Returns:
+        MCPContext populated with authenticated user's information
+
+    Raises:
+        ToolError: If no authenticated user (token missing or invalid)
+    """
+    from fastmcp.exceptions import ToolError  # type: ignore[import-not-found]
+    from fastmcp.server.dependencies import get_access_token  # type: ignore[import-not-found]
+
+    token = get_access_token()
+    if token is None:
+        raise ToolError("Authentication required")
+
+    return MCPContext(
+        user_id=token.claims.get("user_id", ""),
+        org_id=token.claims.get("org_id"),
+        is_platform_admin=token.claims.get("is_superuser", False),
+        user_email=token.claims.get("email", ""),
+        user_name=token.claims.get("name", ""),
+    )
+
+
+def _map_type_to_json_schema(param_type: str) -> str:
+    """Map workflow parameter type to JSON Schema type."""
+    type_map = {
+        "string": "string",
+        "str": "string",
+        "int": "integer",
+        "integer": "integer",
+        "float": "number",
+        "number": "number",
+        "bool": "boolean",
+        "boolean": "boolean",
+        "json": "object",
+        "dict": "object",
+        "object": "object",
+        "list": "array",
+        "array": "array",
+    }
+    return type_map.get(param_type.lower(), "string")
+
+
+async def _execute_workflow_tool_impl(
+    context: MCPContext,
+    workflow_id: str,
+    workflow_name: str,
+    **inputs: Any,
+) -> str:
+    """Execute a specific workflow tool by ID."""
+    from src.core.database import get_db_context
+    from src.repositories.workflows import WorkflowRepository
+    from src.services.execution.service import execute_tool
+
+    logger.info(f"MCP workflow tool '{workflow_name}' ({workflow_id}) called with inputs: {inputs}")
+
+    try:
+        async with get_db_context() as db:
+            repo = WorkflowRepository(db)
+            workflow = await repo.get_by_id(workflow_id)
+
+            if not workflow:
+                return f"Error: Workflow '{workflow_name}' not found."
+
+            result = await execute_tool(
+                workflow_id=workflow_id,
+                workflow_name=workflow.name,
+                parameters=inputs,
+                user_id=str(context.user_id),
+                user_email=context.user_email or "mcp@bifrost.local",
+                user_name=context.user_name or "MCP User",
+                org_id=str(context.org_id) if context.org_id else None,
+                is_platform_admin=context.is_platform_admin,
+            )
+
+            if result.status.value == "Success":
+                import json
+                result_str = json.dumps(result.result, indent=2, default=str) if result.result else "null"
+                return (
+                    f"✓ '{workflow_name}' executed successfully!\n\n"
+                    f"**Duration:** {result.duration_ms}ms\n\n"
+                    f"**Result:**\n```json\n{result_str}\n```"
+                )
+            else:
+                return (
+                    f"✗ '{workflow_name}' failed!\n\n"
+                    f"**Status:** {result.status.value}\n"
+                    f"**Error:** {result.error or 'Unknown error'}\n\n"
+                    f"**Error Type:** {result.error_type or 'Unknown'}"
+                )
+
+    except Exception as e:
+        logger.exception(f"Error executing workflow tool via MCP: {e}")
+        return f"Error executing workflow: {str(e)}"
+
+
+# =============================================================================
+# WorkflowTool - FastMCP Tool subclass for dynamic workflow parameters
+# =============================================================================
+
+# Only define WorkflowTool when FastMCP is available
+_WorkflowTool: type | None = None
+
+if HAS_FASTMCP:
+    from fastmcp.tools import Tool as _FastMCPTool  # type: ignore[import-not-found]
+    from fastmcp.tools.tool import ToolResult as _ToolResult  # type: ignore[import-not-found]
+
+    class WorkflowTool(_FastMCPTool):
+        """
+        MCP Tool that executes a Bifrost workflow.
+
+        Subclasses FastMCP's Tool to:
+        1. Accept JSON Schema directly via `parameters` field
+        2. Override `run()` to delegate to workflow execution
+
+        This bypasses FastMCP's function signature inspection, allowing
+        dynamic parameter schemas from workflow `parameters_schema`.
+
+        The execution context is retrieved dynamically from the authenticated
+        token at runtime via _get_context_from_token().
+        """
+
+        workflow_id: str
+        workflow_name: str
+
+        model_config = {"arbitrary_types_allowed": True}
+
+        async def run(self, arguments: dict[str, Any]) -> "_ToolResult":
+            """Execute the workflow with the given arguments."""
+            try:
+                context = _get_context_from_token()
+            except Exception as e:
+                return _ToolResult(content=f"Error: Authentication required - {e}")
+
+            result = await _execute_workflow_tool_impl(
+                context,
+                self.workflow_id,
+                self.workflow_name,
+                **arguments,
+            )
+            return _ToolResult(content=result)
+
+    _WorkflowTool = WorkflowTool
+
+
+# =============================================================================
+# Workflow Tool Name Management
+# =============================================================================
+
+# Module-level mapping: tool_name -> workflow_id (populated during registration)
+_TOOL_NAME_TO_WORKFLOW_ID: dict[str, str] = {}
+# Reverse mapping: workflow_id -> tool_name
+_WORKFLOW_ID_TO_TOOL_NAME: dict[str, str] = {}
+
+
+def _normalize_tool_name(name: str) -> str:
+    """
+    Convert workflow name to valid MCP tool name (snake_case).
+
+    Examples:
+        "Review Tickets" -> "review_tickets"
+        "get-user-data" -> "get_user_data"
+        "ProcessOrder123" -> "processorder123"
+    """
+    import re
+
+    name = name.lower().strip()
+    # Replace spaces, hyphens, and multiple underscores with single underscore
+    name = re.sub(r"[\s\-]+", "_", name)
+    # Remove any non-alphanumeric characters except underscores
+    name = re.sub(r"[^a-z0-9_]", "", name)
+    # Collapse multiple underscores
+    name = re.sub(r"_+", "_", name)
+    # Remove leading/trailing underscores
+    name = name.strip("_")
+    return name
+
+
+def _generate_short_suffix(length: int = 3) -> str:
+    """Generate a short random alphanumeric suffix for duplicate tool names."""
+    import secrets
+    import string
+
+    chars = string.ascii_lowercase + string.digits
+    return "".join(secrets.choice(chars) for _ in range(length))
+
+
+def get_workflow_id_for_tool(tool_name: str) -> str | None:
+    """
+    Get workflow UUID for a registered MCP tool name.
+
+    Args:
+        tool_name: The MCP tool name (e.g., "review_tickets")
+
+    Returns:
+        Workflow UUID string or None if not found
+    """
+    return _TOOL_NAME_TO_WORKFLOW_ID.get(tool_name)
+
+
+def get_registered_tool_name(workflow_id: str) -> str | None:
+    """
+    Get the registered MCP tool name for a workflow ID.
+
+    Args:
+        workflow_id: The workflow UUID string
+
+    Returns:
+        Tool name string or None if not registered
+    """
+    return _WORKFLOW_ID_TO_TOOL_NAME.get(workflow_id)
+
+
+async def _notify_duplicate_workflow_names(duplicates: dict[str, list]) -> None:
+    """
+    Create admin notification when duplicate workflow names are detected.
+
+    This alerts platform admins that multiple workflows have the same
+    normalized name, which may cause confusion for LLM tool selection.
+    """
+    from src.models.contracts.notifications import NotificationCategory, NotificationCreate
+    from src.services.notification_service import NotificationService
+
+    try:
+        notification_service = NotificationService()
+
+        # Check if notification already exists (deduplication)
+        existing = await notification_service.find_admin_notification_by_title(
+            title="Duplicate Workflow Names in MCP Tools",
+            category=NotificationCategory.SYSTEM,
+        )
+        if existing:
+            logger.debug("Duplicate workflow name notification already exists, skipping")
+            return
+
+        # Build description with duplicate details
+        details = []
+        for name, workflows in duplicates.items():
+            workflow_names = [w.name for w in workflows]
+            details.append(f"'{name}': {', '.join(workflow_names)}")
+
+        await notification_service.create_notification(
+            user_id="system",
+            request=NotificationCreate(
+                category=NotificationCategory.SYSTEM,
+                title="Duplicate Workflow Names in MCP Tools",
+                description=(
+                    f"Multiple workflows share the same normalized name. "
+                    f"Consider renaming for clarity: {'; '.join(details)}"
+                ),
+            ),
+            for_admins=True,
+        )
+        logger.info(f"Created admin notification for {len(duplicates)} duplicate workflow names")
+
+    except Exception as e:
+        # Don't fail tool registration if notification fails
+        logger.warning(f"Failed to create duplicate workflow name notification: {e}")
+
+
+async def _register_workflow_tools(mcp: "FastMCP", context: MCPContext) -> int:
+    """
+    Register workflow tools with FastMCP server using human-readable names.
+
+    Creates WorkflowTool instances for each workflow with is_tool=True,
+    passing the parameters_schema directly as JSON Schema. This bypasses
+    FastMCP's function signature inspection.
+
+    Tool names are normalized from workflow names (e.g., "Review Tickets" -> "review_tickets").
+    Duplicate names get a short random suffix (e.g., "review_tickets_x7k").
+
+    Returns:
+        Number of workflow tools registered
+    """
+    global _TOOL_NAME_TO_WORKFLOW_ID, _WORKFLOW_ID_TO_TOOL_NAME
+
+    if not HAS_FASTMCP or _WorkflowTool is None:
+        logger.warning("FastMCP not available, skipping workflow tool registration")
+        return 0
+
+    from src.core.database import get_db_context
+    from src.services.tool_registry import ToolRegistry
+
+    try:
+        async with get_db_context() as db:
+            registry = ToolRegistry(db)
+            tools = await registry.get_all_tools()
+
+            # Clear previous mappings (in case of re-registration)
+            _TOOL_NAME_TO_WORKFLOW_ID = {}
+            _WORKFLOW_ID_TO_TOOL_NAME = {}
+
+            # Group workflows by normalized name to detect duplicates
+            name_groups: dict[str, list] = {}
+            for tool in tools:
+                normalized = _normalize_tool_name(tool.name)
+                # Handle edge case: empty normalized name falls back to workflow ID
+                if not normalized:
+                    normalized = str(tool.id)
+                name_groups.setdefault(normalized, []).append(tool)
+
+            # Detect duplicates and notify admins
+            duplicates = {name: wfs for name, wfs in name_groups.items() if len(wfs) > 1}
+            if duplicates:
+                await _notify_duplicate_workflow_names(duplicates)
+                logger.warning(
+                    f"Found {len(duplicates)} duplicate workflow names: "
+                    f"{list(duplicates.keys())}"
+                )
+
+            # Assign unique tool names and register
+            count = 0
+            for base_name, workflows in name_groups.items():
+                for i, tool in enumerate(workflows):
+                    workflow_id = str(tool.id)
+                    workflow_name = tool.name
+                    description = tool.description or f"Execute the {workflow_name} workflow"
+
+                    # First workflow gets clean name, duplicates get suffix
+                    if i == 0:
+                        tool_name = base_name
+                    else:
+                        tool_name = f"{base_name}_{_generate_short_suffix()}"
+
+                    # Store mapping for middleware lookups
+                    _TOOL_NAME_TO_WORKFLOW_ID[tool_name] = workflow_id
+                    _WORKFLOW_ID_TO_TOOL_NAME[workflow_id] = tool_name
+
+                    # Build JSON Schema from parameters_schema
+                    properties: dict[str, Any] = {}
+                    required: list[str] = []
+                    for param in tool.parameters_schema:
+                        param_name = param.get("name")
+                        if not param_name:
+                            continue
+
+                        param_type = param.get("type", "string")
+                        json_type = _map_type_to_json_schema(param_type)
+
+                        properties[param_name] = {
+                            "type": json_type,
+                            "description": param.get("label") or param.get("description") or param_name,
+                        }
+
+                        if param.get("required", False):
+                            required.append(param_name)
+
+                    # Create WorkflowTool with human-readable name
+                    # Context is retrieved dynamically from authenticated token at runtime
+                    workflow_tool = _WorkflowTool(
+                        name=tool_name,  # Human-readable name instead of UUID
+                        description=description,
+                        workflow_id=workflow_id,
+                        workflow_name=workflow_name,
+                        parameters={
+                            "type": "object",
+                            "properties": properties,
+                            "required": required,
+                        },
+                    )
+
+                    # Add to FastMCP server
+                    try:
+                        mcp.add_tool(workflow_tool)
+                        count += 1
+                        logger.debug(
+                            f"Registered workflow tool: {tool_name} "
+                            f"(workflow: {workflow_name}, id: {workflow_id})"
+                        )
+                    except Exception as e:
+                        logger.warning(f"Failed to register workflow tool {workflow_name}: {e}")
+
+            logger.info(f"Registered {count} workflow tools with FastMCP")
+            return count
+
+    except Exception as e:
+        logger.exception(f"Error registering workflow tools: {e}")
+        return 0
+
+
 def _register_fastmcp_tools(mcp: "FastMCP", context: MCPContext, enabled_tools: set[str] | None) -> None:
-    """Register tools with a FastMCP server."""
+    """
+    Register system tools with a FastMCP server.
+
+    Note: The `context` parameter is used for SDK mode (where context is fixed per-session).
+    For FastMCP HTTP mode, tools use _get_context_from_token() to get the authenticated
+    user's context per-request. This is determined at runtime based on whether we're
+    in an authenticated FastMCP request (token available) or SDK mode (token not available).
+    """
+    def _get_context() -> MCPContext:
+        """Get context from token if available (FastMCP), otherwise use provided context (SDK)."""
+        try:
+            return _get_context_from_token()
+        except Exception:
+            # Not in FastMCP request context, use provided context (SDK mode)
+            return context
+
     if enabled_tools is None or "execute_workflow" in enabled_tools:
         @mcp.tool(
             name="execute_workflow",
             description="Execute a Bifrost workflow by name and return the results.",
         )
         async def execute_workflow(workflow_name: str, inputs: dict[str, Any] | None = None) -> str:
-            return await _execute_workflow_impl(context, workflow_name, inputs)
+            return await _execute_workflow_impl(_get_context(), workflow_name, inputs)
 
     if enabled_tools is None or "list_workflows" in enabled_tools:
         @mcp.tool(
@@ -617,7 +1020,7 @@ def _register_fastmcp_tools(mcp: "FastMCP", context: MCPContext, enabled_tools: 
             description="List workflows registered in Bifrost.",
         )
         async def list_workflows(query: str | None = None, category: str | None = None) -> str:
-            return await _list_workflows_impl(context, query, category)
+            return await _list_workflows_impl(_get_context(), query, category)
 
     if enabled_tools is None or "list_integrations" in enabled_tools:
         @mcp.tool(
@@ -625,7 +1028,7 @@ def _register_fastmcp_tools(mcp: "FastMCP", context: MCPContext, enabled_tools: 
             description="List available integrations that can be used in workflows.",
         )
         async def list_integrations() -> str:
-            return await _list_integrations_impl(context)
+            return await _list_integrations_impl(_get_context())
 
     if enabled_tools is None or "list_forms" in enabled_tools:
         @mcp.tool(
@@ -633,7 +1036,7 @@ def _register_fastmcp_tools(mcp: "FastMCP", context: MCPContext, enabled_tools: 
             description="List all forms with their URLs.",
         )
         async def list_forms() -> str:
-            return await _list_forms_impl(context)
+            return await _list_forms_impl(_get_context())
 
     if enabled_tools is None or "get_form_schema" in enabled_tools:
         @mcp.tool(
@@ -641,7 +1044,7 @@ def _register_fastmcp_tools(mcp: "FastMCP", context: MCPContext, enabled_tools: 
             description="Get documentation about form structure and field types.",
         )
         async def get_form_schema() -> str:
-            return await _get_form_schema_impl(context)
+            return await _get_form_schema_impl(_get_context())
 
     if enabled_tools is None or "validate_form_schema" in enabled_tools:
         @mcp.tool(
@@ -649,7 +1052,7 @@ def _register_fastmcp_tools(mcp: "FastMCP", context: MCPContext, enabled_tools: 
             description="Validate a form JSON structure before saving.",
         )
         async def validate_form_schema(form_json: str) -> str:
-            return await _validate_form_schema_impl(context, form_json)
+            return await _validate_form_schema_impl(_get_context(), form_json)
 
     if enabled_tools is None or "search_knowledge" in enabled_tools:
         @mcp.tool(
@@ -657,7 +1060,7 @@ def _register_fastmcp_tools(mcp: "FastMCP", context: MCPContext, enabled_tools: 
             description="Search the Bifrost knowledge base.",
         )
         async def search_knowledge(query: str, limit: int = 5) -> str:
-            return await _search_knowledge_impl(context, query, limit)
+            return await _search_knowledge_impl(_get_context(), query, limit)
 
 
 # =============================================================================

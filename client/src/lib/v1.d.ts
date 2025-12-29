@@ -3026,22 +3026,22 @@ export interface paths {
          * Execute workflow via API key
          * @description Execute an endpoint-enabled workflow using an API key for authentication
          */
-        get: operations["execute_endpoint_api_endpoints__workflow_name__get"];
+        get: operations["execute_endpoint_api_endpoints__workflow_name__put"];
         /**
          * Execute workflow via API key
          * @description Execute an endpoint-enabled workflow using an API key for authentication
          */
-        put: operations["execute_endpoint_api_endpoints__workflow_name__get"];
+        put: operations["execute_endpoint_api_endpoints__workflow_name__put"];
         /**
          * Execute workflow via API key
          * @description Execute an endpoint-enabled workflow using an API key for authentication
          */
-        post: operations["execute_endpoint_api_endpoints__workflow_name__get"];
+        post: operations["execute_endpoint_api_endpoints__workflow_name__put"];
         /**
          * Execute workflow via API key
          * @description Execute an endpoint-enabled workflow using an API key for authentication
          */
-        delete: operations["execute_endpoint_api_endpoints__workflow_name__get"];
+        delete: operations["execute_endpoint_api_endpoints__workflow_name__put"];
         options?: never;
         head?: never;
         patch?: never;
@@ -4937,7 +4937,8 @@ export interface paths {
          * @description Get MCP server status and available tools for the current user.
          *
          *     This is a REST endpoint (not MCP protocol) for debugging and discovery.
-         *     Returns information about which tools the user has access to.
+         *     Returns information about which tools the user has access to based on
+         *     their agent access permissions.
          */
         get: operations["mcp_status_api_mcp_status_get"];
         put?: never;
@@ -4998,10 +4999,10 @@ export interface paths {
         };
         /**
          * List Mcp Tools
-         * @description List all available MCP tools.
+         * @description List all MCP tools available to the current user.
          *
-         *     Returns information about each tool that can be exposed via MCP,
-         *     useful for configuring allowed/blocked tool lists.
+         *     Returns tools from agents the user can access, filtered by
+         *     global MCP config allowlist/blocklist.
          */
         get: operations["list_mcp_tools_api_mcp_tools_get"];
         put?: never;
@@ -5486,7 +5487,7 @@ export interface components {
             /** Mfa Required For Password */
             mfa_required_for_password: boolean;
             /** Oauth Providers */
-            oauth_providers: components["schemas"]["OAuthProviderInfo"][];
+            oauth_providers: components["schemas"]["src__models__contracts__auth__OAuthProviderInfo"][];
         };
         /**
          * AuthorizeResponse
@@ -8791,6 +8792,56 @@ export interface components {
             default_entity_id?: string | null;
         };
         /**
+         * KnowledgeStorageTrend
+         * @description Daily knowledge storage trend data point.
+         */
+        KnowledgeStorageTrend: {
+            /** Date */
+            date: string;
+            /**
+             * Total Documents
+             * @default 0
+             */
+            total_documents: number;
+            /**
+             * Total Size Bytes
+             * @default 0
+             */
+            total_size_bytes: number;
+            /**
+             * Total Size Mb
+             * @default 0
+             */
+            total_size_mb: number;
+        };
+        /**
+         * KnowledgeStorageUsage
+         * @description Knowledge storage usage by organization and namespace.
+         */
+        KnowledgeStorageUsage: {
+            /** Organization Id */
+            organization_id?: string | null;
+            /** Organization Name */
+            organization_name: string;
+            /** Namespace */
+            namespace: string;
+            /**
+             * Document Count
+             * @default 0
+             */
+            document_count: number;
+            /**
+             * Size Bytes
+             * @default 0
+             */
+            size_bytes: number;
+            /**
+             * Size Mb
+             * @default 0
+             */
+            size_mb: number;
+        };
+        /**
          * LLMConfigRequest
          * @description Request to set LLM configuration.
          */
@@ -9172,20 +9223,11 @@ export interface components {
         };
         /**
          * MFAVerifyRequest
-         * @description Request to verify MFA code during login.
+         * @description Request to verify MFA code.
          */
         MFAVerifyRequest: {
-            /** Mfa Token */
-            mfa_token: string;
             /** Code */
             code: string;
-            /**
-             * Trust Device
-             * @default false
-             */
-            trust_device: boolean;
-            /** Device Name */
-            device_name?: string | null;
         };
         /**
          * MFAVerifyResponse
@@ -9407,24 +9449,15 @@ export interface components {
         };
         /**
          * OAuthCallbackRequest
-         * @description Request model for OAuth callback endpoint
+         * @description OAuth callback request (for when frontend handles callback).
          */
         OAuthCallbackRequest: {
-            /**
-             * Code
-             * @description Authorization code from OAuth provider
-             */
+            /** Provider */
+            provider: string;
+            /** Code */
             code: string;
-            /**
-             * State
-             * @description State parameter for CSRF protection
-             */
-            state?: string | null;
-            /**
-             * Redirect Uri
-             * @description Redirect URI used in authorization request
-             */
-            redirect_uri?: string | null;
+            /** State */
+            state: string;
         };
         /**
          * OAuthCallbackResponse
@@ -9854,7 +9887,7 @@ export interface components {
         };
         /**
          * OAuthProviderInfo
-         * @description OAuth provider information for login page
+         * @description OAuth provider information.
          */
         OAuthProviderInfo: {
             /** Name */
@@ -9870,7 +9903,7 @@ export interface components {
          */
         OAuthProvidersResponse: {
             /** Providers */
-            providers: components["schemas"]["src__routers__oauth_sso__OAuthProviderInfo"][];
+            providers: components["schemas"]["OAuthProviderInfo"][];
         };
         /**
          * OAuthTokenResponse
@@ -11704,6 +11737,12 @@ export interface components {
             by_conversation?: components["schemas"]["ConversationUsage"][];
             /** By Organization */
             by_organization?: components["schemas"]["OrganizationUsage"][];
+            /** Knowledge Storage */
+            knowledge_storage?: components["schemas"]["KnowledgeStorageUsage"][];
+            /** Knowledge Storage Trends */
+            knowledge_storage_trends?: components["schemas"]["KnowledgeStorageTrend"][];
+            /** Knowledge Storage As Of */
+            knowledge_storage_as_of?: string | null;
         };
         /**
          * UsageReportSummary
@@ -12551,6 +12590,56 @@ export interface components {
             backup_will_be_created: boolean;
         };
         /**
+         * OAuthProviderInfo
+         * @description OAuth provider information for login page
+         */
+        src__models__contracts__auth__OAuthProviderInfo: {
+            /** Name */
+            name: string;
+            /** Display Name */
+            display_name: string;
+            /** Icon */
+            icon?: string | null;
+        };
+        /**
+         * OAuthCallbackRequest
+         * @description Request model for OAuth callback endpoint
+         */
+        src__models__contracts__oauth__OAuthCallbackRequest: {
+            /**
+             * Code
+             * @description Authorization code from OAuth provider
+             */
+            code: string;
+            /**
+             * State
+             * @description State parameter for CSRF protection
+             */
+            state?: string | null;
+            /**
+             * Redirect Uri
+             * @description Redirect URI used in authorization request
+             */
+            redirect_uri?: string | null;
+        };
+        /**
+         * MFAVerifyRequest
+         * @description Request to verify MFA code during login.
+         */
+        src__routers__auth__MFAVerifyRequest: {
+            /** Mfa Token */
+            mfa_token: string;
+            /** Code */
+            code: string;
+            /**
+             * Trust Device
+             * @default false
+             */
+            trust_device: boolean;
+            /** Device Name */
+            device_name?: string | null;
+        };
+        /**
          * UserCreate
          * @description User creation request model.
          */
@@ -12564,38 +12653,6 @@ export interface components {
             password: string;
             /** Name */
             name?: string | null;
-        };
-        /**
-         * MFAVerifyRequest
-         * @description Request to verify MFA code.
-         */
-        src__routers__mfa__MFAVerifyRequest: {
-            /** Code */
-            code: string;
-        };
-        /**
-         * OAuthCallbackRequest
-         * @description OAuth callback request (for when frontend handles callback).
-         */
-        src__routers__oauth_sso__OAuthCallbackRequest: {
-            /** Provider */
-            provider: string;
-            /** Code */
-            code: string;
-            /** State */
-            state: string;
-        };
-        /**
-         * OAuthProviderInfo
-         * @description OAuth provider information.
-         */
-        src__routers__oauth_sso__OAuthProviderInfo: {
-            /** Name */
-            name: string;
-            /** Display Name */
-            display_name: string;
-            /** Icon */
-            icon?: string | null;
         };
     };
     responses: never;
@@ -12728,7 +12785,7 @@ export interface operations {
         };
         requestBody: {
             content: {
-                "application/json": components["schemas"]["MFAVerifyRequest"];
+                "application/json": components["schemas"]["src__routers__auth__MFAVerifyRequest"];
             };
         };
         responses: {
@@ -13079,7 +13136,7 @@ export interface operations {
         };
         requestBody: {
             content: {
-                "application/json": components["schemas"]["src__routers__mfa__MFAVerifyRequest"];
+                "application/json": components["schemas"]["MFAVerifyRequest"];
             };
         };
         responses: {
@@ -13329,7 +13386,7 @@ export interface operations {
         };
         requestBody: {
             content: {
-                "application/json": components["schemas"]["src__routers__oauth_sso__OAuthCallbackRequest"];
+                "application/json": components["schemas"]["OAuthCallbackRequest"];
             };
         };
         responses: {
@@ -17075,7 +17132,7 @@ export interface operations {
         };
         requestBody: {
             content: {
-                "application/json": components["schemas"]["OAuthCallbackRequest"];
+                "application/json": components["schemas"]["src__models__contracts__oauth__OAuthCallbackRequest"];
             };
         };
         responses: {
@@ -17170,7 +17227,7 @@ export interface operations {
             };
         };
     };
-    execute_endpoint_api_endpoints__workflow_name__get: {
+    execute_endpoint_api_endpoints__workflow_name__put: {
         parameters: {
             query?: never;
             header: {
@@ -17203,7 +17260,7 @@ export interface operations {
             };
         };
     };
-    execute_endpoint_api_endpoints__workflow_name__get: {
+    execute_endpoint_api_endpoints__workflow_name__put: {
         parameters: {
             query?: never;
             header: {
@@ -17236,7 +17293,7 @@ export interface operations {
             };
         };
     };
-    execute_endpoint_api_endpoints__workflow_name__get: {
+    execute_endpoint_api_endpoints__workflow_name__put: {
         parameters: {
             query?: never;
             header: {
@@ -17269,7 +17326,7 @@ export interface operations {
             };
         };
     };
-    execute_endpoint_api_endpoints__workflow_name__get: {
+    execute_endpoint_api_endpoints__workflow_name__put: {
         parameters: {
             query?: never;
             header: {

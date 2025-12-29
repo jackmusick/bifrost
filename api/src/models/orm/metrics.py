@@ -4,12 +4,13 @@ Metrics ORM models.
 Represents execution metrics and platform metrics snapshots.
 """
 
+from datetime import date as date_type
 from datetime import datetime
 from decimal import Decimal
 from uuid import UUID
 
-from sqlalchemy import BigInteger, Date, DateTime, Float, ForeignKey, Index, Integer, Numeric, UniqueConstraint, text
-from sqlalchemy.orm import Mapped, mapped_column
+from sqlalchemy import BigInteger, Date, DateTime, Float, ForeignKey, Index, Integer, Numeric, String, UniqueConstraint, text
+from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from src.models.orm.base import Base
 
@@ -188,4 +189,40 @@ class WorkflowROIDaily(Base):
         Index("ix_workflow_roi_daily_date", "date"),
         Index("ix_workflow_roi_daily_workflow", "workflow_id"),
         Index("ix_workflow_roi_daily_org", "organization_id"),
+    )
+
+
+class KnowledgeStorageDaily(Base):
+    """
+    Daily snapshot of knowledge storage usage per organization and namespace.
+
+    Populated by a scheduled job that runs daily.
+    Used for storage usage reporting and trend analysis.
+    """
+
+    __tablename__ = "knowledge_storage_daily"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    snapshot_date: Mapped[date_type] = mapped_column(Date, nullable=False)
+    organization_id: Mapped[UUID | None] = mapped_column(
+        ForeignKey("organizations.id", ondelete="CASCADE"), nullable=True
+    )
+    namespace: Mapped[str] = mapped_column(String(255), nullable=False)
+    document_count: Mapped[int] = mapped_column(Integer, default=0)
+    size_bytes: Mapped[int] = mapped_column(BigInteger, default=0)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=text("NOW()")
+    )
+
+    # Relationship to organization (optional for global entries)
+    organization: Mapped["Organization"] = relationship(  # type: ignore[name-defined]  # noqa: F821
+        "Organization", back_populates="knowledge_storage_snapshots"
+    )
+
+    __table_args__ = (
+        UniqueConstraint(
+            "snapshot_date", "organization_id", "namespace", name="uq_storage_daily_date_org_ns"
+        ),
+        Index("ix_storage_daily_date", "snapshot_date"),
+        Index("ix_storage_daily_org", "organization_id"),
     )

@@ -605,7 +605,10 @@ class BifrostAuthProvider:
             logger.info(f"MCP auth: _check_mcp_access returned False for user {payload.get('email')}")
             return None
 
-        logger.info(f"MCP auth: Token valid for user {payload.get('email')}")
+        # Fetch user's role names from database for tool filtering
+        role_names = await self._get_user_roles(payload.get("sub"))
+
+        logger.info(f"MCP auth: Token valid for user {payload.get('email')}, roles={role_names}")
 
         return AccessToken(
             token=token,  # FastMCP requires this field
@@ -618,8 +621,41 @@ class BifrostAuthProvider:
                 "name": payload.get("name"),
                 "is_superuser": payload.get("is_superuser", False),
                 "org_id": payload.get("org_id"),
+                "roles": role_names,  # Role names for MCP tool filtering
             },
         )
+
+    async def _get_user_roles(self, user_id: str | None) -> list[str]:
+        """
+        Get role names for a user from the database.
+
+        Args:
+            user_id: User UUID as string
+
+        Returns:
+            List of role names the user has
+        """
+        if not user_id:
+            return []
+
+        try:
+            from sqlalchemy import select
+
+            from src.core.database import get_db_context
+            from src.models.orm.users import Role, UserRole
+
+            async with get_db_context() as db:
+                # Single query joining UserRole to Role to get role names
+                result = await db.execute(
+                    select(Role.name)
+                    .join(UserRole, UserRole.role_id == Role.id)
+                    .where(UserRole.user_id == user_id)
+                )
+                return list(result.scalars().all())
+
+        except Exception as e:
+            logger.warning(f"Failed to fetch user roles: {e}")
+            return []
 
     def get_middleware(self) -> list:
         """

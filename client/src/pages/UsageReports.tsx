@@ -11,6 +11,7 @@ import {
 	Sparkles,
 	ChevronUp,
 	ChevronDown,
+	Database,
 } from "lucide-react";
 import {
 	Card,
@@ -433,6 +434,10 @@ export function UsageReports() {
 		by: "cost",
 		dir: "desc",
 	});
+	const [storageSort, setStorageSort] = useState<SortConfig>({
+		by: "size",
+		dir: "desc",
+	});
 
 	// Format dates for API (YYYY-MM-DD)
 	const startDate = dateRange?.from
@@ -538,6 +543,27 @@ export function UsageReports() {
 		});
 	}, [data?.by_organization, orgSort]);
 
+	// Sorted knowledge storage
+	const sortedStorage = useMemo(() => {
+		const storage = data?.knowledge_storage;
+		if (!storage) return [];
+		return [...storage].sort((a, b) => {
+			const mult = storageSort.dir === "desc" ? -1 : 1;
+			switch (storageSort.by) {
+				case "org":
+					return mult * a.organization_name.localeCompare(b.organization_name);
+				case "namespace":
+					return mult * a.namespace.localeCompare(b.namespace);
+				case "documents":
+					return mult * (a.document_count - b.document_count);
+				case "size":
+					return mult * (a.size_bytes - b.size_bytes);
+				default:
+					return 0;
+			}
+		});
+	}, [data?.knowledge_storage, storageSort]);
+
 	// Sort toggle helpers
 	const toggleWorkflowSort = (column: string) => {
 		setWorkflowSort((prev) => ({
@@ -555,6 +581,13 @@ export function UsageReports() {
 
 	const toggleOrgSort = (column: string) => {
 		setOrgSort((prev) => ({
+			by: column,
+			dir: prev.by === column && prev.dir === "desc" ? "asc" : "desc",
+		}));
+	};
+
+	const toggleStorageSort = (column: string) => {
+		setStorageSort((prev) => ({
 			by: column,
 			dir: prev.by === column && prev.dir === "desc" ? "asc" : "desc",
 		}));
@@ -653,6 +686,34 @@ export function UsageReports() {
 		const a = document.createElement("a");
 		a.href = url;
 		a.download = `usage-by-organization-${startDate}-${endDate}${showDemoData ? "-demo" : ""}.csv`;
+		a.click();
+		URL.revokeObjectURL(url);
+	};
+
+	const downloadStorageCSV = () => {
+		if (!data?.knowledge_storage) return;
+
+		const headers = [
+			"Organization",
+			"Namespace",
+			"Documents",
+			"Size (MB)",
+			"Size (Bytes)",
+		];
+		const rows = data.knowledge_storage.map((s) => [
+			s.organization_name,
+			s.namespace,
+			s.document_count,
+			s.size_mb.toFixed(2),
+			s.size_bytes,
+		]);
+
+		const csv = [headers, ...rows].map((row) => row.join(",")).join("\n");
+		const blob = new Blob([csv], { type: "text/csv" });
+		const url = URL.createObjectURL(blob);
+		const a = document.createElement("a");
+		a.href = url;
+		a.download = `knowledge-storage-${data.knowledge_storage_as_of || startDate}${showDemoData ? "-demo" : ""}.csv`;
 		a.click();
 		URL.revokeObjectURL(url);
 	};
@@ -1346,6 +1407,137 @@ export function UsageReports() {
 					</CardContent>
 				</Card>
 			)}
+
+			{/* Knowledge Storage Table */}
+			<Card>
+				<CardHeader>
+					<div className="flex items-center justify-between">
+						<div>
+							<div className="flex items-center gap-2">
+								<CardTitle>Knowledge Storage</CardTitle>
+								{data?.knowledge_storage_as_of && (
+									<Badge variant="outline" className="text-xs font-normal">
+										As of {format(new Date(data.knowledge_storage_as_of), "MMM d, yyyy")}
+									</Badge>
+								)}
+							</div>
+							<CardDescription>
+								Storage consumption by organization and namespace
+							</CardDescription>
+						</div>
+						<Button
+							variant="outline"
+							size="sm"
+							onClick={downloadStorageCSV}
+							disabled={!data?.knowledge_storage || data.knowledge_storage.length === 0}
+						>
+							<Download className="h-4 w-4 mr-2" />
+							Export CSV
+						</Button>
+					</div>
+				</CardHeader>
+				<CardContent>
+					{isLoadingData ? (
+						<div className="space-y-2">
+							<Skeleton className="h-10 w-full" />
+							<Skeleton className="h-10 w-full" />
+							<Skeleton className="h-10 w-full" />
+						</div>
+					) : sortedStorage.length > 0 ? (
+						<DataTable>
+							<DataTableHeader>
+								<DataTableRow>
+									<DataTableHead
+										className="cursor-pointer select-none hover:bg-muted/50"
+										onClick={() => toggleStorageSort("org")}
+									>
+										<div className="flex items-center gap-1">
+											Organization
+											{storageSort.by === "org" &&
+												(storageSort.dir === "desc" ? (
+													<ChevronDown className="h-4 w-4" />
+												) : (
+													<ChevronUp className="h-4 w-4" />
+												))}
+										</div>
+									</DataTableHead>
+									<DataTableHead
+										className="cursor-pointer select-none hover:bg-muted/50"
+										onClick={() => toggleStorageSort("namespace")}
+									>
+										<div className="flex items-center gap-1">
+											Namespace
+											{storageSort.by === "namespace" &&
+												(storageSort.dir === "desc" ? (
+													<ChevronDown className="h-4 w-4" />
+												) : (
+													<ChevronUp className="h-4 w-4" />
+												))}
+										</div>
+									</DataTableHead>
+									<DataTableHead
+										className="text-right cursor-pointer select-none hover:bg-muted/50"
+										onClick={() => toggleStorageSort("documents")}
+									>
+										<div className="flex items-center justify-end gap-1">
+											Documents
+											{storageSort.by === "documents" &&
+												(storageSort.dir === "desc" ? (
+													<ChevronDown className="h-4 w-4" />
+												) : (
+													<ChevronUp className="h-4 w-4" />
+												))}
+										</div>
+									</DataTableHead>
+									<DataTableHead
+										className="text-right cursor-pointer select-none hover:bg-muted/50"
+										onClick={() => toggleStorageSort("size")}
+									>
+										<div className="flex items-center justify-end gap-1">
+											Size
+											{storageSort.by === "size" &&
+												(storageSort.dir === "desc" ? (
+													<ChevronDown className="h-4 w-4" />
+												) : (
+													<ChevronUp className="h-4 w-4" />
+												))}
+										</div>
+									</DataTableHead>
+								</DataTableRow>
+							</DataTableHeader>
+							<DataTableBody>
+								{sortedStorage.map((storage, index) => (
+									<DataTableRow key={`${storage.organization_id || "global"}-${storage.namespace}-${index}`}>
+										<DataTableCell className="font-medium">
+											<div className="flex items-center gap-2">
+												<Database className="h-4 w-4 text-muted-foreground" />
+												{storage.organization_name}
+											</div>
+										</DataTableCell>
+										<DataTableCell>
+											<code className="text-sm bg-muted px-1.5 py-0.5 rounded">
+												{storage.namespace}
+											</code>
+										</DataTableCell>
+										<DataTableCell className="text-right">
+											{formatNumber(storage.document_count)}
+										</DataTableCell>
+										<DataTableCell className="text-right">
+											{storage.size_mb >= 1
+												? `${storage.size_mb.toFixed(2)} MB`
+												: formatBytes(storage.size_bytes)}
+										</DataTableCell>
+									</DataTableRow>
+								))}
+							</DataTableBody>
+						</DataTable>
+					) : (
+						<div className="flex items-center justify-center py-8 text-muted-foreground">
+							No knowledge storage data available
+						</div>
+					)}
+				</CardContent>
+			</Card>
 		</div>
 	);
 }
