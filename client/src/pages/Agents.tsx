@@ -385,9 +385,7 @@ export function Agents() {
 									<DataTableHead>Description</DataTableHead>
 									<DataTableHead>Channels</DataTableHead>
 									<DataTableHead>Status</DataTableHead>
-									<DataTableHead className="text-right">
-										Actions
-									</DataTableHead>
+									<DataTableHead className="text-right" />
 								</DataTableRow>
 							</DataTableHeader>
 							<DataTableBody>

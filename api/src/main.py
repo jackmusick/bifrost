@@ -58,6 +58,8 @@ from src.routers import (
     oauth_config_router,
     tools_router,
     mcp_router,
+    events_router,
+    hooks_router,
 )
 
 # Configure logging
@@ -306,6 +308,8 @@ def create_app() -> FastAPI:
     app.include_router(oauth_config_router)
     app.include_router(tools_router)
     app.include_router(mcp_router)
+    app.include_router(events_router)
+    app.include_router(hooks_router)
 
     # Mount MCP OAuth routes at root level (required by RFC 8414/9728)
     # These must be registered BEFORE the FastMCP ASGI mount

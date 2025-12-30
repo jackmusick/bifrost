@@ -128,7 +128,7 @@ export function OAuthCallback() {
 				setTimeout(() => {
 					window.close();
 					setTimeout(() => {
-						navigate("/oauth");
+						navigate("/integrations");
 					}, 100);
 				}, 1500);
 			} catch (err: unknown) {

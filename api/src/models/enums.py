@@ -99,3 +99,27 @@ class AgentChannel(str, Enum):
     VOICE = "voice"
     TEAMS = "teams"
     SLACK = "slack"
+
+
+class EventSourceType(str, Enum):
+    """Event source types"""
+    WEBHOOK = "webhook"
+    SCHEDULE = "schedule"
+    INTERNAL = "internal"
+
+
+class EventStatus(str, Enum):
+    """Event processing status"""
+    RECEIVED = "received"
+    PROCESSING = "processing"
+    COMPLETED = "completed"
+    FAILED = "failed"
+
+
+class EventDeliveryStatus(str, Enum):
+    """Event delivery status to a workflow"""
+    PENDING = "pending"
+    QUEUED = "queued"
+    SUCCESS = "success"
+    FAILED = "failed"
+    SKIPPED = "skipped"

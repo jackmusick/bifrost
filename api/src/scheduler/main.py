@@ -160,6 +160,53 @@ class Scheduler:
         except ImportError:
             logger.warning("Knowledge storage refresh job not available")
 
+        # Webhook subscription renewal - every 6 hours
+        try:
+            from src.jobs.schedulers.webhook_renewal import renew_expiring_webhooks
+            scheduler.add_job(
+                renew_expiring_webhooks,
+                IntervalTrigger(hours=6),
+                id="webhook_renewal",
+                name="Renew expiring webhook subscriptions",
+                replace_existing=True,
+                next_run_time=datetime.now(),  # Run immediately at startup
+                **misfire_options,
+            )
+            logger.info("Webhook renewal job scheduled (every 6 hours)")
+        except ImportError:
+            logger.warning("Webhook renewal job not available")
+
+        # Event cleanup - daily at 3:00 AM UTC (30-day retention)
+        try:
+            from src.jobs.schedulers.event_cleanup import cleanup_old_events
+            scheduler.add_job(
+                cleanup_old_events,
+                CronTrigger(hour=3, minute=0),  # Daily at 3:00 AM UTC
+                id="event_cleanup",
+                name="Cleanup old events (30-day retention)",
+                replace_existing=True,
+                **misfire_options,
+            )
+            logger.info("Event cleanup job scheduled (daily at 3:00 AM)")
+        except ImportError:
+            logger.warning("Event cleanup job not available")
+
+        # Stuck event delivery cleanup - every 5 minutes (run immediately at startup)
+        try:
+            from src.jobs.schedulers.event_cleanup import cleanup_stuck_events
+            scheduler.add_job(
+                cleanup_stuck_events,
+                CronTrigger(minute="*/5"),  # Every 5 minutes
+                id="stuck_event_cleanup",
+                name="Cleanup stuck event deliveries",
+                replace_existing=True,
+                next_run_time=datetime.now(),  # Run immediately at startup
+                **misfire_options,
+            )
+            logger.info("Stuck event cleanup job scheduled (every 5 min)")
+        except ImportError:
+            logger.warning("Stuck event cleanup job not available")
+
         scheduler.start()
         self._scheduler = scheduler
         logger.info("APScheduler started with scheduled jobs")

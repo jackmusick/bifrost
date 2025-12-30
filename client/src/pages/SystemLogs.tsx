@@ -23,13 +23,7 @@ import {
 	SelectTrigger,
 	SelectValue,
 } from "@/components/ui/select";
-import {
-	Card,
-	CardContent,
-	CardDescription,
-	CardHeader,
-	CardTitle,
-} from "@/components/ui/card";
+import { Card, CardContent } from "@/components/ui/card";
 import {
 	RefreshCw,
 	ChevronLeft,
@@ -163,279 +157,222 @@ export default function SystemLogs() {
 	};
 
 	return (
-		<div className="flex flex-col h-[calc(100vh-8rem)] space-y-6">
+		<div className="h-[calc(100vh-8rem)] flex flex-col space-y-6">
 			{/* Header */}
-			<div className="flex-shrink-0">
-				<div className="flex items-center justify-between">
-					<div>
-						<h1 className="text-4xl font-extrabold tracking-tight">
-							System Logs
-						</h1>
-						<p className="mt-2 text-muted-foreground">
-							View and search system activity logs
-						</p>
-					</div>
+			<div className="flex items-center justify-between">
+				<div>
+					<h1 className="text-4xl font-extrabold tracking-tight">
+						System Logs
+					</h1>
+					<p className="mt-2 text-muted-foreground">
+						View and search system activity logs
+						{filteredLogs.length > 0 && (
+							<span className="ml-2">
+								- Showing {filteredLogs.length} log
+								{filteredLogs.length !== 1 ? "s" : ""} on this
+								page
+								{data?.continuation_token && " (more available)"}
+							</span>
+						)}
+					</p>
+				</div>
+				<div className="flex gap-2">
+					<Button
+						variant="outline"
+						size="icon"
+						onClick={() => refetch()}
+						disabled={isLoading}
+						title="Refresh"
+					>
+						<RefreshCw
+							className={`h-4 w-4 ${isLoading ? "animate-spin" : ""}`}
+						/>
+					</Button>
 				</div>
 			</div>
 
-			<Card className="flex-1 flex flex-col overflow-hidden">
-				<CardHeader className="flex-shrink-0">
-					<div className="flex items-center justify-between">
-						<div>
-							<CardTitle>All Logs</CardTitle>
-							<CardDescription>
-								{filteredLogs.length > 0 && (
-									<span>
-										Showing {filteredLogs.length} log
-										{filteredLogs.length !== 1
-											? "s"
-											: ""}{" "}
-										on this page
-										{data?.continuation_token &&
-											" (more available)"}
-									</span>
-								)}
-								{filteredLogs.length === 0 &&
-									"Recent system activity and audit logs"}
-							</CardDescription>
-						</div>
-						<div className="flex items-center gap-2">
-							<Button
-								variant="outline"
-								size="icon"
-								onClick={() => refetch()}
-								disabled={isLoading}
+			{/* Search and Filters */}
+			<div className="flex items-center gap-4">
+				{/* Category Select */}
+				<Select
+					value={selectedCategory}
+					onValueChange={setSelectedCategory}
+				>
+					<SelectTrigger className="w-[180px]">
+						<SelectValue placeholder="Category" />
+					</SelectTrigger>
+					<SelectContent>
+						{CATEGORIES.map((category) => (
+							<SelectItem
+								key={category}
+								value={category}
+								className="capitalize"
 							>
-								<RefreshCw
-									className={`h-4 w-4 ${isLoading ? "animate-spin" : ""}`}
-								/>
-							</Button>
+								{category}
+							</SelectItem>
+						))}
+					</SelectContent>
+				</Select>
+
+				{/* Search Input */}
+				<Input
+					placeholder="Search messages..."
+					value={searchText}
+					onChange={(e) => setSearchText(e.target.value)}
+					className="flex-1 max-w-md"
+				/>
+
+				{/* Date Range */}
+				<Input
+					type="date"
+					value={startDate}
+					onChange={(e) => setStartDate(e.target.value)}
+					className="w-[160px]"
+					placeholder="Start Date"
+				/>
+				<Input
+					type="date"
+					value={endDate}
+					onChange={(e) => setEndDate(e.target.value)}
+					className="w-[160px]"
+					placeholder="End Date"
+				/>
+			</div>
+
+			{/* Content */}
+			<Tabs
+				defaultValue="All"
+				value={selectedLevel}
+				onValueChange={setSelectedLevel}
+				className="flex flex-col flex-1 overflow-hidden"
+			>
+				{/* Level Filter Tabs */}
+				<TabsList className="mb-4">
+					{LEVELS.map((level) => (
+						<TabsTrigger
+							key={level}
+							value={level}
+							className="capitalize"
+						>
+							{level}
+						</TabsTrigger>
+					))}
+				</TabsList>
+
+				<TabsContent
+					value={selectedLevel}
+					className="mt-0 flex-1 overflow-auto"
+				>
+					{/* Error State */}
+					{error && (
+						<Alert variant="destructive" className="mb-4">
+							<AlertCircle className="h-4 w-4" />
+							<AlertDescription>
+								Failed to load system logs:{" "}
+								{getErrorMessage(error, "Unknown error")}
+							</AlertDescription>
+						</Alert>
+					)}
+
+					{isLoading && !filteredLogs.length ? (
+						<div className="flex items-center justify-center py-12">
+							<Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
 						</div>
-					</div>
-				</CardHeader>
-
-				<CardContent className="flex-1 overflow-hidden flex flex-col">
-					<Tabs
-						defaultValue="All"
-						value={selectedLevel}
-						onValueChange={setSelectedLevel}
-						className="flex flex-col flex-1 overflow-hidden"
-					>
-						<div className="flex-shrink-0 space-y-4 mb-4">
-							<div className="flex items-center gap-4">
-								{/* Category Select */}
-								<Select
-									value={selectedCategory}
-									onValueChange={setSelectedCategory}
-								>
-									<SelectTrigger className="w-[180px]">
-										<SelectValue placeholder="Category" />
-									</SelectTrigger>
-									<SelectContent>
-										{CATEGORIES.map((category) => (
-											<SelectItem
-												key={category}
-												value={category}
-												className="capitalize"
-											>
-												{category}
-											</SelectItem>
-										))}
-									</SelectContent>
-								</Select>
-
-								{/* Search Input */}
-								<Input
-									placeholder="Search messages..."
-									value={searchText}
-									onChange={(e) =>
-										setSearchText(e.target.value)
-									}
-									className="flex-1 max-w-md"
-								/>
-
-								{/* Date Range */}
-								<Input
-									type="date"
-									value={startDate}
-									onChange={(e) =>
-										setStartDate(e.target.value)
-									}
-									className="w-[160px]"
-									placeholder="Start Date"
-								/>
-								<Input
-									type="date"
-									value={endDate}
-									onChange={(e) => setEndDate(e.target.value)}
-									className="w-[160px]"
-									placeholder="End Date"
-								/>
+					) : filteredLogs.length > 0 ? (
+						<div className="border rounded-lg overflow-hidden h-full">
+							<div className="h-full overflow-auto">
+								<DataTable className="relative w-full caption-bottom text-sm">
+									<DataTableHeader className="sticky top-0 bg-background/80 backdrop-blur-sm z-10">
+										<DataTableRow>
+											<DataTableHead>Timestamp</DataTableHead>
+											<DataTableHead>Level</DataTableHead>
+											<DataTableHead>Category</DataTableHead>
+											<DataTableHead>Summary</DataTableHead>
+											<DataTableHead>Executed By</DataTableHead>
+										</DataTableRow>
+									</DataTableHeader>
+									<DataTableBody>
+										{filteredLogs.map(
+											(log: SystemLog, index: number) => (
+												<DataTableRow
+													key={`${log.category}_${log.event_id}_${index}`}
+													clickable
+													onClick={() => handleRowClick(log)}
+												>
+													<DataTableCell className="font-mono text-sm">
+														{new Date(log.timestamp).toLocaleString()}
+													</DataTableCell>
+													<DataTableCell>
+														<Badge
+															variant={getLevelBadgeVariant(log.level)}
+															className="capitalize"
+														>
+															{log.level}
+														</Badge>
+													</DataTableCell>
+													<DataTableCell>
+														<Badge
+															variant="secondary"
+															className="capitalize"
+														>
+															{log.category}
+														</Badge>
+													</DataTableCell>
+													<DataTableCell className="max-w-md">
+														{truncateMessage(log.message)}
+													</DataTableCell>
+													<DataTableCell className="text-sm text-muted-foreground">
+														{log.executed_by_name ||
+															log.executed_by ||
+															"-"}
+													</DataTableCell>
+												</DataTableRow>
+											),
+										)}
+									</DataTableBody>
+								</DataTable>
 							</div>
 
-							{/* Level Filter Tabs */}
-							<TabsList>
-								{LEVELS.map((level) => (
-									<TabsTrigger
-										key={level}
-										value={level}
-										className="capitalize"
+							{/* Pagination */}
+							<div className="border-t bg-background px-4 py-3 flex items-center justify-between">
+								<div className="text-sm text-muted-foreground">
+									{filteredLogs.length > 0 &&
+										`${filteredLogs.length} log${filteredLogs.length !== 1 ? "s" : ""} on this page`}
+								</div>
+								<div className="flex gap-2">
+									<Button
+										variant="outline"
+										size="sm"
+										onClick={handlePreviousPage}
+										disabled={currentPage === 0}
 									>
-										{level}
-									</TabsTrigger>
-								))}
-							</TabsList>
+										<ChevronLeft className="h-4 w-4 mr-2" />
+										Previous
+									</Button>
+									<Button
+										variant="outline"
+										size="sm"
+										onClick={handleNextPage}
+										disabled={!data?.continuation_token}
+									>
+										Next
+										<ChevronRight className="h-4 w-4 ml-2" />
+									</Button>
+								</div>
+							</div>
 						</div>
-
-						<TabsContent
-							value={selectedLevel}
-							className="mt-0 flex-1 overflow-auto"
-						>
-							{/* Error State */}
-							{error && (
-								<Alert variant="destructive" className="mb-4">
-									<AlertCircle className="h-4 w-4" />
-									<AlertDescription>
-										Failed to load system logs:{" "}
-										{getErrorMessage(
-											error,
-											"Unknown error",
-										)}
-									</AlertDescription>
-								</Alert>
-							)}
-
-							{isLoading && !filteredLogs.length ? (
-								<div className="flex items-center justify-center py-12">
-									<Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
-								</div>
-							) : filteredLogs.length > 0 ? (
-								<div className="border rounded-lg overflow-hidden h-full">
-									<div className="h-full overflow-auto">
-										<DataTable className="relative w-full caption-bottom text-sm">
-											<DataTableHeader className="sticky top-0 bg-background/80 backdrop-blur-sm z-10">
-												<DataTableRow>
-													<DataTableHead>
-														Timestamp
-													</DataTableHead>
-													<DataTableHead>
-														Level
-													</DataTableHead>
-													<DataTableHead>
-														Category
-													</DataTableHead>
-													<DataTableHead>
-														Summary
-													</DataTableHead>
-													<DataTableHead>
-														Executed By
-													</DataTableHead>
-												</DataTableRow>
-											</DataTableHeader>
-											<DataTableBody>
-												{filteredLogs.map(
-													(
-														log: SystemLog,
-														index: number,
-													) => (
-														<DataTableRow
-															key={`${log.category}_${log.event_id}_${index}`}
-															clickable
-															onClick={() =>
-																handleRowClick(
-																	log,
-																)
-															}
-														>
-															<DataTableCell className="font-mono text-sm">
-																{new Date(
-																	log.timestamp,
-																).toLocaleString()}
-															</DataTableCell>
-															<DataTableCell>
-																<Badge
-																	variant={getLevelBadgeVariant(
-																		log.level,
-																	)}
-																	className="capitalize"
-																>
-																	{log.level}
-																</Badge>
-															</DataTableCell>
-															<DataTableCell>
-																<Badge
-																	variant="secondary"
-																	className="capitalize"
-																>
-																	{
-																		log.category
-																	}
-																</Badge>
-															</DataTableCell>
-															<DataTableCell className="max-w-md">
-																{truncateMessage(
-																	log.message,
-																)}
-															</DataTableCell>
-															<DataTableCell className="text-sm text-muted-foreground">
-																{log.executed_by_name ||
-																	log.executed_by ||
-																	"-"}
-															</DataTableCell>
-														</DataTableRow>
-													),
-												)}
-											</DataTableBody>
-										</DataTable>
-									</div>
-
-									{/* Pagination */}
-									<div className="border-t bg-background px-4 py-3 flex items-center justify-between">
-										<div className="text-sm text-muted-foreground">
-											{filteredLogs.length > 0 &&
-												`${filteredLogs.length} log${filteredLogs.length !== 1 ? "s" : ""} on this page`}
-										</div>
-										<div className="flex gap-2">
-											<Button
-												variant="outline"
-												size="sm"
-												onClick={handlePreviousPage}
-												disabled={currentPage === 0}
-											>
-												<ChevronLeft className="h-4 w-4 mr-2" />
-												Previous
-											</Button>
-											<Button
-												variant="outline"
-												size="sm"
-												onClick={handleNextPage}
-												disabled={
-													!data?.continuation_token
-												}
-											>
-												Next
-												<ChevronRight className="h-4 w-4 ml-2" />
-											</Button>
-										</div>
-									</div>
-								</div>
-							) : (
-								<div className="flex items-center justify-center py-12 text-center">
-									<div>
-										<h3 className="text-lg font-semibold">
-											No logs found
-										</h3>
-										<p className="mt-2 text-sm text-muted-foreground">
-											Try adjusting your filters or search
-											criteria
-										</p>
-									</div>
-								</div>
-							)}
-						</TabsContent>
-					</Tabs>
-				</CardContent>
-			</Card>
+					) : (
+						<Card>
+							<CardContent className="flex flex-col items-center justify-center py-12 text-center">
+								<h3 className="text-lg font-semibold">No logs found</h3>
+								<p className="mt-2 text-sm text-muted-foreground">
+									Try adjusting your filters or search criteria
+								</p>
+							</CardContent>
+						</Card>
+					)}
+				</TabsContent>
+			</Tabs>
 
 			{/* Details Dialog */}
 			<LogDetailsDialog

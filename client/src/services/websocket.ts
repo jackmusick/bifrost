@@ -101,6 +101,24 @@ export interface CLISessionUpdate {
 	state: CLISessionResponse | null;
 }
 
+// Event source update types for real-time event streaming
+export interface EventSourceEvent {
+	id: string;
+	event_source_id: string;
+	event_type: string | null;
+	status: string;
+	received_at: string | null;
+	source_ip: string | null;
+	success_count: number;
+	failed_count: number;
+	delivery_count: number;
+}
+
+export interface EventSourceUpdate {
+	type: "event_created" | "event_updated";
+	event: EventSourceEvent;
+}
+
 // Message types from backend
 type WebSocketMessage =
 	| { type: "connected"; channels: string[]; userId: string }
@@ -127,6 +145,10 @@ type WebSocketMessage =
 			type: "cli_session_update";
 			session_id: string;
 			state: CLISessionUpdate["state"];
+	  }
+	| {
+			type: "event_created" | "event_updated";
+			event: EventSourceEvent;
 	  };
 
 // Notification payload from backend (snake_case)
@@ -153,6 +175,7 @@ type PackageLogCallback = (log: PackageLog) => void;
 type PackageCompleteCallback = (complete: PackageComplete) => void;
 type LocalRunnerStateCallback = (state: LocalRunnerStateUpdate | null) => void;
 type CLISessionUpdateCallback = (update: CLISessionUpdate) => void;
+type EventSourceUpdateCallback = (update: EventSourceUpdate) => void;
 
 class WebSocketService {
 	private ws: WebSocket | null = null;
@@ -181,6 +204,10 @@ class WebSocketService {
 	private cliSessionUpdateCallbacks = new Map<
 		string,
 		Set<CLISessionUpdateCallback>
+	>();
+	private eventSourceUpdateCallbacks = new Map<
+		string,
+		Set<EventSourceUpdateCallback>
 	>();
 
 	// Track subscribed channels
@@ -417,6 +444,12 @@ class WebSocketService {
 				// CLI session state update from backend
 				this.dispatchCLISessionUpdate(message);
 				break;
+
+			case "event_created":
+			case "event_updated":
+				// Event source updates (real-time events)
+				this.dispatchEventSourceUpdate(message);
+				break;
 		}
 	}
 
@@ -434,6 +467,21 @@ class WebSocketService {
 		const callbacks = this.cliSessionUpdateCallbacks.get(
 			message.session_id,
 		);
+		callbacks?.forEach((cb) => cb(update));
+	}
+
+	private dispatchEventSourceUpdate(message: {
+		type: "event_created" | "event_updated";
+		event: EventSourceEvent;
+	}) {
+		const sourceId = message.event.event_source_id;
+		const update: EventSourceUpdate = {
+			type: message.type,
+			event: message.event,
+		};
+
+		// Dispatch to source-specific callbacks
+		const callbacks = this.eventSourceUpdateCallbacks.get(sourceId);
 		callbacks?.forEach((cb) => cb(update));
 	}
 
@@ -696,6 +744,27 @@ class WebSocketService {
 			this.cliSessionUpdateCallbacks.get(sessionId)?.delete(callback);
 			if (this.cliSessionUpdateCallbacks.get(sessionId)?.size === 0) {
 				this.cliSessionUpdateCallbacks.delete(sessionId);
+			}
+		};
+	}
+
+	/**
+	 * Subscribe to event source updates for real-time event streaming
+	 */
+	onEventSourceUpdate(
+		sourceId: string,
+		callback: EventSourceUpdateCallback,
+	): () => void {
+		if (!this.eventSourceUpdateCallbacks.has(sourceId)) {
+			this.eventSourceUpdateCallbacks.set(sourceId, new Set());
+		}
+		this.eventSourceUpdateCallbacks.get(sourceId)!.add(callback);
+
+		// Return unsubscribe function
+		return () => {
+			this.eventSourceUpdateCallbacks.get(sourceId)?.delete(callback);
+			if (this.eventSourceUpdateCallbacks.get(sourceId)?.size === 0) {
+				this.eventSourceUpdateCallbacks.delete(sourceId);
 			}
 		};
 	}

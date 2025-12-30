@@ -39,12 +39,14 @@ const DataTable = React.forwardRef<HTMLDivElement, DataTableProps>(
 			ref={ref}
 			className={cn(
 				"border rounded-lg overflow-hidden bg-card",
+				// Make DataTable flex-aware: fill available space and enable shrinking for scroll
+				"flex flex-col flex-1 min-h-0",
 				fixedHeight && "h-full",
 				className,
 			)}
 			{...props}
 		>
-			<div className={cn("overflow-auto", fixedHeight && "h-full")}>
+			<div className={cn("overflow-auto flex-1 min-h-0", fixedHeight && "h-full")}>
 				<table className="relative w-full caption-bottom text-sm">
 					{children}
 				</table>

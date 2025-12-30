@@ -15,6 +15,7 @@ from src.models.orm.branding import GlobalBranding
 from src.models.orm.cli import CLISession
 from src.models.orm.config import Config, SystemConfig
 from src.models.orm.developer import DeveloperContext
+from src.models.orm.events import Event, EventDelivery, EventSource, EventSubscription, WebhookSource
 from src.models.orm.executions import Execution, ExecutionLog
 from src.models.orm.forms import Form, FormField, FormRole
 from src.models.orm.integrations import Integration, IntegrationConfigSchema, IntegrationMapping
@@ -88,4 +89,10 @@ __all__ = [
     "WorkspaceFile",
     # Developer
     "DeveloperContext",
+    # Events
+    "EventSource",
+    "WebhookSource",
+    "EventSubscription",
+    "Event",
+    "EventDelivery",
 ]

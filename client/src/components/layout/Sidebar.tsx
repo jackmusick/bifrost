@@ -18,6 +18,7 @@ import {
 	Plug,
 	DollarSign,
 	Activity,
+	Webhook,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useAuth } from "@/contexts/AuthContext";
@@ -104,6 +105,12 @@ const navSections: NavSection[] = [
 				title: "Integrations",
 				href: "/integrations",
 				icon: Plug,
+				requiresPlatformAdmin: true,
+			},
+			{
+				title: "Events",
+				href: "/event-sources",
+				icon: Webhook,
 				requiresPlatformAdmin: true,
 			},
 			{

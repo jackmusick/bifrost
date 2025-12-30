@@ -10,13 +10,6 @@ import {
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
-	Card,
-	CardContent,
-	CardDescription,
-	CardHeader,
-	CardTitle,
-} from "@/components/ui/card";
-import {
 	DataTable,
 	DataTableBody,
 	DataTableCell,
@@ -120,7 +113,7 @@ export function Users() {
 	};
 
 	return (
-		<div className="space-y-6">
+		<div className="h-[calc(100vh-8rem)] flex flex-col space-y-6">
 			<div className="flex items-center justify-between">
 				<div>
 					<h1 className="text-4xl font-extrabold tracking-tight">
@@ -153,139 +146,126 @@ export function Users() {
 			</div>
 
 			{/* Search Box */}
-			<SearchBox
-				value={searchTerm}
-				onChange={setSearchTerm}
-				placeholder="Search users by email or name..."
-				className="max-w-md"
-			/>
+			<div className="flex items-center gap-4">
+				<SearchBox
+					value={searchTerm}
+					onChange={setSearchTerm}
+					placeholder="Search users by email or name..."
+					className="max-w-md"
+				/>
+			</div>
 
-			<Card>
-				<CardHeader>
-					<CardTitle>All Users</CardTitle>
-					<CardDescription>
-						Platform administrators and organization users
-					</CardDescription>
-				</CardHeader>
-				<CardContent>
-					{isLoading ? (
-						<div className="space-y-2">
-							{[...Array(5)].map((_, i) => (
-								<Skeleton key={i} className="h-12 w-full" />
+			{/* Content */}
+			{isLoading ? (
+				<div className="space-y-2">
+					{[...Array(5)].map((_, i) => (
+						<Skeleton key={i} className="h-12 w-full" />
+					))}
+				</div>
+			) : filteredUsers && filteredUsers.length > 0 ? (
+				<div className="flex-1 min-h-0 overflow-auto rounded-md border">
+					<DataTable>
+						<DataTableHeader className="sticky top-0 bg-background z-10">
+							<DataTableRow>
+								<DataTableHead>Name</DataTableHead>
+								<DataTableHead>Email</DataTableHead>
+								<DataTableHead>Type</DataTableHead>
+								<DataTableHead>Status</DataTableHead>
+								<DataTableHead>Created</DataTableHead>
+								<DataTableHead>Last Login</DataTableHead>
+								<DataTableHead className="text-right"></DataTableHead>
+							</DataTableRow>
+						</DataTableHeader>
+						<DataTableBody>
+							{filteredUsers.map((user) => (
+								<DataTableRow key={user.id}>
+									<DataTableCell className="font-medium">
+										{user.name || user.email}
+									</DataTableCell>
+									<DataTableCell className="text-muted-foreground">
+										{user.email}
+									</DataTableCell>
+									<DataTableCell>
+										{getUserTypeBadge(user.user_type)}
+									</DataTableCell>
+									<DataTableCell>
+										<Badge
+											variant={
+												user.is_active
+													? "default"
+													: "secondary"
+											}
+										>
+											{user.is_active
+												? "Active"
+												: "Inactive"}
+										</Badge>
+									</DataTableCell>
+									<DataTableCell className="text-sm text-muted-foreground">
+										{user.created_at
+											? new Date(
+													user.created_at,
+												).toLocaleDateString()
+											: "N/A"}
+									</DataTableCell>
+									<DataTableCell className="text-sm text-muted-foreground">
+										{user.last_login
+											? new Date(
+													user.last_login,
+												).toLocaleDateString()
+											: "Never"}
+									</DataTableCell>
+									<DataTableCell className="text-right">
+										<div className="flex items-center justify-end gap-2">
+											<Button
+												variant="ghost"
+												size="icon"
+												onClick={() =>
+													handleEditUser(user)
+												}
+												title="Edit user"
+											>
+												<Edit className="h-4 w-4" />
+											</Button>
+											<Button
+												variant="ghost"
+												size="icon"
+												onClick={() =>
+													handleDeleteUser(user)
+												}
+												title="Delete user"
+												disabled={
+													!!(
+														currentUser &&
+														user.id ===
+															currentUser.id
+													)
+												}
+											>
+												<Trash2 className="h-4 w-4" />
+											</Button>
+										</div>
+									</DataTableCell>
+								</DataTableRow>
 							))}
-						</div>
-					) : filteredUsers && filteredUsers.length > 0 ? (
-						<div className="max-h-[calc(100vh-28rem)] overflow-auto rounded-md border">
-							<DataTable>
-								<DataTableHeader className="sticky top-0 bg-background z-10">
-									<DataTableRow>
-										<DataTableHead>Name</DataTableHead>
-										<DataTableHead>Email</DataTableHead>
-										<DataTableHead>Type</DataTableHead>
-										<DataTableHead>Status</DataTableHead>
-										<DataTableHead>Created</DataTableHead>
-										<DataTableHead>
-											Last Login
-										</DataTableHead>
-										<DataTableHead className="text-right"></DataTableHead>
-									</DataTableRow>
-								</DataTableHeader>
-								<DataTableBody>
-									{filteredUsers.map((user) => (
-										<DataTableRow key={user.id}>
-											<DataTableCell className="font-medium">
-												{user.name || user.email}
-											</DataTableCell>
-											<DataTableCell className="text-muted-foreground">
-												{user.email}
-											</DataTableCell>
-											<DataTableCell>
-												{getUserTypeBadge(
-													user.user_type,
-												)}
-											</DataTableCell>
-											<DataTableCell>
-												<Badge
-													variant={
-														user.is_active
-															? "default"
-															: "secondary"
-													}
-												>
-													{user.is_active
-														? "Active"
-														: "Inactive"}
-												</Badge>
-											</DataTableCell>
-											<DataTableCell className="text-sm text-muted-foreground">
-												{user.created_at
-													? new Date(
-															user.created_at,
-														).toLocaleDateString()
-													: "N/A"}
-											</DataTableCell>
-											<DataTableCell className="text-sm text-muted-foreground">
-												{user.last_login
-													? new Date(
-															user.last_login,
-														).toLocaleDateString()
-													: "Never"}
-											</DataTableCell>
-											<DataTableCell className="text-right">
-												<div className="flex items-center justify-end gap-2">
-													<Button
-														variant="ghost"
-														size="icon"
-														onClick={() =>
-															handleEditUser(user)
-														}
-														title="Edit user"
-													>
-														<Edit className="h-4 w-4" />
-													</Button>
-													<Button
-														variant="ghost"
-														size="icon"
-														onClick={() =>
-															handleDeleteUser(
-																user,
-															)
-														}
-														title="Delete user"
-														disabled={
-															!!(
-																currentUser &&
-																user.id ===
-																	currentUser.id
-															)
-														}
-													>
-														<Trash2 className="h-4 w-4" />
-													</Button>
-												</div>
-											</DataTableCell>
-										</DataTableRow>
-									))}
-								</DataTableBody>
-							</DataTable>
-						</div>
-					) : (
-						<div className="flex flex-col items-center justify-center py-12 text-center">
-							<UserCog className="h-12 w-12 text-muted-foreground" />
-							<h3 className="mt-4 text-lg font-semibold">
-								{searchTerm
-									? "No users match your search"
-									: "No users found"}
-							</h3>
-							<p className="mt-2 text-sm text-muted-foreground">
-								{searchTerm
-									? "Try adjusting your search term or clear the filter"
-									: "No users in the system"}
-							</p>
-						</div>
-					)}
-				</CardContent>
-			</Card>
+						</DataTableBody>
+					</DataTable>
+				</div>
+			) : (
+				<div className="flex flex-col items-center justify-center py-12 text-center">
+					<UserCog className="h-12 w-12 text-muted-foreground" />
+					<h3 className="mt-4 text-lg font-semibold">
+						{searchTerm
+							? "No users match your search"
+							: "No users found"}
+					</h3>
+					<p className="mt-2 text-sm text-muted-foreground">
+						{searchTerm
+							? "Try adjusting your search term or clear the filter"
+							: "No users in the system"}
+					</p>
+				</div>
+			)}
 
 			<CreateUserDialog
 				open={isCreateOpen}

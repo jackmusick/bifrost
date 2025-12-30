@@ -24,6 +24,11 @@ logger = logging.getLogger(__name__)
 
 QUEUE_NAME = "workflow-executions"
 
+# System user for automated executions (created by migration)
+# Used for webhooks, schedules, and other system-triggered workflows
+SYSTEM_USER_ID = "00000000-0000-0000-0000-000000000001"
+SYSTEM_USER_EMAIL = "system@bifrost.local"
+
 
 async def enqueue_workflow_execution(
     context: ExecutionContext,
@@ -179,3 +184,47 @@ async def enqueue_code_execution(
     )
 
     return execution_id
+
+
+async def enqueue_system_workflow_execution(
+    workflow_id: str,
+    parameters: dict[str, Any],
+    source: str,
+    org_id: str | None = None,
+) -> str:
+    """
+    Enqueue a system-triggered workflow execution.
+
+    Handles execution_id generation internally - callers don't need to pre-generate.
+    Uses the system user for executions not triggered by a real user
+    (webhooks, schedules, internal events).
+
+    Args:
+        workflow_id: UUID of workflow to execute
+        parameters: Workflow parameters
+        source: Display name for what triggered this (e.g., "Event System", "Scheduled Execution")
+        org_id: Optional organization scope (UUID string, not "ORG:" prefixed)
+
+    Returns:
+        execution_id: UUID string of the queued execution
+    """
+    # Generate execution_id once - used for both context and Redis
+    execution_id = str(uuid.uuid4())
+
+    context = ExecutionContext(
+        user_id=SYSTEM_USER_ID,
+        email=SYSTEM_USER_EMAIL,
+        name=source,
+        scope=f"ORG:{org_id}" if org_id else "GLOBAL",
+        organization=None,
+        is_platform_admin=True,
+        is_function_key=False,
+        execution_id=execution_id,
+    )
+
+    return await enqueue_workflow_execution(
+        context=context,
+        workflow_id=workflow_id,
+        parameters=parameters,
+        execution_id=execution_id,  # Pass explicitly to avoid double generation
+    )

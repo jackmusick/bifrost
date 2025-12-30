@@ -5,7 +5,6 @@ import {
 	AlertCircle,
 	ArrowRight,
 	RefreshCw,
-	Search,
 	Play,
 	Eye,
 } from "lucide-react";
@@ -28,7 +27,6 @@ import {
 } from "@/components/ui/data-table";
 import { Badge } from "@/components/ui/badge";
 import { Alert, AlertDescription } from "@/components/ui/alert";
-import { Input } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
 import {
 	Dialog,
@@ -38,6 +36,7 @@ import {
 	DialogTitle,
 	DialogTrigger,
 } from "@/components/ui/dialog";
+import { SearchBox } from "@/components/search/SearchBox";
 import { formatDate } from "@/lib/utils";
 import { useSchedules, useTriggerSchedule } from "@/hooks/useSchedules";
 import { CronTester } from "@/components/schedules/CronTester";
@@ -134,8 +133,27 @@ export function Schedules() {
 
 	if (isLoading) {
 		return (
-			<div className="space-y-4">
-				<div className="h-12 bg-muted rounded animate-pulse" />
+			<div className="h-[calc(100vh-8rem)] flex flex-col space-y-6">
+				{/* Header */}
+				<div className="flex items-center justify-between">
+					<div>
+						<h1 className="text-4xl font-extrabold tracking-tight">
+							Scheduled Workflows
+						</h1>
+						<p className="mt-2 text-muted-foreground">
+							Workflows configured to run automatically on CRON
+							schedules
+						</p>
+					</div>
+					<Button
+						variant="outline"
+						size="icon"
+						disabled
+						title="Refresh schedules"
+					>
+						<RefreshCw className="h-4 w-4 animate-spin" />
+					</Button>
+				</div>
 				<div className="space-y-2">
 					{[1, 2, 3].map((i) => (
 						<Skeleton key={i} className="h-12 w-full" />
@@ -147,25 +165,57 @@ export function Schedules() {
 
 	if (error) {
 		return (
-			<Alert variant="destructive">
-				<AlertCircle className="h-4 w-4" />
-				<AlertDescription>{error}</AlertDescription>
-			</Alert>
+			<div className="h-[calc(100vh-8rem)] flex flex-col space-y-6">
+				{/* Header */}
+				<div className="flex items-center justify-between">
+					<div>
+						<h1 className="text-4xl font-extrabold tracking-tight">
+							Scheduled Workflows
+						</h1>
+						<p className="mt-2 text-muted-foreground">
+							Workflows configured to run automatically on CRON
+							schedules
+						</p>
+					</div>
+					<Button
+						variant="outline"
+						size="icon"
+						onClick={() => refetch()}
+						title="Refresh schedules"
+					>
+						<RefreshCw className="h-4 w-4" />
+					</Button>
+				</div>
+				<Alert variant="destructive">
+					<AlertCircle className="h-4 w-4" />
+					<AlertDescription>{error}</AlertDescription>
+				</Alert>
+			</div>
 		);
 	}
 
 	if (scheduleList.length === 0) {
 		return (
-			<div className="space-y-4">
-				<div>
-					<h1 className="text-3xl font-bold tracking-tight flex items-center gap-2">
-						<Clock className="h-8 w-8" />
-						Scheduled Workflows
-					</h1>
-					<p className="text-muted-foreground mt-2">
-						Workflows configured to run automatically on CRON
-						schedules
-					</p>
+			<div className="h-[calc(100vh-8rem)] flex flex-col space-y-6">
+				{/* Header */}
+				<div className="flex items-center justify-between">
+					<div>
+						<h1 className="text-4xl font-extrabold tracking-tight">
+							Scheduled Workflows
+						</h1>
+						<p className="mt-2 text-muted-foreground">
+							Workflows configured to run automatically on CRON
+							schedules
+						</p>
+					</div>
+					<Button
+						variant="outline"
+						size="icon"
+						onClick={() => refetch()}
+						title="Refresh schedules"
+					>
+						<RefreshCw className="h-4 w-4" />
+					</Button>
 				</div>
 
 				<Card>
@@ -262,14 +312,14 @@ async def my_scheduled_workflow(context):
 	}
 
 	return (
-		<div className="space-y-4">
-			<div className="flex items-center justify-between gap-4">
+		<div className="h-[calc(100vh-8rem)] flex flex-col space-y-6">
+			{/* Header */}
+			<div className="flex items-center justify-between">
 				<div>
-					<h1 className="text-3xl font-bold tracking-tight flex items-center gap-2">
-						<Clock className="h-8 w-8" />
+					<h1 className="text-4xl font-extrabold tracking-tight">
 						Scheduled Workflows
 					</h1>
-					<p className="text-muted-foreground mt-2">
+					<p className="mt-2 text-muted-foreground">
 						Workflows configured to run automatically on CRON
 						schedules
 					</p>
@@ -287,225 +337,214 @@ async def my_scheduled_workflow(context):
 				</Button>
 			</div>
 
+			{/* Search and Info */}
+			<div className="flex items-center gap-4">
+				<SearchBox
+					value={searchQuery}
+					onChange={setSearchQuery}
+					placeholder="Search schedules..."
+					className="max-w-md"
+				/>
+				<div className="flex-1" />
+				<Dialog>
+					<DialogTrigger asChild>
+						<Button variant="outline" size="sm">
+							Test CRON expressions
+						</Button>
+					</DialogTrigger>
+					<DialogContent className="max-w-2xl">
+						<DialogHeader>
+							<DialogTitle>
+								CRON Expression Tester
+							</DialogTitle>
+							<DialogDescription>
+								Test and validate CRON expressions before
+								using them in workflows
+							</DialogDescription>
+						</DialogHeader>
+						<CronTester />
+					</DialogContent>
+				</Dialog>
+			</div>
+
+			{/* Info Banner */}
 			<Alert>
 				<AlertCircle className="h-4 w-4" />
 				<AlertDescription>
-					Schedules are checked every 5 minutes.{" "}
-					<Dialog>
-						<DialogTrigger asChild>
-							<button className="underline hover:text-foreground transition-colors">
-								Test CRON expressions
-							</button>
-						</DialogTrigger>
-						<DialogContent className="max-w-2xl">
-							<DialogHeader>
-								<DialogTitle>
-									CRON Expression Tester
-								</DialogTitle>
-								<DialogDescription>
-									Test and validate CRON expressions before
-									using them in workflows
-								</DialogDescription>
-							</DialogHeader>
-							<CronTester />
-						</DialogContent>
-					</Dialog>
+					Schedules are checked every 5 minutes. {filteredSchedules.length} of {scheduleList.length}{" "}
+					workflow{scheduleList.length !== 1 ? "s" : ""} scheduled.
 				</AlertDescription>
 			</Alert>
 
-			{scheduleList.length > 0 && (
-				<div className="relative max-w-sm">
-					<Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-					<Input
-						placeholder="Search schedules..."
-						value={searchQuery}
-						onChange={(e) => setSearchQuery(e.target.value)}
-						className="pl-9"
-					/>
-				</div>
-			)}
-
-			<Card>
-				<CardHeader>
-					<CardTitle>Active Schedules</CardTitle>
-					<CardDescription>
-						{filteredSchedules.length} of {scheduleList.length}{" "}
-						workflow{scheduleList.length !== 1 ? "s" : ""} scheduled
-					</CardDescription>
-				</CardHeader>
-				<CardContent>
-					<div className="overflow-x-auto">
-						<DataTable>
-							<DataTableHeader>
-								<DataTableRow>
-									<DataTableHead>Workflow</DataTableHead>
-									<DataTableHead>Schedule</DataTableHead>
-									<DataTableHead>Next Run</DataTableHead>
-									<DataTableHead>Last Run</DataTableHead>
-									<DataTableHead className="text-right">
-										Executions
-									</DataTableHead>
-									<DataTableHead className="text-right">
-										Action
-									</DataTableHead>
-								</DataTableRow>
-							</DataTableHeader>
-							<DataTableBody>
-								{filteredSchedules.map((schedule) => (
-									<DataTableRow key={schedule.name}>
-										<DataTableCell className="font-medium">
-											<div>
-												<p className="font-semibold">
-													{schedule.description ||
-														schedule.name}
+			{/* Content - Table without Card wrapper */}
+			<div className="flex-1 min-h-0">
+				<DataTable className="max-h-full">
+					<DataTableHeader>
+						<DataTableRow>
+							<DataTableHead>Workflow</DataTableHead>
+							<DataTableHead>Schedule</DataTableHead>
+							<DataTableHead>Next Run</DataTableHead>
+							<DataTableHead>Last Run</DataTableHead>
+							<DataTableHead className="text-right">
+								Executions
+							</DataTableHead>
+							<DataTableHead className="text-right">
+								Action
+							</DataTableHead>
+						</DataTableRow>
+					</DataTableHeader>
+					<DataTableBody>
+						{filteredSchedules.map((schedule) => (
+							<DataTableRow key={schedule.name}>
+								<DataTableCell className="font-medium">
+									<div>
+										<p className="font-semibold">
+											{schedule.description ||
+												schedule.name}
+										</p>
+										<p className="text-xs text-muted-foreground">
+											{schedule.name}
+										</p>
+									</div>
+								</DataTableCell>
+								<DataTableCell>
+									<div className="space-y-1">
+										<p className="font-mono text-sm">
+											{schedule.schedule}
+										</p>
+										{schedule.validation_status !==
+											"error" && (
+											<p className="text-xs text-muted-foreground">
+												{schedule.human_readable}
+											</p>
+										)}
+										{schedule.validation_status ===
+											"warning" &&
+											schedule.validation_message && (
+												<p className="text-xs text-yellow-600 dark:text-yellow-500">
+													Minimum interval: 5
+													minutes
 												</p>
-												<p className="text-xs text-muted-foreground">
-													{schedule.name}
-												</p>
-											</div>
-										</DataTableCell>
-										<DataTableCell>
-											<div className="space-y-1">
-												<p className="font-mono text-sm">
-													{schedule.schedule}
-												</p>
-												{schedule.validation_status !==
-													"error" && (
-													<p className="text-xs text-muted-foreground">
-														{
-															schedule.human_readable
-														}
-													</p>
+											)}
+									</div>
+								</DataTableCell>
+								<DataTableCell>
+									{schedule.validation_status ===
+									"error" ? (
+										<Badge variant="destructive">
+											Invalid CRON
+										</Badge>
+									) : schedule.next_run_at ? (
+										<div className="flex items-center gap-2">
+											<span>
+												{formatDate(
+													schedule.next_run_at,
 												)}
-												{schedule.validation_status ===
-													"warning" &&
-													schedule.validation_message && (
-														<p className="text-xs text-yellow-600 dark:text-yellow-500">
-															Minimum interval: 5
-															minutes
-														</p>
-													)}
-											</div>
-										</DataTableCell>
-										<DataTableCell>
-											{schedule.validation_status ===
-											"error" ? (
-												<Badge variant="destructive">
-													Invalid CRON
-												</Badge>
-											) : schedule.next_run_at ? (
-												<div className="flex items-center gap-2">
-													<span>
-														{formatDate(
-															schedule.next_run_at,
-														)}
-													</span>
-													{schedule.is_overdue && (
-														<Badge
-															variant="destructive"
-															className="text-xs"
-														>
-															Overdue
-														</Badge>
-													)}
-												</div>
-											) : (
-												<span className="text-muted-foreground">
-													Not scheduled
-												</span>
-											)}
-										</DataTableCell>
-										<DataTableCell>
-											{schedule.last_run_at ? (
-												<div className="flex items-center gap-2">
-													<span>
-														{formatDate(
-															schedule.last_run_at,
-														)}
-													</span>
-													{schedule.last_execution_id && (
-														<Button
-															variant="ghost"
-															size="sm"
-															onClick={() =>
-																handleExecutionClick(
-																	schedule.last_execution_id,
-																)
-															}
-															className="h-6 px-2"
-															title="View execution details"
-														>
-															<ArrowRight className="h-3 w-3" />
-														</Button>
-													)}
-												</div>
-											) : (
-												<span className="text-muted-foreground">
-													Never
-												</span>
-											)}
-										</DataTableCell>
-										<DataTableCell className="text-right">
-											<Badge variant="secondary">
-												{schedule.execution_count}
-											</Badge>
-										</DataTableCell>
-										<DataTableCell className="text-right">
-											<div className="flex items-center justify-end gap-0.5">
-												<Button
-													variant="outline"
-													size="icon"
-													onClick={() =>
-														handleTriggerSchedule(
-															schedule.id,
-															schedule.name,
-														)
-													}
-													disabled={triggeringWorkflows.has(
-														schedule.name,
-													)}
-													className="h-8 w-8 rounded-r-none"
-													title={
-														triggeringWorkflows.has(
-															schedule.name,
-														)
-															? "Running..."
-															: "Run Now"
-													}
+											</span>
+											{schedule.is_overdue && (
+												<Badge
+													variant="destructive"
+													className="text-xs"
 												>
-													<Play className="h-3.5 w-3.5" />
-												</Button>
+													Overdue
+												</Badge>
+											)}
+										</div>
+									) : (
+										<span className="text-muted-foreground">
+											Not scheduled
+										</span>
+									)}
+								</DataTableCell>
+								<DataTableCell>
+									{schedule.last_run_at ? (
+										<div className="flex items-center gap-2">
+											<span>
+												{formatDate(
+													schedule.last_run_at,
+												)}
+											</span>
+											{schedule.last_execution_id && (
 												<Button
-													variant="outline"
-													size="icon"
+													variant="ghost"
+													size="sm"
 													onClick={() =>
 														handleExecutionClick(
 															schedule.last_execution_id,
 														)
 													}
-													disabled={
-														!schedule.last_execution_id
-													}
-													className="h-8 w-8 rounded-l-none border-l-0"
-													title="View Last Execution"
+													className="h-6 px-2"
+													title="View execution details"
 												>
-													<Eye className="h-3.5 w-3.5" />
+													<ArrowRight className="h-3 w-3" />
 												</Button>
-											</div>
-										</DataTableCell>
-									</DataTableRow>
-								))}
-							</DataTableBody>
-						</DataTable>
-					</div>
-					{filteredSchedules.length === 0 &&
-						scheduleList.length > 0 && (
-							<div className="text-center py-8 text-muted-foreground">
-								No schedules match your search.
-							</div>
-						)}
-				</CardContent>
-			</Card>
+											)}
+										</div>
+									) : (
+										<span className="text-muted-foreground">
+											Never
+										</span>
+									)}
+								</DataTableCell>
+								<DataTableCell className="text-right">
+									<Badge variant="secondary">
+										{schedule.execution_count}
+									</Badge>
+								</DataTableCell>
+								<DataTableCell className="text-right">
+									<div className="flex items-center justify-end gap-0.5">
+										<Button
+											variant="outline"
+											size="icon"
+											onClick={() =>
+												handleTriggerSchedule(
+													schedule.id,
+													schedule.name,
+												)
+											}
+											disabled={triggeringWorkflows.has(
+												schedule.name,
+											)}
+											className="h-8 w-8 rounded-r-none"
+											title={
+												triggeringWorkflows.has(
+													schedule.name,
+												)
+													? "Running..."
+													: "Run Now"
+											}
+										>
+											<Play className="h-3.5 w-3.5" />
+										</Button>
+										<Button
+											variant="outline"
+											size="icon"
+											onClick={() =>
+												handleExecutionClick(
+													schedule.last_execution_id,
+												)
+											}
+											disabled={
+												!schedule.last_execution_id
+											}
+											className="h-8 w-8 rounded-l-none border-l-0"
+											title="View Last Execution"
+										>
+											<Eye className="h-3.5 w-3.5" />
+										</Button>
+									</div>
+								</DataTableCell>
+							</DataTableRow>
+						))}
+					</DataTableBody>
+				</DataTable>
+				{filteredSchedules.length === 0 &&
+					scheduleList.length > 0 && (
+						<div className="text-center py-8 text-muted-foreground">
+							No schedules match your search.
+						</div>
+					)}
+			</div>
 		</div>
 	);
 }

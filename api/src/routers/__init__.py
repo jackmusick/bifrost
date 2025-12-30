@@ -40,6 +40,8 @@ from src.routers.email_config import router as email_config_router
 from src.routers.oauth_config import router as oauth_config_router
 from src.routers.tools import router as tools_router
 from src.routers.mcp import router as mcp_router
+from src.routers.events import router as events_router
+from src.routers.hooks import router as hooks_router
 
 __all__ = [
     "auth_router",
@@ -83,4 +85,6 @@ __all__ = [
     "oauth_config_router",
     "tools_router",
     "mcp_router",
+    "events_router",
+    "hooks_router",
 ]

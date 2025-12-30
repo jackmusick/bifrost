@@ -2,13 +2,6 @@ import { useState } from "react";
 import { Building2, Plus, Pencil, Trash2, RefreshCw } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
-	Card,
-	CardContent,
-	CardDescription,
-	CardHeader,
-	CardTitle,
-} from "@/components/ui/card";
-import {
 	DataTable,
 	DataTableBody,
 	DataTableCell,
@@ -147,7 +140,8 @@ export function Organizations() {
 	};
 
 	return (
-		<div className="space-y-6">
+		<div className="h-[calc(100vh-8rem)] flex flex-col space-y-6">
+			{/* Header: title left, actions right */}
 			<div className="flex items-center justify-between">
 				<div>
 					<h1 className="text-4xl font-extrabold tracking-tight">
@@ -177,130 +171,119 @@ export function Organizations() {
 				</div>
 			</div>
 
-			{/* Search Box */}
-			<SearchBox
-				value={searchTerm}
-				onChange={setSearchTerm}
-				placeholder="Search organizations by name or type..."
-				className="max-w-md"
-			/>
+			{/* Search and Filters */}
+			<div className="flex items-center gap-4">
+				<SearchBox
+					value={searchTerm}
+					onChange={setSearchTerm}
+					placeholder="Search organizations by name or domain..."
+					className="max-w-md"
+				/>
+			</div>
 
-			<Card>
-				<CardHeader>
-					<CardTitle>All Organizations</CardTitle>
-					<CardDescription>
-						View and manage all customer organizations
-					</CardDescription>
-				</CardHeader>
-				<CardContent>
-					{isLoading ? (
-						<div className="space-y-2">
-							{[...Array(5)].map((_, i) => (
-								<Skeleton key={i} className="h-12 w-full" />
+			{/* Content directly - DataTable, no Card wrapper */}
+			{isLoading ? (
+				<div className="space-y-2">
+					{[...Array(5)].map((_, i) => (
+						<Skeleton key={i} className="h-12 w-full" />
+					))}
+				</div>
+			) : filteredOrgs && filteredOrgs.length > 0 ? (
+				<div className="flex-1 min-h-0 overflow-auto rounded-md border">
+					<DataTable>
+						<DataTableHeader className="sticky top-0 bg-background z-10">
+							<DataTableRow>
+								<DataTableHead>Name</DataTableHead>
+								<DataTableHead>Domain</DataTableHead>
+								<DataTableHead>Organization ID</DataTableHead>
+								<DataTableHead>Status</DataTableHead>
+								<DataTableHead>Created</DataTableHead>
+								<DataTableHead className="text-right"></DataTableHead>
+							</DataTableRow>
+						</DataTableHeader>
+						<DataTableBody>
+							{filteredOrgs.map((org) => (
+								<DataTableRow key={org.id}>
+									<DataTableCell className="font-medium">
+										{org.name}
+									</DataTableCell>
+									<DataTableCell className="text-sm text-muted-foreground">
+										{org.domain || "-"}
+									</DataTableCell>
+									<DataTableCell className="font-mono text-xs text-muted-foreground">
+										{org.id}
+									</DataTableCell>
+									<DataTableCell>
+										<Badge
+											variant={
+												org.is_active
+													? "default"
+													: "secondary"
+											}
+										>
+											{org.is_active
+												? "Active"
+												: "Inactive"}
+										</Badge>
+									</DataTableCell>
+									<DataTableCell className="text-sm">
+										{org.created_at
+											? new Date(
+													org.created_at,
+												).toLocaleDateString()
+											: "N/A"}
+									</DataTableCell>
+									<DataTableCell className="text-right">
+										<div className="flex items-center justify-end gap-2">
+											<Button
+												variant="ghost"
+												size="icon"
+												onClick={() => handleEdit(org)}
+												title="Edit organization"
+											>
+												<Pencil className="h-4 w-4" />
+											</Button>
+											<Button
+												variant="ghost"
+												size="icon"
+												onClick={() =>
+													handleDelete(org)
+												}
+												title="Delete organization"
+											>
+												<Trash2 className="h-4 w-4" />
+											</Button>
+										</div>
+									</DataTableCell>
+								</DataTableRow>
 							))}
-						</div>
-					) : filteredOrgs && filteredOrgs.length > 0 ? (
-						<div className="max-h-[calc(100vh-28rem)] overflow-auto rounded-md border">
-							<DataTable>
-								<DataTableHeader className="sticky top-0 bg-background z-10">
-									<DataTableRow>
-										<DataTableHead>Name</DataTableHead>
-										<DataTableHead>Domain</DataTableHead>
-										<DataTableHead>
-											Organization ID
-										</DataTableHead>
-										<DataTableHead>Status</DataTableHead>
-										<DataTableHead>Created</DataTableHead>
-										<DataTableHead className="text-right"></DataTableHead>
-									</DataTableRow>
-								</DataTableHeader>
-								<DataTableBody>
-									{filteredOrgs.map((org) => (
-										<DataTableRow key={org.id}>
-											<DataTableCell className="font-medium">
-												{org.name}
-											</DataTableCell>
-											<DataTableCell className="text-sm text-muted-foreground">
-												{org.domain || "-"}
-											</DataTableCell>
-											<DataTableCell className="font-mono text-xs text-muted-foreground">
-												{org.id}
-											</DataTableCell>
-											<DataTableCell>
-												<Badge
-													variant={
-														org.is_active
-															? "default"
-															: "secondary"
-													}
-												>
-													{org.is_active
-														? "Active"
-														: "Inactive"}
-												</Badge>
-											</DataTableCell>
-											<DataTableCell className="text-sm">
-												{org.created_at
-													? new Date(
-															org.created_at,
-														).toLocaleDateString()
-													: "N/A"}
-											</DataTableCell>
-											<DataTableCell className="text-right">
-												<div className="flex items-center justify-end gap-2">
-													<Button
-														variant="ghost"
-														size="icon"
-														onClick={() =>
-															handleEdit(org)
-														}
-														title="Edit organization"
-													>
-														<Pencil className="h-4 w-4" />
-													</Button>
-													<Button
-														variant="ghost"
-														size="icon"
-														onClick={() =>
-															handleDelete(org)
-														}
-														title="Delete organization"
-													>
-														<Trash2 className="h-4 w-4" />
-													</Button>
-												</div>
-											</DataTableCell>
-										</DataTableRow>
-									))}
-								</DataTableBody>
-							</DataTable>
-						</div>
-					) : (
-						<div className="flex flex-col items-center justify-center py-12 text-center">
-							<Building2 className="h-12 w-12 text-muted-foreground" />
-							<h3 className="mt-4 text-lg font-semibold">
-								{searchTerm
-									? "No organizations match your search"
-									: "No organizations found"}
-							</h3>
-							<p className="mt-2 text-sm text-muted-foreground">
-								{searchTerm
-									? "Try adjusting your search term or clear the filter"
-									: "Create your first organization to get started"}
-							</p>
-							<Button
-								variant="outline"
-								size="icon"
-								onClick={handleCreate}
-								title="Create Organization"
-								className="mt-4"
-							>
-								<Plus className="h-4 w-4" />
-							</Button>
-						</div>
-					)}
-				</CardContent>
-			</Card>
+						</DataTableBody>
+					</DataTable>
+				</div>
+			) : (
+				<div className="flex flex-col items-center justify-center py-12 text-center">
+					<Building2 className="h-12 w-12 text-muted-foreground" />
+					<h3 className="mt-4 text-lg font-semibold">
+						{searchTerm
+							? "No organizations match your search"
+							: "No organizations found"}
+					</h3>
+					<p className="mt-2 text-sm text-muted-foreground">
+						{searchTerm
+							? "Try adjusting your search term or clear the filter"
+							: "Create your first organization to get started"}
+					</p>
+					<Button
+						variant="outline"
+						size="icon"
+						onClick={handleCreate}
+						title="Create Organization"
+						className="mt-4"
+					>
+						<Plus className="h-4 w-4" />
+					</Button>
+				</div>
+			)}
 
 			{/* Create Dialog */}
 			<Dialog open={isCreateDialogOpen} onOpenChange={handleDialogClose}>

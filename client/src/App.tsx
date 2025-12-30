@@ -62,11 +62,6 @@ const ExecutionDetails = lazy(() =>
 		default: m.ExecutionDetails,
 	})),
 );
-const OAuthConnections = lazy(() =>
-	import("@/pages/OAuthConnections").then((m) => ({
-		default: m.OAuthConnections,
-	})),
-);
 const OAuthCallback = lazy(() =>
 	import("@/pages/OAuthCallback").then((m) => ({ default: m.OAuthCallback })),
 );
@@ -83,6 +78,9 @@ const Docs = lazy(() =>
 );
 const Schedules = lazy(() =>
 	import("@/pages/Schedules").then((m) => ({ default: m.Schedules })),
+);
+const Events = lazy(() =>
+	import("@/pages/Events").then((m) => ({ default: m.Events })),
 );
 const Settings = lazy(() =>
 	import("@/pages/Settings").then((m) => ({ default: m.Settings })),
@@ -304,16 +302,6 @@ function AppRoutes() {
 							}
 						/>
 
-						{/* OAuth Connections - PlatformAdmin only */}
-						<Route
-							path="oauth"
-							element={
-								<ProtectedRoute requirePlatformAdmin>
-									<OAuthConnections />
-								</ProtectedRoute>
-							}
-						/>
-
 						{/* Integrations - PlatformAdmin only */}
 						<Route
 							path="integrations"
@@ -348,6 +336,32 @@ function AppRoutes() {
 							element={
 								<ProtectedRoute requirePlatformAdmin>
 									<Schedules />
+								</ProtectedRoute>
+							}
+						/>
+
+						{/* Event Sources - PlatformAdmin only */}
+						<Route
+							path="event-sources"
+							element={
+								<ProtectedRoute requirePlatformAdmin>
+									<Events />
+								</ProtectedRoute>
+							}
+						/>
+						<Route
+							path="event-sources/:sourceId"
+							element={
+								<ProtectedRoute requirePlatformAdmin>
+									<Events />
+								</ProtectedRoute>
+							}
+						/>
+						<Route
+							path="event-sources/:sourceId/events/:eventId"
+							element={
+								<ProtectedRoute requirePlatformAdmin>
+									<Events />
 								</ProtectedRoute>
 							}
 						/>

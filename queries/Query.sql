@@ -1,0 +1,1 @@
+SELECT * FROM event_subscriptions WHERE is_active = false;

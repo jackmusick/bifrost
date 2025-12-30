@@ -64,7 +64,7 @@ class WorkflowExecutionConsumer(BaseConsumer):
         code_base64 = message_data.get("code")
         script_name = message_data.get("script_name")
         is_sync = message_data.get("sync", False)
-        file_path = message_data.get("file_path")  # For fast direct loading
+        file_path: str | None = None  # Will be set from workflow metadata lookup
         start_time = datetime.utcnow()
 
         # Remove from queue tracking (execution is now being processed)
@@ -159,6 +159,7 @@ class WorkflowExecutionConsumer(BaseConsumer):
                     # Use metadata-only lookup (Redis-first, no module loading)
                     metadata = await get_workflow_metadata_only(workflow_id)
                     workflow_name = metadata.name
+                    file_path = metadata.source_file_path  # For fast direct loading
                     timeout_seconds = metadata.timeout_seconds if metadata else 1800
                     # Initialize ROI from workflow defaults
                     roi_time_saved = metadata.time_saved or 0
@@ -396,6 +397,17 @@ class WorkflowExecutionConsumer(BaseConsumer):
                     "cpu_seconds": metrics.get("cpu_total_seconds") if metrics else None,
                 },
             )
+
+            # Update event delivery status if this was an event-triggered execution
+            try:
+                from src.services.events.processor import update_delivery_from_execution
+                await update_delivery_from_execution(
+                    execution_id=execution_id,
+                    status=status.value,
+                    error_message=result.get("error_message"),
+                )
+            except Exception as e:
+                logger.debug(f"No event delivery to update for {execution_id}: {e}")
 
         except asyncio.CancelledError:
             logger.info(f"Execution task {execution_id} was cancelled")

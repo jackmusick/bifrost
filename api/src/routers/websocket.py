@@ -182,6 +182,11 @@ async def websocket_connect(
             # CLI sessions list channel - users can subscribe to their own
             if channel == f"cli-sessions:{user.user_id}":
                 allowed_channels.append(channel)
+        elif channel.startswith("event-source:"):
+            # Event source channels for real-time event updates
+            # Platform admins can view all, org users can view their org's sources
+            # Access is validated on event delivery, so we allow subscription
+            allowed_channels.append(channel)
         elif channel == "system":
             allowed_channels.append(channel)
 
@@ -228,6 +233,15 @@ async def websocket_connect(
                             "channel": channel
                         })
                     elif channel.startswith("cli-session:"):
+                        if channel not in manager.connections:
+                            manager.connections[channel] = set()
+                        manager.connections[channel].add(websocket)
+                        await websocket.send_json({
+                            "type": "subscribed",
+                            "channel": channel
+                        })
+                    elif channel.startswith("event-source:"):
+                        # Event source channels for real-time event updates
                         if channel not in manager.connections:
                             manager.connections[channel] = set()
                         manager.connections[channel].add(websocket)

@@ -11,13 +11,7 @@ import {
 	Loader2,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import {
-	Card,
-	CardContent,
-	CardDescription,
-	CardHeader,
-	CardTitle,
-} from "@/components/ui/card";
+import { Card, CardContent } from "@/components/ui/card";
 import {
 	AlertDialog,
 	AlertDialogAction,
@@ -163,7 +157,7 @@ export function Config() {
 	};
 
 	return (
-		<div className="space-y-6">
+		<div className="h-[calc(100vh-8rem)] flex flex-col space-y-6">
 			<div className="flex items-center justify-between">
 				<div>
 					<div className="flex items-center gap-3">
@@ -238,132 +232,111 @@ export function Config() {
 				)}
 			</div>
 
-			<Card>
-				<CardHeader>
-					<div>
-						<CardTitle>
-							{isGlobalScope ? "Global" : "Organization"}{" "}
-							Configuration
-						</CardTitle>
-						<CardDescription>
-							{isGlobalScope
-								? "Platform-wide configuration values"
-								: "Organization-specific configuration overrides"}
-						</CardDescription>
-					</div>
-				</CardHeader>
-				<CardContent>
-					{isFetching ? (
-						<div className="flex items-center justify-center py-12">
-							<Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
-						</div>
-					) : filteredConfigs && filteredConfigs.length > 0 ? (
-						<div className="max-h-[calc(100vh-28rem)] overflow-auto rounded-md border">
-							<DataTable>
-								<DataTableHeader className="sticky top-0 bg-background z-10">
-									<DataTableRow>
-										{isPlatformAdmin && (
-											<DataTableHead>Organization</DataTableHead>
-										)}
-										<DataTableHead>Key</DataTableHead>
-										<DataTableHead>Value</DataTableHead>
-										<DataTableHead>Type</DataTableHead>
-										<DataTableHead>
-											Description
-										</DataTableHead>
-										<DataTableHead className="text-right">
-											Actions
-										</DataTableHead>
-									</DataTableRow>
-								</DataTableHeader>
-								<DataTableBody>
-									{filteredConfigs.map((config) => (
-										<DataTableRow
-											key={`${config.scope}-${config.key}`}
-										>
-											{isPlatformAdmin && (
-												<DataTableCell>
-													{config.organization_id ? (
-														<Badge variant="outline" className="text-xs">
-															<Building2 className="mr-1 h-3 w-3" />
-															{getOrgName(config.organization_id)}
-														</Badge>
-													) : (
-														<Badge variant="default" className="text-xs">
-															<Globe className="mr-1 h-3 w-3" />
-															Global
-														</Badge>
-													)}
-												</DataTableCell>
+			{/* Content */}
+			{isFetching ? (
+				<div className="flex items-center justify-center py-12">
+					<Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
+				</div>
+			) : filteredConfigs && filteredConfigs.length > 0 ? (
+				<div className="flex-1 min-h-0">
+					<DataTable className="max-h-full">
+						<DataTableHeader>
+							<DataTableRow>
+								{isPlatformAdmin && (
+									<DataTableHead>Organization</DataTableHead>
+								)}
+								<DataTableHead>Key</DataTableHead>
+								<DataTableHead>Value</DataTableHead>
+								<DataTableHead>Type</DataTableHead>
+								<DataTableHead>Description</DataTableHead>
+								<DataTableHead className="text-right" />
+							</DataTableRow>
+						</DataTableHeader>
+						<DataTableBody>
+							{filteredConfigs.map((config) => (
+								<DataTableRow
+									key={`${config.scope}-${config.key}`}
+								>
+									{isPlatformAdmin && (
+										<DataTableCell>
+											{config.organization_id ? (
+												<Badge variant="outline" className="text-xs">
+													<Building2 className="mr-1 h-3 w-3" />
+													{getOrgName(config.organization_id)}
+												</Badge>
+											) : (
+												<Badge variant="default" className="text-xs">
+													<Globe className="mr-1 h-3 w-3" />
+													Global
+												</Badge>
 											)}
-											<DataTableCell className="font-mono">
-												{config.key}
-											</DataTableCell>
-											<DataTableCell className="max-w-xs truncate">
-												{maskValue(
-													config.value,
-													config.type,
-												)}
-											</DataTableCell>
-											<DataTableCell>
-												{getTypeBadge(config.type)}
-											</DataTableCell>
-											<DataTableCell className="max-w-xs truncate text-muted-foreground">
-												{config.description || "-"}
-											</DataTableCell>
-											<DataTableCell className="text-right">
-												<div className="flex justify-end gap-2">
-													<Button
-														variant="ghost"
-														size="icon"
-														onClick={() =>
-															handleEdit(config)
-														}
-													>
-														<Pencil className="h-4 w-4" />
-													</Button>
-													<Button
-														variant="ghost"
-														size="icon"
-														onClick={() =>
-															handleDelete(config)
-														}
-													>
-														<Trash2 className="h-4 w-4" />
-													</Button>
-												</div>
-											</DataTableCell>
-										</DataTableRow>
-									))}
-								</DataTableBody>
-							</DataTable>
-						</div>
-					) : (
-						<div className="flex flex-col items-center justify-center py-12 text-center">
-							<Key className="h-12 w-12 text-muted-foreground" />
-							<h3 className="mt-4 text-lg font-semibold">
-								{searchTerm
-									? "No configuration matches your search"
-									: "No configuration found"}
-							</h3>
-							<p className="mt-2 text-sm text-muted-foreground">
-								{searchTerm
-									? "Try adjusting your search term or clear the filter"
-									: "Get started by creating your first config entry"}
-							</p>
-							<Button
-								variant="outline"
-								size="icon"
-								onClick={handleAdd}
-								className="mt-4"
-								title="Add Config"
-							>
-								<Plus className="h-4 w-4" />
-							</Button>
-						</div>
-					)}
-				</CardContent>
-			</Card>
+										</DataTableCell>
+									)}
+									<DataTableCell className="font-mono">
+										{config.key}
+									</DataTableCell>
+									<DataTableCell className="max-w-xs truncate">
+										{maskValue(config.value, config.type)}
+									</DataTableCell>
+									<DataTableCell>
+										{getTypeBadge(config.type)}
+									</DataTableCell>
+									<DataTableCell className="max-w-xs truncate text-muted-foreground">
+										{config.description || "-"}
+									</DataTableCell>
+									<DataTableCell className="text-right">
+										<div className="flex justify-end gap-2">
+											<Button
+												variant="ghost"
+												size="icon"
+												onClick={() =>
+													handleEdit(config)
+												}
+											>
+												<Pencil className="h-4 w-4" />
+											</Button>
+											<Button
+												variant="ghost"
+												size="icon"
+												onClick={() =>
+													handleDelete(config)
+												}
+											>
+												<Trash2 className="h-4 w-4" />
+											</Button>
+										</div>
+									</DataTableCell>
+								</DataTableRow>
+							))}
+						</DataTableBody>
+					</DataTable>
+				</div>
+			) : (
+				<Card>
+					<CardContent className="flex flex-col items-center justify-center py-12 text-center">
+						<Key className="h-12 w-12 text-muted-foreground" />
+						<h3 className="mt-4 text-lg font-semibold">
+							{searchTerm
+								? "No configuration matches your search"
+								: "No configuration found"}
+						</h3>
+						<p className="mt-2 text-sm text-muted-foreground">
+							{searchTerm
+								? "Try adjusting your search term or clear the filter"
+								: "Get started by creating your first config entry"}
+						</p>
+						<Button
+							variant="outline"
+							size="icon"
+							onClick={handleAdd}
+							className="mt-4"
+							title="Add Config"
+						>
+							<Plus className="h-4 w-4" />
+						</Button>
+					</CardContent>
+				</Card>
+			)}
 
 			<ConfigDialog
 				config={selectedConfig}

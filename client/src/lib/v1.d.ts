@@ -3026,22 +3026,22 @@ export interface paths {
          * Execute workflow via API key
          * @description Execute an endpoint-enabled workflow using an API key for authentication
          */
-        get: operations["execute_endpoint_api_endpoints__workflow_name__post"];
+        get: operations["execute_endpoint_api_endpoints__workflow_name__put"];
         /**
          * Execute workflow via API key
          * @description Execute an endpoint-enabled workflow using an API key for authentication
          */
-        put: operations["execute_endpoint_api_endpoints__workflow_name__post"];
+        put: operations["execute_endpoint_api_endpoints__workflow_name__put"];
         /**
          * Execute workflow via API key
          * @description Execute an endpoint-enabled workflow using an API key for authentication
          */
-        post: operations["execute_endpoint_api_endpoints__workflow_name__post"];
+        post: operations["execute_endpoint_api_endpoints__workflow_name__put"];
         /**
          * Execute workflow via API key
          * @description Execute an endpoint-enabled workflow using an API key for authentication
          */
-        delete: operations["execute_endpoint_api_endpoints__workflow_name__post"];
+        delete: operations["execute_endpoint_api_endpoints__workflow_name__put"];
         options?: never;
         head?: never;
         patch?: never;
@@ -5033,6 +5033,246 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/events/adapters": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List available webhook adapters
+         * @description List all available webhook adapters and their configuration schemas.
+         */
+        get: operations["list_adapters_api_events_adapters_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/events/adapters/{adapter_name}/dynamic-values": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Get dynamic values for adapter config
+         * @description Fetch dynamic options for a config field with x-dynamic-values.
+         */
+        post: operations["get_dynamic_values_api_events_adapters__adapter_name__dynamic_values_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/events/sources": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List event sources
+         * @description List all event sources visible to the user.
+         */
+        get: operations["list_sources_api_events_sources_get"];
+        put?: never;
+        /**
+         * Create event source
+         * @description Create a new event source (Platform admin only).
+         */
+        post: operations["create_source_api_events_sources_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/events/sources/{source_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get event source
+         * @description Get a specific event source by ID.
+         */
+        get: operations["get_source_api_events_sources__source_id__get"];
+        put?: never;
+        post?: never;
+        /**
+         * Delete event source
+         * @description Soft delete an event source (Platform admin only).
+         */
+        delete: operations["delete_source_api_events_sources__source_id__delete"];
+        options?: never;
+        head?: never;
+        /**
+         * Update event source
+         * @description Update an event source (Platform admin only).
+         */
+        patch: operations["update_source_api_events_sources__source_id__patch"];
+        trace?: never;
+    };
+    "/api/events/sources/{source_id}/subscriptions": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List subscriptions
+         * @description List subscriptions for an event source.
+         */
+        get: operations["list_subscriptions_api_events_sources__source_id__subscriptions_get"];
+        put?: never;
+        /**
+         * Create subscription
+         * @description Create a subscription to an event source (Platform admin only).
+         */
+        post: operations["create_subscription_api_events_sources__source_id__subscriptions_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/events/sources/{source_id}/subscriptions/{subscription_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /**
+         * Delete subscription
+         * @description Soft delete an event subscription (Platform admin only).
+         */
+        delete: operations["delete_subscription_api_events_sources__source_id__subscriptions__subscription_id__delete"];
+        options?: never;
+        head?: never;
+        /**
+         * Update subscription
+         * @description Update an event subscription (Platform admin only).
+         */
+        patch: operations["update_subscription_api_events_sources__source_id__subscriptions__subscription_id__patch"];
+        trace?: never;
+    };
+    "/api/events/sources/{source_id}/events": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List events
+         * @description List events for an event source with optional filters.
+         */
+        get: operations["list_events_api_events_sources__source_id__events_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/events/{event_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get event
+         * @description Get a specific event by ID.
+         */
+        get: operations["get_event_api_events__event_id__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/events/{event_id}/deliveries": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List deliveries
+         * @description List deliveries for an event.
+         */
+        get: operations["list_deliveries_api_events__event_id__deliveries_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/events/deliveries/{delivery_id}/retry": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Retry delivery
+         * @description Retry a failed delivery (Platform admin only).
+         */
+        post: operations["retry_delivery_api_events_deliveries__delivery_id__retry_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/hooks/health": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Webhook health check
+         * @description Health check endpoint for webhook receiver.
+         */
+        get: operations["webhook_health_api_hooks_health_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/": {
         parameters: {
             query?: never;
@@ -5507,7 +5747,7 @@ export interface components {
             /** Mfa Required For Password */
             mfa_required_for_password: boolean;
             /** Oauth Providers */
-            oauth_providers: components["schemas"]["src__models__contracts__auth__OAuthProviderInfo"][];
+            oauth_providers: components["schemas"]["OAuthProviderInfo"][];
         };
         /**
          * AuthorizeResponse
@@ -7073,6 +7313,44 @@ export interface components {
             error?: string | null;
         };
         /**
+         * DynamicValuesRequest
+         * @description Request model for fetching dynamic values for adapter config fields.
+         *     POST /api/events/adapters/{adapter_name}/dynamic-values
+         */
+        DynamicValuesRequest: {
+            /**
+             * Operation
+             * @description The operation name from x-dynamic-values in config_schema
+             */
+            operation: string;
+            /**
+             * Integration Id
+             * @description Integration ID for OAuth-based operations
+             */
+            integration_id?: string | null;
+            /**
+             * Current Config
+             * @description Config values selected so far (for dependent fields)
+             */
+            current_config?: {
+                [key: string]: unknown;
+            };
+        };
+        /**
+         * DynamicValuesResponse
+         * @description Response model for dynamic values.
+         *     Returns list of options for populating dropdowns.
+         */
+        DynamicValuesResponse: {
+            /**
+             * Items
+             * @description List of option objects with fields matching value_path/label_path
+             */
+            items: {
+                [key: string]: unknown;
+            }[];
+        };
+        /**
          * EmailWorkflowConfigRequest
          * @description Request to set the email workflow.
          */
@@ -7201,6 +7479,478 @@ export interface components {
             error?: string | null;
             /** Duration Ms */
             duration_ms?: number | null;
+        };
+        /**
+         * EventDeliveryListResponse
+         * @description Response model for listing event deliveries.
+         *     GET /api/events/{event_id}/deliveries
+         */
+        EventDeliveryListResponse: {
+            /**
+             * Items
+             * @description List of deliveries
+             */
+            items: components["schemas"]["EventDeliveryResponse"][];
+            /**
+             * Total
+             * @description Total number of deliveries
+             */
+            total: number;
+        };
+        /**
+         * EventDeliveryResponse
+         * @description Response model for a single event delivery.
+         *     GET /api/events/{event_id}/deliveries/{delivery_id}
+         */
+        EventDeliveryResponse: {
+            /**
+             * Id
+             * Format: uuid
+             * @description Delivery ID
+             */
+            id: string;
+            /**
+             * Event Id
+             * Format: uuid
+             * @description Event ID
+             */
+            event_id: string;
+            /**
+             * Event Subscription Id
+             * Format: uuid
+             * @description Subscription ID
+             */
+            event_subscription_id: string;
+            /**
+             * Workflow Id
+             * Format: uuid
+             * @description Workflow ID
+             */
+            workflow_id: string;
+            /**
+             * Workflow Name
+             * @description Workflow name (for display)
+             */
+            workflow_name?: string | null;
+            /**
+             * Execution Id
+             * @description Execution ID (set when execution starts)
+             */
+            execution_id?: string | null;
+            /** @description Delivery status */
+            status: components["schemas"]["EventDeliveryStatus"];
+            /**
+             * Error Message
+             * @description Error message if failed
+             */
+            error_message?: string | null;
+            /**
+             * Attempt Count
+             * @description Number of delivery attempts
+             * @default 0
+             */
+            attempt_count: number;
+            /**
+             * Next Retry At
+             * @description Next retry time (for future retry support)
+             */
+            next_retry_at?: string | null;
+            /**
+             * Completed At
+             * @description When delivery completed
+             */
+            completed_at?: string | null;
+            /**
+             * Created At
+             * Format: date-time
+             * @description Creation timestamp
+             */
+            created_at: string;
+        };
+        /**
+         * EventDeliveryStatus
+         * @description Event delivery status to a workflow
+         * @enum {string}
+         */
+        EventDeliveryStatus: "pending" | "queued" | "success" | "failed" | "skipped";
+        /**
+         * EventListResponse
+         * @description Response model for listing events.
+         *     GET /api/events/sources/{source_id}/events
+         */
+        EventListResponse: {
+            /**
+             * Items
+             * @description List of events
+             */
+            items: components["schemas"]["EventResponse"][];
+            /**
+             * Total
+             * @description Total number of events
+             */
+            total: number;
+        };
+        /**
+         * EventResponse
+         * @description Response model for a single event.
+         *     GET /api/events/{event_id}
+         */
+        EventResponse: {
+            /**
+             * Id
+             * Format: uuid
+             * @description Event ID
+             */
+            id: string;
+            /**
+             * Event Source Id
+             * Format: uuid
+             * @description Event source ID
+             */
+            event_source_id: string;
+            /**
+             * Event Source Name
+             * @description Event source name (for display)
+             */
+            event_source_name?: string | null;
+            /**
+             * Event Type
+             * @description Event type
+             */
+            event_type?: string | null;
+            /**
+             * Received At
+             * Format: date-time
+             * @description When the event was received
+             */
+            received_at: string;
+            /**
+             * Headers
+             * @description Request headers (for webhooks)
+             */
+            headers?: {
+                [key: string]: unknown;
+            } | null;
+            /**
+             * Data
+             * @description Event payload
+             */
+            data: {
+                [key: string]: unknown;
+            };
+            /**
+             * Source Ip
+             * @description Source IP address
+             */
+            source_ip?: string | null;
+            /** @description Processing status */
+            status: components["schemas"]["EventStatus"];
+            /**
+             * Delivery Count
+             * @description Number of delivery attempts
+             * @default 0
+             */
+            delivery_count: number;
+            /**
+             * Success Count
+             * @description Number of successful deliveries
+             * @default 0
+             */
+            success_count: number;
+            /**
+             * Failed Count
+             * @description Number of failed deliveries
+             * @default 0
+             */
+            failed_count: number;
+            /**
+             * Created At
+             * Format: date-time
+             * @description Creation timestamp
+             */
+            created_at: string;
+        };
+        /**
+         * EventSourceCreate
+         * @description Request model for creating an event source.
+         *     POST /api/events/sources
+         */
+        EventSourceCreate: {
+            /**
+             * Name
+             * @description Event source name
+             */
+            name: string;
+            /** @description Event source type (webhook, schedule, internal) */
+            source_type: components["schemas"]["EventSourceType"];
+            /**
+             * Organization Id
+             * @description Organization ID (null for global sources)
+             */
+            organization_id?: string | null;
+            /** @description Webhook configuration (required if source_type is webhook) */
+            webhook?: components["schemas"]["WebhookSourceConfig"] | null;
+        };
+        /**
+         * EventSourceListResponse
+         * @description Response model for listing event sources.
+         *     GET /api/events/sources
+         */
+        EventSourceListResponse: {
+            /**
+             * Items
+             * @description List of event sources
+             */
+            items: components["schemas"]["EventSourceResponse"][];
+            /**
+             * Total
+             * @description Total number of sources
+             */
+            total: number;
+        };
+        /**
+         * EventSourceResponse
+         * @description Response model for a single event source.
+         *     GET /api/events/sources/{source_id}
+         */
+        EventSourceResponse: {
+            /**
+             * Id
+             * Format: uuid
+             * @description Event source ID
+             */
+            id: string;
+            /**
+             * Name
+             * @description Event source name
+             */
+            name: string;
+            /** @description Source type */
+            source_type: components["schemas"]["EventSourceType"];
+            /**
+             * Organization Id
+             * @description Organization ID (null for global)
+             */
+            organization_id?: string | null;
+            /**
+             * Organization Name
+             * @description Organization name (for display)
+             */
+            organization_name?: string | null;
+            /**
+             * Is Active
+             * @description Whether the source is active
+             */
+            is_active: boolean;
+            /**
+             * Error Message
+             * @description Error message if source is in error state
+             */
+            error_message?: string | null;
+            /**
+             * Subscription Count
+             * @description Number of active subscriptions
+             * @default 0
+             */
+            subscription_count: number;
+            /**
+             * Event Count 24H
+             * @description Number of events received in the last 24 hours
+             * @default 0
+             */
+            event_count_24h: number;
+            /**
+             * Created By
+             * @description User who created the source
+             */
+            created_by: string;
+            /**
+             * Created At
+             * Format: date-time
+             * @description Creation timestamp
+             */
+            created_at: string;
+            /**
+             * Updated At
+             * Format: date-time
+             * @description Last update timestamp
+             */
+            updated_at: string;
+            /** @description Webhook configuration details */
+            webhook?: components["schemas"]["WebhookSourceResponse"] | null;
+        };
+        /**
+         * EventSourceType
+         * @description Event source types
+         * @enum {string}
+         */
+        EventSourceType: "webhook" | "schedule" | "internal";
+        /**
+         * EventSourceUpdate
+         * @description Request model for updating an event source.
+         *     PATCH /api/events/sources/{source_id}
+         */
+        EventSourceUpdate: {
+            /**
+             * Name
+             * @description Event source name
+             */
+            name?: string | null;
+            /**
+             * Is Active
+             * @description Whether the source is active
+             */
+            is_active?: boolean | null;
+            /** @description Webhook configuration updates */
+            webhook?: components["schemas"]["WebhookSourceConfig"] | null;
+        };
+        /**
+         * EventStatus
+         * @description Event processing status
+         * @enum {string}
+         */
+        EventStatus: "received" | "processing" | "completed" | "failed";
+        /**
+         * EventSubscriptionCreate
+         * @description Request model for creating an event subscription.
+         *     POST /api/events/sources/{source_id}/subscriptions
+         */
+        EventSubscriptionCreate: {
+            /**
+             * Workflow Id
+             * Format: uuid
+             * @description Workflow ID to trigger when events arrive
+             */
+            workflow_id: string;
+            /**
+             * Event Type
+             * @description Optional event type filter (e.g., 'ticket.created')
+             */
+            event_type?: string | null;
+            /**
+             * Filter Expression
+             * @description Optional JSONPath filter expression (future use)
+             */
+            filter_expression?: string | null;
+        };
+        /**
+         * EventSubscriptionListResponse
+         * @description Response model for listing event subscriptions.
+         *     GET /api/events/sources/{source_id}/subscriptions
+         */
+        EventSubscriptionListResponse: {
+            /**
+             * Items
+             * @description List of subscriptions
+             */
+            items: components["schemas"]["EventSubscriptionResponse"][];
+            /**
+             * Total
+             * @description Total number of subscriptions
+             */
+            total: number;
+        };
+        /**
+         * EventSubscriptionResponse
+         * @description Response model for a single event subscription.
+         *     GET /api/events/sources/{source_id}/subscriptions/{subscription_id}
+         */
+        EventSubscriptionResponse: {
+            /**
+             * Id
+             * Format: uuid
+             * @description Subscription ID
+             */
+            id: string;
+            /**
+             * Event Source Id
+             * Format: uuid
+             * @description Event source ID
+             */
+            event_source_id: string;
+            /**
+             * Workflow Id
+             * Format: uuid
+             * @description Workflow ID
+             */
+            workflow_id: string;
+            /**
+             * Workflow Name
+             * @description Workflow name (for display)
+             */
+            workflow_name?: string | null;
+            /**
+             * Event Type
+             * @description Event type filter
+             */
+            event_type?: string | null;
+            /**
+             * Filter Expression
+             * @description JSONPath filter expression
+             */
+            filter_expression?: string | null;
+            /**
+             * Is Active
+             * @description Whether the subscription is active
+             */
+            is_active: boolean;
+            /**
+             * Delivery Count
+             * @description Total number of deliveries
+             * @default 0
+             */
+            delivery_count: number;
+            /**
+             * Success Count
+             * @description Number of successful deliveries
+             * @default 0
+             */
+            success_count: number;
+            /**
+             * Failed Count
+             * @description Number of failed deliveries
+             * @default 0
+             */
+            failed_count: number;
+            /**
+             * Created By
+             * @description User who created the subscription
+             */
+            created_by: string;
+            /**
+             * Created At
+             * Format: date-time
+             * @description Creation timestamp
+             */
+            created_at: string;
+            /**
+             * Updated At
+             * Format: date-time
+             * @description Last update timestamp
+             */
+            updated_at: string;
+        };
+        /**
+         * EventSubscriptionUpdate
+         * @description Request model for updating an event subscription.
+         *     PATCH /api/events/sources/{source_id}/subscriptions/{subscription_id}
+         */
+        EventSubscriptionUpdate: {
+            /**
+             * Event Type
+             * @description Event type filter
+             */
+            event_type?: string | null;
+            /**
+             * Filter Expression
+             * @description JSONPath filter expression
+             */
+            filter_expression?: string | null;
+            /**
+             * Is Active
+             * @description Whether the subscription is active
+             */
+            is_active?: boolean | null;
         };
         /**
          * ExecutionLogPublic
@@ -9334,20 +10084,11 @@ export interface components {
         };
         /**
          * MFAVerifyRequest
-         * @description Request to verify MFA code during login.
+         * @description Request to verify MFA code.
          */
         MFAVerifyRequest: {
-            /** Mfa Token */
-            mfa_token: string;
             /** Code */
             code: string;
-            /**
-             * Trust Device
-             * @default false
-             */
-            trust_device: boolean;
-            /** Device Name */
-            device_name?: string | null;
         };
         /**
          * MFAVerifyResponse
@@ -9569,15 +10310,24 @@ export interface components {
         };
         /**
          * OAuthCallbackRequest
-         * @description OAuth callback request (for when frontend handles callback).
+         * @description Request model for OAuth callback endpoint
          */
         OAuthCallbackRequest: {
-            /** Provider */
-            provider: string;
-            /** Code */
+            /**
+             * Code
+             * @description Authorization code from OAuth provider
+             */
             code: string;
-            /** State */
-            state: string;
+            /**
+             * State
+             * @description State parameter for CSRF protection
+             */
+            state?: string | null;
+            /**
+             * Redirect Uri
+             * @description Redirect URI used in authorization request
+             */
+            redirect_uri?: string | null;
         };
         /**
          * OAuthCallbackResponse
@@ -10007,7 +10757,7 @@ export interface components {
         };
         /**
          * OAuthProviderInfo
-         * @description OAuth provider information.
+         * @description OAuth provider information for login page
          */
         OAuthProviderInfo: {
             /** Name */
@@ -10023,7 +10773,7 @@ export interface components {
          */
         OAuthProvidersResponse: {
             /** Providers */
-            providers: components["schemas"]["OAuthProviderInfo"][];
+            providers: components["schemas"]["src__routers__oauth_sso__OAuthProviderInfo"][];
         };
         /**
          * OAuthTokenResponse
@@ -10962,6 +11712,35 @@ export interface components {
             days: components["schemas"]["ResourceMetricsEntry"][];
             /** Total Days */
             total_days: number;
+        };
+        /**
+         * RetryDeliveryRequest
+         * @description Request model for retrying a failed delivery.
+         *     POST /api/events/deliveries/{delivery_id}/retry
+         */
+        RetryDeliveryRequest: Record<string, never>;
+        /**
+         * RetryDeliveryResponse
+         * @description Response model for retry delivery.
+         *     POST /api/events/deliveries/{delivery_id}/retry
+         */
+        RetryDeliveryResponse: {
+            /**
+             * Delivery Id
+             * Format: uuid
+             * @description Delivery ID
+             */
+            delivery_id: string;
+            /**
+             * Status
+             * @description New status after retry
+             */
+            status: string;
+            /**
+             * Message
+             * @description Result message
+             */
+            message: string;
         };
         /**
          * RetryPolicy
@@ -12134,6 +12913,122 @@ export interface components {
             severity: "error" | "warning";
         };
         /**
+         * WebhookAdapterInfo
+         * @description Information about an available webhook adapter.
+         */
+        WebhookAdapterInfo: {
+            /**
+             * Name
+             * @description Unique adapter name (e.g., 'generic', 'microsoft_graph')
+             */
+            name: string;
+            /**
+             * Display Name
+             * @description Human-readable adapter name
+             */
+            display_name: string;
+            /**
+             * Description
+             * @description Adapter description
+             */
+            description?: string | null;
+            /**
+             * Requires Integration
+             * @description Integration name required for this adapter (e.g., 'Microsoft')
+             */
+            requires_integration?: string | null;
+            /**
+             * Config Schema
+             * @description JSON Schema for adapter configuration
+             */
+            config_schema?: {
+                [key: string]: unknown;
+            };
+            /**
+             * Supports Renewal
+             * @description Whether this adapter requires subscription renewal
+             * @default false
+             */
+            supports_renewal: boolean;
+        };
+        /**
+         * WebhookAdapterListResponse
+         * @description Response model for listing available webhook adapters.
+         */
+        WebhookAdapterListResponse: {
+            /**
+             * Adapters
+             * @description List of available webhook adapters
+             */
+            adapters: components["schemas"]["WebhookAdapterInfo"][];
+        };
+        /**
+         * WebhookSourceConfig
+         * @description Webhook-specific configuration for creating an event source.
+         */
+        WebhookSourceConfig: {
+            /**
+             * Adapter Name
+             * @description Webhook adapter name (null for generic webhook)
+             */
+            adapter_name?: string | null;
+            /**
+             * Integration Id
+             * @description Integration ID for OAuth-based adapters
+             */
+            integration_id?: string | null;
+            /**
+             * Config
+             * @description Adapter-specific configuration
+             */
+            config?: {
+                [key: string]: unknown;
+            };
+        };
+        /**
+         * WebhookSourceResponse
+         * @description Webhook-specific details in event source response.
+         */
+        WebhookSourceResponse: {
+            /**
+             * Adapter Name
+             * @description Webhook adapter name
+             */
+            adapter_name?: string | null;
+            /**
+             * Integration Id
+             * @description Integration ID for OAuth-based adapters
+             */
+            integration_id?: string | null;
+            /**
+             * Integration Name
+             * @description Integration name (for display)
+             */
+            integration_name?: string | null;
+            /**
+             * Config
+             * @description Adapter configuration
+             */
+            config?: {
+                [key: string]: unknown;
+            };
+            /**
+             * Callback Url
+             * @description Full callback URL for this webhook
+             */
+            callback_url: string;
+            /**
+             * External Id
+             * @description External subscription ID (from external service)
+             */
+            external_id?: string | null;
+            /**
+             * Expires At
+             * @description When the external subscription expires
+             */
+            expires_at?: string | null;
+        };
+        /**
          * WorkflowExecution
          * @description Workflow execution entity
          */
@@ -12710,37 +13605,21 @@ export interface components {
             backup_will_be_created: boolean;
         };
         /**
-         * OAuthProviderInfo
-         * @description OAuth provider information for login page
+         * MFAVerifyRequest
+         * @description Request to verify MFA code during login.
          */
-        src__models__contracts__auth__OAuthProviderInfo: {
-            /** Name */
-            name: string;
-            /** Display Name */
-            display_name: string;
-            /** Icon */
-            icon?: string | null;
-        };
-        /**
-         * OAuthCallbackRequest
-         * @description Request model for OAuth callback endpoint
-         */
-        src__models__contracts__oauth__OAuthCallbackRequest: {
-            /**
-             * Code
-             * @description Authorization code from OAuth provider
-             */
+        src__routers__auth__MFAVerifyRequest: {
+            /** Mfa Token */
+            mfa_token: string;
+            /** Code */
             code: string;
             /**
-             * State
-             * @description State parameter for CSRF protection
+             * Trust Device
+             * @default false
              */
-            state?: string | null;
-            /**
-             * Redirect Uri
-             * @description Redirect URI used in authorization request
-             */
-            redirect_uri?: string | null;
+            trust_device: boolean;
+            /** Device Name */
+            device_name?: string | null;
         };
         /**
          * UserCreate
@@ -12758,12 +13637,28 @@ export interface components {
             name?: string | null;
         };
         /**
-         * MFAVerifyRequest
-         * @description Request to verify MFA code.
+         * OAuthCallbackRequest
+         * @description OAuth callback request (for when frontend handles callback).
          */
-        src__routers__mfa__MFAVerifyRequest: {
+        src__routers__oauth_sso__OAuthCallbackRequest: {
+            /** Provider */
+            provider: string;
             /** Code */
             code: string;
+            /** State */
+            state: string;
+        };
+        /**
+         * OAuthProviderInfo
+         * @description OAuth provider information.
+         */
+        src__routers__oauth_sso__OAuthProviderInfo: {
+            /** Name */
+            name: string;
+            /** Display Name */
+            display_name: string;
+            /** Icon */
+            icon?: string | null;
         };
     };
     responses: never;
@@ -12896,7 +13791,7 @@ export interface operations {
         };
         requestBody: {
             content: {
-                "application/json": components["schemas"]["MFAVerifyRequest"];
+                "application/json": components["schemas"]["src__routers__auth__MFAVerifyRequest"];
             };
         };
         responses: {
@@ -13247,7 +14142,7 @@ export interface operations {
         };
         requestBody: {
             content: {
-                "application/json": components["schemas"]["src__routers__mfa__MFAVerifyRequest"];
+                "application/json": components["schemas"]["MFAVerifyRequest"];
             };
         };
         responses: {
@@ -13497,7 +14392,7 @@ export interface operations {
         };
         requestBody: {
             content: {
-                "application/json": components["schemas"]["OAuthCallbackRequest"];
+                "application/json": components["schemas"]["src__routers__oauth_sso__OAuthCallbackRequest"];
             };
         };
         responses: {
@@ -17243,7 +18138,7 @@ export interface operations {
         };
         requestBody: {
             content: {
-                "application/json": components["schemas"]["src__models__contracts__oauth__OAuthCallbackRequest"];
+                "application/json": components["schemas"]["OAuthCallbackRequest"];
             };
         };
         responses: {
@@ -17338,7 +18233,7 @@ export interface operations {
             };
         };
     };
-    execute_endpoint_api_endpoints__workflow_name__post: {
+    execute_endpoint_api_endpoints__workflow_name__put: {
         parameters: {
             query?: never;
             header: {
@@ -17371,7 +18266,7 @@ export interface operations {
             };
         };
     };
-    execute_endpoint_api_endpoints__workflow_name__post: {
+    execute_endpoint_api_endpoints__workflow_name__put: {
         parameters: {
             query?: never;
             header: {
@@ -17404,7 +18299,7 @@ export interface operations {
             };
         };
     };
-    execute_endpoint_api_endpoints__workflow_name__post: {
+    execute_endpoint_api_endpoints__workflow_name__put: {
         parameters: {
             query?: never;
             header: {
@@ -17437,7 +18332,7 @@ export interface operations {
             };
         };
     };
-    execute_endpoint_api_endpoints__workflow_name__post: {
+    execute_endpoint_api_endpoints__workflow_name__put: {
         parameters: {
             query?: never;
             header: {
@@ -21104,6 +21999,525 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["MCPToolsResponse"];
+                };
+            };
+        };
+    };
+    list_adapters_api_events_adapters_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WebhookAdapterListResponse"];
+                };
+            };
+        };
+    };
+    get_dynamic_values_api_events_adapters__adapter_name__dynamic_values_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                adapter_name: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["DynamicValuesRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DynamicValuesResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_sources_api_events_sources_get: {
+        parameters: {
+            query?: {
+                /** @description Filter by source type */
+                source_type?: components["schemas"]["EventSourceType"] | null;
+                /** @description Filter by organization (superusers only) */
+                organization_id?: string | null;
+                /** @description Max results */
+                limit?: number;
+                /** @description Skip results */
+                offset?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EventSourceListResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    create_source_api_events_sources_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["EventSourceCreate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EventSourceResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_source_api_events_sources__source_id__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                source_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EventSourceResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    delete_source_api_events_sources__source_id__delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                source_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    update_source_api_events_sources__source_id__patch: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                source_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["EventSourceUpdate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EventSourceResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_subscriptions_api_events_sources__source_id__subscriptions_get: {
+        parameters: {
+            query?: {
+                /** @description Max results */
+                limit?: number;
+                /** @description Skip results */
+                offset?: number;
+            };
+            header?: never;
+            path: {
+                source_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EventSubscriptionListResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    create_subscription_api_events_sources__source_id__subscriptions_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                source_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["EventSubscriptionCreate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EventSubscriptionResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    delete_subscription_api_events_sources__source_id__subscriptions__subscription_id__delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                source_id: string;
+                subscription_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    update_subscription_api_events_sources__source_id__subscriptions__subscription_id__patch: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                source_id: string;
+                subscription_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["EventSubscriptionUpdate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EventSubscriptionResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_events_api_events_sources__source_id__events_get: {
+        parameters: {
+            query?: {
+                /** @description Filter by status (received, processing, completed, failed) */
+                status?: string | null;
+                /** @description Filter by event type */
+                event_type?: string | null;
+                /** @description Filter events received after this time */
+                since?: string | null;
+                /** @description Filter events received before this time */
+                until?: string | null;
+                /** @description Max results */
+                limit?: number;
+                /** @description Skip results */
+                offset?: number;
+            };
+            header?: never;
+            path: {
+                source_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EventListResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_event_api_events__event_id__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                event_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EventResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_deliveries_api_events__event_id__deliveries_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                event_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EventDeliveryListResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    retry_delivery_api_events_deliveries__delivery_id__retry_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                delivery_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: {
+            content: {
+                "application/json": components["schemas"]["RetryDeliveryRequest"] | null;
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RetryDeliveryResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    webhook_health_api_hooks_health_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "text/plain": string;
                 };
             };
         };

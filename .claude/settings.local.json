@@ -104,7 +104,8 @@
       "WebFetch(domain:gofastmcp.com)",
       "WebFetch(domain:www.buildwithmatija.com)",
       "WebFetch(domain:www.twilio.com)",
-      "WebFetch(domain:spec.modelcontextprotocol.io)"
+      "WebFetch(domain:spec.modelcontextprotocol.io)",
+      "WebFetch(domain:reenhanced.com)"
     ],
     "deny": [],
     "ask": [],

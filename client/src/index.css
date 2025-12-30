@@ -351,4 +351,18 @@
 	.monaco-editor .view-lines .conflict-actions-zone {
 		pointer-events: auto !important;
 	}
+
+	/* Highlight animation for new events */
+	@keyframes highlight {
+		0% {
+			background-color: oklch(from var(--primary) l c h / 0.15);
+		}
+		100% {
+			background-color: transparent;
+		}
+	}
+
+	.animate-highlight {
+		animation: highlight 2s ease-out;
+	}
 }

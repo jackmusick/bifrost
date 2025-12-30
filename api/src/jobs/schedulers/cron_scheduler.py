@@ -8,15 +8,14 @@ Runs every 5 minutes to check for workflows that need to be executed.
 """
 
 import logging
-import uuid
 from datetime import datetime
 from typing import Any
 
 from croniter import croniter
 
 from src.core.database import get_db_context
-from src.jobs.rabbitmq import publish_message
 from src.repositories.workflows import WorkflowRepository
+from src.services.execution.async_executor import enqueue_system_workflow_execution
 
 logger = logging.getLogger(__name__)
 
@@ -92,21 +91,12 @@ async def process_scheduled_workflows() -> dict[str, Any]:
                 if next_run <= now:
                     logger.info(f"Executing scheduled workflow: {workflow_name}")
 
-                    # Generate execution ID
-                    execution_id = str(uuid.uuid4())
-
-                    # Enqueue workflow execution
-                    await publish_message(
-                        queue_name="workflow-executions",
-                        message={
-                            "execution_id": execution_id,
-                            "workflow_name": workflow_name,
-                            "org_id": None,  # System/global context
-                            "user_id": "system:scheduler",
-                            "user_name": "Scheduled Execution",
-                            "user_email": "system@scheduler",
-                            "parameters": {},
-                        },
+                    # Use the centralized system execution helper
+                    execution_id = await enqueue_system_workflow_execution(
+                        workflow_id=str(workflow.id),
+                        parameters={},
+                        source="Scheduled Execution",
+                        org_id=str(workflow.organization_id) if workflow.organization_id else None,
                     )
 
                     logger.info(

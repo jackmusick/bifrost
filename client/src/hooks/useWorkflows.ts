@@ -15,6 +15,13 @@ type WorkflowValidationRequest =
 	components["schemas"]["WorkflowValidationRequest"];
 
 /**
+ * Fetch all workflows.
+ */
+export function useWorkflows() {
+	return $api.useQuery("get", "/api/workflows", {});
+}
+
+/**
  * Fetch workflows that can be used as agent tools.
  * Uses the is_tool=true query parameter for server-side filtering.
  */

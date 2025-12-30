@@ -479,9 +479,7 @@ export function Forms() {
 									<DataTableHead>Name</DataTableHead>
 									<DataTableHead>Description</DataTableHead>
 									<DataTableHead>Status</DataTableHead>
-									<DataTableHead className="text-right">
-										Actions
-									</DataTableHead>
+									<DataTableHead className="text-right" />
 								</DataTableRow>
 							</DataTableHeader>
 							<DataTableBody>

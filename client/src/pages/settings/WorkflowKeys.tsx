@@ -9,8 +9,6 @@ import {
 	Check,
 	Globe,
 	Workflow as WorkflowIcon,
-	CalendarDays,
-	Clock,
 	AlertTriangle,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -21,14 +19,6 @@ import {
 	CardHeader,
 	CardTitle,
 } from "@/components/ui/card";
-import {
-	DataTable,
-	DataTableBody,
-	DataTableCell,
-	DataTableHead,
-	DataTableHeader,
-	DataTableRow,
-} from "@/components/ui/data-table";
 import {
 	Dialog,
 	DialogContent,
@@ -244,6 +234,29 @@ export function WorkflowKeys() {
 		});
 	};
 
+	const formatShortDate = (dateString?: string | null) => {
+		if (!dateString) return null;
+		const date = new Date(dateString);
+		return date.toLocaleDateString("en-US", {
+			month: "short",
+			day: "numeric",
+		});
+	};
+
+	const formatRelativeDate = (dateString?: string | null) => {
+		if (!dateString) return null;
+		const date = new Date(dateString);
+		const now = new Date();
+		const diffMs = now.getTime() - date.getTime();
+		const diffDays = Math.floor(diffMs / (1000 * 60 * 60 * 24));
+
+		if (diffDays === 0) return "Today";
+		if (diffDays === 1) return "Yesterday";
+		if (diffDays < 7) return `${diffDays} days ago`;
+		if (diffDays < 30) return `${Math.floor(diffDays / 7)} weeks ago`;
+		return formatShortDate(dateString);
+	};
+
 	const isExpired = (expiresAt?: string | null) => {
 		if (!expiresAt) return false;
 		return new Date(expiresAt) < new Date();
@@ -294,154 +307,118 @@ export function WorkflowKeys() {
 							<Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
 						</div>
 					) : sortedKeys && sortedKeys.length > 0 ? (
-						<div className="border rounded-lg overflow-hidden flex-1">
-							<div className="overflow-auto max-h-full">
-								<DataTable>
-									<DataTableHeader className="sticky top-0 bg-background z-10">
-										<DataTableRow>
-											<DataTableHead>Scope</DataTableHead>
-											<DataTableHead>
-												Description
-											</DataTableHead>
-											<DataTableHead>Key</DataTableHead>
-											<DataTableHead>
-												Created
-											</DataTableHead>
-											<DataTableHead>
-												Last Used
-											</DataTableHead>
-											<DataTableHead>
-												Expires
-											</DataTableHead>
-											<DataTableHead className="text-right">
-												Actions
-											</DataTableHead>
-										</DataTableRow>
-									</DataTableHeader>
-									<DataTableBody>
-										{sortedKeys.map((key) => {
-											const orphaned = isOrphaned(key);
-											return (
-												<DataTableRow key={key.id}>
-													<DataTableCell>
-														{!key.workflow_name ? (
-															<Badge
-																variant="default"
-																className="text-xs font-semibold"
-															>
-																<Globe className="mr-1 h-3 w-3" />
-																Global
-															</Badge>
-														) : orphaned ? (
-															<Badge
-																variant="destructive"
-																className="font-mono text-xs"
-															>
-																<AlertTriangle className="mr-1 h-3 w-3" />
-																{
-																	key.workflow_name
-																}
-															</Badge>
-														) : (
-															<Badge
-																variant="outline"
-																className="font-mono text-xs"
-															>
-																<WorkflowIcon className="mr-1 h-3 w-3" />
-																{
-																	key.workflow_name
-																}
-															</Badge>
+						<div className="flex-1 overflow-auto space-y-3">
+							{sortedKeys.map((key) => {
+								const orphaned = isOrphaned(key);
+								const expired = isExpired(key.expires_at);
+
+								return (
+									<div
+										key={key.id}
+										className={`border rounded-lg p-4 border-l-4 ${
+											orphaned || expired
+												? "border-destructive/50 border-l-destructive bg-destructive/5"
+												: "border-border bg-muted/40 border-l-primary/60"
+										}`}
+									>
+										{/* Top row: Scope badge + description + delete */}
+										<div className="flex items-start justify-between gap-3">
+											<div className="flex items-center gap-3 min-w-0 flex-1">
+												{!key.workflow_name ? (
+													<Badge
+														variant="default"
+														className="text-xs font-semibold shrink-0"
+													>
+														<Globe className="mr-1 h-3 w-3" />
+														Global
+													</Badge>
+												) : orphaned ? (
+													<Badge
+														variant="destructive"
+														className="font-mono text-xs shrink-0"
+													>
+														<AlertTriangle className="mr-1 h-3 w-3" />
+														{key.workflow_name}
+													</Badge>
+												) : (
+													<Badge
+														variant="outline"
+														className="font-mono text-xs shrink-0"
+													>
+														<WorkflowIcon className="mr-1 h-3 w-3" />
+														{key.workflow_name}
+													</Badge>
+												)}
+												<span className="text-sm truncate">
+													{key.description || (
+														<span className="text-muted-foreground italic">
+															No description
+														</span>
+													)}
+												</span>
+											</div>
+											<Button
+												variant="ghost"
+												size="icon"
+												className="shrink-0 h-8 w-8"
+												onClick={() => handleRevoke(key)}
+												title="Revoke key"
+											>
+												<Trash2 className="h-4 w-4" />
+											</Button>
+										</div>
+
+										{/* Warning for orphaned keys */}
+										{orphaned && (
+											<p className="text-xs text-destructive mt-2">
+												Warning: Workflow no longer exists
+											</p>
+										)}
+
+										{/* Bottom row: Key + metadata */}
+										<div className="flex items-center justify-between mt-3 pt-3 border-t border-border/50">
+											<code className="text-sm font-mono text-muted-foreground bg-muted px-2 py-1 rounded">
+												{key.masked_key}
+											</code>
+											<div className="flex items-center gap-4 text-xs text-muted-foreground">
+												<span>
+													Created{" "}
+													{formatRelativeDate(key.created_at)}
+												</span>
+												{key.last_used_at && (
+													<span>
+														Used{" "}
+														{formatRelativeDate(
+															key.last_used_at,
 														)}
-													</DataTableCell>
-													<DataTableCell className="max-w-xs">
-														<div className="flex flex-col gap-1">
-															<span className="text-sm">
-																{key.description || (
-																	<span className="text-muted-foreground italic">
-																		No
-																		description
-																	</span>
-																)}
-															</span>
-															{orphaned && (
-																<span className="text-xs text-destructive">
-																	Warning:
-																	Workflow no
-																	longer
-																	exists
-																</span>
-															)}
-														</div>
-													</DataTableCell>
-													<DataTableCell className="font-mono text-sm">
-														{key.masked_key}
-													</DataTableCell>
-													<DataTableCell className="text-sm text-muted-foreground">
-														{formatDate(
-															key.created_at,
-														)}
-													</DataTableCell>
-													<DataTableCell className="text-sm text-muted-foreground">
-														{key.last_used_at ? (
-															<div className="flex items-center gap-1">
-																<Clock className="h-3 w-3" />
-																{formatDate(
-																	key.last_used_at,
-																)}
-															</div>
-														) : (
-															<span className="text-muted-foreground/50">
-																Never
-															</span>
-														)}
-													</DataTableCell>
-													<DataTableCell className="text-sm">
-														{key.expires_at ? (
-															isExpired(
-																key.expires_at,
-															) ? (
-																<Badge
-																	variant="destructive"
-																	className="text-xs"
-																>
-																	<AlertTriangle className="mr-1 h-3 w-3" />
-																	Expired
-																</Badge>
-															) : (
-																<div className="flex items-center gap-1 text-muted-foreground">
-																	<CalendarDays className="h-3 w-3" />
-																	{formatDate(
-																		key.expires_at,
-																	)}
-																</div>
-															)
-														) : (
-															<span className="text-muted-foreground/50">
-																Never
-															</span>
-														)}
-													</DataTableCell>
-													<DataTableCell className="text-right">
-														<Button
-															variant="ghost"
-															size="icon"
-															onClick={() =>
-																handleRevoke(
-																	key,
-																)
-															}
-															title="Revoke key"
+													</span>
+												)}
+												{key.expires_at ? (
+													expired ? (
+														<Badge
+															variant="destructive"
+															className="text-xs"
 														>
-															<Trash2 className="h-4 w-4" />
-														</Button>
-													</DataTableCell>
-												</DataTableRow>
-											);
-										})}
-									</DataTableBody>
-								</DataTable>
-							</div>
+															Expired
+														</Badge>
+													) : (
+														<span>
+															Expires{" "}
+															{formatShortDate(
+																key.expires_at,
+															)}
+														</span>
+													)
+												) : (
+													<span className="text-muted-foreground/60">
+														Never expires
+													</span>
+												)}
+											</div>
+										</div>
+									</div>
+								);
+							})}
 						</div>
 					) : (
 						<div className="flex flex-col items-center justify-center py-12 text-center">

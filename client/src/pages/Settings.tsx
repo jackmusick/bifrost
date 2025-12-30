@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import { useNavigate, useLocation } from "react-router-dom";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { TabActions } from "@/components/ui/tab-actions";
-import { WorkflowKeys } from "@/pages/WorkflowKeys";
+import { WorkflowKeys } from "@/pages/settings/WorkflowKeys";
 import { Branding } from "@/pages/settings/Branding";
 import { Email } from "@/pages/settings/Email";
 import { OAuth } from "@/pages/settings/OAuth";

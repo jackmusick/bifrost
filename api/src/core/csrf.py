@@ -48,6 +48,11 @@ CSRF_EXEMPT_PATHS = {
     "/mcp/callback",
 }
 
+# Path prefixes that are exempt from CSRF (public webhook endpoints)
+CSRF_EXEMPT_PREFIXES = (
+    "/api/hooks/",  # Webhook receiver - called by external services, no auth
+)
+
 
 class CSRFMiddleware(BaseHTTPMiddleware):
     """
@@ -75,6 +80,10 @@ class CSRFMiddleware(BaseHTTPMiddleware):
         # Check if path is exempt
         path = request.url.path
         if path in CSRF_EXEMPT_PATHS:
+            return await call_next(request)
+
+        # Check if path matches an exempt prefix
+        if path.startswith(CSRF_EXEMPT_PREFIXES):
             return await call_next(request)
 
         # Only enforce CSRF for cookie-based auth
