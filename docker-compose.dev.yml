@@ -108,6 +108,24 @@ services:
     command: >
       watchmedo auto-restart --directory=/app/src --directory=/app/shared --pattern="*.py" --recursive -- python -m src.worker.main
 
+  # Coding Agent with hot reload for development
+  coding-agent:
+    environment:
+      BIFROST_ENVIRONMENT: development
+      BIFROST_SECRET_KEY: ${BIFROST_SECRET_KEY:-dev-secret-key-change-in-production-must-be-32-chars}
+      BIFROST_DATABASE_URL: postgresql+asyncpg://bifrost:${POSTGRES_PASSWORD:-bifrost_dev}@pgbouncer:5432/bifrost
+      BIFROST_DATABASE_URL_SYNC: postgresql://bifrost:${POSTGRES_PASSWORD:-bifrost_dev}@pgbouncer:5432/bifrost
+      BIFROST_RABBITMQ_URL: amqp://bifrost:${RABBITMQ_PASSWORD:-bifrost_dev}@rabbitmq:5672/
+      BIFROST_S3_SECRET_KEY: ${BIFROST_S3_SECRET_KEY:-${MINIO_ROOT_PASSWORD:-bifrost123}}
+      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
+    volumes:
+      - ./api/src:/app/src:ro
+      - ./api/shared:/app/shared:ro
+      - ./api/bifrost:/app/bifrost:ro
+      - ./api/platform:/app/platform:ro
+    command: >
+      watchmedo auto-restart --directory=/app/src --directory=/app/shared --pattern="*.py" --recursive -- python -m src.coding_agent.main
+
   # Client with hot reload for development
   client:
     build:

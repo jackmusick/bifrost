@@ -3,6 +3,8 @@ E2E tests for Coding Mode (Claude Agent SDK integration).
 
 Tests the WebSocket-based coding assistant that helps create Bifrost workflows.
 Requires ANTHROPIC_API_TEST_KEY in .env.test.
+
+Uses the unified /ws/connect endpoint with chat:{conversation_id} channel.
 """
 
 import asyncio
@@ -54,30 +56,30 @@ class TestCodingModeE2E:
         coding_conversation,
         llm_anthropic_configured,
     ):
-        """Test that coding mode WebSocket connection works."""
+        """Test that coding mode WebSocket connection works via /ws/connect."""
         try:
             from websockets.asyncio.client import connect
         except ImportError:
             pytest.skip("websockets library not installed")
 
         conversation_id = coding_conversation["id"]
-        # coding_mode=true query param triggers coding mode
-        ws_url = f"{e2e_ws_url}/api/chat/conversations/{conversation_id}/stream?coding_mode=true"
+        # Use unified WebSocket endpoint with chat channel subscription
+        ws_url = f"{e2e_ws_url}/ws/connect?channels=chat:{conversation_id}"
 
         try:
             async with connect(
                 ws_url,
                 additional_headers={"Authorization": f"Bearer {platform_admin.access_token}"},
             ) as ws:
-                # Should receive session_start message
+                # Should receive connected message
                 msg = await asyncio.wait_for(ws.recv(), timeout=10)
                 data = json.loads(msg)
 
-                assert data["type"] == "session_start", f"Expected session_start, got: {data}"
-                assert data["mode"] == "coding", f"Expected coding mode, got: {data}"
-                assert "session_id" in data, "Missing session_id in session_start"
+                assert data["type"] == "connected", f"Expected connected, got: {data}"
+                assert "channels" in data, "Missing channels in connected message"
+                assert f"chat:{conversation_id}" in data["channels"], f"Chat channel not subscribed: {data}"
 
-                logger.info(f"Coding mode session started: {data}")
+                logger.info(f"Connected to WebSocket with channels: {data['channels']}")
         except Exception as e:
             pytest.fail(f"Coding mode connection failed: {e}")
 
@@ -97,22 +99,23 @@ class TestCodingModeE2E:
             pytest.skip("websockets library not installed")
 
         conversation_id = coding_conversation["id"]
-        # coding_mode=true query param triggers coding mode
-        ws_url = f"{e2e_ws_url}/api/chat/conversations/{conversation_id}/stream?coding_mode=true"
+        # Use unified WebSocket endpoint with chat channel subscription
+        ws_url = f"{e2e_ws_url}/ws/connect?channels=chat:{conversation_id}"
 
         async with connect(
             ws_url,
             additional_headers={"Authorization": f"Bearer {platform_admin.access_token}"},
         ) as ws:
-            # Should receive session_start
+            # Should receive connected message
             msg = await asyncio.wait_for(ws.recv(), timeout=10)
             data = json.loads(msg)
-            assert data["type"] == "session_start", f"Expected session_start, got: {data}"
-            assert data["mode"] == "coding", f"Expected coding mode, got: {data}"
-            logger.info(f"Session started: {data['session_id']}")
+            assert data["type"] == "connected", f"Expected connected, got: {data}"
+            logger.info(f"Connected with channels: {data['channels']}")
 
-            # Send message asking to create Hello World workflow
+            # Send chat message using unified message format
             await ws.send(json.dumps({
+                "type": "chat",
+                "conversation_id": conversation_id,
                 "message": "Create a simple Hello World workflow that returns {'message': 'Hello, World!'}"
             }))
             logger.info("Sent Hello World request")

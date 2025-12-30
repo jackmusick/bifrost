@@ -13,6 +13,7 @@ Before deploying Bifrost, you need:
 
 ```
 k8s/
+├── kustomization.yml   # Kustomize configuration
 ├── namespace.yaml      # Bifrost namespace
 ├── configmap.yaml      # Non-sensitive configuration
 ├── secret.yaml         # Secret template (DO NOT commit with values)
@@ -26,9 +27,11 @@ k8s/
 │   └── deployment.yaml # Background job workers
 ├── scheduler/
 │   └── deployment.yaml # Cron scheduler (singleton)
-└── redis/
-    ├── deployment.yaml # Redis cache/sessions
-    └── service.yaml    # ClusterIP service (port 6379)
+├── coding-agent/
+│   └── deployment.yaml # Claude Agent SDK container
+└── rabbitmq/
+    ├── deployment.yaml # RabbitMQ message broker
+    └── service.yaml    # ClusterIP service (port 5672, 15672)
 ```
 
 ## Quick Start
@@ -49,7 +52,8 @@ kubectl create secret generic bifrost-secrets \
   --from-literal=BIFROST_SECRET_KEY='your-32-char-secret-key-here' \
   --from-literal=BIFROST_DATABASE_URL='postgresql+asyncpg://user:pass@host:5432/bifrost' \
   --from-literal=BIFROST_DATABASE_URL_SYNC='postgresql://user:pass@host:5432/bifrost' \
-  --from-literal=BIFROST_RABBITMQ_URL='amqp://user:pass@host:5672/' \
+  --from-literal=BIFROST_RABBITMQ_URL='amqp://bifrost:pass@rabbitmq:5672/' \
+  --from-literal=BIFROST_RABBITMQ_PASSWORD='your-rabbitmq-password' \
   --from-literal=BIFROST_REDIS_URL='redis://redis:6379/0' \
   --from-literal=BIFROST_S3_ENDPOINT_URL='https://s3.us-east-1.amazonaws.com' \
   --from-literal=BIFROST_S3_ACCESS_KEY='your-access-key' \
@@ -81,19 +85,21 @@ kubectl apply -f k8s/configmap.yaml
 
 ### 4. Deploy All Services
 
+**Option A: Using Kustomize (recommended)**
+
 ```bash
-# Apply all manifests
-kubectl apply -f k8s/redis/
+kubectl apply -k k8s/
+```
+
+**Option B: Apply individual manifests**
+
+```bash
+kubectl apply -f k8s/rabbitmq/
 kubectl apply -f k8s/api/
 kubectl apply -f k8s/client/
 kubectl apply -f k8s/worker/
 kubectl apply -f k8s/scheduler/
-```
-
-Or deploy everything at once:
-
-```bash
-kubectl apply -R -f k8s/
+kubectl apply -f k8s/coding-agent/
 ```
 
 ### 5. Verify Deployment
@@ -213,7 +219,8 @@ The scheduler must run as a singleton to prevent duplicate job executions.
 | `BIFROST_DATABASE_URL` | PostgreSQL async connection string |
 | `BIFROST_DATABASE_URL_SYNC` | PostgreSQL sync connection string |
 | `BIFROST_RABBITMQ_URL` | RabbitMQ AMQP connection string |
-| `BIFROST_REDIS_URL` | Redis connection string |
+| `BIFROST_RABBITMQ_PASSWORD` | RabbitMQ password (for in-cluster deployment) |
+| `BIFROST_REDIS_URL` | Redis connection string (for caching) |
 | `BIFROST_S3_ENDPOINT_URL` | S3 endpoint (or MinIO URL) |
 | `BIFROST_S3_ACCESS_KEY` | S3 access key |
 | `BIFROST_S3_SECRET_KEY` | S3 secret key |
@@ -230,6 +237,10 @@ The scheduler must run as a singleton to prevent duplicate job executions.
 | `BIFROST_REFRESH_TOKEN_EXPIRE_DAYS` | `7` | Refresh token TTL |
 | `BIFROST_MFA_ENABLED` | `true` | Enable MFA |
 | `BIFROST_MAX_CONCURRENCY` | `10` | Worker concurrency |
+| `BIFROST_WEBAUTHN_RP_ID` | (required) | WebAuthn relying party ID (your domain) |
+| `BIFROST_WEBAUTHN_RP_NAME` | `Bifrost` | WebAuthn display name |
+| `BIFROST_WEBAUTHN_ORIGIN` | (required) | WebAuthn origin URL (e.g., https://bifrost.example.com) |
+| `BIFROST_MCP_BASE_URL` | (required) | Base URL for MCP OAuth endpoints |
 
 ## Troubleshooting
 

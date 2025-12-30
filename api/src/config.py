@@ -272,6 +272,15 @@ class Settings(BaseSettings):
     )
 
     # ==========================================================================
+    # Anthropic API (for Claude Agent SDK)
+    # ==========================================================================
+    anthropic_api_key: str | None = Field(
+        default=None,
+        validation_alias="ANTHROPIC_API_KEY",
+        description="Anthropic API key for Claude Agent SDK (ANTHROPIC_API_KEY or BIFROST_ANTHROPIC_API_KEY)"
+    )
+
+    # ==========================================================================
     # Server
     # ==========================================================================
     host: str = Field(

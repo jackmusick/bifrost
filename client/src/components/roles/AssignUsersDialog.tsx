@@ -34,7 +34,8 @@ export function AssignUsersDialog({
 	const { data: users, isLoading } = useUsers();
 	const assignUsers = useAssignUsersToRole();
 
-	const handleAssign = async () => {
+	const handleAssign = async (e: React.FormEvent) => {
+		e.preventDefault();
 		if (!role || count === 0) return;
 
 		await assignUsers.mutateAsync({
@@ -56,14 +57,15 @@ export function AssignUsersDialog({
 	return (
 		<Dialog open={open} onOpenChange={handleClose}>
 			<DialogContent className="sm:max-w-[600px]">
-				<DialogHeader>
-					<DialogTitle>Assign Users to Role</DialogTitle>
-					<DialogDescription>
-						Select organization users to assign to "{role.name}"
-					</DialogDescription>
-				</DialogHeader>
+				<form onSubmit={handleAssign}>
+					<DialogHeader>
+						<DialogTitle>Assign Users to Role</DialogTitle>
+						<DialogDescription>
+							Select organization users to assign to "{role.name}"
+						</DialogDescription>
+					</DialogHeader>
 
-				<div className="max-h-[400px] overflow-y-auto">
+					<div className="max-h-[400px] overflow-y-auto py-4">
 					{isLoading ? (
 						<div className="space-y-2">
 							{[...Array(5)].map((_, i) => (
@@ -109,25 +111,26 @@ export function AssignUsersDialog({
 							</p>
 						</div>
 					)}
-				</div>
+					</div>
 
-				<DialogFooter>
-					<Button
-						type="button"
-						variant="outline"
-						onClick={handleClose}
-					>
-						Cancel
-					</Button>
-					<Button
-						onClick={handleAssign}
-						disabled={count === 0 || assignUsers.isPending}
-					>
-						{assignUsers.isPending
-							? "Assigning..."
-							: `Assign ${count} User${count !== 1 ? "s" : ""}`}
-					</Button>
-				</DialogFooter>
+					<DialogFooter>
+						<Button
+							type="button"
+							variant="outline"
+							onClick={handleClose}
+						>
+							Cancel
+						</Button>
+						<Button
+							type="submit"
+							disabled={count === 0 || assignUsers.isPending}
+						>
+							{assignUsers.isPending
+								? "Assigning..."
+								: `Assign ${count} User${count !== 1 ? "s" : ""}`}
+						</Button>
+					</DialogFooter>
+				</form>
 			</DialogContent>
 		</Dialog>
 	);

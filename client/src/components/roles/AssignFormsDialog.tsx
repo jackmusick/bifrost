@@ -33,7 +33,8 @@ export function AssignFormsDialog({
 	const { data: forms, isLoading } = useForms();
 	const assignForms = useAssignFormsToRole();
 
-	const handleAssign = async () => {
+	const handleAssign = async (e: React.FormEvent) => {
+		e.preventDefault();
 		if (!role || count === 0) return;
 
 		await assignForms.mutateAsync({
@@ -55,15 +56,16 @@ export function AssignFormsDialog({
 	return (
 		<Dialog open={open} onOpenChange={handleClose}>
 			<DialogContent className="sm:max-w-[600px]">
-				<DialogHeader>
-					<DialogTitle>Assign Forms to Role</DialogTitle>
-					<DialogDescription>
-						Select forms that users with "{role.name}" role can
-						access
-					</DialogDescription>
-				</DialogHeader>
+				<form onSubmit={handleAssign}>
+					<DialogHeader>
+						<DialogTitle>Assign Forms to Role</DialogTitle>
+						<DialogDescription>
+							Select forms that users with "{role.name}" role can
+							access
+						</DialogDescription>
+					</DialogHeader>
 
-				<div className="max-h-[400px] overflow-y-auto">
+					<div className="max-h-[400px] overflow-y-auto py-4">
 					{isLoading ? (
 						<div className="space-y-2">
 							{[...Array(5)].map((_, i) => (
@@ -135,25 +137,26 @@ export function AssignFormsDialog({
 							</p>
 						</div>
 					)}
-				</div>
+					</div>
 
-				<DialogFooter>
-					<Button
-						type="button"
-						variant="outline"
-						onClick={handleClose}
-					>
-						Cancel
-					</Button>
-					<Button
-						onClick={handleAssign}
-						disabled={count === 0 || assignForms.isPending}
-					>
-						{assignForms.isPending
-							? "Assigning..."
-							: `Assign ${count} Form${count !== 1 ? "s" : ""}`}
-					</Button>
-				</DialogFooter>
+					<DialogFooter>
+						<Button
+							type="button"
+							variant="outline"
+							onClick={handleClose}
+						>
+							Cancel
+						</Button>
+						<Button
+							type="submit"
+							disabled={count === 0 || assignForms.isPending}
+						>
+							{assignForms.isPending
+								? "Assigning..."
+								: `Assign ${count} Form${count !== 1 ? "s" : ""}`}
+						</Button>
+					</DialogFooter>
+				</form>
 			</DialogContent>
 		</Dialog>
 	);

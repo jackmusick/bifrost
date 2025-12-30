@@ -119,6 +119,62 @@ export interface EventSourceUpdate {
 	event: EventSourceEvent;
 }
 
+// Chat streaming types
+export interface ChatToolCall {
+	id: string;
+	name: string;
+	arguments: Record<string, unknown>;
+}
+
+export interface ChatToolResult {
+	tool_call_id: string;
+	tool_name: string;
+	result: unknown;
+	error?: string | null;
+	duration_ms?: number | null;
+}
+
+export interface ChatAgentSwitch {
+	agent_id: string;
+	agent_name: string;
+	reason: string;
+}
+
+export interface ChatToolProgress {
+	tool_call_id: string;
+	execution_id?: string;
+	status?: "pending" | "running" | "success" | "failed" | "timeout";
+	log?: {
+		level: "debug" | "info" | "warning" | "error";
+		message: string;
+	};
+}
+
+export interface ChatStreamChunk {
+	type:
+		| "delta"
+		| "tool_call"
+		| "tool_progress"
+		| "tool_result"
+		| "agent_switch"
+		| "done"
+		| "error"
+		| "title_update";
+	conversation_id?: string;
+	content?: string | null;
+	tool_call?: ChatToolCall | null;
+	tool_progress?: ChatToolProgress | null;
+	tool_result?: ChatToolResult | null;
+	agent_switch?: ChatAgentSwitch | null;
+	message_id?: string | null;
+	token_count_input?: number | null;
+	token_count_output?: number | null;
+	duration_ms?: number | null;
+	error?: string | null;
+	execution_id?: string | null;
+	title?: string | null;
+}
+
 // Message types from backend
 type WebSocketMessage =
 	| { type: "connected"; channels: string[]; userId: string }
@@ -149,7 +205,8 @@ type WebSocketMessage =
 	| {
 			type: "event_created" | "event_updated";
 			event: EventSourceEvent;
-	  };
+	  }
+	| ChatStreamChunk;
 
 // Notification payload from backend (snake_case)
 interface NotificationPayload {
@@ -176,6 +233,7 @@ type PackageCompleteCallback = (complete: PackageComplete) => void;
 type LocalRunnerStateCallback = (state: LocalRunnerStateUpdate | null) => void;
 type CLISessionUpdateCallback = (update: CLISessionUpdate) => void;
 type EventSourceUpdateCallback = (update: EventSourceUpdate) => void;
+type ChatStreamCallback = (chunk: ChatStreamChunk) => void;
 
 class WebSocketService {
 	private ws: WebSocket | null = null;
@@ -209,6 +267,7 @@ class WebSocketService {
 		string,
 		Set<EventSourceUpdateCallback>
 	>();
+	private chatStreamCallbacks = new Map<string, Set<ChatStreamCallback>>();
 
 	// Track subscribed channels
 	private subscribedChannels = new Set<string>();
@@ -450,6 +509,18 @@ class WebSocketService {
 				// Event source updates (real-time events)
 				this.dispatchEventSourceUpdate(message);
 				break;
+
+			// Chat streaming message types
+			case "delta":
+			case "tool_call":
+			case "tool_progress":
+			case "tool_result":
+			case "agent_switch":
+			case "done":
+			case "error":
+			case "title_update":
+				this.dispatchChatStreamChunk(message as ChatStreamChunk);
+				break;
 		}
 	}
 
@@ -483,6 +554,15 @@ class WebSocketService {
 		// Dispatch to source-specific callbacks
 		const callbacks = this.eventSourceUpdateCallbacks.get(sourceId);
 		callbacks?.forEach((cb) => cb(update));
+	}
+
+	private dispatchChatStreamChunk(chunk: ChatStreamChunk) {
+		const conversationId = chunk.conversation_id;
+		if (!conversationId) return;
+
+		// Dispatch to conversation-specific callbacks
+		const callbacks = this.chatStreamCallbacks.get(conversationId);
+		callbacks?.forEach((cb) => cb(chunk));
 	}
 
 	private dispatchExecutionUpdate(
@@ -770,14 +850,72 @@ class WebSocketService {
 	}
 
 	/**
-	 * Start ping interval for keeping connection alive
+	 * Subscribe to chat stream chunks for a specific conversation
+	 */
+	onChatStream(
+		conversationId: string,
+		callback: ChatStreamCallback,
+	): () => void {
+		if (!this.chatStreamCallbacks.has(conversationId)) {
+			this.chatStreamCallbacks.set(conversationId, new Set());
+		}
+		this.chatStreamCallbacks.get(conversationId)!.add(callback);
+
+		// Return unsubscribe function
+		return () => {
+			this.chatStreamCallbacks.get(conversationId)?.delete(callback);
+			if (this.chatStreamCallbacks.get(conversationId)?.size === 0) {
+				this.chatStreamCallbacks.delete(conversationId);
+			}
+		};
+	}
+
+	/**
+	 * Connect to a chat conversation channel
+	 */
+	async connectToChat(conversationId: string): Promise<void> {
+		const channel = `chat:${conversationId}`;
+		if (this.subscribedChannels.has(channel)) {
+			return;
+		}
+
+		if (this.ws?.readyState === WebSocket.OPEN) {
+			await this.subscribe(channel);
+			return;
+		}
+
+		await this.connect([channel]);
+	}
+
+	/**
+	 * Send a chat message to a conversation
+	 */
+	sendChatMessage(conversationId: string, message: string): boolean {
+		if (!this.ws || this.ws.readyState !== WebSocket.OPEN) {
+			return false;
+		}
+
+		this.ws.send(
+			JSON.stringify({
+				type: "chat",
+				conversation_id: conversationId,
+				message,
+			}),
+		);
+		return true;
+	}
+
+	/**
+	 * Start ping interval for keeping connection alive.
+	 * 15 seconds is a safe interval that works with most load balancers
+	 * (GKE defaults to 30s, CloudFlare to 100s).
 	 */
 	private startPingInterval() {
 		this.pingInterval = setInterval(() => {
 			if (this.ws?.readyState === WebSocket.OPEN) {
 				this.ws.send(JSON.stringify({ type: "ping" }));
 			}
-		}, 30000);
+		}, 15000);
 	}
 
 	/**

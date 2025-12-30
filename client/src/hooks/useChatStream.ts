@@ -1,74 +1,27 @@
 /**
  * Chat WebSocket Streaming Hook
  *
- * Provides real-time streaming chat via the standard /ws/connect endpoint.
+ * Provides real-time streaming chat via the shared WebSocketService.
  * Uses the chat store for state management.
  */
 
-import { useCallback, useRef, useEffect } from "react";
+import { useCallback, useRef, useEffect, useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 import type { components } from "@/lib/v1";
 import { useChatStore } from "@/stores/chatStore";
+import {
+	webSocketService,
+	type ChatStreamChunk,
+	type ChatAgentSwitch,
+} from "@/services/websocket";
 
 type MessagePublic = components["schemas"]["MessagePublic"];
-type ToolCall = components["schemas"]["ToolCall"];
-
-// Client-only type for streaming tool results
-interface ToolResult {
-	tool_call_id: string;
-	tool_name: string;
-	result: unknown;
-	error?: string | null;
-	duration_ms?: number | null;
-}
-
-// Client-only type for agent switch event
-interface AgentSwitch {
-	agent_id: string;
-	agent_name: string;
-	reason: string;
-}
-
-// Client-only type for tool execution progress
-interface ToolProgress {
-	tool_call_id: string;
-	execution_id?: string;
-	status?: "pending" | "running" | "success" | "failed" | "timeout";
-	log?: {
-		level: "debug" | "info" | "warning" | "error";
-		message: string;
-	};
-}
-
-// Client-only type for streaming chunks (not from API)
-interface ChatStreamChunk {
-	type:
-		| "delta"
-		| "tool_call"
-		| "tool_progress"
-		| "tool_result"
-		| "agent_switch"
-		| "done"
-		| "error";
-	conversation_id?: string;
-	content?: string | null;
-	tool_call?: ToolCall | null;
-	tool_progress?: ToolProgress | null;
-	tool_result?: ToolResult | null;
-	agent_switch?: AgentSwitch | null;
-	message_id?: string | null;
-	token_count_input?: number | null;
-	token_count_output?: number | null;
-	duration_ms?: number | null;
-	error?: string | null;
-	execution_id?: string | null;
-}
 
 export interface UseChatStreamOptions {
 	conversationId: string | undefined;
 	onError?: (error: string) => void;
-	onAgentSwitch?: (agentSwitch: AgentSwitch) => void;
+	onAgentSwitch?: (agentSwitch: ChatAgentSwitch) => void;
 }
 
 export interface UseChatStreamReturn {
@@ -84,13 +37,22 @@ export function useChatStream({
 	onError,
 	onAgentSwitch,
 }: UseChatStreamOptions): UseChatStreamReturn {
-	const wsRef = useRef<WebSocket | null>(null);
 	const queryClient = useQueryClient();
+	const [isConnected, setIsConnected] = useState(false);
+
+	// Track current conversation for closure safety
+	const currentConversationIdRef = useRef<string | undefined>(conversationId);
+
+	// Track unsubscribe function
+	const unsubscribeRef = useRef<(() => void) | null>(null);
+
+	// Ref for handleChunk to avoid effect dependency issues
+	const handleChunkRef = useRef<((chunk: ChatStreamChunk) => void) | null>(
+		null,
+	);
 
 	const {
 		isStreaming,
-		isConnected,
-		setConnected,
 		startStreaming,
 		appendStreamContent,
 		addStreamToolCall,
@@ -106,225 +68,176 @@ export function useChatStream({
 		saveToolExecutions,
 	} = useChatStore();
 
-	// Ref for reconnection flag
-	const shouldReconnectRef = useRef(false);
-	const currentConversationIdRef = useRef<string | undefined>(conversationId);
-
 	// Update ref when conversationId changes
 	useEffect(() => {
 		currentConversationIdRef.current = conversationId;
 	}, [conversationId]);
 
-	// WebSocket message handler
-	const handleMessage = useCallback(
-		(event: MessageEvent) => {
-			try {
-				const data = JSON.parse(event.data);
-
-				// Handle connection confirmation
-				if (data.type === "connected") {
-					setConnected(true);
-					return;
-				}
-
-				// Handle subscription confirmation
-				if (data.type === "subscribed") {
-					return;
-				}
-
-				// Handle pong
-				if (data.type === "pong") {
-					return;
-				}
-
-				// Handle title update - refresh conversations to show new title
-				if (data.type === "title_update") {
+	// Handle incoming chat stream chunks
+	const handleChunk = useCallback(
+		(chunk: ChatStreamChunk) => {
+			// Handle title update - refresh conversations to show new title
+			if (chunk.type === "title_update") {
+				queryClient.invalidateQueries({
+					queryKey: ["get", "/api/chat/conversations"],
+				});
+				if (chunk.conversation_id) {
 					queryClient.invalidateQueries({
-						queryKey: ["get", "/api/chat/conversations"],
+						queryKey: [
+							"get",
+							"/api/chat/conversations/{conversation_id}",
+							{
+								params: {
+									path: {
+										conversation_id: chunk.conversation_id,
+									},
+								},
+							},
+						],
 					});
-					// Also invalidate the specific conversation
-					if (data.conversation_id) {
+				}
+				return;
+			}
+
+			// Only process chunks for current conversation
+			if (
+				chunk.conversation_id &&
+				chunk.conversation_id !== currentConversationIdRef.current
+			) {
+				return;
+			}
+
+			switch (chunk.type) {
+				case "delta":
+					if (chunk.content) {
+						appendStreamContent(chunk.content);
+					}
+					break;
+
+				case "tool_call":
+					if (chunk.tool_call) {
+						addStreamToolCall(
+							chunk.tool_call,
+							chunk.execution_id ?? undefined,
+						);
+					}
+					break;
+
+				case "tool_progress":
+					if (chunk.tool_progress) {
+						const { tool_call_id, execution_id, status, log } =
+							chunk.tool_progress;
+						if (execution_id) {
+							setToolExecutionId(tool_call_id, execution_id);
+						}
+						if (status) {
+							updateToolExecutionStatus(tool_call_id, status);
+						}
+						if (log) {
+							addToolExecutionLog(tool_call_id, {
+								level: log.level,
+								message: log.message,
+								timestamp: new Date().toISOString(),
+							});
+						}
+					}
+					break;
+
+				case "tool_result":
+					if (chunk.tool_result) {
+						addStreamToolResult(chunk.tool_result);
+					}
+					break;
+
+				case "done": {
+					const convId = currentConversationIdRef.current;
+					const streamState = useChatStore.getState().streamingMessage;
+
+					if (convId && streamState) {
+						// Save tool executions for persistence
+						if (Object.keys(streamState.toolExecutions).length > 0) {
+							saveToolExecutions(convId, streamState.toolExecutions);
+						}
+
+						const completedMessage: MessagePublic = {
+							id: chunk.message_id || `completed-${Date.now()}`,
+							conversation_id: convId,
+							role: "assistant",
+							content: streamState.content || "",
+							tool_calls:
+								streamState.toolCalls.length > 0
+									? streamState.toolCalls
+									: undefined,
+							sequence: Date.now(),
+							created_at: new Date().toISOString(),
+							token_count_input: chunk.token_count_input ?? undefined,
+							token_count_output: chunk.token_count_output ?? undefined,
+							duration_ms: chunk.duration_ms ?? undefined,
+						};
+						addMessage(convId, completedMessage);
+					}
+
+					completeStream(chunk.message_id ?? undefined);
+
+					// Refresh messages
+					if (convId) {
 						queryClient.invalidateQueries({
 							queryKey: [
 								"get",
-								"/api/chat/conversations/{conversation_id}",
+								"/api/chat/conversations/{conversation_id}/messages",
 								{
 									params: {
-										path: {
-											conversation_id:
-												data.conversation_id,
-										},
+										path: { conversation_id: convId },
 									},
 								},
 							],
 						});
+						queryClient.invalidateQueries({
+							queryKey: ["get", "/api/chat/conversations"],
+						});
 					}
-					return;
+					break;
 				}
 
-				// Handle chat stream chunks - only process if for current conversation
-				const chunk = data as ChatStreamChunk;
-				if (
-					chunk.conversation_id &&
-					chunk.conversation_id !== currentConversationIdRef.current
-				) {
-					return; // Ignore chunks for other conversations
-				}
-
-				switch (chunk.type) {
-					case "delta":
-						if (chunk.content) {
-							appendStreamContent(chunk.content);
-						}
-						break;
-
-					case "tool_call":
-						if (chunk.tool_call) {
-							addStreamToolCall(
-								chunk.tool_call,
-								chunk.execution_id ?? undefined,
-							);
-						}
-						break;
-
-					case "tool_progress":
-						if (chunk.tool_progress) {
-							const { tool_call_id, execution_id, status, log } =
-								chunk.tool_progress;
-							// Set execution_id if provided (needed for log streaming subscription)
-							if (execution_id) {
-								setToolExecutionId(tool_call_id, execution_id);
-							}
-							if (status) {
-								updateToolExecutionStatus(tool_call_id, status);
-							}
-							if (log) {
-								addToolExecutionLog(tool_call_id, {
-									level: log.level,
-									message: log.message,
-									timestamp: new Date().toISOString(),
-								});
-							}
-						}
-						break;
-
-					case "tool_result":
-						if (chunk.tool_result) {
-							addStreamToolResult(chunk.tool_result);
-						}
-						break;
-
-					case "done": {
-						// Add completed message to local cache BEFORE clearing streaming
-						// This prevents the message from disappearing during the API refetch
-						const convId = currentConversationIdRef.current;
-						const streamState =
-							useChatStore.getState().streamingMessage;
-
-						if (convId && streamState) {
-							// Save tool executions for persistence (so they show after streaming ends)
-							if (
-								Object.keys(streamState.toolExecutions).length >
-								0
-							) {
-								saveToolExecutions(
-									convId,
-									streamState.toolExecutions,
-								);
-							}
-
-							const completedMessage: MessagePublic = {
-								id:
-									chunk.message_id ||
-									`completed-${Date.now()}`,
-								conversation_id: convId,
-								role: "assistant",
-								content: streamState.content || "",
-								tool_calls:
-									streamState.toolCalls.length > 0
-										? streamState.toolCalls
-										: undefined,
-								sequence: Date.now(),
-								created_at: new Date().toISOString(),
-								token_count_input:
-									chunk.token_count_input ?? undefined,
-								token_count_output:
-									chunk.token_count_output ?? undefined,
-								duration_ms: chunk.duration_ms ?? undefined,
-							};
-							addMessage(convId, completedMessage);
-						}
-
-						completeStream(chunk.message_id ?? undefined);
-
-						// Refresh messages to get accurate sequence numbers
-						if (convId) {
-							queryClient.invalidateQueries({
-								queryKey: [
-									"get",
-									"/api/chat/conversations/{conversation_id}/messages",
-									{
-										params: {
-											path: { conversation_id: convId },
-										},
-									},
-								],
-							});
-							queryClient.invalidateQueries({
-								queryKey: ["get", "/api/chat/conversations"],
-							});
-						}
-						break;
-					}
-
-					case "agent_switch": {
-						// Agent was switched via @mention or routing
-						if (chunk.agent_switch) {
-							onAgentSwitch?.(chunk.agent_switch);
-							// Add inline event instead of toast
-							const convId = currentConversationIdRef.current;
-							if (convId) {
-								addSystemEvent(convId, {
-									id: `event-${Date.now()}`,
-									type: "agent_switch",
-									timestamp: new Date().toISOString(),
-									agentName: chunk.agent_switch.agent_name,
-									agentId: chunk.agent_switch.agent_id,
-									reason:
-										chunk.agent_switch.reason === "@mention"
-											? "@mention"
-											: "routed",
-								});
-							}
-						}
-						break;
-					}
-
-					case "error": {
-						const errorMsg =
-							chunk.error || "Unknown error occurred";
-						setStreamError(errorMsg);
-						onError?.(errorMsg);
-
-						// Add inline error event instead of toast
+				case "agent_switch": {
+					if (chunk.agent_switch) {
+						onAgentSwitch?.(chunk.agent_switch);
 						const convId = currentConversationIdRef.current;
 						if (convId) {
 							addSystemEvent(convId, {
-								id: `error-${Date.now()}`,
-								type: "error",
+								id: `event-${Date.now()}`,
+								type: "agent_switch",
 								timestamp: new Date().toISOString(),
-								error: errorMsg,
+								agentName: chunk.agent_switch.agent_name,
+								agentId: chunk.agent_switch.agent_id,
+								reason:
+									chunk.agent_switch.reason === "@mention"
+										? "@mention"
+										: "routed",
 							});
 						}
-
-						// Clean up streaming state on error to prevent stale state
-						// This ensures the next message starts fresh
-						resetStream();
-						break;
 					}
+					break;
 				}
-			} catch (err) {
-				console.error("[useChatStream] Failed to parse message:", err);
+
+				case "error": {
+					const errorMsg = chunk.error || "Unknown error occurred";
+					setStreamError(errorMsg);
+					onError?.(errorMsg);
+
+					const convId = currentConversationIdRef.current;
+					if (convId) {
+						addSystemEvent(convId, {
+							id: `error-${Date.now()}`,
+							type: "error",
+							timestamp: new Date().toISOString(),
+							error: errorMsg,
+						});
+					}
+
+					resetStream();
+					break;
+				}
 			}
 		},
 		[
@@ -338,7 +251,6 @@ export function useChatStream({
 			completeStream,
 			setStreamError,
 			resetStream,
-			setConnected,
 			onError,
 			onAgentSwitch,
 			addMessage,
@@ -347,145 +259,61 @@ export function useChatStream({
 		],
 	);
 
-	// Connect to WebSocket
-	const connect = useCallback(() => {
-		if (!conversationId) return;
-		if (wsRef.current?.readyState === WebSocket.OPEN) return;
-
-		const protocol = window.location.protocol === "https:" ? "wss:" : "ws:";
-		const host = window.location.host;
-		// Use standard /ws/connect with chat channel
-		const wsUrl = `${protocol}//${host}/ws/connect?channels=chat:${conversationId}`;
-
-		const ws = new WebSocket(wsUrl);
-
-		ws.onopen = () => {
-			// Connection confirmation comes via message
-		};
-
-		ws.onmessage = handleMessage;
-
-		ws.onerror = (error) => {
-			console.error("[useChatStream] WebSocket error:", error);
-			setConnected(false);
-		};
-
-		ws.onclose = (event) => {
-			setConnected(false);
-
-			// Flag for reconnection on abnormal closure (not user-initiated)
-			if (event.code !== 1000 && event.code !== 1001 && conversationId) {
-				shouldReconnectRef.current = true;
-			}
-		};
-
-		wsRef.current = ws;
-	}, [conversationId, handleMessage, setConnected]);
-
-	// Handle reconnection via effect to avoid closure issues
+	// Keep handleChunk ref updated for use in effects (avoids dependency issues)
 	useEffect(() => {
-		if (shouldReconnectRef.current && conversationId) {
-			shouldReconnectRef.current = false;
-			const timer = setTimeout(() => {
-				connect();
-			}, 3000);
-			return () => clearTimeout(timer);
-		}
-		return undefined;
-	}, [conversationId, connect]);
+		handleChunkRef.current = handleChunk;
+	}, [handleChunk]);
 
-	// Disconnect from WebSocket
-	const disconnect = useCallback(() => {
-		if (wsRef.current) {
-			wsRef.current.close(1000, "User disconnected");
-			wsRef.current = null;
+	// Connect to WebSocket and subscribe to chat channel
+	const connect = useCallback(async () => {
+		if (!conversationId) return;
+
+		try {
+			// Connect to chat channel via shared WebSocket service
+			await webSocketService.connectToChat(conversationId);
+
+			// Subscribe to chat stream events
+			unsubscribeRef.current = webSocketService.onChatStream(
+				conversationId,
+				handleChunk,
+			);
+
+			setIsConnected(true);
+		} catch (error) {
+			console.error("[useChatStream] Failed to connect:", error);
+			setIsConnected(false);
 		}
-		setConnected(false);
+	}, [conversationId, handleChunk]);
+
+	// Disconnect and unsubscribe
+	const disconnect = useCallback(() => {
+		if (unsubscribeRef.current) {
+			unsubscribeRef.current();
+			unsubscribeRef.current = null;
+		}
+		setIsConnected(false);
 		resetStream();
-	}, [setConnected, resetStream]);
+	}, [resetStream]);
 
 	// Send message via WebSocket
 	const sendMessage = useCallback(
-		(message: string) => {
+		async (message: string) => {
 			if (!conversationId) {
 				toast.error("No conversation selected");
 				return;
 			}
 
-			// Ensure connected
-			if (!wsRef.current || wsRef.current.readyState !== WebSocket.OPEN) {
-				// Queue the message and connect
-				const connectAndSend = () => {
-					const protocol =
-						window.location.protocol === "https:" ? "wss:" : "ws:";
-					const host = window.location.host;
-					const wsUrl = `${protocol}//${host}/ws/connect?channels=chat:${conversationId}`;
+			// Ensure connected first
+			if (!webSocketService.isConnected()) {
+				await connect();
+			}
 
-					const ws = new WebSocket(wsUrl);
-
-					ws.onopen = () => {
-						// Wait for connected message before sending
-					};
-
-					ws.onmessage = (event) => {
-						const data = JSON.parse(event.data);
-
-						if (data.type === "connected") {
-							setConnected(true);
-
-							// Add optimistic user message
-							const userMessage: MessagePublic = {
-								id: `temp-${Date.now()}`,
-								conversation_id: conversationId,
-								role: "user",
-								content: message,
-								sequence: Date.now(),
-								created_at: new Date().toISOString(),
-							};
-							addMessage(conversationId, userMessage);
-
-							// Start streaming state
-							startStreaming();
-
-							// Send the chat message
-							ws.send(
-								JSON.stringify({
-									type: "chat",
-									conversation_id: conversationId,
-									message,
-								}),
-							);
-						} else {
-							// Handle other messages
-							handleMessage(event);
-						}
-					};
-
-					ws.onerror = (error) => {
-						console.error(
-							"[useChatStream] WebSocket error:",
-							error,
-						);
-						setConnected(false);
-						setStreamError("Connection error");
-					};
-
-					ws.onclose = (event) => {
-						setConnected(false);
-						if (event.code !== 1000 && event.code !== 1001) {
-							console.warn(
-								"[useChatStream] Unexpected close:",
-								event.code,
-								event.reason,
-							);
-						}
-					};
-
-					wsRef.current = ws;
-				};
-
-				connectAndSend();
-				return;
+			// Make sure we're subscribed to this conversation's chat stream
+			if (!unsubscribeRef.current) {
+				unsubscribeRef.current = webSocketService.onChatStream(
+					conversationId,
+					handleChunk,
+				);
 			}
 
 			// Add optimistic user message
@@ -503,42 +331,79 @@ export function useChatStream({
 			startStreaming();
 
 			// Send the chat message
-			wsRef.current.send(
-				JSON.stringify({
-					type: "chat",
-					conversation_id: conversationId,
-					message,
-				}),
-			);
+			const sent = webSocketService.sendChatMessage(conversationId, message);
+			if (!sent) {
+				// Retry after connecting
+				try {
+					await webSocketService.connectToChat(conversationId);
+					webSocketService.sendChatMessage(conversationId, message);
+				} catch (error) {
+					console.error("[useChatStream] Failed to send message:", error);
+					setStreamError("Failed to send message");
+					resetStream();
+				}
+			}
 		},
 		[
 			conversationId,
+			connect,
+			handleChunk,
 			addMessage,
 			startStreaming,
-			handleMessage,
-			setConnected,
 			setStreamError,
+			resetStream,
 		],
 	);
 
-	// Auto-disconnect when conversation changes or component unmounts
-	useEffect(() => {
-		return () => {
-			disconnect();
-		};
-	}, [disconnect]);
-
-	// Reconnect when conversation changes
+	// Auto-connect when conversation changes
 	useEffect(() => {
 		if (conversationId) {
-			// Disconnect from previous and reset stream state
-			if (wsRef.current) {
-				wsRef.current.close(1000, "Switching conversations");
-				wsRef.current = null;
+			// Disconnect from previous conversation
+			if (unsubscribeRef.current) {
+				unsubscribeRef.current();
+				unsubscribeRef.current = null;
 			}
-			resetStream();
+			// Reset stream state directly from store (avoid dependency on resetStream)
+			useChatStore.getState().resetStream();
+
+			// Connect to new conversation
+			const connectAsync = async () => {
+				try {
+					await webSocketService.connectToChat(conversationId);
+					// Use ref for callback to avoid dependency issues
+					unsubscribeRef.current = webSocketService.onChatStream(
+						conversationId,
+						(chunk) => handleChunkRef.current?.(chunk),
+					);
+					setIsConnected(true);
+				} catch (error) {
+					console.error("[useChatStream] Failed to connect:", error);
+					setIsConnected(false);
+				}
+			};
+			connectAsync();
 		}
-	}, [conversationId, resetStream]);
+
+		return () => {
+			if (unsubscribeRef.current) {
+				unsubscribeRef.current();
+				unsubscribeRef.current = null;
+			}
+		};
+	}, [conversationId]); // Only depend on conversationId
+
+	// Track connection status from service
+	useEffect(() => {
+		const checkConnection = () => {
+			setIsConnected(webSocketService.isConnected());
+		};
+
+		// Check periodically (the service doesn't expose connection events directly)
+		const interval = setInterval(checkConnection, 1000);
+		checkConnection();
+
+		return () => clearInterval(interval);
+	}, []);
 
 	return {
 		sendMessage,

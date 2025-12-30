@@ -305,6 +305,49 @@ services:
     command: >
       python -m src.worker.main
 
+  # Coding Agent Service (Claude Agent SDK)
+  # Runs SDK in isolation - can block without affecting API health
+  # MUST run as single instance (SDK clients cached per session)
+  coding-agent:
+    build:
+      context: .
+      dockerfile: api/Dockerfile
+    container_name: bifrost-coding-agent
+    environment:
+      # Core (must match API)
+      BIFROST_ENVIRONMENT: ${BIFROST_ENVIRONMENT:-production}
+      BIFROST_SECRET_KEY: ${BIFROST_SECRET_KEY:?BIFROST_SECRET_KEY is required (32+ chars)}
+      # Database (via PgBouncer for connection pooling)
+      BIFROST_DATABASE_URL: postgresql+asyncpg://bifrost:${POSTGRES_PASSWORD}@pgbouncer:5432/bifrost
+      BIFROST_DATABASE_URL_SYNC: postgresql://bifrost:${POSTGRES_PASSWORD}@pgbouncer:5432/bifrost
+      # Message Queue & Cache
+      BIFROST_RABBITMQ_URL: amqp://bifrost:${RABBITMQ_PASSWORD}@rabbitmq:5672/
+      BIFROST_REDIS_URL: redis://redis:6379/0
+      # API URL (for MCP tools that call back to API)
+      BIFROST_API_URL: http://api:8000
+      # S3 Storage (coding agent syncs workspace from S3)
+      BIFROST_S3_BUCKET: ${BIFROST_S3_BUCKET:-bifrost-local}
+      BIFROST_S3_ENDPOINT_URL: ${BIFROST_S3_ENDPOINT_URL:-http://minio:9000}
+      BIFROST_S3_ACCESS_KEY: ${BIFROST_S3_ACCESS_KEY:-${MINIO_ROOT_USER:-bifrost}}
+      BIFROST_S3_SECRET_KEY: ${BIFROST_S3_SECRET_KEY:-${MINIO_ROOT_PASSWORD}}
+      BIFROST_S3_REGION: ${BIFROST_S3_REGION:-us-east-1}
+      # Anthropic API key for Claude Agent SDK
+      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
+    # No liveness probe - SDK can block for extended periods
+    depends_on:
+      pgbouncer:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      minio-init:
+        condition: service_completed_successfully
+    deploy:
+      replicas: 1  # Single instance - SDK clients cached per session
+    command: >
+      python -m src.coding_agent.main
+
 volumes:
   postgres_data:
   rabbitmq_data:

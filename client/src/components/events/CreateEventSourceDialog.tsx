@@ -116,7 +116,8 @@ function CreateEventSourceDialogContent({
 		return newErrors.length === 0;
 	};
 
-	const handleSubmit = async () => {
+	const handleSubmit = async (e: React.FormEvent) => {
+		e.preventDefault();
 		if (!validateForm()) return;
 
 		try {
@@ -146,7 +147,7 @@ function CreateEventSourceDialogContent({
 	};
 
 	return (
-		<>
+		<form onSubmit={handleSubmit}>
 			<DialogHeader>
 				<DialogTitle>Create Event Source</DialogTitle>
 				<DialogDescription>
@@ -351,15 +352,15 @@ function CreateEventSourceDialogContent({
 			</div>
 
 			<DialogFooter>
-				<Button variant="outline" onClick={() => onOpenChange(false)}>
+				<Button type="button" variant="outline" onClick={() => onOpenChange(false)}>
 					Cancel
 				</Button>
-				<Button onClick={handleSubmit} disabled={isLoading}>
+				<Button type="submit" disabled={isLoading}>
 					{isLoading && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
 					Create Event Source
 				</Button>
 			</DialogFooter>
-		</>
+		</form>
 	);
 }
 

@@ -89,10 +89,10 @@ class WorkspaceSyncService:
                 pass
 
         if self._pubsub:
-            await self._pubsub.close()
+            await self._pubsub.aclose()
 
         if self._redis:
-            await self._redis.close()
+            await self._redis.aclose()
 
         logger.info("Workspace sync service stopped")
 

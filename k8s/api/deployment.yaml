@@ -23,7 +23,7 @@ spec:
       initContainers:
         - name: migrate
           image: ghcr.io/jackmusick/bifrost:latest
-          command: ["alembic", "upgrade", "head"]
+          command: ["sh", "-c", "alembic upgrade head"]
           envFrom:
             - configMapRef:
                 name: bifrost-config

@@ -396,6 +396,118 @@ async def publish_broadcast(
             await channel.close()
 
 
+async def publish_to_exchange(
+    exchange_name: str,
+    message: dict[str, Any],
+    routing_key: str = "",
+) -> None:
+    """
+    Publish a message to a specific exchange.
+
+    Used for streaming responses where consumers create temporary queues.
+    Unlike publish_broadcast which uses fanout, this can use any exchange type.
+
+    Args:
+        exchange_name: Target exchange name
+        message: Message body (will be JSON encoded)
+        routing_key: Optional routing key for topic/direct exchanges
+    """
+    await rabbitmq.init_pools()
+    async with rabbitmq.get_connection() as connection:
+        channel = await connection.channel()
+
+        try:
+            # Declare exchange (fanout for simple broadcast)
+            exchange = await channel.declare_exchange(
+                exchange_name,
+                aio_pika.ExchangeType.FANOUT,
+                durable=False,  # Transient for streaming
+                auto_delete=True,  # Delete when no bindings
+            )
+
+            # Publish message
+            await exchange.publish(
+                aio_pika.Message(
+                    body=json.dumps(message).encode(),
+                    delivery_mode=aio_pika.DeliveryMode.NOT_PERSISTENT,  # Fast, no disk
+                ),
+                routing_key=routing_key,
+            )
+
+            logger.debug(f"Published streaming message to exchange {exchange_name}")
+
+        finally:
+            await channel.close()
+
+
+async def consume_from_exchange(
+    exchange_name: str,
+    timeout: float | None = None,
+):
+    """
+    Consume messages from an exchange using a temporary queue.
+
+    Creates an exclusive, auto-delete queue bound to the exchange.
+    Yields messages as they arrive. Queue is deleted when iteration stops.
+
+    Args:
+        exchange_name: Exchange to consume from
+        timeout: Optional timeout in seconds to wait for messages
+
+    Yields:
+        dict: Parsed message bodies
+    """
+    await rabbitmq.init_pools()
+    connection_ctx = rabbitmq.get_connection()
+    connection = await connection_ctx.__aenter__()
+
+    try:
+        channel = await connection.channel()
+        await channel.set_qos(prefetch_count=1)
+
+        # Declare exchange (must match publisher)
+        exchange = await channel.declare_exchange(
+            exchange_name,
+            aio_pika.ExchangeType.FANOUT,
+            durable=False,
+            auto_delete=True,
+        )
+
+        # Create exclusive, auto-delete queue for this consumer
+        queue = await channel.declare_queue(
+            "",  # RabbitMQ generates unique name
+            exclusive=True,
+            auto_delete=True,
+        )
+
+        # Bind to exchange
+        await queue.bind(exchange)
+
+        logger.debug(f"Consuming from exchange {exchange_name} via queue {queue.name}")
+
+        # Use async iterator with optional timeout
+        async with queue.iterator(timeout=timeout) as queue_iter:
+            async for message in queue_iter:
+                async with message.process():
+                    try:
+                        body = json.loads(message.body.decode())
+                        yield body
+
+                        # Check for done signal to stop iteration
+                        if body.get("type") == "done" or body.get("type") == "error":
+                            logger.debug("Received terminal message, stopping consumer")
+                            break
+
+                    except json.JSONDecodeError as e:
+                        logger.warning(f"Invalid JSON in message: {e}")
+                        continue
+
+    except asyncio.TimeoutError:
+        logger.debug(f"Timeout consuming from exchange {exchange_name}")
+    finally:
+        await connection_ctx.__aexit__(None, None, None)
+
+
 async def publish_message(
     queue_name: str,
     message: dict[str, Any],

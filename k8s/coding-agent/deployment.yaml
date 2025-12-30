@@ -1,0 +1,53 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: bifrost-coding-agent
+  namespace: bifrost
+  labels:
+    app.kubernetes.io/name: bifrost-coding-agent
+    app.kubernetes.io/component: coding-agent
+    app.kubernetes.io/part-of: bifrost
+spec:
+  replicas: 1  # Single instance - SDK is blocking
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: bifrost-coding-agent
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: bifrost-coding-agent
+        app.kubernetes.io/component: coding-agent
+        app.kubernetes.io/part-of: bifrost
+    spec:
+      containers:
+        - name: coding-agent
+          image: ghcr.io/jackmusick/bifrost:latest
+          command: ["python", "-m", "src.coding_agent.main"]
+          envFrom:
+            - configMapRef:
+                name: bifrost-config
+            - secretRef:
+                name: bifrost-secrets
+          resources:
+            requests:
+              cpu: "100m"
+              memory: "512Mi"
+            limits:
+              cpu: "2000m"
+              memory: "4Gi"  # SDK needs more memory
+          # NO liveness probe - SDK can block for extended periods (20-30s init)
+          # Use startup probe with generous timeout instead
+          startupProbe:
+            exec:
+              command:
+                - python
+                - -c
+                - "import sys; sys.exit(0)"
+            initialDelaySeconds: 5
+            periodSeconds: 10
+            failureThreshold: 30  # 5 minutes to start
+      # Run as non-root user (matches Dockerfile)
+      securityContext:
+        runAsUser: 1000
+        runAsGroup: 1000
+        fsGroup: 1000

@@ -110,7 +110,8 @@ export function GenerateSDKDialog({
 		return config;
 	};
 
-	const handleGenerate = async () => {
+	const handleGenerate = async (e: React.FormEvent) => {
+		e.preventDefault();
 		if (!specUrl.trim()) {
 			toast.error("Please enter an OpenAPI spec URL");
 			return;
@@ -381,7 +382,7 @@ export function GenerateSDKDialog({
 					</>
 				) : (
 					// Form state
-					<>
+					<form onSubmit={handleGenerate}>
 						<DialogHeader>
 							<DialogTitle className="flex items-center gap-2">
 								<Code className="h-5 w-5" />
@@ -479,11 +480,11 @@ export function GenerateSDKDialog({
 						</div>
 
 						<DialogFooter>
-							<Button variant="outline" onClick={handleClose}>
+							<Button type="button" variant="outline" onClick={handleClose}>
 								Cancel
 							</Button>
 							<Button
-								onClick={handleGenerate}
+								type="submit"
 								disabled={isGenerating || !specUrl.trim()}
 							>
 								{isGenerating ? (
@@ -499,7 +500,7 @@ export function GenerateSDKDialog({
 								)}
 							</Button>
 						</DialogFooter>
-					</>
+					</form>
 				)}
 			</DialogContent>
 		</Dialog>
