@@ -215,3 +215,40 @@ class NamespaceInfo(BaseModel):
 
     namespace: str
     scopes: dict  # global/org/total counts
+
+
+# ==================== TABLES SDK MODELS ====================
+
+
+class TableInfo(BaseModel):
+    """Table metadata."""
+
+    id: str
+    name: str
+    description: str | None = None
+    table_schema: dict | None = None
+    organization_id: str | None = None
+    created_by: str | None = None
+    created_at: datetime | None = None
+    updated_at: datetime | None = None
+
+
+class DocumentData(BaseModel):
+    """Document with data and metadata."""
+
+    id: str
+    table_id: str
+    data: dict[str, Any]
+    created_at: str | None = None
+    updated_at: str | None = None
+    created_by: str | None = None
+    updated_by: str | None = None
+
+
+class DocumentList(BaseModel):
+    """Query result with documents and pagination."""
+
+    documents: list[DocumentData]
+    total: int
+    limit: int
+    offset: int

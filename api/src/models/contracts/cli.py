@@ -423,3 +423,145 @@ class CLIKnowledgeNamespaceInfo(BaseModel):
     scopes: dict[str, int] = Field(..., description="Document counts by scope (global, org, total)")
 
     model_config = ConfigDict(from_attributes=True)
+
+
+# ==================== SDK TABLES MODELS ====================
+
+
+class SDKTableCreateRequest(BaseModel):
+    """SDK request for creating a table."""
+    name: str = Field(..., pattern=r"^[a-z][a-z0-9_]*$", description="Table name (lowercase)")
+    table_schema: dict[str, Any] | None = Field(default=None, description="Optional schema hints")
+    description: str | None = Field(default=None, description="Table description")
+    scope: str | None = Field(
+        default=None,
+        description="Scope: None=context org, 'global'=global, UUID=specific org",
+    )
+    app: str | None = Field(default=None, description="Application UUID to scope table to an app")
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+class SDKTableListRequest(BaseModel):
+    """SDK request for listing tables."""
+    scope: str | None = Field(default=None, description="Organization scope")
+    app: str | None = Field(default=None, description="Filter by application UUID")
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+class SDKTableDeleteRequest(BaseModel):
+    """SDK request for deleting a table."""
+    name: str = Field(..., description="Table name")
+    scope: str | None = Field(default=None, description="Organization scope")
+    app: str | None = Field(default=None, description="Application UUID")
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+class SDKTableInfo(BaseModel):
+    """Table info response for SDK."""
+    id: str = Field(..., description="Table UUID")
+    name: str = Field(..., description="Table name")
+    organization_id: str | None = Field(None, description="Organization UUID or null for global")
+    application_id: str | None = Field(None, description="Application UUID if app-scoped")
+    table_schema: dict[str, Any] | None = Field(None, description="Schema hints")
+    description: str | None = Field(None, description="Table description")
+    created_at: str = Field(..., description="Creation timestamp (ISO format)")
+    updated_at: str = Field(..., description="Last update timestamp (ISO format)")
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+class SDKDocumentInsertRequest(BaseModel):
+    """SDK request for inserting a document."""
+    table: str = Field(..., description="Table name")
+    data: dict[str, Any] = Field(..., description="Document data")
+    scope: str | None = Field(default=None, description="Organization scope")
+    app: str | None = Field(default=None, description="Application UUID")
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+class SDKDocumentGetRequest(BaseModel):
+    """SDK request for getting a document."""
+    table: str = Field(..., description="Table name")
+    doc_id: str = Field(..., description="Document UUID")
+    scope: str | None = Field(default=None, description="Organization scope")
+    app: str | None = Field(default=None, description="Application UUID")
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+class SDKDocumentUpdateRequest(BaseModel):
+    """SDK request for updating a document."""
+    table: str = Field(..., description="Table name")
+    doc_id: str = Field(..., description="Document UUID")
+    data: dict[str, Any] = Field(..., description="Fields to update (merged with existing)")
+    scope: str | None = Field(default=None, description="Organization scope")
+    app: str | None = Field(default=None, description="Application UUID")
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+class SDKDocumentDeleteRequest(BaseModel):
+    """SDK request for deleting a document."""
+    table: str = Field(..., description="Table name")
+    doc_id: str = Field(..., description="Document UUID")
+    scope: str | None = Field(default=None, description="Organization scope")
+    app: str | None = Field(default=None, description="Application UUID")
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+class SDKDocumentQueryRequest(BaseModel):
+    """SDK request for querying documents with advanced filtering.
+
+    Filter conditions support:
+    - Simple equality: {"status": "active"}
+    - Comparison operators: {"amount": {"gt": 100, "lte": 1000}}
+    - LIKE patterns: {"name": {"like": "%acme%"}} or {"name": {"ilike": "%ACME%"}}
+    - IN lists: {"category": {"in": ["a", "b"]}}
+    - NULL checks: {"deleted_at": {"is_null": true}}
+    """
+    table: str = Field(..., description="Table name")
+    where: dict[str, Any] | None = Field(default=None, description="Filter conditions with operators")
+    order_by: str | None = Field(default=None, description="Field to order by")
+    order_dir: Literal["asc", "desc"] = Field(default="asc", description="Sort direction")
+    limit: int = Field(default=100, ge=1, le=1000, description="Max documents")
+    offset: int = Field(default=0, ge=0, description="Documents to skip")
+    scope: str | None = Field(default=None, description="Organization scope")
+    app: str | None = Field(default=None, description="Application UUID")
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+class SDKDocumentCountRequest(BaseModel):
+    """SDK request for counting documents."""
+    table: str = Field(..., description="Table name")
+    where: dict[str, Any] | None = Field(default=None, description="Filter conditions with operators")
+    scope: str | None = Field(default=None, description="Organization scope")
+    app: str | None = Field(default=None, description="Application UUID")
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+class SDKDocumentData(BaseModel):
+    """Document data response for SDK."""
+    id: str = Field(..., description="Document UUID")
+    table_id: str = Field(..., description="Table UUID")
+    data: dict[str, Any] = Field(..., description="Document data")
+    created_at: str = Field(..., description="Creation timestamp (ISO format)")
+    updated_at: str = Field(..., description="Last update timestamp (ISO format)")
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+class SDKDocumentList(BaseModel):
+    """Document list response for SDK."""
+    documents: list[SDKDocumentData] = Field(..., description="List of documents")
+    total: int = Field(..., description="Total count")
+    limit: int = Field(..., description="Limit used")
+    offset: int = Field(..., description="Offset used")
+
+    model_config = ConfigDict(from_attributes=True)

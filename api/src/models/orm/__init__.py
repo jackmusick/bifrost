@@ -24,6 +24,7 @@ from src.models.orm.metrics import ExecutionMetricsDaily, KnowledgeStorageDaily,
 from src.models.orm.mfa import MFARecoveryCode, TrustedDevice, UserMFAMethod, UserOAuthAccount
 from src.models.orm.oauth import OAuthProvider, OAuthToken
 from src.models.orm.organizations import Organization
+from src.models.orm.tables import Document, Table
 from src.models.orm.users import Role, User, UserRole
 from src.models.orm.workspace import WorkspaceFile
 from src.models.orm.workflows import DataProvider, Workflow
@@ -95,4 +96,7 @@ __all__ = [
     "EventSubscription",
     "Event",
     "EventDelivery",
+    # Tables (App Builder)
+    "Table",
+    "Document",
 ]

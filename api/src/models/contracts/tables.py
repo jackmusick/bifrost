@@ -1,0 +1,294 @@
+"""
+Table and Document contract models for Bifrost App Builder.
+
+Provides Pydantic models for API request/response handling.
+"""
+
+from datetime import datetime
+from typing import Any, Literal
+from uuid import UUID
+
+from pydantic import BaseModel, ConfigDict, Field, field_serializer, field_validator
+
+
+# ==================== TABLE MODELS ====================
+
+
+class TableBase(BaseModel):
+    """Shared table fields."""
+
+    name: str = Field(
+        max_length=255,
+        pattern=r"^[a-z][a-z0-9_]*$",
+        description="Table name (lowercase, underscores allowed)",
+    )
+    description: str | None = Field(default=None, description="Optional table description")
+    schema: dict[str, Any] | None = Field(
+        default=None,
+        description="Optional schema hints for validation/UI. Not enforced at DB level.",
+    )
+
+
+class TableCreate(TableBase):
+    """Input for creating a table."""
+
+    pass
+
+
+class TableUpdate(BaseModel):
+    """Input for updating a table."""
+
+    description: str | None = None
+    schema: dict[str, Any] | None = None
+
+
+class TablePublic(TableBase):
+    """Table output for API responses."""
+
+    model_config = ConfigDict(from_attributes=True)
+
+    id: UUID
+    organization_id: UUID | None
+    application_id: UUID | None
+    created_at: datetime
+    updated_at: datetime
+    created_by: str | None
+
+    @field_serializer("created_at", "updated_at")
+    def serialize_dt(self, dt: datetime | None) -> str | None:
+        return dt.isoformat() if dt else None
+
+
+class TableListResponse(BaseModel):
+    """Response for listing tables."""
+
+    tables: list[TablePublic]
+    total: int
+
+
+# ==================== DOCUMENT MODELS ====================
+
+
+class DocumentCreate(BaseModel):
+    """Input for creating a document."""
+
+    data: dict[str, Any] = Field(..., description="Document data (any JSON-serializable dict)")
+
+
+class DocumentUpdate(BaseModel):
+    """Input for updating a document (partial update, merges with existing)."""
+
+    data: dict[str, Any] = Field(..., description="Fields to update (merged with existing data)")
+
+
+class DocumentPublic(BaseModel):
+    """Document output for API responses."""
+
+    model_config = ConfigDict(from_attributes=True)
+
+    id: UUID
+    table_id: UUID
+    data: dict[str, Any]
+    created_at: datetime
+    updated_at: datetime
+    created_by: str | None
+    updated_by: str | None
+
+    @field_serializer("created_at", "updated_at")
+    def serialize_dt(self, dt: datetime | None) -> str | None:
+        return dt.isoformat() if dt else None
+
+
+class QueryFilter(BaseModel):
+    """
+    Advanced query filter with comparison operators.
+
+    Supports:
+    - eq: Equal (default if just a value is passed)
+    - ne: Not equal
+    - gt: Greater than
+    - gte: Greater than or equal
+    - lt: Less than
+    - lte: Less than or equal
+    - like: SQL LIKE pattern (use % for wildcards)
+    - ilike: Case-insensitive LIKE
+    - in_: Value in list
+    - is_null: Check for null
+
+    Example:
+        {
+            "status": "active",                    # Implicit eq
+            "amount": {"gt": 100, "lte": 1000},   # Range query
+            "name": {"ilike": "%acme%"},          # Case-insensitive search
+            "category": {"in_": ["a", "b", "c"]}, # In list
+            "deleted_at": {"is_null": True}       # Null check
+        }
+    """
+
+    eq: Any | None = None
+    ne: Any | None = None
+    gt: Any | None = None
+    gte: Any | None = None
+    lt: Any | None = None
+    lte: Any | None = None
+    like: str | None = None
+    ilike: str | None = None
+    in_: list[Any] | None = Field(default=None, alias="in")
+    is_null: bool | None = None
+
+    model_config = ConfigDict(populate_by_name=True)
+
+
+class DocumentQuery(BaseModel):
+    """Query parameters for document search."""
+
+    where: dict[str, Any] | None = Field(
+        default=None,
+        description="""Filter conditions. Supports:
+        - Simple equality: {"status": "active"}
+        - Operators: {"amount": {"gt": 100, "lte": 1000}}
+        - LIKE: {"name": {"like": "%acme%"}} or {"name": {"ilike": "%ACME%"}}
+        - IN: {"category": {"in": ["a", "b"]}}
+        - NULL: {"deleted_at": {"is_null": true}}
+        """,
+    )
+    order_by: str | None = Field(
+        default=None,
+        description="Field to order by (data field name)",
+    )
+    order_dir: Literal["asc", "desc"] = Field(
+        default="asc",
+        description="Sort direction",
+    )
+    limit: int = Field(
+        default=100,
+        ge=1,
+        le=1000,
+        description="Maximum documents to return",
+    )
+    offset: int = Field(
+        default=0,
+        ge=0,
+        description="Number of documents to skip",
+    )
+
+    @field_validator("order_by")
+    @classmethod
+    def validate_order_by(cls, v: str | None) -> str | None:
+        """Validate order_by field name."""
+        if v is not None:
+            # Allow nested paths like "data.amount" or simple fields like "created_at"
+            if not v.replace(".", "").replace("_", "").isalnum():
+                raise ValueError("order_by must be alphanumeric with dots and underscores")
+        return v
+
+
+class DocumentListResponse(BaseModel):
+    """Response for document queries."""
+
+    documents: list[DocumentPublic]
+    total: int
+    limit: int
+    offset: int
+
+
+class DocumentCountResponse(BaseModel):
+    """Response for document count."""
+
+    count: int
+
+
+# ==================== SDK REQUEST MODELS ====================
+
+
+class SDKTableCreateRequest(BaseModel):
+    """SDK request for creating a table."""
+
+    name: str = Field(pattern=r"^[a-z][a-z0-9_]*$")
+    table_schema: dict[str, Any] | None = None
+    description: str | None = None
+    scope: str | None = Field(
+        default=None,
+        description="Scope: None=context org, 'global'=global, UUID=specific org",
+    )
+    app: str | None = Field(
+        default=None,
+        description="Application UUID to scope table to an app",
+    )
+
+
+class SDKTableListRequest(BaseModel):
+    """SDK request for listing tables."""
+
+    scope: str | None = None
+    app: str | None = Field(
+        default=None,
+        description="Filter by application UUID",
+    )
+
+
+class SDKTableDeleteRequest(BaseModel):
+    """SDK request for deleting a table."""
+
+    name: str
+    scope: str | None = None
+    app: str | None = None
+
+
+class SDKDocumentInsertRequest(BaseModel):
+    """SDK request for inserting a document."""
+
+    table: str
+    data: dict[str, Any]
+    scope: str | None = None
+    app: str | None = None
+
+
+class SDKDocumentGetRequest(BaseModel):
+    """SDK request for getting a document."""
+
+    table: str
+    doc_id: str
+    scope: str | None = None
+    app: str | None = None
+
+
+class SDKDocumentUpdateRequest(BaseModel):
+    """SDK request for updating a document."""
+
+    table: str
+    doc_id: str
+    data: dict[str, Any]
+    scope: str | None = None
+    app: str | None = None
+
+
+class SDKDocumentDeleteRequest(BaseModel):
+    """SDK request for deleting a document."""
+
+    table: str
+    doc_id: str
+    scope: str | None = None
+    app: str | None = None
+
+
+class SDKDocumentQueryRequest(BaseModel):
+    """SDK request for querying documents."""
+
+    table: str
+    where: dict[str, Any] | None = None
+    order_by: str | None = None
+    order_dir: Literal["asc", "desc"] = "asc"
+    limit: int = Field(default=100, ge=1, le=1000)
+    offset: int = Field(default=0, ge=0)
+    scope: str | None = None
+    app: str | None = None
+
+
+class SDKDocumentCountRequest(BaseModel):
+    """SDK request for counting documents."""
+
+    table: str
+    where: dict[str, Any] | None = None
+    scope: str | None = None
+    app: str | None = None

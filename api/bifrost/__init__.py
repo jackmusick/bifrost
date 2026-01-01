@@ -7,7 +7,7 @@ All SDK methods are async and must be awaited.
 
 Usage:
     from bifrost import organizations, workflows, files, forms, executions, roles
-    from bifrost import config, integrations, ai, knowledge
+    from bifrost import config, integrations, ai, knowledge, tables
 
 Example:
     # AI Completions
@@ -87,6 +87,7 @@ from .integrations import integrations
 from .knowledge import knowledge
 from .organizations import organizations
 from .roles import roles
+from .tables import tables
 from .users import users
 from .workflows import workflows
 
@@ -106,6 +107,9 @@ from .models import (
     AIStreamChunk,
     KnowledgeDocument,
     NamespaceInfo,
+    TableInfo,
+    DocumentData,
+    DocumentList,
 )
 
 # Import decorators - try platform module first, fall back to local SDK version
@@ -196,6 +200,7 @@ __all__ = [
     'knowledge',
     'organizations',
     'roles',
+    'tables',
     'users',
     'workflows',
     # SDK Models
@@ -213,6 +218,9 @@ __all__ = [
     'AIStreamChunk',
     'KnowledgeDocument',
     'NamespaceInfo',
+    'TableInfo',
+    'DocumentData',
+    'DocumentList',
     # Decorators
     'workflow',
     'data_provider',

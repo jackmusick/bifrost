@@ -21,6 +21,7 @@ if TYPE_CHECKING:
     from src.models.orm.forms import Form
     from src.models.orm.knowledge import KnowledgeStore
     from src.models.orm.metrics import KnowledgeStorageDaily
+    from src.models.orm.tables import Table
     from src.models.orm.users import User
 
 
@@ -60,5 +61,6 @@ class Organization(Base):
     knowledge_storage_snapshots: Mapped[list["KnowledgeStorageDaily"]] = relationship(
         back_populates="organization"
     )
+    tables: Mapped[list["Table"]] = relationship(back_populates="organization")
 
     __table_args__ = (Index("ix_organizations_domain", "domain"),)

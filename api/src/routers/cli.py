@@ -63,6 +63,18 @@ from src.models.contracts.cli import (
     SDKIntegrationsUpsertMappingRequest,
     SDKIntegrationsDeleteMappingRequest,
     SDKIntegrationsMappingItem,
+    SDKTableCreateRequest,
+    SDKTableListRequest,
+    SDKTableDeleteRequest,
+    SDKTableInfo,
+    SDKDocumentInsertRequest,
+    SDKDocumentGetRequest,
+    SDKDocumentUpdateRequest,
+    SDKDocumentDeleteRequest,
+    SDKDocumentQueryRequest,
+    SDKDocumentCountRequest,
+    SDKDocumentData,
+    SDKDocumentList,
 )
 from src.core.cache import config_hash_key, get_redis
 from src.core.pubsub import publish_cli_session_update, publish_execution_log, publish_execution_update
@@ -2065,3 +2077,564 @@ async def download_cli() -> StreamingResponse:
             "Content-Disposition": "attachment; filename=bifrost-cli-2.0.0.tar.gz",
         },
     )
+
+
+# =============================================================================
+# Tables SDK Endpoints
+# =============================================================================
+
+
+@router.post(
+    "/tables/create",
+    summary="Create a table",
+)
+async def cli_create_table(
+    request: "SDKTableCreateRequest",
+    current_user: CurrentUser,
+    db: AsyncSession = Depends(get_db),
+) -> "SDKTableInfo":
+    """Create a new table via SDK."""
+    from src.models.contracts.cli import SDKTableInfo
+    from src.models.orm.tables import Table
+    from sqlalchemy import select
+
+    org_id = await _get_cli_org_id(current_user.user_id, request.scope, db)
+    org_uuid = UUID(org_id) if org_id else None
+    app_uuid = UUID(request.app) if request.app else None
+
+    # Check if table exists (same name, org, and app)
+    stmt = select(Table).where(
+        Table.name == request.name,
+        Table.organization_id == org_uuid,
+        Table.application_id == app_uuid,
+    )
+    result = await db.execute(stmt)
+    existing = result.scalar_one_or_none()
+
+    if existing:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail=f"Table '{request.name}' already exists",
+        )
+
+    table = Table(
+        name=request.name,
+        description=request.description,
+        schema=request.table_schema,
+        organization_id=org_uuid,
+        application_id=app_uuid,
+        created_by=current_user.email,
+    )
+    db.add(table)
+    await db.commit()
+    await db.refresh(table)
+
+    logger.info(f"CLI created table '{request.name}' for user {current_user.email}")
+
+    return SDKTableInfo(
+        id=str(table.id),
+        name=table.name,
+        organization_id=str(table.organization_id) if table.organization_id else None,
+        application_id=str(table.application_id) if table.application_id else None,
+        table_schema=table.schema,
+        description=table.description,
+        created_at=table.created_at.isoformat(),
+        updated_at=table.updated_at.isoformat(),
+    )
+
+
+@router.post(
+    "/tables/list",
+    summary="List tables",
+)
+async def cli_list_tables(
+    request: "SDKTableListRequest",
+    current_user: CurrentUser,
+    db: AsyncSession = Depends(get_db),
+) -> list["SDKTableInfo"]:
+    """List tables via SDK."""
+    from src.models.contracts.cli import SDKTableInfo
+    from src.models.orm.tables import Table
+    from sqlalchemy import select, or_
+
+    org_id = await _get_cli_org_id(current_user.user_id, request.scope, db)
+    org_uuid = UUID(org_id) if org_id else None
+    app_uuid = UUID(request.app) if request.app else None
+
+    # Build query with cascade scoping (org + global)
+    stmt = select(Table)
+    if org_uuid:
+        stmt = stmt.where(
+            or_(
+                Table.organization_id == org_uuid,
+                Table.organization_id.is_(None),
+            )
+        )
+    else:
+        stmt = stmt.where(Table.organization_id.is_(None))
+
+    # Filter by application if specified
+    if app_uuid:
+        stmt = stmt.where(Table.application_id == app_uuid)
+
+    stmt = stmt.order_by(Table.name)
+    result = await db.execute(stmt)
+    tables = result.scalars().all()
+
+    return [
+        SDKTableInfo(
+            id=str(t.id),
+            name=t.name,
+            organization_id=str(t.organization_id) if t.organization_id else None,
+            application_id=str(t.application_id) if t.application_id else None,
+            table_schema=t.schema,
+            description=t.description,
+            created_at=t.created_at.isoformat(),
+            updated_at=t.updated_at.isoformat(),
+        )
+        for t in tables
+    ]
+
+
+@router.post(
+    "/tables/delete",
+    summary="Delete a table",
+)
+async def cli_delete_table(
+    request: "SDKTableDeleteRequest",
+    current_user: CurrentUser,
+    db: AsyncSession = Depends(get_db),
+) -> bool:
+    """Delete a table and all its documents via SDK."""
+    from src.models.orm.tables import Table
+    from sqlalchemy import select
+
+    org_id = await _get_cli_org_id(current_user.user_id, request.scope, db)
+    org_uuid = UUID(org_id) if org_id else None
+    app_uuid = UUID(request.app) if request.app else None
+
+    stmt = select(Table).where(
+        Table.name == request.name,
+        Table.organization_id == org_uuid,
+        Table.application_id == app_uuid,
+    )
+    result = await db.execute(stmt)
+    table = result.scalar_one_or_none()
+
+    if not table:
+        return False
+
+    await db.delete(table)
+    await db.commit()
+
+    logger.info(f"CLI deleted table '{request.name}' for user {current_user.email}")
+    return True
+
+
+async def _find_table_for_sdk(
+    db: AsyncSession,
+    table_name: str,
+    org_uuid: UUID | None,
+    app_uuid: UUID | None,
+) -> Any:
+    """Find a table by name with cascade scoping (org + global) and optional app filter.
+
+    Args:
+        db: Database session
+        table_name: Table name to find
+        org_uuid: Organization UUID (None for global scope)
+        app_uuid: Application UUID filter (optional)
+
+    Returns:
+        Table ORM object or None
+    """
+    from src.models.orm.tables import Table
+    from sqlalchemy import select, or_
+
+    stmt = select(Table).where(Table.name == table_name)
+    if org_uuid:
+        stmt = stmt.where(
+            or_(
+                Table.organization_id == org_uuid,
+                Table.organization_id.is_(None),
+            )
+        )
+    else:
+        stmt = stmt.where(Table.organization_id.is_(None))
+
+    # Filter by application if specified
+    if app_uuid:
+        stmt = stmt.where(Table.application_id == app_uuid)
+
+    result = await db.execute(stmt)
+    return result.scalar_one_or_none()
+
+
+def _build_jsonb_filters(
+    base_query: Any,
+    where: dict[str, Any] | None,
+    data_column: Any,
+) -> Any:
+    """Build SQLAlchemy filters from where clause with operator support.
+
+    Supports:
+    - Simple equality: {"status": "active"}
+    - Comparison operators: {"amount": {"gt": 100, "lte": 1000}}
+    - LIKE patterns: {"name": {"like": "%acme%"}} or {"name": {"ilike": "%ACME%"}}
+    - IN lists: {"category": {"in": ["a", "b"]}}
+    - NULL checks: {"deleted_at": {"is_null": true}}
+
+    Args:
+        base_query: SQLAlchemy query to add filters to
+        where: Filter conditions dict
+        data_column: JSONB column to filter on (e.g., Document.data)
+
+    Returns:
+        Query with filters applied
+    """
+    from sqlalchemy import cast, String
+
+    if not where:
+        return base_query
+
+    for key, value in where.items():
+        json_field = data_column[key]
+
+        if isinstance(value, dict):
+            # Operator-based filter
+            for op, op_value in value.items():
+                if op == "eq":
+                    base_query = base_query.where(json_field.astext == str(op_value))
+                elif op == "ne":
+                    base_query = base_query.where(json_field.astext != str(op_value))
+                elif op == "gt":
+                    # Cast to numeric for comparison
+                    base_query = base_query.where(
+                        cast(json_field.astext, String) > str(op_value)
+                    )
+                elif op == "gte":
+                    base_query = base_query.where(
+                        cast(json_field.astext, String) >= str(op_value)
+                    )
+                elif op == "lt":
+                    base_query = base_query.where(
+                        cast(json_field.astext, String) < str(op_value)
+                    )
+                elif op == "lte":
+                    base_query = base_query.where(
+                        cast(json_field.astext, String) <= str(op_value)
+                    )
+                elif op == "like":
+                    base_query = base_query.where(json_field.astext.like(op_value))
+                elif op == "ilike":
+                    base_query = base_query.where(json_field.astext.ilike(op_value))
+                elif op == "in" or op == "in_":
+                    # IN list
+                    if isinstance(op_value, list):
+                        base_query = base_query.where(
+                            json_field.astext.in_([str(v) for v in op_value])
+                        )
+                elif op == "is_null":
+                    if op_value:
+                        base_query = base_query.where(json_field.astext.is_(None))
+                    else:
+                        base_query = base_query.where(json_field.astext.isnot(None))
+        else:
+            # Simple equality
+            base_query = base_query.where(json_field.astext == str(value))
+
+    return base_query
+
+
+@router.post(
+    "/tables/documents/insert",
+    summary="Insert a document",
+)
+async def cli_insert_document(
+    request: "SDKDocumentInsertRequest",
+    current_user: CurrentUser,
+    db: AsyncSession = Depends(get_db),
+) -> "SDKDocumentData":
+    """Insert a document into a table via SDK."""
+    from src.models.contracts.cli import SDKDocumentData
+    from src.models.orm.tables import Document
+
+    org_id = await _get_cli_org_id(current_user.user_id, request.scope, db)
+    org_uuid = UUID(org_id) if org_id else None
+    app_uuid = UUID(request.app) if request.app else None
+
+    table = await _find_table_for_sdk(db, request.table, org_uuid, app_uuid)
+
+    if not table:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Table '{request.table}' not found",
+        )
+
+    doc = Document(
+        table_id=table.id,
+        data=request.data,
+        created_by=current_user.email,
+    )
+    db.add(doc)
+    await db.commit()
+    await db.refresh(doc)
+
+    return SDKDocumentData(
+        id=str(doc.id),
+        table_id=str(doc.table_id),
+        data=doc.data,
+        created_at=doc.created_at.isoformat(),
+        updated_at=doc.updated_at.isoformat(),
+    )
+
+
+@router.post(
+    "/tables/documents/get",
+    summary="Get a document",
+)
+async def cli_get_document(
+    request: "SDKDocumentGetRequest",
+    current_user: CurrentUser,
+    db: AsyncSession = Depends(get_db),
+) -> "SDKDocumentData | None":
+    """Get a document by ID via SDK."""
+    from src.models.contracts.cli import SDKDocumentData
+    from src.models.orm.tables import Document
+    from sqlalchemy import select
+
+    org_id = await _get_cli_org_id(current_user.user_id, request.scope, db)
+    org_uuid = UUID(org_id) if org_id else None
+    app_uuid = UUID(request.app) if request.app else None
+
+    table = await _find_table_for_sdk(db, request.table, org_uuid, app_uuid)
+
+    if not table:
+        return None
+
+    # Get the document
+    doc_stmt = select(Document).where(
+        Document.id == UUID(request.doc_id),
+        Document.table_id == table.id,
+    )
+    doc_result = await db.execute(doc_stmt)
+    doc = doc_result.scalar_one_or_none()
+
+    if not doc:
+        return None
+
+    return SDKDocumentData(
+        id=str(doc.id),
+        table_id=str(doc.table_id),
+        data=doc.data,
+        created_at=doc.created_at.isoformat(),
+        updated_at=doc.updated_at.isoformat(),
+    )
+
+
+@router.post(
+    "/tables/documents/update",
+    summary="Update a document",
+)
+async def cli_update_document(
+    request: "SDKDocumentUpdateRequest",
+    current_user: CurrentUser,
+    db: AsyncSession = Depends(get_db),
+) -> "SDKDocumentData | None":
+    """Update a document via SDK (partial update, merges with existing)."""
+    from src.models.contracts.cli import SDKDocumentData
+    from src.models.orm.tables import Document
+    from sqlalchemy import select
+
+    org_id = await _get_cli_org_id(current_user.user_id, request.scope, db)
+    org_uuid = UUID(org_id) if org_id else None
+    app_uuid = UUID(request.app) if request.app else None
+
+    table = await _find_table_for_sdk(db, request.table, org_uuid, app_uuid)
+
+    if not table:
+        return None
+
+    # Get the document
+    doc_stmt = select(Document).where(
+        Document.id == UUID(request.doc_id),
+        Document.table_id == table.id,
+    )
+    doc_result = await db.execute(doc_stmt)
+    doc = doc_result.scalar_one_or_none()
+
+    if not doc:
+        return None
+
+    # Merge data
+    merged_data = {**doc.data, **request.data}
+    doc.data = merged_data
+    doc.updated_by = current_user.email
+
+    await db.commit()
+    await db.refresh(doc)
+
+    return SDKDocumentData(
+        id=str(doc.id),
+        table_id=str(doc.table_id),
+        data=doc.data,
+        created_at=doc.created_at.isoformat(),
+        updated_at=doc.updated_at.isoformat(),
+    )
+
+
+@router.post(
+    "/tables/documents/delete",
+    summary="Delete a document",
+)
+async def cli_delete_document(
+    request: "SDKDocumentDeleteRequest",
+    current_user: CurrentUser,
+    db: AsyncSession = Depends(get_db),
+) -> bool:
+    """Delete a document via SDK."""
+    from src.models.orm.tables import Document
+    from sqlalchemy import select
+
+    org_id = await _get_cli_org_id(current_user.user_id, request.scope, db)
+    org_uuid = UUID(org_id) if org_id else None
+    app_uuid = UUID(request.app) if request.app else None
+
+    table = await _find_table_for_sdk(db, request.table, org_uuid, app_uuid)
+
+    if not table:
+        return False
+
+    # Get and delete the document
+    doc_stmt = select(Document).where(
+        Document.id == UUID(request.doc_id),
+        Document.table_id == table.id,
+    )
+    doc_result = await db.execute(doc_stmt)
+    doc = doc_result.scalar_one_or_none()
+
+    if not doc:
+        return False
+
+    await db.delete(doc)
+    await db.commit()
+
+    return True
+
+
+@router.post(
+    "/tables/documents/query",
+    summary="Query documents",
+)
+async def cli_query_documents(
+    request: "SDKDocumentQueryRequest",
+    current_user: CurrentUser,
+    db: AsyncSession = Depends(get_db),
+) -> "SDKDocumentList":
+    """Query documents with filtering and pagination via SDK.
+
+    Supports advanced filter operators:
+    - Simple equality: {"status": "active"}
+    - Comparison: {"amount": {"gt": 100, "lte": 1000}}
+    - LIKE patterns: {"name": {"like": "%acme%"}} or {"name": {"ilike": "%ACME%"}}
+    - IN lists: {"category": {"in": ["a", "b"]}}
+    - NULL checks: {"deleted_at": {"is_null": true}}
+    """
+    from src.models.contracts.cli import SDKDocumentData, SDKDocumentList
+    from src.models.orm.tables import Document
+    from sqlalchemy import select, func
+
+    org_id = await _get_cli_org_id(current_user.user_id, request.scope, db)
+    org_uuid = UUID(org_id) if org_id else None
+    app_uuid = UUID(request.app) if request.app else None
+
+    table = await _find_table_for_sdk(db, request.table, org_uuid, app_uuid)
+
+    if not table:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Table '{request.table}' not found",
+        )
+
+    # Build document query
+    doc_query = select(Document).where(Document.table_id == table.id)
+
+    # Apply where filters with operator support
+    doc_query = _build_jsonb_filters(doc_query, request.where, Document.data)
+
+    # Get total count
+    count_query = select(func.count()).select_from(doc_query.subquery())
+    count_result = await db.execute(count_query)
+    total = count_result.scalar() or 0
+
+    # Apply ordering
+    if request.order_by:
+        order_expr = Document.data[request.order_by].astext
+        if request.order_dir == "desc":
+            order_expr = order_expr.desc()
+        doc_query = doc_query.order_by(order_expr)
+    else:
+        if request.order_dir == "desc":
+            doc_query = doc_query.order_by(Document.created_at.desc())
+        else:
+            doc_query = doc_query.order_by(Document.created_at.asc())
+
+    # Apply pagination
+    doc_query = doc_query.offset(request.offset).limit(request.limit)
+
+    doc_result = await db.execute(doc_query)
+    documents = doc_result.scalars().all()
+
+    return SDKDocumentList(
+        documents=[
+            SDKDocumentData(
+                id=str(d.id),
+                table_id=str(d.table_id),
+                data=d.data,
+                created_at=d.created_at.isoformat(),
+                updated_at=d.updated_at.isoformat(),
+            )
+            for d in documents
+        ],
+        total=total,
+        limit=request.limit,
+        offset=request.offset,
+    )
+
+
+@router.post(
+    "/tables/documents/count",
+    summary="Count documents",
+)
+async def cli_count_documents(
+    request: "SDKDocumentCountRequest",
+    current_user: CurrentUser,
+    db: AsyncSession = Depends(get_db),
+) -> int:
+    """Count documents matching filter via SDK.
+
+    Supports the same filter operators as query.
+    """
+    from src.models.orm.tables import Document
+    from sqlalchemy import select, func
+
+    org_id = await _get_cli_org_id(current_user.user_id, request.scope, db)
+    org_uuid = UUID(org_id) if org_id else None
+    app_uuid = UUID(request.app) if request.app else None
+
+    table = await _find_table_for_sdk(db, request.table, org_uuid, app_uuid)
+
+    if not table:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Table '{request.table}' not found",
+        )
+
+    # Build count query
+    count_query = select(func.count()).where(Document.table_id == table.id)
+
+    # Apply where filters with operator support
+    count_query = _build_jsonb_filters(count_query, request.where, Document.data)
+
+    count_result = await db.execute(count_query)
+    return count_result.scalar() or 0
