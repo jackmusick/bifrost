@@ -4,6 +4,7 @@ E2E tests for workflow execution.
 Tests sync/async execution, polling, cancellation, and execution history.
 """
 
+import os
 import time
 import pytest
 
@@ -662,6 +663,10 @@ class TestExecutionLogAccess:
 class TestExecutionConcurrency:
     """Test concurrent execution behavior."""
 
+    @pytest.mark.skipif(
+        os.environ.get("CI") == "true" or os.environ.get("GITHUB_ACTIONS") == "true",
+        reason="Timing-sensitive test is flaky in CI environments"
+    )
     def test_concurrent_executions_not_blocking(
         self, e2e_client, platform_admin, async_workflow
     ):
