@@ -1060,7 +1060,7 @@ Variables are reactive and can be:
 "{{ tables.surveys | where: status == 'pending' | count }}"
 ```
 
-### 6.3 Deliverables
+### 8.3 Deliverables
 
 - [ ] Workflow execution hook with loading/error states
 - [ ] Variable store (Zustand or Context)
@@ -1070,9 +1070,9 @@ Variables are reactive and can be:
 
 ---
 
-## Phase 7: App Editor
+## Phase 9: App Editor
 
-### 7.1 Editor Features
+### 9.1 Editor Features
 
 - Visual page builder (drag-and-drop)
 - Component property panel
@@ -1082,7 +1082,7 @@ Variables are reactive and can be:
 - Preview mode
 - Publish flow
 
-### 7.2 Editor Architecture
+### 9.2 Editor Architecture
 
 ```
 ┌─────────────────────────────────────────────────────────────┐
@@ -1102,7 +1102,7 @@ Variables are reactive and can be:
 └─────────────┴───────────────────────────────┴───────────────┘
 ```
 
-### 7.3 Deliverables
+### 9.3 Deliverables
 
 - [ ] Editor shell with panels
 - [ ] Page tree navigator
@@ -1116,9 +1116,9 @@ Variables are reactive and can be:
 
 ---
 
-## Phase 8: Embedding & Access
+## Phase 10: Embedding & Access
 
-### 8.1 Embedding Options
+### 10.1 Embedding Options
 
 ```html
 <!-- iframe embed -->
@@ -1140,13 +1140,37 @@ Variables are reactive and can be:
 </script>
 ```
 
-### 8.2 Access Control
+### 10.2 Multi-Tenant Global Apps
 
-- Apps inherit organization permissions
-- Optional page-level guards
-- Role-based visibility for components
+Global apps (organization_id = NULL) can serve multiple organizations:
 
-### 8.3 Deliverables
+```
+┌─────────────────────────────────────────────────────────────┐
+│ Global App: "Ticketing System"                              │
+│ organization_id: NULL                                       │
+├─────────────────────────────────────────────────────────────┤
+│                                                             │
+│  ┌─────────────┐    ┌─────────────┐    ┌─────────────┐     │
+│  │  Org A      │    │  Org B      │    │  Org C      │     │
+│  │  User views │    │  User views │    │  User views │     │
+│  │  Org A data │    │  Org B data │    │  Org C data │     │
+│  └─────────────┘    └─────────────┘    └─────────────┘     │
+│         │                  │                  │             │
+│         ▼                  ▼                  ▼             │
+│  ┌─────────────────────────────────────────────────────┐   │
+│  │ Tables scoped by viewer's organization context      │   │
+│  │ SDK automatically filters: WHERE org_id = viewer.org│   │
+│  └─────────────────────────────────────────────────────┘   │
+└─────────────────────────────────────────────────────────────┘
+```
+
+**How it works:**
+- App definition is global (shared across all orgs)
+- When user accesses app, their org context is set
+- All table queries automatically scope to viewer's org
+- Same behavior as configs/integrations scoping
+
+### 10.3 Deliverables
 
 - [ ] Standalone app renderer route (`/apps/:slug`)
 - [ ] Embed route (`/embed/:slug`)
@@ -1157,48 +1181,69 @@ Variables are reactive and can be:
 
 ## Implementation Order
 
-### Sprint 1: Data Foundation
-1. Tables/Documents database + ORM
+### Sprint 1: Data Foundation (Phase 1)
+1. Tables/Documents database migration + ORM
 2. Tables/Documents API endpoints
-3. Tables SDK module
-4. Tests
+3. Tables SDK module (`bifrost.tables`)
+4. Unit + integration tests
 
-### Sprint 2: Application Container
-1. Applications database + ORM
-2. Applications API (CRUD + publish)
+### Sprint 2: Application Container (Phase 2)
+1. Applications database migration + ORM
+2. Applications API (CRUD + draft/publish + versioning)
 3. Application definition schema validation
 4. Tests
 
-### Sprint 3: Runtime Basics
+### Sprint 3: Layout & Basic Components (Phase 3)
+1. Layout renderer (recursive row/column/grid)
+2. Expression parser ({{ }} syntax)
+3. Basic display components (heading, text, card, divider)
+4. Component registry pattern
+
+### Sprint 4: Forms Integration (Phase 4)
+1. Extract field components to shared library
+2. FormEmbed component
+3. FormGroup component
+4. Inline progress display
+5. Field value collection
+
+### Sprint 5: Table Component (Phase 5)
+1. Table component with data binding
+2. Column definitions and rendering
+3. Row actions + bulk actions
+4. Pagination, sorting, filtering
+
+### Sprint 6: Navigation & Routing (Phase 6)
 1. App shell (navbar, sidebar)
-2. Page routing
-3. Layout renderer
-4. Basic components (heading, card, button)
+2. React Router integration
+3. Page context provider
+4. Route params and query params
 
-### Sprint 4: Table Component
-1. Table component with columns
-2. Row actions
-3. Pagination, sorting, filtering
-4. Bulk actions
+### Sprint 7: Permissions (Phase 7)
+1. App-level access check
+2. Page-level guards
+3. Component visibility expressions
+4. Navigation filtering
 
-### Sprint 5: Action System
-1. Workflow execution from buttons/actions
-2. Variable system
-3. Expression evaluation
-4. Table refresh
+### Sprint 8: Action System (Phase 8)
+1. Workflow execution hook
+2. Variable store (Zustand)
+3. Expression evaluation for data binding
+4. Table refresh, toasts
 
-### Sprint 6: Editor MVP
-1. Editor shell
-2. Page management
+### Sprint 9: Editor MVP (Phase 9)
+1. Editor shell with panels
+2. Page tree navigator
 3. Drag-and-drop canvas
 4. Property panel
-5. Preview + Publish
+5. Component palette
+6. Preview + Publish flow
 
-### Sprint 7: Polish & Embedding
+### Sprint 10: Polish & Embedding (Phase 10)
 1. File viewer component
 2. Modal forms
-3. Embedding support
-4. Documentation
+3. Embedding routes + token auth
+4. Multi-tenant global app support
+5. Documentation
 
 ---
 
@@ -1378,13 +1423,23 @@ Variables are reactive and can be:
 
 ---
 
-## Open Questions
+## Resolved Decisions
 
-1. **Form integration**: Do we embed existing forms as components, or unify form fields into the component system?
-2. **Permissions UI**: How granular? Page-level, component-level, or just app-level?
-3. **Offline/PWA**: Future consideration for field workers?
-4. **Versioning history**: Store all versions or just last N?
-5. **Multi-tenancy**: Can one app definition be deployed to multiple orgs?
+| Question | Decision |
+|----------|----------|
+| Form integration | Hybrid: unified components, forms are named groupings. FormEmbed + FormGroup for apps. |
+| Permissions | Three-level: app, page, and component (via visibility expressions) |
+| Versioning | Keep last 10 versions |
+| Multi-tenancy | Global apps serve all orgs with org-scoped data |
+| Data storage | JSONB only, no partition/sort keys needed |
+
+## Open Questions (Remaining)
+
+1. **Offline/PWA**: Future consideration for field workers? (Deferred - not MVP)
+2. **Real-time updates**: WebSocket for live data refresh, or polling? (Can start with polling)
+3. **App templates**: Pre-built app starters (CRM, Ticketing, etc.)? (Nice-to-have post-MVP)
+4. **Import/Export format**: Just JSON, or also support YAML for version control? (Start with JSON)
+5. **Component marketplace**: Allow sharing custom components across apps? (Future consideration)
 
 ---
 
