@@ -16,6 +16,7 @@ from src.models.orm.base import Base
 
 if TYPE_CHECKING:
     from src.models.orm.agents import Agent
+    from src.models.orm.applications import Application
     from src.models.orm.config import Config, SystemConfig
     from src.models.orm.executions import Execution
     from src.models.orm.forms import Form
@@ -62,5 +63,6 @@ class Organization(Base):
         back_populates="organization"
     )
     tables: Mapped[list["Table"]] = relationship(back_populates="organization")
+    applications: Mapped[list["Application"]] = relationship(back_populates="organization")
 
     __table_args__ = (Index("ix_organizations_domain", "domain"),)

@@ -95,6 +95,20 @@ from src.models.contracts.forms import (
     UpdateFormRequest,
 )
 
+# Applications (App Builder)
+from src.models.contracts.applications import (
+    ApplicationCreate,
+    ApplicationDefinition,
+    ApplicationDraftSave,
+    ApplicationListResponse,
+    ApplicationPublic,
+    ApplicationPublishRequest,
+    ApplicationRollbackRequest,
+    ApplicationUpdate,
+    VersionHistoryEntry,
+    VersionHistoryResponse,
+)
+
 # Agents & Chat
 from src.models.contracts.agents import (
     AgentCreate,
@@ -781,4 +795,15 @@ __all__ = [
     "ConfigData",
     "IntegrationData",
     "SDKOAuthCredentials",
+    # Applications (App Builder)
+    "ApplicationCreate",
+    "ApplicationUpdate",
+    "ApplicationPublic",
+    "ApplicationListResponse",
+    "ApplicationDefinition",
+    "ApplicationDraftSave",
+    "ApplicationPublishRequest",
+    "ApplicationRollbackRequest",
+    "VersionHistoryEntry",
+    "VersionHistoryResponse",
 ]

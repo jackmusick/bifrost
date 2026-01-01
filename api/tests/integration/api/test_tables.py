@@ -10,16 +10,26 @@ import pytest_asyncio
 from uuid import uuid4
 
 from sqlalchemy import delete, select
+from sqlalchemy.ext.asyncio import AsyncSession
 
-from src.core.database import get_db_context
 from src.models.orm.tables import Table, Document
+from src.models.orm.organizations import Organization
 from src.routers.tables import TableRepository, DocumentRepository
 
 
-@pytest.fixture
-def test_org_id():
-    """Generate unique org ID for test isolation."""
-    return uuid4()
+@pytest_asyncio.fixture
+async def test_org(db_session: AsyncSession):
+    """Create a real organization for test isolation."""
+    org = Organization(
+        id=uuid4(),
+        name=f"Test Org {uuid4().hex[:8]}",
+        domain=f"test-{uuid4().hex[:8]}.example.com",
+        created_by="test@example.com",
+    )
+    db_session.add(org)
+    await db_session.commit()
+    await db_session.refresh(org)
+    return org
 
 
 @pytest.fixture
@@ -28,341 +38,425 @@ def test_user_email():
     return "test@example.com"
 
 
-@pytest_asyncio.fixture
-async def cleanup_tables(test_org_id):
-    """Cleanup tables created during tests."""
-    created_table_ids = []
-    yield created_table_ids
-    # Cleanup after test
-    async with get_db_context() as db:
-        for table_id in created_table_ids:
-            stmt = delete(Table).where(Table.id == table_id)
-            await db.execute(stmt)
-        await db.commit()
-
-
 class TestTableRepositoryIntegration:
     """Integration tests for TableRepository with real PostgreSQL."""
 
     @pytest.mark.asyncio
-    async def test_create_and_get_table(self, test_org_id, test_user_email, cleanup_tables):
+    async def test_create_and_get_table(self, db_session: AsyncSession, test_org, test_user_email):
         """Test creating and retrieving a table."""
-        async with get_db_context() as db:
-            repo = TableRepository(db, test_org_id)
+        repo = TableRepository(db_session, test_org.id)
 
-            # Create table
-            from src.models.contracts.tables import TableCreate
-            table_data = TableCreate(
-                name=f"test_customers_{uuid4().hex[:8]}",
-                description="Customer records",
-                schema={"type": "object", "properties": {"name": {"type": "string"}}},
-            )
+        from src.models.contracts.tables import TableCreate
+        table_data = TableCreate(
+            name=f"test_customers_{uuid4().hex[:8]}",
+            description="Customer records",
+            schema={"type": "object", "properties": {"name": {"type": "string"}}},
+        )
 
-            table = await repo.create_table(table_data, created_by=test_user_email)
-            cleanup_tables.append(table.id)
+        table = await repo.create_table(table_data, created_by=test_user_email)
 
-            assert table.id is not None
-            assert table.name == table_data.name
-            assert table.description == "Customer records"
-            assert table.organization_id == test_org_id
+        assert table.id is not None
+        assert table.name == table_data.name
+        assert table.description == "Customer records"
+        assert table.organization_id == test_org.id
 
-            # Retrieve table
-            retrieved = await repo.get_by_name(table_data.name)
-            assert retrieved is not None
-            assert retrieved.id == table.id
+        # Retrieve table
+        retrieved = await repo.get_by_name(table_data.name)
+        assert retrieved is not None
+        assert retrieved.id == table.id
 
     @pytest.mark.asyncio
-    async def test_list_tables(self, test_org_id, test_user_email, cleanup_tables):
+    async def test_list_tables(self, db_session: AsyncSession, test_org, test_user_email):
         """Test listing tables."""
-        async with get_db_context() as db:
-            repo = TableRepository(db, test_org_id)
+        repo = TableRepository(db_session, test_org.id)
 
-            # Create multiple tables
-            from src.models.contracts.tables import TableCreate
-            for i in range(3):
-                table_data = TableCreate(
-                    name=f"test_table_{uuid4().hex[:8]}_{i}",
-                    description=f"Test table {i}",
-                )
-                table = await repo.create_table(table_data, created_by=test_user_email)
-                cleanup_tables.append(table.id)
-
-            # List tables
-            tables = await repo.list_tables()
-            assert len(tables) >= 3
-
-    @pytest.mark.asyncio
-    async def test_update_table(self, test_org_id, test_user_email, cleanup_tables):
-        """Test updating a table."""
-        async with get_db_context() as db:
-            repo = TableRepository(db, test_org_id)
-
-            from src.models.contracts.tables import TableCreate, TableUpdate
+        from src.models.contracts.tables import TableCreate
+        for i in range(3):
             table_data = TableCreate(
-                name=f"test_update_{uuid4().hex[:8]}",
-                description="Original description",
-            )
-            table = await repo.create_table(table_data, created_by=test_user_email)
-            cleanup_tables.append(table.id)
-
-            # Update table
-            update_data = TableUpdate(
-                description="Updated description",
-                schema={"type": "object"},
-            )
-            updated = await repo.update_table(table_data.name, update_data)
-
-            assert updated is not None
-            assert updated.description == "Updated description"
-            assert updated.schema == {"type": "object"}
-
-    @pytest.mark.asyncio
-    async def test_delete_table(self, test_org_id, test_user_email):
-        """Test deleting a table."""
-        async with get_db_context() as db:
-            repo = TableRepository(db, test_org_id)
-
-            from src.models.contracts.tables import TableCreate
-            table_data = TableCreate(
-                name=f"test_delete_{uuid4().hex[:8]}",
+                name=f"test_table_{uuid4().hex[:8]}_{i}",
+                description=f"Test table {i}",
             )
             await repo.create_table(table_data, created_by=test_user_email)
 
-            # Delete table
-            success = await repo.delete_table(table_data.name)
-            assert success is True
-
-            # Verify it's gone
-            retrieved = await repo.get_by_name(table_data.name)
-            assert retrieved is None
+        tables = await repo.list_tables()
+        assert len(tables) >= 3
 
     @pytest.mark.asyncio
-    async def test_duplicate_table_name_raises_error(self, test_org_id, test_user_email, cleanup_tables):
+    async def test_update_table(self, db_session: AsyncSession, test_org, test_user_email):
+        """Test updating a table."""
+        repo = TableRepository(db_session, test_org.id)
+
+        from src.models.contracts.tables import TableCreate, TableUpdate
+        table_data = TableCreate(
+            name=f"test_update_{uuid4().hex[:8]}",
+            description="Original description",
+        )
+        await repo.create_table(table_data, created_by=test_user_email)
+
+        update_data = TableUpdate(
+            description="Updated description",
+            schema={"type": "object"},
+        )
+        updated = await repo.update_table(table_data.name, update_data)
+
+        assert updated is not None
+        assert updated.description == "Updated description"
+        assert updated.schema == {"type": "object"}
+
+    @pytest.mark.asyncio
+    async def test_delete_table(self, db_session: AsyncSession, test_org, test_user_email):
+        """Test deleting a table."""
+        repo = TableRepository(db_session, test_org.id)
+
+        from src.models.contracts.tables import TableCreate
+        table_data = TableCreate(
+            name=f"test_delete_{uuid4().hex[:8]}",
+        )
+        await repo.create_table(table_data, created_by=test_user_email)
+
+        success = await repo.delete_table(table_data.name)
+        assert success is True
+
+        retrieved = await repo.get_by_name(table_data.name)
+        assert retrieved is None
+
+    @pytest.mark.asyncio
+    async def test_duplicate_table_name_raises_error(self, db_session: AsyncSession, test_org, test_user_email):
         """Test that creating a table with duplicate name raises error."""
-        async with get_db_context() as db:
-            repo = TableRepository(db, test_org_id)
+        repo = TableRepository(db_session, test_org.id)
 
-            from src.models.contracts.tables import TableCreate
-            table_name = f"test_duplicate_{uuid4().hex[:8]}"
-            table_data = TableCreate(name=table_name)
+        from src.models.contracts.tables import TableCreate
+        table_name = f"test_duplicate_{uuid4().hex[:8]}"
+        table_data = TableCreate(name=table_name)
 
-            table = await repo.create_table(table_data, created_by=test_user_email)
-            cleanup_tables.append(table.id)
+        await repo.create_table(table_data, created_by=test_user_email)
 
-            # Try to create with same name
-            with pytest.raises(ValueError, match="already exists"):
-                await repo.create_table(table_data, created_by=test_user_email)
+        with pytest.raises(ValueError, match="already exists"):
+            await repo.create_table(table_data, created_by=test_user_email)
 
 
 class TestDocumentRepositoryIntegration:
     """Integration tests for DocumentRepository with real PostgreSQL."""
 
     @pytest_asyncio.fixture
-    async def test_table(self, test_org_id, test_user_email, cleanup_tables):
+    async def test_table(self, db_session: AsyncSession, test_org, test_user_email):
         """Create a test table for document operations."""
-        async with get_db_context() as db:
-            repo = TableRepository(db, test_org_id)
+        repo = TableRepository(db_session, test_org.id)
 
-            from src.models.contracts.tables import TableCreate
-            table_data = TableCreate(
-                name=f"test_documents_{uuid4().hex[:8]}",
-            )
-            table = await repo.create_table(table_data, created_by=test_user_email)
-            cleanup_tables.append(table.id)
-
-            # Need to re-fetch from fresh session for document tests
-            return table.id, table.name
+        from src.models.contracts.tables import TableCreate
+        table_data = TableCreate(
+            name=f"test_documents_{uuid4().hex[:8]}",
+        )
+        table = await repo.create_table(table_data, created_by=test_user_email)
+        return table
 
     @pytest.mark.asyncio
-    async def test_insert_and_get_document(self, test_table, test_org_id, test_user_email):
+    async def test_insert_and_get_document(self, db_session: AsyncSession, test_table, test_user_email):
         """Test inserting and retrieving a document."""
-        table_id, table_name = test_table
+        doc_repo = DocumentRepository(db_session, test_table)
 
-        async with get_db_context() as db:
-            # Get table
-            table_repo = TableRepository(db, test_org_id)
-            table = await table_repo.get_by_name(table_name)
-            assert table is not None
+        doc_data = {"name": "Acme Corp", "email": "info@acme.com", "status": "active"}
+        doc = await doc_repo.insert(doc_data, created_by=test_user_email)
 
-            doc_repo = DocumentRepository(db, table)
+        assert doc.id is not None
+        assert doc.data["name"] == "Acme Corp"
+        assert doc.created_by == test_user_email
 
-            # Insert document
-            doc_data = {"name": "Acme Corp", "email": "info@acme.com", "status": "active"}
-            doc = await doc_repo.insert(doc_data, created_by=test_user_email)
-
-            assert doc.id is not None
-            assert doc.data["name"] == "Acme Corp"
-            assert doc.created_by == test_user_email
-
-            # Get document
-            retrieved = await doc_repo.get(doc.id)
-            assert retrieved is not None
-            assert retrieved.data["email"] == "info@acme.com"
+        retrieved = await doc_repo.get(doc.id)
+        assert retrieved is not None
+        assert retrieved.data["email"] == "info@acme.com"
 
     @pytest.mark.asyncio
-    async def test_update_document(self, test_table, test_org_id, test_user_email):
+    async def test_update_document(self, db_session: AsyncSession, test_table, test_user_email):
         """Test updating a document (partial update)."""
-        table_id, table_name = test_table
+        doc_repo = DocumentRepository(db_session, test_table)
 
-        async with get_db_context() as db:
-            table_repo = TableRepository(db, test_org_id)
-            table = await table_repo.get_by_name(table_name)
-            assert table is not None
+        doc = await doc_repo.insert(
+            {"name": "Acme", "status": "active"},
+            created_by=test_user_email,
+        )
 
-            doc_repo = DocumentRepository(db, table)
+        updated = await doc_repo.update(
+            doc.id,
+            {"status": "inactive", "notes": "Churned"},
+            updated_by=test_user_email,
+        )
 
-            # Insert document
-            doc = await doc_repo.insert(
-                {"name": "Acme", "status": "active"},
-                created_by=test_user_email,
-            )
-
-            # Update document (partial)
-            updated = await doc_repo.update(
-                doc.id,
-                {"status": "inactive", "notes": "Churned"},
-                updated_by=test_user_email,
-            )
-
-            assert updated is not None
-            assert updated.data["name"] == "Acme"  # Original preserved
-            assert updated.data["status"] == "inactive"  # Updated
-            assert updated.data["notes"] == "Churned"  # Added
+        assert updated is not None
+        assert updated.data["name"] == "Acme"
+        assert updated.data["status"] == "inactive"
+        assert updated.data["notes"] == "Churned"
 
     @pytest.mark.asyncio
-    async def test_delete_document(self, test_table, test_org_id, test_user_email):
+    async def test_delete_document(self, db_session: AsyncSession, test_table, test_user_email):
         """Test deleting a document."""
-        table_id, table_name = test_table
+        doc_repo = DocumentRepository(db_session, test_table)
 
-        async with get_db_context() as db:
-            table_repo = TableRepository(db, test_org_id)
-            table = await table_repo.get_by_name(table_name)
-            assert table is not None
+        doc = await doc_repo.insert({"name": "ToDelete"}, created_by=test_user_email)
 
-            doc_repo = DocumentRepository(db, table)
+        success = await doc_repo.delete(doc.id)
+        assert success is True
 
-            # Insert document
-            doc = await doc_repo.insert({"name": "ToDelete"}, created_by=test_user_email)
-
-            # Delete document
-            success = await doc_repo.delete(doc.id)
-            assert success is True
-
-            # Verify it's gone
-            retrieved = await doc_repo.get(doc.id)
-            assert retrieved is None
+        retrieved = await doc_repo.get(doc.id)
+        assert retrieved is None
 
     @pytest.mark.asyncio
-    async def test_query_documents_with_filter(self, test_table, test_org_id, test_user_email):
+    async def test_query_documents_with_filter(self, db_session: AsyncSession, test_table, test_user_email):
         """Test querying documents with filter."""
-        table_id, table_name = test_table
+        doc_repo = DocumentRepository(db_session, test_table)
 
-        async with get_db_context() as db:
-            table_repo = TableRepository(db, test_org_id)
-            table = await table_repo.get_by_name(table_name)
-            assert table is not None
+        await doc_repo.insert({"name": "Active1", "status": "active"}, created_by=test_user_email)
+        await doc_repo.insert({"name": "Active2", "status": "active"}, created_by=test_user_email)
+        await doc_repo.insert({"name": "Inactive", "status": "inactive"}, created_by=test_user_email)
 
-            doc_repo = DocumentRepository(db, table)
+        from src.models.contracts.tables import DocumentQuery
+        query = DocumentQuery(where={"status": "active"})
+        documents, total = await doc_repo.query(query)
 
-            # Insert test documents
-            await doc_repo.insert({"name": "Active1", "status": "active"}, created_by=test_user_email)
-            await doc_repo.insert({"name": "Active2", "status": "active"}, created_by=test_user_email)
-            await doc_repo.insert({"name": "Inactive", "status": "inactive"}, created_by=test_user_email)
-
-            # Query with filter
-            from src.models.contracts.tables import DocumentQuery
-            query = DocumentQuery(where={"status": "active"})
-            documents, total = await doc_repo.query(query)
-
-            assert total == 2
-            assert all(d.data["status"] == "active" for d in documents)
+        assert total == 2
+        assert all(d.data["status"] == "active" for d in documents)
 
     @pytest.mark.asyncio
-    async def test_query_documents_with_pagination(self, test_table, test_org_id, test_user_email):
+    async def test_query_documents_with_pagination(self, db_session: AsyncSession, test_table, test_user_email):
         """Test querying documents with pagination."""
-        table_id, table_name = test_table
+        doc_repo = DocumentRepository(db_session, test_table)
 
-        async with get_db_context() as db:
-            table_repo = TableRepository(db, test_org_id)
-            table = await table_repo.get_by_name(table_name)
-            assert table is not None
+        for i in range(10):
+            await doc_repo.insert({"index": i, "name": f"Doc{i}"}, created_by=test_user_email)
 
-            doc_repo = DocumentRepository(db, table)
+        from src.models.contracts.tables import DocumentQuery
+        query = DocumentQuery(limit=3, offset=0)
+        documents, total = await doc_repo.query(query)
 
-            # Insert 10 documents
-            for i in range(10):
-                await doc_repo.insert({"index": i, "name": f"Doc{i}"}, created_by=test_user_email)
+        assert total == 10
+        assert len(documents) == 3
 
-            # Query with pagination
-            from src.models.contracts.tables import DocumentQuery
-            query = DocumentQuery(limit=3, offset=0)
-            documents, total = await doc_repo.query(query)
+        query = DocumentQuery(limit=3, offset=3)
+        documents, total = await doc_repo.query(query)
 
-            assert total == 10
-            assert len(documents) == 3
-
-            # Next page
-            query = DocumentQuery(limit=3, offset=3)
-            documents, total = await doc_repo.query(query)
-
-            assert total == 10
-            assert len(documents) == 3
+        assert total == 10
+        assert len(documents) == 3
 
     @pytest.mark.asyncio
-    async def test_count_documents(self, test_table, test_org_id, test_user_email):
+    async def test_count_documents(self, db_session: AsyncSession, test_table, test_user_email):
         """Test counting documents."""
-        table_id, table_name = test_table
+        doc_repo = DocumentRepository(db_session, test_table)
 
-        async with get_db_context() as db:
-            table_repo = TableRepository(db, test_org_id)
-            table = await table_repo.get_by_name(table_name)
-            assert table is not None
+        await doc_repo.insert({"type": "a"}, created_by=test_user_email)
+        await doc_repo.insert({"type": "a"}, created_by=test_user_email)
+        await doc_repo.insert({"type": "b"}, created_by=test_user_email)
 
-            doc_repo = DocumentRepository(db, table)
+        total = await doc_repo.count()
+        assert total >= 3
 
-            # Insert documents
-            await doc_repo.insert({"type": "a"}, created_by=test_user_email)
-            await doc_repo.insert({"type": "a"}, created_by=test_user_email)
-            await doc_repo.insert({"type": "b"}, created_by=test_user_email)
+        count_a = await doc_repo.count(where={"type": "a"})
+        assert count_a == 2
 
-            # Count all
-            total = await doc_repo.count()
-            assert total >= 3
+        count_b = await doc_repo.count(where={"type": "b"})
+        assert count_b == 1
 
-            # Count with filter
-            count_a = await doc_repo.count(where={"type": "a"})
-            assert count_a == 2
 
-            count_b = await doc_repo.count(where={"type": "b"})
-            assert count_b == 1
+class TestDocumentQueryOperators:
+    """Integration tests for document query filter operators."""
+
+    @pytest_asyncio.fixture
+    async def test_table_with_data(self, db_session: AsyncSession, test_org, test_user_email):
+        """Create a test table with sample documents for query testing."""
+        repo = TableRepository(db_session, test_org.id)
+
+        from src.models.contracts.tables import TableCreate
+        table_data = TableCreate(
+            name=f"test_query_ops_{uuid4().hex[:8]}",
+        )
+        table = await repo.create_table(table_data, created_by=test_user_email)
+
+        doc_repo = DocumentRepository(db_session, table)
+
+        # Insert test documents with various data types
+        await doc_repo.insert({"name": "Acme Corp", "status": "active", "amount": 100}, created_by=test_user_email)
+        await doc_repo.insert({"name": "Beta Inc", "status": "active", "amount": 200}, created_by=test_user_email)
+        await doc_repo.insert({"name": "Gamma LLC", "status": "inactive", "amount": 300}, created_by=test_user_email)
+        await doc_repo.insert({"name": "Delta Co", "status": "pending", "amount": 150}, created_by=test_user_email)
+        await doc_repo.insert({"name": "Acme Beta", "status": "active"}, created_by=test_user_email)  # No amount field
+
+        return table
+
+    @pytest.mark.asyncio
+    async def test_contains_operator(self, db_session: AsyncSession, test_table_with_data):
+        """Test contains operator for case-insensitive substring search."""
+        doc_repo = DocumentRepository(db_session, test_table_with_data)
+
+        from src.models.contracts.tables import DocumentQuery
+
+        # Test contains (case-insensitive)
+        query = DocumentQuery(where={"name": {"contains": "acme"}})
+        documents, total = await doc_repo.query(query)
+        assert total == 2  # "Acme Corp" and "Acme Beta"
+        assert all("Acme" in d.data["name"] or "acme" in d.data["name"].lower() for d in documents)
+
+        # Test contains with uppercase search
+        query = DocumentQuery(where={"name": {"contains": "BETA"}})
+        documents, total = await doc_repo.query(query)
+        assert total == 2  # "Beta Inc" and "Acme Beta"
+
+    @pytest.mark.asyncio
+    async def test_starts_with_operator(self, db_session: AsyncSession, test_table_with_data):
+        """Test starts_with operator."""
+        doc_repo = DocumentRepository(db_session, test_table_with_data)
+
+        from src.models.contracts.tables import DocumentQuery
+
+        query = DocumentQuery(where={"name": {"starts_with": "Acme"}})
+        documents, total = await doc_repo.query(query)
+        assert total == 2  # "Acme Corp" and "Acme Beta"
+        assert all(d.data["name"].startswith("Acme") for d in documents)
+
+        # Test case-insensitivity
+        query = DocumentQuery(where={"name": {"starts_with": "beta"}})
+        documents, total = await doc_repo.query(query)
+        assert total == 1  # "Beta Inc"
+
+    @pytest.mark.asyncio
+    async def test_ends_with_operator(self, db_session: AsyncSession, test_table_with_data):
+        """Test ends_with operator."""
+        doc_repo = DocumentRepository(db_session, test_table_with_data)
+
+        from src.models.contracts.tables import DocumentQuery
+
+        query = DocumentQuery(where={"name": {"ends_with": "Corp"}})
+        documents, total = await doc_repo.query(query)
+        assert total == 1  # "Acme Corp"
+        assert documents[0].data["name"] == "Acme Corp"
+
+        # Test case-insensitivity
+        query = DocumentQuery(where={"name": {"ends_with": "inc"}})
+        documents, total = await doc_repo.query(query)
+        assert total == 1  # "Beta Inc"
+
+    @pytest.mark.asyncio
+    async def test_ne_operator(self, db_session: AsyncSession, test_table_with_data):
+        """Test ne (not equals) operator."""
+        doc_repo = DocumentRepository(db_session, test_table_with_data)
+
+        from src.models.contracts.tables import DocumentQuery
+
+        query = DocumentQuery(where={"status": {"ne": "active"}})
+        documents, total = await doc_repo.query(query)
+        assert total == 2  # "inactive" and "pending"
+        assert all(d.data["status"] != "active" for d in documents)
+
+    @pytest.mark.asyncio
+    async def test_gt_gte_lt_lte_operators(self, db_session: AsyncSession, test_table_with_data):
+        """Test comparison operators (gt, gte, lt, lte)."""
+        doc_repo = DocumentRepository(db_session, test_table_with_data)
+
+        from src.models.contracts.tables import DocumentQuery
+
+        # Greater than
+        query = DocumentQuery(where={"amount": {"gt": "150"}})
+        documents, total = await doc_repo.query(query)
+        assert total == 2  # 200 and 300
+
+        # Greater than or equal
+        query = DocumentQuery(where={"amount": {"gte": "150"}})
+        documents, total = await doc_repo.query(query)
+        assert total == 3  # 150, 200, 300
+
+        # Less than
+        query = DocumentQuery(where={"amount": {"lt": "200"}})
+        documents, total = await doc_repo.query(query)
+        assert total == 2  # 100 and 150
+
+        # Less than or equal
+        query = DocumentQuery(where={"amount": {"lte": "200"}})
+        documents, total = await doc_repo.query(query)
+        assert total == 3  # 100, 150, 200
+
+    @pytest.mark.asyncio
+    async def test_in_operator(self, db_session: AsyncSession, test_table_with_data):
+        """Test in operator for matching values in a list."""
+        doc_repo = DocumentRepository(db_session, test_table_with_data)
+
+        from src.models.contracts.tables import DocumentQuery
+
+        query = DocumentQuery(where={"status": {"in": ["active", "pending"]}})
+        documents, total = await doc_repo.query(query)
+        assert total == 4  # 3 active + 1 pending
+        assert all(d.data["status"] in ["active", "pending"] for d in documents)
+
+    @pytest.mark.asyncio
+    async def test_is_null_operator(self, db_session: AsyncSession, test_table_with_data):
+        """Test is_null operator for checking null/missing fields."""
+        doc_repo = DocumentRepository(db_session, test_table_with_data)
+
+        from src.models.contracts.tables import DocumentQuery
+
+        # Find documents where amount is null/missing
+        query = DocumentQuery(where={"amount": {"is_null": True}})
+        documents, total = await doc_repo.query(query)
+        assert total == 1  # "Acme Beta" has no amount
+        assert documents[0].data["name"] == "Acme Beta"
+
+        # Find documents where amount is NOT null
+        query = DocumentQuery(where={"amount": {"is_null": False}})
+        documents, total = await doc_repo.query(query)
+        assert total == 4  # All others have amount
+
+    @pytest.mark.asyncio
+    async def test_combined_operators(self, db_session: AsyncSession, test_table_with_data):
+        """Test combining multiple filter conditions."""
+        doc_repo = DocumentRepository(db_session, test_table_with_data)
+
+        from src.models.contracts.tables import DocumentQuery
+
+        # Active status AND amount >= 150
+        query = DocumentQuery(where={
+            "status": "active",
+            "amount": {"gte": "150"}
+        })
+        documents, total = await doc_repo.query(query)
+        assert total == 1  # Only "Beta Inc" (active, 200)
+
+    @pytest.mark.asyncio
+    async def test_eq_operator_explicit(self, db_session: AsyncSession, test_table_with_data):
+        """Test explicit eq operator (same as simple equality)."""
+        doc_repo = DocumentRepository(db_session, test_table_with_data)
+
+        from src.models.contracts.tables import DocumentQuery
+
+        # Using explicit eq operator
+        query = DocumentQuery(where={"status": {"eq": "active"}})
+        documents, total = await doc_repo.query(query)
+        assert total == 3
+
+        # Should be same as simple equality
+        query = DocumentQuery(where={"status": "active"})
+        documents2, total2 = await doc_repo.query(query)
+        assert total2 == 3
 
 
 class TestTableCascadeDelete:
     """Test that deleting a table cascades to documents."""
 
     @pytest.mark.asyncio
-    async def test_delete_table_deletes_documents(self, test_org_id, test_user_email):
+    async def test_delete_table_deletes_documents(self, db_session: AsyncSession, test_org, test_user_email):
         """Test that deleting a table also deletes all its documents."""
-        async with get_db_context() as db:
-            table_repo = TableRepository(db, test_org_id)
+        table_repo = TableRepository(db_session, test_org.id)
 
-            from src.models.contracts.tables import TableCreate
-            table_data = TableCreate(name=f"test_cascade_{uuid4().hex[:8]}")
-            table = await table_repo.create_table(table_data, created_by=test_user_email)
+        from src.models.contracts.tables import TableCreate
+        table_data = TableCreate(name=f"test_cascade_{uuid4().hex[:8]}")
+        table = await table_repo.create_table(table_data, created_by=test_user_email)
 
-            doc_repo = DocumentRepository(db, table)
+        doc_repo = DocumentRepository(db_session, table)
 
-            # Insert documents
-            doc1 = await doc_repo.insert({"name": "Doc1"}, created_by=test_user_email)
-            doc2 = await doc_repo.insert({"name": "Doc2"}, created_by=test_user_email)
-            doc_ids = [doc1.id, doc2.id]
+        doc1 = await doc_repo.insert({"name": "Doc1"}, created_by=test_user_email)
+        doc2 = await doc_repo.insert({"name": "Doc2"}, created_by=test_user_email)
+        doc_ids = [doc1.id, doc2.id]
 
-            # Delete table
-            success = await table_repo.delete_table(table_data.name)
-            assert success is True
+        success = await table_repo.delete_table(table_data.name)
+        assert success is True
 
-            # Verify documents are gone
-            stmt = select(Document).where(Document.id.in_(doc_ids))
-            result = await db.execute(stmt)
-            remaining = result.scalars().all()
-            assert len(remaining) == 0
+        stmt = select(Document).where(Document.id.in_(doc_ids))
+        result = await db_session.execute(stmt)
+        remaining = result.scalars().all()
+        assert len(remaining) == 0

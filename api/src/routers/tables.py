@@ -14,7 +14,7 @@ from typing import Any
 from uuid import UUID
 
 from fastapi import APIRouter, HTTPException, Query, status
-from sqlalchemy import func, select
+from sqlalchemy import String, cast, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.core.auth import Context, CurrentUser
@@ -137,6 +137,73 @@ class TableRepository(OrgScopedRepository[Table]):
         return True
 
 
+def _build_document_filters(base_query: Any, where: dict[str, Any]) -> Any:
+    """Build SQLAlchemy filters from where clause with JSON-native operators.
+
+    Supports:
+    - Simple equality: {"status": "active"}
+    - Comparison operators: {"amount": {"gt": 100, "lte": 1000}}
+    - Contains: {"name": {"contains": "acme"}} (case-insensitive substring)
+    - Starts/ends with: {"name": {"starts_with": "a"}}
+    - IN lists: {"category": {"in": ["a", "b"]}}
+    - NULL checks: {"deleted_at": {"is_null": true}}
+    - Has key: {"field": {"has_key": true}}
+    """
+    for field, value in where.items():
+        json_field = Document.data[field]
+
+        if isinstance(value, dict):
+            # Operator-based filter
+            for op, op_value in value.items():
+                if op == "eq":
+                    base_query = base_query.where(json_field.astext == str(op_value))
+                elif op == "ne":
+                    base_query = base_query.where(json_field.astext != str(op_value))
+                elif op == "contains":
+                    # Case-insensitive substring search
+                    base_query = base_query.where(json_field.astext.ilike(f"%{op_value}%"))
+                elif op == "starts_with":
+                    base_query = base_query.where(json_field.astext.ilike(f"{op_value}%"))
+                elif op == "ends_with":
+                    base_query = base_query.where(json_field.astext.ilike(f"%{op_value}"))
+                elif op == "gt":
+                    base_query = base_query.where(
+                        cast(json_field.astext, String) > str(op_value)
+                    )
+                elif op == "gte":
+                    base_query = base_query.where(
+                        cast(json_field.astext, String) >= str(op_value)
+                    )
+                elif op == "lt":
+                    base_query = base_query.where(
+                        cast(json_field.astext, String) < str(op_value)
+                    )
+                elif op == "lte":
+                    base_query = base_query.where(
+                        cast(json_field.astext, String) <= str(op_value)
+                    )
+                elif op in ("in", "in_"):
+                    if isinstance(op_value, list):
+                        base_query = base_query.where(
+                            json_field.astext.in_([str(v) for v in op_value])
+                        )
+                elif op == "is_null":
+                    if op_value:
+                        base_query = base_query.where(json_field.is_(None))
+                    else:
+                        base_query = base_query.where(json_field.isnot(None))
+                elif op == "has_key":
+                    if op_value:
+                        base_query = base_query.where(Document.data.has_key(field))
+                    else:
+                        base_query = base_query.where(~Document.data.has_key(field))
+        else:
+            # Simple equality
+            base_query = base_query.where(json_field.astext == str(value))
+
+    return base_query
+
+
 class DocumentRepository:
     """Repository for document operations within a table."""
 
@@ -199,13 +266,9 @@ class DocumentRepository:
         """Query documents with filtering and pagination."""
         base_query = select(Document).where(Document.table_id == self.table.id)
 
-        # Apply where filters
+        # Apply where filters using JSON-native operators
         if query_params.where:
-            for key, value in query_params.where.items():
-                # Use JSONB containment for filtering
-                base_query = base_query.where(
-                    Document.data[key].astext == str(value)
-                )
+            base_query = _build_document_filters(base_query, query_params.where)
 
         # Get total count before pagination
         count_query = select(func.count()).select_from(base_query.subquery())
@@ -236,13 +299,13 @@ class DocumentRepository:
 
     async def count(self, where: dict[str, Any] | None = None) -> int:
         """Count documents matching filter."""
-        query = select(func.count()).where(Document.table_id == self.table.id)
+        base_query = select(Document).where(Document.table_id == self.table.id)
 
         if where:
-            for key, value in where.items():
-                query = query.where(Document.data[key].astext == str(value))
+            base_query = _build_document_filters(base_query, where)
 
-        result = await self.session.execute(query)
+        count_query = select(func.count()).select_from(base_query.subquery())
+        result = await self.session.execute(count_query)
         return result.scalar() or 0
 
 

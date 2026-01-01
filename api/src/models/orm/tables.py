@@ -16,6 +16,7 @@ from sqlalchemy.orm import Mapped, mapped_column, relationship
 from src.models.orm.base import Base
 
 if TYPE_CHECKING:
+    from src.models.orm.applications import Application
     from src.models.orm.organizations import Organization
 
 
@@ -39,8 +40,7 @@ class Table(Base):
         ForeignKey("organizations.id", ondelete="CASCADE"), default=None
     )
     application_id: Mapped[UUID | None] = mapped_column(
-        # FK to applications will be added when that table exists
-        default=None
+        ForeignKey("applications.id", ondelete="SET NULL"), default=None
     )
     schema: Mapped[dict | None] = mapped_column(JSONB, default=None)
     description: Mapped[str | None] = mapped_column(Text, default=None)
@@ -58,6 +58,9 @@ class Table(Base):
     # Relationships
     organization: Mapped["Organization | None"] = relationship(
         "Organization", back_populates="tables"
+    )
+    application: Mapped["Application | None"] = relationship(
+        "Application", back_populates="tables"
     )
     documents: Mapped[list["Document"]] = relationship(
         "Document", back_populates="table", cascade="all, delete-orphan"

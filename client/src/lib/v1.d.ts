@@ -3108,22 +3108,22 @@ export interface paths {
          * Execute workflow via API key
          * @description Execute an endpoint-enabled workflow using an API key for authentication
          */
-        get: operations["execute_endpoint_api_endpoints__workflow_name__put"];
+        get: operations["execute_endpoint_api_endpoints__workflow_name__get"];
         /**
          * Execute workflow via API key
          * @description Execute an endpoint-enabled workflow using an API key for authentication
          */
-        put: operations["execute_endpoint_api_endpoints__workflow_name__put"];
+        put: operations["execute_endpoint_api_endpoints__workflow_name__get"];
         /**
          * Execute workflow via API key
          * @description Execute an endpoint-enabled workflow using an API key for authentication
          */
-        post: operations["execute_endpoint_api_endpoints__workflow_name__put"];
+        post: operations["execute_endpoint_api_endpoints__workflow_name__get"];
         /**
          * Execute workflow via API key
          * @description Execute an endpoint-enabled workflow using an API key for authentication
          */
-        delete: operations["execute_endpoint_api_endpoints__workflow_name__put"];
+        delete: operations["execute_endpoint_api_endpoints__workflow_name__get"];
         options?: never;
         head?: never;
         patch?: never;
@@ -3710,6 +3710,195 @@ export interface paths {
         get: operations["download_cli_api_cli_download_get"];
         put?: never;
         post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/cli/tables/create": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Create a table
+         * @description Create a new table via SDK.
+         */
+        post: operations["cli_create_table_api_cli_tables_create_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/cli/tables/list": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * List tables
+         * @description List tables via SDK.
+         */
+        post: operations["cli_list_tables_api_cli_tables_list_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/cli/tables/delete": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Delete a table
+         * @description Delete a table and all its documents via SDK.
+         */
+        post: operations["cli_delete_table_api_cli_tables_delete_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/cli/tables/documents/insert": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Insert a document
+         * @description Insert a document into a table via SDK.
+         */
+        post: operations["cli_insert_document_api_cli_tables_documents_insert_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/cli/tables/documents/get": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Get a document
+         * @description Get a document by ID via SDK.
+         */
+        post: operations["cli_get_document_api_cli_tables_documents_get_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/cli/tables/documents/update": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Update a document
+         * @description Update a document via SDK (partial update, merges with existing).
+         */
+        post: operations["cli_update_document_api_cli_tables_documents_update_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/cli/tables/documents/delete": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Delete a document
+         * @description Delete a document via SDK.
+         */
+        post: operations["cli_delete_document_api_cli_tables_documents_delete_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/cli/tables/documents/query": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Query documents
+         * @description Query documents with filtering and pagination via SDK.
+         *
+         *     Supports advanced filter operators:
+         *     - Simple equality: {"status": "active"}
+         *     - Comparison: {"amount": {"gt": 100, "lte": 1000}}
+         *     - LIKE patterns: {"name": {"like": "%acme%"}} or {"name": {"ilike": "%ACME%"}}
+         *     - IN lists: {"category": {"in": ["a", "b"]}}
+         *     - NULL checks: {"deleted_at": {"is_null": true}}
+         */
+        post: operations["cli_query_documents_api_cli_tables_documents_query_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/cli/tables/documents/count": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Count documents
+         * @description Count documents matching filter via SDK.
+         *
+         *     Supports the same filter operators as query.
+         */
+        post: operations["cli_count_documents_api_cli_tables_documents_count_post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -5416,6 +5605,302 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/tables": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List tables
+         * @description List all tables in the current scope.
+         */
+        get: operations["list_tables_api_tables_get"];
+        put?: never;
+        /**
+         * Create a table
+         * @description Create a new table for storing documents.
+         */
+        post: operations["create_table_api_tables_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/tables/{name}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get table metadata
+         * @description Get table metadata by name.
+         */
+        get: operations["get_table_api_tables__name__get"];
+        put?: never;
+        post?: never;
+        /**
+         * Delete table
+         * @description Delete a table and all its documents.
+         */
+        delete: operations["delete_table_api_tables__name__delete"];
+        options?: never;
+        head?: never;
+        /**
+         * Update table
+         * @description Update table metadata.
+         */
+        patch: operations["update_table_api_tables__name__patch"];
+        trace?: never;
+    };
+    "/api/tables/{name}/documents": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Insert a document
+         * @description Insert a new document into the table.
+         */
+        post: operations["insert_document_api_tables__name__documents_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/tables/{name}/documents/{doc_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get a document
+         * @description Get a document by ID.
+         */
+        get: operations["get_document_api_tables__name__documents__doc_id__get"];
+        put?: never;
+        post?: never;
+        /**
+         * Delete a document
+         * @description Delete a document.
+         */
+        delete: operations["delete_document_api_tables__name__documents__doc_id__delete"];
+        options?: never;
+        head?: never;
+        /**
+         * Update a document
+         * @description Update a document (partial update, merges with existing).
+         */
+        patch: operations["update_document_api_tables__name__documents__doc_id__patch"];
+        trace?: never;
+    };
+    "/api/tables/{name}/documents/query": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Query documents
+         * @description Query documents with filtering and pagination.
+         */
+        post: operations["query_documents_api_tables__name__documents_query_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/tables/{name}/documents/count": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Count documents
+         * @description Count documents in a table.
+         */
+        get: operations["count_documents_api_tables__name__documents_count_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/applications": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List applications
+         * @description List all applications in the current scope.
+         */
+        get: operations["list_applications_api_applications_get"];
+        put?: never;
+        /**
+         * Create an application
+         * @description Create a new application.
+         */
+        post: operations["create_application_api_applications_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/applications/{slug}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get application metadata
+         * @description Get application metadata by slug.
+         */
+        get: operations["get_application_api_applications__slug__get"];
+        put?: never;
+        post?: never;
+        /**
+         * Delete application
+         * @description Delete an application.
+         */
+        delete: operations["delete_application_api_applications__slug__delete"];
+        options?: never;
+        head?: never;
+        /**
+         * Update application metadata
+         * @description Update application metadata.
+         */
+        patch: operations["update_application_api_applications__slug__patch"];
+        trace?: never;
+    };
+    "/api/applications/{slug}/definition": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get live definition
+         * @description Get the live (published) definition of an application.
+         */
+        get: operations["get_live_definition_api_applications__slug__definition_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/applications/{slug}/draft": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get draft definition
+         * @description Get the draft definition of an application.
+         */
+        get: operations["get_draft_definition_api_applications__slug__draft_get"];
+        /**
+         * Save draft definition
+         * @description Save a new draft definition.
+         */
+        put: operations["save_draft_api_applications__slug__draft_put"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/applications/{slug}/publish": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Publish draft to live
+         * @description Publish the draft definition to live.
+         */
+        post: operations["publish_application_api_applications__slug__publish_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/applications/{slug}/rollback": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Rollback to previous version
+         * @description Rollback to a previous version from history.
+         */
+        post: operations["rollback_application_api_applications__slug__rollback_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/applications/{slug}/history": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get version history
+         * @description Get the version history of an application.
+         */
+        get: operations["get_version_history_api_applications__slug__history_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/": {
         parameters: {
             query?: never;
@@ -5825,6 +6310,158 @@ export interface components {
              * @description List of system tool names enabled for this agent
              */
             system_tools?: string[] | null;
+        };
+        /**
+         * ApplicationCreate
+         * @description Input for creating an application.
+         */
+        ApplicationCreate: {
+            /**
+             * Name
+             * @description Application display name
+             */
+            name: string;
+            /**
+             * Description
+             * @description Optional application description
+             */
+            description?: string | null;
+            /**
+             * Icon
+             * @description Icon identifier (e.g., 'home', 'settings', 'chart')
+             */
+            icon?: string | null;
+            /**
+             * Slug
+             * @description URL-friendly slug (lowercase letters, numbers, hyphens)
+             */
+            slug: string;
+        };
+        /**
+         * ApplicationDefinition
+         * @description Application definition (the complete app structure).
+         */
+        ApplicationDefinition: {
+            /**
+             * Definition
+             * @description Complete application definition (pages, components, etc.)
+             */
+            definition?: {
+                [key: string]: unknown;
+            } | null;
+            /**
+             * Version
+             * @description Version number of this definition
+             */
+            version: number;
+            /**
+             * Is Live
+             * @description Whether this is the live or draft version
+             */
+            is_live: boolean;
+        };
+        /**
+         * ApplicationDraftSave
+         * @description Input for saving a draft definition.
+         */
+        ApplicationDraftSave: {
+            /**
+             * Definition
+             * @description Complete application definition to save as draft
+             */
+            definition: {
+                [key: string]: unknown;
+            };
+        };
+        /**
+         * ApplicationListResponse
+         * @description Response for listing applications.
+         */
+        ApplicationListResponse: {
+            /** Applications */
+            applications: components["schemas"]["ApplicationPublic"][];
+            /** Total */
+            total: number;
+        };
+        /**
+         * ApplicationPublic
+         * @description Application output for API responses.
+         */
+        ApplicationPublic: {
+            /**
+             * Name
+             * @description Application display name
+             */
+            name: string;
+            /**
+             * Description
+             * @description Optional application description
+             */
+            description?: string | null;
+            /**
+             * Icon
+             * @description Icon identifier (e.g., 'home', 'settings', 'chart')
+             */
+            icon?: string | null;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Slug */
+            slug: string;
+            /** Organization Id */
+            organization_id: string | null;
+            /** Live Version */
+            live_version: number;
+            /** Draft Version */
+            draft_version: number;
+            /** Published At */
+            published_at: string | null;
+            /** Created At */
+            created_at: string | null;
+            /** Updated At */
+            updated_at: string | null;
+            /** Created By */
+            created_by: string | null;
+            /** Is Published */
+            is_published: boolean;
+            /** Has Unpublished Changes */
+            has_unpublished_changes: boolean;
+        };
+        /**
+         * ApplicationPublishRequest
+         * @description Request to publish draft to live.
+         */
+        ApplicationPublishRequest: {
+            /**
+             * Message
+             * @description Optional publish message for version history
+             */
+            message?: string | null;
+        };
+        /**
+         * ApplicationRollbackRequest
+         * @description Request to rollback to a previous version.
+         */
+        ApplicationRollbackRequest: {
+            /**
+             * Version
+             * @description Version number to rollback to (from version_history)
+             */
+            version: number;
+        };
+        /**
+         * ApplicationUpdate
+         * @description Input for updating application metadata.
+         */
+        ApplicationUpdate: {
+            /** Name */
+            name?: string | null;
+            /** Description */
+            description?: string | null;
+            /** Icon */
+            icon?: string | null;
         };
         /**
          * AssignAgentsToRoleRequest
@@ -7439,6 +8076,124 @@ export interface components {
              * @description Error message if operation failed
              */
             error?: string | null;
+        };
+        /**
+         * DocumentCountResponse
+         * @description Response for document count.
+         */
+        DocumentCountResponse: {
+            /** Count */
+            count: number;
+        };
+        /**
+         * DocumentCreate
+         * @description Input for creating a document.
+         */
+        DocumentCreate: {
+            /**
+             * Data
+             * @description Document data (any JSON-serializable dict)
+             */
+            data: {
+                [key: string]: unknown;
+            };
+        };
+        /**
+         * DocumentListResponse
+         * @description Response for document queries.
+         */
+        DocumentListResponse: {
+            /** Documents */
+            documents: components["schemas"]["DocumentPublic"][];
+            /** Total */
+            total: number;
+            /** Limit */
+            limit: number;
+            /** Offset */
+            offset: number;
+        };
+        /**
+         * DocumentPublic
+         * @description Document output for API responses.
+         */
+        DocumentPublic: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /**
+             * Table Id
+             * Format: uuid
+             */
+            table_id: string;
+            /** Data */
+            data: {
+                [key: string]: unknown;
+            };
+            /** Created At */
+            created_at: string | null;
+            /** Updated At */
+            updated_at: string | null;
+            /** Created By */
+            created_by: string | null;
+            /** Updated By */
+            updated_by: string | null;
+        };
+        /**
+         * DocumentQuery
+         * @description Query parameters for document search.
+         */
+        DocumentQuery: {
+            /**
+             * Where
+             * @description Filter conditions. Supports:
+             *             - Simple equality: {"status": "active"}
+             *             - Operators: {"amount": {"gt": 100, "lte": 1000}}
+             *             - LIKE: {"name": {"like": "%acme%"}} or {"name": {"ilike": "%ACME%"}}
+             *             - IN: {"category": {"in": ["a", "b"]}}
+             *             - NULL: {"deleted_at": {"is_null": true}}
+             */
+            where?: {
+                [key: string]: unknown;
+            } | null;
+            /**
+             * Order By
+             * @description Field to order by (data field name)
+             */
+            order_by?: string | null;
+            /**
+             * Order Dir
+             * @description Sort direction
+             * @default asc
+             * @enum {string}
+             */
+            order_dir: "asc" | "desc";
+            /**
+             * Limit
+             * @description Maximum documents to return
+             * @default 100
+             */
+            limit: number;
+            /**
+             * Offset
+             * @description Number of documents to skip
+             * @default 0
+             */
+            offset: number;
+        };
+        /**
+         * DocumentUpdate
+         * @description Input for updating a document (partial update, merges with existing).
+         */
+        DocumentUpdate: {
+            /**
+             * Data
+             * @description Fields to update (merged with existing data)
+             */
+            data: {
+                [key: string]: unknown;
+            };
         };
         /**
          * DynamicValuesRequest
@@ -10204,11 +10959,6 @@ export interface components {
             issuer: string;
             /** Account Name */
             account_name: string;
-            /**
-             * Is Existing
-             * @default false
-             */
-            is_existing: boolean;
         };
         /**
          * MFAStatusResponse
@@ -10228,11 +10978,20 @@ export interface components {
         };
         /**
          * MFAVerifyRequest
-         * @description Request to verify MFA code.
+         * @description Request to verify MFA code during login.
          */
         MFAVerifyRequest: {
+            /** Mfa Token */
+            mfa_token: string;
             /** Code */
             code: string;
+            /**
+             * Trust Device
+             * @default false
+             */
+            trust_device: boolean;
+            /** Device Name */
+            device_name?: string | null;
         };
         /**
          * MFAVerifyResponse
@@ -10454,15 +11213,24 @@ export interface components {
         };
         /**
          * OAuthCallbackRequest
-         * @description OAuth callback request (for when frontend handles callback).
+         * @description Request model for OAuth callback endpoint
          */
         OAuthCallbackRequest: {
-            /** Provider */
-            provider: string;
-            /** Code */
+            /**
+             * Code
+             * @description Authorization code from OAuth provider
+             */
             code: string;
-            /** State */
-            state: string;
+            /**
+             * State
+             * @description State parameter for CSRF protection
+             */
+            state?: string | null;
+            /**
+             * Redirect Uri
+             * @description Redirect URI used in authorization request
+             */
+            redirect_uri?: string | null;
         };
         /**
          * OAuthCallbackResponse
@@ -11999,6 +12767,265 @@ export interface components {
             user_ids: string[];
         };
         /**
+         * SDKDocumentCountRequest
+         * @description SDK request for counting documents.
+         */
+        SDKDocumentCountRequest: {
+            /**
+             * Table
+             * @description Table name
+             */
+            table: string;
+            /**
+             * Where
+             * @description Filter conditions with operators
+             */
+            where?: {
+                [key: string]: unknown;
+            } | null;
+            /**
+             * Scope
+             * @description Organization scope
+             */
+            scope?: string | null;
+            /**
+             * App
+             * @description Application UUID
+             */
+            app?: string | null;
+        };
+        /**
+         * SDKDocumentData
+         * @description Document data response for SDK.
+         */
+        SDKDocumentData: {
+            /**
+             * Id
+             * @description Document UUID
+             */
+            id: string;
+            /**
+             * Table Id
+             * @description Table UUID
+             */
+            table_id: string;
+            /**
+             * Data
+             * @description Document data
+             */
+            data: {
+                [key: string]: unknown;
+            };
+            /**
+             * Created At
+             * @description Creation timestamp (ISO format)
+             */
+            created_at: string;
+            /**
+             * Updated At
+             * @description Last update timestamp (ISO format)
+             */
+            updated_at: string;
+        };
+        /**
+         * SDKDocumentDeleteRequest
+         * @description SDK request for deleting a document.
+         */
+        SDKDocumentDeleteRequest: {
+            /**
+             * Table
+             * @description Table name
+             */
+            table: string;
+            /**
+             * Doc Id
+             * @description Document UUID
+             */
+            doc_id: string;
+            /**
+             * Scope
+             * @description Organization scope
+             */
+            scope?: string | null;
+            /**
+             * App
+             * @description Application UUID
+             */
+            app?: string | null;
+        };
+        /**
+         * SDKDocumentGetRequest
+         * @description SDK request for getting a document.
+         */
+        SDKDocumentGetRequest: {
+            /**
+             * Table
+             * @description Table name
+             */
+            table: string;
+            /**
+             * Doc Id
+             * @description Document UUID
+             */
+            doc_id: string;
+            /**
+             * Scope
+             * @description Organization scope
+             */
+            scope?: string | null;
+            /**
+             * App
+             * @description Application UUID
+             */
+            app?: string | null;
+        };
+        /**
+         * SDKDocumentInsertRequest
+         * @description SDK request for inserting a document.
+         */
+        SDKDocumentInsertRequest: {
+            /**
+             * Table
+             * @description Table name
+             */
+            table: string;
+            /**
+             * Data
+             * @description Document data
+             */
+            data: {
+                [key: string]: unknown;
+            };
+            /**
+             * Scope
+             * @description Organization scope
+             */
+            scope?: string | null;
+            /**
+             * App
+             * @description Application UUID
+             */
+            app?: string | null;
+        };
+        /**
+         * SDKDocumentList
+         * @description Document list response for SDK.
+         */
+        SDKDocumentList: {
+            /**
+             * Documents
+             * @description List of documents
+             */
+            documents: components["schemas"]["SDKDocumentData"][];
+            /**
+             * Total
+             * @description Total count
+             */
+            total: number;
+            /**
+             * Limit
+             * @description Limit used
+             */
+            limit: number;
+            /**
+             * Offset
+             * @description Offset used
+             */
+            offset: number;
+        };
+        /**
+         * SDKDocumentQueryRequest
+         * @description SDK request for querying documents with advanced filtering.
+         *
+         *     Filter conditions support:
+         *     - Simple equality: {"status": "active"}
+         *     - Comparison operators: {"amount": {"gt": 100, "lte": 1000}}
+         *     - LIKE patterns: {"name": {"like": "%acme%"}} or {"name": {"ilike": "%ACME%"}}
+         *     - IN lists: {"category": {"in": ["a", "b"]}}
+         *     - NULL checks: {"deleted_at": {"is_null": true}}
+         */
+        SDKDocumentQueryRequest: {
+            /**
+             * Table
+             * @description Table name
+             */
+            table: string;
+            /**
+             * Where
+             * @description Filter conditions with operators
+             */
+            where?: {
+                [key: string]: unknown;
+            } | null;
+            /**
+             * Order By
+             * @description Field to order by
+             */
+            order_by?: string | null;
+            /**
+             * Order Dir
+             * @description Sort direction
+             * @default asc
+             * @enum {string}
+             */
+            order_dir: "asc" | "desc";
+            /**
+             * Limit
+             * @description Max documents
+             * @default 100
+             */
+            limit: number;
+            /**
+             * Offset
+             * @description Documents to skip
+             * @default 0
+             */
+            offset: number;
+            /**
+             * Scope
+             * @description Organization scope
+             */
+            scope?: string | null;
+            /**
+             * App
+             * @description Application UUID
+             */
+            app?: string | null;
+        };
+        /**
+         * SDKDocumentUpdateRequest
+         * @description SDK request for updating a document.
+         */
+        SDKDocumentUpdateRequest: {
+            /**
+             * Table
+             * @description Table name
+             */
+            table: string;
+            /**
+             * Doc Id
+             * @description Document UUID
+             */
+            doc_id: string;
+            /**
+             * Data
+             * @description Fields to update (merged with existing)
+             */
+            data: {
+                [key: string]: unknown;
+            };
+            /**
+             * Scope
+             * @description Organization scope
+             */
+            scope?: string | null;
+            /**
+             * App
+             * @description Application UUID
+             */
+            app?: string | null;
+        };
+        /**
          * SDKIntegrationsDeleteMappingRequest
          * @description Request to delete a mapping via SDK.
          */
@@ -12255,6 +13282,124 @@ export interface components {
             }[];
             /** Notification Created */
             notification_created: boolean;
+        };
+        /**
+         * SDKTableCreateRequest
+         * @description SDK request for creating a table.
+         */
+        SDKTableCreateRequest: {
+            /**
+             * Name
+             * @description Table name (lowercase)
+             */
+            name: string;
+            /**
+             * Table Schema
+             * @description Optional schema hints
+             */
+            table_schema?: {
+                [key: string]: unknown;
+            } | null;
+            /**
+             * Description
+             * @description Table description
+             */
+            description?: string | null;
+            /**
+             * Scope
+             * @description Scope: None=context org, 'global'=global, UUID=specific org
+             */
+            scope?: string | null;
+            /**
+             * App
+             * @description Application UUID to scope table to an app
+             */
+            app?: string | null;
+        };
+        /**
+         * SDKTableDeleteRequest
+         * @description SDK request for deleting a table.
+         */
+        SDKTableDeleteRequest: {
+            /**
+             * Name
+             * @description Table name
+             */
+            name: string;
+            /**
+             * Scope
+             * @description Organization scope
+             */
+            scope?: string | null;
+            /**
+             * App
+             * @description Application UUID
+             */
+            app?: string | null;
+        };
+        /**
+         * SDKTableInfo
+         * @description Table info response for SDK.
+         */
+        SDKTableInfo: {
+            /**
+             * Id
+             * @description Table UUID
+             */
+            id: string;
+            /**
+             * Name
+             * @description Table name
+             */
+            name: string;
+            /**
+             * Organization Id
+             * @description Organization UUID or null for global
+             */
+            organization_id?: string | null;
+            /**
+             * Application Id
+             * @description Application UUID if app-scoped
+             */
+            application_id?: string | null;
+            /**
+             * Table Schema
+             * @description Schema hints
+             */
+            table_schema?: {
+                [key: string]: unknown;
+            } | null;
+            /**
+             * Description
+             * @description Table description
+             */
+            description?: string | null;
+            /**
+             * Created At
+             * @description Creation timestamp (ISO format)
+             */
+            created_at: string;
+            /**
+             * Updated At
+             * @description Last update timestamp (ISO format)
+             */
+            updated_at: string;
+        };
+        /**
+         * SDKTableListRequest
+         * @description SDK request for listing tables.
+         */
+        SDKTableListRequest: {
+            /**
+             * Scope
+             * @description Organization scope
+             */
+            scope?: string | null;
+            /**
+             * App
+             * @description Filter by application UUID
+             */
+            app?: string | null;
         };
         /**
          * ScheduleMetadata
@@ -12652,6 +13797,89 @@ export interface components {
             continuation_token?: string | null;
         };
         /**
+         * TableCreate
+         * @description Input for creating a table.
+         */
+        TableCreate: {
+            /**
+             * Name
+             * @description Table name (lowercase, underscores allowed)
+             */
+            name: string;
+            /**
+             * Description
+             * @description Optional table description
+             */
+            description?: string | null;
+            /**
+             * Schema
+             * @description Optional schema hints for validation/UI. Not enforced at DB level.
+             */
+            schema?: {
+                [key: string]: unknown;
+            } | null;
+        };
+        /**
+         * TableListResponse
+         * @description Response for listing tables.
+         */
+        TableListResponse: {
+            /** Tables */
+            tables: components["schemas"]["TablePublic"][];
+            /** Total */
+            total: number;
+        };
+        /**
+         * TablePublic
+         * @description Table output for API responses.
+         */
+        TablePublic: {
+            /**
+             * Name
+             * @description Table name (lowercase, underscores allowed)
+             */
+            name: string;
+            /**
+             * Description
+             * @description Optional table description
+             */
+            description?: string | null;
+            /**
+             * Schema
+             * @description Optional schema hints for validation/UI. Not enforced at DB level.
+             */
+            schema?: {
+                [key: string]: unknown;
+            } | null;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Organization Id */
+            organization_id: string | null;
+            /** Application Id */
+            application_id: string | null;
+            /** Created At */
+            created_at: string | null;
+            /** Updated At */
+            updated_at: string | null;
+            /** Created By */
+            created_by: string | null;
+        };
+        /**
+         * TableUpdate
+         * @description Input for updating a table.
+         */
+        TableUpdate: {
+            /** Description */
+            description?: string | null;
+            /** Schema */
+            schema?: {
+                [key: string]: unknown;
+            } | null;
+        };
+        /**
          * Token
          * @description Token response model.
          */
@@ -13005,7 +14233,7 @@ export interface components {
         };
         /**
          * UserCreate
-         * @description User creation request model.
+         * @description Input for creating a user.
          */
         UserCreate: {
             /**
@@ -13013,10 +14241,24 @@ export interface components {
              * Format: email
              */
             email: string;
-            /** Password */
-            password: string;
             /** Name */
             name?: string | null;
+            /** Password */
+            password?: string | null;
+            /**
+             * Is Active
+             * @default true
+             */
+            is_active: boolean;
+            /**
+             * Is Superuser
+             * @default false
+             */
+            is_superuser: boolean;
+            /** @default ORG */
+            user_type: components["schemas"]["UserType"];
+            /** Organization Id */
+            organization_id?: string | null;
         };
         /**
          * UserFormsResponse
@@ -13196,6 +14438,36 @@ export interface components {
              * @enum {string}
              */
             severity: "error" | "warning";
+        };
+        /**
+         * VersionHistoryEntry
+         * @description A single entry in the version history.
+         */
+        VersionHistoryEntry: {
+            /** Version */
+            version: number;
+            /** Definition */
+            definition: {
+                [key: string]: unknown;
+            };
+            /** Published At */
+            published_at: string;
+            /** Published By */
+            published_by: string | null;
+            /** Message */
+            message: string | null;
+        };
+        /**
+         * VersionHistoryResponse
+         * @description Response for version history endpoint.
+         */
+        VersionHistoryResponse: {
+            /** History */
+            history: components["schemas"]["VersionHistoryEntry"][];
+            /** Current Live Version */
+            current_live_version: number;
+            /** Current Draft Version */
+            current_draft_version: number;
         };
         /**
          * WebhookAdapterInfo
@@ -13902,77 +15174,10 @@ export interface components {
             icon?: string | null;
         };
         /**
-         * OAuthCallbackRequest
-         * @description Request model for OAuth callback endpoint
-         */
-        src__models__contracts__oauth__OAuthCallbackRequest: {
-            /**
-             * Code
-             * @description Authorization code from OAuth provider
-             */
-            code: string;
-            /**
-             * State
-             * @description State parameter for CSRF protection
-             */
-            state?: string | null;
-            /**
-             * Redirect Uri
-             * @description Redirect URI used in authorization request
-             */
-            redirect_uri?: string | null;
-        };
-        /**
-         * UserCreate
-         * @description Input for creating a user.
-         */
-        src__models__contracts__users__UserCreate: {
-            /**
-             * Email
-             * Format: email
-             */
-            email: string;
-            /** Name */
-            name?: string | null;
-            /** Password */
-            password?: string | null;
-            /**
-             * Is Active
-             * @default true
-             */
-            is_active: boolean;
-            /**
-             * Is Superuser
-             * @default false
-             */
-            is_superuser: boolean;
-            /** @default ORG */
-            user_type: components["schemas"]["UserType"];
-            /** Organization Id */
-            organization_id?: string | null;
-        };
-        /**
-         * MFAVerifyRequest
-         * @description Request to verify MFA code during login.
-         */
-        src__routers__auth__MFAVerifyRequest: {
-            /** Mfa Token */
-            mfa_token: string;
-            /** Code */
-            code: string;
-            /**
-             * Trust Device
-             * @default false
-             */
-            trust_device: boolean;
-            /** Device Name */
-            device_name?: string | null;
-        };
-        /**
          * MFASetupResponse
          * @description MFA setup response with secret.
          */
-        src__routers__mfa__MFASetupResponse: {
+        src__routers__auth__MFASetupResponse: {
             /** Secret */
             secret: string;
             /** Qr Code Uri */
@@ -13983,6 +15188,46 @@ export interface components {
             issuer: string;
             /** Account Name */
             account_name: string;
+            /**
+             * Is Existing
+             * @default false
+             */
+            is_existing: boolean;
+        };
+        /**
+         * UserCreate
+         * @description User creation request model.
+         */
+        src__routers__auth__UserCreate: {
+            /**
+             * Email
+             * Format: email
+             */
+            email: string;
+            /** Password */
+            password: string;
+            /** Name */
+            name?: string | null;
+        };
+        /**
+         * MFAVerifyRequest
+         * @description Request to verify MFA code.
+         */
+        src__routers__mfa__MFAVerifyRequest: {
+            /** Code */
+            code: string;
+        };
+        /**
+         * OAuthCallbackRequest
+         * @description OAuth callback request (for when frontend handles callback).
+         */
+        src__routers__oauth_sso__OAuthCallbackRequest: {
+            /** Provider */
+            provider: string;
+            /** Code */
+            code: string;
+            /** State */
+            state: string;
         };
     };
     responses: never;
@@ -14085,7 +15330,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["MFASetupResponse"];
+                    "application/json": components["schemas"]["src__routers__auth__MFASetupResponse"];
                 };
             };
             /** @description Validation Error */
@@ -14128,7 +15373,7 @@ export interface operations {
         };
         requestBody: {
             content: {
-                "application/json": components["schemas"]["src__routers__auth__MFAVerifyRequest"];
+                "application/json": components["schemas"]["MFAVerifyRequest"];
             };
         };
         responses: {
@@ -14300,7 +15545,7 @@ export interface operations {
         };
         requestBody: {
             content: {
-                "application/json": components["schemas"]["UserCreate"];
+                "application/json": components["schemas"]["src__routers__auth__UserCreate"];
             };
         };
         responses: {
@@ -14531,7 +15776,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["src__routers__mfa__MFASetupResponse"];
+                    "application/json": components["schemas"]["MFASetupResponse"];
                 };
             };
         };
@@ -14545,7 +15790,7 @@ export interface operations {
         };
         requestBody: {
             content: {
-                "application/json": components["schemas"]["MFAVerifyRequest"];
+                "application/json": components["schemas"]["src__routers__mfa__MFAVerifyRequest"];
             };
         };
         responses: {
@@ -14795,7 +16040,7 @@ export interface operations {
         };
         requestBody: {
             content: {
-                "application/json": components["schemas"]["OAuthCallbackRequest"];
+                "application/json": components["schemas"]["src__routers__oauth_sso__OAuthCallbackRequest"];
             };
         };
         responses: {
@@ -15246,7 +16491,7 @@ export interface operations {
         };
         requestBody: {
             content: {
-                "application/json": components["schemas"]["src__models__contracts__users__UserCreate"];
+                "application/json": components["schemas"]["UserCreate"];
             };
         };
         responses: {
@@ -18541,7 +19786,7 @@ export interface operations {
         };
         requestBody: {
             content: {
-                "application/json": components["schemas"]["src__models__contracts__oauth__OAuthCallbackRequest"];
+                "application/json": components["schemas"]["OAuthCallbackRequest"];
             };
         };
         responses: {
@@ -18636,7 +19881,7 @@ export interface operations {
             };
         };
     };
-    execute_endpoint_api_endpoints__workflow_name__put: {
+    execute_endpoint_api_endpoints__workflow_name__get: {
         parameters: {
             query?: never;
             header: {
@@ -18669,7 +19914,7 @@ export interface operations {
             };
         };
     };
-    execute_endpoint_api_endpoints__workflow_name__put: {
+    execute_endpoint_api_endpoints__workflow_name__get: {
         parameters: {
             query?: never;
             header: {
@@ -18702,7 +19947,7 @@ export interface operations {
             };
         };
     };
-    execute_endpoint_api_endpoints__workflow_name__put: {
+    execute_endpoint_api_endpoints__workflow_name__get: {
         parameters: {
             query?: never;
             header: {
@@ -18735,7 +19980,7 @@ export interface operations {
             };
         };
     };
-    execute_endpoint_api_endpoints__workflow_name__put: {
+    execute_endpoint_api_endpoints__workflow_name__get: {
         parameters: {
             query?: never;
             header: {
@@ -19740,6 +20985,303 @@ export interface operations {
                 };
                 content: {
                     "application/json": unknown;
+                };
+            };
+        };
+    };
+    cli_create_table_api_cli_tables_create_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SDKTableCreateRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SDKTableInfo"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    cli_list_tables_api_cli_tables_list_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SDKTableListRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SDKTableInfo"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    cli_delete_table_api_cli_tables_delete_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SDKTableDeleteRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": boolean;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    cli_insert_document_api_cli_tables_documents_insert_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SDKDocumentInsertRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SDKDocumentData"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    cli_get_document_api_cli_tables_documents_get_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SDKDocumentGetRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SDKDocumentData"] | null;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    cli_update_document_api_cli_tables_documents_update_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SDKDocumentUpdateRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SDKDocumentData"] | null;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    cli_delete_document_api_cli_tables_documents_delete_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SDKDocumentDeleteRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": boolean;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    cli_query_documents_api_cli_tables_documents_query_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SDKDocumentQueryRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SDKDocumentList"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    cli_count_documents_api_cli_tables_documents_count_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SDKDocumentCountRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": number;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
                 };
             };
         };
@@ -23020,6 +24562,765 @@ export interface operations {
                 };
                 content: {
                     "text/plain": string;
+                };
+            };
+        };
+    };
+    list_tables_api_tables_get: {
+        parameters: {
+            query?: {
+                /** @description Filter scope: 'global' for global only, org UUID for specific org. */
+                scope?: string | null;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TableListResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    create_table_api_tables_post: {
+        parameters: {
+            query?: {
+                /** @description Target scope: 'global' or org UUID. Defaults to current org. */
+                scope?: string | null;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["TableCreate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TablePublic"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_table_api_tables__name__get: {
+        parameters: {
+            query?: {
+                scope?: string | null;
+            };
+            header?: never;
+            path: {
+                name: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TablePublic"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    delete_table_api_tables__name__delete: {
+        parameters: {
+            query?: {
+                scope?: string | null;
+            };
+            header?: never;
+            path: {
+                name: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    update_table_api_tables__name__patch: {
+        parameters: {
+            query?: {
+                scope?: string | null;
+            };
+            header?: never;
+            path: {
+                name: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["TableUpdate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TablePublic"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    insert_document_api_tables__name__documents_post: {
+        parameters: {
+            query?: {
+                scope?: string | null;
+            };
+            header?: never;
+            path: {
+                name: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["DocumentCreate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DocumentPublic"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_document_api_tables__name__documents__doc_id__get: {
+        parameters: {
+            query?: {
+                scope?: string | null;
+            };
+            header?: never;
+            path: {
+                name: string;
+                doc_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DocumentPublic"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    delete_document_api_tables__name__documents__doc_id__delete: {
+        parameters: {
+            query?: {
+                scope?: string | null;
+            };
+            header?: never;
+            path: {
+                name: string;
+                doc_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    update_document_api_tables__name__documents__doc_id__patch: {
+        parameters: {
+            query?: {
+                scope?: string | null;
+            };
+            header?: never;
+            path: {
+                name: string;
+                doc_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["DocumentUpdate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DocumentPublic"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    query_documents_api_tables__name__documents_query_post: {
+        parameters: {
+            query?: {
+                scope?: string | null;
+            };
+            header?: never;
+            path: {
+                name: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["DocumentQuery"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DocumentListResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    count_documents_api_tables__name__documents_count_get: {
+        parameters: {
+            query?: {
+                scope?: string | null;
+            };
+            header?: never;
+            path: {
+                name: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DocumentCountResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_applications_api_applications_get: {
+        parameters: {
+            query?: {
+                /** @description Filter scope: 'global' for global only, org UUID for specific org. */
+                scope?: string | null;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApplicationListResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    create_application_api_applications_post: {
+        parameters: {
+            query?: {
+                /** @description Target scope: 'global' or org UUID. Defaults to current org. */
+                scope?: string | null;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ApplicationCreate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApplicationPublic"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_application_api_applications__slug__get: {
+        parameters: {
+            query?: {
+                scope?: string | null;
+            };
+            header?: never;
+            path: {
+                slug: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApplicationPublic"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    delete_application_api_applications__slug__delete: {
+        parameters: {
+            query?: {
+                scope?: string | null;
+            };
+            header?: never;
+            path: {
+                slug: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    update_application_api_applications__slug__patch: {
+        parameters: {
+            query?: {
+                scope?: string | null;
+            };
+            header?: never;
+            path: {
+                slug: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ApplicationUpdate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApplicationPublic"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_live_definition_api_applications__slug__definition_get: {
+        parameters: {
+            query?: {
+                scope?: string | null;
+            };
+            header?: never;
+            path: {
+                slug: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApplicationDefinition"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_draft_definition_api_applications__slug__draft_get: {
+        parameters: {
+            query?: {
+                scope?: string | null;
+            };
+            header?: never;
+            path: {
+                slug: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApplicationDefinition"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    save_draft_api_applications__slug__draft_put: {
+        parameters: {
+            query?: {
+                scope?: string | null;
+            };
+            header?: never;
+            path: {
+                slug: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ApplicationDraftSave"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApplicationDefinition"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    publish_application_api_applications__slug__publish_post: {
+        parameters: {
+            query?: {
+                scope?: string | null;
+            };
+            header?: never;
+            path: {
+                slug: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: {
+            content: {
+                "application/json": components["schemas"]["ApplicationPublishRequest"] | null;
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApplicationPublic"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    rollback_application_api_applications__slug__rollback_post: {
+        parameters: {
+            query?: {
+                scope?: string | null;
+            };
+            header?: never;
+            path: {
+                slug: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ApplicationRollbackRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApplicationPublic"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_version_history_api_applications__slug__history_get: {
+        parameters: {
+            query?: {
+                scope?: string | null;
+            };
+            header?: never;
+            path: {
+                slug: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["VersionHistoryResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
                 };
             };
         };

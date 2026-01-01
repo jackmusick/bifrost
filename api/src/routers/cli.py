@@ -2089,14 +2089,12 @@ async def download_cli() -> StreamingResponse:
     summary="Create a table",
 )
 async def cli_create_table(
-    request: "SDKTableCreateRequest",
+    request: SDKTableCreateRequest,
     current_user: CurrentUser,
     db: AsyncSession = Depends(get_db),
-) -> "SDKTableInfo":
+) -> SDKTableInfo:
     """Create a new table via SDK."""
-    from src.models.contracts.cli import SDKTableInfo
     from src.models.orm.tables import Table
-    from sqlalchemy import select
 
     org_id = await _get_cli_org_id(current_user.user_id, request.scope, db)
     org_uuid = UUID(org_id) if org_id else None
@@ -2148,14 +2146,13 @@ async def cli_create_table(
     summary="List tables",
 )
 async def cli_list_tables(
-    request: "SDKTableListRequest",
+    request: SDKTableListRequest,
     current_user: CurrentUser,
     db: AsyncSession = Depends(get_db),
-) -> list["SDKTableInfo"]:
+) -> list[SDKTableInfo]:
     """List tables via SDK."""
-    from src.models.contracts.cli import SDKTableInfo
     from src.models.orm.tables import Table
-    from sqlalchemy import select, or_
+    from sqlalchemy import or_
 
     org_id = await _get_cli_org_id(current_user.user_id, request.scope, db)
     org_uuid = UUID(org_id) if org_id else None
@@ -2201,13 +2198,12 @@ async def cli_list_tables(
     summary="Delete a table",
 )
 async def cli_delete_table(
-    request: "SDKTableDeleteRequest",
+    request: SDKTableDeleteRequest,
     current_user: CurrentUser,
     db: AsyncSession = Depends(get_db),
 ) -> bool:
     """Delete a table and all its documents via SDK."""
     from src.models.orm.tables import Table
-    from sqlalchemy import select
 
     org_id = await _get_cli_org_id(current_user.user_id, request.scope, db)
     org_uuid = UUID(org_id) if org_id else None
@@ -2275,14 +2271,16 @@ def _build_jsonb_filters(
     where: dict[str, Any] | None,
     data_column: Any,
 ) -> Any:
-    """Build SQLAlchemy filters from where clause with operator support.
+    """Build SQLAlchemy filters from where clause with JSON-native operators.
 
     Supports:
     - Simple equality: {"status": "active"}
     - Comparison operators: {"amount": {"gt": 100, "lte": 1000}}
-    - LIKE patterns: {"name": {"like": "%acme%"}} or {"name": {"ilike": "%ACME%"}}
+    - Contains: {"name": {"contains": "acme"}} (case-insensitive substring)
+    - Starts/ends with: {"name": {"starts_with": "a"}}
     - IN lists: {"category": {"in": ["a", "b"]}}
     - NULL checks: {"deleted_at": {"is_null": true}}
+    - Has key: {"field": {"has_key": true}}
 
     Args:
         base_query: SQLAlchemy query to add filters to
@@ -2292,7 +2290,7 @@ def _build_jsonb_filters(
     Returns:
         Query with filters applied
     """
-    from sqlalchemy import cast, String
+    from sqlalchemy import String, cast
 
     if not where:
         return base_query
@@ -2307,8 +2305,20 @@ def _build_jsonb_filters(
                     base_query = base_query.where(json_field.astext == str(op_value))
                 elif op == "ne":
                     base_query = base_query.where(json_field.astext != str(op_value))
+                elif op == "contains":
+                    # Case-insensitive substring search
+                    base_query = base_query.where(
+                        json_field.astext.ilike(f"%{op_value}%")
+                    )
+                elif op == "starts_with":
+                    base_query = base_query.where(
+                        json_field.astext.ilike(f"{op_value}%")
+                    )
+                elif op == "ends_with":
+                    base_query = base_query.where(
+                        json_field.astext.ilike(f"%{op_value}")
+                    )
                 elif op == "gt":
-                    # Cast to numeric for comparison
                     base_query = base_query.where(
                         cast(json_field.astext, String) > str(op_value)
                     )
@@ -2324,12 +2334,7 @@ def _build_jsonb_filters(
                     base_query = base_query.where(
                         cast(json_field.astext, String) <= str(op_value)
                     )
-                elif op == "like":
-                    base_query = base_query.where(json_field.astext.like(op_value))
-                elif op == "ilike":
-                    base_query = base_query.where(json_field.astext.ilike(op_value))
-                elif op == "in" or op == "in_":
-                    # IN list
+                elif op in ("in", "in_"):
                     if isinstance(op_value, list):
                         base_query = base_query.where(
                             json_field.astext.in_([str(v) for v in op_value])
@@ -2339,6 +2344,11 @@ def _build_jsonb_filters(
                         base_query = base_query.where(json_field.astext.is_(None))
                     else:
                         base_query = base_query.where(json_field.astext.isnot(None))
+                elif op == "has_key":
+                    if op_value:
+                        base_query = base_query.where(data_column.has_key(key))
+                    else:
+                        base_query = base_query.where(~data_column.has_key(key))
         else:
             # Simple equality
             base_query = base_query.where(json_field.astext == str(value))
@@ -2351,12 +2361,11 @@ def _build_jsonb_filters(
     summary="Insert a document",
 )
 async def cli_insert_document(
-    request: "SDKDocumentInsertRequest",
+    request: SDKDocumentInsertRequest,
     current_user: CurrentUser,
     db: AsyncSession = Depends(get_db),
-) -> "SDKDocumentData":
+) -> SDKDocumentData:
     """Insert a document into a table via SDK."""
-    from src.models.contracts.cli import SDKDocumentData
     from src.models.orm.tables import Document
 
     org_id = await _get_cli_org_id(current_user.user_id, request.scope, db)
@@ -2394,14 +2403,12 @@ async def cli_insert_document(
     summary="Get a document",
 )
 async def cli_get_document(
-    request: "SDKDocumentGetRequest",
+    request: SDKDocumentGetRequest,
     current_user: CurrentUser,
     db: AsyncSession = Depends(get_db),
-) -> "SDKDocumentData | None":
+) -> SDKDocumentData | None:
     """Get a document by ID via SDK."""
-    from src.models.contracts.cli import SDKDocumentData
     from src.models.orm.tables import Document
-    from sqlalchemy import select
 
     org_id = await _get_cli_org_id(current_user.user_id, request.scope, db)
     org_uuid = UUID(org_id) if org_id else None
@@ -2437,14 +2444,12 @@ async def cli_get_document(
     summary="Update a document",
 )
 async def cli_update_document(
-    request: "SDKDocumentUpdateRequest",
+    request: SDKDocumentUpdateRequest,
     current_user: CurrentUser,
     db: AsyncSession = Depends(get_db),
-) -> "SDKDocumentData | None":
+) -> SDKDocumentData | None:
     """Update a document via SDK (partial update, merges with existing)."""
-    from src.models.contracts.cli import SDKDocumentData
     from src.models.orm.tables import Document
-    from sqlalchemy import select
 
     org_id = await _get_cli_org_id(current_user.user_id, request.scope, db)
     org_uuid = UUID(org_id) if org_id else None
@@ -2488,13 +2493,12 @@ async def cli_update_document(
     summary="Delete a document",
 )
 async def cli_delete_document(
-    request: "SDKDocumentDeleteRequest",
+    request: SDKDocumentDeleteRequest,
     current_user: CurrentUser,
     db: AsyncSession = Depends(get_db),
 ) -> bool:
     """Delete a document via SDK."""
     from src.models.orm.tables import Document
-    from sqlalchemy import select
 
     org_id = await _get_cli_org_id(current_user.user_id, request.scope, db)
     org_uuid = UUID(org_id) if org_id else None
@@ -2527,10 +2531,10 @@ async def cli_delete_document(
     summary="Query documents",
 )
 async def cli_query_documents(
-    request: "SDKDocumentQueryRequest",
+    request: SDKDocumentQueryRequest,
     current_user: CurrentUser,
     db: AsyncSession = Depends(get_db),
-) -> "SDKDocumentList":
+) -> SDKDocumentList:
     """Query documents with filtering and pagination via SDK.
 
     Supports advanced filter operators:
@@ -2540,9 +2544,8 @@ async def cli_query_documents(
     - IN lists: {"category": {"in": ["a", "b"]}}
     - NULL checks: {"deleted_at": {"is_null": true}}
     """
-    from src.models.contracts.cli import SDKDocumentData, SDKDocumentList
     from src.models.orm.tables import Document
-    from sqlalchemy import select, func
+    from sqlalchemy import func
 
     org_id = await _get_cli_org_id(current_user.user_id, request.scope, db)
     org_uuid = UUID(org_id) if org_id else None
@@ -2607,7 +2610,7 @@ async def cli_query_documents(
     summary="Count documents",
 )
 async def cli_count_documents(
-    request: "SDKDocumentCountRequest",
+    request: SDKDocumentCountRequest,
     current_user: CurrentUser,
     db: AsyncSession = Depends(get_db),
 ) -> int:
@@ -2616,7 +2619,7 @@ async def cli_count_documents(
     Supports the same filter operators as query.
     """
     from src.models.orm.tables import Document
-    from sqlalchemy import select, func
+    from sqlalchemy import func
 
     org_id = await _get_cli_org_id(current_user.user_id, request.scope, db)
     org_uuid = UUID(org_id) if org_id else None

@@ -124,6 +124,12 @@ const UsageReports = lazy(() =>
 const DevicePage = lazy(() =>
 	import("@/pages/DevicePage").then((m) => ({ default: m.DevicePage })),
 );
+const Tables = lazy(() =>
+	import("@/pages/Tables").then((m) => ({ default: m.Tables })),
+);
+const TableDetail = lazy(() =>
+	import("@/pages/TableDetail").then((m) => ({ default: m.TableDetail })),
+);
 
 function AppRoutes() {
 	const { brandingLoaded } = useOrgScope();
@@ -288,6 +294,24 @@ function AppRoutes() {
 							element={
 								<ProtectedRoute requirePlatformAdmin>
 									<Config />
+								</ProtectedRoute>
+							}
+						/>
+
+						{/* Data Tables - PlatformAdmin only */}
+						<Route
+							path="tables"
+							element={
+								<ProtectedRoute requirePlatformAdmin>
+									<Tables />
+								</ProtectedRoute>
+							}
+						/>
+						<Route
+							path="tables/:tableName"
+							element={
+								<ProtectedRoute requirePlatformAdmin>
+									<TableDetail />
 								</ProtectedRoute>
 							}
 						/>

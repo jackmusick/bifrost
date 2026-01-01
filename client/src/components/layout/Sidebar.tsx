@@ -19,6 +19,7 @@ import {
 	DollarSign,
 	Activity,
 	Webhook,
+	Database,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useAuth } from "@/contexts/AuthContext";
@@ -99,6 +100,12 @@ const navSections: NavSection[] = [
 				title: "Config",
 				href: "/config",
 				icon: Key,
+				requiresPlatformAdmin: true,
+			},
+			{
+				title: "Data Tables",
+				href: "/tables",
+				icon: Database,
 				requiresPlatformAdmin: true,
 			},
 			{

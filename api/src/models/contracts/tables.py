@@ -101,40 +101,44 @@ class DocumentPublic(BaseModel):
 
 class QueryFilter(BaseModel):
     """
-    Advanced query filter with comparison operators.
+    JSON-native query filter with user-friendly operators.
 
     Supports:
     - eq: Equal (default if just a value is passed)
     - ne: Not equal
+    - contains: Case-insensitive substring search
+    - starts_with: Starts with (case-insensitive)
+    - ends_with: Ends with (case-insensitive)
     - gt: Greater than
     - gte: Greater than or equal
     - lt: Less than
     - lte: Less than or equal
-    - like: SQL LIKE pattern (use % for wildcards)
-    - ilike: Case-insensitive LIKE
     - in_: Value in list
     - is_null: Check for null
+    - has_key: Field exists in document
 
     Example:
         {
             "status": "active",                    # Implicit eq
             "amount": {"gt": 100, "lte": 1000},   # Range query
-            "name": {"ilike": "%acme%"},          # Case-insensitive search
-            "category": {"in_": ["a", "b", "c"]}, # In list
+            "name": {"contains": "acme"},         # Case-insensitive search
+            "category": {"in": ["a", "b", "c"]},  # In list
             "deleted_at": {"is_null": True}       # Null check
         }
     """
 
     eq: Any | None = None
     ne: Any | None = None
+    contains: str | None = None
+    starts_with: str | None = None
+    ends_with: str | None = None
     gt: Any | None = None
     gte: Any | None = None
     lt: Any | None = None
     lte: Any | None = None
-    like: str | None = None
-    ilike: str | None = None
     in_: list[Any] | None = Field(default=None, alias="in")
     is_null: bool | None = None
+    has_key: bool | None = None
 
     model_config = ConfigDict(populate_by_name=True)
 
@@ -147,9 +151,11 @@ class DocumentQuery(BaseModel):
         description="""Filter conditions. Supports:
         - Simple equality: {"status": "active"}
         - Operators: {"amount": {"gt": 100, "lte": 1000}}
-        - LIKE: {"name": {"like": "%acme%"}} or {"name": {"ilike": "%ACME%"}}
+        - Contains: {"name": {"contains": "acme"}}
+        - Starts/ends with: {"name": {"starts_with": "a"}}
         - IN: {"category": {"in": ["a", "b"]}}
         - NULL: {"deleted_at": {"is_null": true}}
+        - Has field: {"field": {"has_key": true}}
         """,
     )
     order_by: str | None = Field(
