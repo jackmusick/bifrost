@@ -283,21 +283,29 @@ async def _list_integrations_impl(context: MCPContext) -> str:
 async def _list_forms_impl(context: MCPContext) -> str:
     """List all forms."""
     from src.core.database import get_db_context
+    from src.core.org_filter import OrgFilterType
     from src.repositories.forms import FormRepository
 
     logger.info("MCP list_forms called")
 
     try:
         async with get_db_context() as db:
-            repo = FormRepository(db)
-
-            # Get forms based on context
+            # Determine filter type and org_id based on context
             if context.is_platform_admin:
-                forms = await repo.list_all(limit=100)
+                # Platform admins see all forms
+                filter_type = OrgFilterType.ALL
+                org_id = None
             elif context.org_id:
-                forms = await repo.list_by_organization(str(context.org_id), limit=100)
+                # Org users see their org's forms + global forms
+                filter_type = OrgFilterType.ORG_PLUS_GLOBAL
+                org_id = UUID(str(context.org_id)) if isinstance(context.org_id, str) else context.org_id
             else:
-                forms = []
+                # No org context - only global forms
+                filter_type = OrgFilterType.GLOBAL_ONLY
+                org_id = None
+
+            repo = FormRepository(db, org_id)
+            forms = await repo.list_forms(filter_type, active_only=True)
 
             if not forms:
                 return "No forms found."
