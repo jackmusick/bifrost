@@ -826,7 +826,9 @@ export function FileTree() {
 				// Handle collected workflow ID conflicts
 				if (allConflicts.length > 0) {
 					// Flatten all conflicts for the dialog
-					const flatConflicts = allConflicts.flatMap((c) => c.conflicts);
+					const flatConflicts = allConflicts.flatMap(
+						(c) => c.conflicts,
+					);
 
 					// Build file list with their conflict IDs for batch resolution
 					const filesWithConflicts = allConflicts.map((c) => ({
@@ -835,7 +837,8 @@ export function FileTree() {
 						encoding: c.encoding,
 						conflictIds: c.conflicts.reduce(
 							(acc, conflict) => {
-								acc[conflict.function_name] = conflict.existing_id;
+								acc[conflict.function_name] =
+									conflict.existing_id;
 								return acc;
 							},
 							{} as Record<string, string>,

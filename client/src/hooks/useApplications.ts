@@ -16,7 +16,8 @@ export type ApplicationCreate = components["schemas"]["ApplicationCreate"];
 export type ApplicationUpdate = components["schemas"]["ApplicationUpdate"];
 export type ApplicationListResponse =
 	components["schemas"]["ApplicationListResponse"];
-export type ApplicationDraftSave = components["schemas"]["ApplicationDraftSave"];
+export type ApplicationDraftSave =
+	components["schemas"]["ApplicationDraftSave"];
 export type ApplicationPublishRequest =
 	components["schemas"]["ApplicationPublishRequest"];
 export type ApplicationRollbackRequest =
@@ -45,7 +46,10 @@ function getErrorMessage(error: unknown, fallback: string): string {
 				return detail
 					.map((d) => {
 						if (typeof d === "object" && d && "msg" in d) {
-							const loc = "loc" in d && Array.isArray(d.loc) ? d.loc.join(".") : "";
+							const loc =
+								"loc" in d && Array.isArray(d.loc)
+									? d.loc.join(".")
+									: "";
 							return loc ? `${loc}: ${d.msg}` : String(d.msg);
 						}
 						return JSON.stringify(d);
@@ -155,7 +159,9 @@ export function useCreateApplication() {
 
 	return $api.useMutation("post", "/api/applications", {
 		onSuccess: (data) => {
-			queryClient.invalidateQueries({ queryKey: ["get", "/api/applications"] });
+			queryClient.invalidateQueries({
+				queryKey: ["get", "/api/applications"],
+			});
 			toast.success("Application created", {
 				description: `Application "${data.name}" has been created`,
 			});
@@ -176,7 +182,9 @@ export function useUpdateApplication() {
 
 	return $api.useMutation("patch", "/api/applications/{slug}", {
 		onSuccess: (data) => {
-			queryClient.invalidateQueries({ queryKey: ["get", "/api/applications"] });
+			queryClient.invalidateQueries({
+				queryKey: ["get", "/api/applications"],
+			});
 			queryClient.invalidateQueries({
 				queryKey: ["get", "/api/applications/{slug}"],
 			});
@@ -201,7 +209,9 @@ export function useDeleteApplication() {
 	return $api.useMutation("delete", "/api/applications/{slug}", {
 		onSuccess: (_, variables) => {
 			const slug = variables.params.path.slug;
-			queryClient.invalidateQueries({ queryKey: ["get", "/api/applications"] });
+			queryClient.invalidateQueries({
+				queryKey: ["get", "/api/applications"],
+			});
 			toast.success("Application deleted", {
 				description: `Application "${slug}" has been deleted`,
 			});
@@ -250,7 +260,9 @@ export function usePublishApplication() {
 	return $api.useMutation("post", "/api/applications/{slug}/publish", {
 		onSuccess: (data, variables) => {
 			const slug = variables.params.path.slug;
-			queryClient.invalidateQueries({ queryKey: ["get", "/api/applications"] });
+			queryClient.invalidateQueries({
+				queryKey: ["get", "/api/applications"],
+			});
 			queryClient.invalidateQueries({
 				queryKey: ["get", "/api/applications/{slug}"],
 			});
@@ -284,7 +296,9 @@ export function useRollbackApplication() {
 	return $api.useMutation("post", "/api/applications/{slug}/rollback", {
 		onSuccess: (data, variables) => {
 			const slug = variables.params.path.slug;
-			queryClient.invalidateQueries({ queryKey: ["get", "/api/applications"] });
+			queryClient.invalidateQueries({
+				queryKey: ["get", "/api/applications"],
+			});
 			queryClient.invalidateQueries({
 				queryKey: ["get", "/api/applications/{slug}"],
 			});
@@ -324,7 +338,8 @@ export async function listApplications(
 			query: scope ? { scope } : undefined,
 		},
 	});
-	if (error) throw new Error(getErrorMessage(error, "Failed to list applications"));
+	if (error)
+		throw new Error(getErrorMessage(error, "Failed to list applications"));
 	return data;
 }
 
@@ -341,7 +356,8 @@ export async function getApplication(
 			query: scope ? { scope } : undefined,
 		},
 	});
-	if (error) throw new Error(getErrorMessage(error, "Failed to get application"));
+	if (error)
+		throw new Error(getErrorMessage(error, "Failed to get application"));
 	return data;
 }
 
@@ -362,7 +378,9 @@ export async function getApplicationDefinition(
 		},
 	);
 	if (error)
-		throw new Error(getErrorMessage(error, "Failed to get application definition"));
+		throw new Error(
+			getErrorMessage(error, "Failed to get application definition"),
+		);
 	return data;
 }
 
@@ -482,7 +500,9 @@ export async function publishApplication(
 		},
 	);
 	if (error)
-		throw new Error(getErrorMessage(error, "Failed to publish application"));
+		throw new Error(
+			getErrorMessage(error, "Failed to publish application"),
+		);
 	return data;
 }
 
@@ -505,7 +525,9 @@ export async function rollbackApplication(
 		},
 	);
 	if (error)
-		throw new Error(getErrorMessage(error, "Failed to rollback application"));
+		throw new Error(
+			getErrorMessage(error, "Failed to rollback application"),
+		);
 	return data;
 }
 
@@ -526,6 +548,8 @@ export async function getVersionHistory(
 		},
 	);
 	if (error)
-		throw new Error(getErrorMessage(error, "Failed to get version history"));
+		throw new Error(
+			getErrorMessage(error, "Failed to get version history"),
+		);
 	return data;
 }

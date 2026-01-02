@@ -67,7 +67,9 @@ type Organization = components["schemas"]["OrganizationPublic"];
 export function Agents() {
 	const { scope, isGlobalScope } = useOrgScope();
 	const { isPlatformAdmin } = useAuth();
-	const [filterOrgId, setFilterOrgId] = useState<string | null | undefined>(undefined);
+	const [filterOrgId, setFilterOrgId] = useState<string | null | undefined>(
+		undefined,
+	);
 	const [searchTerm, setSearchTerm] = useState("");
 	const [viewMode, setViewMode] = useState<"grid" | "table">("grid");
 	const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false);
@@ -79,9 +81,11 @@ export function Agents() {
 
 	// Pass filterOrgId to backend for filtering (undefined = all, null = global only)
 	// For platform admins, undefined means show all. For non-admins, backend handles filtering.
-	const { data: agents, isLoading, refetch } = useAgents(
-		isPlatformAdmin ? filterOrgId : undefined,
-	);
+	const {
+		data: agents,
+		isLoading,
+		refetch,
+	} = useAgents(isPlatformAdmin ? filterOrgId : undefined);
 	const deleteAgent = useDeleteAgent();
 	const updateAgent = useUpdateAgent();
 
@@ -282,7 +286,10 @@ export function Agents() {
 												</CardTitle>
 											</div>
 											{agent.is_coding_mode && (
-												<Badge variant="outline" className="text-xs font-normal mt-1.5 w-fit">
+												<Badge
+													variant="outline"
+													className="text-xs font-normal mt-1.5 w-fit"
+												>
 													Powered by Claude
 												</Badge>
 											)}
@@ -316,12 +323,20 @@ export function Agents() {
 									{isPlatformAdmin && (
 										<div className="mb-2">
 											{agent.organization_id ? (
-												<Badge variant="outline" className="text-xs">
+												<Badge
+													variant="outline"
+													className="text-xs"
+												>
 													<Building2 className="mr-1 h-3 w-3" />
-													{getOrgName(agent.organization_id)}
+													{getOrgName(
+														agent.organization_id,
+													)}
 												</Badge>
 											) : (
-												<Badge variant="default" className="text-xs">
+												<Badge
+													variant="default"
+													className="text-xs"
+												>
 													<Globe className="mr-1 h-3 w-3" />
 													Global
 												</Badge>
@@ -379,7 +394,9 @@ export function Agents() {
 							<DataTableHeader>
 								<DataTableRow>
 									{isPlatformAdmin && (
-										<DataTableHead>Organization</DataTableHead>
+										<DataTableHead>
+											Organization
+										</DataTableHead>
 									)}
 									<DataTableHead>Name</DataTableHead>
 									<DataTableHead>Description</DataTableHead>
@@ -394,12 +411,20 @@ export function Agents() {
 										{isPlatformAdmin && (
 											<DataTableCell>
 												{agent.organization_id ? (
-													<Badge variant="outline" className="text-xs">
+													<Badge
+														variant="outline"
+														className="text-xs"
+													>
 														<Building2 className="mr-1 h-3 w-3" />
-														{getOrgName(agent.organization_id)}
+														{getOrgName(
+															agent.organization_id,
+														)}
 													</Badge>
 												) : (
-													<Badge variant="default" className="text-xs">
+													<Badge
+														variant="default"
+														className="text-xs"
+													>
 														<Globe className="mr-1 h-3 w-3" />
 														Global
 													</Badge>
@@ -411,7 +436,10 @@ export function Agents() {
 												<Bot className="h-4 w-4 text-muted-foreground" />
 												{agent.name}
 												{agent.is_coding_mode && (
-													<Badge variant="outline" className="text-xs font-normal">
+													<Badge
+														variant="outline"
+														className="text-xs font-normal"
+													>
 														Powered by Claude
 													</Badge>
 												)}

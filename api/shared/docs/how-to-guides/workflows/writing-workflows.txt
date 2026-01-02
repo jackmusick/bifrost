@@ -87,39 +87,39 @@ async def create_user(
     pass
 ```
 
-### @param for Advanced Features
+### Type Hint Support
 
-Use `@param` only when you need data providers, validation, or help text:
+The following Python types are supported for parameters:
 
 ```python
 @workflow
-@param("department", data_provider="get_departments")
-@param("email", validation={"pattern": r".*@company\.com$"}, help_text="Must be company email")
-async def create_user(email: str, department: str):
-    """Create a new user."""
-    pass
+async def example(
+    name: str,                     # Text input
+    count: int,                    # Integer input
+    amount: float,                 # Decimal input
+    enabled: bool = False,         # Boolean toggle
+    tags: list[str] | None = None, # List of strings
+    config: dict | None = None,    # JSON object
+) -> dict:
+    """Example with various parameter types."""
+    ...
 ```
 
-### Validation Rules
+### Literal Types for Options
+
+Use `Literal` to create dropdown selections:
 
 ```python
-# String validation
-@param("username", validation={
-    "min_length": 3,
-    "max_length": 50,
-    "pattern": r"^[a-zA-Z0-9_]+$"
-})
+from typing import Literal
 
-# Number validation
-@param("quantity", validation={
-    "min": 1,
-    "max": 1000
-})
-
-# Enum options
-@param("status", validation={
-    "enum": ["active", "inactive", "pending"]
-})
+@workflow
+async def create_user(
+    email: str,
+    role: Literal["admin", "user", "guest"] = "user",
+    status: Literal["active", "inactive"] = "active",
+) -> dict:
+    """Create a user with predefined options."""
+    ...
 ```
 
 ## Execution Context
@@ -145,10 +145,10 @@ async def my_workflow(context: ExecutionContext):
 
 ## SDK Modules
 
-Access config, OAuth, and files via SDK:
+Access config, integrations, and files via SDK. All methods are async:
 
 ```python
-from bifrost import config, oauth, files
+from bifrost import config, integrations, files
 
 async def my_workflow():
     """Example workflow using SDK modules."""
@@ -160,18 +160,18 @@ async def my_workflow():
     api_key = await config.get("api_key")
     await config.set("api_key", "secret_value", is_secret=True)
 
-    # OAuth connection (async)
-    conn = await oauth.get("microsoft")
-    if conn:
-        access_token = conn["access_token"]
+    # Integration with OAuth (async)
+    integration = await integrations.get("Microsoft")
+    if integration and integration.oauth:
+        access_token = integration.oauth.access_token
         # Use access_token for API calls
 
-    # File operations (synchronous)
-    files.write("data/output.txt", "content", location="workspace")
-    content = files.read("data/output.txt", location="workspace")
+    # File operations (async)
+    await files.write("data/output.txt", "content")
+    content = await files.read("data/output.txt")
 ```
 
-    **SDK Methods**: `config` and `oauth` are async and require `await`. File operations are synchronous. Use `is_secret=True` for encrypted storage.
+    **SDK Methods**: All SDK methods are async and require `await`. Use `is_secret=True` for encrypted storage of sensitive values.
 
 ## Execution Modes
 
@@ -204,12 +204,9 @@ async def bulk_import(context: ExecutionContext, csv_url: str):
 Run automatically on a schedule using cron expressions.
 
 ```python
-@workflow(
-    execution_mode="scheduled",
-    schedule="0 9 * * *",  # Daily at 9 AM UTC
-    expose_in_forms=False   # Hide from manual execution
-)
-async def daily_report(context: ExecutionContext):
+@workflow(schedule="0 9 * * *")  # Daily at 9 AM UTC
+async def daily_report():
+    """Generate and send daily report."""
     report = await generate_report()
     await send_report(report)
     return {"status": "sent"}
@@ -220,35 +217,33 @@ async def daily_report(context: ExecutionContext):
 
 ## Data Providers
 
-Provide dynamic options for dropdowns:
+Provide dynamic options for dropdowns. Parameters are derived from function signatures:
 
 1. Create a data provider:
 
     ```python
     from bifrost import data_provider
 
-    @data_provider(
-        name="get_departments",
-        description="List departments",
-        cache_ttl_seconds=600
-    )
-    async def get_departments():
+    @data_provider(cache_ttl_seconds=600)
+    async def get_departments() -> list[dict]:
+        """List available departments."""
         return [
             {"label": "Engineering", "value": "eng"},
             {"label": "Sales", "value": "sales"}
         ]
     ```
 
-2. Use in workflow with `@param`:
+2. Create a data provider with parameters:
 
     ```python
-    @workflow
-    @param("department", data_provider="get_departments")
-    async def assign_user(department: str, user_email: str):
-        """Assign user to department."""
-        # department contains selected value ("eng" or "sales")
-        return {"assigned_to": department}
+    @data_provider
+    async def get_users_by_dept(department: str) -> list[dict]:
+        """Get users filtered by department."""
+        users = await fetch_users(department)
+        return [{"label": u.name, "value": u.id} for u in users]
     ```
+
+3. Reference in forms via `data_provider_id` in the form field definition (see Forms documentation).
 
 ## Return Values
 

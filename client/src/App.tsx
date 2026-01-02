@@ -201,7 +201,10 @@ function AppRoutes() {
 					<Route path="login" element={<Login />} />
 					<Route path="setup" element={<Setup />} />
 					<Route path="mfa-setup" element={<MFASetup />} />
-					<Route path="auth/callback/:provider" element={<AuthCallback />} />
+					<Route
+						path="auth/callback/:provider"
+						element={<AuthCallback />}
+					/>
 					<Route path="mcp/callback" element={<MCPCallback />} />
 
 					{/* Device authorization - requires auth, handles redirect internally */}
@@ -214,7 +217,10 @@ function AppRoutes() {
 					/>
 
 					{/* Embed route - minimal chrome for iframe embedding */}
-					<Route path="embed/:applicationId/*" element={<ApplicationEmbed />} />
+					<Route
+						path="embed/:applicationId/*"
+						element={<ApplicationEmbed />}
+					/>
 
 					{/* Application Runner & Preview - Own layout (no main sidebar) */}
 					<Route

@@ -62,7 +62,9 @@ export function ConfigDialog({ config, open, onClose }: ConfigDialogProps) {
 	const isEditing = !!config;
 
 	// Default organization_id for org users is their org, for platform admins it's null (global)
-	const defaultOrgId = isPlatformAdmin ? null : (user?.organizationId ?? null);
+	const defaultOrgId = isPlatformAdmin
+		? null
+		: (user?.organizationId ?? null);
 
 	const form = useForm<FormValues>({
 		resolver: zodResolver(formSchema),
@@ -81,7 +83,9 @@ export function ConfigDialog({ config, open, onClose }: ConfigDialogProps) {
 	useEffect(() => {
 		if (config) {
 			// Cast config to access org_id which may exist on the response
-			const configWithOrg = config as typeof config & { org_id?: string | null };
+			const configWithOrg = config as typeof config & {
+				org_id?: string | null;
+			};
 			form.reset({
 				key: config.key,
 				// For secrets, we don't show the actual value - user must enter new value to update
@@ -151,7 +155,8 @@ export function ConfigDialog({ config, open, onClose }: ConfigDialogProps) {
 											/>
 										</FormControl>
 										<FormDescription>
-											Global config is available to all organizations
+											Global config is available to all
+											organizations
 										</FormDescription>
 										<FormMessage />
 									</FormItem>

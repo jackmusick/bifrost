@@ -78,7 +78,8 @@ const COMPONENT_CATEGORIES: ComponentCategory[] = [
 			{
 				type: "row",
 				label: "Row",
-				description: "Horizontal flex container for side-by-side content",
+				description:
+					"Horizontal flex container for side-by-side content",
 				icon: Rows3,
 				color: "bg-violet-500",
 			},
@@ -119,7 +120,8 @@ const COMPONENT_CATEGORIES: ComponentCategory[] = [
 			{
 				type: "heading",
 				label: "Heading",
-				description: "Title text with configurable heading level (h1-h6)",
+				description:
+					"Title text with configurable heading level (h1-h6)",
 				icon: Heading1,
 				color: "bg-blue-500",
 			},
@@ -167,21 +169,24 @@ const COMPONENT_CATEGORIES: ComponentCategory[] = [
 			{
 				type: "button",
 				label: "Button",
-				description: "Clickable button with navigation or workflow actions",
+				description:
+					"Clickable button with navigation or workflow actions",
 				icon: MousePointerClick,
 				color: "bg-green-500",
 			},
 			{
 				type: "data-table",
 				label: "Table",
-				description: "Data table with sorting, pagination, and row actions",
+				description:
+					"Data table with sorting, pagination, and row actions",
 				icon: Table,
 				color: "bg-green-500",
 			},
 			{
 				type: "stat-card",
 				label: "Stat Card",
-				description: "Display metric with value, trend, and optional icon",
+				description:
+					"Display metric with value, trend, and optional icon",
 				icon: BarChart3,
 				color: "bg-green-500",
 			},
@@ -202,7 +207,8 @@ const COMPONENT_CATEGORIES: ComponentCategory[] = [
 			{
 				type: "file-viewer",
 				label: "File Viewer",
-				description: "Display files inline, in modal, or as download link",
+				description:
+					"Display files inline, in modal, or as download link",
 				icon: FileText,
 				color: "bg-green-500",
 			},
@@ -222,7 +228,8 @@ const COMPONENT_CATEGORIES: ComponentCategory[] = [
 			{
 				type: "text-input",
 				label: "Text Input",
-				description: "Text field with label, placeholder, and validation",
+				description:
+					"Text field with label, placeholder, and validation",
 				icon: TextCursorInput,
 				color: "bg-amber-500",
 			},
@@ -310,7 +317,9 @@ function PaletteItem({ component, disabled = false }: PaletteItemProps) {
 					<div className={`${component.color} p-2 rounded`}>
 						<Icon className="h-4 w-4 text-white" />
 					</div>
-					<span className="text-sm font-medium">{component.label}</span>
+					<span className="text-sm font-medium">
+						{component.label}
+					</span>
 				</div>
 			</TooltipTrigger>
 			<TooltipContent side="right" className="max-w-[200px]">

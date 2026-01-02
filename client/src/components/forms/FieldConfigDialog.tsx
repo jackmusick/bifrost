@@ -127,11 +127,12 @@ function FieldConfigDialogContent({
 	const [name, setName] = useState(
 		() => field?.name ?? workflowInputData?.name ?? "",
 	);
-	const [label, setLabel] = useState(() =>
-		field?.label ??
-		(workflowInputData?.name
-			? generateLabelFromName(workflowInputData.name)
-			: ""),
+	const [label, setLabel] = useState(
+		() =>
+			field?.label ??
+			(workflowInputData?.name
+				? generateLabelFromName(workflowInputData.name)
+				: ""),
 	);
 	const [type, setType] = useState<FormFieldType>(
 		() => field?.type ?? (defaultType as FormFieldType) ?? "text",
@@ -598,7 +599,9 @@ function FieldConfigDialogContent({
 											...dataProviders.map(
 												(provider: DataProvider) => ({
 													label: provider.name,
-													value: provider.id ?? provider.name,
+													value:
+														provider.id ??
+														provider.name,
 												}),
 											),
 										]}
@@ -645,7 +648,8 @@ function FieldConfigDialogContent({
 										provider={
 											dataProviders.find(
 												(p: DataProvider) =>
-													(p.id ?? p.name) === dataProvider,
+													(p.id ?? p.name) ===
+													dataProvider,
 											)!
 										}
 										inputs={dataProviderInputs}

@@ -174,12 +174,48 @@ const DEMO_WORKFLOW_TEMPLATES = [
 
 // Demo conversation templates
 const DEMO_CONVERSATION_TEMPLATES = [
-	{ title: "Help with deployment", messages: 12, inputTokens: 8500, outputTokens: 4200, cost: 0.18 },
-	{ title: "Database migration questions", messages: 8, inputTokens: 5200, outputTokens: 3100, cost: 0.12 },
-	{ title: "API integration support", messages: 15, inputTokens: 11000, outputTokens: 6500, cost: 0.25 },
-	{ title: "Security audit discussion", messages: 6, inputTokens: 4000, outputTokens: 2200, cost: 0.09 },
-	{ title: "Performance optimization", messages: 10, inputTokens: 7500, outputTokens: 4800, cost: 0.17 },
-	{ title: "New feature planning", messages: 20, inputTokens: 15000, outputTokens: 9000, cost: 0.34 },
+	{
+		title: "Help with deployment",
+		messages: 12,
+		inputTokens: 8500,
+		outputTokens: 4200,
+		cost: 0.18,
+	},
+	{
+		title: "Database migration questions",
+		messages: 8,
+		inputTokens: 5200,
+		outputTokens: 3100,
+		cost: 0.12,
+	},
+	{
+		title: "API integration support",
+		messages: 15,
+		inputTokens: 11000,
+		outputTokens: 6500,
+		cost: 0.25,
+	},
+	{
+		title: "Security audit discussion",
+		messages: 6,
+		inputTokens: 4000,
+		outputTokens: 2200,
+		cost: 0.09,
+	},
+	{
+		title: "Performance optimization",
+		messages: 10,
+		inputTokens: 7500,
+		outputTokens: 4800,
+		cost: 0.17,
+	},
+	{
+		title: "New feature planning",
+		messages: 20,
+		inputTokens: 15000,
+		outputTokens: 9000,
+		cost: 0.34,
+	},
 ];
 
 // Fallback demo orgs
@@ -202,7 +238,8 @@ interface DemoDataParams {
  */
 function generateDemoData(params: DemoDataParams): UsageReportResponse {
 	const { startDate, endDate, orgId, source, realOrgs } = params;
-	const orgs = realOrgs && realOrgs.length > 0 ? realOrgs : FALLBACK_DEMO_ORGS;
+	const orgs =
+		realOrgs && realOrgs.length > 0 ? realOrgs : FALLBACK_DEMO_ORGS;
 
 	// Generate workflows with org assignments
 	const allWorkflows: DemoWorkflowUsage[] = DEMO_WORKFLOW_TEMPLATES.map(
@@ -215,18 +252,24 @@ function generateDemoData(params: DemoDataParams): UsageReportResponse {
 				workflow_name: template.name,
 				organization_id: org.id,
 				execution_count: executions,
-				input_tokens: Math.floor(template.inputTokens * executions * variance),
-				output_tokens: Math.floor(template.outputTokens * executions * variance),
+				input_tokens: Math.floor(
+					template.inputTokens * executions * variance,
+				),
+				output_tokens: Math.floor(
+					template.outputTokens * executions * variance,
+				),
 				ai_cost: (template.cost * executions * variance).toFixed(2),
-				cpu_seconds: Math.floor(template.cpuSeconds * executions * variance),
+				cpu_seconds: Math.floor(
+					template.cpuSeconds * executions * variance,
+				),
 				memory_bytes: template.memoryBytes,
 			};
 		},
 	);
 
 	// Generate conversations with org assignments
-	const allConversations: DemoConversationUsage[] = DEMO_CONVERSATION_TEMPLATES.map(
-		(template, index) => {
+	const allConversations: DemoConversationUsage[] =
+		DEMO_CONVERSATION_TEMPLATES.map((template, index) => {
 			const org = orgs[index % orgs.length];
 			const variance = 0.85 + Math.random() * 0.3;
 
@@ -239,8 +282,7 @@ function generateDemoData(params: DemoDataParams): UsageReportResponse {
 				output_tokens: Math.floor(template.outputTokens * variance),
 				ai_cost: (template.cost * variance).toFixed(2),
 			};
-		},
-	);
+		});
 
 	// Filter by org
 	const filteredWorkflows = orgId
@@ -288,7 +330,8 @@ function generateDemoData(params: DemoDataParams): UsageReportResponse {
 	const end = new Date(endDate);
 	const dayCount = Math.max(
 		1,
-		Math.ceil((end.getTime() - start.getTime()) / (1000 * 60 * 60 * 24)) + 1,
+		Math.ceil((end.getTime() - start.getTime()) / (1000 * 60 * 60 * 24)) +
+			1,
 	);
 
 	const dailyCost = totalAiCost / dayCount;
@@ -300,7 +343,8 @@ function generateDemoData(params: DemoDataParams): UsageReportResponse {
 	let dayIndex = 0;
 
 	while (currentDate <= end) {
-		const isWeekend = currentDate.getDay() === 0 || currentDate.getDay() === 6;
+		const isWeekend =
+			currentDate.getDay() === 0 || currentDate.getDay() === 6;
 		const baseMultiplier = isWeekend ? 0.5 : 1;
 		const trendMultiplier = 1 + dayIndex * 0.003;
 		const variance = 0.85 + Math.random() * 0.3;
@@ -333,7 +377,8 @@ function generateDemoData(params: DemoDataParams): UsageReportResponse {
 	for (const workflow of allWorkflows) {
 		const existing = orgMetrics.get(workflow.organization_id);
 		const orgName =
-			orgs.find((o) => o.id === workflow.organization_id)?.name ?? "Unknown";
+			orgs.find((o) => o.id === workflow.organization_id)?.name ??
+			"Unknown";
 
 		if (existing) {
 			existing.execution_count += workflow.execution_count;
@@ -362,17 +407,17 @@ function generateDemoData(params: DemoDataParams): UsageReportResponse {
 		}
 	}
 
-	const byOrganization: OrganizationUsage[] = Array.from(orgMetrics.entries()).map(
-		([id, metrics]) => ({
-			organization_id: id,
-			organization_name: metrics.name,
-			execution_count: metrics.execution_count,
-			conversation_count: metrics.conversation_count,
-			input_tokens: metrics.input_tokens,
-			output_tokens: metrics.output_tokens,
-			ai_cost: metrics.ai_cost.toFixed(2),
-		}),
-	);
+	const byOrganization: OrganizationUsage[] = Array.from(
+		orgMetrics.entries(),
+	).map(([id, metrics]) => ({
+		organization_id: id,
+		organization_name: metrics.name,
+		execution_count: metrics.execution_count,
+		conversation_count: metrics.conversation_count,
+		input_tokens: metrics.input_tokens,
+		output_tokens: metrics.output_tokens,
+		ai_cost: metrics.ai_cost.toFixed(2),
+	}));
 
 	return {
 		summary: {
@@ -385,7 +430,9 @@ function generateDemoData(params: DemoDataParams): UsageReportResponse {
 		},
 		trends,
 		by_workflow: includeWorkflows ? filteredWorkflows : undefined,
-		by_conversation: includeConversations ? filteredConversations : undefined,
+		by_conversation: includeConversations
+			? filteredConversations
+			: undefined,
 		by_organization: byOrganization,
 	};
 }
@@ -401,7 +448,9 @@ export function UsageReports() {
 
 	// Organization filter state (platform admins only)
 	// undefined = all, null = global only, UUID string = specific org
-	const [filterOrgId, setFilterOrgId] = useState<string | null | undefined>(undefined);
+	const [filterOrgId, setFilterOrgId] = useState<string | null | undefined>(
+		undefined,
+	);
 
 	// Derive isGlobalScope from filterOrgId for display logic
 	const isGlobalScope = filterOrgId === undefined || filterOrgId === null;
@@ -482,13 +531,24 @@ export function UsageReports() {
 			const mult = workflowSort.dir === "desc" ? -1 : 1;
 			switch (workflowSort.by) {
 				case "name":
-					return mult * a.workflow_name.localeCompare(b.workflow_name);
+					return (
+						mult * a.workflow_name.localeCompare(b.workflow_name)
+					);
 				case "executions":
 					return mult * (a.execution_count - b.execution_count);
 				case "tokens":
-					return mult * ((a.input_tokens + a.output_tokens) - (b.input_tokens + b.output_tokens));
+					return (
+						mult *
+						(a.input_tokens +
+							a.output_tokens -
+							(b.input_tokens + b.output_tokens))
+					);
 				case "cost":
-					return mult * (parseFloat(a.ai_cost || "0") - parseFloat(b.ai_cost || "0"));
+					return (
+						mult *
+						(parseFloat(a.ai_cost || "0") -
+							parseFloat(b.ai_cost || "0"))
+					);
 				case "cpu":
 					return mult * (a.cpu_seconds - b.cpu_seconds);
 				case "memory":
@@ -507,13 +567,27 @@ export function UsageReports() {
 			const mult = conversationSort.dir === "desc" ? -1 : 1;
 			switch (conversationSort.by) {
 				case "title":
-					return mult * (a.conversation_title || "").localeCompare(b.conversation_title || "");
+					return (
+						mult *
+						(a.conversation_title || "").localeCompare(
+							b.conversation_title || "",
+						)
+					);
 				case "messages":
 					return mult * (a.message_count - b.message_count);
 				case "tokens":
-					return mult * ((a.input_tokens + a.output_tokens) - (b.input_tokens + b.output_tokens));
+					return (
+						mult *
+						(a.input_tokens +
+							a.output_tokens -
+							(b.input_tokens + b.output_tokens))
+					);
 				case "cost":
-					return mult * (parseFloat(a.ai_cost || "0") - parseFloat(b.ai_cost || "0"));
+					return (
+						mult *
+						(parseFloat(a.ai_cost || "0") -
+							parseFloat(b.ai_cost || "0"))
+					);
 				default:
 					return 0;
 			}
@@ -528,15 +602,27 @@ export function UsageReports() {
 			const mult = orgSort.dir === "desc" ? -1 : 1;
 			switch (orgSort.by) {
 				case "name":
-					return mult * a.organization_name.localeCompare(b.organization_name);
+					return (
+						mult *
+						a.organization_name.localeCompare(b.organization_name)
+					);
 				case "executions":
 					return mult * (a.execution_count - b.execution_count);
 				case "conversations":
 					return mult * (a.conversation_count - b.conversation_count);
 				case "tokens":
-					return mult * ((a.input_tokens + a.output_tokens) - (b.input_tokens + b.output_tokens));
+					return (
+						mult *
+						(a.input_tokens +
+							a.output_tokens -
+							(b.input_tokens + b.output_tokens))
+					);
 				case "cost":
-					return mult * (parseFloat(a.ai_cost || "0") - parseFloat(b.ai_cost || "0"));
+					return (
+						mult *
+						(parseFloat(a.ai_cost || "0") -
+							parseFloat(b.ai_cost || "0"))
+					);
 				default:
 					return 0;
 			}
@@ -551,7 +637,10 @@ export function UsageReports() {
 			const mult = storageSort.dir === "desc" ? -1 : 1;
 			switch (storageSort.by) {
 				case "org":
-					return mult * a.organization_name.localeCompare(b.organization_name);
+					return (
+						mult *
+						a.organization_name.localeCompare(b.organization_name)
+					);
 				case "namespace":
 					return mult * a.namespace.localeCompare(b.namespace);
 				case "documents":
@@ -796,7 +885,9 @@ export function UsageReports() {
 						>
 							<TabsList>
 								<TabsTrigger value="all">All</TabsTrigger>
-								<TabsTrigger value="executions">Executions</TabsTrigger>
+								<TabsTrigger value="executions">
+									Executions
+								</TabsTrigger>
 								<TabsTrigger value="chat">Chat</TabsTrigger>
 							</TabsList>
 						</Tabs>
@@ -864,7 +955,8 @@ export function UsageReports() {
 							<div className="text-2xl font-bold">
 								{formatNumber(
 									(data?.summary?.total_input_tokens ?? 0) +
-									(data?.summary?.total_output_tokens ?? 0)
+										(data?.summary?.total_output_tokens ??
+											0),
 								)}
 							</div>
 						)}
@@ -887,7 +979,9 @@ export function UsageReports() {
 							<Skeleton className="h-8 w-24" />
 						) : (
 							<div className="text-2xl font-bold">
-								{formatCpuSeconds(data?.summary?.total_cpu_seconds)}
+								{formatCpuSeconds(
+									data?.summary?.total_cpu_seconds,
+								)}
 							</div>
 						)}
 						<p className="text-xs text-muted-foreground">
@@ -962,10 +1056,19 @@ export function UsageReports() {
 										border: "1px solid hsl(var(--border))",
 										borderRadius: "6px",
 									}}
-									formatter={(value: string | number, name: string) => {
+									formatter={(
+										value: string | number,
+										name: string,
+									) => {
 										if (name === "ai_cost")
-											return [formatCurrency(value), "AI Cost"];
-										return [formatNumber(value as number), name];
+											return [
+												formatCurrency(value),
+												"AI Cost",
+											];
+										return [
+											formatNumber(value as number),
+											name,
+										];
 									}}
 									labelFormatter={(label) =>
 										format(new Date(label), "PPP")
@@ -973,9 +1076,12 @@ export function UsageReports() {
 								/>
 								<Legend
 									formatter={(value) => {
-										if (value === "ai_cost") return "AI Cost";
-										if (value === "input_tokens") return "Input Tokens";
-										if (value === "output_tokens") return "Output Tokens";
+										if (value === "ai_cost")
+											return "AI Cost";
+										if (value === "input_tokens")
+											return "Input Tokens";
+										if (value === "output_tokens")
+											return "Output Tokens";
 										return value;
 									}}
 								/>
@@ -1012,7 +1118,10 @@ export function UsageReports() {
 								variant="outline"
 								size="sm"
 								onClick={downloadWorkflowCSV}
-								disabled={!data?.by_workflow || data.by_workflow.length === 0}
+								disabled={
+									!data?.by_workflow ||
+									data.by_workflow.length === 0
+								}
 							>
 								<Download className="h-4 w-4 mr-2" />
 								Export CSV
@@ -1032,12 +1141,15 @@ export function UsageReports() {
 									<DataTableRow>
 										<DataTableHead
 											className="cursor-pointer select-none hover:bg-muted/50"
-											onClick={() => toggleWorkflowSort("name")}
+											onClick={() =>
+												toggleWorkflowSort("name")
+											}
 										>
 											<div className="flex items-center gap-1">
 												Workflow
 												{workflowSort.by === "name" &&
-													(workflowSort.dir === "desc" ? (
+													(workflowSort.dir ===
+													"desc" ? (
 														<ChevronDown className="h-4 w-4" />
 													) : (
 														<ChevronUp className="h-4 w-4" />
@@ -1046,12 +1158,16 @@ export function UsageReports() {
 										</DataTableHead>
 										<DataTableHead
 											className="text-right cursor-pointer select-none hover:bg-muted/50"
-											onClick={() => toggleWorkflowSort("executions")}
+											onClick={() =>
+												toggleWorkflowSort("executions")
+											}
 										>
 											<div className="flex items-center justify-end gap-1">
 												Executions
-												{workflowSort.by === "executions" &&
-													(workflowSort.dir === "desc" ? (
+												{workflowSort.by ===
+													"executions" &&
+													(workflowSort.dir ===
+													"desc" ? (
 														<ChevronDown className="h-4 w-4" />
 													) : (
 														<ChevronUp className="h-4 w-4" />
@@ -1060,12 +1176,15 @@ export function UsageReports() {
 										</DataTableHead>
 										<DataTableHead
 											className="text-right cursor-pointer select-none hover:bg-muted/50"
-											onClick={() => toggleWorkflowSort("tokens")}
+											onClick={() =>
+												toggleWorkflowSort("tokens")
+											}
 										>
 											<div className="flex items-center justify-end gap-1">
 												Tokens
 												{workflowSort.by === "tokens" &&
-													(workflowSort.dir === "desc" ? (
+													(workflowSort.dir ===
+													"desc" ? (
 														<ChevronDown className="h-4 w-4" />
 													) : (
 														<ChevronUp className="h-4 w-4" />
@@ -1074,12 +1193,15 @@ export function UsageReports() {
 										</DataTableHead>
 										<DataTableHead
 											className="text-right cursor-pointer select-none hover:bg-muted/50"
-											onClick={() => toggleWorkflowSort("cost")}
+											onClick={() =>
+												toggleWorkflowSort("cost")
+											}
 										>
 											<div className="flex items-center justify-end gap-1">
 												AI Cost
 												{workflowSort.by === "cost" &&
-													(workflowSort.dir === "desc" ? (
+													(workflowSort.dir ===
+													"desc" ? (
 														<ChevronDown className="h-4 w-4" />
 													) : (
 														<ChevronUp className="h-4 w-4" />
@@ -1088,12 +1210,15 @@ export function UsageReports() {
 										</DataTableHead>
 										<DataTableHead
 											className="text-right cursor-pointer select-none hover:bg-muted/50"
-											onClick={() => toggleWorkflowSort("cpu")}
+											onClick={() =>
+												toggleWorkflowSort("cpu")
+											}
 										>
 											<div className="flex items-center justify-end gap-1">
 												CPU
 												{workflowSort.by === "cpu" &&
-													(workflowSort.dir === "desc" ? (
+													(workflowSort.dir ===
+													"desc" ? (
 														<ChevronDown className="h-4 w-4" />
 													) : (
 														<ChevronUp className="h-4 w-4" />
@@ -1102,12 +1227,15 @@ export function UsageReports() {
 										</DataTableHead>
 										<DataTableHead
 											className="text-right cursor-pointer select-none hover:bg-muted/50"
-											onClick={() => toggleWorkflowSort("memory")}
+											onClick={() =>
+												toggleWorkflowSort("memory")
+											}
 										>
 											<div className="flex items-center justify-end gap-1">
 												Memory
 												{workflowSort.by === "memory" &&
-													(workflowSort.dir === "desc" ? (
+													(workflowSort.dir ===
+													"desc" ? (
 														<ChevronDown className="h-4 w-4" />
 													) : (
 														<ChevronUp className="h-4 w-4" />
@@ -1118,24 +1246,37 @@ export function UsageReports() {
 								</DataTableHeader>
 								<DataTableBody>
 									{sortedWorkflows.map((workflow, index) => (
-										<DataTableRow key={`${workflow.workflow_name}-${index}`}>
+										<DataTableRow
+											key={`${workflow.workflow_name}-${index}`}
+										>
 											<DataTableCell className="font-medium">
 												{workflow.workflow_name}
 											</DataTableCell>
 											<DataTableCell className="text-right">
-												{formatNumber(workflow.execution_count)}
+												{formatNumber(
+													workflow.execution_count,
+												)}
 											</DataTableCell>
 											<DataTableCell className="text-right">
-												{formatNumber(workflow.input_tokens + workflow.output_tokens)}
+												{formatNumber(
+													workflow.input_tokens +
+														workflow.output_tokens,
+												)}
 											</DataTableCell>
 											<DataTableCell className="text-right">
-												{formatCurrency(workflow.ai_cost)}
+												{formatCurrency(
+													workflow.ai_cost,
+												)}
 											</DataTableCell>
 											<DataTableCell className="text-right">
-												{formatCpuSeconds(workflow.cpu_seconds)}
+												{formatCpuSeconds(
+													workflow.cpu_seconds,
+												)}
 											</DataTableCell>
 											<DataTableCell className="text-right">
-												{formatBytes(workflow.memory_bytes)}
+												{formatBytes(
+													workflow.memory_bytes,
+												)}
 											</DataTableCell>
 										</DataTableRow>
 									))}
@@ -1165,7 +1306,10 @@ export function UsageReports() {
 								variant="outline"
 								size="sm"
 								onClick={downloadConversationCSV}
-								disabled={!data?.by_conversation || data.by_conversation.length === 0}
+								disabled={
+									!data?.by_conversation ||
+									data.by_conversation.length === 0
+								}
 							>
 								<Download className="h-4 w-4 mr-2" />
 								Export CSV
@@ -1185,12 +1329,16 @@ export function UsageReports() {
 									<DataTableRow>
 										<DataTableHead
 											className="cursor-pointer select-none hover:bg-muted/50"
-											onClick={() => toggleConversationSort("title")}
+											onClick={() =>
+												toggleConversationSort("title")
+											}
 										>
 											<div className="flex items-center gap-1">
 												Conversation
-												{conversationSort.by === "title" &&
-													(conversationSort.dir === "desc" ? (
+												{conversationSort.by ===
+													"title" &&
+													(conversationSort.dir ===
+													"desc" ? (
 														<ChevronDown className="h-4 w-4" />
 													) : (
 														<ChevronUp className="h-4 w-4" />
@@ -1199,12 +1347,18 @@ export function UsageReports() {
 										</DataTableHead>
 										<DataTableHead
 											className="text-right cursor-pointer select-none hover:bg-muted/50"
-											onClick={() => toggleConversationSort("messages")}
+											onClick={() =>
+												toggleConversationSort(
+													"messages",
+												)
+											}
 										>
 											<div className="flex items-center justify-end gap-1">
 												Messages
-												{conversationSort.by === "messages" &&
-													(conversationSort.dir === "desc" ? (
+												{conversationSort.by ===
+													"messages" &&
+													(conversationSort.dir ===
+													"desc" ? (
 														<ChevronDown className="h-4 w-4" />
 													) : (
 														<ChevronUp className="h-4 w-4" />
@@ -1213,12 +1367,16 @@ export function UsageReports() {
 										</DataTableHead>
 										<DataTableHead
 											className="text-right cursor-pointer select-none hover:bg-muted/50"
-											onClick={() => toggleConversationSort("tokens")}
+											onClick={() =>
+												toggleConversationSort("tokens")
+											}
 										>
 											<div className="flex items-center justify-end gap-1">
 												Tokens
-												{conversationSort.by === "tokens" &&
-													(conversationSort.dir === "desc" ? (
+												{conversationSort.by ===
+													"tokens" &&
+													(conversationSort.dir ===
+													"desc" ? (
 														<ChevronDown className="h-4 w-4" />
 													) : (
 														<ChevronUp className="h-4 w-4" />
@@ -1227,12 +1385,16 @@ export function UsageReports() {
 										</DataTableHead>
 										<DataTableHead
 											className="text-right cursor-pointer select-none hover:bg-muted/50"
-											onClick={() => toggleConversationSort("cost")}
+											onClick={() =>
+												toggleConversationSort("cost")
+											}
 										>
 											<div className="flex items-center justify-end gap-1">
 												AI Cost
-												{conversationSort.by === "cost" &&
-													(conversationSort.dir === "desc" ? (
+												{conversationSort.by ===
+													"cost" &&
+													(conversationSort.dir ===
+													"desc" ? (
 														<ChevronDown className="h-4 w-4" />
 													) : (
 														<ChevronUp className="h-4 w-4" />
@@ -1243,18 +1405,28 @@ export function UsageReports() {
 								</DataTableHeader>
 								<DataTableBody>
 									{sortedConversations.map((conversation) => (
-										<DataTableRow key={conversation.conversation_id}>
+										<DataTableRow
+											key={conversation.conversation_id}
+										>
 											<DataTableCell className="font-medium">
-												{conversation.conversation_title || "Untitled"}
+												{conversation.conversation_title ||
+													"Untitled"}
 											</DataTableCell>
 											<DataTableCell className="text-right">
-												{formatNumber(conversation.message_count)}
+												{formatNumber(
+													conversation.message_count,
+												)}
 											</DataTableCell>
 											<DataTableCell className="text-right">
-												{formatNumber(conversation.input_tokens + conversation.output_tokens)}
+												{formatNumber(
+													conversation.input_tokens +
+														conversation.output_tokens,
+												)}
 											</DataTableCell>
 											<DataTableCell className="text-right">
-												{formatCurrency(conversation.ai_cost)}
+												{formatCurrency(
+													conversation.ai_cost,
+												)}
 											</DataTableCell>
 										</DataTableRow>
 									))}
@@ -1307,7 +1479,9 @@ export function UsageReports() {
 									<DataTableRow>
 										<DataTableHead
 											className="cursor-pointer select-none hover:bg-muted/50"
-											onClick={() => toggleOrgSort("name")}
+											onClick={() =>
+												toggleOrgSort("name")
+											}
 										>
 											<div className="flex items-center gap-1">
 												Organization
@@ -1321,7 +1495,9 @@ export function UsageReports() {
 										</DataTableHead>
 										<DataTableHead
 											className="text-right cursor-pointer select-none hover:bg-muted/50"
-											onClick={() => toggleOrgSort("executions")}
+											onClick={() =>
+												toggleOrgSort("executions")
+											}
 										>
 											<div className="flex items-center justify-end gap-1">
 												Executions
@@ -1335,11 +1511,14 @@ export function UsageReports() {
 										</DataTableHead>
 										<DataTableHead
 											className="text-right cursor-pointer select-none hover:bg-muted/50"
-											onClick={() => toggleOrgSort("conversations")}
+											onClick={() =>
+												toggleOrgSort("conversations")
+											}
 										>
 											<div className="flex items-center justify-end gap-1">
 												Conversations
-												{orgSort.by === "conversations" &&
+												{orgSort.by ===
+													"conversations" &&
 													(orgSort.dir === "desc" ? (
 														<ChevronDown className="h-4 w-4" />
 													) : (
@@ -1349,7 +1528,9 @@ export function UsageReports() {
 										</DataTableHead>
 										<DataTableHead
 											className="text-right cursor-pointer select-none hover:bg-muted/50"
-											onClick={() => toggleOrgSort("tokens")}
+											onClick={() =>
+												toggleOrgSort("tokens")
+											}
 										>
 											<div className="flex items-center justify-end gap-1">
 												Tokens
@@ -1363,7 +1544,9 @@ export function UsageReports() {
 										</DataTableHead>
 										<DataTableHead
 											className="text-right cursor-pointer select-none hover:bg-muted/50"
-											onClick={() => toggleOrgSort("cost")}
+											onClick={() =>
+												toggleOrgSort("cost")
+											}
 										>
 											<div className="flex items-center justify-end gap-1">
 												AI Cost
@@ -1384,13 +1567,20 @@ export function UsageReports() {
 												{org.organization_name}
 											</DataTableCell>
 											<DataTableCell className="text-right">
-												{formatNumber(org.execution_count)}
+												{formatNumber(
+													org.execution_count,
+												)}
 											</DataTableCell>
 											<DataTableCell className="text-right">
-												{formatNumber(org.conversation_count)}
+												{formatNumber(
+													org.conversation_count,
+												)}
 											</DataTableCell>
 											<DataTableCell className="text-right">
-												{formatNumber(org.input_tokens + org.output_tokens)}
+												{formatNumber(
+													org.input_tokens +
+														org.output_tokens,
+												)}
 											</DataTableCell>
 											<DataTableCell className="text-right">
 												{formatCurrency(org.ai_cost)}
@@ -1416,20 +1606,33 @@ export function UsageReports() {
 							<div className="flex items-center gap-2">
 								<CardTitle>Knowledge Storage</CardTitle>
 								{data?.knowledge_storage_as_of && (
-									<Badge variant="outline" className="text-xs font-normal">
-										As of {format(new Date(data.knowledge_storage_as_of), "MMM d, yyyy")}
+									<Badge
+										variant="outline"
+										className="text-xs font-normal"
+									>
+										As of{" "}
+										{format(
+											new Date(
+												data.knowledge_storage_as_of,
+											),
+											"MMM d, yyyy",
+										)}
 									</Badge>
 								)}
 							</div>
 							<CardDescription>
-								Storage consumption by organization and namespace
+								Storage consumption by organization and
+								namespace
 							</CardDescription>
 						</div>
 						<Button
 							variant="outline"
 							size="sm"
 							onClick={downloadStorageCSV}
-							disabled={!data?.knowledge_storage || data.knowledge_storage.length === 0}
+							disabled={
+								!data?.knowledge_storage ||
+								data.knowledge_storage.length === 0
+							}
 						>
 							<Download className="h-4 w-4 mr-2" />
 							Export CSV
@@ -1463,7 +1666,9 @@ export function UsageReports() {
 									</DataTableHead>
 									<DataTableHead
 										className="cursor-pointer select-none hover:bg-muted/50"
-										onClick={() => toggleStorageSort("namespace")}
+										onClick={() =>
+											toggleStorageSort("namespace")
+										}
 									>
 										<div className="flex items-center gap-1">
 											Namespace
@@ -1477,7 +1682,9 @@ export function UsageReports() {
 									</DataTableHead>
 									<DataTableHead
 										className="text-right cursor-pointer select-none hover:bg-muted/50"
-										onClick={() => toggleStorageSort("documents")}
+										onClick={() =>
+											toggleStorageSort("documents")
+										}
 									>
 										<div className="flex items-center justify-end gap-1">
 											Documents
@@ -1491,7 +1698,9 @@ export function UsageReports() {
 									</DataTableHead>
 									<DataTableHead
 										className="text-right cursor-pointer select-none hover:bg-muted/50"
-										onClick={() => toggleStorageSort("size")}
+										onClick={() =>
+											toggleStorageSort("size")
+										}
 									>
 										<div className="flex items-center justify-end gap-1">
 											Size
@@ -1507,7 +1716,9 @@ export function UsageReports() {
 							</DataTableHeader>
 							<DataTableBody>
 								{sortedStorage.map((storage, index) => (
-									<DataTableRow key={`${storage.organization_id || "global"}-${storage.namespace}-${index}`}>
+									<DataTableRow
+										key={`${storage.organization_id || "global"}-${storage.namespace}-${index}`}
+									>
 										<DataTableCell className="font-medium">
 											<div className="flex items-center gap-2">
 												<Database className="h-4 w-4 text-muted-foreground" />
@@ -1520,12 +1731,16 @@ export function UsageReports() {
 											</code>
 										</DataTableCell>
 										<DataTableCell className="text-right">
-											{formatNumber(storage.document_count)}
+											{formatNumber(
+												storage.document_count,
+											)}
 										</DataTableCell>
 										<DataTableCell className="text-right">
 											{storage.size_mb >= 1
 												? `${storage.size_mb.toFixed(2)} MB`
-												: formatBytes(storage.size_bytes)}
+												: formatBytes(
+														storage.size_bytes,
+													)}
 										</DataTableCell>
 									</DataTableRow>
 								))}

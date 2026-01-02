@@ -127,13 +127,17 @@ export function KeyValueEditor({
 						<div key={index} className="flex gap-2 items-start">
 							<Input
 								value={pair.key}
-								onChange={(e) => handleKeyChange(index, e.target.value)}
+								onChange={(e) =>
+									handleKeyChange(index, e.target.value)
+								}
 								placeholder={keyPlaceholder}
 								className="flex-1 text-sm"
 							/>
 							<Input
 								value={pair.value}
-								onChange={(e) => handleValueChange(index, e.target.value)}
+								onChange={(e) =>
+									handleValueChange(index, e.target.value)
+								}
 								placeholder={valuePlaceholder}
 								className="flex-1 text-sm font-mono"
 							/>
@@ -162,9 +166,7 @@ export function KeyValueEditor({
 				Add Parameter
 			</Button>
 
-			{hint && (
-				<p className="text-xs text-muted-foreground">{hint}</p>
-			)}
+			{hint && <p className="text-xs text-muted-foreground">{hint}</p>}
 		</div>
 	);
 }

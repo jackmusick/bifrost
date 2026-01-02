@@ -60,7 +60,9 @@ export function Forms() {
 	const navigate = useNavigate();
 	const { scope, isGlobalScope } = useOrgScope();
 	const { isPlatformAdmin } = useAuth();
-	const [filterOrgId, setFilterOrgId] = useState<string | null | undefined>(undefined);
+	const [filterOrgId, setFilterOrgId] = useState<string | null | undefined>(
+		undefined,
+	);
 	const [searchTerm, setSearchTerm] = useState("");
 	const [viewMode, setViewMode] = useState<"grid" | "table">("grid");
 	const [isDisableDialogOpen, setIsDisableDialogOpen] = useState(false);
@@ -73,9 +75,11 @@ export function Forms() {
 
 	// Pass filterOrgId to backend for filtering (undefined = all, null = global only)
 	// For platform admins, undefined means show all. For non-admins, backend handles filtering.
-	const { data: forms, isLoading, refetch } = useForms(
-		isPlatformAdmin ? filterOrgId : undefined,
-	);
+	const {
+		data: forms,
+		isLoading,
+		refetch,
+	} = useForms(isPlatformAdmin ? filterOrgId : undefined);
 	const deleteForm = useDeleteForm();
 	const updateForm = useUpdateForm();
 
@@ -374,12 +378,20 @@ export function Forms() {
 									{isPlatformAdmin && (
 										<div className="mb-2">
 											{form.organization_id ? (
-												<Badge variant="outline" className="text-xs">
+												<Badge
+													variant="outline"
+													className="text-xs"
+												>
 													<Building2 className="mr-1 h-3 w-3" />
-													{getOrgName(form.organization_id)}
+													{getOrgName(
+														form.organization_id,
+													)}
 												</Badge>
 											) : (
-												<Badge variant="default" className="text-xs">
+												<Badge
+													variant="default"
+													className="text-xs"
+												>
 													<Globe className="mr-1 h-3 w-3" />
 													Global
 												</Badge>
@@ -474,7 +486,9 @@ export function Forms() {
 							<DataTableHeader>
 								<DataTableRow>
 									{isPlatformAdmin && (
-										<DataTableHead>Organization</DataTableHead>
+										<DataTableHead>
+											Organization
+										</DataTableHead>
 									)}
 									<DataTableHead>Name</DataTableHead>
 									<DataTableHead>Description</DataTableHead>
@@ -492,12 +506,20 @@ export function Forms() {
 											{isPlatformAdmin && (
 												<DataTableCell>
 													{form.organization_id ? (
-														<Badge variant="outline" className="text-xs">
+														<Badge
+															variant="outline"
+															className="text-xs"
+														>
 															<Building2 className="mr-1 h-3 w-3" />
-															{getOrgName(form.organization_id)}
+															{getOrgName(
+																form.organization_id,
+															)}
 														</Badge>
 													) : (
-														<Badge variant="default" className="text-xs">
+														<Badge
+															variant="default"
+															className="text-xs"
+														>
 															<Globe className="mr-1 h-3 w-3" />
 															Global
 														</Badge>

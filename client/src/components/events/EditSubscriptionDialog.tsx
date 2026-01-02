@@ -38,7 +38,7 @@ function EditSubscriptionDialogContent({
 
 	// Form state - initialized from props, component remounts when dialog opens
 	const [eventType, setEventType] = useState<string>(
-		subscription.event_type ?? ""
+		subscription.event_type ?? "",
 	);
 	const [errors, setErrors] = useState<string[]>([]);
 
@@ -106,8 +106,8 @@ function EditSubscriptionDialogContent({
 						{subscription.workflow_name || subscription.workflow_id}
 					</div>
 					<p className="text-xs text-muted-foreground">
-						The workflow cannot be changed. Create a new subscription to use a
-						different workflow.
+						The workflow cannot be changed. Create a new
+						subscription to use a different workflow.
 					</p>
 				</div>
 
@@ -121,18 +121,24 @@ function EditSubscriptionDialogContent({
 						placeholder="e.g., ticket.created"
 					/>
 					<p className="text-xs text-muted-foreground">
-						Only trigger the workflow for events matching this type. Leave empty
-						to receive all events.
+						Only trigger the workflow for events matching this type.
+						Leave empty to receive all events.
 					</p>
 				</div>
 			</div>
 
 			<DialogFooter>
-				<Button type="button" variant="outline" onClick={() => onOpenChange(false)}>
+				<Button
+					type="button"
+					variant="outline"
+					onClick={() => onOpenChange(false)}
+				>
 					Cancel
 				</Button>
 				<Button type="submit" disabled={isLoading}>
-					{isLoading && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+					{isLoading && (
+						<Loader2 className="mr-2 h-4 w-4 animate-spin" />
+					)}
 					Save Changes
 				</Button>
 			</DialogFooter>

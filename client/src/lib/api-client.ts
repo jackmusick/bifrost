@@ -112,7 +112,11 @@ function handleAuthFailure(): void {
 	localStorage.removeItem(ACCESS_TOKEN_KEY);
 
 	const currentPath = window.location.pathname;
-	if (currentPath !== "/login" && currentPath !== "/setup" && !currentPath.startsWith("/auth/callback")) {
+	if (
+		currentPath !== "/login" &&
+		currentPath !== "/setup" &&
+		!currentPath.startsWith("/auth/callback")
+	) {
 		window.location.href = `/login?returnTo=${encodeURIComponent(currentPath)}`;
 	}
 }
@@ -172,7 +176,11 @@ baseClient.use({
 			if (!hasValidToken) {
 				// No valid token and refresh failed - redirect to login
 				const currentPath = window.location.pathname;
-				if (currentPath !== "/login" && currentPath !== "/setup" && !currentPath.startsWith("/auth/callback")) {
+				if (
+					currentPath !== "/login" &&
+					currentPath !== "/setup" &&
+					!currentPath.startsWith("/auth/callback")
+				) {
 					window.location.href = `/login?returnTo=${encodeURIComponent(currentPath)}`;
 				}
 				// Throw to prevent the request from proceeding

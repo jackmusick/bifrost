@@ -18,8 +18,7 @@ export function Settings() {
 	const [tabActions, setTabActions] = useState<React.ReactNode>(null);
 
 	// Parse the current tab from the URL path
-	const currentTab =
-		location.pathname.split("/settings/")[1] || "ai";
+	const currentTab = location.pathname.split("/settings/")[1] || "ai";
 
 	const handleTabChange = (value: string) => {
 		navigate(`/settings/${value}`);

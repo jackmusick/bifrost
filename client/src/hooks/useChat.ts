@@ -362,7 +362,9 @@ const PRICING_RATES: Record<string, { input: number; output: number }> = {
 };
 
 /** Get pricing for a model (matches by prefix) */
-function getPricing(model: string | null | undefined): { input: number; output: number } | null {
+function getPricing(
+	model: string | null | undefined,
+): { input: number; output: number } | null {
 	if (!model) return null;
 	const normalizedModel = model.toLowerCase();
 	for (const [key, rates] of Object.entries(PRICING_RATES)) {
@@ -391,11 +393,12 @@ export function useConversationStats(
 	return useMemo(() => {
 		if (!messages || messages.length === 0) return null;
 
-		const assistantMessages = messages.filter((m) => m.role === "assistant");
+		const assistantMessages = messages.filter(
+			(m) => m.role === "assistant",
+		);
 
 		// Find the model from the first message that has one
-		const model =
-			assistantMessages.find((m) => m.model)?.model ?? null;
+		const model = assistantMessages.find((m) => m.model)?.model ?? null;
 
 		// Sum up token counts
 		const totalInputTokens = assistantMessages.reduce(

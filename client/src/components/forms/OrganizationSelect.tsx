@@ -54,7 +54,8 @@ export function OrganizationSelect({
 	const { data: organizations, isLoading } = useOrganizations();
 
 	// Convert null/undefined to our special values for the Select component
-	const selectValue = value === undefined ? ALL_VALUE : value === null ? GLOBAL_VALUE : value;
+	const selectValue =
+		value === undefined ? ALL_VALUE : value === null ? GLOBAL_VALUE : value;
 
 	const handleValueChange = (newValue: string) => {
 		// Convert our special values back to null/undefined
@@ -68,7 +69,9 @@ export function OrganizationSelect({
 	};
 
 	// Find the selected organization for display
-	const selectedOrg = organizations?.find((org: Organization) => org.id === value);
+	const selectedOrg = organizations?.find(
+		(org: Organization) => org.id === value,
+	);
 
 	return (
 		<Select
@@ -77,7 +80,9 @@ export function OrganizationSelect({
 			disabled={disabled || isLoading}
 		>
 			<SelectTrigger className="w-full">
-				<SelectValue placeholder={isLoading ? "Loading..." : placeholder}>
+				<SelectValue
+					placeholder={isLoading ? "Loading..." : placeholder}
+				>
 					{value === undefined && showAll ? (
 						<span>All</span>
 					) : value === null ? (
@@ -118,7 +123,9 @@ export function OrganizationSelect({
 								<div className="flex items-center gap-2">
 									<Globe className="h-4 w-4 text-muted-foreground" />
 									<div className="flex flex-col">
-										<span className="font-medium">Global</span>
+										<span className="font-medium">
+											Global
+										</span>
 										<span className="text-xs text-muted-foreground">
 											Available to all organizations
 										</span>

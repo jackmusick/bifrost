@@ -11,7 +11,7 @@ Complete API reference for decorators, context, and SDK modules
 from bifrost import workflow, data_provider, context
 
 # SDK modules (all async)
-from bifrost import ai, knowledge, config, integrations, files
+from bifrost import ai, knowledge, config, integrations, files, tables
 from bifrost import organizations, users, roles, forms, executions, workflows
 
 # Types (optional, for type hints)
@@ -19,6 +19,7 @@ from bifrost import (
     ExecutionContext, Organization, Role, UserPublic, FormPublic,
     WorkflowMetadata, WorkflowExecution, IntegrationData, OAuthCredentials,
     ConfigData, AIResponse, AIStreamChunk, KnowledgeDocument, NamespaceInfo,
+    TableInfo, DocumentData, DocumentList,
 )
 
 # Enums
@@ -409,6 +410,71 @@ await files.write("temp_report.html", html_content, location="temp")
 # Temp files are automatically cleaned up periodically
 ```
   
+
+### tables
+
+Document storage with flexible querying. Tables are scoped to organizations and optionally to applications.
+
+All tables methods are **async** and return **Pydantic models**, not dicts. Use attribute access (`.id`, `.data`) not dict access (`["id"]`).
+
+**Table Operations**:
+
+| Function | Parameters | Returns | Description |
+|----------|-----------|---------|-------------|
+| `create(name, description, table_schema, scope, app)` | name: str, ... | TableInfo | Create a table explicitly |
+| `list(scope, app)` | scope: str \| None, app: str \| None | list[TableInfo] | List tables |
+| `delete(name, scope, app)` | name: str, ... | bool | Delete table and all documents |
+
+**Document Operations**:
+
+| Function | Parameters | Returns | Description |
+|----------|-----------|---------|-------------|
+| `insert(table, data, id, scope, app)` | table: str, data: dict, id: str \| None | DocumentData | Insert document (auto-creates table) |
+| `upsert(table, id, data, scope, app)` | table: str, id: str, data: dict | DocumentData | Create or replace by ID |
+| `get(table, doc_id, scope, app)` | table: str, doc_id: str | DocumentData \| None | Get document by ID |
+| `update(table, doc_id, data, scope, app)` | table: str, doc_id: str, data: dict | DocumentData \| None | Partial update (merge) |
+| `delete_document(table, doc_id, scope, app)` | table: str, doc_id: str | bool | Delete single document |
+| `query(table, where, order_by, order_dir, limit, offset, scope, app)` | various | DocumentList | Query with filters |
+| `count(table, where, scope, app)` | table: str, where: dict \| None | int | Count matching documents |
+
+**Document ID**: Can be user-provided string or auto-generated UUID. Use your own IDs for natural keys (emails, external IDs).
+
+**Query Operators** (in `where` dict):
+- Simple equality: `{"status": "active"}`
+- Comparison: `{"amount": {"gt": 100, "lte": 1000}}` (operators: `gt`, `gte`, `lt`, `lte`)
+- Pattern matching: `{"name": {"like": "%acme%"}}` or `{"name": {"ilike": "%ACME%"}}` (case-insensitive)
+- List membership: `{"category": {"in": ["a", "b"]}}`
+- Null check: `{"deleted_at": {"is_null": True}}`
+
+**Return Types**:
+- `TableInfo`: `.id`, `.name`, `.description`, `.table_schema`, `.organization_id`, `.created_at`
+- `DocumentData`: `.id`, `.table_id`, `.data`, `.created_at`, `.updated_at`
+- `DocumentList`: `.documents` (list[DocumentData]), `.total`, `.limit`, `.offset`
+
+```python
+from bifrost import tables
+
+# Insert with auto-generated ID
+doc = await tables.insert("customers", {"name": "Acme", "status": "active"})
+print(doc.id)  # UUID string
+
+# Insert with custom ID
+doc = await tables.insert("customers", {"name": "TechCo"}, id="techco-001")
+
+# Upsert - create or replace
+doc = await tables.upsert("settings", id="app-config", data={"theme": "dark"})
+
+# Query with filters
+result = await tables.query(
+    "customers",
+    where={"status": "active", "revenue": {"gte": 10000}},
+    order_by="created_at",
+    order_dir="desc",
+    limit=10
+)
+for doc in result.documents:
+    print(doc.data["name"])
+```
 
 ### organizations
 

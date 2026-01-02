@@ -6,7 +6,15 @@
  */
 
 import { useState, useRef, useCallback, useEffect } from "react";
-import { ArrowUp, Bot, Loader2, Paperclip, Plus, Square, X } from "lucide-react";
+import {
+	ArrowUp,
+	Bot,
+	Loader2,
+	Paperclip,
+	Plus,
+	Square,
+	X,
+} from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import { MentionPicker } from "./MentionPicker";

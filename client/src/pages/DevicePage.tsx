@@ -184,7 +184,8 @@ export function DevicePage() {
 								<Alert className="mb-4">
 									<Terminal className="h-4 w-4" />
 									<AlertDescription>
-										Authorizing as <strong>{user?.email}</strong>
+										Authorizing as{" "}
+										<strong>{user?.email}</strong>
 									</AlertDescription>
 								</Alert>
 

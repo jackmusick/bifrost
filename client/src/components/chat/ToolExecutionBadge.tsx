@@ -155,7 +155,10 @@ export function ToolExecutionBadge({
 			</PopoverTrigger>
 
 			{hasDetails && (
-				<PopoverContent className="w-96 max-h-80 overflow-auto" align="start">
+				<PopoverContent
+					className="w-96 max-h-80 overflow-auto"
+					align="start"
+				>
 					<div className="space-y-3">
 						{/* Input Parameters */}
 						{toolCall.arguments &&
@@ -195,7 +198,8 @@ export function ToolExecutionBadge({
 								<h4 className="text-xs font-medium text-muted-foreground mb-1">
 									Result
 								</h4>
-								{typeof result === "object" && result !== null ? (
+								{typeof result === "object" &&
+								result !== null ? (
 									<PrettyInputDisplay
 										inputData={
 											result as Record<string, unknown>

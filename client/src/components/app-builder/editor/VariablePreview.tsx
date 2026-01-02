@@ -6,7 +6,17 @@
  */
 
 import { useState, useMemo } from "react";
-import { ChevronRight, ChevronDown, Copy, Check, Variable, User, Database, Workflow, FileText } from "lucide-react";
+import {
+	ChevronRight,
+	ChevronDown,
+	Copy,
+	Check,
+	Variable,
+	User,
+	Database,
+	Workflow,
+	FileText,
+} from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import {
@@ -19,7 +29,10 @@ import {
 	CollapsibleContent,
 	CollapsibleTrigger,
 } from "@/components/ui/collapsible";
-import type { ExpressionContext, PageDefinition } from "@/lib/app-builder-types";
+import type {
+	ExpressionContext,
+	PageDefinition,
+} from "@/lib/app-builder-types";
 
 interface VariablePreviewProps {
 	/** Current expression context (for preview mode) */
@@ -80,11 +93,21 @@ function CopyButton({ value }: { value: string }) {
 /**
  * Collapsible section for a category of variables
  */
-function VariableSection({ title, icon, paths, defaultOpen = true, onInsertVariable }: VariableSectionProps) {
+function VariableSection({
+	title,
+	icon,
+	paths,
+	defaultOpen = true,
+	onInsertVariable,
+}: VariableSectionProps) {
 	const [isOpen, setIsOpen] = useState(defaultOpen);
 
 	return (
-		<Collapsible open={isOpen} onOpenChange={setIsOpen} className="border-b last:border-b-0">
+		<Collapsible
+			open={isOpen}
+			onOpenChange={setIsOpen}
+			className="border-b last:border-b-0"
+		>
 			<CollapsibleTrigger className="flex w-full items-center gap-2 px-3 py-2 hover:bg-muted/50 transition-colors">
 				{isOpen ? (
 					<ChevronDown className="h-4 w-4 text-muted-foreground" />
@@ -93,7 +116,9 @@ function VariableSection({ title, icon, paths, defaultOpen = true, onInsertVaria
 				)}
 				{icon}
 				<span className="text-sm font-medium">{title}</span>
-				<span className="ml-auto text-xs text-muted-foreground">{paths.length}</span>
+				<span className="ml-auto text-xs text-muted-foreground">
+					{paths.length}
+				</span>
 			</CollapsibleTrigger>
 			<CollapsibleContent>
 				<div className="px-2 pb-2">
@@ -149,7 +174,11 @@ export function VariablePreview({
 		const paths: { path: string; type: string; description?: string }[] = [
 			{ path: "user.id", type: "string", description: "User ID" },
 			{ path: "user.name", type: "string", description: "Display name" },
-			{ path: "user.email", type: "string", description: "Email address" },
+			{
+				path: "user.email",
+				type: "string",
+				description: "Email address",
+			},
 			{ path: "user.role", type: "string", description: "User role" },
 		];
 		return paths;
@@ -157,7 +186,8 @@ export function VariablePreview({
 
 	// Build field variables from page inputs
 	const fieldPaths = useMemo(() => {
-		const paths: { path: string; type: string; description?: string }[] = [];
+		const paths: { path: string; type: string; description?: string }[] =
+			[];
 		// If we have context with field values, show them
 		const fieldData = context?.field;
 		if (fieldData) {
@@ -180,7 +210,8 @@ export function VariablePreview({
 
 	// Build data source variables
 	const dataPaths = useMemo(() => {
-		const paths: { path: string; type: string; description?: string }[] = [];
+		const paths: { path: string; type: string; description?: string }[] =
+			[];
 		const dataSources = page?.dataSources;
 		if (dataSources) {
 			for (const ds of dataSources) {
@@ -205,10 +236,26 @@ export function VariablePreview({
 	// Build workflow result variables
 	const workflowPaths = useMemo(() => {
 		const paths: { path: string; type: string; description?: string }[] = [
-			{ path: "workflow.executionId", type: "string", description: "Execution ID" },
-			{ path: "workflow.status", type: "string", description: "pending|running|completed|failed" },
-			{ path: "workflow.result", type: "any", description: "Workflow output data" },
-			{ path: "workflow.error", type: "string", description: "Error message (if failed)" },
+			{
+				path: "workflow.executionId",
+				type: "string",
+				description: "Execution ID",
+			},
+			{
+				path: "workflow.status",
+				type: "string",
+				description: "pending|running|completed|failed",
+			},
+			{
+				path: "workflow.result",
+				type: "any",
+				description: "Workflow output data",
+			},
+			{
+				path: "workflow.error",
+				type: "string",
+				description: "Error message (if failed)",
+			},
 		];
 		return paths;
 	}, []);
@@ -217,14 +264,24 @@ export function VariablePreview({
 	const rowPaths = useMemo(() => {
 		if (!isRowContext) return [];
 		return [
-			{ path: "row", type: "object", description: "Current row data object" },
-			{ path: "row.<fieldName>", type: "any", description: "Access row field by name (e.g., row.id, row.name)" },
+			{
+				path: "row",
+				type: "object",
+				description: "Current row data object",
+			},
+			{
+				path: "row.<fieldName>",
+				type: "any",
+				description:
+					"Access row field by name (e.g., row.id, row.name)",
+			},
 		];
 	}, [isRowContext]);
 
 	// Build page variables
 	const pagePaths = useMemo(() => {
-		const paths: { path: string; type: string; description?: string }[] = [];
+		const paths: { path: string; type: string; description?: string }[] =
+			[];
 		const pageVariables = page?.variables;
 		if (pageVariables) {
 			for (const [key] of Object.entries(pageVariables)) {
@@ -247,8 +304,16 @@ export function VariablePreview({
 	// Build query params
 	const queryPaths = useMemo(() => {
 		return [
-			{ path: "query.<param>", type: "string", description: "URL query parameter (e.g., query.id)" },
-			{ path: "params.<param>", type: "string", description: "Route parameter (e.g., params.userId)" },
+			{
+				path: "query.<param>",
+				type: "string",
+				description: "URL query parameter (e.g., query.id)",
+			},
+			{
+				path: "params.<param>",
+				type: "string",
+				description: "Route parameter (e.g., params.userId)",
+			},
 		];
 	}, []);
 
@@ -259,7 +324,9 @@ export function VariablePreview({
 				<h3 className="text-sm font-semibold">Available Variables</h3>
 			</div>
 			<p className="px-3 py-2 text-xs text-muted-foreground border-b">
-				Click a variable to copy its expression. Use <code className="bg-muted px-1 rounded">{"{{ path }}"}</code> syntax in any text field.
+				Click a variable to copy its expression. Use{" "}
+				<code className="bg-muted px-1 rounded">{"{{ path }}"}</code>{" "}
+				syntax in any text field.
 			</p>
 			<div className="flex-1 overflow-y-auto">
 				<VariableSection

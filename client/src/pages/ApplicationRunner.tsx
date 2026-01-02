@@ -31,7 +31,11 @@ import {
 } from "@/components/app-builder/WorkflowExecutionModal";
 import { WorkflowLoadingIndicator } from "@/components/app-builder/WorkflowLoadingIndicator";
 import { useAppBuilderStore } from "@/stores/app-builder.store";
-import type { ApplicationDefinition, WorkflowResult, OnCompleteAction } from "@/lib/app-builder-types";
+import type {
+	ApplicationDefinition,
+	WorkflowResult,
+	OnCompleteAction,
+} from "@/lib/app-builder-types";
 import { evaluateExpression } from "@/lib/expression-parser";
 import type { components } from "@/lib/v1";
 
@@ -44,16 +48,24 @@ interface ApplicationRunnerProps {
 	embed?: boolean;
 }
 
-export function ApplicationRunner({ preview = false, embed = false }: ApplicationRunnerProps) {
+export function ApplicationRunner({
+	preview = false,
+	embed = false,
+}: ApplicationRunnerProps) {
 	const { applicationId: slugParam, "*": pagePath } = useParams();
 	const [searchParams] = useSearchParams();
 	const navigate = useNavigate();
 	const resetStore = useAppBuilderStore((state) => state.reset);
-	const refreshDataSource = useAppBuilderStore((state) => state.refreshDataSource);
+	const refreshDataSource = useAppBuilderStore(
+		(state) => state.refreshDataSource,
+	);
 
 	// Workflow execution state
-	const [pendingWorkflow, setPendingWorkflow] = useState<PendingWorkflow | null>(null);
-	const [workflowResult, setWorkflowResult] = useState<WorkflowResult | undefined>(undefined);
+	const [pendingWorkflow, setPendingWorkflow] =
+		useState<PendingWorkflow | null>(null);
+	const [workflowResult, setWorkflowResult] = useState<
+		WorkflowResult | undefined
+	>(undefined);
 
 	// Extract embed theme customization from URL params
 	const embedTheme = useMemo(() => {
@@ -116,17 +128,13 @@ export function ApplicationRunner({ preview = false, embed = false }: Applicatio
 		data: liveDefinition,
 		isLoading: isLoadingLive,
 		error: liveError,
-	} = useApplicationDefinition(
-		!preview && slugParam ? slugParam : undefined,
-	);
+	} = useApplicationDefinition(!preview && slugParam ? slugParam : undefined);
 
 	const {
 		data: draftDefinition,
 		isLoading: isLoadingDraft,
 		error: draftError,
-	} = useApplicationDraft(
-		preview && slugParam ? slugParam : undefined,
-	);
+	} = useApplicationDraft(preview && slugParam ? slugParam : undefined);
 
 	// Use the appropriate definition based on preview mode
 	const definition = preview ? draftDefinition : liveDefinition;
@@ -139,26 +147,78 @@ export function ApplicationRunner({ preview = false, embed = false }: Applicatio
 		return definition.definition as unknown as ApplicationDefinition;
 	}, [definition]);
 
-	// Determine current page
-	const currentPage = useMemo(() => {
-		if (!appDefinition?.pages?.length) return null;
+	// Match a URL path against a route pattern (e.g., /tickets/:id matches /tickets/123)
+	const matchRoutePath = useCallback(
+		(
+			pattern: string,
+			urlPath: string,
+		): { match: boolean; params: Record<string, string> } => {
+			const patternParts = pattern.split("/").filter(Boolean);
+			const urlParts = urlPath.split("/").filter(Boolean);
+
+			// If different number of parts, no match
+			if (patternParts.length !== urlParts.length) {
+				return { match: false, params: {} };
+			}
+
+			const params: Record<string, string> = {};
+
+			for (let i = 0; i < patternParts.length; i++) {
+				const patternPart = patternParts[i];
+				const urlPart = urlParts[i];
+
+				// Dynamic segment (e.g., :id)
+				if (patternPart.startsWith(":")) {
+					const paramName = patternPart.slice(1);
+					params[paramName] = urlPart;
+				} else if (patternPart !== urlPart) {
+					// Static segment must match exactly
+					return { match: false, params: {} };
+				}
+			}
+
+			return { match: true, params };
+		},
+		[],
+	);
+
+	// Determine current page and extract route params
+	const { currentPage, routeParams } = useMemo(() => {
+		if (!appDefinition?.pages?.length) {
+			return { currentPage: null, routeParams: {} };
+		}
 
 		// Normalize the page path
 		const normalizedPath = pagePath
 			? `/${pagePath}`.replace(/\/+/g, "/")
 			: "/";
 
-		// Find matching page
-		const page = appDefinition.pages.find((p) => {
-			const pagePathNormalized = p.path.startsWith("/")
-				? p.path
-				: `/${p.path}`;
-			return pagePathNormalized === normalizedPath;
-		});
+		// Find matching page - try exact match first, then pattern match
+		for (const page of appDefinition.pages) {
+			const pagePathNormalized = page.path.startsWith("/")
+				? page.path
+				: `/${page.path}`;
+
+			// Exact match
+			if (pagePathNormalized === normalizedPath) {
+				return { currentPage: page, routeParams: {} };
+			}
+
+			// Pattern match (for routes like /tickets/:id)
+			if (pagePathNormalized.includes(":")) {
+				const { match, params } = matchRoutePath(
+					pagePathNormalized,
+					normalizedPath,
+				);
+				if (match) {
+					return { currentPage: page, routeParams: params };
+				}
+			}
+		}
 
 		// Default to first page if no match
-		return page || appDefinition.pages[0];
-	}, [appDefinition, pagePath]);
+		return { currentPage: appDefinition.pages[0], routeParams: {} };
+	}, [appDefinition, pagePath, matchRoutePath]);
 
 	// Find a workflow by ID or name
 	const findWorkflow = useCallback(
@@ -174,7 +234,10 @@ export function ApplicationRunner({ preview = false, embed = false }: Applicatio
 
 	// Execute workflow with parameters - now waits for actual completion via WebSocket
 	const executeWorkflow = useCallback(
-		async (workflowId: string, params: Record<string, unknown>): Promise<WorkflowResult | undefined> => {
+		async (
+			workflowId: string,
+			params: Record<string, unknown>,
+		): Promise<WorkflowResult | undefined> => {
 			const workflow = findWorkflow(workflowId);
 			try {
 				// Execute and wait for completion (hook handles WebSocket subscription)
@@ -189,7 +252,10 @@ export function ApplicationRunner({ preview = false, embed = false }: Applicatio
 					workflowId: workflow?.id ?? workflowId,
 					workflowName: workflow?.name ?? workflowId,
 					status: "failed",
-					error: error instanceof Error ? error.message : "Unknown error",
+					error:
+						error instanceof Error
+							? error.message
+							: "Unknown error",
 				};
 				setWorkflowResult(errorResult);
 				toast.error(
@@ -203,7 +269,10 @@ export function ApplicationRunner({ preview = false, embed = false }: Applicatio
 
 	// Check if workflow has required parameters that need user input
 	const hasRequiredParams = useCallback(
-		(workflow: WorkflowMetadata, providedParams: Record<string, unknown>): boolean => {
+		(
+			workflow: WorkflowMetadata,
+			providedParams: Record<string, unknown>,
+		): boolean => {
 			if (!workflow.parameters) return false;
 			return workflow.parameters.some((param) => {
 				const paramName = param.name ?? "";
@@ -218,16 +287,19 @@ export function ApplicationRunner({ preview = false, embed = false }: Applicatio
 	);
 
 	// Create a navigate function that handles relative paths within the app
-	const appNavigate = useCallback((path: string) => {
-		// If the path is relative (doesn't start with /apps/), make it relative to current app
-		if (!path.startsWith("/apps/") && !path.startsWith("http")) {
-			const basePath = `/apps/${slugParam}`;
-			const relativePath = path.startsWith("/") ? path : `/${path}`;
-			navigate(`${basePath}${relativePath}`);
-		} else {
-			navigate(path);
-		}
-	}, [navigate, slugParam]);
+	const appNavigate = useCallback(
+		(path: string) => {
+			// If the path is relative (doesn't start with /apps/), make it relative to current app
+			if (!path.startsWith("/apps/") && !path.startsWith("http")) {
+				const basePath = `/apps/${slugParam}`;
+				const relativePath = path.startsWith("/") ? path : `/${path}`;
+				navigate(`${basePath}${relativePath}`);
+			} else {
+				navigate(path);
+			}
+		},
+		[navigate, slugParam],
+	);
 
 	// Execute onComplete actions after workflow completes
 	const executeOnCompleteActions = useCallback(
@@ -244,21 +316,29 @@ export function ApplicationRunner({ preview = false, embed = false }: Applicatio
 						if (action.navigateTo) {
 							// Evaluate any expressions in the navigation path
 							const path = action.navigateTo.includes("{{")
-								? String(evaluateExpression(action.navigateTo, context) ?? action.navigateTo)
+								? String(
+										evaluateExpression(
+											action.navigateTo,
+											context,
+										) ?? action.navigateTo,
+									)
 								: action.navigateTo;
 							appNavigate(path);
 						}
 						break;
 
 					case "set-variable":
-						// Note: This would need to be connected to a page-level variable store
-						// For now, we log a warning as the store integration is pending
 						if (action.variableName) {
 							const value = action.variableValue?.includes("{{")
-								? evaluateExpression(action.variableValue, context)
-								: action.variableValue ?? result.result;
-							// TODO: Wire up to page variable store when available
-							console.warn(`[onComplete] set-variable action not yet connected to page store. Would set ${action.variableName} =`, value);
+								? evaluateExpression(
+										action.variableValue,
+										context,
+									)
+								: (action.variableValue ?? result.result);
+							// Use the store's setVariable function directly (getState for callback context)
+							useAppBuilderStore
+								.getState()
+								.setVariable(action.variableName, value);
 						}
 						break;
 
@@ -275,11 +355,17 @@ export function ApplicationRunner({ preview = false, embed = false }: Applicatio
 
 	// Workflow trigger handler with onComplete support
 	const handleTriggerWorkflow = useCallback(
-		async (workflowId: string, params?: Record<string, unknown>, onComplete?: OnCompleteAction[]) => {
+		async (
+			workflowId: string,
+			params?: Record<string, unknown>,
+			onComplete?: OnCompleteAction[],
+		) => {
 			const workflow = findWorkflow(workflowId);
 			const providedParams = params ?? {};
 
-			const executeAndComplete = async (finalParams: Record<string, unknown>) => {
+			const executeAndComplete = async (
+				finalParams: Record<string, unknown>,
+			) => {
 				const result = await executeWorkflow(workflowId, finalParams);
 				// Execute onComplete actions after workflow finishes
 				if (onComplete && onComplete.length > 0 && result) {
@@ -289,7 +375,9 @@ export function ApplicationRunner({ preview = false, embed = false }: Applicatio
 
 			if (!workflow) {
 				// Workflow not found - execute anyway and let API handle the error
-				toast.warning(`Workflow "${workflowId}" not found in metadata, attempting execution...`);
+				toast.warning(
+					`Workflow "${workflowId}" not found in metadata, attempting execution...`,
+				);
 				executeAndComplete(providedParams);
 				return;
 			}
@@ -311,7 +399,12 @@ export function ApplicationRunner({ preview = false, embed = false }: Applicatio
 				executeAndComplete(providedParams);
 			}
 		},
-		[findWorkflow, hasRequiredParams, executeWorkflow, executeOnCompleteActions],
+		[
+			findWorkflow,
+			hasRequiredParams,
+			executeWorkflow,
+			executeOnCompleteActions,
+		],
 	);
 
 	// Refresh table handler - delegates to the Zustand store
@@ -321,6 +414,13 @@ export function ApplicationRunner({ preview = false, embed = false }: Applicatio
 		},
 		[refreshDataSource],
 	);
+
+	// Build a Set of active workflow names for button loading states
+	const activeWorkflowsSet = useMemo(() => {
+		const set = new Set<string>();
+		activeWorkflowNames.forEach((name) => set.add(name));
+		return set;
+	}, [activeWorkflowNames]);
 
 	// Build inline styles for embed theme customization
 	const embedThemeStyles = useMemo(() => {
@@ -344,7 +444,9 @@ export function ApplicationRunner({ preview = false, embed = false }: Applicatio
 			<div className="min-h-screen flex items-center justify-center">
 				<div className="flex flex-col items-center gap-4">
 					<Loader2 className="h-8 w-8 animate-spin text-primary" />
-					<p className="text-muted-foreground">Loading application...</p>
+					<p className="text-muted-foreground">
+						Loading application...
+					</p>
 				</div>
 			</div>
 		);
@@ -369,7 +471,10 @@ export function ApplicationRunner({ preview = false, embed = false }: Applicatio
 						</CardDescription>
 					</CardHeader>
 					<CardContent>
-						<Button variant="outline" onClick={() => navigate("/apps")}>
+						<Button
+							variant="outline"
+							onClick={() => navigate("/apps")}
+						>
 							<ArrowLeft className="mr-2 h-4 w-4" />
 							Back to Applications
 						</Button>
@@ -390,12 +495,15 @@ export function ApplicationRunner({ preview = false, embed = false }: Applicatio
 							<CardTitle>Application Not Found</CardTitle>
 						</div>
 						<CardDescription>
-							The requested application does not exist or you don't have
-							access to it.
+							The requested application does not exist or you
+							don't have access to it.
 						</CardDescription>
 					</CardHeader>
 					<CardContent>
-						<Button variant="outline" onClick={() => navigate("/apps")}>
+						<Button
+							variant="outline"
+							onClick={() => navigate("/apps")}
+						>
 							<ArrowLeft className="mr-2 h-4 w-4" />
 							Back to Applications
 						</Button>
@@ -416,12 +524,15 @@ export function ApplicationRunner({ preview = false, embed = false }: Applicatio
 							<CardTitle>Not Published</CardTitle>
 						</div>
 						<CardDescription>
-							This application has not been published yet. Please publish
-							the application before accessing it.
+							This application has not been published yet. Please
+							publish the application before accessing it.
 						</CardDescription>
 					</CardHeader>
 					<CardContent className="flex gap-2">
-						<Button variant="outline" onClick={() => navigate("/apps")}>
+						<Button
+							variant="outline"
+							onClick={() => navigate("/apps")}
+						>
 							<ArrowLeft className="mr-2 h-4 w-4" />
 							Back
 						</Button>
@@ -453,7 +564,10 @@ export function ApplicationRunner({ preview = false, embed = false }: Applicatio
 						</CardDescription>
 					</CardHeader>
 					<CardContent className="flex gap-2">
-						<Button variant="outline" onClick={() => navigate("/apps")}>
+						<Button
+							variant="outline"
+							onClick={() => navigate("/apps")}
+						>
 							<ArrowLeft className="mr-2 h-4 w-4" />
 							Back
 						</Button>
@@ -478,16 +592,19 @@ export function ApplicationRunner({ preview = false, embed = false }: Applicatio
 			onRefreshTable={handleRefreshTable}
 			workflowResult={workflowResult}
 			navigate={appNavigate}
+			routeParams={routeParams}
+			activeWorkflows={activeWorkflowsSet}
 		/>
 	);
 
 	// In embed mode, use minimal shell
 	if (embed) {
 		return (
-			<div className="min-h-screen bg-background" style={embedThemeStyles}>
-				<div className="p-4">
-					{appContent}
-				</div>
+			<div
+				className="min-h-screen bg-background"
+				style={embedThemeStyles}
+			>
+				<div className="p-4">{appContent}</div>
 				<WorkflowLoadingIndicator
 					activeCount={activeExecutionIds.length}
 					workflowNames={activeWorkflowNames}

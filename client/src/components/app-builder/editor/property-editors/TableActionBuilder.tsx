@@ -105,7 +105,10 @@ export function TableActionBuilder({
 			onChange(
 				value.map((action, i) =>
 					i === index
-						? { ...action, onClick: { ...action.onClick, ...updates } }
+						? {
+								...action,
+								onClick: { ...action.onClick, ...updates },
+							}
 						: action,
 				),
 			);
@@ -131,9 +134,19 @@ export function TableActionBuilder({
 								<GripVertical className="h-4 w-4 text-muted-foreground" />
 								<AccordionTrigger className="flex-1 hover:no-underline py-3">
 									<div className="flex items-center gap-2 text-left">
-										<span className="font-medium">{action.label}</span>
+										<span className="font-medium">
+											{action.label}
+										</span>
 										<span className="text-xs text-muted-foreground">
-											({ACTION_TYPES.find((t) => t.value === action.onClick.type)?.label})
+											(
+											{
+												ACTION_TYPES.find(
+													(t) =>
+														t.value ===
+														action.onClick.type,
+												)?.label
+											}
+											)
 										</span>
 									</div>
 								</AccordionTrigger>
@@ -159,7 +172,9 @@ export function TableActionBuilder({
 										<Input
 											value={action.label}
 											onChange={(e) =>
-												handleUpdateAction(index, { label: e.target.value })
+												handleUpdateAction(index, {
+													label: e.target.value,
+												})
 											}
 											placeholder="Button label"
 										/>
@@ -171,7 +186,8 @@ export function TableActionBuilder({
 											value={action.variant ?? "default"}
 											onValueChange={(variant) =>
 												handleUpdateAction(index, {
-													variant: variant as TableAction["variant"],
+													variant:
+														variant as TableAction["variant"],
 												})
 											}
 										>
@@ -180,7 +196,10 @@ export function TableActionBuilder({
 											</SelectTrigger>
 											<SelectContent>
 												{BUTTON_VARIANTS.map((v) => (
-													<SelectItem key={v.value} value={v.value}>
+													<SelectItem
+														key={v.value}
+														value={v.value}
+													>
 														{v.label}
 													</SelectItem>
 												))}
@@ -191,12 +210,15 @@ export function TableActionBuilder({
 
 								{/* Icon */}
 								<div className="space-y-2">
-									<Label className="text-sm">Icon (optional)</Label>
+									<Label className="text-sm">
+										Icon (optional)
+									</Label>
 									<Input
 										value={action.icon ?? ""}
 										onChange={(e) =>
 											handleUpdateAction(index, {
-												icon: e.target.value || undefined,
+												icon:
+													e.target.value || undefined,
 											})
 										}
 										placeholder="e.g., edit, trash, eye"
@@ -205,7 +227,9 @@ export function TableActionBuilder({
 
 								{/* Action Type */}
 								<div className="space-y-2">
-									<Label className="text-sm">Action Type</Label>
+									<Label className="text-sm">
+										Action Type
+									</Label>
 									<Select
 										value={action.onClick.type}
 										onValueChange={(type) =>
@@ -219,7 +243,10 @@ export function TableActionBuilder({
 										</SelectTrigger>
 										<SelectContent>
 											{ACTION_TYPES.map((type) => (
-												<SelectItem key={type.value} value={type.value}>
+												<SelectItem
+													key={type.value}
+													value={type.value}
+												>
 													{type.label}
 												</SelectItem>
 											))}
@@ -230,9 +257,13 @@ export function TableActionBuilder({
 								{/* Navigate Fields */}
 								{action.onClick.type === "navigate" && (
 									<div className="space-y-2">
-										<Label className="text-sm">Navigate To</Label>
+										<Label className="text-sm">
+											Navigate To
+										</Label>
 										<Input
-											value={action.onClick.navigateTo ?? ""}
+											value={
+												action.onClick.navigateTo ?? ""
+											}
 											onChange={(e) =>
 												handleUpdateOnClick(index, {
 													navigateTo: e.target.value,
@@ -246,7 +277,9 @@ export function TableActionBuilder({
 										/>
 										{isRowAction && (
 											<p className="text-xs text-muted-foreground">
-												Use {"{{ row.id }}"} or {"{{ row.fieldName }}"} for dynamic paths
+												Use {"{{ row.id }}"} or{" "}
+												{"{{ row.fieldName }}"} for
+												dynamic paths
 											</p>
 										)}
 									</div>
@@ -256,23 +289,41 @@ export function TableActionBuilder({
 								{action.onClick.type === "workflow" && (
 									<div className="space-y-4">
 										<div className="space-y-2">
-											<Label className="text-sm">Workflow</Label>
+											<Label className="text-sm">
+												Workflow
+											</Label>
 											<WorkflowPicker
-												value={action.onClick.workflowId}
+												value={
+													action.onClick.workflowId
+												}
 												onChange={(workflowId) =>
-													handleUpdateOnClick(index, { workflowId, actionParams: {} })
+													handleUpdateOnClick(index, {
+														workflowId,
+														actionParams: {},
+													})
 												}
 											/>
 										</div>
 
 										{action.onClick.workflowId && (
 											<div className="space-y-2">
-												<Label className="text-sm">Parameters</Label>
+												<Label className="text-sm">
+													Parameters
+												</Label>
 												<WorkflowParameterEditor
-													workflowId={action.onClick.workflowId}
-													value={action.onClick.actionParams ?? {}}
+													workflowId={
+														action.onClick
+															.workflowId
+													}
+													value={
+														action.onClick
+															.actionParams ?? {}
+													}
 													onChange={(actionParams) =>
-														handleUpdateOnClick(index, { actionParams })
+														handleUpdateOnClick(
+															index,
+															{ actionParams },
+														)
 													}
 													isRowAction={isRowAction}
 												/>
@@ -285,12 +336,18 @@ export function TableActionBuilder({
 								{action.onClick.type === "set-variable" && (
 									<div className="space-y-4">
 										<div className="space-y-2">
-											<Label className="text-sm">Variable Name</Label>
+											<Label className="text-sm">
+												Variable Name
+											</Label>
 											<Input
-												value={action.onClick.variableName ?? ""}
+												value={
+													action.onClick
+														.variableName ?? ""
+												}
 												onChange={(e) =>
 													handleUpdateOnClick(index, {
-														variableName: e.target.value,
+														variableName:
+															e.target.value,
 													})
 												}
 												placeholder="selectedRow"
@@ -298,19 +355,30 @@ export function TableActionBuilder({
 										</div>
 
 										<div className="space-y-2">
-											<Label className="text-sm">Value</Label>
+											<Label className="text-sm">
+												Value
+											</Label>
 											<Input
-												value={action.onClick.variableValue ?? ""}
+												value={
+													action.onClick
+														.variableValue ?? ""
+												}
 												onChange={(e) =>
 													handleUpdateOnClick(index, {
-														variableValue: e.target.value,
+														variableValue:
+															e.target.value,
 													})
 												}
-												placeholder={isRowAction ? "{{ row }}" : "value"}
+												placeholder={
+													isRowAction
+														? "{{ row }}"
+														: "value"
+												}
 											/>
 											{isRowAction && (
 												<p className="text-xs text-muted-foreground">
-													Use {"{{ row }}"} to store the entire row
+													Use {"{{ row }}"} to store
+													the entire row
 												</p>
 											)}
 										</div>
@@ -321,19 +389,23 @@ export function TableActionBuilder({
 								{action.onClick.type === "delete" && (
 									<div className="rounded-md bg-destructive/10 border border-destructive/20 p-3">
 										<p className="text-sm text-destructive">
-											Delete actions should have confirmation enabled below.
+											Delete actions should have
+											confirmation enabled below.
 										</p>
 									</div>
 								)}
 
 								{/* Visibility Expression */}
 								<div className="space-y-2">
-									<Label className="text-sm">Visible When (optional)</Label>
+									<Label className="text-sm">
+										Visible When (optional)
+									</Label>
 									<Input
 										value={action.visible ?? ""}
 										onChange={(e) =>
 											handleUpdateAction(index, {
-												visible: e.target.value || undefined,
+												visible:
+													e.target.value || undefined,
 											})
 										}
 										placeholder={
@@ -346,12 +418,15 @@ export function TableActionBuilder({
 
 								{/* Disabled Expression */}
 								<div className="space-y-2">
-									<Label className="text-sm">Disabled When (optional)</Label>
+									<Label className="text-sm">
+										Disabled When (optional)
+									</Label>
 									<Input
 										value={action.disabled ?? ""}
 										onChange={(e) =>
 											handleUpdateAction(index, {
-												disabled: e.target.value || undefined,
+												disabled:
+													e.target.value || undefined,
 											})
 										}
 										placeholder={
@@ -371,34 +446,62 @@ export function TableActionBuilder({
 										</Label>
 										<div className="space-y-3">
 											<div className="space-y-2">
-												<Label className="text-sm">Title</Label>
+												<Label className="text-sm">
+													Title
+												</Label>
 												<Input
-													value={action.confirm?.title ?? ""}
+													value={
+														action.confirm?.title ??
+														""
+													}
 													onChange={(e) =>
-														handleUpdateAction(index, {
-															confirm: {
-																...action.confirm,
-																title: e.target.value,
-																message: action.confirm?.message ?? "",
+														handleUpdateAction(
+															index,
+															{
+																confirm: {
+																	...action.confirm,
+																	title: e
+																		.target
+																		.value,
+																	message:
+																		action
+																			.confirm
+																			?.message ??
+																		"",
+																},
 															},
-														})
+														)
 													}
 													placeholder="Confirm Action"
 												/>
 											</div>
 
 											<div className="space-y-2">
-												<Label className="text-sm">Message</Label>
+												<Label className="text-sm">
+													Message
+												</Label>
 												<Input
-													value={action.confirm?.message ?? ""}
+													value={
+														action.confirm
+															?.message ?? ""
+													}
 													onChange={(e) =>
-														handleUpdateAction(index, {
-															confirm: {
-																...action.confirm,
-																title: action.confirm?.title ?? "",
-																message: e.target.value,
+														handleUpdateAction(
+															index,
+															{
+																confirm: {
+																	...action.confirm,
+																	title:
+																		action
+																			.confirm
+																			?.title ??
+																		"",
+																	message:
+																		e.target
+																			.value,
+																},
 															},
-														})
+														)
 													}
 													placeholder="Are you sure?"
 												/>
@@ -425,7 +528,8 @@ export function TableActionBuilder({
 
 			{isRowAction && value.length > 0 && (
 				<p className="text-xs text-muted-foreground">
-					Row actions have access to {"{{ row.* }}"} for the current row's data.
+					Row actions have access to {"{{ row.* }}"} for the current
+					row's data.
 				</p>
 			)}
 		</div>

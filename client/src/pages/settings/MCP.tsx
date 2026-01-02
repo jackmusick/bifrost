@@ -86,7 +86,7 @@ export function MCP() {
 		undefined,
 		{
 			staleTime: 5 * 60 * 1000,
-		}
+		},
 	);
 
 	const tools: MCPToolInfo[] = toolsData?.tools || [];
@@ -196,8 +196,10 @@ export function MCP() {
 						{config.configured_at && (
 							<span className="text-sm ml-2 opacity-75">
 								Last updated{" "}
-								{new Date(config.configured_at).toLocaleDateString()} by{" "}
-								{config.configured_by}
+								{new Date(
+									config.configured_at,
+								).toLocaleDateString()}{" "}
+								by {config.configured_by}
 							</span>
 						)}
 					</div>
@@ -205,7 +207,9 @@ export function MCP() {
 			) : (
 				<div className="flex items-center gap-2 p-4 rounded-lg bg-amber-500/10 text-amber-600 dark:text-amber-400">
 					<AlertCircle className="h-5 w-5" />
-					<span className="font-medium">Using Default Configuration</span>
+					<span className="font-medium">
+						Using Default Configuration
+					</span>
 				</div>
 			)}
 
@@ -218,7 +222,11 @@ export function MCP() {
 							{mcpUrl}
 						</p>
 					</div>
-					<Button variant="ghost" size="sm" onClick={handleCopyMcpUrl}>
+					<Button
+						variant="ghost"
+						size="sm"
+						onClick={handleCopyMcpUrl}
+					>
 						<Copy className="h-4 w-4" />
 					</Button>
 				</div>
@@ -232,8 +240,8 @@ export function MCP() {
 						External MCP Access
 					</CardTitle>
 					<CardDescription>
-						Allow Claude Desktop and other MCP clients to connect to Bifrost
-						and use your workflows and tools.
+						Allow Claude Desktop and other MCP clients to connect to
+						Bifrost and use your workflows and tools.
 					</CardDescription>
 				</CardHeader>
 				<CardContent className="space-y-6">
@@ -244,7 +252,8 @@ export function MCP() {
 								Enable MCP Access
 							</Label>
 							<p className="text-sm text-muted-foreground">
-								When disabled, all external MCP connections are blocked.
+								When disabled, all external MCP connections are
+								blocked.
 							</p>
 						</div>
 						<Switch
@@ -260,11 +269,15 @@ export function MCP() {
 					{/* Require Platform Admin Toggle */}
 					<div className="flex items-center justify-between">
 						<div className="space-y-0.5">
-							<Label htmlFor="require-admin" className="text-base">
+							<Label
+								htmlFor="require-admin"
+								className="text-base"
+							>
 								Require Platform Admin
 							</Label>
 							<p className="text-sm text-muted-foreground">
-								Only platform administrators can connect via MCP.
+								Only platform administrators can connect via
+								MCP.
 							</p>
 						</div>
 						<Switch
@@ -284,8 +297,8 @@ export function MCP() {
 				<CardHeader>
 					<CardTitle>Tool Access Control</CardTitle>
 					<CardDescription>
-						Configure which tools are available via MCP. Leave empty to allow
-						all tools.
+						Configure which tools are available via MCP. Leave empty
+						to allow all tools.
 					</CardDescription>
 				</CardHeader>
 				<CardContent className="space-y-6">
@@ -293,28 +306,39 @@ export function MCP() {
 					<div className="space-y-3">
 						<Label className="text-base">Allowed Tools</Label>
 						<p className="text-sm text-muted-foreground">
-							If set, only these tools will be available. Leave empty to allow
-							all tools.
+							If set, only these tools will be available. Leave
+							empty to allow all tools.
 						</p>
 						{(allowedToolIds || []).length > 0 && (
-						<div className="flex flex-wrap gap-2">
-							{(allowedToolIds || []).map((toolId) => {
-								const tool = tools.find((t) => t.id === toolId);
-								return (
-									<Badge key={toolId} variant="secondary" className="gap-1">
-										{tool?.name || toolId}
-										<button
-											onClick={() => removeAllowedTool(toolId)}
-											className="ml-1 hover:bg-muted rounded-full"
+							<div className="flex flex-wrap gap-2">
+								{(allowedToolIds || []).map((toolId) => {
+									const tool = tools.find(
+										(t) => t.id === toolId,
+									);
+									return (
+										<Badge
+											key={toolId}
+											variant="secondary"
+											className="gap-1"
 										>
-											<X className="h-3 w-3" />
-										</button>
-									</Badge>
-								);
-							})}
-						</div>
-					)}
-						<Popover open={allowedToolsOpen} onOpenChange={setAllowedToolsOpen}>
+											{tool?.name || toolId}
+											<button
+												onClick={() =>
+													removeAllowedTool(toolId)
+												}
+												className="ml-1 hover:bg-muted rounded-full"
+											>
+												<X className="h-3 w-3" />
+											</button>
+										</Badge>
+									);
+								})}
+							</div>
+						)}
+						<Popover
+							open={allowedToolsOpen}
+							onOpenChange={setAllowedToolsOpen}
+						>
 							<PopoverTrigger asChild>
 								<Button
 									variant="outline"
@@ -331,27 +355,41 @@ export function MCP() {
 									<ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
 								</Button>
 							</PopoverTrigger>
-							<PopoverContent className="w-full p-0" align="start">
+							<PopoverContent
+								className="w-full p-0"
+								align="start"
+							>
 								<Command>
 									<CommandInput placeholder="Search tools..." />
 									<CommandList>
-										<CommandEmpty>No tools found.</CommandEmpty>
+										<CommandEmpty>
+											No tools found.
+										</CommandEmpty>
 										<CommandGroup>
 											{tools.map((tool) => (
 												<CommandItem
 													key={tool.id}
 													value={tool.id}
-													onSelect={() => toggleAllowedTool(tool.id)}
+													onSelect={() =>
+														toggleAllowedTool(
+															tool.id,
+														)
+													}
 												>
 													<Check
 														className={cn(
 															"mr-2 h-4 w-4",
-															(allowedToolIds || []).includes(tool.id)
+															(
+																allowedToolIds ||
+																[]
+															).includes(tool.id)
 																? "opacity-100"
-																: "opacity-0"
+																: "opacity-0",
 														)}
 													/>
-													<span className="font-mono text-sm">{tool.id}</span>
+													<span className="font-mono text-sm">
+														{tool.id}
+													</span>
 													<span className="text-xs text-muted-foreground ml-2">
 														{tool.description}
 													</span>
@@ -368,32 +406,39 @@ export function MCP() {
 					<div className="space-y-3">
 						<Label className="text-base">Blocked Tools</Label>
 						<p className="text-sm text-muted-foreground">
-							These tools will never be available via MCP, even if in the
-							allowed list.
+							These tools will never be available via MCP, even if
+							in the allowed list.
 						</p>
 						{blockedToolIds.length > 0 && (
-						<div className="flex flex-wrap gap-2">
-							{blockedToolIds.map((toolId) => {
-								const tool = tools.find((t) => t.id === toolId);
-								return (
-									<Badge
-										key={toolId}
-										variant="destructive"
-										className="gap-1"
-									>
-										{tool?.name || toolId}
-										<button
-											onClick={() => removeBlockedTool(toolId)}
-											className="ml-1 hover:bg-destructive/80 rounded-full"
+							<div className="flex flex-wrap gap-2">
+								{blockedToolIds.map((toolId) => {
+									const tool = tools.find(
+										(t) => t.id === toolId,
+									);
+									return (
+										<Badge
+											key={toolId}
+											variant="destructive"
+											className="gap-1"
 										>
-											<X className="h-3 w-3" />
-										</button>
-									</Badge>
-								);
-							})}
-						</div>
-					)}
-						<Popover open={blockedToolsOpen} onOpenChange={setBlockedToolsOpen}>
+											{tool?.name || toolId}
+											<button
+												onClick={() =>
+													removeBlockedTool(toolId)
+												}
+												className="ml-1 hover:bg-destructive/80 rounded-full"
+											>
+												<X className="h-3 w-3" />
+											</button>
+										</Badge>
+									);
+								})}
+							</div>
+						)}
+						<Popover
+							open={blockedToolsOpen}
+							onOpenChange={setBlockedToolsOpen}
+						>
 							<PopoverTrigger asChild>
 								<Button
 									variant="outline"
@@ -410,27 +455,40 @@ export function MCP() {
 									<ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
 								</Button>
 							</PopoverTrigger>
-							<PopoverContent className="w-full p-0" align="start">
+							<PopoverContent
+								className="w-full p-0"
+								align="start"
+							>
 								<Command>
 									<CommandInput placeholder="Search tools..." />
 									<CommandList>
-										<CommandEmpty>No tools found.</CommandEmpty>
+										<CommandEmpty>
+											No tools found.
+										</CommandEmpty>
 										<CommandGroup>
 											{tools.map((tool) => (
 												<CommandItem
 													key={tool.id}
 													value={tool.id}
-													onSelect={() => toggleBlockedTool(tool.id)}
+													onSelect={() =>
+														toggleBlockedTool(
+															tool.id,
+														)
+													}
 												>
 													<Check
 														className={cn(
 															"mr-2 h-4 w-4",
-															blockedToolIds.includes(tool.id)
+															blockedToolIds.includes(
+																tool.id,
+															)
 																? "opacity-100"
-																: "opacity-0"
+																: "opacity-0",
 														)}
 													/>
-													<span className="font-mono text-sm">{tool.id}</span>
+													<span className="font-mono text-sm">
+														{tool.id}
+													</span>
 													<span className="text-xs text-muted-foreground ml-2">
 														{tool.description}
 													</span>

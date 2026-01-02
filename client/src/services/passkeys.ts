@@ -289,10 +289,14 @@ export async function setupWithPasskey(
 		// Handle specific WebAuthn errors
 		if (error instanceof Error) {
 			if (error.name === "NotAllowedError") {
-				throw new Error("Passkey creation was cancelled or not allowed");
+				throw new Error(
+					"Passkey creation was cancelled or not allowed",
+				);
 			}
 			if (error.name === "InvalidStateError") {
-				throw new Error("This passkey is already registered on this device");
+				throw new Error(
+					"This passkey is already registered on this device",
+				);
 			}
 			if (error.name === "NotSupportedError") {
 				throw new Error(

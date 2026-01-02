@@ -59,10 +59,7 @@ interface AppBuilderState {
 		workflowId: string,
 		input?: Record<string, unknown>,
 	) => void;
-	completeExecution: (
-		executionId: string,
-		output: unknown,
-	) => void;
+	completeExecution: (executionId: string, output: unknown) => void;
 	failExecution: (executionId: string, error: string) => void;
 	clearExecutions: () => void;
 
@@ -235,7 +232,8 @@ export const useAppBuilderStore = create<AppBuilderState>()(
 		// Table row selection
 		selectRow: (tableId, rowId) =>
 			set((state) => {
-				const currentSelection = state.selectedRows[tableId] ?? new Set<string>();
+				const currentSelection =
+					state.selectedRows[tableId] ?? new Set<string>();
 				const newSelection = new Set(currentSelection);
 				newSelection.add(rowId);
 				return {
@@ -290,7 +288,9 @@ export const useAppBuilderStore = create<AppBuilderState>()(
 
 /** Get a specific variable value */
 export const useAppVariable = <T = unknown>(name: string): T | undefined => {
-	return useAppBuilderStore((state) => state.variables[name]) as T | undefined;
+	return useAppBuilderStore((state) => state.variables[name]) as
+		| T
+		| undefined;
 };
 
 /** Get a specific data source */
@@ -299,7 +299,9 @@ export const useAppDataSource = (key: string): DataSourceState | undefined => {
 };
 
 /** Get a specific execution */
-export const useAppExecution = (executionId: string): WorkflowExecution | undefined => {
+export const useAppExecution = (
+	executionId: string,
+): WorkflowExecution | undefined => {
 	return useAppBuilderStore((state) => state.executions[executionId]);
 };
 
@@ -312,5 +314,7 @@ export const useIsAnyWorkflowExecuting = (): boolean => {
 
 /** Get selected rows for a specific table */
 export const useAppSelectedRows = (tableId: string): Set<string> => {
-	return useAppBuilderStore((state) => state.selectedRows[tableId] ?? new Set());
+	return useAppBuilderStore(
+		(state) => state.selectedRows[tableId] ?? new Set(),
+	);
 };

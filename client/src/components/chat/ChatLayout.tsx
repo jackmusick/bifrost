@@ -146,42 +146,63 @@ export function ChatLayout({
 											conversation?.agent_name ||
 											"Chat"}
 									</h1>
-									{conversation?.agent_name && conversation?.title && (
-										<p className="text-xs text-muted-foreground truncate">
-											with {conversation.agent_name}
-										</p>
-									)}
+									{conversation?.agent_name &&
+										conversation?.title && (
+											<p className="text-xs text-muted-foreground truncate">
+												with {conversation.agent_name}
+											</p>
+										)}
 								</div>
 
 								{/* Platform Admin: Token/Cost Stats */}
-								{isPlatformAdmin && conversationStats && conversationStats.totalTokens > 0 && (
-									<div className="hidden sm:flex items-center gap-3 text-xs text-muted-foreground shrink-0">
-										{/* Model */}
-										{conversationStats.model && (
-											<div className="flex items-center gap-1" title="Model">
-												<Cpu className="h-3 w-3" />
+								{isPlatformAdmin &&
+									conversationStats &&
+									conversationStats.totalTokens > 0 && (
+										<div className="hidden sm:flex items-center gap-3 text-xs text-muted-foreground shrink-0">
+											{/* Model */}
+											{conversationStats.model && (
+												<div
+													className="flex items-center gap-1"
+													title="Model"
+												>
+													<Cpu className="h-3 w-3" />
+													<span className="font-mono">
+														{conversationStats.model
+															.split("-")
+															.slice(0, 2)
+															.join("-")}
+													</span>
+												</div>
+											)}
+											{/* Tokens */}
+											<div
+												className="flex items-center gap-1"
+												title={`Input: ${conversationStats.totalInputTokens.toLocaleString()} | Output: ${conversationStats.totalOutputTokens.toLocaleString()}`}
+											>
 												<span className="font-mono">
-													{conversationStats.model.split("-").slice(0, 2).join("-")}
+													{formatTokens(
+														conversationStats.totalTokens,
+													)}{" "}
+													tokens
 												</span>
 											</div>
-										)}
-										{/* Tokens */}
-										<div className="flex items-center gap-1" title={`Input: ${conversationStats.totalInputTokens.toLocaleString()} | Output: ${conversationStats.totalOutputTokens.toLocaleString()}`}>
-											<span className="font-mono">
-												{formatTokens(conversationStats.totalTokens)} tokens
-											</span>
+											{/* Cost */}
+											{conversationStats.estimatedCostUsd !==
+												null && (
+												<div
+													className="flex items-center gap-1"
+													title="Estimated cost"
+												>
+													<DollarSign className="h-3 w-3" />
+													<span className="font-mono">
+														{formatCost(
+															conversationStats.estimatedCostUsd,
+														)}
+													</span>
+												</div>
+											)}
 										</div>
-										{/* Cost */}
-										{conversationStats.estimatedCostUsd !== null && (
-											<div className="flex items-center gap-1" title="Estimated cost">
-												<DollarSign className="h-3 w-3" />
-												<span className="font-mono">
-													{formatCost(conversationStats.estimatedCostUsd)}
-												</span>
-											</div>
-										)}
-									</div>
-								)}
+									)}
 							</>
 						)}
 					</header>

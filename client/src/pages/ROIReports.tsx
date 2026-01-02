@@ -71,7 +71,12 @@ const DEMO_WORKFLOW_TEMPLATES = [
 	{ name: "Ticket Triage", timeSaved: 15, value: 25, baseCount: 4500 },
 	{ name: "Invoice Processing", timeSaved: 30, value: 50, baseCount: 1900 },
 	{ name: "Compliance Check", timeSaved: 60, value: 120, baseCount: 750 },
-	{ name: "Data Backup Verification", timeSaved: 20, value: 35, baseCount: 2100 },
+	{
+		name: "Data Backup Verification",
+		timeSaved: 20,
+		value: 35,
+		baseCount: 2100,
+	},
 	{ name: "Report Generation", timeSaved: 25, value: 40, baseCount: 700 },
 ];
 
@@ -107,7 +112,8 @@ interface DemoDataResult {
  */
 function generateDemoData(params: DemoDataParams): DemoDataResult {
 	const { startDate, endDate, orgId, realOrgs } = params;
-	const orgs = realOrgs && realOrgs.length > 0 ? realOrgs : FALLBACK_DEMO_ORGS;
+	const orgs =
+		realOrgs && realOrgs.length > 0 ? realOrgs : FALLBACK_DEMO_ORGS;
 
 	// Step 1: Generate all workflows with org assignments
 	const allWorkflows: DemoWorkflowROI[] = DEMO_WORKFLOW_TEMPLATES.map(
@@ -186,7 +192,8 @@ function generateDemoData(params: DemoDataParams): DemoDataResult {
 	for (const workflow of allWorkflows) {
 		const existing = orgMetrics.get(workflow.organization_id);
 		const orgName =
-			orgs.find((o) => o.id === workflow.organization_id)?.name ?? "Unknown";
+			orgs.find((o) => o.id === workflow.organization_id)?.name ??
+			"Unknown";
 
 		if (existing) {
 			existing.execution_count += workflow.execution_count;
@@ -205,14 +212,16 @@ function generateDemoData(params: DemoDataParams): DemoDataResult {
 	}
 
 	const byOrg: ROIByOrganization = {
-		organizations: Array.from(orgMetrics.entries()).map(([id, metrics]) => ({
-			organization_id: id,
-			organization_name: metrics.name,
-			execution_count: metrics.execution_count,
-			success_count: metrics.success_count,
-			total_time_saved: metrics.total_time_saved,
-			total_value: metrics.total_value,
-		})),
+		organizations: Array.from(orgMetrics.entries()).map(
+			([id, metrics]) => ({
+				organization_id: id,
+				organization_name: metrics.name,
+				execution_count: metrics.execution_count,
+				success_count: metrics.success_count,
+				total_time_saved: metrics.total_time_saved,
+				total_value: metrics.total_value,
+			}),
+		),
 		time_saved_unit: "minutes",
 		value_unit: "USD",
 	};
@@ -224,7 +233,8 @@ function generateDemoData(params: DemoDataParams): DemoDataResult {
 	const end = new Date(endDate);
 	const dayCount = Math.max(
 		1,
-		Math.ceil((end.getTime() - start.getTime()) / (1000 * 60 * 60 * 24)) + 1,
+		Math.ceil((end.getTime() - start.getTime()) / (1000 * 60 * 60 * 24)) +
+			1,
 	);
 
 	// Calculate daily average from filtered workflows
@@ -278,7 +288,9 @@ export function ROIReports() {
 
 	// Organization filter state (platform admins only)
 	// undefined = all, null = global only, UUID string = specific org
-	const [filterOrgId, setFilterOrgId] = useState<string | null | undefined>(undefined);
+	const [filterOrgId, setFilterOrgId] = useState<string | null | undefined>(
+		undefined,
+	);
 
 	// Derive isGlobalScope from filterOrgId for display logic
 	const isGlobalScope = filterOrgId === undefined || filterOrgId === null;

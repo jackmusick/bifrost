@@ -140,7 +140,10 @@ export function DeliveriesTable({ deliveries }: DeliveriesTableProps) {
 					{/* Top row: Workflow + Status + Actions */}
 					<div className="flex items-center justify-between gap-3">
 						<div className="flex items-center gap-2 min-w-0 flex-1">
-							<Badge variant="outline" className="font-mono text-xs shrink-0">
+							<Badge
+								variant="outline"
+								className="font-mono text-xs shrink-0"
+							>
 								<WorkflowIcon className="mr-1 h-3 w-3" />
 								{delivery.workflow_name || delivery.workflow_id}
 							</Badge>
@@ -162,7 +165,9 @@ export function DeliveriesTable({ deliveries }: DeliveriesTableProps) {
 												<ExternalLink className="h-3.5 w-3.5" />
 											</Button>
 										</TooltipTrigger>
-										<TooltipContent>View execution</TooltipContent>
+										<TooltipContent>
+											View execution
+										</TooltipContent>
 									</Tooltip>
 								</TooltipProvider>
 							)}
@@ -170,7 +175,8 @@ export function DeliveriesTable({ deliveries }: DeliveriesTableProps) {
 						<div className="flex items-center gap-2">
 							<div className="flex items-center gap-1.5">
 								{getStatusIcon(delivery.status)}
-								{delivery.status === "failed" && delivery.error_message ? (
+								{delivery.status === "failed" &&
+								delivery.error_message ? (
 									<TooltipProvider>
 										<Tooltip>
 											<TooltipTrigger asChild>
@@ -181,14 +187,21 @@ export function DeliveriesTable({ deliveries }: DeliveriesTableProps) {
 														navigator.clipboard.writeText(
 															delivery.error_message!,
 														);
-														toast.success("Error copied to clipboard");
+														toast.success(
+															"Error copied to clipboard",
+														);
 													}}
 												>
 													Failed
 												</Badge>
 											</TooltipTrigger>
-											<TooltipContent side="top" className="max-w-xs">
-												<p className="text-xs">{delivery.error_message}</p>
+											<TooltipContent
+												side="top"
+												className="max-w-xs"
+											>
+												<p className="text-xs">
+													{delivery.error_message}
+												</p>
 												<p className="text-xs text-muted-foreground mt-1">
 													Click to copy
 												</p>
@@ -196,26 +209,31 @@ export function DeliveriesTable({ deliveries }: DeliveriesTableProps) {
 										</Tooltip>
 									</TooltipProvider>
 								) : (
-									<Badge variant={getStatusVariant(delivery.status)}>
+									<Badge
+										variant={getStatusVariant(
+											delivery.status,
+										)}
+									>
 										{getStatusLabel(delivery.status)}
 									</Badge>
 								)}
 							</div>
-							{isPlatformAdmin && delivery.status === "failed" && (
-								<Button
-									variant="outline"
-									size="sm"
-									onClick={() => handleRetry(delivery.id)}
-									disabled={retryingId === delivery.id}
-								>
-									{retryingId === delivery.id ? (
-										<Loader2 className="h-3.5 w-3.5 animate-spin mr-1" />
-									) : (
-										<RefreshCw className="h-3.5 w-3.5 mr-1" />
-									)}
-									Retry
-								</Button>
-							)}
+							{isPlatformAdmin &&
+								delivery.status === "failed" && (
+									<Button
+										variant="outline"
+										size="sm"
+										onClick={() => handleRetry(delivery.id)}
+										disabled={retryingId === delivery.id}
+									>
+										{retryingId === delivery.id ? (
+											<Loader2 className="h-3.5 w-3.5 animate-spin mr-1" />
+										) : (
+											<RefreshCw className="h-3.5 w-3.5 mr-1" />
+										)}
+										Retry
+									</Button>
+								)}
 						</div>
 					</div>
 
@@ -228,7 +246,10 @@ export function DeliveriesTable({ deliveries }: DeliveriesTableProps) {
 						{delivery.completed_at && (
 							<span>
 								Completed{" "}
-								{format(new Date(delivery.completed_at), "MMM d, HH:mm:ss")}
+								{format(
+									new Date(delivery.completed_at),
+									"MMM d, HH:mm:ss",
+								)}
 							</span>
 						)}
 					</div>

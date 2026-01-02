@@ -94,7 +94,12 @@ export function WorkflowParameterEditor({
 	// No workflow selected
 	if (!workflowId) {
 		return (
-			<div className={cn("text-sm text-muted-foreground italic", className)}>
+			<div
+				className={cn(
+					"text-sm text-muted-foreground italic",
+					className,
+				)}
+			>
 				Select a workflow to configure parameters
 			</div>
 		);
@@ -103,7 +108,12 @@ export function WorkflowParameterEditor({
 	// Loading state
 	if (isLoading) {
 		return (
-			<div className={cn("flex items-center gap-2 text-muted-foreground", className)}>
+			<div
+				className={cn(
+					"flex items-center gap-2 text-muted-foreground",
+					className,
+				)}
+			>
 				<Loader2 className="h-4 w-4 animate-spin" />
 				<span className="text-sm">Loading workflow parameters...</span>
 			</div>
@@ -122,7 +132,12 @@ export function WorkflowParameterEditor({
 	// Workflow not found
 	if (!workflow) {
 		return (
-			<div className={cn("text-sm text-muted-foreground italic", className)}>
+			<div
+				className={cn(
+					"text-sm text-muted-foreground italic",
+					className,
+				)}
+			>
 				Workflow not found
 			</div>
 		);
@@ -131,7 +146,12 @@ export function WorkflowParameterEditor({
 	// No parameters
 	if (parameters.length === 0) {
 		return (
-			<div className={cn("text-sm text-muted-foreground italic", className)}>
+			<div
+				className={cn(
+					"text-sm text-muted-foreground italic",
+					className,
+				)}
+			>
 				This workflow has no parameters
 			</div>
 		);
@@ -153,7 +173,9 @@ export function WorkflowParameterEditor({
 					key={param.name}
 					parameter={param}
 					value={value[param.name]}
-					onChange={(paramValue) => handleParameterChange(param.name, paramValue)}
+					onChange={(paramValue) =>
+						handleParameterChange(param.name, paramValue)
+					}
 					isRowAction={isRowAction}
 				/>
 			))}
@@ -172,9 +194,15 @@ interface ParameterInputProps {
  * Individual parameter input renderer
  * All inputs accept string expressions ({{ }}) except checkboxes
  */
-function ParameterInput({ parameter, value, onChange, isRowAction }: ParameterInputProps) {
+function ParameterInput({
+	parameter,
+	value,
+	onChange,
+	isRowAction,
+}: ParameterInputProps) {
 	const displayName = parameter.label || parameter.name;
-	const stringValue = value !== undefined && value !== null ? String(value) : "";
+	const stringValue =
+		value !== undefined && value !== null ? String(value) : "";
 
 	// Check if value looks like an expression
 	const isExpression = typeof value === "string" && value.includes("{{");
@@ -196,7 +224,9 @@ function ParameterInput({ parameter, value, onChange, isRowAction }: ParameterIn
 			<div className="space-y-2">
 				<Label className="flex items-center gap-1.5">
 					{displayName}
-					{parameter.required && <span className="text-destructive">*</span>}
+					{parameter.required && (
+						<span className="text-destructive">*</span>
+					)}
 					{parameter.description && (
 						<TooltipProvider>
 							<Tooltip>
@@ -204,7 +234,9 @@ function ParameterInput({ parameter, value, onChange, isRowAction }: ParameterIn
 									<Info className="h-3.5 w-3.5 text-muted-foreground cursor-help" />
 								</TooltipTrigger>
 								<TooltipContent>
-									<p className="max-w-xs">{parameter.description}</p>
+									<p className="max-w-xs">
+										{parameter.description}
+									</p>
 								</TooltipContent>
 							</Tooltip>
 						</TooltipProvider>
@@ -229,7 +261,10 @@ function ParameterInput({ parameter, value, onChange, isRowAction }: ParameterIn
 						</SelectTrigger>
 						<SelectContent>
 							{parameter.options.map((option) => (
-								<SelectItem key={option.value} value={option.value}>
+								<SelectItem
+									key={option.value}
+									value={option.value}
+								>
 									{option.label}
 								</SelectItem>
 							))}
@@ -253,7 +288,9 @@ function ParameterInput({ parameter, value, onChange, isRowAction }: ParameterIn
 					<>
 						<Label className="flex items-center gap-1.5">
 							{displayName}
-							{parameter.required && <span className="text-destructive">*</span>}
+							{parameter.required && (
+								<span className="text-destructive">*</span>
+							)}
 						</Label>
 						<Input
 							value={stringValue}
@@ -271,7 +308,9 @@ function ParameterInput({ parameter, value, onChange, isRowAction }: ParameterIn
 						<div className="space-y-0.5">
 							<Label className="font-medium flex items-center gap-1.5">
 								{displayName}
-								{parameter.required && <span className="text-destructive">*</span>}
+								{parameter.required && (
+									<span className="text-destructive">*</span>
+								)}
 								{parameter.description && (
 									<TooltipProvider>
 										<Tooltip>
@@ -279,14 +318,17 @@ function ParameterInput({ parameter, value, onChange, isRowAction }: ParameterIn
 												<Info className="h-3.5 w-3.5 text-muted-foreground cursor-help" />
 											</TooltipTrigger>
 											<TooltipContent>
-												<p className="max-w-xs">{parameter.description}</p>
+												<p className="max-w-xs">
+													{parameter.description}
+												</p>
 											</TooltipContent>
 										</Tooltip>
 									</TooltipProvider>
 								)}
 							</Label>
 							<p className="text-xs text-muted-foreground">
-								Type {"{{ expression }}"} in field below for dynamic value
+								Type {"{{ expression }}"} in field below for
+								dynamic value
 							</p>
 						</div>
 						<Checkbox
@@ -305,8 +347,12 @@ function ParameterInput({ parameter, value, onChange, isRowAction }: ParameterIn
 			<div className="space-y-2">
 				<Label className="flex items-center gap-1.5">
 					{displayName}
-					<span className="text-xs text-muted-foreground">({parameter.type})</span>
-					{parameter.required && <span className="text-destructive">*</span>}
+					<span className="text-xs text-muted-foreground">
+						({parameter.type})
+					</span>
+					{parameter.required && (
+						<span className="text-destructive">*</span>
+					)}
 					{parameter.description && (
 						<TooltipProvider>
 							<Tooltip>
@@ -314,7 +360,9 @@ function ParameterInput({ parameter, value, onChange, isRowAction }: ParameterIn
 									<Info className="h-3.5 w-3.5 text-muted-foreground cursor-help" />
 								</TooltipTrigger>
 								<TooltipContent>
-									<p className="max-w-xs">{parameter.description}</p>
+									<p className="max-w-xs">
+										{parameter.description}
+									</p>
 								</TooltipContent>
 							</Tooltip>
 						</TooltipProvider>
@@ -331,7 +379,10 @@ function ParameterInput({ parameter, value, onChange, isRowAction }: ParameterIn
 							onChange(undefined);
 						} else {
 							// Try to parse as number
-							const num = parameter.type === "int" ? parseInt(val) : parseFloat(val);
+							const num =
+								parameter.type === "int"
+									? parseInt(val)
+									: parseFloat(val);
 							onChange(isNaN(num) ? val : num);
 						}
 					}}
@@ -342,13 +393,21 @@ function ParameterInput({ parameter, value, onChange, isRowAction }: ParameterIn
 	}
 
 	// JSON/Dict types - textarea that accepts expressions
-	if (parameter.type === "json" || parameter.type === "dict" || parameter.type === "list") {
+	if (
+		parameter.type === "json" ||
+		parameter.type === "dict" ||
+		parameter.type === "list"
+	) {
 		return (
 			<div className="space-y-2">
 				<Label className="flex items-center gap-1.5">
 					{displayName}
-					<span className="text-xs text-muted-foreground">({parameter.type})</span>
-					{parameter.required && <span className="text-destructive">*</span>}
+					<span className="text-xs text-muted-foreground">
+						({parameter.type})
+					</span>
+					{parameter.required && (
+						<span className="text-destructive">*</span>
+					)}
 					{parameter.description && (
 						<TooltipProvider>
 							<Tooltip>
@@ -356,7 +415,9 @@ function ParameterInput({ parameter, value, onChange, isRowAction }: ParameterIn
 									<Info className="h-3.5 w-3.5 text-muted-foreground cursor-help" />
 								</TooltipTrigger>
 								<TooltipContent>
-									<p className="max-w-xs">{parameter.description}</p>
+									<p className="max-w-xs">
+										{parameter.description}
+									</p>
 								</TooltipContent>
 							</Tooltip>
 						</TooltipProvider>
@@ -402,7 +463,9 @@ function ParameterInput({ parameter, value, onChange, isRowAction }: ParameterIn
 		<div className="space-y-2">
 			<Label className="flex items-center gap-1.5">
 				{displayName}
-				{parameter.required && <span className="text-destructive">*</span>}
+				{parameter.required && (
+					<span className="text-destructive">*</span>
+				)}
 				{parameter.description && (
 					<TooltipProvider>
 						<Tooltip>
@@ -410,7 +473,9 @@ function ParameterInput({ parameter, value, onChange, isRowAction }: ParameterIn
 								<Info className="h-3.5 w-3.5 text-muted-foreground cursor-help" />
 							</TooltipTrigger>
 							<TooltipContent>
-								<p className="max-w-xs">{parameter.description}</p>
+								<p className="max-w-xs">
+									{parameter.description}
+								</p>
 							</TooltipContent>
 						</Tooltip>
 					</TooltipProvider>

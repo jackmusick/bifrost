@@ -313,10 +313,7 @@ function ProviderCard({
 										Cancel
 									</Button>
 								)}
-								<Button
-									onClick={handleSave}
-									disabled={saving}
-								>
+								<Button onClick={handleSave} disabled={saving}>
 									{saving ? (
 										<>
 											<Loader2 className="h-4 w-4 mr-2 animate-spin" />
@@ -333,7 +330,10 @@ function ProviderCard({
 			</Card>
 
 			{/* Delete Confirmation Dialog */}
-			<Dialog open={showDeleteConfirm} onOpenChange={setShowDeleteConfirm}>
+			<Dialog
+				open={showDeleteConfirm}
+				onOpenChange={setShowDeleteConfirm}
+			>
 				<DialogContent>
 					<DialogHeader>
 						<DialogTitle>Remove {title} Configuration</DialogTitle>
@@ -504,8 +504,8 @@ export function OAuth() {
 						/>
 						<p className="text-xs text-muted-foreground">
 							Use "common" for multi-tenant (any Microsoft
-							account), "organizations" for work/school only, or
-							a specific tenant ID.
+							account), "organizations" for work/school only, or a
+							specific tenant ID.
 						</p>
 					</div>
 
@@ -667,9 +667,7 @@ export function OAuth() {
 										Set user type (Internal for G Suite,
 										External for any Google account)
 									</li>
-									<li>
-										Add scopes: email, profile, openid
-									</li>
+									<li>Add scopes: email, profile, openid</li>
 								</ul>
 							</AccordionContent>
 						</AccordionItem>
@@ -774,9 +772,7 @@ export function OAuth() {
 						/>
 					</div>
 					<div className="space-y-2">
-						<Label htmlFor="oidc-display-name">
-							Button Label
-						</Label>
+						<Label htmlFor="oidc-display-name">Button Label</Label>
 						<Input
 							id="oidc-display-name"
 							placeholder="SSO"

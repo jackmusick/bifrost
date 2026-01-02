@@ -26,7 +26,10 @@ import type { RegisteredComponentProps } from "../ComponentRegistry";
  *   }
  * }
  */
-export function TextComponent({ component, context }: RegisteredComponentProps) {
+export function TextComponent({
+	component,
+	context,
+}: RegisteredComponentProps) {
 	const { props } = component as TextComponentProps;
 	const text = String(evaluateExpression(props?.text ?? "", context) ?? "");
 	const label = props?.label
@@ -36,7 +39,9 @@ export function TextComponent({ component, context }: RegisteredComponentProps) 
 	return (
 		<div className={cn("space-y-1", props?.className)}>
 			{label && (
-				<p className="text-sm font-medium text-muted-foreground">{label}</p>
+				<p className="text-sm font-medium text-muted-foreground">
+					{label}
+				</p>
 			)}
 			<p className="leading-7">{text}</p>
 		</div>

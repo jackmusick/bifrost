@@ -171,7 +171,8 @@ export default function SystemLogs() {
 								- Showing {filteredLogs.length} log
 								{filteredLogs.length !== 1 ? "s" : ""} on this
 								page
-								{data?.continuation_token && " (more available)"}
+								{data?.continuation_token &&
+									" (more available)"}
 							</span>
 						)}
 					</p>
@@ -284,11 +285,19 @@ export default function SystemLogs() {
 								<DataTable className="relative w-full caption-bottom text-sm">
 									<DataTableHeader className="sticky top-0 bg-background/80 backdrop-blur-sm z-10">
 										<DataTableRow>
-											<DataTableHead>Timestamp</DataTableHead>
+											<DataTableHead>
+												Timestamp
+											</DataTableHead>
 											<DataTableHead>Level</DataTableHead>
-											<DataTableHead>Category</DataTableHead>
-											<DataTableHead>Summary</DataTableHead>
-											<DataTableHead>Executed By</DataTableHead>
+											<DataTableHead>
+												Category
+											</DataTableHead>
+											<DataTableHead>
+												Summary
+											</DataTableHead>
+											<DataTableHead>
+												Executed By
+											</DataTableHead>
 										</DataTableRow>
 									</DataTableHeader>
 									<DataTableBody>
@@ -297,14 +306,20 @@ export default function SystemLogs() {
 												<DataTableRow
 													key={`${log.category}_${log.event_id}_${index}`}
 													clickable
-													onClick={() => handleRowClick(log)}
+													onClick={() =>
+														handleRowClick(log)
+													}
 												>
 													<DataTableCell className="font-mono text-sm">
-														{new Date(log.timestamp).toLocaleString()}
+														{new Date(
+															log.timestamp,
+														).toLocaleString()}
 													</DataTableCell>
 													<DataTableCell>
 														<Badge
-															variant={getLevelBadgeVariant(log.level)}
+															variant={getLevelBadgeVariant(
+																log.level,
+															)}
 															className="capitalize"
 														>
 															{log.level}
@@ -319,7 +334,9 @@ export default function SystemLogs() {
 														</Badge>
 													</DataTableCell>
 													<DataTableCell className="max-w-md">
-														{truncateMessage(log.message)}
+														{truncateMessage(
+															log.message,
+														)}
 													</DataTableCell>
 													<DataTableCell className="text-sm text-muted-foreground">
 														{log.executed_by_name ||
@@ -364,9 +381,12 @@ export default function SystemLogs() {
 					) : (
 						<Card>
 							<CardContent className="flex flex-col items-center justify-center py-12 text-center">
-								<h3 className="text-lg font-semibold">No logs found</h3>
+								<h3 className="text-lg font-semibold">
+									No logs found
+								</h3>
 								<p className="mt-2 text-sm text-muted-foreground">
-									Try adjusting your filters or search criteria
+									Try adjusting your filters or search
+									criteria
 								</p>
 							</CardContent>
 						</Card>

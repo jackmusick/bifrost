@@ -86,7 +86,9 @@ export function FormInfoDialog({
 	const { data: roles, isLoading: rolesLoading } = useRoles();
 
 	// Default organization_id for org users is their org, for platform admins it's null (global)
-	const defaultOrgId = isPlatformAdmin ? null : (user?.organizationId ?? null);
+	const defaultOrgId = isPlatformAdmin
+		? null
+		: (user?.organizationId ?? null);
 
 	// Initialize form state from initialData
 	const [formName, setFormName] = useState(() => initialData?.formName || "");
@@ -389,7 +391,9 @@ export function FormInfoDialog({
 							<Label htmlFor="organizationId">Organization</Label>
 							<OrganizationSelect
 								value={organizationId}
-								onChange={(value) => setOrganizationId(value ?? null)}
+								onChange={(value) =>
+									setOrganizationId(value ?? null)
+								}
 								showGlobal={true}
 								disabled={isEditing}
 							/>
@@ -466,7 +470,9 @@ export function FormInfoDialog({
 							id="accessLevel"
 							value={accessLevel}
 							onValueChange={(value: string) =>
-								setAccessLevel(value as "authenticated" | "role_based")
+								setAccessLevel(
+									value as "authenticated" | "role_based",
+								)
 							}
 							options={[
 								{

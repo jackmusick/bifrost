@@ -55,8 +55,15 @@ export function useAgents(filterScope?: string | null) {
 	return $api.useQuery("get", "/api/agents", {
 		params: {
 			// Type assertion needed until types are regenerated
-			query: Object.keys(queryParams).length > 0 ? queryParams : undefined,
-		} as { query?: { category?: string | null; active_only?: boolean; scope?: string } },
+			query:
+				Object.keys(queryParams).length > 0 ? queryParams : undefined,
+		} as {
+			query?: {
+				category?: string | null;
+				active_only?: boolean;
+				scope?: string;
+			};
+		},
 	});
 }
 

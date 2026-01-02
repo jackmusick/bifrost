@@ -80,7 +80,9 @@ function generatePageId(): string {
 /**
  * Create a default component with the given type
  */
-function createDefaultComponent(type: ComponentType | LayoutType): AppComponent | LayoutContainer {
+function createDefaultComponent(
+	type: ComponentType | LayoutType,
+): AppComponent | LayoutContainer {
 	const id = generateComponentId();
 
 	// Check if it's a layout type
@@ -117,7 +119,8 @@ function createDefaultComponent(type: ComponentType | LayoutType): AppComponent 
 				id,
 				type: "html",
 				props: {
-					content: '<div className="p-4 bg-muted rounded-lg">\n  <p>Custom HTML or JSX content</p>\n</div>',
+					content:
+						'<div className="p-4 bg-muted rounded-lg">\n  <p>Custom HTML or JSX content</p>\n</div>',
 				},
 			};
 		case "button":
@@ -285,7 +288,12 @@ function createDefaultComponent(type: ComponentType | LayoutType): AppComponent 
 					title: "Modal Title",
 					description: "Modal description",
 					triggerLabel: "Open Modal",
-					content: { type: "column", children: [], gap: 16, padding: 16 },
+					content: {
+						type: "column",
+						children: [],
+						gap: 16,
+						padding: 16,
+					},
 					showCloseButton: true,
 				},
 			};
@@ -333,7 +341,9 @@ function insertIntoTree(
 
 	for (let i = 0; i < layout.children.length; i++) {
 		const child = layout.children[i];
-		const childId = isLayoutContainer(child) ? `${currentId}-layout-${i}` : child.id;
+		const childId = isLayoutContainer(child)
+			? `${currentId}-layout-${i}`
+			: child.id;
 
 		if (childId === targetId) {
 			if (position === "before") {
@@ -354,7 +364,9 @@ function insertIntoTree(
 			}
 		} else if (isLayoutContainer(child)) {
 			// Recursively process container children
-			newChildren.push(insertIntoTree(child, newElement, targetId, position, childId));
+			newChildren.push(
+				insertIntoTree(child, newElement, targetId, position, childId),
+			);
 		} else {
 			newChildren.push(child);
 		}
@@ -380,7 +392,9 @@ function removeFromTree(
 
 	for (let i = 0; i < layout.children.length; i++) {
 		const child = layout.children[i];
-		const childId = isLayoutContainer(child) ? `${parentId || "root"}-layout-${i}` : child.id;
+		const childId = isLayoutContainer(child)
+			? `${parentId || "root"}-layout-${i}`
+			: child.id;
 
 		if (childId === targetId) {
 			removed = child;
@@ -408,12 +422,18 @@ function findElementInTree(
 	layout: LayoutContainer,
 	targetId: string,
 	parentId?: string,
-): { element: LayoutContainer | AppComponent; parentPath: string; index: number } | null {
+): {
+	element: LayoutContainer | AppComponent;
+	parentPath: string;
+	index: number;
+} | null {
 	const currentId = parentId || "root";
 
 	for (let i = 0; i < layout.children.length; i++) {
 		const child = layout.children[i];
-		const childId = isLayoutContainer(child) ? `${currentId}-layout-${i}` : child.id;
+		const childId = isLayoutContainer(child)
+			? `${currentId}-layout-${i}`
+			: child.id;
 
 		if (childId === targetId) {
 			return { element: child, parentPath: currentId, index: i };
@@ -498,14 +518,19 @@ function findElementId(
 
 	for (let i = 0; i < layout.children.length; i++) {
 		const child = layout.children[i];
-		const childId = isLayoutContainer(child) ? `${currentId}-layout-${i}` : child.id;
+		const childId = isLayoutContainer(child)
+			? `${currentId}-layout-${i}`
+			: child.id;
 
 		// Compare by reference for layouts, by id for components
 		if (child === targetElement) {
 			return childId;
 		}
 		if (!isLayoutContainer(child) && !isLayoutContainer(targetElement)) {
-			if ((child as AppComponent).id === (targetElement as AppComponent).id) {
+			if (
+				(child as AppComponent).id ===
+				(targetElement as AppComponent).id
+			) {
 				return childId;
 			}
 		}
@@ -532,11 +557,15 @@ function updateInTree(
 
 	for (let i = 0; i < layout.children.length; i++) {
 		const child = layout.children[i];
-		const childId = isLayoutContainer(child) ? `${parentId || "root"}-layout-${i}` : child.id;
+		const childId = isLayoutContainer(child)
+			? `${parentId || "root"}-layout-${i}`
+			: child.id;
 
 		if (childId === targetId) {
 			// Apply updates to this element
-			newChildren.push({ ...child, ...updates } as LayoutContainer | AppComponent);
+			newChildren.push({ ...child, ...updates } as
+				| LayoutContainer
+				| AppComponent);
 		} else if (isLayoutContainer(child)) {
 			// Recursively update container children
 			newChildren.push(updateInTree(child, targetId, updates, childId));
@@ -574,7 +603,9 @@ export function EditorShell({
 	);
 
 	// Left panel tab
-	const [leftPanelTab, setLeftPanelTab] = useState<"pages" | "components" | "navigation">("pages");
+	const [leftPanelTab, setLeftPanelTab] = useState<
+		"pages" | "components" | "navigation"
+	>("pages");
 
 	// Get current page
 	const currentPage = useMemo(
@@ -640,9 +671,13 @@ export function EditorShell({
 			if (!currentPage) return;
 
 			// Check if this is a new component from palette
-			if (source.type === "palette" || (source as unknown as PaletteDragData).type === "new-component") {
+			if (
+				source.type === "palette" ||
+				(source as unknown as PaletteDragData).type === "new-component"
+			) {
 				const paletteData = source as unknown as PaletteDragData;
-				const componentType = paletteData.componentType || source.componentType;
+				const componentType =
+					paletteData.componentType || source.componentType;
 				if (!componentType) return;
 
 				const elementToInsert = createDefaultComponent(componentType);
@@ -700,12 +735,20 @@ export function EditorShell({
 		const handleKeyDown = (e: KeyboardEvent) => {
 			// Don't trigger if user is typing in an input
 			const target = e.target as HTMLElement;
-			if (target.tagName === "INPUT" || target.tagName === "TEXTAREA" || target.isContentEditable) {
+			if (
+				target.tagName === "INPUT" ||
+				target.tagName === "TEXTAREA" ||
+				target.isContentEditable
+			) {
 				return;
 			}
 
 			// Delete/Backspace to delete selected component
-			if ((e.key === "Delete" || e.key === "Backspace") && selectedComponentId && selectedComponentId !== "root") {
+			if (
+				(e.key === "Delete" || e.key === "Backspace") &&
+				selectedComponentId &&
+				selectedComponentId !== "root"
+			) {
 				e.preventDefault();
 				handleDelete(selectedComponentId);
 			}
@@ -728,7 +771,10 @@ export function EditorShell({
 
 			// Handle root layout updates
 			if (selectedComponentId === "root") {
-				const updatedLayout = { ...currentPage.layout, ...updates } as LayoutContainer;
+				const updatedLayout = {
+					...currentPage.layout,
+					...updates,
+				} as LayoutContainer;
 				updatePageLayout(currentPage.id, updatedLayout);
 				return;
 			}
@@ -793,7 +839,9 @@ export function EditorShell({
 			// Don't allow deleting the last page
 			if (definition.pages.length <= 1) return;
 
-			const updatedPages = definition.pages.filter((p) => p.id !== pageId);
+			const updatedPages = definition.pages.filter(
+				(p) => p.id !== pageId,
+			);
 			onDefinitionChange({ ...definition, pages: updatedPages });
 
 			// If we deleted the current page, select the first remaining page
@@ -826,7 +874,9 @@ export function EditorShell({
 				<div className="flex h-12 shrink-0 items-center justify-between border-b bg-background px-4">
 					{/* Left section - App info */}
 					<div className="flex items-center gap-3">
-						<h1 className="text-sm font-semibold">{definition.name}</h1>
+						<h1 className="text-sm font-semibold">
+							{definition.name}
+						</h1>
 						<span className="rounded-md bg-muted px-2 py-0.5 text-xs text-muted-foreground">
 							v{definition.version}
 						</span>
@@ -854,15 +904,25 @@ export function EditorShell({
 						<Tooltip>
 							<TooltipTrigger asChild>
 								<Button
-									variant={showVariablePreview ? "secondary" : "ghost"}
+									variant={
+										showVariablePreview
+											? "secondary"
+											: "ghost"
+									}
 									size="icon-sm"
-									onClick={() => setShowVariablePreview(!showVariablePreview)}
+									onClick={() =>
+										setShowVariablePreview(
+											!showVariablePreview,
+										)
+									}
 								>
 									<Variable className="h-4 w-4" />
 								</Button>
 							</TooltipTrigger>
 							<TooltipContent>
-								{showVariablePreview ? "Hide variables" : "Show available variables"}
+								{showVariablePreview
+									? "Hide variables"
+									: "Show available variables"}
 							</TooltipContent>
 						</Tooltip>
 					</div>
@@ -898,7 +958,11 @@ export function EditorShell({
 							<Button
 								variant="ghost"
 								size="icon-sm"
-								onClick={() => setIsLeftPanelCollapsed(!isLeftPanelCollapsed)}
+								onClick={() =>
+									setIsLeftPanelCollapsed(
+										!isLeftPanelCollapsed,
+									)
+								}
 							>
 								{isLeftPanelCollapsed ? (
 									<ChevronRight className="h-4 w-4" />
@@ -912,24 +976,43 @@ export function EditorShell({
 						{!isLeftPanelCollapsed && (
 							<Tabs
 								value={leftPanelTab}
-								onValueChange={(v) => setLeftPanelTab(v as "pages" | "components" | "navigation")}
+								onValueChange={(v) =>
+									setLeftPanelTab(
+										v as
+											| "pages"
+											| "components"
+											| "navigation",
+									)
+								}
 								className="flex flex-1 flex-col overflow-hidden"
 							>
 								<TabsList className="mx-2 mt-2 grid w-auto grid-cols-3">
-									<TabsTrigger value="pages" className="text-xs">
+									<TabsTrigger
+										value="pages"
+										className="text-xs"
+									>
 										<FileText className="mr-1 h-3 w-3" />
 										Pages
 									</TabsTrigger>
-									<TabsTrigger value="components" className="text-xs">
+									<TabsTrigger
+										value="components"
+										className="text-xs"
+									>
 										Components
 									</TabsTrigger>
-									<TabsTrigger value="navigation" className="text-xs">
+									<TabsTrigger
+										value="navigation"
+										className="text-xs"
+									>
 										<Navigation className="mr-1 h-3 w-3" />
 										Nav
 									</TabsTrigger>
 								</TabsList>
 
-								<TabsContent value="pages" className="flex-1 overflow-hidden mt-0">
+								<TabsContent
+									value="pages"
+									className="flex-1 overflow-hidden mt-0"
+								>
 									<PageTree
 										pages={definition.pages}
 										selectedPageId={currentPageId}
@@ -941,14 +1024,22 @@ export function EditorShell({
 									/>
 								</TabsContent>
 
-								<TabsContent value="components" className="flex-1 overflow-hidden mt-0">
+								<TabsContent
+									value="components"
+									className="flex-1 overflow-hidden mt-0"
+								>
 									<ComponentPalette className="h-full" />
 								</TabsContent>
 
-								<TabsContent value="navigation" className="flex-1 overflow-hidden mt-0">
+								<TabsContent
+									value="navigation"
+									className="flex-1 overflow-hidden mt-0"
+								>
 									<NavigationEditor
 										app={definition}
-										onNavigationChange={handleNavigationChange}
+										onNavigationChange={
+											handleNavigationChange
+										}
 										className="h-full"
 									/>
 								</TabsContent>
@@ -970,7 +1061,9 @@ export function EditorShell({
 							<div className="flex h-full items-center justify-center">
 								<div className="text-center text-muted-foreground">
 									<FileText className="mx-auto mb-2 h-8 w-8 opacity-50" />
-									<div className="text-sm">No page selected</div>
+									<div className="text-sm">
+										No page selected
+									</div>
 								</div>
 							</div>
 						)}
@@ -988,7 +1081,11 @@ export function EditorShell({
 							<Button
 								variant="ghost"
 								size="icon-sm"
-								onClick={() => setIsRightPanelCollapsed(!isRightPanelCollapsed)}
+								onClick={() =>
+									setIsRightPanelCollapsed(
+										!isRightPanelCollapsed,
+									)
+								}
 							>
 								{isRightPanelCollapsed ? (
 									<ChevronLeft className="h-4 w-4" />
@@ -1009,12 +1106,21 @@ export function EditorShell({
 								component={selectedComponent}
 								onChange={handlePropertyChange}
 								onDelete={
-									selectedComponentId && selectedComponentId !== "root"
+									selectedComponentId &&
+									selectedComponentId !== "root"
 										? handlePropertyEditorDelete
 										: undefined
 								}
-								page={selectedComponentId === "root" ? currentPage : undefined}
-								onPageChange={selectedComponentId === "root" ? handlePageChange : undefined}
+								page={
+									selectedComponentId === "root"
+										? currentPage
+										: undefined
+								}
+								onPageChange={
+									selectedComponentId === "root"
+										? handlePageChange
+										: undefined
+								}
 								className="flex-1 overflow-hidden"
 							/>
 						)}

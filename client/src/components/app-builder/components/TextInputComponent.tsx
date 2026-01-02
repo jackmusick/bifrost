@@ -76,7 +76,10 @@ export function TextInputComponent({
 
 	// Evaluate placeholder if it contains expressions
 	const placeholder = props.placeholder
-		? String(evaluateExpression(props.placeholder, context) ?? props.placeholder)
+		? String(
+				evaluateExpression(props.placeholder, context) ??
+					props.placeholder,
+			)
 		: undefined;
 
 	// Get setFieldValue from context (stable reference)
@@ -110,7 +113,9 @@ export function TextInputComponent({
 			{label && (
 				<Label htmlFor={inputId}>
 					{label}
-					{props.required && <span className="text-destructive ml-1">*</span>}
+					{props.required && (
+						<span className="text-destructive ml-1">*</span>
+					)}
 				</Label>
 			)}
 			<Input

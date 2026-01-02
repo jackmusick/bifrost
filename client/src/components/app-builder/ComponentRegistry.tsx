@@ -6,7 +6,11 @@
  */
 
 import type { ComponentType as ReactComponentType } from "react";
-import type { ComponentType, AppComponent, ExpressionContext } from "@/lib/app-builder-types";
+import type {
+	ComponentType,
+	AppComponent,
+	ExpressionContext,
+} from "@/lib/app-builder-types";
 
 /**
  * Props passed to each registered component
@@ -57,7 +61,9 @@ export function registerComponent(
  *   return <HeadingComponent component={def} context={ctx} />;
  * }
  */
-export function getComponent(type: ComponentType): RegisteredComponent | undefined {
+export function getComponent(
+	type: ComponentType,
+): RegisteredComponent | undefined {
 	return componentRegistry.get(type);
 }
 
@@ -124,5 +130,7 @@ export function renderRegisteredComponent(
 	context: ExpressionContext,
 ): React.ReactElement {
 	const Component = getComponent(component.type) || UnknownComponent;
-	return <Component key={component.id} component={component} context={context} />;
+	return (
+		<Component key={component.id} component={component} context={context} />
+	);
 }

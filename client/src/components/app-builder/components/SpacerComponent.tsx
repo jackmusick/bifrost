@@ -11,7 +11,10 @@ import type { RegisteredComponentProps } from "../ComponentRegistry";
 /**
  * Get spacing class or style
  */
-function getSpacingStyle(size?: number | string): { className?: string; style?: React.CSSProperties } {
+function getSpacingStyle(size?: number | string): {
+	className?: string;
+	style?: React.CSSProperties;
+} {
 	if (size === undefined) {
 		return { className: "h-4" }; // Default 16px
 	}

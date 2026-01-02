@@ -146,7 +146,10 @@ interface EditorState {
 	markSaved: () => void;
 	setSaveState: (tabIndex: number, state: SaveState) => void;
 	setConflictState: (tabIndex: number, reason: ConflictReason) => void;
-	setDiagnostics: (tabIndex: number, diagnostics: FileDiagnostic[] | undefined) => void;
+	setDiagnostics: (
+		tabIndex: number,
+		diagnostics: FileDiagnostic[] | undefined,
+	) => void;
 	resolveConflict: (
 		tabIndex: number,
 		action: "keep_mine" | "use_server" | "recreate" | "close",
@@ -796,7 +799,10 @@ export const useEditorStore = create<EditorState>()(
 						return response;
 					}
 				} catch (error) {
-					console.error("Failed to resolve workflow ID conflict:", error);
+					console.error(
+						"Failed to resolve workflow ID conflict:",
+						error,
+					);
 					return null;
 				}
 			},

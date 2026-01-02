@@ -9,8 +9,10 @@ Advanced decorator patterns and best practices
 Bifrost uses decorators to define workflows:
 
 - **@workflow** - Registers executable workflow (all options optional)
-- **@param** - Adds advanced parameter features (only when needed)
+- **@tool** - Registers an AI agent tool (alias for `@workflow(is_tool=True)`)
 - **@data_provider** - Provides dynamic options for dropdowns
+
+Parameters are automatically derived from function signatures - no decorator needed.
 
 ## Minimal Workflow
 
@@ -182,67 +184,58 @@ async def create_user(
 - `first_name` → "First Name"
 - `userEmail` → "User Email"
 
-## @param for Advanced Features
+## Using Data Providers with Forms
 
-Use `@param` only when you need features beyond type inference:
+Data providers supply dynamic dropdown options. Link them to form fields (not to workflows directly):
 
-### Data Provider Dropdowns
+### Creating Data Providers
 
 ```python
-@data_provider(name="get_departments", description="List departments")
-async def get_departments():
+from bifrost import data_provider
+
+@data_provider
+async def get_departments() -> list[dict]:
+    """List all departments."""
     return [
         {"label": "Engineering", "value": "eng"},
         {"label": "Sales", "value": "sales"}
     ]
 
-@workflow
-@param("department", data_provider="get_departments")
-async def assign_user(email: str, department: str):
-    """Assign user to department."""
-    pass
-```
-
-### Cascading Dropdowns
-
-```python
-@data_provider(name="get_users_by_dept", description="Users by department")
-async def get_users_by_dept(department: str):
+@data_provider
+async def get_users_by_dept(department: str) -> list[dict]:
+    """Get users filtered by department."""
     users = await fetch_users(department)
     return [{"label": u.name, "value": u.id} for u in users]
-
-@workflow
-@param("department", data_provider="get_departments")
-@param("user", data_provider="get_users_by_dept")
-async def assign_task(department: str, user: str, task: str):
-    """Assign task to user. User dropdown updates based on department."""
-    pass
 ```
 
-### Validation Rules
+### Linking to Forms
 
-```python
-@workflow
-@param("password", validation={
-    "min_length": 12,
-    "max_length": 128,
-    "pattern": r"^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[@$!%*?&])[A-Za-z\d@$!%*?&]+$"
-}, help_text="Min 12 chars with uppercase, lowercase, number, and special char")
-async def set_password(user_id: str, password: str):
-    """Set user password with validation."""
-    pass
+In your form JSON, reference data providers by ID:
+
+```json
+{
+  "name": "department",
+  "type": "select",
+  "label": "Department",
+  "data_provider_id": "uuid-of-get-departments"
+}
 ```
 
-### Custom Field Types
+For cascading dropdowns, pass values between fields:
 
-```python
-@workflow
-@param("message", type="textarea")
-@param("contact", type="email")
-async def send_message(contact: str, message: str):
-    """Send a message."""
-    pass
+```json
+{
+  "name": "user",
+  "type": "select",
+  "label": "User",
+  "data_provider_id": "uuid-of-get-users-by-dept",
+  "data_provider_inputs": {
+    "department": "{{department}}"
+  }
+}
 ```
+
+See the [Cascading Dropdowns guide](/how-to-guides/forms/cascading-dropdowns) for details.
 
 ## @data_provider Patterns
 
@@ -250,26 +243,18 @@ async def send_message(contact: str, message: str):
 
   
 ```python
-@data_provider(
-    name="get_departments",
-    description="List departments",
-    cache_ttl_seconds=3600  # Cache for 1 hour
-)
-async def get_departments():
-    # Expensive query, cache results
+@data_provider(cache_ttl_seconds=3600)  # Cache for 1 hour
+async def get_departments() -> list[dict]:
+    """List departments (expensive query, cache results)."""
     return await fetch_departments()
 ```
   
 
   
 ```python
-@data_provider(
-    name="get_current_tickets",
-    description="Current open tickets",
-    cache_ttl_seconds=0  # Never cache
-)
-async def get_current_tickets():
-    # Always fetch latest
+@data_provider(cache_ttl_seconds=0)  # Never cache
+async def get_current_tickets() -> list[dict]:
+    """Current open tickets (always fetch latest)."""
     return await fetch_open_tickets()
 ```
   
@@ -277,8 +262,9 @@ async def get_current_tickets():
 ### Options with Metadata
 
 ```python
-@data_provider(name="get_licenses", description="Available licenses")
-async def get_licenses():
+@data_provider
+async def get_licenses() -> list[dict]:
+    """Available licenses."""
     return [
         {
             "label": "Microsoft 365 E3",
@@ -305,8 +291,7 @@ async def get_licenses():
 - **Write Clear Docstrings**: They become the workflow description
 - **Use Type Hints**: Required for parameter extraction
 - **Set Appropriate Timeouts**: Match expected execution time (default: 1800s)
-- **Cache Wisely**: Balance freshness vs. performance
-- **Use @param Sparingly**: Only for data providers, validation, or help text
+- **Cache Wisely**: Balance freshness vs. performance in data providers
 
 ## Common Pitfalls
 

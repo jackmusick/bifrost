@@ -120,12 +120,6 @@ async def app_lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     # Ensure system agents exist (like Coding Assistant)
     await ensure_system_agents()
 
-    # Index platform documentation (background, non-blocking)
-    # Uses upsert for idempotency - safe to run on every startup
-    from src.services.docs_indexer import index_docs_background
-    import asyncio
-    asyncio.create_task(index_docs_background())
-
     logger.info(f"Bifrost API started in {settings.environment} mode")
 
     yield

@@ -19,15 +19,14 @@ A customer feedback form that:
 Create a workflow that accepts a parameter and returns data (`workspace/workflows/load_customer.py`):
 
 ```python
-from bifrost import workflow, param, ExecutionContext
+from bifrost import workflow
 
-@workflow(name="load_customer_data", description="Load customer for feedback form")
-@param("customer_id", type="string", required=True)
-async def load_customer_data(context: ExecutionContext, customer_id: str):
+@workflow
+async def load_customer_data(customer_id: str) -> dict:
     """Load customer data for pre-filling form."""
 
     # Fetch customer from database
-    customer = await get_customer(context, customer_id)
+    customer = await get_customer(customer_id)
 
     return {
         "customer_name": customer.name,
@@ -90,14 +89,16 @@ context.workflow.customer_tier === "premium";
 ### Check User Permissions
 
 ```python
-@workflow(name="check_permissions")
-async def check_permissions(context: ExecutionContext):
+from bifrost import workflow, context
+
+@workflow
+async def check_permissions() -> dict:
     """Check if user can access form."""
 
     return {
         "is_admin": context.is_platform_admin,
         "user_email": context.email,
-        "can_approve": await has_permission(context, "approve_requests")
+        "can_approve": await has_permission(context.user_id, "approve_requests")
     }
 ```
 
@@ -106,11 +107,13 @@ Use in form visibility rules to show admin-only fields.
 ### Load Organization Context
 
 ```python
-@workflow(name="load_org_context")
-async def load_org_context(context: ExecutionContext):
+from bifrost import workflow, context
+
+@workflow
+async def load_org_context() -> dict:
     """Load organization details."""
 
-    org = await get_organization(context, context.org_id)
+    org = await get_organization(context.org_id)
 
     return {
         "org_name": org.name,
@@ -124,12 +127,13 @@ Use to display org info or control feature availability.
 ### Pre-fill from External System
 
 ```python
-@workflow(name="load_ticket_data")
-@param("ticket_id", type="string", required=True)
-async def load_ticket_data(context: ExecutionContext, ticket_id: str):
+from bifrost import workflow
+
+@workflow
+async def load_ticket_data(ticket_id: str) -> dict:
     """Load ticket details for follow-up form."""
 
-    ticket = await fetch_ticket_from_psa(context, ticket_id)
+    ticket = await fetch_ticket_from_psa(ticket_id)
 
     return {
         "ticket_number": ticket.number,
@@ -189,11 +193,12 @@ Test launch workflow before using in form:
 
   
 ```python
-@workflow(name="load_survey_context")
-@param("customer_id", type="string", required=True)
-async def load_survey_context(context: ExecutionContext, customer_id: str):
+from bifrost import workflow
+
+@workflow
+async def load_survey_context(customer_id: str) -> dict:
     """Load customer context for satisfaction survey."""
-    customer = await get_customer(context, customer_id)
+    customer = await get_customer(customer_id)
 
     return {
         "customer_name": customer.name,

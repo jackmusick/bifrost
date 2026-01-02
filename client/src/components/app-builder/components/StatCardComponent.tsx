@@ -35,7 +35,10 @@ function getTrendColor(direction: "up" | "down" | "neutral") {
 	}
 }
 
-export function StatCardComponent({ component, context }: RegisteredComponentProps) {
+export function StatCardComponent({
+	component,
+	context,
+}: RegisteredComponentProps) {
 	const { props } = component as StatCardComponentProps;
 
 	// Evaluate expressions - get raw values to check if undefined
@@ -52,10 +55,20 @@ export function StatCardComponent({ component, context }: RegisteredComponentPro
 	const handleClick = () => {
 		if (!props?.onClick) return;
 
-		if (props.onClick.type === "navigate" && props.onClick.navigateTo && context.navigate) {
-			const path = String(evaluateExpression(props.onClick.navigateTo, context) ?? "");
+		if (
+			props.onClick.type === "navigate" &&
+			props.onClick.navigateTo &&
+			context.navigate
+		) {
+			const path = String(
+				evaluateExpression(props.onClick.navigateTo, context) ?? "",
+			);
 			context.navigate(path);
-		} else if (props.onClick.type === "workflow" && props.onClick.workflowId && context.triggerWorkflow) {
+		} else if (
+			props.onClick.type === "workflow" &&
+			props.onClick.workflowId &&
+			context.triggerWorkflow
+		) {
 			context.triggerWorkflow(props.onClick.workflowId);
 		}
 	};
@@ -67,7 +80,7 @@ export function StatCardComponent({ component, context }: RegisteredComponentPro
 			className={cn(
 				"flex-1 transition-colors",
 				isClickable && "cursor-pointer hover:bg-accent",
-				props?.className
+				props?.className,
 			)}
 			onClick={isClickable ? handleClick : undefined}
 		>
@@ -77,12 +90,17 @@ export function StatCardComponent({ component, context }: RegisteredComponentPro
 					{isLoading ? (
 						<Skeleton className="h-4 w-24" />
 					) : (
-						<p className="text-sm font-medium text-muted-foreground">{title}</p>
+						<p className="text-sm font-medium text-muted-foreground">
+							{title}
+						</p>
 					)}
-					{props?.icon && (() => {
-						const IconComponent = getIcon(props.icon);
-						return <IconComponent className="h-5 w-5 text-muted-foreground" />;
-					})()}
+					{props?.icon &&
+						(() => {
+							const IconComponent = getIcon(props.icon);
+							return (
+								<IconComponent className="h-5 w-5 text-muted-foreground" />
+							);
+						})()}
 				</div>
 				<div className="mt-2 flex items-baseline gap-2">
 					{isLoading ? (
@@ -91,7 +109,12 @@ export function StatCardComponent({ component, context }: RegisteredComponentPro
 						<p className="text-2xl font-bold">{value}</p>
 					)}
 					{props?.trend && !isLoading && (
-						<div className={cn("flex items-center gap-1 text-sm", getTrendColor(props.trend.direction))}>
+						<div
+							className={cn(
+								"flex items-center gap-1 text-sm",
+								getTrendColor(props.trend.direction),
+							)}
+						>
 							{getTrendIcon(props.trend.direction)}
 							<span>{props.trend.value}</span>
 						</div>
@@ -101,10 +124,12 @@ export function StatCardComponent({ component, context }: RegisteredComponentPro
 				{isLoading ? (
 					<Skeleton className="mt-auto h-4 w-32" />
 				) : (
-					<p className={cn(
-						"mt-auto pt-1 text-sm text-muted-foreground min-h-[1.25rem]",
-						!description && "invisible"
-					)}>
+					<p
+						className={cn(
+							"mt-auto pt-1 text-sm text-muted-foreground min-h-[1.25rem]",
+							!description && "invisible",
+						)}
+					>
 						{description || "\u00A0"}
 					</p>
 				)}

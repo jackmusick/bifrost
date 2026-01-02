@@ -58,7 +58,10 @@ export function SubscriptionsTable({ sourceId }: SubscriptionsTableProps) {
 		}
 	};
 
-	const handleEdit = (subscription: EventSubscription, e: React.MouseEvent) => {
+	const handleEdit = (
+		subscription: EventSubscription,
+		e: React.MouseEvent,
+	) => {
 		e.stopPropagation();
 		setSelectedSubscription(subscription);
 		setEditDialogOpen(true);
@@ -66,7 +69,7 @@ export function SubscriptionsTable({ sourceId }: SubscriptionsTableProps) {
 
 	const handleToggleActive = async (
 		subscription: EventSubscription,
-		e: React.MouseEvent
+		e: React.MouseEvent,
 	) => {
 		e.stopPropagation();
 		try {
@@ -82,14 +85,17 @@ export function SubscriptionsTable({ sourceId }: SubscriptionsTableProps) {
 			toast.success(
 				subscription.is_active
 					? "Subscription deactivated"
-					: "Subscription activated"
+					: "Subscription activated",
 			);
 		} catch {
 			toast.error("Failed to update subscription");
 		}
 	};
 
-	const handleDelete = (subscription: EventSubscription, e: React.MouseEvent) => {
+	const handleDelete = (
+		subscription: EventSubscription,
+		e: React.MouseEvent,
+	) => {
 		e.stopPropagation();
 		setSelectedSubscription(subscription);
 		setDeleteDialogOpen(true);
@@ -155,10 +161,12 @@ export function SubscriptionsTable({ sourceId }: SubscriptionsTableProps) {
 			{subscriptions.length === 0 ? (
 				<div className="flex flex-col items-center justify-center py-12">
 					<Zap className="h-12 w-12 text-muted-foreground mb-4" />
-					<h3 className="text-lg font-semibold mb-2">No Subscriptions</h3>
+					<h3 className="text-lg font-semibold mb-2">
+						No Subscriptions
+					</h3>
 					<p className="text-muted-foreground text-center mb-4">
-						Add a workflow subscription to trigger workflows when events
-						arrive.
+						Add a workflow subscription to trigger workflows when
+						events arrive.
 					</p>
 					{isPlatformAdmin && (
 						<Button onClick={() => setCreateDialogOpen(true)}>
@@ -173,11 +181,17 @@ export function SubscriptionsTable({ sourceId }: SubscriptionsTableProps) {
 						<DataTableRow>
 							<DataTableHead>Workflow</DataTableHead>
 							<DataTableHead>Event Type Filter</DataTableHead>
-							<DataTableHead className="text-right">Deliveries</DataTableHead>
-							<DataTableHead className="text-right">Success Rate</DataTableHead>
+							<DataTableHead className="text-right">
+								Deliveries
+							</DataTableHead>
+							<DataTableHead className="text-right">
+								Success Rate
+							</DataTableHead>
 							{isPlatformAdmin && (
 								<>
-									<DataTableHead className="text-right w-[80px]">Status</DataTableHead>
+									<DataTableHead className="text-right w-[80px]">
+										Status
+									</DataTableHead>
 									<DataTableHead className="text-right w-[100px]" />
 								</>
 							)}
@@ -190,7 +204,7 @@ export function SubscriptionsTable({ sourceId }: SubscriptionsTableProps) {
 									? Math.round(
 											(subscription.success_count /
 												subscription.delivery_count) *
-												100
+												100,
 										)
 									: null;
 
@@ -201,7 +215,8 @@ export function SubscriptionsTable({ sourceId }: SubscriptionsTableProps) {
 									onClick={() => handleRowClick(subscription)}
 								>
 									<DataTableCell className="font-medium">
-										{subscription.workflow_name || subscription.workflow_id}
+										{subscription.workflow_name ||
+											subscription.workflow_id}
 									</DataTableCell>
 									<DataTableCell>
 										{subscription.event_type ? (
@@ -209,7 +224,9 @@ export function SubscriptionsTable({ sourceId }: SubscriptionsTableProps) {
 												{subscription.event_type}
 											</Badge>
 										) : (
-											<span className="text-muted-foreground">All events</span>
+											<span className="text-muted-foreground">
+												All events
+											</span>
 										)}
 									</DataTableCell>
 									<DataTableCell className="text-right">
@@ -226,17 +243,28 @@ export function SubscriptionsTable({ sourceId }: SubscriptionsTableProps) {
 												<span>{successRate}%</span>
 											</div>
 										) : (
-											<span className="text-muted-foreground">—</span>
+											<span className="text-muted-foreground">
+												—
+											</span>
 										)}
 									</DataTableCell>
 									{isPlatformAdmin && (
 										<>
 											<DataTableCell className="text-right">
 												<Switch
-													checked={subscription.is_active}
+													checked={
+														subscription.is_active
+													}
 													onCheckedChange={() => {}}
-													onClick={(e) => handleToggleActive(subscription, e)}
-													disabled={updateMutation.isPending}
+													onClick={(e) =>
+														handleToggleActive(
+															subscription,
+															e,
+														)
+													}
+													disabled={
+														updateMutation.isPending
+													}
 												/>
 											</DataTableCell>
 											<DataTableCell className="text-right">
@@ -244,7 +272,12 @@ export function SubscriptionsTable({ sourceId }: SubscriptionsTableProps) {
 													<Button
 														variant="ghost"
 														size="icon"
-														onClick={(e) => handleEdit(subscription, e)}
+														onClick={(e) =>
+															handleEdit(
+																subscription,
+																e,
+															)
+														}
 														title="Edit subscription"
 													>
 														<Pencil className="h-4 w-4" />
@@ -252,7 +285,12 @@ export function SubscriptionsTable({ sourceId }: SubscriptionsTableProps) {
 													<Button
 														variant="ghost"
 														size="icon"
-														onClick={(e) => handleDelete(subscription, e)}
+														onClick={(e) =>
+															handleDelete(
+																subscription,
+																e,
+															)
+														}
 														title="Delete subscription"
 													>
 														<Trash2 className="h-4 w-4" />
@@ -285,13 +323,17 @@ export function SubscriptionsTable({ sourceId }: SubscriptionsTableProps) {
 			/>
 
 			{/* Delete Confirmation */}
-			<AlertDialog open={deleteDialogOpen} onOpenChange={setDeleteDialogOpen}>
+			<AlertDialog
+				open={deleteDialogOpen}
+				onOpenChange={setDeleteDialogOpen}
+			>
 				<AlertDialogContent>
 					<AlertDialogHeader>
 						<AlertDialogTitle>Delete Subscription</AlertDialogTitle>
 						<AlertDialogDescription>
-							Are you sure you want to delete this subscription? Events will no
-							longer trigger this workflow. This action cannot be undone.
+							Are you sure you want to delete this subscription?
+							Events will no longer trigger this workflow. This
+							action cannot be undone.
 						</AlertDialogDescription>
 					</AlertDialogHeader>
 					<AlertDialogFooter>

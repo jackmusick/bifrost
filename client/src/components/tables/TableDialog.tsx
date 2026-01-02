@@ -58,7 +58,9 @@ export function TableDialog({ table, open, onClose }: TableDialogProps) {
 	const isEditing = !!table;
 
 	// Default organization_id for org users is their org, for platform admins it's null (global)
-	const defaultOrgId = isPlatformAdmin ? null : (user?.organizationId ?? null);
+	const defaultOrgId = isPlatformAdmin
+		? null
+		: (user?.organizationId ?? null);
 
 	const form = useForm<FormValues>({
 		resolver: zodResolver(formSchema),
@@ -75,7 +77,9 @@ export function TableDialog({ table, open, onClose }: TableDialogProps) {
 			form.reset({
 				name: table.name,
 				description: table.description || "",
-				schema: table.schema ? JSON.stringify(table.schema, null, 2) : "",
+				schema: table.schema
+					? JSON.stringify(table.schema, null, 2)
+					: "",
 				organization_id: table.organization_id ?? null,
 			});
 		} else {
@@ -103,7 +107,8 @@ export function TableDialog({ table, open, onClose }: TableDialogProps) {
 		}
 
 		// Convert org ID to scope string: null = "global", string = org UUID
-		const scope = values.organization_id === null ? "global" : values.organization_id;
+		const scope =
+			values.organization_id === null ? "global" : values.organization_id;
 
 		if (isEditing) {
 			await updateTable.mutateAsync({
@@ -169,7 +174,8 @@ export function TableDialog({ table, open, onClose }: TableDialogProps) {
 											/>
 										</FormControl>
 										<FormDescription>
-											Global tables are available to all organizations
+											Global tables are available to all
+											organizations
 										</FormDescription>
 										<FormMessage />
 									</FormItem>
@@ -204,7 +210,9 @@ export function TableDialog({ table, open, onClose }: TableDialogProps) {
 							name="description"
 							render={({ field }) => (
 								<FormItem>
-									<FormLabel>Description (Optional)</FormLabel>
+									<FormLabel>
+										Description (Optional)
+									</FormLabel>
 									<FormControl>
 										<Textarea
 											placeholder="Describe the purpose of this table..."
@@ -231,7 +239,8 @@ export function TableDialog({ table, open, onClose }: TableDialogProps) {
 										/>
 									</FormControl>
 									<FormDescription>
-										Optional JSON schema for validation hints
+										Optional JSON schema for validation
+										hints
 									</FormDescription>
 									<FormMessage />
 								</FormItem>

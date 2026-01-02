@@ -10,10 +10,7 @@ import {
 	Pencil,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import {
-	Card,
-	CardContent,
-} from "@/components/ui/card";
+import { Card, CardContent } from "@/components/ui/card";
 import {
 	AlertDialog,
 	AlertDialogAction,
@@ -113,7 +110,8 @@ export function Integrations() {
 						Integrations
 					</h1>
 					<p className="mt-2 text-muted-foreground">
-						Configure integrations and map organizations to external entities
+						Configure integrations and map organizations to external
+						entities
 					</p>
 				</div>
 				<div className="flex gap-2">
@@ -194,7 +192,9 @@ export function Integrations() {
 									<DataTableCell>
 										{integration.list_entities_data_provider_id ? (
 											<Badge variant="outline">
-												{integration.list_entities_data_provider_id}
+												{
+													integration.list_entities_data_provider_id
+												}
 											</Badge>
 										) : (
 											<span className="text-muted-foreground text-sm">
@@ -217,12 +217,16 @@ export function Integrations() {
 															{field.key}
 														</Badge>
 													))}
-												{integration.config_schema.length > 2 && (
+												{integration.config_schema
+													.length > 2 && (
 													<Badge
 														variant="secondary"
 														className="text-xs"
 													>
-														+{integration.config_schema.length - 2}
+														+
+														{integration
+															.config_schema
+															.length - 2}
 													</Badge>
 												)}
 											</div>
@@ -240,7 +244,9 @@ export function Integrations() {
 											<Button
 												variant="ghost"
 												size="icon-sm"
-												onClick={() => handleEdit(integration.id)}
+												onClick={() =>
+													handleEdit(integration.id)
+												}
 												title="Edit"
 											>
 												<Pencil className="h-4 w-4" />
@@ -248,8 +254,12 @@ export function Integrations() {
 											<Button
 												variant="ghost"
 												size="icon-sm"
-												onClick={() => handleDelete(integration)}
-												disabled={deleteMutation.isPending}
+												onClick={() =>
+													handleDelete(integration)
+												}
+												disabled={
+													deleteMutation.isPending
+												}
 												title="Delete"
 												className="text-red-600 hover:text-red-700"
 											>

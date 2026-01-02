@@ -70,10 +70,7 @@ export function DocumentQueryPanel({
 		setConditions((prev) => prev.filter((c) => c.id !== id));
 	};
 
-	const updateCondition = (
-		id: string,
-		updates: Partial<FilterCondition>,
-	) => {
+	const updateCondition = (id: string, updates: Partial<FilterCondition>) => {
 		setConditions((prev) =>
 			prev.map((c) => (c.id === id ? { ...c, ...updates } : c)),
 		);
@@ -147,7 +144,11 @@ export function DocumentQueryPanel({
 								Clear
 							</Button>
 						)}
-						<Button variant="outline" size="sm" onClick={addCondition}>
+						<Button
+							variant="outline"
+							size="sm"
+							onClick={addCondition}
+						>
 							<Plus className="h-4 w-4 mr-1" />
 							Add Filter
 						</Button>
@@ -232,7 +233,9 @@ export function DocumentQueryPanel({
 								<Button
 									variant="ghost"
 									size="icon"
-									onClick={() => removeCondition(condition.id)}
+									onClick={() =>
+										removeCondition(condition.id)
+									}
 								>
 									<Trash2 className="h-4 w-4" />
 								</Button>

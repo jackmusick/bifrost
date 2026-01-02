@@ -13,10 +13,7 @@ import { Label } from "@/components/ui/label";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { AlertCircle, Loader2 } from "lucide-react";
 import { toast } from "sonner";
-import {
-	useUpdateEventSource,
-	type EventSource,
-} from "@/services/events";
+import { useUpdateEventSource, type EventSource } from "@/services/events";
 
 interface EditEventSourceDialogProps {
 	source: EventSource | null;
@@ -38,20 +35,22 @@ function EditEventSourceDialogContent({
 
 	// Webhook config fields (for generic adapter)
 	const [eventTypeHeader, setEventTypeHeader] = useState<string>(
-		(source.webhook?.config?.event_type_header as string) ?? ""
+		(source.webhook?.config?.event_type_header as string) ?? "",
 	);
 	const [eventTypeField, setEventTypeField] = useState<string>(
-		(source.webhook?.config?.event_type_field as string) ?? ""
+		(source.webhook?.config?.event_type_field as string) ?? "",
 	);
 	const [secret, setSecret] = useState<string>(
-		(source.webhook?.config?.secret as string) ?? ""
+		(source.webhook?.config?.secret as string) ?? "",
 	);
 
 	const [errors, setErrors] = useState<string[]>([]);
 
 	const isLoading = updateMutation.isPending;
 	const isWebhook = source.source_type === "webhook";
-	const isGenericAdapter = !source.webhook?.adapter_name || source.webhook?.adapter_name === "generic";
+	const isGenericAdapter =
+		!source.webhook?.adapter_name ||
+		source.webhook?.adapter_name === "generic";
 
 	const validateForm = (): boolean => {
 		const newErrors: string[] = [];
@@ -137,15 +136,21 @@ function EditEventSourceDialogContent({
 				{isWebhook && isGenericAdapter && (
 					<>
 						<div className="border-t pt-4">
-							<h4 className="text-sm font-medium mb-3">Webhook Configuration</h4>
+							<h4 className="text-sm font-medium mb-3">
+								Webhook Configuration
+							</h4>
 						</div>
 
 						<div className="space-y-2">
-							<Label htmlFor="event-type-header">Event Type Header</Label>
+							<Label htmlFor="event-type-header">
+								Event Type Header
+							</Label>
 							<Input
 								id="event-type-header"
 								value={eventTypeHeader}
-								onChange={(e) => setEventTypeHeader(e.target.value)}
+								onChange={(e) =>
+									setEventTypeHeader(e.target.value)
+								}
 								placeholder="e.g., X-Event-Type"
 							/>
 							<p className="text-xs text-muted-foreground">
@@ -154,15 +159,20 @@ function EditEventSourceDialogContent({
 						</div>
 
 						<div className="space-y-2">
-							<Label htmlFor="event-type-field">Event Type Field</Label>
+							<Label htmlFor="event-type-field">
+								Event Type Field
+							</Label>
 							<Input
 								id="event-type-field"
 								value={eventTypeField}
-								onChange={(e) => setEventTypeField(e.target.value)}
+								onChange={(e) =>
+									setEventTypeField(e.target.value)
+								}
 								placeholder="e.g., type or event"
 							/>
 							<p className="text-xs text-muted-foreground">
-								JSON payload field containing the event type (optional, takes precedence over header)
+								JSON payload field containing the event type
+								(optional, takes precedence over header)
 							</p>
 						</div>
 
@@ -176,7 +186,8 @@ function EditEventSourceDialogContent({
 								placeholder="Leave empty to disable signature verification"
 							/>
 							<p className="text-xs text-muted-foreground">
-								HMAC secret for signature verification (optional)
+								HMAC secret for signature verification
+								(optional)
 							</p>
 						</div>
 					</>
@@ -184,11 +195,17 @@ function EditEventSourceDialogContent({
 			</div>
 
 			<DialogFooter>
-				<Button type="button" variant="outline" onClick={() => onOpenChange(false)}>
+				<Button
+					type="button"
+					variant="outline"
+					onClick={() => onOpenChange(false)}
+				>
 					Cancel
 				</Button>
 				<Button type="submit" disabled={isLoading}>
-					{isLoading && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+					{isLoading && (
+						<Loader2 className="mr-2 h-4 w-4 animate-spin" />
+					)}
 					Save Changes
 				</Button>
 			</DialogFooter>

@@ -223,7 +223,7 @@ class DocumentRepository:
         await self.session.refresh(doc)
         return doc
 
-    async def get(self, doc_id: UUID) -> Document | None:
+    async def get(self, doc_id: str) -> Document | None:
         """Get document by ID."""
         query = select(Document).where(
             Document.id == doc_id,
@@ -234,7 +234,7 @@ class DocumentRepository:
 
     async def update(
         self,
-        doc_id: UUID,
+        doc_id: str,
         data: dict[str, Any],
         updated_by: str | None,
     ) -> Document | None:
@@ -252,7 +252,7 @@ class DocumentRepository:
         await self.session.refresh(doc)
         return doc
 
-    async def delete(self, doc_id: UUID) -> bool:
+    async def delete(self, doc_id: str) -> bool:
         """Delete a document."""
         doc = await self.get(doc_id)
         if not doc:
@@ -548,7 +548,7 @@ async def insert_document(
 )
 async def get_document(
     name: str,
-    doc_id: UUID,
+    doc_id: str,
     ctx: Context,
     user: CurrentUser,
     scope: str | None = Query(default=None),
@@ -574,7 +574,7 @@ async def get_document(
 )
 async def update_document(
     name: str,
-    doc_id: UUID,
+    doc_id: str,
     data: DocumentUpdate,
     ctx: Context,
     user: CurrentUser,
@@ -601,7 +601,7 @@ async def update_document(
 )
 async def delete_document(
     name: str,
-    doc_id: UUID,
+    doc_id: str,
     ctx: Context,
     user: CurrentUser,
     scope: str | None = Query(default=None),

@@ -94,10 +94,7 @@ export type {
 	ApplicationDefinition,
 } from "@/lib/app-builder-types";
 
-export {
-	isLayoutContainer,
-	isAppComponent,
-} from "@/lib/app-builder-types";
+export { isLayoutContainer, isAppComponent } from "@/lib/app-builder-types";
 
 // Re-export expression utilities
 export {

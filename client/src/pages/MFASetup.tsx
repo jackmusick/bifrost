@@ -86,7 +86,9 @@ export function MFASetup() {
 						"Content-Type": "application/json",
 						Authorization: `Bearer ${mfaToken}`,
 					},
-					body: forceNew ? JSON.stringify({ force_new: true }) : undefined,
+					body: forceNew
+						? JSON.stringify({ force_new: true })
+						: undefined,
 				});
 
 				// 401 means the MFA token is expired or invalid - redirect to login
@@ -119,11 +121,16 @@ export function MFASetup() {
 				}
 			} catch (err) {
 				const message =
-					err instanceof Error ? err.message : "Failed to initialize MFA";
+					err instanceof Error
+						? err.message
+						: "Failed to initialize MFA";
 				setError(message);
 
 				// Provide specific guidance based on error
-				if (message.includes("expired") || message.includes("invalid")) {
+				if (
+					message.includes("expired") ||
+					message.includes("invalid")
+				) {
 					setError(
 						"Your session has expired. Please log in again to continue MFA setup.",
 					);
@@ -199,7 +206,9 @@ export function MFASetup() {
 				toast.success("MFA setup complete!");
 			}
 		} catch (err) {
-			setError(err instanceof Error ? err.message : "Verification failed");
+			setError(
+				err instanceof Error ? err.message : "Verification failed",
+			);
 		} finally {
 			setIsLoading(false);
 		}
@@ -266,7 +275,8 @@ Keep these codes in a secure location.
 						{step === "setup" &&
 							"Scan the QR code with your authenticator app"}
 						{step === "verify" && "Enter the verification code"}
-						{step === "recovery-codes" && "Save your recovery codes"}
+						{step === "recovery-codes" &&
+							"Save your recovery codes"}
 					</CardDescription>
 				</CardHeader>
 				<CardContent>
@@ -279,9 +289,9 @@ Keep these codes in a secure location.
 
 					<Alert className="mb-4">
 						<AlertDescription>
-							Two-factor authentication is required for password-based
-							login. This helps protect your account from unauthorized
-							access.
+							Two-factor authentication is required for
+							password-based login. This helps protect your
+							account from unauthorized access.
 						</AlertDescription>
 					</Alert>
 
@@ -297,7 +307,8 @@ Keep these codes in a secure location.
 
 							<div className="text-center space-y-2">
 								<p className="text-sm text-muted-foreground">
-									Scan this QR code with your authenticator app
+									Scan this QR code with your authenticator
+									app
 								</p>
 								<p className="text-xs text-muted-foreground">
 									Or enter this code manually:
@@ -321,7 +332,10 @@ Keep these codes in a secure location.
 								</div>
 							</div>
 
-							<Button onClick={() => setStep("verify")} className="w-full">
+							<Button
+								onClick={() => setStep("verify")}
+								className="w-full"
+							>
 								<Shield className="h-4 w-4 mr-2" />
 								I've added the code
 							</Button>
@@ -346,7 +360,9 @@ Keep these codes in a secure location.
 					{step === "verify" && (
 						<form onSubmit={handleMfaVerify} className="space-y-4">
 							<div className="space-y-2">
-								<Label htmlFor="verifyCode">Verification Code</Label>
+								<Label htmlFor="verifyCode">
+									Verification Code
+								</Label>
 								<Input
 									id="verifyCode"
 									type="text"
@@ -355,7 +371,9 @@ Keep these codes in a secure location.
 									placeholder="Enter 6-digit code"
 									value={mfaCode}
 									onChange={(e) =>
-										setMfaCode(e.target.value.replace(/\D/g, ""))
+										setMfaCode(
+											e.target.value.replace(/\D/g, ""),
+										)
 									}
 									className="text-center text-lg tracking-widest"
 									maxLength={6}
@@ -396,9 +414,10 @@ Keep these codes in a secure location.
 						<div className="space-y-4">
 							<Alert>
 								<AlertDescription>
-									Save these recovery codes in a secure location. Each
-									code can only be used once to access your account if
-									you lose your authenticator.
+									Save these recovery codes in a secure
+									location. Each code can only be used once to
+									access your account if you lose your
+									authenticator.
 								</AlertDescription>
 							</Alert>
 
@@ -439,7 +458,10 @@ Keep these codes in a secure location.
 									}
 									className="rounded border-gray-300"
 								/>
-								<Label htmlFor="savedCodes" className="text-sm font-normal">
+								<Label
+									htmlFor="savedCodes"
+									className="text-sm font-normal"
+								>
 									I have saved my recovery codes
 								</Label>
 							</div>

@@ -47,7 +47,10 @@ interface AppBuilderActions {
 	/** Set a runtime variable */
 	setVariable: (name: string, value: unknown) => void;
 	/** Execute a workflow by ID */
-	executeWorkflow: (workflowId: string, options?: ExecuteWorkflowOptions) => Promise<void>;
+	executeWorkflow: (
+		workflowId: string,
+		options?: ExecuteWorkflowOptions,
+	) => Promise<void>;
 	/** Trigger a data source refresh */
 	refreshDataSource: (key: string) => void;
 	/** Select a table row */
@@ -126,7 +129,10 @@ export function useAppBuilderActions(
 
 	// Execute a workflow
 	const executeWorkflow = useCallback(
-		async (workflowId: string, execOptions: ExecuteWorkflowOptions = {}) => {
+		async (
+			workflowId: string,
+			execOptions: ExecuteWorkflowOptions = {},
+		) => {
 			const {
 				input,
 				showSuccessToast = true,
@@ -157,7 +163,9 @@ export function useAppBuilderActions(
 				onSuccess?.(result);
 			} catch (error) {
 				const errorMessage =
-					error instanceof Error ? error.message : "Workflow execution failed";
+					error instanceof Error
+						? error.message
+						: "Workflow execution failed";
 
 				// Mark as failed
 				store.failExecution(executionId, errorMessage);

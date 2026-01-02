@@ -106,7 +106,10 @@ export function QRCode({
 	alt = "QR Code",
 }: QRCodeProps) {
 	// Validate data - derive error state from props
-	const dataError = useMemo(() => (!data ? "No data provided" : null), [data]);
+	const dataError = useMemo(
+		() => (!data ? "No data provided" : null),
+		[data],
+	);
 
 	// If no data, show error state
 	if (dataError) {

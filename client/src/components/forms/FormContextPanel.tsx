@@ -86,7 +86,9 @@ function ContextSection({
 	return (
 		<div className="space-y-1.5">
 			<div>
-				<code className="text-xs font-semibold text-primary">{title}</code>
+				<code className="text-xs font-semibold text-primary">
+					{title}
+				</code>
 				<p className="text-xs text-muted-foreground">{description}</p>
 			</div>
 			<div className="pl-2 border-l-2 border-muted">

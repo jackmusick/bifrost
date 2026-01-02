@@ -253,7 +253,10 @@ export function useUpdateSubscription() {
 			onSuccess: () => {
 				// Use partial key match to invalidate regardless of query params
 				queryClient.invalidateQueries({
-					queryKey: ["get", "/api/events/sources/{source_id}/subscriptions"],
+					queryKey: [
+						"get",
+						"/api/events/sources/{source_id}/subscriptions",
+					],
 				});
 			},
 		},
@@ -311,10 +314,7 @@ export interface EventFilters {
 /**
  * Hook to fetch events for an event source with optional filters
  */
-export function useEvents(
-	sourceId: string | undefined,
-	params?: EventFilters,
-) {
+export function useEvents(sourceId: string | undefined, params?: EventFilters) {
 	return $api.useQuery(
 		"get",
 		"/api/events/sources/{source_id}/events",
@@ -377,20 +377,24 @@ export function useDeliveries(eventId: string | undefined) {
 export function useRetryDelivery() {
 	const queryClient = useQueryClient();
 
-	return $api.useMutation("post", "/api/events/deliveries/{delivery_id}/retry", {
-		onSuccess: () => {
-			// Invalidate all delivery-related queries
-			queryClient.invalidateQueries({
-				predicate: (query) =>
-					query.queryKey[0] === "get" &&
-					(query.queryKey[1] as string)?.includes("/deliveries"),
-			});
-			// Also invalidate events to refresh status
-			queryClient.invalidateQueries({
-				predicate: (query) =>
-					query.queryKey[0] === "get" &&
-					(query.queryKey[1] as string)?.includes("/events"),
-			});
+	return $api.useMutation(
+		"post",
+		"/api/events/deliveries/{delivery_id}/retry",
+		{
+			onSuccess: () => {
+				// Invalidate all delivery-related queries
+				queryClient.invalidateQueries({
+					predicate: (query) =>
+						query.queryKey[0] === "get" &&
+						(query.queryKey[1] as string)?.includes("/deliveries"),
+				});
+				// Also invalidate events to refresh status
+				queryClient.invalidateQueries({
+					predicate: (query) =>
+						query.queryKey[0] === "get" &&
+						(query.queryKey[1] as string)?.includes("/events"),
+				});
+			},
 		},
-	});
+	);
 }

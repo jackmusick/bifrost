@@ -12,10 +12,7 @@ import {
 	Trash2,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import {
-	Card,
-	CardContent,
-} from "@/components/ui/card";
+import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Switch } from "@/components/ui/switch";
@@ -92,20 +89,29 @@ export function Events() {
 	const [editDialogOpen, setEditDialogOpen] = useState(false);
 	const [sourceToEdit, setSourceToEdit] = useState<EventSource | null>(null);
 	const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
-	const [sourceToDelete, setSourceToDelete] = useState<EventSource | null>(null);
+	const [sourceToDelete, setSourceToDelete] = useState<EventSource | null>(
+		null,
+	);
 
 	const updateMutation = useUpdateEventSource();
 	const deleteMutation = useDeleteEventSource();
 
 	// Toggle active status for a source
-	const handleToggleActive = async (source: EventSource, e: React.MouseEvent) => {
+	const handleToggleActive = async (
+		source: EventSource,
+		e: React.MouseEvent,
+	) => {
 		e.stopPropagation(); // Prevent row click
 		try {
 			await updateMutation.mutateAsync({
 				params: { path: { source_id: source.id } },
 				body: { is_active: !source.is_active },
 			});
-			toast.success(source.is_active ? "Event source deactivated" : "Event source activated");
+			toast.success(
+				source.is_active
+					? "Event source deactivated"
+					: "Event source activated",
+			);
 		} catch {
 			toast.error("Failed to update event source");
 		}
@@ -221,7 +227,9 @@ export function Events() {
 						onClick={() => refetch()}
 						title="Refresh"
 					>
-						<RefreshCw className={`h-4 w-4 ${isLoading ? "animate-spin" : ""}`} />
+						<RefreshCw
+							className={`h-4 w-4 ${isLoading ? "animate-spin" : ""}`}
+						/>
 					</Button>
 					{isPlatformAdmin && (
 						<Button
@@ -264,8 +272,12 @@ export function Events() {
 			>
 				<TabsList>
 					<TabsTrigger value="all">All ({stats.total})</TabsTrigger>
-					<TabsTrigger value="active">Active ({stats.active})</TabsTrigger>
-					<TabsTrigger value="inactive">Inactive ({stats.inactive})</TabsTrigger>
+					<TabsTrigger value="active">
+						Active ({stats.active})
+					</TabsTrigger>
+					<TabsTrigger value="inactive">
+						Inactive ({stats.inactive})
+					</TabsTrigger>
 				</TabsList>
 			</Tabs>
 
@@ -290,17 +302,19 @@ export function Events() {
 								? "Try adjusting your search term or filter"
 								: "Create your first event source to start receiving webhooks."}
 						</p>
-						{isPlatformAdmin && !searchTerm && statusFilter === "all" && (
-							<Button
-								variant="outline"
-								size="icon"
-								className="mt-4"
-								onClick={() => setIsCreateDialogOpen(true)}
-								title="Create Event Source"
-							>
-								<Plus className="h-4 w-4" />
-							</Button>
-						)}
+						{isPlatformAdmin &&
+							!searchTerm &&
+							statusFilter === "all" && (
+								<Button
+									variant="outline"
+									size="icon"
+									className="mt-4"
+									onClick={() => setIsCreateDialogOpen(true)}
+									title="Create Event Source"
+								>
+									<Plus className="h-4 w-4" />
+								</Button>
+							)}
 					</CardContent>
 				</Card>
 			) : (
@@ -319,7 +333,9 @@ export function Events() {
 								<DataTableHead>Created</DataTableHead>
 								{isPlatformAdmin && (
 									<>
-										<DataTableHead className="text-right w-[80px]">Status</DataTableHead>
+										<DataTableHead className="text-right w-[80px]">
+											Status
+										</DataTableHead>
 										<DataTableHead className="text-right w-[100px]" />
 									</>
 								)}
@@ -335,12 +351,19 @@ export function Events() {
 									{isPlatformAdmin && (
 										<DataTableCell>
 											{source.organization_id ? (
-												<Badge variant="outline" className="text-xs">
+												<Badge
+													variant="outline"
+													className="text-xs"
+												>
 													<Building2 className="mr-1 h-3 w-3" />
-													{source.organization_name || "Organization"}
+													{source.organization_name ||
+														"Organization"}
 												</Badge>
 											) : (
-												<Badge variant="default" className="text-xs">
+												<Badge
+													variant="default"
+													className="text-xs"
+												>
 													<Globe className="mr-1 h-3 w-3" />
 													Global
 												</Badge>
@@ -349,7 +372,9 @@ export function Events() {
 									)}
 									<DataTableCell className="font-medium">
 										<div className="flex items-center gap-2">
-											{getSourceTypeIcon(source.source_type)}
+											{getSourceTypeIcon(
+												source.source_type,
+											)}
 											{source.name}
 										</div>
 									</DataTableCell>
@@ -373,8 +398,15 @@ export function Events() {
 												<Switch
 													checked={source.is_active}
 													onCheckedChange={() => {}}
-													onClick={(e) => handleToggleActive(source, e)}
-													disabled={updateMutation.isPending}
+													onClick={(e) =>
+														handleToggleActive(
+															source,
+															e,
+														)
+													}
+													disabled={
+														updateMutation.isPending
+													}
 												/>
 											</DataTableCell>
 											<DataTableCell className="text-right">
@@ -382,7 +414,12 @@ export function Events() {
 													<Button
 														variant="ghost"
 														size="icon"
-														onClick={(e) => handleEdit(source, e)}
+														onClick={(e) =>
+															handleEdit(
+																source,
+																e,
+															)
+														}
 														title="Edit event source"
 													>
 														<Pencil className="h-4 w-4" />
@@ -390,7 +427,12 @@ export function Events() {
 													<Button
 														variant="ghost"
 														size="icon"
-														onClick={(e) => handleDelete(source, e)}
+														onClick={(e) =>
+															handleDelete(
+																source,
+																e,
+															)
+														}
 														title="Delete event source"
 													>
 														<Trash2 className="h-4 w-4" />
@@ -421,13 +463,17 @@ export function Events() {
 			/>
 
 			{/* Delete Confirmation */}
-			<AlertDialog open={deleteDialogOpen} onOpenChange={setDeleteDialogOpen}>
+			<AlertDialog
+				open={deleteDialogOpen}
+				onOpenChange={setDeleteDialogOpen}
+			>
 				<AlertDialogContent>
 					<AlertDialogHeader>
 						<AlertDialogTitle>Delete Event Source</AlertDialogTitle>
 						<AlertDialogDescription>
-							Are you sure you want to delete "{sourceToDelete?.name}"? This will
-							also remove all subscriptions and event history. This action cannot
+							Are you sure you want to delete "
+							{sourceToDelete?.name}"? This will also remove all
+							subscriptions and event history. This action cannot
 							be undone.
 						</AlertDialogDescription>
 					</AlertDialogHeader>

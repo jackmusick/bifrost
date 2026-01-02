@@ -24,7 +24,12 @@ import { KeyValueEditor } from "./KeyValueEditor";
 /**
  * Action types supported by the builder
  */
-export type ActionType = "navigate" | "workflow" | "custom" | "set-variable" | "delete";
+export type ActionType =
+	| "navigate"
+	| "workflow"
+	| "custom"
+	| "set-variable"
+	| "delete";
 
 /**
  * Action configuration object
@@ -159,7 +164,8 @@ export function ActionBuilder({
 						placeholder="/page/path or {{ expression }}"
 					/>
 					<p className="text-xs text-muted-foreground">
-						Path to navigate. Supports expressions like {"{{ row.id }}"}
+						Path to navigate. Supports expressions like{" "}
+						{"{{ row.id }}"}
 					</p>
 				</div>
 			)}
@@ -179,7 +185,9 @@ export function ActionBuilder({
 					</div>
 
 					<div className="space-y-2">
-						<Label className="text-sm font-medium">Parameters</Label>
+						<Label className="text-sm font-medium">
+							Parameters
+						</Label>
 						<KeyValueEditor
 							value={value.actionParams ?? {}}
 							onChange={(actionParams) =>
@@ -199,14 +207,19 @@ export function ActionBuilder({
 						<Input
 							value={value.customActionId ?? ""}
 							onChange={(e) =>
-								onChange({ ...value, customActionId: e.target.value })
+								onChange({
+									...value,
+									customActionId: e.target.value,
+								})
 							}
 							placeholder="my-custom-action"
 						/>
 					</div>
 
 					<div className="space-y-2">
-						<Label className="text-sm font-medium">Parameters</Label>
+						<Label className="text-sm font-medium">
+							Parameters
+						</Label>
 						<KeyValueEditor
 							value={value.actionParams ?? {}}
 							onChange={(actionParams) =>
@@ -222,11 +235,16 @@ export function ActionBuilder({
 			{value.type === "set-variable" && (
 				<div className="space-y-4">
 					<div className="space-y-2">
-						<Label className="text-sm font-medium">Variable Name</Label>
+						<Label className="text-sm font-medium">
+							Variable Name
+						</Label>
 						<Input
 							value={value.variableName ?? ""}
 							onChange={(e) =>
-								onChange({ ...value, variableName: e.target.value })
+								onChange({
+									...value,
+									variableName: e.target.value,
+								})
 							}
 							placeholder="selectedItem"
 						/>
@@ -240,7 +258,10 @@ export function ActionBuilder({
 						<Input
 							value={value.variableValue ?? ""}
 							onChange={(e) =>
-								onChange({ ...value, variableValue: e.target.value })
+								onChange({
+									...value,
+									variableValue: e.target.value,
+								})
 							}
 							placeholder="{{ row }} or static value"
 						/>
@@ -252,7 +273,8 @@ export function ActionBuilder({
 			{value.type === "delete" && (
 				<div className="rounded-md bg-destructive/10 border border-destructive/20 p-3">
 					<p className="text-sm text-destructive">
-						This action will delete the record. Consider enabling confirmation below.
+						This action will delete the record. Consider enabling
+						confirmation below.
 					</p>
 				</div>
 			)}
@@ -262,7 +284,9 @@ export function ActionBuilder({
 				<div className="space-y-3 pt-2 border-t">
 					<div className="flex items-center justify-between">
 						<div>
-							<Label className="text-sm font-medium">Require Confirmation</Label>
+							<Label className="text-sm font-medium">
+								Require Confirmation
+							</Label>
 							<p className="text-xs text-muted-foreground">
 								Show a dialog before executing
 							</p>
@@ -282,7 +306,10 @@ export function ActionBuilder({
 									onChange={(e) =>
 										onChange({
 											...value,
-											confirm: { ...value.confirm!, title: e.target.value },
+											confirm: {
+												...value.confirm!,
+												title: e.target.value,
+											},
 										})
 									}
 								/>
@@ -295,7 +322,10 @@ export function ActionBuilder({
 									onChange={(e) =>
 										onChange({
 											...value,
-											confirm: { ...value.confirm!, message: e.target.value },
+											confirm: {
+												...value.confirm!,
+												message: e.target.value,
+											},
 										})
 									}
 									rows={2}
@@ -304,24 +334,35 @@ export function ActionBuilder({
 
 							<div className="grid grid-cols-2 gap-2">
 								<div className="space-y-2">
-									<Label className="text-sm">Confirm Button</Label>
+									<Label className="text-sm">
+										Confirm Button
+									</Label>
 									<Input
-										value={value.confirm.confirmLabel ?? "Confirm"}
+										value={
+											value.confirm.confirmLabel ??
+											"Confirm"
+										}
 										onChange={(e) =>
 											onChange({
 												...value,
 												confirm: {
 													...value.confirm!,
-													confirmLabel: e.target.value,
+													confirmLabel:
+														e.target.value,
 												},
 											})
 										}
 									/>
 								</div>
 								<div className="space-y-2">
-									<Label className="text-sm">Cancel Button</Label>
+									<Label className="text-sm">
+										Cancel Button
+									</Label>
 									<Input
-										value={value.confirm.cancelLabel ?? "Cancel"}
+										value={
+											value.confirm.cancelLabel ??
+											"Cancel"
+										}
 										onChange={(e) =>
 											onChange({
 												...value,

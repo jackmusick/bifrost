@@ -78,11 +78,18 @@ export function OptionBuilder({
 			) : (
 				<div className="space-y-2">
 					{value.map((option, index) => (
-						<div key={index} className="grid grid-cols-[1fr_1fr_40px] gap-2">
+						<div
+							key={index}
+							className="grid grid-cols-[1fr_1fr_40px] gap-2"
+						>
 							<Input
 								value={option.value}
 								onChange={(e) =>
-									handleUpdateOption(index, "value", e.target.value)
+									handleUpdateOption(
+										index,
+										"value",
+										e.target.value,
+									)
 								}
 								placeholder="value"
 								className="text-sm font-mono"
@@ -90,7 +97,11 @@ export function OptionBuilder({
 							<Input
 								value={option.label}
 								onChange={(e) =>
-									handleUpdateOption(index, "label", e.target.value)
+									handleUpdateOption(
+										index,
+										"label",
+										e.target.value,
+									)
 								}
 								placeholder="Display label"
 								className="text-sm"

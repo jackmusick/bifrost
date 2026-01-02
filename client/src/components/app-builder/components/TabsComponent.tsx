@@ -10,7 +10,10 @@ import type { TabsComponentProps } from "@/lib/app-builder-types";
 import type { RegisteredComponentProps } from "../ComponentRegistry";
 import { LayoutRenderer } from "../LayoutRenderer";
 
-export function TabsComponent({ component, context }: RegisteredComponentProps) {
+export function TabsComponent({
+	component,
+	context,
+}: RegisteredComponentProps) {
 	const { props } = component as TabsComponentProps;
 
 	// Guard against undefined props or items
@@ -25,24 +28,17 @@ export function TabsComponent({ component, context }: RegisteredComponentProps) 
 	return (
 		<Tabs
 			defaultValue={defaultTab}
-			className={cn(
-				isVertical && "flex gap-4",
-				props?.className,
-			)}
+			className={cn(isVertical && "flex gap-4", props?.className)}
 			orientation={props?.orientation}
 		>
 			<TabsList
-				className={cn(
-					isVertical && "flex-col h-auto items-stretch",
-				)}
+				className={cn(isVertical && "flex-col h-auto items-stretch")}
 			>
 				{items.map((item) => (
 					<TabsTrigger
 						key={item.id}
 						value={item.id}
-						className={cn(
-							isVertical && "justify-start",
-						)}
+						className={cn(isVertical && "justify-start")}
 					>
 						{item.label}
 					</TabsTrigger>
@@ -51,7 +47,10 @@ export function TabsComponent({ component, context }: RegisteredComponentProps) 
 			<div className={cn(isVertical ? "flex-1" : "mt-4")}>
 				{items.map((item) => (
 					<TabsContent key={item.id} value={item.id} className="mt-0">
-						<LayoutRenderer layout={item.content} context={context} />
+						<LayoutRenderer
+							layout={item.content}
+							context={context}
+						/>
 					</TabsContent>
 				))}
 			</div>

@@ -2,10 +2,10 @@
 Bifrost Integrations - Convenience import shim
 
 This module allows workflows to use simplified imports:
-    from bifrost import workflow, param, OrganizationContext
+    from bifrost import workflow, OrganizationContext
 
 Instead of:
-    from src.sdk.decorators import workflow, param
+    from src.sdk.decorators import workflow
     from src.sdk.context import OrganizationContext
 
 Both import styles work at runtime. Use bifrost.pyi for development type hints.
@@ -13,7 +13,7 @@ Both import styles work at runtime. Use bifrost.pyi for development type hints.
 
 # Re-export everything from shared modules
 from src.sdk.context import Caller, Organization, OrganizationContext
-from src.sdk.decorators import data_provider, param, workflow
+from src.sdk.decorators import data_provider, workflow
 from src.models import (
     ConfigType,
     ExecutionStatus,
@@ -49,7 +49,6 @@ def __getattr__(name):
 __all__ = [
     # Decorators
     "workflow",
-    "param",
     "data_provider",
     # Context
     "OrganizationContext",

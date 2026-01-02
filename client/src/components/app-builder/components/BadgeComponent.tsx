@@ -10,7 +10,10 @@ import type { BadgeComponentProps } from "@/lib/app-builder-types";
 import type { RegisteredComponentProps } from "../ComponentRegistry";
 import { evaluateExpression } from "@/lib/expression-parser";
 
-export function BadgeComponent({ component, context }: RegisteredComponentProps) {
+export function BadgeComponent({
+	component,
+	context,
+}: RegisteredComponentProps) {
 	const { props } = component as BadgeComponentProps;
 
 	// Evaluate expressions

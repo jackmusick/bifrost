@@ -476,6 +476,18 @@ class SDKTableInfo(BaseModel):
 class SDKDocumentInsertRequest(BaseModel):
     """SDK request for inserting a document."""
     table: str = Field(..., description="Table name")
+    id: str | None = Field(default=None, description="Document ID (user-provided key). If not provided, a UUID will be auto-generated.")
+    data: dict[str, Any] = Field(..., description="Document data")
+    scope: str | None = Field(default=None, description="Organization scope")
+    app: str | None = Field(default=None, description="Application UUID")
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+class SDKDocumentUpsertRequest(BaseModel):
+    """SDK request for upserting (create or replace) a document."""
+    table: str = Field(..., description="Table name")
+    id: str = Field(..., description="Document ID (required for upsert)")
     data: dict[str, Any] = Field(..., description="Document data")
     scope: str | None = Field(default=None, description="Organization scope")
     app: str | None = Field(default=None, description="Application UUID")
@@ -548,7 +560,7 @@ class SDKDocumentCountRequest(BaseModel):
 
 class SDKDocumentData(BaseModel):
     """Document data response for SDK."""
-    id: str = Field(..., description="Document UUID")
+    id: str = Field(..., description="Document ID (user-provided or auto-generated)")
     table_id: str = Field(..., description="Table UUID")
     data: dict[str, Any] = Field(..., description="Document data")
     created_at: str = Field(..., description="Creation timestamp (ISO format)")

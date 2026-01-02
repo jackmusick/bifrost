@@ -68,7 +68,8 @@ export function Login() {
 
 	// Redirect path from URL query params (for MCP OAuth) or location state
 	const searchParams = new URLSearchParams(location.search);
-	const returnTo = searchParams.get("returnTo") || searchParams.get("return_to");
+	const returnTo =
+		searchParams.get("returnTo") || searchParams.get("return_to");
 	const from = returnTo || (location.state as { from?: string })?.from || "/";
 
 	// Passkey login handler (defined early for use in auto-trigger effect)

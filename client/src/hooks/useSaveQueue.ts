@@ -61,7 +61,9 @@ export function useSaveQueue() {
 					content: response.content,
 					contentModified: response.content_modified ?? false,
 					needsIndexing: response.needs_indexing ?? false,
-					diagnostics: response.diagnostics as FileDiagnostic[] | undefined,
+					diagnostics: response.diagnostics as
+						| FileDiagnostic[]
+						| undefined,
 				};
 			} catch (error) {
 				// Handle conflict errors specially

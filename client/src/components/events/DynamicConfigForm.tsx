@@ -152,7 +152,8 @@ function DynamicField({
 	const dependenciesSatisfied = useMemo(() => {
 		if (!dynamicSpec?.depends_on?.length) return true;
 		return dynamicSpec.depends_on.every(
-			(dep) => currentConfig[dep] !== undefined && currentConfig[dep] !== "",
+			(dep) =>
+				currentConfig[dep] !== undefined && currentConfig[dep] !== "",
 		);
 	}, [dynamicSpec, currentConfig]);
 
@@ -182,7 +183,9 @@ function DynamicField({
 				<ToggleGroup
 					type="multiple"
 					value={arrayValue as string[]}
-					onValueChange={(val) => onChange(val.length > 0 ? val : undefined)}
+					onValueChange={(val) =>
+						onChange(val.length > 0 ? val : undefined)
+					}
 					className="justify-start flex-wrap"
 				>
 					{property.items.enum.map((option) => (
@@ -192,7 +195,9 @@ function DynamicField({
 					))}
 				</ToggleGroup>
 				{property.description && (
-					<p className="text-xs text-muted-foreground">{property.description}</p>
+					<p className="text-xs text-muted-foreground">
+						{property.description}
+					</p>
 				)}
 			</div>
 		);
@@ -236,7 +241,9 @@ function DynamicField({
 					onValueChange={(val) => onChange(val || undefined)}
 				>
 					<SelectTrigger id={fieldName}>
-						<SelectValue placeholder={`Select ${property.title || fieldName}...`} />
+						<SelectValue
+							placeholder={`Select ${property.title || fieldName}...`}
+						/>
 					</SelectTrigger>
 					<SelectContent>
 						{property.enum.map((option) => (
@@ -247,7 +254,9 @@ function DynamicField({
 					</SelectContent>
 				</Select>
 				{property.description && (
-					<p className="text-xs text-muted-foreground">{property.description}</p>
+					<p className="text-xs text-muted-foreground">
+						{property.description}
+					</p>
 				)}
 			</div>
 		);
@@ -261,7 +270,9 @@ function DynamicField({
 				<div className="space-y-2">
 					<Label htmlFor={fieldName}>
 						{property.title || fieldName}
-						{isRequired && <span className="text-destructive"> *</span>}
+						{isRequired && (
+							<span className="text-destructive"> *</span>
+						)}
 					</Label>
 					<Input
 						id={fieldName}
@@ -294,7 +305,9 @@ function DynamicField({
 					<div className="flex items-center justify-between">
 						<Label htmlFor={fieldName}>
 							{property.title || fieldName}
-							{isRequired && <span className="text-destructive"> *</span>}
+							{isRequired && (
+								<span className="text-destructive"> *</span>
+							)}
 						</Label>
 						{error && !manualMode && (
 							<button
@@ -310,8 +323,13 @@ function DynamicField({
 						<Input
 							id={fieldName}
 							value={(value as string) || ""}
-							onChange={(e) => onChange(e.target.value || undefined)}
-							placeholder={property.description || `Enter ${property.title || fieldName}...`}
+							onChange={(e) =>
+								onChange(e.target.value || undefined)
+							}
+							placeholder={
+								property.description ||
+								`Enter ${property.title || fieldName}...`
+							}
 							className={error ? "border-amber-500" : ""}
 						/>
 						{error && (
@@ -344,7 +362,9 @@ function DynamicField({
 				<div className="flex items-center justify-between">
 					<Label>
 						{property.title || fieldName}
-						{isRequired && <span className="text-destructive"> *</span>}
+						{isRequired && (
+							<span className="text-destructive"> *</span>
+						)}
 					</Label>
 					<button
 						type="button"
@@ -362,29 +382,46 @@ function DynamicField({
 							aria-expanded={open}
 							className="w-full justify-between font-normal"
 						>
-							<span className={cn(!selectedLabel && "text-muted-foreground")}>
-								{selectedLabel || `Select ${property.title || fieldName}...`}
+							<span
+								className={cn(
+									!selectedLabel && "text-muted-foreground",
+								)}
+							>
+								{selectedLabel ||
+									`Select ${property.title || fieldName}...`}
 							</span>
 							<ChevronDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
 						</Button>
 					</PopoverTrigger>
 					<PopoverContent className="w-[400px] p-0" align="start">
 						<Command>
-							<CommandInput placeholder={`Search ${property.title || fieldName}...`} />
+							<CommandInput
+								placeholder={`Search ${property.title || fieldName}...`}
+							/>
 							<CommandList>
 								<CommandEmpty>No options found.</CommandEmpty>
 								<CommandGroup>
 									{options.map((option, idx) => {
-										const optValue = getNestedValue(option, valuePath);
-										const optLabel = String(getNestedValue(option, labelPath) ?? "");
+										const optValue = getNestedValue(
+											option,
+											valuePath,
+										);
+										const optLabel = String(
+											getNestedValue(option, labelPath) ??
+												"",
+										);
 										const optDesc =
-											typeof option.description === "string"
+											typeof option.description ===
+											"string"
 												? option.description
 												: undefined;
 
 										return (
 											<CommandItem
-												key={String(optValue) || String(idx)}
+												key={
+													String(optValue) ||
+													String(idx)
+												}
 												value={optLabel}
 												onSelect={() => {
 													onChange(optValue);
@@ -408,7 +445,9 @@ function DynamicField({
 					</PopoverContent>
 				</Popover>
 				{property.description && (
-					<p className="text-xs text-muted-foreground">{property.description}</p>
+					<p className="text-xs text-muted-foreground">
+						{property.description}
+					</p>
 				)}
 			</div>
 		);
@@ -425,10 +464,15 @@ function DynamicField({
 				id={fieldName}
 				value={(value as string) || ""}
 				onChange={(e) => onChange(e.target.value || undefined)}
-				placeholder={property.description || `Enter ${property.title || fieldName}...`}
+				placeholder={
+					property.description ||
+					`Enter ${property.title || fieldName}...`
+				}
 			/>
 			{property.description && (
-				<p className="text-xs text-muted-foreground">{property.description}</p>
+				<p className="text-xs text-muted-foreground">
+					{property.description}
+				</p>
 			)}
 		</div>
 	);
@@ -472,7 +516,9 @@ export function DynamicConfigForm({
 					// If parent changed and current field has a value, clear it
 					if (config[dep] !== undefined) {
 						// Check if any parent dependency is undefined/empty
-						const parentMissing = prop["x-dynamic-values"].depends_on.some(
+						const parentMissing = prop[
+							"x-dynamic-values"
+						].depends_on.some(
 							(d) => config[d] === undefined || config[d] === "",
 						);
 						if (parentMissing && config[field] !== undefined) {
@@ -527,7 +573,9 @@ export function DynamicConfigForm({
 						adapterName={adapterName}
 						integrationId={integrationId}
 						currentConfig={config}
-						onChange={(value) => handleFieldChange(fieldName, value)}
+						onChange={(value) =>
+							handleFieldChange(fieldName, value)
+						}
 						isRequired={required.includes(fieldName)}
 					/>
 				);

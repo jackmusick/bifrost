@@ -85,3 +85,31 @@ class ReindexResponse(BaseModel):
         default=None,
         description="Human-readable status message",
     )
+
+
+class DocsIndexResponse(BaseModel):
+    """Response from documentation indexing operation."""
+
+    status: str = Field(
+        description="Operation status: complete, skipped, failed"
+    )
+    files_indexed: int = Field(
+        default=0,
+        description="Number of documentation files that were indexed (new or changed)",
+    )
+    files_unchanged: int = Field(
+        default=0,
+        description="Number of files skipped because content was unchanged",
+    )
+    files_deleted: int = Field(
+        default=0,
+        description="Number of orphaned documents removed",
+    )
+    duration_ms: int = Field(
+        default=0,
+        description="Time taken to complete indexing in milliseconds",
+    )
+    message: str | None = Field(
+        default=None,
+        description="Human-readable status message or error description",
+    )

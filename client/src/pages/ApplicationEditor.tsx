@@ -109,15 +109,16 @@ export function ApplicationEditor() {
 	const { user, isPlatformAdmin } = useAuth();
 
 	// Default organization_id
-	const defaultOrgId = isPlatformAdmin ? null : (user?.organizationId ?? null);
+	const defaultOrgId = isPlatformAdmin
+		? null
+		: (user?.organizationId ?? null);
 
 	// Fetch existing application and draft (pass undefined if not editing)
 	const { data: existingApp, isLoading: isLoadingApp } = useApplication(
 		isEditing ? slugParam : undefined,
 	);
-	const { data: existingDraft, isLoading: isLoadingDraft } = useApplicationDraft(
-		isEditing ? slugParam : undefined,
-	);
+	const { data: existingDraft, isLoading: isLoadingDraft } =
+		useApplicationDraft(isEditing ? slugParam : undefined);
 	const { data: liveDefinition } = useApplicationDefinition(
 		isEditing && existingApp?.is_published ? slugParam : undefined,
 	);
@@ -132,7 +133,9 @@ export function ApplicationEditor() {
 	const [name, setName] = useState("");
 	const [description, setDescription] = useState("");
 	const [slug, setSlug] = useState("");
-	const [organizationId, setOrganizationId] = useState<string | null>(defaultOrgId);
+	const [organizationId, setOrganizationId] = useState<string | null>(
+		defaultOrgId,
+	);
 	const [definitionJson, setDefinitionJson] = useState("");
 
 	// Dialog state
@@ -141,10 +144,14 @@ export function ApplicationEditor() {
 	const [publishMessage, setPublishMessage] = useState("");
 
 	// Visual editor state
-	const [selectedComponentId, setSelectedComponentId] = useState<string | null>(null);
+	const [selectedComponentId, setSelectedComponentId] = useState<
+		string | null
+	>(null);
 
 	// Parse result (combined definition + error)
-	type ParseResult = { definition: AppDefinitionType; error: null } | { definition: null; error: string };
+	type ParseResult =
+		| { definition: AppDefinitionType; error: null }
+		| { definition: null; error: string };
 
 	// Active tab
 	const [activeTab, setActiveTab] = useState("visual");
@@ -168,14 +175,22 @@ export function ApplicationEditor() {
 	useEffect(() => {
 		if (existingDraft?.definition) {
 			try {
-				const formatted = JSON.stringify(existingDraft.definition, null, 2);
+				const formatted = JSON.stringify(
+					existingDraft.definition,
+					null,
+					2,
+				);
 				setDefinitionJson(formatted);
 			} catch {
 				setDefinitionJson("");
 			}
 		} else if (liveDefinition?.definition) {
 			try {
-				const formatted = JSON.stringify(liveDefinition.definition, null, 2);
+				const formatted = JSON.stringify(
+					liveDefinition.definition,
+					null,
+					2,
+				);
 				setDefinitionJson(formatted);
 			} catch {
 				setDefinitionJson("");
@@ -193,12 +208,16 @@ export function ApplicationEditor() {
 
 	// Parse and validate JSON - derive both result and error together
 	const parseResult = useMemo((): ParseResult => {
-		if (!definitionJson) return { definition: null, error: "No definition" };
+		if (!definitionJson)
+			return { definition: null, error: "No definition" };
 		try {
 			const parsed = JSON.parse(definitionJson);
 			return { definition: parsed as AppDefinitionType, error: null };
 		} catch (e) {
-			return { definition: null, error: e instanceof Error ? e.message : "Invalid JSON" };
+			return {
+				definition: null,
+				error: e instanceof Error ? e.message : "Invalid JSON",
+			};
 		}
 	}, [definitionJson]);
 
@@ -229,7 +248,9 @@ export function ApplicationEditor() {
 		try {
 			if (isEditing && slugParam) {
 				// Save draft - serialize and re-parse to ensure clean JSON
-				const cleanDefinition = JSON.parse(JSON.stringify(parsedDefinition));
+				const cleanDefinition = JSON.parse(
+					JSON.stringify(parsedDefinition),
+				);
 				await saveDraft.mutateAsync({
 					params: { path: { slug: slugParam } },
 					body: {
@@ -248,7 +269,9 @@ export function ApplicationEditor() {
 				});
 
 				// Save initial draft - serialize and re-parse to ensure clean JSON
-				const cleanDefinition = JSON.parse(JSON.stringify(parsedDefinition));
+				const cleanDefinition = JSON.parse(
+					JSON.stringify(parsedDefinition),
+				);
 				await saveDraft.mutateAsync({
 					params: { path: { slug: result.slug } },
 					body: {
@@ -261,7 +284,8 @@ export function ApplicationEditor() {
 			}
 		} catch (error) {
 			console.error("[ApplicationEditor] Save error:", error);
-			const errorDetail = error instanceof Error ? error.message : JSON.stringify(error);
+			const errorDetail =
+				error instanceof Error ? error.message : JSON.stringify(error);
 			toast.error(`Failed to save application: ${errorDetail}`);
 		}
 	};
@@ -271,7 +295,9 @@ export function ApplicationEditor() {
 
 		try {
 			// Auto-save draft before publishing to ensure latest changes are included
-			const cleanDefinition = JSON.parse(JSON.stringify(parsedDefinition));
+			const cleanDefinition = JSON.parse(
+				JSON.stringify(parsedDefinition),
+			);
 			await saveDraft.mutateAsync({
 				params: { path: { slug: slugParam } },
 				body: {
@@ -291,7 +317,9 @@ export function ApplicationEditor() {
 			setPublishMessage("");
 		} catch (error) {
 			toast.error(
-				error instanceof Error ? error.message : "Failed to publish application",
+				error instanceof Error
+					? error.message
+					: "Failed to publish application",
 			);
 		}
 	};
@@ -326,9 +354,12 @@ export function ApplicationEditor() {
 	}, [definitionJson]);
 
 	// Handle definition changes from visual editor
-	const handleDefinitionChange = useCallback((newDefinition: AppDefinitionType) => {
-		setDefinitionJson(JSON.stringify(newDefinition, null, 2));
-	}, []);
+	const handleDefinitionChange = useCallback(
+		(newDefinition: AppDefinitionType) => {
+			setDefinitionJson(JSON.stringify(newDefinition, null, 2));
+		},
+		[],
+	);
 
 	// Loading state
 	if (isEditing && (isLoadingApp || isLoadingDraft)) {
@@ -363,7 +394,9 @@ export function ApplicationEditor() {
 					<div>
 						<div className="flex items-center gap-2">
 							<h1 className="text-2xl font-bold">
-								{isEditing ? existingApp?.name || "Edit Application" : "New Application"}
+								{isEditing
+									? existingApp?.name || "Edit Application"
+									: "New Application"}
 							</h1>
 							{existingApp?.has_unpublished_changes && (
 								<Badge variant="outline">Draft</Badge>
@@ -439,7 +472,10 @@ export function ApplicationEditor() {
 				</TabsList>
 
 				{/* Visual Editor Tab */}
-				<TabsContent value="visual" className="flex-1 mt-4 -mx-6 -mb-6 overflow-hidden">
+				<TabsContent
+					value="visual"
+					className="flex-1 mt-4 -mx-6 -mb-6 overflow-hidden"
+				>
 					{parsedDefinition ? (
 						<EditorShell
 							definition={parsedDefinition}
@@ -456,12 +492,15 @@ export function ApplicationEditor() {
 								<CardContent className="flex flex-col items-center justify-center py-12">
 									<AlertTriangle className="h-12 w-12 text-destructive" />
 									<p className="mt-4 text-center text-muted-foreground">
-										Fix JSON errors in the JSON tab to use the visual editor
+										Fix JSON errors in the JSON tab to use
+										the visual editor
 									</p>
 									<Button
 										variant="outline"
 										className="mt-4"
-										onClick={() => setActiveTab("definition")}
+										onClick={() =>
+											setActiveTab("definition")
+										}
 									>
 										<Code2 className="mr-2 h-4 w-4" />
 										Go to JSON Editor
@@ -473,12 +512,16 @@ export function ApplicationEditor() {
 				</TabsContent>
 
 				{/* Settings Tab */}
-				<TabsContent value="settings" className="flex-1 overflow-auto mt-4">
+				<TabsContent
+					value="settings"
+					className="flex-1 overflow-auto mt-4"
+				>
 					<Card className="max-w-2xl">
 						<CardHeader>
 							<CardTitle>Application Settings</CardTitle>
 							<CardDescription>
-								Configure the basic settings for your application.
+								Configure the basic settings for your
+								application.
 							</CardDescription>
 						</CardHeader>
 						<CardContent className="space-y-4">
@@ -497,7 +540,9 @@ export function ApplicationEditor() {
 								<Textarea
 									id="description"
 									value={description}
-									onChange={(e) => setDescription(e.target.value)}
+									onChange={(e) =>
+										setDescription(e.target.value)
+									}
 									placeholder="A brief description of your application..."
 									rows={3}
 								/>
@@ -514,7 +559,8 @@ export function ApplicationEditor() {
 								/>
 								{!isEditing && (
 									<p className="text-xs text-muted-foreground">
-										Your app will be accessible at /apps/{slug || "..."}
+										Your app will be accessible at /apps/
+										{slug || "..."}
 									</p>
 								)}
 							</div>
@@ -524,7 +570,9 @@ export function ApplicationEditor() {
 									<Label>Organization</Label>
 									<OrganizationSelect
 										value={organizationId}
-										onChange={(val) => setOrganizationId(val ?? null)}
+										onChange={(val) =>
+											setOrganizationId(val ?? null)
+										}
 										showGlobal={true}
 										disabled={isEditing}
 									/>
@@ -535,7 +583,10 @@ export function ApplicationEditor() {
 				</TabsContent>
 
 				{/* Definition Tab */}
-				<TabsContent value="definition" className="flex-1 flex flex-col min-h-0 mt-4">
+				<TabsContent
+					value="definition"
+					className="flex-1 flex flex-col min-h-0 mt-4"
+				>
 					<div className="flex items-center justify-between mb-2">
 						<div className="flex items-center gap-2">
 							<Label>Application Definition (JSON)</Label>
@@ -546,7 +597,11 @@ export function ApplicationEditor() {
 								</Badge>
 							)}
 						</div>
-						<Button variant="outline" size="sm" onClick={handleFormatJson}>
+						<Button
+							variant="outline"
+							size="sm"
+							onClick={handleFormatJson}
+						>
 							Format JSON
 						</Button>
 					</div>
@@ -559,7 +614,10 @@ export function ApplicationEditor() {
 				</TabsContent>
 
 				{/* Preview Tab */}
-				<TabsContent value="preview" className="flex-1 overflow-auto mt-4">
+				<TabsContent
+					value="preview"
+					className="flex-1 overflow-auto mt-4"
+				>
 					{parsedDefinition ? (
 						<div className="border rounded-lg overflow-hidden h-full">
 							<AppRenderer definition={parsedDefinition} />
@@ -578,13 +636,16 @@ export function ApplicationEditor() {
 			</Tabs>
 
 			{/* Publish Dialog */}
-			<Dialog open={isPublishDialogOpen} onOpenChange={setIsPublishDialogOpen}>
+			<Dialog
+				open={isPublishDialogOpen}
+				onOpenChange={setIsPublishDialogOpen}
+			>
 				<DialogContent>
 					<DialogHeader>
 						<DialogTitle>Publish Application</DialogTitle>
 						<DialogDescription>
-							This will make the current draft live. Users will see the new
-							version immediately.
+							This will make the current draft live. Users will
+							see the new version immediately.
 						</DialogDescription>
 					</DialogHeader>
 					<div className="space-y-4">
@@ -595,7 +656,9 @@ export function ApplicationEditor() {
 							<Textarea
 								id="publish-message"
 								value={publishMessage}
-								onChange={(e) => setPublishMessage(e.target.value)}
+								onChange={(e) =>
+									setPublishMessage(e.target.value)
+								}
 								placeholder="What changed in this version?"
 								rows={3}
 							/>
@@ -624,8 +687,9 @@ export function ApplicationEditor() {
 					<AlertDialogHeader>
 						<AlertDialogTitle>Discard Draft?</AlertDialogTitle>
 						<AlertDialogDescription>
-							This will discard all changes in the current draft and revert
-							to the last published version. This action cannot be undone.
+							This will discard all changes in the current draft
+							and revert to the last published version. This
+							action cannot be undone.
 						</AlertDialogDescription>
 					</AlertDialogHeader>
 					<AlertDialogFooter>

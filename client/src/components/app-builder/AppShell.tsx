@@ -26,7 +26,11 @@ import {
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { ThemeToggle } from "@/components/theme-toggle";
 import { useAuth } from "@/contexts/AuthContext";
-import type { ApplicationDefinition, NavItem, ExpressionContext } from "@/lib/app-builder-types";
+import type {
+	ApplicationDefinition,
+	NavItem,
+	ExpressionContext,
+} from "@/lib/app-builder-types";
 import { evaluateExpression } from "@/lib/expression-parser";
 import { hasPageAccess } from "@/lib/app-builder-permissions";
 import { getIcon } from "@/lib/icons";
@@ -45,7 +49,6 @@ interface AppShellProps {
 	/** Children to render in the main content area (alternative to Outlet) */
 	children?: React.ReactNode;
 }
-
 
 /**
  * App Shell provides the chrome around a running App Builder application.
@@ -90,16 +93,21 @@ export function AppShell({
 	}, [app.navigation, app.pages]);
 
 	// Expression context for visibility evaluation
-	const expressionContext: Partial<ExpressionContext> = useMemo(() => ({
-		user: user ? {
-			id: user.id,
-			name: user.name || "",
-			email: user.email || "",
-			role: user.roles?.[0] || "user",
-		} : undefined,
-		variables: {},
-		data: {},
-	}), [user]);
+	const expressionContext: Partial<ExpressionContext> = useMemo(
+		() => ({
+			user: user
+				? {
+						id: user.id,
+						name: user.name || "",
+						email: user.email || "",
+						role: user.roles?.[0] || "user",
+					}
+				: undefined,
+			variables: {},
+			data: {},
+		}),
+		[user],
+	);
 
 	// Get user roles for permission checks
 	const userRoles = useMemo(() => user?.roles || [], [user?.roles]);
@@ -110,7 +118,12 @@ export function AppShell({
 			// Check visibility expression
 			if (item.visible) {
 				try {
-					if (evaluateExpression(item.visible, expressionContext as ExpressionContext) === false) {
+					if (
+						evaluateExpression(
+							item.visible,
+							expressionContext as ExpressionContext,
+						) === false
+					) {
 						return false;
 					}
 				} catch {
@@ -161,7 +174,9 @@ export function AppShell({
 					<div
 						className={cn(
 							"h-16 flex items-center border-b",
-							isCollapsed ? "justify-center px-4" : "justify-start px-4",
+							isCollapsed
+								? "justify-center px-4"
+								: "justify-start px-4",
 						)}
 					>
 						{isCollapsed ? (
@@ -171,7 +186,9 @@ export function AppShell({
 								</span>
 							</div>
 						) : (
-							<h1 className="text-lg font-semibold truncate">{app.name}</h1>
+							<h1 className="text-lg font-semibold truncate">
+								{app.name}
+							</h1>
 						)}
 					</div>
 
@@ -184,7 +201,9 @@ export function AppShell({
 					>
 						{visibleNavItems.map((item) => {
 							const IconComponent = getIcon(item.icon);
-							const page = app.pages.find((p) => p.id === item.id);
+							const page = app.pages.find(
+								(p) => p.id === item.id,
+							);
 							const path = item.path || page?.path || "";
 
 							// Section headers
@@ -201,8 +220,11 @@ export function AppShell({
 							}
 
 							// Check if this nav item is currently active
-							const isCurrentPage = item.id === currentPageId ||
-								(currentPage && (item.id === currentPage.id || path === currentPage.path));
+							const isCurrentPage =
+								item.id === currentPageId ||
+								(currentPage &&
+									(item.id === currentPage.id ||
+										path === currentPage.path));
 
 							return (
 								<NavLink
@@ -221,7 +243,9 @@ export function AppShell({
 									)}
 								>
 									<IconComponent
-										className={cn(isCollapsed ? "h-5 w-5" : "h-4 w-4")}
+										className={cn(
+											isCollapsed ? "h-5 w-5" : "h-4 w-4",
+										)}
 									/>
 									{!isCollapsed && item.label}
 								</NavLink>
@@ -243,7 +267,9 @@ export function AppShell({
 					>
 						{/* App Title with Close */}
 						<div className="h-16 flex items-center justify-between border-b px-4">
-							<h1 className="text-lg font-semibold truncate">{app.name}</h1>
+							<h1 className="text-lg font-semibold truncate">
+								{app.name}
+							</h1>
 							<Button
 								variant="ghost"
 								size="icon"
@@ -257,7 +283,9 @@ export function AppShell({
 						<nav className="flex-1 flex flex-col gap-1 p-4 overflow-y-auto">
 							{visibleNavItems.map((item) => {
 								const IconComponent = getIcon(item.icon);
-								const page = app.pages.find((p) => p.id === item.id);
+								const page = app.pages.find(
+									(p) => p.id === item.id,
+								);
 								const path = item.path || page?.path || "";
 
 								// Section headers
@@ -273,14 +301,19 @@ export function AppShell({
 								}
 
 								// Check if this nav item is currently active
-								const isCurrentPage = item.id === currentPageId ||
-									(currentPage && (item.id === currentPage.id || path === currentPage.path));
+								const isCurrentPage =
+									item.id === currentPageId ||
+									(currentPage &&
+										(item.id === currentPage.id ||
+											path === currentPage.path));
 
 								return (
 									<NavLink
 										key={item.id}
 										to={`/apps/${appSlug}/${path}`}
-										onClick={() => setIsMobileMenuOpen(false)}
+										onClick={() =>
+											setIsMobileMenuOpen(false)
+										}
 										className={cn(
 											"flex items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium transition-colors",
 											"hover:bg-accent hover:text-accent-foreground",
@@ -323,7 +356,11 @@ export function AppShell({
 								size="icon"
 								className="hidden md:flex mr-2"
 								onClick={() => setIsCollapsed(!isCollapsed)}
-								title={isCollapsed ? "Expand sidebar" : "Collapse sidebar"}
+								title={
+									isCollapsed
+										? "Expand sidebar"
+										: "Collapse sidebar"
+								}
 							>
 								{isCollapsed ? (
 									<PanelLeft className="h-5 w-5" />
@@ -373,12 +410,16 @@ export function AppShell({
 							<DropdownMenuTrigger asChild>
 								<Button variant="ghost" className="gap-2">
 									<Avatar className="h-6 w-6">
-										<AvatarImage src={avatarUrl || undefined} />
+										<AvatarImage
+											src={avatarUrl || undefined}
+										/>
 										<AvatarFallback className="text-xs">
 											{getInitials()}
 										</AvatarFallback>
 									</Avatar>
-									<span className="hidden md:inline-block">{userName}</span>
+									<span className="hidden md:inline-block">
+										{userName}
+									</span>
 									<ChevronDown className="h-4 w-4" />
 								</Button>
 							</DropdownMenuTrigger>
@@ -404,11 +445,7 @@ export function AppShell({
  * Minimal App Shell for embedded apps
  * No header, just the content
  */
-export function AppShellMinimal({
-	children,
-}: {
-	children: React.ReactNode;
-}) {
+export function AppShellMinimal({ children }: { children: React.ReactNode }) {
 	return (
 		<div className="min-h-screen bg-background">
 			<main className="p-6">{children}</main>

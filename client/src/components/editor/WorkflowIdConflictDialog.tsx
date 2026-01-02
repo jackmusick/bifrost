@@ -78,7 +78,8 @@ export function WorkflowIdConflictDialog({
 										{conflict.function_name}
 									</TableCell>
 									<TableCell className="font-mono text-xs text-muted-foreground">
-										{conflict.existing_id.substring(0, 8)}...
+										{conflict.existing_id.substring(0, 8)}
+										...
 									</TableCell>
 								</TableRow>
 							))}

@@ -19,6 +19,7 @@ from src.core.auth import Context, CurrentSuperuser
 from src.core.database import get_db
 from src.core.workspace_sync import WORKSPACE_PATH
 from src.models import (
+    DocsIndexResponse,
     MaintenanceStatus,
     ReindexRequest,
     ReindexResponse,
@@ -398,4 +399,84 @@ async def scan_sdk_references(
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Failed to run SDK scan: {str(e)}",
+        )
+
+
+@router.post(
+    "/index-docs",
+    response_model=DocsIndexResponse,
+    summary="Index platform documentation",
+    description="Manually trigger indexing of Bifrost platform documentation into the knowledge store (Platform admin only)",
+)
+async def index_documentation(
+    ctx: Context,
+    user: CurrentSuperuser,
+    db: AsyncSession = Depends(get_db),
+) -> DocsIndexResponse:
+    """
+    Manually index platform documentation into the knowledge store.
+
+    This indexes all .txt files from the bundled documentation into embeddings
+    for use by the Coding Assistant. Uses content hashing to avoid re-indexing
+    unchanged files.
+
+    Requires:
+        - Platform admin access
+        - Embeddings to be configured (OpenAI API key)
+
+    Returns:
+        DocsIndexResponse with indexing statistics
+    """
+    import time
+
+    from src.services.docs_indexer import index_platform_docs
+
+    start_time = time.time()
+
+    try:
+        result = await index_platform_docs()
+        duration_ms = int((time.time() - start_time) * 1000)
+
+        if result["status"] == "skipped":
+            return DocsIndexResponse(
+                status="skipped",
+                files_indexed=0,
+                files_unchanged=0,
+                files_deleted=0,
+                duration_ms=duration_ms,
+                message=result.get("reason", "Indexing skipped"),
+            )
+
+        if result["status"] == "complete":
+            indexed = result.get("indexed", 0)
+            skipped = result.get("skipped", 0)
+            deleted = result.get("deleted", 0)
+
+            parts = [f"Indexed {indexed} files"]
+            if skipped > 0:
+                parts.append(f"{skipped} unchanged")
+            if deleted > 0:
+                parts.append(f"{deleted} orphaned removed")
+            message = ", ".join(parts)
+
+            return DocsIndexResponse(
+                status="complete",
+                files_indexed=indexed,
+                files_unchanged=skipped,
+                files_deleted=deleted,
+                duration_ms=duration_ms,
+                message=message,
+            )
+
+        return DocsIndexResponse(
+            status="failed",
+            duration_ms=duration_ms,
+            message=f"Unexpected result: {result}",
+        )
+
+    except Exception as e:
+        logger.error(f"Error indexing documentation: {e}", exc_info=True)
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to index documentation: {str(e)}",
         )

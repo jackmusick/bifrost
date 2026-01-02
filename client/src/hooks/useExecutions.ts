@@ -44,8 +44,7 @@ export function useExecutions(
 	if (filters?.limit) queryParams["limit"] = filters.limit.toString();
 	if (filters?.excludeLocal !== undefined)
 		queryParams["excludeLocal"] = filters.excludeLocal.toString();
-	if (continuationToken)
-		queryParams["continuationToken"] = continuationToken;
+	if (continuationToken) queryParams["continuationToken"] = continuationToken;
 
 	return $api.useQuery("get", "/api/executions", {
 		params: { query: queryParams },

@@ -19,8 +19,10 @@ export type DocumentPublic = components["schemas"]["DocumentPublic"];
 export type DocumentCreate = components["schemas"]["DocumentCreate"];
 export type DocumentUpdate = components["schemas"]["DocumentUpdate"];
 export type DocumentQuery = components["schemas"]["DocumentQuery"];
-export type DocumentListResponse = components["schemas"]["DocumentListResponse"];
-export type DocumentCountResponse = components["schemas"]["DocumentCountResponse"];
+export type DocumentListResponse =
+	components["schemas"]["DocumentListResponse"];
+export type DocumentCountResponse =
+	components["schemas"]["DocumentCountResponse"];
 
 // Query filter operators (JSON-native, user-friendly)
 export type QueryOperator =

@@ -48,12 +48,16 @@ export function useUpdateMicrosoftConfig() {
 	return $api.useMutation("put", "/api/settings/oauth/microsoft", {
 		onSuccess: () => {
 			// Invalidate OAuth config queries
-			queryClient.invalidateQueries({ queryKey: ["get", "/api/settings/oauth"] });
+			queryClient.invalidateQueries({
+				queryKey: ["get", "/api/settings/oauth"],
+			});
 			queryClient.invalidateQueries({
 				queryKey: ["get", "/api/settings/oauth/{provider}"],
 			});
 			// Also invalidate auth status (available providers)
-			queryClient.invalidateQueries({ queryKey: ["get", "/auth/status"] });
+			queryClient.invalidateQueries({
+				queryKey: ["get", "/auth/status"],
+			});
 		},
 	});
 }
@@ -66,11 +70,15 @@ export function useUpdateGoogleConfig() {
 
 	return $api.useMutation("put", "/api/settings/oauth/google", {
 		onSuccess: () => {
-			queryClient.invalidateQueries({ queryKey: ["get", "/api/settings/oauth"] });
+			queryClient.invalidateQueries({
+				queryKey: ["get", "/api/settings/oauth"],
+			});
 			queryClient.invalidateQueries({
 				queryKey: ["get", "/api/settings/oauth/{provider}"],
 			});
-			queryClient.invalidateQueries({ queryKey: ["get", "/auth/status"] });
+			queryClient.invalidateQueries({
+				queryKey: ["get", "/auth/status"],
+			});
 		},
 	});
 }
@@ -83,11 +91,15 @@ export function useUpdateOIDCConfig() {
 
 	return $api.useMutation("put", "/api/settings/oauth/oidc", {
 		onSuccess: () => {
-			queryClient.invalidateQueries({ queryKey: ["get", "/api/settings/oauth"] });
+			queryClient.invalidateQueries({
+				queryKey: ["get", "/api/settings/oauth"],
+			});
 			queryClient.invalidateQueries({
 				queryKey: ["get", "/api/settings/oauth/{provider}"],
 			});
-			queryClient.invalidateQueries({ queryKey: ["get", "/auth/status"] });
+			queryClient.invalidateQueries({
+				queryKey: ["get", "/auth/status"],
+			});
 		},
 	});
 }
@@ -100,11 +112,15 @@ export function useDeleteOAuthConfig() {
 
 	return $api.useMutation("delete", "/api/settings/oauth/{provider}", {
 		onSuccess: () => {
-			queryClient.invalidateQueries({ queryKey: ["get", "/api/settings/oauth"] });
+			queryClient.invalidateQueries({
+				queryKey: ["get", "/api/settings/oauth"],
+			});
 			queryClient.invalidateQueries({
 				queryKey: ["get", "/api/settings/oauth/{provider}"],
 			});
-			queryClient.invalidateQueries({ queryKey: ["get", "/auth/status"] });
+			queryClient.invalidateQueries({
+				queryKey: ["get", "/auth/status"],
+			});
 		},
 	});
 }

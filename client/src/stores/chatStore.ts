@@ -351,7 +351,8 @@ export const useChatStore = create<ChatStore>((set, get) => ({
 		set((state) => {
 			// First, try to find in current streaming message
 			if (state.streamingMessage) {
-				const execution = state.streamingMessage.toolExecutions[toolCallId];
+				const execution =
+					state.streamingMessage.toolExecutions[toolCallId];
 				if (execution) {
 					return {
 						streamingMessage: {
@@ -401,7 +402,8 @@ export const useChatStore = create<ChatStore>((set, get) => ({
 		set((state) => {
 			// First, try to find in current streaming message
 			if (state.streamingMessage) {
-				const execution = state.streamingMessage.toolExecutions[toolCallId];
+				const execution =
+					state.streamingMessage.toolExecutions[toolCallId];
 				if (execution) {
 					return {
 						streamingMessage: {
@@ -451,7 +453,8 @@ export const useChatStore = create<ChatStore>((set, get) => ({
 		set((state) => {
 			// First, try to find in current streaming message
 			if (state.streamingMessage) {
-				const execution = state.streamingMessage.toolExecutions[toolCallId];
+				const execution =
+					state.streamingMessage.toolExecutions[toolCallId];
 				if (execution) {
 					return {
 						streamingMessage: {

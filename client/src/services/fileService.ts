@@ -75,7 +75,9 @@ export const fileService = {
 	): Promise<FileContentResponse> {
 		// Note: force_ids is a new field that may not be in the generated types yet
 		// until types are regenerated with npm run generate:types
-		const body: FileContentRequest & { force_ids?: Record<string, string> | null } = {
+		const body: FileContentRequest & {
+			force_ids?: Record<string, string> | null;
+		} = {
 			path,
 			content,
 			encoding,

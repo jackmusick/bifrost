@@ -237,9 +237,7 @@ function PageItem({
 			<div
 				className={cn(
 					"flex-shrink-0 p-1 rounded",
-					isSelected
-						? "text-primary"
-						: "text-muted-foreground",
+					isSelected ? "text-primary" : "text-muted-foreground",
 				)}
 			>
 				<Icon className="h-4 w-4" />
@@ -310,9 +308,9 @@ export function PageTree({
 	onReorderPages,
 	className = "",
 }: PageTreeProps) {
-	const [deleteConfirmPageId, setDeleteConfirmPageId] = useState<string | null>(
-		null,
-	);
+	const [deleteConfirmPageId, setDeleteConfirmPageId] = useState<
+		string | null
+	>(null);
 
 	const pageToDelete = deleteConfirmPageId
 		? pages.find((p) => p.id === deleteConfirmPageId)
@@ -406,8 +404,8 @@ export function PageTree({
 							<span className="font-medium">
 								{pageToDelete?.title || "this page"}
 							</span>
-							? This action cannot be undone and all components on this page
-							will be permanently removed.
+							? This action cannot be undone and all components on
+							this page will be permanently removed.
 						</AlertDialogDescription>
 					</AlertDialogHeader>
 					<AlertDialogFooter>

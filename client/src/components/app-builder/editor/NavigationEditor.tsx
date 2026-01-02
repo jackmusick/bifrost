@@ -102,7 +102,13 @@ const ICON_MAP: Record<string, LucideIcon> = {
 /**
  * Icon component wrapper to avoid creating components during render
  */
-function NavIcon({ iconName, className }: { iconName?: string; className?: string }) {
+function NavIcon({
+	iconName,
+	className,
+}: {
+	iconName?: string;
+	className?: string;
+}) {
 	const IconComponent = ICON_MAP[iconName || "home"] || Home;
 	return <IconComponent className={className} />;
 }
@@ -183,8 +189,13 @@ function NavItemEditor({
 							) : (
 								<ChevronRight className="h-4 w-4 text-muted-foreground" />
 							)}
-							<NavIcon iconName={item.icon} className="h-4 w-4 text-primary" />
-							<span className="text-sm font-medium">{item.label}</span>
+							<NavIcon
+								iconName={item.icon}
+								className="h-4 w-4 text-primary"
+							/>
+							<span className="text-sm font-medium">
+								{item.label}
+							</span>
 							{item.isSection && (
 								<span className="ml-2 text-xs text-muted-foreground bg-muted px-1.5 py-0.5 rounded">
 									Section
@@ -196,21 +207,30 @@ function NavItemEditor({
 					{/* Delete Button */}
 					<AlertDialog>
 						<AlertDialogTrigger asChild>
-							<Button variant="ghost" size="icon-sm" className="h-7 w-7">
+							<Button
+								variant="ghost"
+								size="icon-sm"
+								className="h-7 w-7"
+							>
 								<Trash2 className="h-3.5 w-3.5 text-muted-foreground hover:text-destructive" />
 							</Button>
 						</AlertDialogTrigger>
 						<AlertDialogContent>
 							<AlertDialogHeader>
-								<AlertDialogTitle>Remove from navigation?</AlertDialogTitle>
+								<AlertDialogTitle>
+									Remove from navigation?
+								</AlertDialogTitle>
 								<AlertDialogDescription>
-									This will remove "{item.label}" from the sidebar navigation.
-									The page will still exist but won't be visible in the sidebar.
+									This will remove "{item.label}" from the
+									sidebar navigation. The page will still
+									exist but won't be visible in the sidebar.
 								</AlertDialogDescription>
 							</AlertDialogHeader>
 							<AlertDialogFooter>
 								<AlertDialogCancel>Cancel</AlertDialogCancel>
-								<AlertDialogAction onClick={() => onDelete(index)}>
+								<AlertDialogAction
+									onClick={() => onDelete(index)}
+								>
 									Remove
 								</AlertDialogAction>
 							</AlertDialogFooter>
@@ -227,7 +247,10 @@ function NavItemEditor({
 								id={`nav-label-${index}`}
 								value={item.label}
 								onChange={(e) =>
-									onUpdate(index, { ...item, label: e.target.value })
+									onUpdate(index, {
+										...item,
+										label: e.target.value,
+									})
 								}
 								placeholder="Navigation label"
 							/>
@@ -247,7 +270,10 @@ function NavItemEditor({
 								</SelectTrigger>
 								<SelectContent>
 									{ICON_OPTIONS.map((opt) => (
-										<SelectItem key={opt.value} value={opt.value}>
+										<SelectItem
+											key={opt.value}
+											value={opt.value}
+										>
 											<div className="flex items-center gap-2">
 												<opt.icon className="h-4 w-4" />
 												{opt.label}
@@ -265,7 +291,9 @@ function NavItemEditor({
 								<Select
 									value={item.id}
 									onValueChange={(value) => {
-										const page = pages.find((p) => p.id === value);
+										const page = pages.find(
+											(p) => p.id === value,
+										);
 										if (page) {
 											onUpdate(index, {
 												...item,
@@ -281,7 +309,10 @@ function NavItemEditor({
 									</SelectTrigger>
 									<SelectContent>
 										{pages.map((page) => (
-											<SelectItem key={page.id} value={page.id}>
+											<SelectItem
+												key={page.id}
+												value={page.id}
+											>
 												{page.title} ({page.path})
 											</SelectItem>
 										))}
@@ -316,8 +347,8 @@ function NavItemEditor({
 								className="font-mono text-xs"
 							/>
 							<p className="text-xs text-muted-foreground">
-								Leave empty to always show. Use expressions to conditionally
-								hide.
+								Leave empty to always show. Use expressions to
+								conditionally hide.
 							</p>
 						</div>
 
@@ -326,13 +357,17 @@ function NavItemEditor({
 							<div className="space-y-0.5">
 								<Label>Section Header</Label>
 								<p className="text-xs text-muted-foreground">
-									Make this a group header for organizing items
+									Make this a group header for organizing
+									items
 								</p>
 							</div>
 							<Switch
 								checked={item.isSection || false}
 								onCheckedChange={(checked) =>
-									onUpdate(index, { ...item, isSection: checked })
+									onUpdate(index, {
+										...item,
+										isSection: checked,
+									})
 								}
 							/>
 						</div>

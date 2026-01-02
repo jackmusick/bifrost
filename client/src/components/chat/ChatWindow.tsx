@@ -132,9 +132,8 @@ function MessageWithToolCards({
 	const toolsInfo = message.tool_calls!.map((tc) => {
 		const resultMsg = toolResultMessages.get(tc.id);
 		const executionId =
-			(
-				resultMsg as { execution_id?: string | null } | undefined
-			)?.execution_id ?? undefined;
+			(resultMsg as { execution_id?: string | null } | undefined)
+				?.execution_id ?? undefined;
 		const savedExecution = getToolExecution(conversationId, tc.id);
 
 		// SDK tool if: no execution_id OR we have saved streaming state
@@ -172,7 +171,12 @@ function MessageWithToolCards({
 				<ToolExecutionGroup>
 					<div className="space-y-2 w-full">
 						{toolsInfo.map(
-							({ tc, executionId, savedExecution, resultMsg }) => (
+							({
+								tc,
+								executionId,
+								savedExecution,
+								resultMsg,
+							}) => (
 								<ToolExecutionCard
 									key={tc.id}
 									executionId={executionId}
@@ -404,7 +408,9 @@ export function ChatWindow({
 		// Check if API now has a message matching the streamed content
 		const streamContent = streamingMessage.content?.slice(0, 100) || "";
 		const apiHasMessage = apiMessages.some(
-			(m) => m.role === "assistant" && m.content?.slice(0, 100) === streamContent
+			(m) =>
+				m.role === "assistant" &&
+				m.content?.slice(0, 100) === streamContent,
 		);
 
 		if (apiHasMessage) {
@@ -524,25 +530,32 @@ export function ChatWindow({
 					))}
 
 					{/* Current Streaming Message - show while streaming OR while waiting for API to return the final message */}
-					{streamingMessage && (() => {
-						// Still actively streaming - always show if has content or tools
-						if (!streamingMessage.isComplete) {
-							return streamingMessage.content || streamingMessage.toolCalls.length > 0;
-						}
-						// Streaming complete - show until API returns the message
-						// Check if any API message has matching content (first 100 chars)
-						const streamContent = streamingMessage.content?.slice(0, 100) || "";
-						const apiHasMessage = apiMessages?.some(
-							(m) => m.role === "assistant" && m.content?.slice(0, 100) === streamContent
-						);
-						return !apiHasMessage;
-					})() && (
-						<StreamingMessageDisplay
-							conversationId={conversationId}
-							streamingMessage={streamingMessage}
-							onToolCallClick={onToolCallClick}
-						/>
-					)}
+					{streamingMessage &&
+						(() => {
+							// Still actively streaming - always show if has content or tools
+							if (!streamingMessage.isComplete) {
+								return (
+									streamingMessage.content ||
+									streamingMessage.toolCalls.length > 0
+								);
+							}
+							// Streaming complete - show until API returns the message
+							// Check if any API message has matching content (first 100 chars)
+							const streamContent =
+								streamingMessage.content?.slice(0, 100) || "";
+							const apiHasMessage = apiMessages?.some(
+								(m) =>
+									m.role === "assistant" &&
+									m.content?.slice(0, 100) === streamContent,
+							);
+							return !apiHasMessage;
+						})() && (
+							<StreamingMessageDisplay
+								conversationId={conversationId}
+								streamingMessage={streamingMessage}
+								onToolCallClick={onToolCallClick}
+							/>
+						)}
 
 					{/* Streaming Error - now shown inline via system events */}
 

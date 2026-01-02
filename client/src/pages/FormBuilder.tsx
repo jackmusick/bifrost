@@ -46,7 +46,9 @@ export function FormBuilder() {
 	const { data: workflowsMetadata } = useWorkflowsMetadata();
 
 	// Default organization_id for org users is their org, for platform admins it's null (global)
-	const defaultOrgId = isPlatformAdmin ? null : (user?.organizationId ?? null);
+	const defaultOrgId = isPlatformAdmin
+		? null
+		: (user?.organizationId ?? null);
 
 	// Form state - initialize from existingForm
 	const [formName, setFormName] = useState(() => existingForm?.name || "");
@@ -70,7 +72,11 @@ export function FormBuilder() {
 	> | null>(() => existingForm?.default_launch_params || null);
 	const [accessLevel, setAccessLevel] = useState<
 		"authenticated" | "role_based"
-	>(() => (existingForm?.access_level as "authenticated" | "role_based") || "role_based");
+	>(
+		() =>
+			(existingForm?.access_level as "authenticated" | "role_based") ||
+			"role_based",
+	);
 	const [selectedRoleIds, setSelectedRoleIds] = useState<string[]>([]);
 	const [fields, setFields] = useState<FormField[]>(() => {
 		if (existingForm?.form_schema) {
@@ -109,7 +115,10 @@ export function FormBuilder() {
 			setOrganizationId(existingForm.organization_id ?? defaultOrgId);
 			setLaunchWorkflowId(existingForm.launch_workflow_id || null);
 			setDefaultLaunchParams(
-				(existingForm.default_launch_params as Record<string, unknown>) || null,
+				(existingForm.default_launch_params as Record<
+					string,
+					unknown
+				>) || null,
 			);
 			setAccessLevel(
 				(existingForm.access_level as "authenticated" | "role_based") ||
@@ -120,7 +129,9 @@ export function FormBuilder() {
 				typeof existingForm.form_schema === "object" &&
 				"fields" in existingForm.form_schema
 			) {
-				const schema = existingForm.form_schema as { fields: unknown[] };
+				const schema = existingForm.form_schema as {
+					fields: unknown[];
+				};
 				setFields(schema.fields as FormField[]);
 			}
 		}

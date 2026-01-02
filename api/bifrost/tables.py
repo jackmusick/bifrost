@@ -169,15 +169,19 @@ class tables:
     async def insert(
         table: str,
         data: dict[str, Any],
+        id: str | None = None,
         scope: str | None = None,
         app: str | None = None,
     ) -> DocumentData:
         """
         Insert a document into a table.
 
+        Auto-creates the table if it doesn't exist.
+
         Args:
             table: Table name
             data: Document data (JSON-serializable dict)
+            id: Document ID (user-provided key). If not provided, a UUID is auto-generated.
             scope: Organization scope
             app: Application UUID
 
@@ -186,14 +190,19 @@ class tables:
 
         Raises:
             RuntimeError: If not authenticated
-            HTTPError: If table not found (404)
+            HTTPError: If document with id already exists (409 Conflict)
 
         Example:
             >>> from bifrost import tables
+            >>> # Auto-generated ID
             >>> doc = await tables.insert("customers", {
             ...     "name": "Acme Corp",
             ...     "email": "info@acme.com",
-            ...     "status": "active"
+            ... })
+            >>> # User-provided ID
+            >>> doc = await tables.insert("customers", id="acme-001", data={
+            ...     "name": "Acme Corp",
+            ...     "email": "info@acme.com",
             ... })
         """
         client = get_client()
@@ -201,6 +210,56 @@ class tables:
             "/api/cli/tables/documents/insert",
             json={
                 "table": table,
+                "id": id,
+                "data": data,
+                "scope": scope,
+                "app": app,
+            }
+        )
+        response.raise_for_status()
+        return DocumentData.model_validate(response.json())
+
+    @staticmethod
+    async def upsert(
+        table: str,
+        id: str,
+        data: dict[str, Any],
+        scope: str | None = None,
+        app: str | None = None,
+    ) -> DocumentData:
+        """
+        Upsert (create or replace) a document.
+
+        Auto-creates the table if it doesn't exist.
+        If a document with the given id exists, it is replaced with the new data.
+        If not, a new document is created.
+
+        Args:
+            table: Table name
+            id: Document ID (required for upsert)
+            data: Document data (JSON-serializable dict)
+            scope: Organization scope
+            app: Application UUID
+
+        Returns:
+            DocumentData: Created or updated document with ID and timestamps
+
+        Raises:
+            RuntimeError: If not authenticated
+
+        Example:
+            >>> from bifrost import tables
+            >>> doc = await tables.upsert("employees", id="john@example.com", data={
+            ...     "name": "John Doe",
+            ...     "department": "Engineering",
+            ... })
+        """
+        client = get_client()
+        response = await client.post(
+            "/api/cli/tables/documents/upsert",
+            json={
+                "table": table,
+                "id": id,
                 "data": data,
                 "scope": scope,
                 "app": app,
@@ -221,7 +280,7 @@ class tables:
 
         Args:
             table: Table name
-            doc_id: Document UUID
+            doc_id: Document ID (user-provided or auto-generated)
             scope: Organization scope
             app: Application UUID
 
@@ -233,7 +292,7 @@ class tables:
 
         Example:
             >>> from bifrost import tables
-            >>> doc = await tables.get("customers", "uuid-here")
+            >>> doc = await tables.get("customers", "acme-001")
         """
         client = get_client()
         response = await client.post(

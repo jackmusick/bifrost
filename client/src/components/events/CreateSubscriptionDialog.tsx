@@ -46,7 +46,8 @@ function CreateSubscriptionDialogContent({
 	const [errors, setErrors] = useState<string[]>([]);
 
 	// Fetch available workflows
-	const { data: workflowsData, isLoading: isLoadingWorkflows } = useWorkflows();
+	const { data: workflowsData, isLoading: isLoadingWorkflows } =
+		useWorkflows();
 	const workflows: WorkflowMetadata[] = workflowsData || [];
 
 	const isLoading = createMutation.isPending;
@@ -91,8 +92,8 @@ function CreateSubscriptionDialogContent({
 			<DialogHeader>
 				<DialogTitle>Add Workflow Subscription</DialogTitle>
 				<DialogDescription>
-					Subscribe a workflow to receive events from this source. The workflow
-					will be triggered whenever matching events arrive.
+					Subscribe a workflow to receive events from this source. The
+					workflow will be triggered whenever matching events arrive.
 				</DialogDescription>
 			</DialogHeader>
 
@@ -125,20 +126,26 @@ function CreateSubscriptionDialogContent({
 						</SelectTrigger>
 						<SelectContent>
 							{workflows.map((workflow) => (
-								<SelectItem key={workflow.id} value={workflow.id}>
+								<SelectItem
+									key={workflow.id}
+									value={workflow.id}
+								>
 									{workflow.name}
 								</SelectItem>
 							))}
 						</SelectContent>
 					</Select>
 					<p className="text-xs text-muted-foreground">
-						The workflow will receive the event data as input parameters.
+						The workflow will receive the event data as input
+						parameters.
 					</p>
 				</div>
 
 				{/* Event Type Filter (optional) */}
 				<div className="space-y-2">
-					<Label htmlFor="event-type">Event Type Filter (optional)</Label>
+					<Label htmlFor="event-type">
+						Event Type Filter (optional)
+					</Label>
 					<Input
 						id="event-type"
 						value={eventType}
@@ -146,18 +153,24 @@ function CreateSubscriptionDialogContent({
 						placeholder="e.g., ticket.created"
 					/>
 					<p className="text-xs text-muted-foreground">
-						Only trigger the workflow for events matching this type. Leave empty
-						to receive all events.
+						Only trigger the workflow for events matching this type.
+						Leave empty to receive all events.
 					</p>
 				</div>
 			</div>
 
 			<DialogFooter>
-				<Button type="button" variant="outline" onClick={() => onOpenChange(false)}>
+				<Button
+					type="button"
+					variant="outline"
+					onClick={() => onOpenChange(false)}
+				>
 					Cancel
 				</Button>
 				<Button type="submit" disabled={isLoading}>
-					{isLoading && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+					{isLoading && (
+						<Loader2 className="mr-2 h-4 w-4 animate-spin" />
+					)}
 					Add Subscription
 				</Button>
 			</DialogFooter>

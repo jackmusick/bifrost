@@ -92,7 +92,6 @@ export interface LocalRunnerStateUpdate {
 	execution_id: string | null;
 }
 
-
 // CLI Session state from backend - uses generated CLISessionResponse type
 import type { CLISessionResponse } from "@/services/cli";
 

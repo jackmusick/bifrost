@@ -75,7 +75,10 @@ export function Email() {
 
 	// Mutations
 	const saveMutation = $api.useMutation("post", "/api/admin/email/config");
-	const deleteMutation = $api.useMutation("delete", "/api/admin/email/config");
+	const deleteMutation = $api.useMutation(
+		"delete",
+		"/api/admin/email/config",
+	);
 	const validateMutation = $api.useMutation(
 		"post",
 		"/api/admin/email/validate/{workflow_id}",
@@ -113,7 +116,8 @@ export function Email() {
 				valid: result.valid,
 				message: result.message,
 				missing_params: result.missing_params ?? undefined,
-				extra_required_params: result.extra_required_params ?? undefined,
+				extra_required_params:
+					result.extra_required_params ?? undefined,
 			});
 
 			if (result.valid) {
@@ -330,7 +334,8 @@ export function Email() {
 									{validationResult.message}
 								</p>
 								{validationResult.missing_params &&
-									validationResult.missing_params.length > 0 && (
+									validationResult.missing_params.length >
+										0 && (
 										<p className="mt-1 text-muted-foreground">
 											Missing:{" "}
 											{validationResult.missing_params.join(
@@ -410,7 +415,9 @@ export function Email() {
 									(str) - Email subject line
 								</li>
 								<li>
-									<code className="text-foreground">body</code>{" "}
+									<code className="text-foreground">
+										body
+									</code>{" "}
 									(str) - Plain text email body
 								</li>
 							</ul>
@@ -436,7 +443,7 @@ export function Email() {
 							Example Workflow Decorator
 						</p>
 						<pre className="text-xs font-mono text-muted-foreground overflow-x-auto">
-{`@workflow(name="send_email")
+							{`@workflow(name="send_email")
 def send_email(
     recipient: str,
     subject: str,

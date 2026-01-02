@@ -9,7 +9,10 @@ import type { ImageComponentProps } from "@/lib/app-builder-types";
 import type { RegisteredComponentProps } from "../ComponentRegistry";
 import { evaluateExpression } from "@/lib/expression-parser";
 
-export function ImageComponent({ component, context }: RegisteredComponentProps) {
+export function ImageComponent({
+	component,
+	context,
+}: RegisteredComponentProps) {
 	const { props } = component as ImageComponentProps;
 
 	// Evaluate expressions
@@ -21,15 +24,17 @@ export function ImageComponent({ component, context }: RegisteredComponentProps)
 	const style: React.CSSProperties = {};
 
 	if (props?.maxWidth) {
-		style.maxWidth = typeof props.maxWidth === "number"
-			? `${props.maxWidth}px`
-			: props.maxWidth;
+		style.maxWidth =
+			typeof props.maxWidth === "number"
+				? `${props.maxWidth}px`
+				: props.maxWidth;
 	}
 
 	if (props?.maxHeight) {
-		style.maxHeight = typeof props.maxHeight === "number"
-			? `${props.maxHeight}px`
-			: props.maxHeight;
+		style.maxHeight =
+			typeof props.maxHeight === "number"
+				? `${props.maxHeight}px`
+				: props.maxHeight;
 	}
 
 	const objectFitClass = props?.objectFit

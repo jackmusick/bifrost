@@ -6,12 +6,7 @@ import {
 	DialogTitle,
 } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
-import {
-	Card,
-	CardContent,
-	CardHeader,
-	CardTitle,
-} from "@/components/ui/card";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import {
@@ -157,17 +152,25 @@ function EventDetailContent({ eventId }: { eventId: string }) {
 				<CardContent className="space-y-3">
 					<div className="grid grid-cols-2 gap-4">
 						<div>
-							<span className="text-sm text-muted-foreground">Event Type</span>
+							<span className="text-sm text-muted-foreground">
+								Event Type
+							</span>
 							<div className="mt-1">
 								{event.event_type ? (
-									<Badge variant="outline">{event.event_type}</Badge>
+									<Badge variant="outline">
+										{event.event_type}
+									</Badge>
 								) : (
-									<span className="text-muted-foreground">—</span>
+									<span className="text-muted-foreground">
+										—
+									</span>
 								)}
 							</div>
 						</div>
 						<div>
-							<span className="text-sm text-muted-foreground">Status</span>
+							<span className="text-sm text-muted-foreground">
+								Status
+							</span>
 							<div className="mt-1 flex items-center gap-1.5">
 								{getStatusIcon(event.status)}
 								<Badge variant={getStatusVariant(event.status)}>
@@ -176,13 +179,17 @@ function EventDetailContent({ eventId }: { eventId: string }) {
 							</div>
 						</div>
 						<div>
-							<span className="text-sm text-muted-foreground">Received At</span>
+							<span className="text-sm text-muted-foreground">
+								Received At
+							</span>
 							<div className="mt-1 font-medium">
 								{format(new Date(event.received_at), "PPpp")}
 							</div>
 						</div>
 						<div>
-							<span className="text-sm text-muted-foreground">Source IP</span>
+							<span className="text-sm text-muted-foreground">
+								Source IP
+							</span>
 							<div className="mt-1 font-mono text-sm flex items-center gap-1.5">
 								<Globe className="h-3.5 w-3.5 text-muted-foreground" />
 								{event.source_ip || "Unknown"}
@@ -197,7 +204,8 @@ function EventDetailContent({ eventId }: { eventId: string }) {
 				<Accordion type="single" collapsible>
 					<AccordionItem value="headers">
 						<AccordionTrigger className="text-base font-semibold">
-							Request Headers ({Object.keys(event.headers).length})
+							Request Headers ({Object.keys(event.headers).length}
+							)
 						</AccordionTrigger>
 						<AccordionContent>
 							<VariablesTreeView

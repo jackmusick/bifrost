@@ -57,7 +57,9 @@ import {
 	X,
 	Check,
 	Code,
+	ArrowRight,
 } from "lucide-react";
+import { useNavigate } from "react-router-dom";
 import { $api } from "@/lib/api-client";
 import {
 	listPricing,
@@ -151,7 +153,11 @@ export function LLMConfig() {
 			modelsFetchedRef.current = true;
 			try {
 				const result = await testSavedMutation.mutateAsync({});
-				if (result.success && result.models && result.models.length > 0) {
+				if (
+					result.success &&
+					result.models &&
+					result.models.length > 0
+				) {
 					// Cast to ModelInfo[] since API now returns objects
 					const models = result.models as unknown as ModelInfo[];
 					setAvailableModels(models);
@@ -550,14 +556,18 @@ export function LLMConfig() {
 									<SelectTrigger id="model">
 										<SelectValue placeholder="Select model">
 											{/* Show display name in trigger if we have model info */}
-											{availableModels.find((m) => m.id === model)?.display_name || model}
+											{availableModels.find(
+												(m) => m.id === model,
+											)?.display_name || model}
 										</SelectValue>
 									</SelectTrigger>
 									<SelectContent>
 										{availableModels.map((m) => (
 											<SelectItem key={m.id} value={m.id}>
 												<div className="flex flex-col">
-													<span>{m.display_name}</span>
+													<span>
+														{m.display_name}
+													</span>
 													<span className="text-xs text-muted-foreground">
 														{m.id}
 													</span>
@@ -771,6 +781,7 @@ export function LLMConfig() {
  * since Anthropic doesn't provide embeddings.
  */
 function EmbeddingConfigCard({ llmProvider }: { llmProvider?: string }) {
+	const navigate = useNavigate();
 	const [apiKey, setApiKey] = useState("");
 	const [model, setModel] = useState("text-embedding-3-small");
 	const [dimensions, setDimensions] = useState(1536);
@@ -792,9 +803,18 @@ function EmbeddingConfigCard({ llmProvider }: { llmProvider?: string }) {
 	});
 
 	// Mutations
-	const saveMutation = $api.useMutation("post", "/api/admin/llm/embedding-config");
-	const deleteMutation = $api.useMutation("delete", "/api/admin/llm/embedding-config");
-	const testMutation = $api.useMutation("post", "/api/admin/llm/embedding-test");
+	const saveMutation = $api.useMutation(
+		"post",
+		"/api/admin/llm/embedding-config",
+	);
+	const deleteMutation = $api.useMutation(
+		"delete",
+		"/api/admin/llm/embedding-config",
+	);
+	const testMutation = $api.useMutation(
+		"post",
+		"/api/admin/llm/embedding-test",
+	);
 
 	// Determine if dedicated config is needed
 	const needsDedicatedKey = llmProvider === "anthropic";
@@ -830,7 +850,8 @@ function EmbeddingConfigCard({ llmProvider }: { llmProvider?: string }) {
 				});
 			}
 		} catch (error) {
-			const message = error instanceof Error ? error.message : "Unknown error";
+			const message =
+				error instanceof Error ? error.message : "Unknown error";
 			setTestResult({ success: false, message });
 			toast.error("Embedding test failed", { description: message });
 		} finally {
@@ -861,7 +882,8 @@ function EmbeddingConfigCard({ llmProvider }: { llmProvider?: string }) {
 			refetch();
 		} catch (error) {
 			toast.error("Failed to save embedding configuration", {
-				description: error instanceof Error ? error.message : "Unknown error",
+				description:
+					error instanceof Error ? error.message : "Unknown error",
 			});
 		} finally {
 			setSaving(false);
@@ -883,7 +905,8 @@ function EmbeddingConfigCard({ llmProvider }: { llmProvider?: string }) {
 			refetch();
 		} catch (error) {
 			toast.error("Failed to remove embedding configuration", {
-				description: error instanceof Error ? error.message : "Unknown error",
+				description:
+					error instanceof Error ? error.message : "Unknown error",
 			});
 		} finally {
 			setSaving(false);
@@ -915,7 +938,8 @@ function EmbeddingConfigCard({ llmProvider }: { llmProvider?: string }) {
 					Configure OpenAI embeddings for the Knowledge Store (RAG).
 					{needsDedicatedKey && (
 						<span className="block mt-1 text-amber-600 dark:text-amber-400">
-							Anthropic doesn't provide embeddings - a dedicated OpenAI key is required.
+							Anthropic doesn't provide embeddings - a dedicated
+							OpenAI key is required.
 						</span>
 					)}
 				</CardDescription>
@@ -931,17 +955,27 @@ function EmbeddingConfigCard({ llmProvider }: { llmProvider?: string }) {
 									Embeddings Configured
 								</span>
 							</div>
-							{!config.uses_llm_key && (
+							<div className="flex items-center gap-2">
 								<Button
-									variant="ghost"
+									variant="outline"
 									size="sm"
-									onClick={() => setShowDeleteConfirm(true)}
-									className="text-destructive hover:text-destructive"
+									onClick={() => navigate("/settings/maintenance")}
 								>
-									<Trash2 className="h-4 w-4 mr-1" />
-									Remove
+									Index Docs
+									<ArrowRight className="h-4 w-4 ml-1" />
 								</Button>
-							)}
+								{!config.uses_llm_key && (
+									<Button
+										variant="ghost"
+										size="sm"
+										onClick={() => setShowDeleteConfirm(true)}
+										className="text-destructive hover:text-destructive"
+									>
+										<Trash2 className="h-4 w-4 mr-1" />
+										Remove
+									</Button>
+								)}
+							</div>
 						</div>
 						<p className="mt-1 text-sm text-green-700 dark:text-green-300">
 							{config.uses_llm_key
@@ -958,7 +992,8 @@ function EmbeddingConfigCard({ llmProvider }: { llmProvider?: string }) {
 							</span>
 						</div>
 						<p className="mt-1 text-sm text-amber-700 dark:text-amber-300">
-							Knowledge Store features require embedding configuration.
+							Knowledge Store features require embedding
+							configuration.
 						</p>
 					</div>
 				)}
@@ -968,7 +1003,9 @@ function EmbeddingConfigCard({ llmProvider }: { llmProvider?: string }) {
 					<>
 						{/* API Key */}
 						<div className="space-y-2">
-							<Label htmlFor="embedding-api-key">OpenAI API Key</Label>
+							<Label htmlFor="embedding-api-key">
+								OpenAI API Key
+							</Label>
 							<div className="flex gap-2">
 								<Input
 									id="embedding-api-key"
@@ -988,7 +1025,10 @@ function EmbeddingConfigCard({ llmProvider }: { llmProvider?: string }) {
 								<Button
 									variant="secondary"
 									onClick={handleTest}
-									disabled={testing || (!apiKey && !config?.api_key_set)}
+									disabled={
+										testing ||
+										(!apiKey && !config?.api_key_set)
+									}
 								>
 									{testing ? (
 										<>
@@ -1035,10 +1075,14 @@ function EmbeddingConfigCard({ llmProvider }: { llmProvider?: string }) {
 
 						{/* Dimensions */}
 						<div className="space-y-2">
-							<Label htmlFor="embedding-dimensions">Dimensions</Label>
+							<Label htmlFor="embedding-dimensions">
+								Dimensions
+							</Label>
 							<Select
 								value={dimensions.toString()}
-								onValueChange={(v) => setDimensions(parseInt(v))}
+								onValueChange={(v) =>
+									setDimensions(parseInt(v))
+								}
 							>
 								<SelectTrigger id="embedding-dimensions">
 									<SelectValue />
@@ -1046,9 +1090,13 @@ function EmbeddingConfigCard({ llmProvider }: { llmProvider?: string }) {
 								<SelectContent>
 									<SelectItem value="512">512</SelectItem>
 									<SelectItem value="1024">1024</SelectItem>
-									<SelectItem value="1536">1536 (default)</SelectItem>
+									<SelectItem value="1536">
+										1536 (default)
+									</SelectItem>
 									{model === "text-embedding-3-large" && (
-										<SelectItem value="3072">3072</SelectItem>
+										<SelectItem value="3072">
+											3072
+										</SelectItem>
 									)}
 								</SelectContent>
 							</Select>
@@ -1076,19 +1124,26 @@ function EmbeddingConfigCard({ llmProvider }: { llmProvider?: string }) {
 				{/* Info about fallback */}
 				{config?.uses_llm_key && (
 					<p className="text-sm text-muted-foreground">
-						To use a separate API key for embeddings, configure one above.
-						This is useful for usage tracking or if your main LLM key doesn't have embedding access.
+						To use a separate API key for embeddings, configure one
+						above. This is useful for usage tracking or if your main
+						LLM key doesn't have embedding access.
 					</p>
 				)}
 
 				{/* Delete Confirmation */}
-				<Dialog open={showDeleteConfirm} onOpenChange={setShowDeleteConfirm}>
+				<Dialog
+					open={showDeleteConfirm}
+					onOpenChange={setShowDeleteConfirm}
+				>
 					<DialogContent>
 						<DialogHeader>
-							<DialogTitle>Remove Embedding Configuration</DialogTitle>
+							<DialogTitle>
+								Remove Embedding Configuration
+							</DialogTitle>
 							<DialogDescription>
-								Remove the dedicated embedding API key? If you have an OpenAI
-								LLM configuration, embeddings will fall back to using that key.
+								Remove the dedicated embedding API key? If you
+								have an OpenAI LLM configuration, embeddings
+								will fall back to using that key.
 							</DialogDescription>
 						</DialogHeader>
 						<DialogFooter>
@@ -1155,8 +1210,14 @@ function CodingConfigCard({
 	});
 
 	// Mutations
-	const updateMutation = $api.useMutation("put", "/api/admin/llm/coding-config");
-	const testSavedMutation = $api.useMutation("post", "/api/admin/llm/test-saved");
+	const updateMutation = $api.useMutation(
+		"put",
+		"/api/admin/llm/coding-config",
+	);
+	const testSavedMutation = $api.useMutation(
+		"post",
+		"/api/admin/llm/test-saved",
+	);
 
 	// Use main LLM models if it's Anthropic, otherwise use coding-specific models
 	const effectiveModels =
@@ -1233,7 +1294,8 @@ function CodingConfigCard({
 			refetch();
 		} catch (error) {
 			toast.error("Failed to save coding mode configuration", {
-				description: error instanceof Error ? error.message : "Unknown error",
+				description:
+					error instanceof Error ? error.message : "Unknown error",
 			});
 		} finally {
 			setSaving(false);
@@ -1259,7 +1321,8 @@ function CodingConfigCard({
 			refetch();
 		} catch (error) {
 			toast.error("Failed to clear overrides", {
-				description: error instanceof Error ? error.message : "Unknown error",
+				description:
+					error instanceof Error ? error.message : "Unknown error",
 			});
 		} finally {
 			setSaving(false);
@@ -1292,11 +1355,13 @@ function CodingConfigCard({
 				</div>
 				<CardDescription>
 					Configure the AI model for the Bifrost coding assistant.
-					{!config?.main_llm_is_anthropic && !config?.has_key_override && (
-						<span className="block mt-1 text-amber-600 dark:text-amber-400">
-							Coding mode requires Anthropic. Add a dedicated API key below.
-						</span>
-					)}
+					{!config?.main_llm_is_anthropic &&
+						!config?.has_key_override && (
+							<span className="block mt-1 text-amber-600 dark:text-amber-400">
+								Coding mode requires Anthropic. Add a dedicated
+								API key below.
+							</span>
+						)}
 				</CardDescription>
 			</CardHeader>
 			<CardContent className="space-y-4">
@@ -1325,7 +1390,8 @@ function CodingConfigCard({
 						</div>
 						<div className="mt-2 space-y-1">
 							<p className="text-sm text-green-700 dark:text-green-300">
-								<span className="font-medium">Model:</span> {config.model}
+								<span className="font-medium">Model:</span>{" "}
+								{config.model}
 							</p>
 							<p className="text-sm text-green-700 dark:text-green-300">
 								<span className="font-medium">Source:</span>{" "}
@@ -1375,7 +1441,9 @@ function CodingConfigCard({
 						{/* API Key Override - show first if not using main Anthropic */}
 						{!config?.main_llm_is_anthropic && (
 							<div className="space-y-2">
-								<Label htmlFor="coding-api-key">Anthropic API Key</Label>
+								<Label htmlFor="coding-api-key">
+									Anthropic API Key
+								</Label>
 								<div className="flex gap-2">
 									<Input
 										id="coding-api-key"
@@ -1395,7 +1463,11 @@ function CodingConfigCard({
 									<Button
 										variant="secondary"
 										onClick={handleTestConnection}
-										disabled={testing || (!apiKeyOverride && !config?.has_key_override)}
+										disabled={
+											testing ||
+											(!apiKeyOverride &&
+												!config?.has_key_override)
+										}
 									>
 										{testing ? (
 											<>
@@ -1437,22 +1509,35 @@ function CodingConfigCard({
 						{/* Model Override - dropdown when models available */}
 						<div className="space-y-2">
 							<Label htmlFor="coding-model">
-								Model {config?.main_llm_is_anthropic ? "Override" : ""}
-								{!hasModels && !config?.main_llm_is_anthropic && (
-									<span className="text-muted-foreground font-normal ml-2">
-										(test API key first)
-									</span>
-								)}
+								Model{" "}
+								{config?.main_llm_is_anthropic
+									? "Override"
+									: ""}
+								{!hasModels &&
+									!config?.main_llm_is_anthropic && (
+										<span className="text-muted-foreground font-normal ml-2">
+											(test API key first)
+										</span>
+									)}
 							</Label>
 							{hasModels ? (
 								<Select
 									value={modelOverride || "__default__"}
-									onValueChange={(v) => setModelOverride(v === "__default__" ? "" : v)}
+									onValueChange={(v) =>
+										setModelOverride(
+											v === "__default__" ? "" : v,
+										)
+									}
 								>
 									<SelectTrigger id="coding-model">
 										<SelectValue placeholder="Select model">
 											{modelOverride
-												? effectiveModels.find((m) => m.id === modelOverride)?.display_name || modelOverride
+												? effectiveModels.find(
+														(m) =>
+															m.id ===
+															modelOverride,
+													)?.display_name ||
+													modelOverride
 												: "Use main AI config model"}
 										</SelectValue>
 									</SelectTrigger>
@@ -1467,7 +1552,9 @@ function CodingConfigCard({
 										{effectiveModels.map((m) => (
 											<SelectItem key={m.id} value={m.id}>
 												<div className="flex flex-col">
-													<span>{m.display_name}</span>
+													<span>
+														{m.display_name}
+													</span>
 													<span className="text-xs text-muted-foreground">
 														{m.id}
 													</span>
@@ -1479,12 +1566,21 @@ function CodingConfigCard({
 							) : config?.main_llm_is_anthropic ? (
 								<Select
 									value={modelOverride || "__default__"}
-									onValueChange={(v) => setModelOverride(v === "__default__" ? "" : v)}
+									onValueChange={(v) =>
+										setModelOverride(
+											v === "__default__" ? "" : v,
+										)
+									}
 								>
 									<SelectTrigger id="coding-model">
 										<SelectValue placeholder="Use main AI config model">
 											{modelOverride
-												? availableModels.find((m) => m.id === modelOverride)?.display_name || modelOverride
+												? availableModels.find(
+														(m) =>
+															m.id ===
+															modelOverride,
+													)?.display_name ||
+													modelOverride
 												: "Use main AI config model"}
 										</SelectValue>
 									</SelectTrigger>
@@ -1497,7 +1593,9 @@ function CodingConfigCard({
 										{availableModels.map((m) => (
 											<SelectItem key={m.id} value={m.id}>
 												<div className="flex flex-col">
-													<span>{m.display_name}</span>
+													<span>
+														{m.display_name}
+													</span>
 													<span className="text-xs text-muted-foreground">
 														{m.id}
 													</span>
@@ -1516,7 +1614,8 @@ function CodingConfigCard({
 							)}
 							{config?.main_llm_is_anthropic && (
 								<p className="text-xs text-muted-foreground">
-									Select a model to override, or keep default to use main config.
+									Select a model to override, or keep default
+									to use main config.
 								</p>
 							)}
 						</div>
@@ -1537,29 +1636,37 @@ function CodingConfigCard({
 											: "Leave empty to use main AI key"
 									}
 									value={apiKeyOverride}
-									onChange={(e) => setApiKeyOverride(e.target.value)}
+									onChange={(e) =>
+										setApiKeyOverride(e.target.value)
+									}
 								/>
 								<p className="text-xs text-muted-foreground">
-									Main LLM is Anthropic - no separate key needed unless you want to override.
+									Main LLM is Anthropic - no separate key
+									needed unless you want to override.
 								</p>
 							</div>
 						)}
 
 						{/* Save Button */}
 						<div className="flex justify-end gap-2">
-							{showOverrideForm && config?.main_llm_is_anthropic && !hasOverrides && (
-								<Button
-									variant="outline"
-									onClick={() => {
-										setShowOverrideForm(false);
-										setModelOverride("");
-										setApiKeyOverride("");
-									}}
-								>
-									Cancel
-								</Button>
-							)}
-							<Button onClick={handleSave} disabled={!canSave || saving}>
+							{showOverrideForm &&
+								config?.main_llm_is_anthropic &&
+								!hasOverrides && (
+									<Button
+										variant="outline"
+										onClick={() => {
+											setShowOverrideForm(false);
+											setModelOverride("");
+											setApiKeyOverride("");
+										}}
+									>
+										Cancel
+									</Button>
+								)}
+							<Button
+								onClick={handleSave}
+								disabled={!canSave || saving}
+							>
 								{saving ? (
 									<>
 										<Loader2 className="h-4 w-4 mr-2 animate-spin" />
@@ -1584,7 +1691,9 @@ function CodingConfigCard({
  * Shows models that have been used with their pricing, and allows adding/editing.
  */
 function ModelPricingCard() {
-	const [pricingData, setPricingData] = useState<AIModelPricingListItem[]>([]);
+	const [pricingData, setPricingData] = useState<AIModelPricingListItem[]>(
+		[],
+	);
 	const [modelsWithoutPricing, setModelsWithoutPricing] = useState<string[]>(
 		[],
 	);
@@ -1791,7 +1900,8 @@ function ModelPricingCard() {
 				</CardDescription>
 			</CardHeader>
 			<CardContent>
-				{pricingData.length === 0 && modelsWithoutPricing.length === 0 ? (
+				{pricingData.length === 0 &&
+				modelsWithoutPricing.length === 0 ? (
 					<div className="text-center py-8 text-muted-foreground">
 						<DollarSign className="h-8 w-8 mx-auto mb-2 opacity-50" />
 						<p>No model pricing configured yet.</p>
@@ -1850,7 +1960,8 @@ function ModelPricingCard() {
 													size="sm"
 													onClick={() => {
 														setNewPricing({
-															provider: item.provider,
+															provider:
+																item.provider,
 															model: item.model,
 															input_price_per_million: 0,
 															output_price_per_million: 0,
@@ -1891,7 +2002,8 @@ function ModelPricingCard() {
 													onChange={(e) =>
 														setEditValues({
 															...editValues,
-															input: e.target.value,
+															input: e.target
+																.value,
 														})
 													}
 													className="w-24 text-right"
@@ -1912,7 +2024,8 @@ function ModelPricingCard() {
 													onChange={(e) =>
 														setEditValues({
 															...editValues,
-															output: e.target.value,
+															output: e.target
+																.value,
 														})
 													}
 													className="w-24 text-right"
@@ -1966,7 +2079,9 @@ function ModelPricingCard() {
 															variant="ghost"
 															size="sm"
 															onClick={() =>
-																handleDeletePricing(item)
+																handleDeletePricing(
+																	item,
+																)
 															}
 															className="text-destructive hover:text-destructive"
 														>
@@ -2046,7 +2161,9 @@ function ModelPricingCard() {
 									step="0.01"
 									min="0"
 									placeholder="0.00"
-									value={newPricing.input_price_per_million || ""}
+									value={
+										newPricing.input_price_per_million || ""
+									}
 									onChange={(e) =>
 										setNewPricing({
 											...newPricing,
@@ -2066,7 +2183,10 @@ function ModelPricingCard() {
 									step="0.01"
 									min="0"
 									placeholder="0.00"
-									value={newPricing.output_price_per_million || ""}
+									value={
+										newPricing.output_price_per_million ||
+										""
+									}
 									onChange={(e) =>
 										setNewPricing({
 											...newPricing,
@@ -2101,14 +2221,18 @@ function ModelPricingCard() {
 			</Dialog>
 
 			{/* Delete Confirmation Dialog */}
-			<Dialog open={showDeleteConfirm} onOpenChange={setShowDeleteConfirm}>
+			<Dialog
+				open={showDeleteConfirm}
+				onOpenChange={setShowDeleteConfirm}
+			>
 				<DialogContent>
 					<DialogHeader>
 						<DialogTitle>Delete Pricing Configuration</DialogTitle>
 						<DialogDescription>
 							Are you sure you want to delete pricing for{" "}
 							<span className="font-medium">
-								{deletingPricing?.provider}/{deletingPricing?.model}
+								{deletingPricing?.provider}/
+								{deletingPricing?.model}
 							</span>
 							? This action cannot be undone.
 						</DialogDescription>

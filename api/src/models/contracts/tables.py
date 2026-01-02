@@ -86,7 +86,7 @@ class DocumentPublic(BaseModel):
 
     model_config = ConfigDict(from_attributes=True)
 
-    id: UUID
+    id: str
     table_id: UUID
     data: dict[str, Any]
     created_at: datetime

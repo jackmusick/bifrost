@@ -159,8 +159,7 @@ function ProgressNotificationItem({
 
 	// Check if notification has an action button (but not view_file - that's a link, not a button)
 	const action = notification.metadata?.action as string | undefined;
-	const hasAction =
-		isAwaitingAction && !!action && action !== "view_file";
+	const hasAction = isAwaitingAction && !!action && action !== "view_file";
 	const actionLabel =
 		(notification.metadata?.action_label as string) || "Run";
 

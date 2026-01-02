@@ -1,0 +1,271 @@
+# App Builder
+
+Build custom applications with pages, layouts, and components
+
+---
+
+App Builder creates custom applications that connect to workflows and data providers, with pages, navigation, and interactive components.
+
+## Application Structure
+
+Applications are JSON definitions with:
+- **Pages**: Routes with layouts and components
+- **Data Sources**: Workflows or data providers that supply data
+- **Navigation**: Sidebar menu configuration
+- **Permissions**: Access control per page or app
+
+```json
+{
+  "name": "My Application",
+  "description": "Application description",
+  "version": "1.0.0",
+  "pages": [...],
+  "navigation": {...}
+}
+```
+
+## Pages
+
+Each page has a path, data sources, and a layout tree:
+
+```json
+{
+  "id": "dashboard",
+  "title": "Dashboard",
+  "path": "/",
+  "dataSources": [
+    {"id": "stats", "type": "workflow", "workflowId": "get_dashboard_stats"}
+  ],
+  "layout": {
+    "type": "column",
+    "gap": 16,
+    "children": [...]
+  }
+}
+```
+
+## Data Sources
+
+Pages load data from workflows or data providers before rendering:
+
+| Type | Usage |
+|------|-------|
+| `workflow` | `{"id": "data", "type": "workflow", "workflowId": "my_workflow"}` |
+| `data-provider` | `{"id": "options", "type": "data-provider", "dataProviderId": "get_options"}` |
+| `static` | `{"id": "config", "type": "static", "data": {"key": "value"}}` |
+
+Access data in expressions: `{{ data.stats.totalUsers }}`
+
+## Layouts
+
+Layouts arrange child components:
+
+| Type | Description | Key Props |
+|------|-------------|-----------|
+| `column` | Vertical stack | `gap`, `padding`, `align` |
+| `row` | Horizontal stack | `gap`, `padding`, `justify` |
+| `grid` | CSS grid | `columns`, `gap` |
+
+```json
+{
+  "type": "row",
+  "gap": 16,
+  "justify": "between",
+  "children": [...]
+}
+```
+
+## Components
+
+### Display Components
+
+| Type | Props | Description |
+|------|-------|-------------|
+| `heading` | `text`, `level` (1-6) | Page/section headings |
+| `text` | `text`, `label` | Text with optional label |
+| `badge` | `text`, `variant` | Status badge (default/secondary/destructive/outline) |
+| `stat-card` | `title`, `value`, `icon`, `trend` | Dashboard metric card |
+| `image` | `src`, `alt`, `maxWidth` | Image display |
+| `card` | `title`, `children` | Container with header |
+| `divider` | - | Horizontal line |
+| `spacer` | `size` | Empty space |
+
+### Data Components
+
+**data-table**: Full-featured table with sorting, search, pagination, and row actions.
+
+```json
+{
+  "type": "data-table",
+  "props": {
+    "dataSource": "customers",
+    "columns": [
+      {"key": "name", "header": "Name", "sortable": true},
+      {"key": "status", "header": "Status", "type": "badge"}
+    ],
+    "searchable": true,
+    "paginated": true,
+    "onRowClick": {"type": "navigate", "navigateTo": "/customers/{{ row.id }}"},
+    "rowActions": [
+      {"label": "Edit", "icon": "pencil", "onClick": {"type": "navigate", "navigateTo": "/edit/{{ row.id }}"}}
+    ]
+  }
+}
+```
+
+**tabs**: Tabbed content sections.
+
+```json
+{
+  "type": "tabs",
+  "props": {
+    "defaultTab": "overview",
+    "items": [
+      {"id": "overview", "label": "Overview", "content": {"type": "column", "children": [...]}},
+      {"id": "settings", "label": "Settings", "content": {"type": "column", "children": [...]}}
+    ]
+  }
+}
+```
+
+### Form Input Components
+
+| Type | Props | Description |
+|------|-------|-------------|
+| `text-input` | `fieldId`, `label`, `required`, `placeholder` | Text field |
+| `number-input` | `fieldId`, `label`, `min`, `max` | Number field |
+| `select` | `fieldId`, `label`, `options` or `dataSource` | Dropdown |
+| `checkbox` | `fieldId`, `label` | Boolean checkbox |
+
+Form field values are accessible via `{{ field.fieldId }}`.
+
+### Interactive Components
+
+**button**: Triggers actions.
+
+```json
+{
+  "type": "button",
+  "props": {
+    "label": "Save",
+    "variant": "default",
+    "actionType": "workflow",
+    "workflowId": "save_data",
+    "actionParams": {"id": "{{ variables.selectedId }}"}
+  }
+}
+```
+
+Action types: `navigate`, `workflow`, `submit` (collects form fields), `set-variable`
+
+Button variants: `default`, `destructive`, `outline`, `secondary`, `ghost`, `link`
+
+**modal**: Dialog with trigger button.
+
+```json
+{
+  "type": "modal",
+  "props": {
+    "title": "Add Item",
+    "triggerLabel": "Add New",
+    "content": {"type": "column", "children": [...]},
+    "footerActions": [
+      {"label": "Save", "actionType": "submit", "workflowId": "create_item"}
+    ]
+  }
+}
+```
+
+## Expressions
+
+Use `{{ }}` syntax for dynamic values:
+
+| Expression | Description |
+|------------|-------------|
+| `{{ user.name }}` | Current user's name |
+| `{{ user.email }}` | Current user's email |
+| `{{ user.role }}` | Current user's role |
+| `{{ data.sourceId }}` | Data from data source |
+| `{{ field.fieldName }}` | Form field value |
+| `{{ variables.varName }}` | Page variable |
+| `{{ row.columnKey }}` | Current row in table context |
+| `{{ workflow.result }}` | Last workflow execution result |
+
+Comparisons and logic work: `{{ user.role == 'admin' }}`, `{{ isActive && hasPermission }}`
+
+## Visibility and Disabled States
+
+Any component can have:
+- `visible`: Expression controlling visibility - `"{{ user.role == 'admin' }}"`
+- `disabled`: Expression for buttons - `"{{ !field.name }}"`
+
+## Actions and Events
+
+**Button/Row Actions**:
+- `navigate`: `{"type": "navigate", "navigateTo": "/path/{{ row.id }}"}`
+- `workflow`: `{"type": "workflow", "workflowId": "...", "actionParams": {...}}`
+- `submit`: Collects all form fields on page and executes workflow
+- `set-variable`: `{"type": "set-variable", "variable": "selectedId", "value": "{{ row.id }}"}`
+
+**onComplete** (after workflow):
+```json
+{
+  "onComplete": [
+    {"type": "refresh-data", "dataSourceId": "customers"},
+    {"type": "navigate", "navigateTo": "/success"}
+  ]
+}
+```
+
+## Navigation
+
+Configure sidebar navigation:
+
+```json
+{
+  "navigation": {
+    "showSidebar": true,
+    "sidebar": [
+      {"id": "home", "label": "Dashboard", "icon": "home", "path": "/"},
+      {"id": "users", "label": "Users", "icon": "users", "path": "/users"}
+    ]
+  }
+}
+```
+
+## Versioning
+
+Apps support draft and published versions:
+- Edits update the draft version
+- Publish promotes draft to live
+- Users see the published version; editors see draft in preview
+
+## Development Workflow
+
+When building apps programmatically:
+
+1. **Create backing workflows** - Write workflows that fetch/modify data
+2. **Verify workflows exist** - Use `list_workflows` to confirm registration (do not proceed if missing)
+3. **Get schema docs** - Use `get_app_schema` for component reference
+4. **Validate definition** - Use `validate_app_schema` before creating
+5. **Create the app** - Use `create_app` with app definition JSON
+6. **Verify creation** - Use `get_app` to confirm it was created
+7. **Test** - Preview app, verify data sources load correctly
+8. **Publish** - Use `update_app` with `publish=true` to make live
+
+Always verify workflows/data providers exist before referencing them in app data sources. The app will fail to load if referenced workflows don't exist.
+
+## MCP Tools
+
+When building apps programmatically:
+
+| Tool | Description |
+|------|-------------|
+| `get_app_schema` | Full component and expression documentation |
+| `validate_app_schema` | Validate app JSON before saving |
+| `create_app` | Create new application |
+| `update_app` | Update app definition |
+| `list_apps` | List all applications |
+| `get_app` | Get app details and definition |
+
+Use `get_app_schema` to get complete documentation on all component types, props, and expression syntax.

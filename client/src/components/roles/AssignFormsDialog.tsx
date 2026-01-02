@@ -66,77 +66,77 @@ export function AssignFormsDialog({
 					</DialogHeader>
 
 					<div className="max-h-[400px] overflow-y-auto py-4">
-					{isLoading ? (
-						<div className="space-y-2">
-							{[...Array(5)].map((_, i) => (
-								<Skeleton key={i} className="h-16 w-full" />
-							))}
-						</div>
-					) : forms && forms.length > 0 ? (
-						<div className="space-y-2">
-							{forms.map((form: FormResponse) => {
-								const selected = isSelected(form.id);
-								return (
-									<button
-										key={form.id}
-										onClick={() => toggle(form.id)}
-										className={`w-full rounded-lg border p-4 text-left transition-colors ${
-											selected
-												? "border-primary bg-primary/5"
-												: "border-border hover:bg-accent"
-										}`}
-									>
-										<div className="flex items-center justify-between">
-											<div>
-												<p className="font-medium">
-													{form.name}
-												</p>
-												<p className="text-sm text-muted-foreground">
-													{form.description ||
-														(form.workflow_id
-															? `Workflow ID: ${form.workflow_id}`
-															: "No workflow linked")}
-												</p>
-												<div className="mt-1 flex gap-2">
-													{form.organization_id ===
-														null && (
+						{isLoading ? (
+							<div className="space-y-2">
+								{[...Array(5)].map((_, i) => (
+									<Skeleton key={i} className="h-16 w-full" />
+								))}
+							</div>
+						) : forms && forms.length > 0 ? (
+							<div className="space-y-2">
+								{forms.map((form: FormResponse) => {
+									const selected = isSelected(form.id);
+									return (
+										<button
+											key={form.id}
+											onClick={() => toggle(form.id)}
+											className={`w-full rounded-lg border p-4 text-left transition-colors ${
+												selected
+													? "border-primary bg-primary/5"
+													: "border-border hover:bg-accent"
+											}`}
+										>
+											<div className="flex items-center justify-between">
+												<div>
+													<p className="font-medium">
+														{form.name}
+													</p>
+													<p className="text-sm text-muted-foreground">
+														{form.description ||
+															(form.workflow_id
+																? `Workflow ID: ${form.workflow_id}`
+																: "No workflow linked")}
+													</p>
+													<div className="mt-1 flex gap-2">
+														{form.organization_id ===
+															null && (
+															<Badge
+																variant="secondary"
+																className="text-xs"
+															>
+																Global
+															</Badge>
+														)}
 														<Badge
-															variant="secondary"
+															variant={
+																form.is_active
+																	? "default"
+																	: "outline"
+															}
 															className="text-xs"
 														>
-															Global
+															{form.is_active
+																? "Active"
+																: "Inactive"}
 														</Badge>
-													)}
-													<Badge
-														variant={
-															form.is_active
-																? "default"
-																: "outline"
-														}
-														className="text-xs"
-													>
-														{form.is_active
-															? "Active"
-															: "Inactive"}
-													</Badge>
+													</div>
 												</div>
+												{selected && (
+													<Badge>Selected</Badge>
+												)}
 											</div>
-											{selected && (
-												<Badge>Selected</Badge>
-											)}
-										</div>
-									</button>
-								);
-							})}
-						</div>
-					) : (
-						<div className="flex flex-col items-center justify-center py-8 text-center">
-							<FileCode className="h-12 w-12 text-muted-foreground" />
-							<p className="mt-2 text-sm text-muted-foreground">
-								No forms available
-							</p>
-						</div>
-					)}
+										</button>
+									);
+								})}
+							</div>
+						) : (
+							<div className="flex flex-col items-center justify-center py-8 text-center">
+								<FileCode className="h-12 w-12 text-muted-foreground" />
+								<p className="mt-2 text-sm text-muted-foreground">
+									No forms available
+								</p>
+							</div>
+						)}
 					</div>
 
 					<DialogFooter>

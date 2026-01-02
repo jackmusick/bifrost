@@ -361,7 +361,9 @@ export function WorkflowKeys() {
 												variant="ghost"
 												size="icon"
 												className="shrink-0 h-8 w-8"
-												onClick={() => handleRevoke(key)}
+												onClick={() =>
+													handleRevoke(key)
+												}
 												title="Revoke key"
 											>
 												<Trash2 className="h-4 w-4" />
@@ -371,7 +373,8 @@ export function WorkflowKeys() {
 										{/* Warning for orphaned keys */}
 										{orphaned && (
 											<p className="text-xs text-destructive mt-2">
-												Warning: Workflow no longer exists
+												Warning: Workflow no longer
+												exists
 											</p>
 										)}
 
@@ -383,7 +386,9 @@ export function WorkflowKeys() {
 											<div className="flex items-center gap-4 text-xs text-muted-foreground">
 												<span>
 													Created{" "}
-													{formatRelativeDate(key.created_at)}
+													{formatRelativeDate(
+														key.created_at,
+													)}
 												</span>
 												{key.last_used_at && (
 													<span>

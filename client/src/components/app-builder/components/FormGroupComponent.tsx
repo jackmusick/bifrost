@@ -6,7 +6,11 @@
  */
 
 import { cn } from "@/lib/utils";
-import type { FormGroupComponentProps, AppComponent, LayoutContainer } from "@/lib/app-builder-types";
+import type {
+	FormGroupComponentProps,
+	AppComponent,
+	LayoutContainer,
+} from "@/lib/app-builder-types";
 import { isLayoutContainer } from "@/lib/app-builder-types";
 import type { RegisteredComponentProps } from "../ComponentRegistry";
 import { Label } from "@/components/ui/label";
@@ -91,18 +95,30 @@ export function FormGroupComponent({
 
 			{/* Child form fields */}
 			<div style={containerStyles}>
-				{children.map((child: AppComponent | LayoutContainer, index: number) => {
-					const key = isLayoutContainer(child) ? `layout-${index}` : child.id;
-					return (
-						<div key={key} className={direction === "row" ? "flex-1" : undefined}>
-							{isLayoutContainer(child) ? (
-								<LayoutRenderer layout={child} context={context} />
-							) : (
-								renderRegisteredComponent(child, context)
-							)}
-						</div>
-					);
-				})}
+				{children.map(
+					(child: AppComponent | LayoutContainer, index: number) => {
+						const key = isLayoutContainer(child)
+							? `layout-${index}`
+							: child.id;
+						return (
+							<div
+								key={key}
+								className={
+									direction === "row" ? "flex-1" : undefined
+								}
+							>
+								{isLayoutContainer(child) ? (
+									<LayoutRenderer
+										layout={child}
+										context={context}
+									/>
+								) : (
+									renderRegisteredComponent(child, context)
+								)}
+							</div>
+						);
+					},
+				)}
 			</div>
 		</div>
 	);

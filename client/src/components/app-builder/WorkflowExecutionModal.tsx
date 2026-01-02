@@ -95,7 +95,10 @@ export function WorkflowExecutionModal({
 
 	// Get the parameters that need user input
 	const missingParams = pending
-		? getMissingParameters(pending.workflow.parameters, pending.providedParams)
+		? getMissingParameters(
+				pending.workflow.parameters,
+				pending.providedParams,
+			)
 		: [];
 
 	// Handle form submission
@@ -139,9 +142,7 @@ export function WorkflowExecutionModal({
 		<Dialog open={true} onOpenChange={handleOpenChange}>
 			<DialogContent className="max-w-md">
 				<DialogHeader>
-					<DialogTitle>
-						{pending.workflow.name}
-					</DialogTitle>
+					<DialogTitle>{pending.workflow.name}</DialogTitle>
 					{pending.workflow.description && (
 						<DialogDescription>
 							{pending.workflow.description}

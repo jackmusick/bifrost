@@ -72,7 +72,8 @@ export function getAppPermissionLevel(
 	}
 
 	// Check rules for highest permission level
-	let highestLevel: "none" | "view" | "edit" | "admin" = permissions.defaultLevel || "none";
+	let highestLevel: "none" | "view" | "edit" | "admin" =
+		permissions.defaultLevel || "none";
 
 	if (permissions.rules) {
 		for (const rule of permissions.rules) {

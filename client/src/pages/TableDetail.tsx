@@ -74,7 +74,8 @@ export function TableDetail() {
 
 	const query = useMemo(
 		() => ({
-			where: Object.keys(whereClause).length > 0 ? whereClause : undefined,
+			where:
+				Object.keys(whereClause).length > 0 ? whereClause : undefined,
 			limit: pageSize,
 			offset: currentPage * pageSize,
 			order_dir: "desc" as const,
@@ -325,7 +326,7 @@ export function TableDetail() {
 											>
 												{doc.data[col] !== undefined
 													? typeof doc.data[col] ===
-														  "object"
+														"object"
 														? JSON.stringify(
 																doc.data[col],
 															)

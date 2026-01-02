@@ -79,7 +79,9 @@ export function ColumnBuilder({
 	const handleUpdateColumn = useCallback(
 		(index: number, updates: Partial<TableColumn>) => {
 			onChange(
-				value.map((col, i) => (i === index ? { ...col, ...updates } : col)),
+				value.map((col, i) =>
+					i === index ? { ...col, ...updates } : col,
+				),
 			);
 		},
 		[value, onChange],
@@ -119,7 +121,9 @@ export function ColumnBuilder({
 								<AccordionTrigger className="flex-1 hover:no-underline py-3">
 									<div className="flex items-center gap-2 text-left">
 										<span className="font-medium">
-											{column.header || column.key || `Column ${index + 1}`}
+											{column.header ||
+												column.key ||
+												`Column ${index + 1}`}
 										</span>
 										{column.key && (
 											<span className="text-xs text-muted-foreground font-mono">
@@ -173,26 +177,35 @@ export function ColumnBuilder({
 							<AccordionContent className="space-y-4 pb-4">
 								<div className="grid grid-cols-2 gap-3">
 									<div className="space-y-2">
-										<Label className="text-sm">Data Key</Label>
+										<Label className="text-sm">
+											Data Key
+										</Label>
 										<Input
 											value={column.key}
 											onChange={(e) =>
-												handleUpdateColumn(index, { key: e.target.value })
+												handleUpdateColumn(index, {
+													key: e.target.value,
+												})
 											}
 											placeholder="field_name"
 											className="font-mono text-sm"
 										/>
 										<p className="text-xs text-muted-foreground">
-											Field path in the data (e.g., user.name)
+											Field path in the data (e.g.,
+											user.name)
 										</p>
 									</div>
 
 									<div className="space-y-2">
-										<Label className="text-sm">Header Label</Label>
+										<Label className="text-sm">
+											Header Label
+										</Label>
 										<Input
 											value={column.header}
 											onChange={(e) =>
-												handleUpdateColumn(index, { header: e.target.value })
+												handleUpdateColumn(index, {
+													header: e.target.value,
+												})
 											}
 											placeholder="Column Header"
 										/>
@@ -215,7 +228,10 @@ export function ColumnBuilder({
 											</SelectTrigger>
 											<SelectContent>
 												{COLUMN_TYPES.map((type) => (
-													<SelectItem key={type.value} value={type.value}>
+													<SelectItem
+														key={type.value}
+														value={type.value}
+													>
 														{type.label}
 													</SelectItem>
 												))}
@@ -234,7 +250,9 @@ export function ColumnBuilder({
 											onChange={(e) => {
 												const val = e.target.value;
 												handleUpdateColumn(index, {
-													width: val ? Number(val) || "auto" : undefined,
+													width: val
+														? Number(val) || "auto"
+														: undefined,
 												});
 											}}
 											placeholder="auto"
@@ -246,7 +264,9 @@ export function ColumnBuilder({
 
 								<div className="flex items-center justify-between">
 									<div>
-										<Label className="text-sm">Sortable</Label>
+										<Label className="text-sm">
+											Sortable
+										</Label>
 										<p className="text-xs text-muted-foreground">
 											Allow sorting by this column
 										</p>
@@ -254,29 +274,41 @@ export function ColumnBuilder({
 									<Switch
 										checked={column.sortable ?? false}
 										onCheckedChange={(sortable) =>
-											handleUpdateColumn(index, { sortable })
+											handleUpdateColumn(index, {
+												sortable,
+											})
 										}
 									/>
 								</div>
 
 								{column.type === "badge" && (
 									<div className="space-y-2">
-										<Label className="text-sm">Badge Colors</Label>
+										<Label className="text-sm">
+											Badge Colors
+										</Label>
 										<p className="text-xs text-muted-foreground mb-2">
-											Map values to colors (e.g., active → green)
+											Map values to colors (e.g., active →
+											green)
 										</p>
 										<Input
 											value={
 												column.badgeColors
-													? JSON.stringify(column.badgeColors)
+													? JSON.stringify(
+															column.badgeColors,
+														)
 													: ""
 											}
 											onChange={(e) => {
 												try {
-													const badgeColors = e.target.value
-														? JSON.parse(e.target.value)
+													const badgeColors = e.target
+														.value
+														? JSON.parse(
+																e.target.value,
+															)
 														: undefined;
-													handleUpdateColumn(index, { badgeColors });
+													handleUpdateColumn(index, {
+														badgeColors,
+													});
 												} catch {
 													// Invalid JSON, ignore
 												}

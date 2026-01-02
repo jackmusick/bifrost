@@ -15,8 +15,7 @@ export type OAuthProvider = components["schemas"]["OAuthProviderInfo"];
 export type AuthStatus = components["schemas"]["AuthStatusResponse"];
 export type OAuthInitResponse = components["schemas"]["OAuthInitResponse"];
 export type MFAStatus = components["schemas"]["MFAStatusResponse"];
-export type TOTPSetupResponse =
-	components["schemas"]["MFASetupResponse"];
+export type TOTPSetupResponse = components["schemas"]["MFASetupResponse"];
 export type TOTPVerifyResponse = components["schemas"]["MFAVerifyResponse"];
 export type RecoveryCodesCount =
 	components["schemas"]["RecoveryCodesCountResponse"];

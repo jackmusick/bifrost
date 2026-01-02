@@ -480,7 +480,11 @@ export function GenerateSDKDialog({
 						</div>
 
 						<DialogFooter>
-							<Button type="button" variant="outline" onClick={handleClose}>
+							<Button
+								type="button"
+								variant="outline"
+								onClick={handleClose}
+							>
 								Cancel
 							</Button>
 							<Button

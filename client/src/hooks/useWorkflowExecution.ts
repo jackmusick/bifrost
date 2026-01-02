@@ -54,7 +54,13 @@ interface UseWorkflowExecutionReturn {
  * Check if a status indicates the execution is complete
  */
 function isCompleteStatus(status: string): boolean {
-	return ["Success", "Failed", "CompletedWithErrors", "Timeout", "Cancelled"].includes(status);
+	return [
+		"Success",
+		"Failed",
+		"CompletedWithErrors",
+		"Timeout",
+		"Cancelled",
+	].includes(status);
 }
 
 /**
@@ -96,13 +102,21 @@ function mapStatus(apiStatus: string): WorkflowResult["status"] {
 export function useWorkflowExecution(
 	options: UseWorkflowExecutionOptions = {},
 ): UseWorkflowExecutionReturn {
-	const { timeout = DEFAULT_TIMEOUT, onExecutionStart, onExecutionComplete } = options;
+	const {
+		timeout = DEFAULT_TIMEOUT,
+		onExecutionStart,
+		onExecutionComplete,
+	} = options;
 	const executeWorkflowMutation = useExecuteWorkflow();
 
 	// Track active executions
-	const activeExecutionsRef = useRef<Map<string, ExecutionTracker>>(new Map());
+	const activeExecutionsRef = useRef<Map<string, ExecutionTracker>>(
+		new Map(),
+	);
 	const [activeExecutionIds, setActiveExecutionIds] = useState<string[]>([]);
-	const [activeWorkflowNames, setActiveWorkflowNames] = useState<Map<string, string>>(new Map());
+	const [activeWorkflowNames, setActiveWorkflowNames] = useState<
+		Map<string, string>
+	>(new Map());
 
 	// Update state arrays from ref
 	const updateActiveState = useCallback(() => {
@@ -122,7 +136,9 @@ export function useWorkflowExecution(
 			executions.forEach((tracker) => {
 				clearTimeout(tracker.timeoutId);
 				tracker.unsubscribe();
-				webSocketService.unsubscribe(`execution:${tracker.executionId}`);
+				webSocketService.unsubscribe(
+					`execution:${tracker.executionId}`,
+				);
 			});
 		};
 	}, []);
@@ -168,7 +184,8 @@ export function useWorkflowExecution(
 
 				// Setup timeout
 				const timeoutId = setTimeout(() => {
-					const tracker = activeExecutionsRef.current.get(executionId);
+					const tracker =
+						activeExecutionsRef.current.get(executionId);
 					if (tracker) {
 						tracker.unsubscribe();
 						webSocketService.unsubscribe(channel);
@@ -188,67 +205,87 @@ export function useWorkflowExecution(
 				}, timeout);
 
 				// Connect to WebSocket and subscribe
-				webSocketService.connect([channel]).then(() => {
-					const unsubscribe = webSocketService.onExecutionUpdate(
-						executionId,
-						(update: ExecutionUpdate) => {
-							// Check if execution is complete
-							if (update.isComplete || isCompleteStatus(update.status)) {
-								const tracker = activeExecutionsRef.current.get(executionId);
-								if (tracker) {
-									clearTimeout(tracker.timeoutId);
-									tracker.unsubscribe();
-									webSocketService.unsubscribe(channel);
-									activeExecutionsRef.current.delete(executionId);
-									updateActiveState();
+				webSocketService
+					.connect([channel])
+					.then(() => {
+						const unsubscribe = webSocketService.onExecutionUpdate(
+							executionId,
+							(update: ExecutionUpdate) => {
+								// Check if execution is complete
+								if (
+									update.isComplete ||
+									isCompleteStatus(update.status)
+								) {
+									const tracker =
+										activeExecutionsRef.current.get(
+											executionId,
+										);
+									if (tracker) {
+										clearTimeout(tracker.timeoutId);
+										tracker.unsubscribe();
+										webSocketService.unsubscribe(channel);
+										activeExecutionsRef.current.delete(
+											executionId,
+										);
+										updateActiveState();
 
-									const result: WorkflowResult = {
-										executionId,
-										workflowId,
-										workflowName,
-										status: mapStatus(update.status),
-										result: update.result,
-										error: update.error,
-									};
+										const result: WorkflowResult = {
+											executionId,
+											workflowId,
+											workflowName,
+											status: mapStatus(update.status),
+											result: update.result,
+											error: update.error,
+										};
 
-									onExecutionComplete?.(executionId, result);
-									resolve(result);
+										onExecutionComplete?.(
+											executionId,
+											result,
+										);
+										resolve(result);
+									}
 								}
-							}
-						},
-					);
+							},
+						);
 
-					// Store tracker
-					activeExecutionsRef.current.set(executionId, {
-						executionId,
-						workflowId,
-						workflowName,
-						startedAt: Date.now(),
-						resolve,
-						reject,
-						timeoutId,
-						unsubscribe,
+						// Store tracker
+						activeExecutionsRef.current.set(executionId, {
+							executionId,
+							workflowId,
+							workflowName,
+							startedAt: Date.now(),
+							resolve,
+							reject,
+							timeoutId,
+							unsubscribe,
+						});
+
+						updateActiveState();
+						onExecutionStart?.(executionId, workflowName);
+					})
+					.catch((error) => {
+						// WebSocket connection failed, still resolve with pending status
+						// The caller can handle this case
+						clearTimeout(timeoutId);
+						const result: WorkflowResult = {
+							executionId,
+							workflowId,
+							workflowName,
+							status: "pending",
+							error: `Failed to connect to execution stream: ${error instanceof Error ? error.message : String(error)}`,
+						};
+						onExecutionComplete?.(executionId, result);
+						resolve(result);
 					});
-
-					updateActiveState();
-					onExecutionStart?.(executionId, workflowName);
-				}).catch((error) => {
-					// WebSocket connection failed, still resolve with pending status
-					// The caller can handle this case
-					clearTimeout(timeoutId);
-					const result: WorkflowResult = {
-						executionId,
-						workflowId,
-						workflowName,
-						status: "pending",
-						error: `Failed to connect to execution stream: ${error instanceof Error ? error.message : String(error)}`,
-					};
-					onExecutionComplete?.(executionId, result);
-					resolve(result);
-				});
 			});
 		},
-		[executeWorkflowMutation, timeout, onExecutionStart, onExecutionComplete, updateActiveState],
+		[
+			executeWorkflowMutation,
+			timeout,
+			onExecutionStart,
+			onExecutionComplete,
+			updateActiveState,
+		],
 	);
 
 	return {

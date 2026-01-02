@@ -53,7 +53,9 @@ type ConfigWithOrg = ConfigType & {
 export function Config() {
 	const { scope, isGlobalScope } = useOrgScope();
 	const { isPlatformAdmin } = useAuth();
-	const [filterOrgId, setFilterOrgId] = useState<string | null | undefined>(undefined);
+	const [filterOrgId, setFilterOrgId] = useState<string | null | undefined>(
+		undefined,
+	);
 	const [selectedConfig, setSelectedConfig] = useState<
 		ConfigType | undefined
 	>();
@@ -66,9 +68,11 @@ export function Config() {
 
 	// Pass filterOrgId to backend for filtering (undefined = all, null = global only)
 	// For platform admins, undefined means show all. For non-admins, backend handles filtering.
-	const { data: configs, isFetching, refetch } = useConfigs(
-		isPlatformAdmin ? filterOrgId : undefined,
-	);
+	const {
+		data: configs,
+		isFetching,
+		refetch,
+	} = useConfigs(isPlatformAdmin ? filterOrgId : undefined);
 	const deleteConfig = useDeleteConfig();
 
 	// Fetch organizations for the org name lookup (platform admins only)
@@ -260,12 +264,20 @@ export function Config() {
 									{isPlatformAdmin && (
 										<DataTableCell>
 											{config.organization_id ? (
-												<Badge variant="outline" className="text-xs">
+												<Badge
+													variant="outline"
+													className="text-xs"
+												>
 													<Building2 className="mr-1 h-3 w-3" />
-													{getOrgName(config.organization_id)}
+													{getOrgName(
+														config.organization_id,
+													)}
 												</Badge>
 											) : (
-												<Badge variant="default" className="text-xs">
+												<Badge
+													variant="default"
+													className="text-xs"
+												>
 													<Globe className="mr-1 h-3 w-3" />
 													Global
 												</Badge>

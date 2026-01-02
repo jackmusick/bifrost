@@ -46,7 +46,12 @@ const DataTable = React.forwardRef<HTMLDivElement, DataTableProps>(
 			)}
 			{...props}
 		>
-			<div className={cn("overflow-auto flex-1 min-h-0", fixedHeight && "h-full")}>
+			<div
+				className={cn(
+					"overflow-auto flex-1 min-h-0",
+					fixedHeight && "h-full",
+				)}
+			>
 				<table className="relative w-full caption-bottom text-sm">
 					{children}
 				</table>

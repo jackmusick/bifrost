@@ -68,6 +68,7 @@ from src.models.contracts.cli import (
     SDKTableDeleteRequest,
     SDKTableInfo,
     SDKDocumentInsertRequest,
+    SDKDocumentUpsertRequest,
     SDKDocumentGetRequest,
     SDKDocumentUpdateRequest,
     SDKDocumentDeleteRequest,
@@ -2266,6 +2267,49 @@ async def _find_table_for_sdk(
     return result.scalar_one_or_none()
 
 
+async def _find_or_create_table_for_sdk(
+    db: AsyncSession,
+    table_name: str,
+    org_uuid: UUID | None,
+    app_uuid: UUID | None,
+    created_by: str | None = None,
+) -> Any:
+    """Find or create a table by name.
+
+    Auto-creates the table if it doesn't exist. Used by insert/upsert endpoints.
+
+    Args:
+        db: Database session
+        table_name: Table name to find or create
+        org_uuid: Organization UUID (None for global scope)
+        app_uuid: Application UUID (optional)
+        created_by: Email of user creating the table (for audit)
+
+    Returns:
+        Table ORM object (existing or newly created)
+    """
+    from src.models.orm.tables import Table
+
+    # First try to find existing table
+    table = await _find_table_for_sdk(db, table_name, org_uuid, app_uuid)
+
+    if table:
+        return table
+
+    # Create new table
+    table = Table(
+        name=table_name,
+        organization_id=org_uuid,
+        application_id=app_uuid,
+        created_by=created_by,
+    )
+    db.add(table)
+    await db.flush()  # Get the ID without committing
+    logger.info(f"Auto-created table '{table_name}' for org={org_uuid}, app={app_uuid}")
+
+    return table
+
+
 def _build_jsonb_filters(
     base_query: Any,
     where: dict[str, Any] | None,
@@ -2365,32 +2409,122 @@ async def cli_insert_document(
     current_user: CurrentUser,
     db: AsyncSession = Depends(get_db),
 ) -> SDKDocumentData:
-    """Insert a document into a table via SDK."""
+    """Insert a document into a table via SDK.
+
+    Auto-creates the table if it doesn't exist.
+    If id is provided, returns 409 Conflict if a document with that id already exists.
+    If id is not provided, a UUID will be auto-generated.
+    """
     from src.models.orm.tables import Document
+    from sqlalchemy import select
+    from sqlalchemy.exc import IntegrityError
 
     org_id = await _get_cli_org_id(current_user.user_id, request.scope, db)
     org_uuid = UUID(org_id) if org_id else None
     app_uuid = UUID(request.app) if request.app else None
 
-    table = await _find_table_for_sdk(db, request.table, org_uuid, app_uuid)
+    # Auto-create table if it doesn't exist
+    table = await _find_or_create_table_for_sdk(
+        db, request.table, org_uuid, app_uuid, current_user.email
+    )
 
-    if not table:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail=f"Table '{request.table}' not found",
+    # Check if document with this ID already exists (if ID provided)
+    if request.id:
+        stmt = select(Document).where(
+            Document.table_id == table.id,
+            Document.id == request.id,
         )
+        result = await db.execute(stmt)
+        existing = result.scalar_one_or_none()
+        if existing:
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail=f"Document with id '{request.id}' already exists in table '{request.table}'",
+            )
 
     doc = Document(
+        id=request.id if request.id else str(uuid4()),
         table_id=table.id,
         data=request.data,
         created_by=current_user.email,
     )
     db.add(doc)
+
+    try:
+        await db.commit()
+        await db.refresh(doc)
+    except IntegrityError:
+        await db.rollback()
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail=f"Document with id '{request.id}' already exists in table '{request.table}'",
+        )
+
+    return SDKDocumentData(
+        id=doc.id,
+        table_id=str(doc.table_id),
+        data=doc.data,
+        created_at=doc.created_at.isoformat(),
+        updated_at=doc.updated_at.isoformat(),
+    )
+
+
+@router.post(
+    "/tables/documents/upsert",
+    summary="Upsert a document",
+)
+async def cli_upsert_document(
+    request: SDKDocumentUpsertRequest,
+    current_user: CurrentUser,
+    db: AsyncSession = Depends(get_db),
+) -> SDKDocumentData:
+    """Upsert (create or replace) a document via SDK.
+
+    Auto-creates the table if it doesn't exist.
+    If a document with the given id exists, it is replaced with the new data.
+    If not, a new document is created.
+    """
+    from src.models.orm.tables import Document
+    from datetime import datetime
+
+    org_id = await _get_cli_org_id(current_user.user_id, request.scope, db)
+    org_uuid = UUID(org_id) if org_id else None
+    app_uuid = UUID(request.app) if request.app else None
+
+    # Auto-create table if it doesn't exist
+    table = await _find_or_create_table_for_sdk(
+        db, request.table, org_uuid, app_uuid, current_user.email
+    )
+
+    # Check if document exists
+    stmt = select(Document).where(
+        Document.table_id == table.id,
+        Document.id == request.id,
+    )
+    result = await db.execute(stmt)
+    existing = result.scalar_one_or_none()
+
+    if existing:
+        # Update existing document (full replace)
+        existing.data = request.data
+        existing.updated_by = current_user.email
+        existing.updated_at = datetime.utcnow()
+        doc = existing
+    else:
+        # Create new document
+        doc = Document(
+            id=request.id,
+            table_id=table.id,
+            data=request.data,
+            created_by=current_user.email,
+        )
+        db.add(doc)
+
     await db.commit()
     await db.refresh(doc)
 
     return SDKDocumentData(
-        id=str(doc.id),
+        id=doc.id,
         table_id=str(doc.table_id),
         data=doc.data,
         created_at=doc.created_at.isoformat(),
@@ -2419,9 +2553,9 @@ async def cli_get_document(
     if not table:
         return None
 
-    # Get the document
+    # Get the document by string ID
     doc_stmt = select(Document).where(
-        Document.id == UUID(request.doc_id),
+        Document.id == request.doc_id,
         Document.table_id == table.id,
     )
     doc_result = await db.execute(doc_stmt)
@@ -2431,7 +2565,7 @@ async def cli_get_document(
         return None
 
     return SDKDocumentData(
-        id=str(doc.id),
+        id=doc.id,
         table_id=str(doc.table_id),
         data=doc.data,
         created_at=doc.created_at.isoformat(),
@@ -2460,9 +2594,9 @@ async def cli_update_document(
     if not table:
         return None
 
-    # Get the document
+    # Get the document by string ID
     doc_stmt = select(Document).where(
-        Document.id == UUID(request.doc_id),
+        Document.id == request.doc_id,
         Document.table_id == table.id,
     )
     doc_result = await db.execute(doc_stmt)
@@ -2480,7 +2614,7 @@ async def cli_update_document(
     await db.refresh(doc)
 
     return SDKDocumentData(
-        id=str(doc.id),
+        id=doc.id,
         table_id=str(doc.table_id),
         data=doc.data,
         created_at=doc.created_at.isoformat(),
@@ -2509,9 +2643,9 @@ async def cli_delete_document(
     if not table:
         return False
 
-    # Get and delete the document
+    # Get and delete the document by string ID
     doc_stmt = select(Document).where(
-        Document.id == UUID(request.doc_id),
+        Document.id == request.doc_id,
         Document.table_id == table.id,
     )
     doc_result = await db.execute(doc_stmt)
@@ -2591,7 +2725,7 @@ async def cli_query_documents(
     return SDKDocumentList(
         documents=[
             SDKDocumentData(
-                id=str(d.id),
+                id=d.id,
                 table_id=str(d.table_id),
                 data=d.data,
                 created_at=d.created_at.isoformat(),

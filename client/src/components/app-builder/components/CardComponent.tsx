@@ -37,7 +37,10 @@ import { LayoutRenderer } from "../LayoutRenderer";
  *   }
  * }
  */
-export function CardComponent({ component, context }: RegisteredComponentProps) {
+export function CardComponent({
+	component,
+	context,
+}: RegisteredComponentProps) {
 	const { props } = component as CardComponentProps;
 	const title = props?.title
 		? String(evaluateExpression(props.title, context) ?? "")
@@ -55,7 +58,9 @@ export function CardComponent({ component, context }: RegisteredComponentProps) 
 			{hasHeader && (
 				<CardHeader>
 					{title && <CardTitle>{title}</CardTitle>}
-					{description && <CardDescription>{description}</CardDescription>}
+					{description && (
+						<CardDescription>{description}</CardDescription>
+					)}
 				</CardHeader>
 			)}
 			{hasChildren ? (
@@ -63,7 +68,9 @@ export function CardComponent({ component, context }: RegisteredComponentProps) 
 					<div className="flex flex-col gap-4">
 						{props.children!.map((child, index) => (
 							<LayoutRenderer
-								key={"id" in child ? child.id : `child-${index}`}
+								key={
+									"id" in child ? child.id : `child-${index}`
+								}
 								layout={child}
 								context={context}
 							/>

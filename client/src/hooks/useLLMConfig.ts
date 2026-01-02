@@ -9,7 +9,8 @@ import { $api } from "@/lib/api-client";
 import { useUserPermissions } from "@/hooks/useUserPermissions";
 import type { components } from "@/lib/v1";
 
-export type CodingConfigResponse = components["schemas"]["CodingConfigResponse"];
+export type CodingConfigResponse =
+	components["schemas"]["CodingConfigResponse"];
 
 /**
  * Hook to check if LLM provider is configured
@@ -78,9 +79,7 @@ export function useCodingConfig() {
 
 	// For non-admins, we can't check config - assume it might work
 	// They'll get an error when trying to use coding mode if not configured
-	const isConfigured = isPlatformAdmin
-		? (config?.configured ?? false)
-		: null; // null means "unknown" for non-admins
+	const isConfigured = isPlatformAdmin ? (config?.configured ?? false) : null; // null means "unknown" for non-admins
 
 	return {
 		isConfigured,

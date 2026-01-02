@@ -134,10 +134,7 @@ export function EventsTable({ sourceId, initialEventId }: EventsTableProps) {
 		return params;
 	}, [statusFilter, dateRange]);
 
-	const { data, isLoading } = useEvents(
-		sourceId,
-		filterParams,
-	);
+	const { data, isLoading } = useEvents(sourceId, filterParams);
 	const events = useMemo(
 		() => (data?.items || []) as EventWithMeta[],
 		[data?.items],
@@ -207,7 +204,9 @@ export function EventsTable({ sourceId, initialEventId }: EventsTableProps) {
 				<ToggleGroup
 					type="single"
 					value={statusFilter}
-					onValueChange={(v) => v && setStatusFilter(v as StatusFilter)}
+					onValueChange={(v) =>
+						v && setStatusFilter(v as StatusFilter)
+					}
 				>
 					<ToggleGroupItem value="all" size="sm">
 						All
@@ -307,9 +306,7 @@ export function EventsTable({ sourceId, initialEventId }: EventsTableProps) {
 													event.status,
 												)}
 											>
-												{getStatusLabel(
-													event.status,
-												)}
+												{getStatusLabel(event.status)}
 											</Badge>
 										</div>
 									</DataTableCell>
@@ -325,8 +322,7 @@ export function EventsTable({ sourceId, initialEventId }: EventsTableProps) {
 											)}
 											{event.failed_count > 0 && (
 												<span className="text-destructive">
-													{event.failed_count}{" "}
-													failed
+													{event.failed_count} failed
 												</span>
 											)}
 											{event.delivery_count === 0 && (

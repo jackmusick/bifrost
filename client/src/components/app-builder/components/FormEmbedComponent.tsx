@@ -8,7 +8,10 @@
 
 import { useState, useCallback } from "react";
 import { cn } from "@/lib/utils";
-import type { FormEmbedComponentProps, OnCompleteAction } from "@/lib/app-builder-types";
+import type {
+	FormEmbedComponentProps,
+	OnCompleteAction,
+} from "@/lib/app-builder-types";
 import type { RegisteredComponentProps } from "../ComponentRegistry";
 import { useForm } from "@/hooks/useForms";
 import { FormRenderer } from "@/components/forms/FormRenderer";
@@ -94,7 +97,10 @@ export function FormEmbedComponent({ component }: RegisteredComponentProps) {
 								// Simple result injection
 								value = result;
 							}
-							setVariable(action.variableName, value as string | undefined);
+							setVariable(
+								action.variableName,
+								value as string | undefined,
+							);
 						}
 						break;
 					case "refresh-table":
@@ -104,12 +110,12 @@ export function FormEmbedComponent({ component }: RegisteredComponentProps) {
 						break;
 					default:
 						console.warn(
-							`Unknown onSubmit action type: ${(action as OnCompleteAction).type}`
+							`Unknown onSubmit action type: ${(action as OnCompleteAction).type}`,
 						);
 				}
 			}
 		},
-		[context, setVariable]
+		[context, setVariable],
 	);
 
 	// Handle when execution completes
@@ -133,7 +139,7 @@ export function FormEmbedComponent({ component }: RegisteredComponentProps) {
 				executeOnCompleteActions(props.onSubmit, result);
 			}
 		},
-		[phase, props.onSubmit, setWorkflowResult, executeOnCompleteActions]
+		[phase, props.onSubmit, setWorkflowResult, executeOnCompleteActions],
 	);
 
 	// Handle "Submit Another" - reset to form phase
@@ -147,7 +153,7 @@ export function FormEmbedComponent({ component }: RegisteredComponentProps) {
 			<div
 				className={cn(
 					"flex items-center justify-center py-8",
-					props.className
+					props.className,
 				)}
 			>
 				<Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />

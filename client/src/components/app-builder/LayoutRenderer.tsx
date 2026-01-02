@@ -106,7 +106,10 @@ function getPaddingStyle(padding?: number): React.CSSProperties {
 /**
  * Get combined layout styles
  */
-function getLayoutStyles(layout: { gap?: number; padding?: number }): React.CSSProperties {
+function getLayoutStyles(layout: {
+	gap?: number;
+	padding?: number;
+}): React.CSSProperties {
 	return {
 		...getGapStyle(layout.gap),
 		...getPaddingStyle(layout.padding),
@@ -154,41 +157,56 @@ function renderLayoutContainer(
 
 	// For rows, we want children to flex and share space equally by default
 	// unless they have an explicit width set OR autoSize is enabled
-	const renderChild = (child: LayoutContainer | AppComponent, index: number, parentType: "row" | "column" | "grid", autoSize?: boolean) => {
+	const renderChild = (
+		child: LayoutContainer | AppComponent,
+		index: number,
+		parentType: "row" | "column" | "grid",
+		autoSize?: boolean,
+	) => {
 		const key = isLayoutContainer(child) ? `layout-${index}` : child.id;
 
 		// In row layouts, wrap children with flex-1 to distribute space evenly
 		// unless the child has an explicit width OR autoSize is enabled on the parent
 		if (parentType === "row" && !autoSize) {
-			const hasExplicitWidth = !isLayoutContainer(child) && child.width && child.width !== "auto";
+			const hasExplicitWidth =
+				!isLayoutContainer(child) &&
+				child.width &&
+				child.width !== "auto";
 			return (
-				<div key={key} className={hasExplicitWidth ? undefined : "flex-1 min-w-0"}>
+				<div
+					key={key}
+					className={hasExplicitWidth ? undefined : "flex-1 min-w-0"}
+				>
 					<LayoutRenderer layout={child} context={context} />
 				</div>
 			);
 		}
 
-		return (
-			<LayoutRenderer
-				key={key}
-				layout={child}
-				context={context}
-			/>
-		);
+		return <LayoutRenderer key={key} layout={child} context={context} />;
 	};
 
 	switch (layout.type) {
 		case "row":
 			return (
-				<div className={cn("flex flex-row flex-wrap", baseClasses)} style={layoutStyles}>
-					{layout.children.map((child, index) => renderChild(child, index, "row", layout.autoSize))}
+				<div
+					className={cn("flex flex-row flex-wrap", baseClasses)}
+					style={layoutStyles}
+				>
+					{layout.children.map((child, index) =>
+						renderChild(child, index, "row", layout.autoSize),
+					)}
 				</div>
 			);
 
 		case "column":
 			return (
-				<div className={cn("flex flex-col", baseClasses)} style={layoutStyles}>
-					{layout.children.map((child, index) => renderChild(child, index, "column"))}
+				<div
+					className={cn("flex flex-col", baseClasses)}
+					style={layoutStyles}
+				>
+					{layout.children.map((child, index) =>
+						renderChild(child, index, "column"),
+					)}
 				</div>
 			);
 
@@ -202,7 +220,9 @@ function renderLayoutContainer(
 					)}
 					style={layoutStyles}
 				>
-					{layout.children.map((child, index) => renderChild(child, index, "grid"))}
+					{layout.children.map((child, index) =>
+						renderChild(child, index, "grid"),
+					)}
 				</div>
 			);
 

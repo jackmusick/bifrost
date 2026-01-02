@@ -36,7 +36,8 @@ export function useConfigs(filterScope?: string | null) {
 	return $api.useQuery("get", "/api/config", {
 		params: {
 			// Type assertion needed until types are regenerated
-			query: Object.keys(queryParams).length > 0 ? queryParams : undefined,
+			query:
+				Object.keys(queryParams).length > 0 ? queryParams : undefined,
 		} as { query?: { scope?: string } },
 	});
 }

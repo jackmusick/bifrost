@@ -16,19 +16,20 @@ Automate common Microsoft 365 user management tasks using Microsoft Graph API. T
 All Microsoft Graph workflows follow the same structure:
 
 ```python
-from bifrost import workflow, oauth, ExecutionContext
+from bifrost import workflow, integrations
 import aiohttp
 
-@workflow(name="graph_workflow")
-async def graph_workflow(context: ExecutionContext):
-    # Get OAuth token
-    token_data = await oauth.get("microsoft")
-    if not token_data:
+@workflow
+async def graph_workflow() -> dict:
+    """Example Graph API workflow."""
+    # Get integration with OAuth token
+    integration = await integrations.get("Microsoft")
+    if not integration or not integration.oauth:
         raise ValueError("Microsoft Graph OAuth not configured")
 
     # Make API call
     url = "https://graph.microsoft.com/v1.0/users"
-    headers = {"Authorization": f"Bearer {token_data['access_token']}"}
+    headers = {"Authorization": f"Bearer {integration.oauth.access_token}"}
 
     async with aiohttp.ClientSession() as session:
         async with session.get(url, headers=headers) as resp:
@@ -44,15 +45,18 @@ async def graph_workflow(context: ExecutionContext):
 Get all users in the tenant:
 
 ```python
-from bifrost import workflow, oauth, ExecutionContext
+from bifrost import workflow, integrations
 import aiohttp
 
-@workflow(name="list_users", description="Get all users")
-async def list_users(context: ExecutionContext):
-    token_data = await oauth.get("microsoft")
+@workflow
+async def list_users() -> dict:
+    """Get all users."""
+    integration = await integrations.get("Microsoft")
+    if not integration or not integration.oauth:
+        raise ValueError("Microsoft Graph OAuth not configured")
 
     url = "https://graph.microsoft.com/v1.0/users"
-    headers = {"Authorization": f"Bearer {token_data['access_token']}"}
+    headers = {"Authorization": f"Bearer {integration.oauth.access_token}"}
 
     async with aiohttp.ClientSession() as session:
         async with session.get(url, headers=headers) as resp:
@@ -66,24 +70,19 @@ async def list_users(context: ExecutionContext):
 Provision a new Microsoft 365 user:
 
 ```python
-from bifrost import workflow, param, oauth, ExecutionContext
+from bifrost import workflow, integrations
 import aiohttp
 
-@workflow(name="create_user", description="Create new M365 user")
-@param("email", type="email", required=True)
-@param("display_name", type="string", required=True)
-@param("password", type="string", required=True)
-async def create_user(
-    context: ExecutionContext,
-    email: str,
-    display_name: str,
-    password: str
-):
-    token_data = await oauth.get("microsoft")
+@workflow
+async def create_user(email: str, display_name: str, password: str) -> dict:
+    """Create new M365 user."""
+    integration = await integrations.get("Microsoft")
+    if not integration or not integration.oauth:
+        raise ValueError("Microsoft Graph OAuth not configured")
 
     url = "https://graph.microsoft.com/v1.0/users"
     headers = {
-        "Authorization": f"Bearer {token_data['access_token']}",
+        "Authorization": f"Bearer {integration.oauth.access_token}",
         "Content-Type": "application/json"
     }
 
@@ -113,21 +112,20 @@ async def create_user(
 Modify existing user attributes:
 
 ```python
-@workflow(name="update_user", description="Update user properties")
-@param("user_id", type="string", required=True)
-@param("job_title", type="string", required=False)
-@param("department", type="string", required=False)
+@workflow
 async def update_user(
-    context: ExecutionContext,
     user_id: str,
-    job_title: str = None,
-    department: str = None
-):
-    token_data = await oauth.get("microsoft")
+    job_title: str | None = None,
+    department: str | None = None
+) -> dict:
+    """Update user properties."""
+    integration = await integrations.get("Microsoft")
+    if not integration or not integration.oauth:
+        raise ValueError("Microsoft Graph OAuth not configured")
 
     url = f"https://graph.microsoft.com/v1.0/users/{user_id}"
     headers = {
-        "Authorization": f"Bearer {token_data['access_token']}",
+        "Authorization": f"Bearer {integration.oauth.access_token}",
         "Content-Type": "application/json"
     }
 
@@ -151,15 +149,16 @@ async def update_user(
 Add users to security or Microsoft 365 groups:
 
 ```python
-@workflow(name="add_to_group", description="Add user to group")
-@param("user_id", type="string", required=True)
-@param("group_id", type="string", required=True)
-async def add_to_group(context: ExecutionContext, user_id: str, group_id: str):
-    token_data = await oauth.get("microsoft")
+@workflow
+async def add_to_group(user_id: str, group_id: str) -> dict:
+    """Add user to group."""
+    integration = await integrations.get("Microsoft")
+    if not integration or not integration.oauth:
+        raise ValueError("Microsoft Graph OAuth not configured")
 
     url = f"https://graph.microsoft.com/v1.0/groups/{group_id}/members/$ref"
     headers = {
-        "Authorization": f"Bearer {token_data['access_token']}",
+        "Authorization": f"Bearer {integration.oauth.access_token}",
         "Content-Type": "application/json"
     }
 
@@ -180,15 +179,16 @@ async def add_to_group(context: ExecutionContext, user_id: str, group_id: str):
 Assign Microsoft 365 licenses to users:
 
 ```python
-@workflow(name="assign_license", description="Assign M365 license")
-@param("user_id", type="string", required=True)
-@param("sku_id", type="string", required=True)
-async def assign_license(context: ExecutionContext, user_id: str, sku_id: str):
-    token_data = await oauth.get("microsoft")
+@workflow
+async def assign_license(user_id: str, sku_id: str) -> dict:
+    """Assign M365 license."""
+    integration = await integrations.get("Microsoft")
+    if not integration or not integration.oauth:
+        raise ValueError("Microsoft Graph OAuth not configured")
 
     url = f"https://graph.microsoft.com/v1.0/users/{user_id}/assignLicense"
     headers = {
-        "Authorization": f"Bearer {token_data['access_token']}",
+        "Authorization": f"Bearer {integration.oauth.access_token}",
         "Content-Type": "application/json"
     }
 
@@ -210,10 +210,14 @@ async def assign_license(context: ExecutionContext, user_id: str, sku_id: str):
 Get all results from large datasets:
 
 ```python
-@workflow(name="get_all_users", description="Get all users with pagination")
-async def get_all_users(context: ExecutionContext):
-    token_data = await oauth.get("microsoft")
-    headers = {"Authorization": f"Bearer {token_data['access_token']}"}
+@workflow
+async def get_all_users() -> dict:
+    """Get all users with pagination."""
+    integration = await integrations.get("Microsoft")
+    if not integration or not integration.oauth:
+        raise ValueError("Microsoft Graph OAuth not configured")
+
+    headers = {"Authorization": f"Bearer {integration.oauth.access_token}"}
 
     all_users = []
     url = "https://graph.microsoft.com/v1.0/users?$top=100"
@@ -258,15 +262,15 @@ url = "https://graph.microsoft.com/v1.0/users?$filter=department eq 'Sales'&$sel
 Handle common Graph API errors:
 
 ```python
-@workflow(name="safe_get_user")
-@param("user_id", type="string", required=True)
-async def safe_get_user(context: ExecutionContext, user_id: str):
-    token_data = await oauth.get("microsoft")
-    if not token_data:
+@workflow
+async def safe_get_user(user_id: str) -> dict:
+    """Get user with error handling."""
+    integration = await integrations.get("Microsoft")
+    if not integration or not integration.oauth:
         return {"success": False, "error": "OAuth not configured"}
 
     url = f"https://graph.microsoft.com/v1.0/users/{user_id}"
-    headers = {"Authorization": f"Bearer {token_data['access_token']}"}
+    headers = {"Authorization": f"Bearer {integration.oauth.access_token}"}
 
     async with aiohttp.ClientSession() as session:
         async with session.get(url, headers=headers) as resp:
@@ -295,7 +299,7 @@ async def safe_get_user(context: ExecutionContext, user_id: str):
 
 ## Best Practices
 
-1. **Always check token**: Verify `oauth.get()` doesn't return `None`
+1. **Always check integration**: Verify `integrations.get()` returns valid OAuth
 2. **Use raise_for_status()**: Let HTTP errors bubble as exceptions
 3. **Select only needed fields**: Use `$select` to reduce payload size
 4. **Handle pagination**: Large result sets require paging

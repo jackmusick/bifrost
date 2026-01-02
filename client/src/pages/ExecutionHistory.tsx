@@ -95,7 +95,9 @@ interface StuckExecution {
 export function ExecutionHistory() {
 	const navigate = useNavigate();
 	const { isPlatformAdmin } = useAuth();
-	const [filterOrgId, setFilterOrgId] = useState<string | null | undefined>(undefined);
+	const [filterOrgId, setFilterOrgId] = useState<string | null | undefined>(
+		undefined,
+	);
 	const [statusFilter, setStatusFilter] = useState<ExecutionStatus | "all">(
 		"all",
 	);
@@ -435,7 +437,9 @@ export function ExecutionHistory() {
 											<DataTableHead>
 												Workflow
 											</DataTableHead>
-											<DataTableHead>Status</DataTableHead>
+											<DataTableHead>
+												Status
+											</DataTableHead>
 											<DataTableHead>
 												Executed By
 											</DataTableHead>
@@ -586,7 +590,9 @@ export function ExecutionHistory() {
 							<DataTableHeader>
 								<DataTableRow>
 									{isPlatformAdmin && (
-										<DataTableHead>Organization</DataTableHead>
+										<DataTableHead>
+											Organization
+										</DataTableHead>
 									)}
 									<DataTableHead>Workflow</DataTableHead>
 									<DataTableHead>Status</DataTableHead>
@@ -600,10 +606,15 @@ export function ExecutionHistory() {
 							<DataTableBody>
 								{filteredExecutions.map((execution) => {
 									const duration =
-										execution.completed_at && execution.started_at
+										execution.completed_at &&
+										execution.started_at
 											? Math.round(
-													(new Date(execution.completed_at).getTime() -
-														new Date(execution.started_at).getTime()) /
+													(new Date(
+														execution.completed_at,
+													).getTime() -
+														new Date(
+															execution.started_at,
+														).getTime()) /
 														1000,
 												)
 											: null;
@@ -616,7 +627,9 @@ export function ExecutionHistory() {
 											key={execution.execution_id}
 											clickable
 											onClick={() =>
-												handleViewDetails(execution.execution_id)
+												handleViewDetails(
+													execution.execution_id,
+												)
 											}
 										>
 											{isPlatformAdmin && (
@@ -635,7 +648,9 @@ export function ExecutionHistory() {
 															className="text-xs"
 														>
 															<Building2 className="mr-1 h-3 w-3" />
-															{getOrgName(execution.org_id)}
+															{getOrgName(
+																execution.org_id,
+															)}
 														</Badge>
 													)}
 												</DataTableCell>
@@ -646,12 +661,16 @@ export function ExecutionHistory() {
 													{execution.session_id && (
 														<TooltipProvider>
 															<Tooltip>
-																<TooltipTrigger asChild>
+																<TooltipTrigger
+																	asChild
+																>
 																	<Button
 																		variant="ghost"
 																		size="icon"
 																		className="h-6 w-6 text-muted-foreground hover:text-primary"
-																		onClick={(e) => {
+																		onClick={(
+																			e,
+																		) => {
 																			e.stopPropagation();
 																			navigate(
 																				`/cli/${execution.session_id}`,
@@ -663,7 +682,10 @@ export function ExecutionHistory() {
 																</TooltipTrigger>
 																<TooltipContent side="right">
 																	<p className="text-sm">
-																		Dev run - Click to view session
+																		Dev run
+																		- Click
+																		to view
+																		session
 																	</p>
 																</TooltipContent>
 															</Tooltip>
@@ -673,11 +695,15 @@ export function ExecutionHistory() {
 											</DataTableCell>
 											<DataTableCell>
 												<div className="flex items-center gap-2">
-													{getStatusBadge(execution.status)}
+													{getStatusBadge(
+														execution.status,
+													)}
 													{execution.error_message && (
 														<TooltipProvider>
 															<Tooltip>
-																<TooltipTrigger asChild>
+																<TooltipTrigger
+																	asChild
+																>
 																	<Info className="h-4 w-4 text-destructive cursor-help" />
 																</TooltipTrigger>
 																<TooltipContent
@@ -685,7 +711,9 @@ export function ExecutionHistory() {
 																	className="max-w-md bg-popover text-popover-foreground"
 																>
 																	<p className="text-sm">
-																		{execution.error_message}
+																		{
+																			execution.error_message
+																		}
 																	</p>
 																</TooltipContent>
 															</Tooltip>
@@ -698,21 +726,29 @@ export function ExecutionHistory() {
 											</DataTableCell>
 											<DataTableCell className="text-sm">
 												{execution.started_at
-													? formatDate(execution.started_at)
+													? formatDate(
+															execution.started_at,
+														)
 													: "-"}
 											</DataTableCell>
 											<DataTableCell className="text-sm">
 												{execution.completed_at
-													? formatDate(execution.completed_at)
+													? formatDate(
+															execution.completed_at,
+														)
 													: "-"}
 											</DataTableCell>
 											<DataTableCell className="text-sm text-muted-foreground">
-												{duration !== null ? `${duration}s` : "-"}
+												{duration !== null
+													? `${duration}s`
+													: "-"}
 											</DataTableCell>
 											<DataTableCell className="text-right">
 												<div className="flex items-center justify-end gap-1">
-													{(execution.status === "Running" ||
-														execution.status === "Pending") && (
+													{(execution.status ===
+														"Running" ||
+														execution.status ===
+															"Pending") && (
 														<Button
 															variant="ghost"
 															size="icon"
@@ -763,18 +799,25 @@ export function ExecutionHistory() {
 																handlePreviousPage();
 															}}
 															className={
-																pageStack.length === 0 || isFetching
+																pageStack.length ===
+																	0 ||
+																isFetching
 																	? "pointer-events-none opacity-50"
 																	: "cursor-pointer"
 															}
 															aria-disabled={
-																pageStack.length === 0 || isFetching
+																pageStack.length ===
+																	0 ||
+																isFetching
 															}
 														/>
 													</PaginationItem>
 													<PaginationItem>
-														<PaginationLink isActive>
-															{pageStack.length + 1}
+														<PaginationLink
+															isActive
+														>
+															{pageStack.length +
+																1}
 														</PaginationLink>
 													</PaginationItem>
 													<PaginationItem>
@@ -784,11 +827,15 @@ export function ExecutionHistory() {
 																handleNextPage();
 															}}
 															className={
-																!hasMore || isFetching
+																!hasMore ||
+																isFetching
 																	? "pointer-events-none opacity-50"
 																	: "cursor-pointer"
 															}
-															aria-disabled={!hasMore || isFetching}
+															aria-disabled={
+																!hasMore ||
+																isFetching
+															}
 														/>
 													</PaginationItem>
 												</PaginationContent>

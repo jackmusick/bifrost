@@ -103,10 +103,7 @@ function CreateEventSourceDialogContent({
 			newErrors.push("Please select a webhook adapter");
 		}
 
-		if (
-			selectedAdapter?.requires_integration &&
-			!integrationId
-		) {
+		if (selectedAdapter?.requires_integration && !integrationId) {
 			newErrors.push(
 				`This adapter requires a ${selectedAdapter.requires_integration} integration`,
 			);
@@ -151,7 +148,8 @@ function CreateEventSourceDialogContent({
 			<DialogHeader>
 				<DialogTitle>Create Event Source</DialogTitle>
 				<DialogDescription>
-					Create a new event source to receive webhooks and trigger workflows.
+					Create a new event source to receive webhooks and trigger
+					workflows.
 				</DialogDescription>
 			</DialogHeader>
 
@@ -175,7 +173,9 @@ function CreateEventSourceDialogContent({
 						<Label htmlFor="organization">Organization</Label>
 						<OrganizationSelect
 							value={organizationId}
-							onChange={(value) => setOrganizationId(value ?? null)}
+							onChange={(value) =>
+								setOrganizationId(value ?? null)
+							}
 							showGlobal
 						/>
 						<p className="text-xs text-muted-foreground">
@@ -201,7 +201,9 @@ function CreateEventSourceDialogContent({
 					<Label htmlFor="source-type">Source Type</Label>
 					<Select
 						value={sourceType}
-						onValueChange={(value) => setSourceType(value as EventSourceType)}
+						onValueChange={(value) =>
+							setSourceType(value as EventSourceType)
+						}
 					>
 						<SelectTrigger id="source-type">
 							<SelectValue />
@@ -222,13 +224,19 @@ function CreateEventSourceDialogContent({
 				{sourceType === "webhook" && (
 					<div className="space-y-2">
 						<Label htmlFor="adapter">Webhook Adapter</Label>
-						<Select value={adapterName} onValueChange={handleAdapterChange}>
+						<Select
+							value={adapterName}
+							onValueChange={handleAdapterChange}
+						>
 							<SelectTrigger id="adapter">
 								<SelectValue placeholder="Select an adapter..." />
 							</SelectTrigger>
 							<SelectContent>
 								{adapters.map((adapter) => (
-									<SelectItem key={adapter.name} value={adapter.name}>
+									<SelectItem
+										key={adapter.name}
+										value={adapter.name}
+									>
 										{adapter.display_name}
 									</SelectItem>
 								))}
@@ -246,40 +254,53 @@ function CreateEventSourceDialogContent({
 				{selectedAdapter?.requires_integration && (
 					<div className="space-y-2">
 						<Label htmlFor="integration">Integration</Label>
-						<Select value={integrationId} onValueChange={setIntegrationId}>
+						<Select
+							value={integrationId}
+							onValueChange={setIntegrationId}
+						>
 							<SelectTrigger id="integration">
 								<SelectValue placeholder="Select an integration..." />
 							</SelectTrigger>
 							<SelectContent>
 								{filteredIntegrations.map((integration) => (
-									<SelectItem key={integration.id} value={integration.id}>
+									<SelectItem
+										key={integration.id}
+										value={integration.id}
+									>
 										{integration.name}
 									</SelectItem>
 								))}
 							</SelectContent>
 						</Select>
 						<p className="text-xs text-muted-foreground">
-							This adapter requires a {selectedAdapter.requires_integration}{" "}
-							integration for authentication.
+							This adapter requires a{" "}
+							{selectedAdapter.requires_integration} integration
+							for authentication.
 						</p>
 					</div>
 				)}
 
 				{/* Dynamic Config Form - For adapters with config_schema */}
-				{sourceType === "webhook" && hasDynamicConfig && selectedAdapter && (
-					<>
-						<div className="border-t pt-4">
-							<h4 className="text-sm font-medium mb-3">Configuration</h4>
-						</div>
-						<DynamicConfigForm
-							adapterName={selectedAdapter.name}
-							integrationId={integrationId || undefined}
-							configSchema={selectedAdapter.config_schema as unknown as ConfigSchema}
-							config={webhookConfig}
-							onChange={setWebhookConfig}
-						/>
-					</>
-				)}
+				{sourceType === "webhook" &&
+					hasDynamicConfig &&
+					selectedAdapter && (
+						<>
+							<div className="border-t pt-4">
+								<h4 className="text-sm font-medium mb-3">
+									Configuration
+								</h4>
+							</div>
+							<DynamicConfigForm
+								adapterName={selectedAdapter.name}
+								integrationId={integrationId || undefined}
+								configSchema={
+									selectedAdapter.config_schema as unknown as ConfigSchema
+								}
+								config={webhookConfig}
+								onChange={setWebhookConfig}
+							/>
+						</>
+					)}
 
 				{/* Generic adapter config - fallback for adapters without config_schema */}
 				{sourceType === "webhook" &&
@@ -287,45 +308,62 @@ function CreateEventSourceDialogContent({
 					!hasDynamicConfig && (
 						<>
 							<div className="border-t pt-4">
-								<h4 className="text-sm font-medium mb-3">Webhook Configuration</h4>
+								<h4 className="text-sm font-medium mb-3">
+									Webhook Configuration
+								</h4>
 								<p className="text-xs text-muted-foreground mb-3">
-									Configure how event types are extracted from incoming webhooks.
+									Configure how event types are extracted from
+									incoming webhooks.
 								</p>
 							</div>
 
 							<div className="space-y-2">
-								<Label htmlFor="event-type-header">Event Type Header</Label>
+								<Label htmlFor="event-type-header">
+									Event Type Header
+								</Label>
 								<Input
 									id="event-type-header"
-									value={(webhookConfig.event_type_header as string) || ""}
+									value={
+										(webhookConfig.event_type_header as string) ||
+										""
+									}
 									onChange={(e) =>
 										setWebhookConfig((prev) => ({
 											...prev,
-											event_type_header: e.target.value || undefined,
+											event_type_header:
+												e.target.value || undefined,
 										}))
 									}
 									placeholder="e.g., X-Event-Type"
 								/>
 								<p className="text-xs text-muted-foreground">
-									HTTP header containing the event type (optional)
+									HTTP header containing the event type
+									(optional)
 								</p>
 							</div>
 
 							<div className="space-y-2">
-								<Label htmlFor="event-type-field">Event Type Field</Label>
+								<Label htmlFor="event-type-field">
+									Event Type Field
+								</Label>
 								<Input
 									id="event-type-field"
-									value={(webhookConfig.event_type_field as string) || ""}
+									value={
+										(webhookConfig.event_type_field as string) ||
+										""
+									}
 									onChange={(e) =>
 										setWebhookConfig((prev) => ({
 											...prev,
-											event_type_field: e.target.value || undefined,
+											event_type_field:
+												e.target.value || undefined,
 										}))
 									}
 									placeholder="e.g., type or event"
 								/>
 								<p className="text-xs text-muted-foreground">
-									JSON payload field containing the event type (optional)
+									JSON payload field containing the event type
+									(optional)
 								</p>
 							</div>
 
@@ -334,7 +372,9 @@ function CreateEventSourceDialogContent({
 								<Input
 									id="secret"
 									type="password"
-									value={(webhookConfig.secret as string) || ""}
+									value={
+										(webhookConfig.secret as string) || ""
+									}
 									onChange={(e) =>
 										setWebhookConfig((prev) => ({
 											...prev,
@@ -344,7 +384,8 @@ function CreateEventSourceDialogContent({
 									placeholder="Leave empty to disable signature verification"
 								/>
 								<p className="text-xs text-muted-foreground">
-									HMAC secret for signature verification (optional)
+									HMAC secret for signature verification
+									(optional)
 								</p>
 							</div>
 						</>
@@ -352,11 +393,17 @@ function CreateEventSourceDialogContent({
 			</div>
 
 			<DialogFooter>
-				<Button type="button" variant="outline" onClick={() => onOpenChange(false)}>
+				<Button
+					type="button"
+					variant="outline"
+					onClick={() => onOpenChange(false)}
+				>
 					Cancel
 				</Button>
 				<Button type="submit" disabled={isLoading}>
-					{isLoading && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+					{isLoading && (
+						<Loader2 className="mr-2 h-4 w-4 animate-spin" />
+					)}
 					Create Event Source
 				</Button>
 			</DialogFooter>

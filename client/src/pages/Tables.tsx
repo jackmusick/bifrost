@@ -44,15 +44,26 @@ import type { TablePublic } from "@/services/tables";
 export function Tables() {
 	const navigate = useNavigate();
 	const { isPlatformAdmin } = useAuth();
-	const [selectedTable, setSelectedTable] = useState<TablePublic | undefined>();
+	const [selectedTable, setSelectedTable] = useState<
+		TablePublic | undefined
+	>();
 	const [isDialogOpen, setIsDialogOpen] = useState(false);
 	const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false);
-	const [tableToDelete, setTableToDelete] = useState<TablePublic | undefined>();
+	const [tableToDelete, setTableToDelete] = useState<
+		TablePublic | undefined
+	>();
 	const [searchTerm, setSearchTerm] = useState("");
-	const [filterOrgId, setFilterOrgId] = useState<string | null | undefined>(undefined);
+	const [filterOrgId, setFilterOrgId] = useState<string | null | undefined>(
+		undefined,
+	);
 
 	// Convert filterOrgId to scope for API: undefined = all, null = global only, string = org UUID
-	const apiScope = filterOrgId === undefined ? undefined : filterOrgId === null ? "global" : filterOrgId;
+	const apiScope =
+		filterOrgId === undefined
+			? undefined
+			: filterOrgId === null
+				? "global"
+				: filterOrgId;
 
 	const { data, isLoading, refetch } = useTables(apiScope);
 	const deleteTable = useDeleteTable();
@@ -210,9 +221,16 @@ export function Tables() {
 									</DataTableCell>
 									<DataTableCell>
 										{table.organization_id ? (
-											<Badge variant="outline" className="gap-1">
+											<Badge
+												variant="outline"
+												className="gap-1"
+											>
 												<Building2 className="h-3 w-3" />
-												{isPlatformAdmin ? getOrgName(table.organization_id) : "Organization"}
+												{isPlatformAdmin
+													? getOrgName(
+															table.organization_id,
+														)
+													: "Organization"}
 											</Badge>
 										) : (
 											<Badge
@@ -245,7 +263,9 @@ export function Tables() {
 											<Button
 												variant="ghost"
 												size="icon"
-												onClick={() => handleEdit(table)}
+												onClick={() =>
+													handleEdit(table)
+												}
 												title="Edit table"
 											>
 												<Pencil className="h-4 w-4" />

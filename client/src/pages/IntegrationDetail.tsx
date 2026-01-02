@@ -184,9 +184,8 @@ export function IntegrationDetail() {
 	const [testDialogOpen, setTestDialogOpen] = useState(false);
 	const [testOrgId, setTestOrgId] = useState<string | null>(null);
 	const [testEndpoint, setTestEndpoint] = useState<string>("/");
-	const [testResult, setTestResult] = useState<IntegrationTestResponse | null>(
-		null,
-	);
+	const [testResult, setTestResult] =
+		useState<IntegrationTestResponse | null>(null);
 
 	// Fetch integration details (includes mappings and OAuth config)
 	const {
@@ -1678,7 +1677,8 @@ export function IntegrationDetail() {
 					<DialogHeader>
 						<DialogTitle>Test Integration Connection</DialogTitle>
 						<DialogDescription>
-							Test connectivity by making a GET request to the specified endpoint.
+							Test connectivity by making a GET request to the
+							specified endpoint.
 						</DialogDescription>
 					</DialogHeader>
 					<div className="space-y-4 py-4">
@@ -1688,7 +1688,9 @@ export function IntegrationDetail() {
 								value={testOrgId}
 								onChange={(value) => {
 									// OrganizationSelect uses undefined for "All", but we only care about null (Global) or string (org)
-									setTestOrgId(value === undefined ? null : value);
+									setTestOrgId(
+										value === undefined ? null : value,
+									);
 									setTestResult(null);
 								}}
 								showGlobal={true}
@@ -1696,7 +1698,9 @@ export function IntegrationDetail() {
 								placeholder="Select organization..."
 							/>
 							<p className="text-sm text-muted-foreground">
-								Select "Global" to test with integration defaults only, or choose an organization to test with merged config and OAuth.
+								Select "Global" to test with integration
+								defaults only, or choose an organization to test
+								with merged config and OAuth.
 							</p>
 						</div>
 
@@ -1712,7 +1716,8 @@ export function IntegrationDetail() {
 								placeholder="/api/users"
 							/>
 							<p className="text-sm text-muted-foreground">
-								API endpoint path to test. Will be appended to the integration's base_url.
+								API endpoint path to test. Will be appended to
+								the integration's base_url.
 							</p>
 						</div>
 
@@ -1751,7 +1756,8 @@ export function IntegrationDetail() {
 										)}
 										{testResult.duration_ms && (
 											<p className="text-sm text-muted-foreground">
-												Duration: {testResult.duration_ms}
+												Duration:{" "}
+												{testResult.duration_ms}
 												ms
 											</p>
 										)}

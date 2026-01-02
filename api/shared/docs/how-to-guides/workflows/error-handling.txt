@@ -58,19 +58,21 @@ async def bulk_create(context: ExecutionContext, emails: list):
 Fail fast with input validation before processing:
 
 ```python
-@workflow(name="send_email")
-@param("email", type="email", required=True)
-async def send_email(context, email: str, subject: str):
+@workflow
+async def send_email(email: str, subject: str) -> dict:
+    """Send an email to a recipient."""
     # Validate inputs
     if not subject:
         raise ValueError("Subject is required")
+    if "@" not in email:
+        raise ValueError("Invalid email address")
 
     # Proceed with valid inputs
     await send(email, subject)
     return {"sent": True}
 ```
 
-**Validation in @param**: Use `@param` validation rules when possible to fail before workflow execution starts.
+**Type Hints**: Use type hints to enforce parameter types. Use `Literal` types for restricted options.
 
 ## Handle Specific Exceptions
 
@@ -200,23 +202,24 @@ async def process_with_lock(context, resource_id: str):
 OAuth tokens are automatically refreshed by the engine:
 
 ```python
-from bifrost import oauth
+from bifrost import integrations
 
-@workflow(name="graph_call")
-async def graph_call(context, user_id: str):
-    # Get OAuth connection (automatically refreshes if expired)
-    conn = await oauth.get("microsoft")
+@workflow
+async def graph_call(user_id: str) -> dict:
+    """Call Microsoft Graph API."""
+    # Get integration (automatically refreshes OAuth if expired)
+    integration = await integrations.get("Microsoft")
 
-    if not conn:
+    if not integration or not integration.oauth:
         raise ValueError("Microsoft OAuth not configured")
 
-    headers = {"Authorization": f"Bearer {conn['access_token']}"}
+    headers = {"Authorization": f"Bearer {integration.oauth.access_token}"}
     user = await graph_api.get_user(user_id, headers=headers)
 
     return {"user": user}
 ```
 
-Always check if `oauth.get()` returns `None` before using the token.
+Always check if `integrations.get()` returns a valid integration with OAuth before using the token.
 
 ## Logging Best Practices
 
@@ -282,8 +285,9 @@ Use consistent structure for partial failures:
 if not user_id or not isinstance(user_id, str):
     raise ValueError("user_id must be a non-empty string")
 
-# ✅ Or use @param validation
-@param("user_id", type="string", required=True, validation={"min_length": 1})
+# ✅ Use type hints to enforce types
+async def process(user_id: str) -> dict:  # Required string parameter
+    ...
 ```
 
 ### External API Calls

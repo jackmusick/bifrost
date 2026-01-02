@@ -57,8 +57,8 @@ export function ExecutionInlineDisplay({
 	const [showLogs, setShowLogs] = useState(true);
 
 	// Get streaming state from store
-	const streamState = useExecutionStreamStore((state) =>
-		state.streams[executionId]
+	const streamState = useExecutionStreamStore(
+		(state) => state.streams[executionId],
 	);
 	const streamingLogs = streamState?.streamingLogs ?? [];
 	const streamStatus = streamState?.status;
@@ -67,7 +67,7 @@ export function ExecutionInlineDisplay({
 	// Fetch full execution data when complete (for result)
 	const { data: execution } = useExecution(
 		isStreamComplete ? executionId : undefined,
-		false
+		false,
 	);
 
 	// Determine effective status
@@ -112,7 +112,12 @@ export function ExecutionInlineDisplay({
 	// Auto-scroll logs
 	useEffect(() => {
 		const container = logsContainerRef.current;
-		if (autoScroll && logsEndRef.current && streamingLogs.length > 0 && container) {
+		if (
+			autoScroll &&
+			logsEndRef.current &&
+			streamingLogs.length > 0 &&
+			container
+		) {
 			if (container.scrollHeight > container.clientHeight) {
 				logsEndRef.current.scrollIntoView({ behavior: "smooth" });
 			}
@@ -124,7 +129,10 @@ export function ExecutionInlineDisplay({
 		const container = logsContainerRef.current;
 		if (!container) return;
 		const isAtBottom =
-			container.scrollHeight - container.scrollTop - container.clientHeight < 50;
+			container.scrollHeight -
+				container.scrollTop -
+				container.clientHeight <
+			50;
 		setAutoScroll(isAtBottom);
 	}, []);
 
@@ -160,14 +168,20 @@ export function ExecutionInlineDisplay({
 				);
 			case "Cancelling":
 				return (
-					<Badge variant="secondary" className="bg-orange-500 text-white">
+					<Badge
+						variant="secondary"
+						className="bg-orange-500 text-white"
+					>
 						<Loader2 className="mr-1 h-3 w-3 animate-spin" />
 						Cancelling
 					</Badge>
 				);
 			case "Cancelled":
 				return (
-					<Badge variant="outline" className="border-gray-500 text-gray-600">
+					<Badge
+						variant="outline"
+						className="border-gray-500 text-gray-600"
+					>
 						<XCircle className="mr-1 h-3 w-3" />
 						Cancelled
 					</Badge>
@@ -229,7 +243,12 @@ export function ExecutionInlineDisplay({
 								{execution.result_type === "json" &&
 									typeof execution.result === "object" && (
 										<PrettyInputDisplay
-											inputData={execution.result as Record<string, unknown>}
+											inputData={
+												execution.result as Record<
+													string,
+													unknown
+												>
+											}
 											showToggle={true}
 											defaultView="pretty"
 										/>
@@ -251,7 +270,12 @@ export function ExecutionInlineDisplay({
 									typeof execution.result === "object" &&
 									execution.result !== null && (
 										<PrettyInputDisplay
-											inputData={execution.result as Record<string, unknown>}
+											inputData={
+												execution.result as Record<
+													string,
+													unknown
+												>
+											}
 											showToggle={true}
 											defaultView="pretty"
 										/>
@@ -300,20 +324,30 @@ export function ExecutionInlineDisplay({
 						>
 							{streamingLogs.length === 0 ? (
 								<div className="text-center text-sm text-muted-foreground py-4">
-									{isComplete ? "No logs captured" : "Waiting for logs..."}
+									{isComplete
+										? "No logs captured"
+										: "Waiting for logs..."}
 								</div>
 							) : (
 								<div className="p-2 space-y-1">
 									{streamingLogs.map((log, index) => {
-										const level = log.level?.toLowerCase() || "info";
-										const levelColor = {
-											debug: "text-gray-500",
-											info: "text-blue-600",
-											warning: "text-yellow-600",
-											error: "text-red-600",
-											traceback: "text-orange-600",
-										}[level as "debug" | "info" | "warning" | "error" | "traceback"] ||
-											"text-gray-600";
+										const level =
+											log.level?.toLowerCase() || "info";
+										const levelColor =
+											{
+												debug: "text-gray-500",
+												info: "text-blue-600",
+												warning: "text-yellow-600",
+												error: "text-red-600",
+												traceback: "text-orange-600",
+											}[
+												level as
+													| "debug"
+													| "info"
+													| "warning"
+													| "error"
+													| "traceback"
+											] || "text-gray-600";
 
 										return (
 											<div
@@ -322,7 +356,9 @@ export function ExecutionInlineDisplay({
 											>
 												<span className="text-muted-foreground whitespace-nowrap">
 													{log.timestamp
-														? new Date(log.timestamp).toLocaleTimeString()
+														? new Date(
+																log.timestamp,
+															).toLocaleTimeString()
 														: ""}
 												</span>
 												<span

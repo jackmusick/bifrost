@@ -35,7 +35,14 @@ export type ComponentType =
 /**
  * Width options for components
  */
-export type ComponentWidth = "auto" | "full" | "1/2" | "1/3" | "1/4" | "2/3" | "3/4";
+export type ComponentWidth =
+	| "auto"
+	| "full"
+	| "1/2"
+	| "1/3"
+	| "1/4"
+	| "2/3"
+	| "3/4";
 
 /**
  * Button action types
@@ -130,6 +137,10 @@ export interface ExpressionContext {
 	field?: Record<string, unknown>;
 	/** Last workflow execution result (accessed via {{ workflow.result.* }}) */
 	workflow?: WorkflowResult;
+	/** Current row context for table row click handlers (accessed via {{ row.* }}) */
+	row?: Record<string, unknown>;
+	/** Route parameters from URL (accessed via {{ params.id }}) */
+	params?: Record<string, string>;
 	/** Whether any data source is currently loading */
 	isDataLoading?: boolean;
 	/** Navigation function for button actions */
@@ -141,15 +152,23 @@ export interface ExpressionContext {
 		onComplete?: OnCompleteAction[],
 	) => void;
 	/** Submit form to workflow - collects all field values and triggers workflow */
-	submitForm?: (workflowId: string, additionalParams?: Record<string, unknown>) => void;
+	submitForm?: (
+		workflowId: string,
+		additionalParams?: Record<string, unknown>,
+	) => void;
 	/** Custom action handler */
-	onCustomAction?: (actionId: string, params?: Record<string, unknown>) => void;
+	onCustomAction?: (
+		actionId: string,
+		params?: Record<string, unknown>,
+	) => void;
 	/** Set field value function (used by input components) */
 	setFieldValue?: (fieldId: string, value: unknown) => void;
 	/** Refresh a data table by its data source key */
 	refreshTable?: (dataSourceKey: string) => void;
 	/** Set a page variable */
 	setVariable?: (key: string, value: unknown) => void;
+	/** Currently executing workflow IDs/names for loading states */
+	activeWorkflows?: Set<string>;
 }
 
 /**
@@ -292,7 +311,13 @@ export interface ButtonComponentProps extends BaseComponentProps {
 		/** Action(s) to execute after workflow completes */
 		onComplete?: OnCompleteAction[];
 		/** Button variant */
-		variant?: "default" | "destructive" | "outline" | "secondary" | "ghost" | "link";
+		variant?:
+			| "default"
+			| "destructive"
+			| "outline"
+			| "secondary"
+			| "ghost"
+			| "link";
 		/** Button size */
 		size?: "default" | "sm" | "lg";
 		/** Disabled state (boolean or expression like "{{ row.status == 'completed' }}") */
@@ -590,8 +615,8 @@ export interface SelectComponentProps extends BaseComponentProps {
 		required?: boolean;
 		/** Disabled state (boolean or expression) */
 		disabled?: boolean | string;
-		/** Static options */
-		options?: SelectOption[];
+		/** Static options or expression string like "{{ data.options }}" */
+		options?: SelectOption[] | string;
 		/** Data source name for dynamic options */
 		optionsSource?: string;
 		/** Field in data source for option value */
@@ -671,7 +696,13 @@ export interface ModalComponentProps extends BaseComponentProps {
 		/** Trigger button label */
 		triggerLabel: string;
 		/** Trigger button variant */
-		triggerVariant?: "default" | "destructive" | "outline" | "secondary" | "ghost" | "link";
+		triggerVariant?:
+			| "default"
+			| "destructive"
+			| "outline"
+			| "secondary"
+			| "ghost"
+			| "link";
 		/** Trigger button size */
 		triggerSize?: "default" | "sm" | "lg";
 		/** Modal size */
@@ -681,7 +712,12 @@ export interface ModalComponentProps extends BaseComponentProps {
 		/** Footer actions (optional) */
 		footerActions?: {
 			label: string;
-			variant?: "default" | "destructive" | "outline" | "secondary" | "ghost";
+			variant?:
+				| "default"
+				| "destructive"
+				| "outline"
+				| "secondary"
+				| "ghost";
 			actionType: ButtonActionType;
 			navigateTo?: string;
 			workflowId?: string;
@@ -819,6 +855,11 @@ export interface PageDefinition {
 	launchWorkflowId?: string;
 	/** Parameters to pass to the launch workflow */
 	launchWorkflowParams?: Record<string, unknown>;
+	/** Alternative nested format for launch workflow configuration */
+	launchWorkflow?: {
+		workflowId: string;
+		params?: Record<string, unknown>;
+	};
 	/** Page-level permission configuration */
 	permission?: PagePermission;
 }

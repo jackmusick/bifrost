@@ -29,7 +29,10 @@ export function getIcon(
 		.map((part) => part.charAt(0).toUpperCase() + part.slice(1))
 		.join("");
 
-	const icons = LucideIcons as unknown as Record<string, LucideIcons.LucideIcon>;
+	const icons = LucideIcons as unknown as Record<
+		string,
+		LucideIcons.LucideIcon
+	>;
 	const IconComponent = icons[pascalName];
 	return IconComponent || fallback;
 }

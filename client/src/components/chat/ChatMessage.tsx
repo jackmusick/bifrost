@@ -102,9 +102,15 @@ export function ChatMessage({
 							rehypePlugins={[rehypeRaw]}
 							components={{
 								code({ className, children }) {
-									const match = /language-(\w+)/.exec(className || "");
-									const content = String(children).replace(/\n$/, "");
-									const isCodeBlock = content.includes("\n") || className;
+									const match = /language-(\w+)/.exec(
+										className || "",
+									);
+									const content = String(children).replace(
+										/\n$/,
+										"",
+									);
+									const isCodeBlock =
+										content.includes("\n") || className;
 
 									if (isCodeBlock) {
 										return (
@@ -127,7 +133,9 @@ export function ChatMessage({
 									);
 								},
 								p: ({ children }) => (
-									<p className="my-1 leading-relaxed">{children}</p>
+									<p className="my-1 leading-relaxed">
+										{children}
+									</p>
 								),
 								// Links in user messages
 								a: ({ href, children }) => (
@@ -142,7 +150,12 @@ export function ChatMessage({
 								),
 								// Handle @mention spans
 								span: ({ node, ...props }) => {
-									const mention = (node?.properties as Record<string, unknown>)?.dataMention as string | undefined;
+									const mention = (
+										node?.properties as Record<
+											string,
+											unknown
+										>
+									)?.dataMention as string | undefined;
 									if (mention) {
 										return <MentionBadge name={mention} />;
 									}
@@ -286,21 +299,23 @@ export function ChatMessage({
 				</div>
 
 				{/* Tool Calls - inline badges (hidden when cards are rendered separately) */}
-				{!hideToolBadges && message.tool_calls && message.tool_calls.length > 0 && (
-					<div className="mt-3 flex flex-wrap gap-2">
-						{message.tool_calls.map((tc) => (
-							<Badge
-								key={tc.id}
-								variant="secondary"
-								className="cursor-pointer hover:bg-secondary/80 transition-colors"
-								onClick={() => onToolCallClick?.(tc)}
-							>
-								<Wrench className="h-3 w-3 mr-1" />
-								{tc.name}
-							</Badge>
-						))}
-					</div>
-				)}
+				{!hideToolBadges &&
+					message.tool_calls &&
+					message.tool_calls.length > 0 && (
+						<div className="mt-3 flex flex-wrap gap-2">
+							{message.tool_calls.map((tc) => (
+								<Badge
+									key={tc.id}
+									variant="secondary"
+									className="cursor-pointer hover:bg-secondary/80 transition-colors"
+									onClick={() => onToolCallClick?.(tc)}
+								>
+									<Wrench className="h-3 w-3 mr-1" />
+									{tc.name}
+								</Badge>
+							))}
+						</div>
+					)}
 
 				{/* Token Usage - shown on hover */}
 				{(message.token_count_input || message.token_count_output) && (

@@ -7,7 +7,10 @@
 
 import DOMPurify from "dompurify";
 import { cn } from "@/lib/utils";
-import type { HtmlComponentProps, ExpressionContext } from "@/lib/app-builder-types";
+import type {
+	HtmlComponentProps,
+	ExpressionContext,
+} from "@/lib/app-builder-types";
 import type { RegisteredComponentProps } from "../ComponentRegistry";
 import { JsxTemplateRenderer } from "@/components/ui/jsx-template-renderer";
 
@@ -66,7 +69,10 @@ function adaptContext(context: ExpressionContext): {
  *   }
  * }
  */
-export function HtmlComponent({ component, context }: RegisteredComponentProps) {
+export function HtmlComponent({
+	component,
+	context,
+}: RegisteredComponentProps) {
 	const { props } = component as HtmlComponentProps;
 	const content = props.content || "";
 

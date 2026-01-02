@@ -77,11 +77,16 @@ class Document(Base):
 
     Documents store arbitrary JSONB data. The data field is indexed
     with a GIN index for efficient querying.
+
+    The id field is a user-provided string key (like email, employee_id)
+    or an auto-generated UUID string if not provided.
     """
 
     __tablename__ = "documents"
 
-    id: Mapped[UUID] = mapped_column(primary_key=True, default=uuid4)
+    id: Mapped[str] = mapped_column(
+        String(255), primary_key=True, default=lambda: str(uuid4())
+    )
     table_id: Mapped[UUID] = mapped_column(
         ForeignKey("tables.id", ondelete="CASCADE"), nullable=False
     )
@@ -103,5 +108,6 @@ class Document(Base):
 
     __table_args__ = (
         Index("ix_documents_table_id", "table_id"),
+        # Unique constraint on (table_id, id) handled in migration
         # GIN index on data handled in migration
     )

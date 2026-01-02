@@ -72,6 +72,10 @@ interface AppContextProviderProps {
 	workflowResult?: WorkflowResult;
 	/** Custom navigate function (defaults to react-router navigate) */
 	customNavigate?: (path: string) => void;
+	/** Route parameters from URL (e.g., { id: "123" } for /tickets/:id) */
+	routeParams?: Record<string, string>;
+	/** Currently executing workflow IDs/names for loading states */
+	activeWorkflows?: Set<string>;
 }
 
 /**
@@ -97,6 +101,8 @@ export function AppContextProvider({
 	onRefreshTable,
 	workflowResult: externalWorkflowResult,
 	customNavigate,
+	routeParams = {},
+	activeWorkflows,
 }: AppContextProviderProps) {
 	const navigate = useNavigate();
 	const { user: authUser } = useAuth();
@@ -104,11 +110,10 @@ export function AppContextProvider({
 	// State for variables, data, and field values
 	const [variables, setVariablesState] =
 		useState<Record<string, unknown>>(initialVariables);
-	const [data, setDataState] =
-		useState<Record<string, unknown>>(initialData);
-	const [fieldValues, setFieldValuesState] = useState<Record<string, unknown>>(
-		{},
-	);
+	const [data, setDataState] = useState<Record<string, unknown>>(initialData);
+	const [fieldValues, setFieldValuesState] = useState<
+		Record<string, unknown>
+	>({});
 
 	// Sync initialData prop changes to internal data state
 	// This is needed because useState only uses initialData on first mount
@@ -156,7 +161,11 @@ export function AppContextProvider({
 
 	// Workflow trigger handler
 	const handleTriggerWorkflow = useCallback(
-		(workflowId: string, params?: Record<string, unknown>, onComplete?: OnCompleteAction[]) => {
+		(
+			workflowId: string,
+			params?: Record<string, unknown>,
+			onComplete?: OnCompleteAction[],
+		) => {
 			if (onTriggerWorkflow) {
 				onTriggerWorkflow(workflowId, params, onComplete);
 			} else {
@@ -175,7 +184,9 @@ export function AppContextProvider({
 			if (handler) {
 				handler(params);
 			} else {
-				console.warn(`No handler registered for custom action: ${actionId}`);
+				console.warn(
+					`No handler registered for custom action: ${actionId}`,
+				);
 			}
 		},
 		[customActions],
@@ -252,6 +263,7 @@ export function AppContextProvider({
 			data,
 			field: fieldValues,
 			workflow: workflowResult,
+			params: routeParams,
 			isDataLoading,
 			navigate: handleNavigate,
 			triggerWorkflow: handleTriggerWorkflow,
@@ -260,6 +272,7 @@ export function AppContextProvider({
 			setFieldValue,
 			refreshTable: handleRefreshTable,
 			setVariable: handleSetVariable,
+			activeWorkflows,
 		}),
 		[
 			expressionUser,
@@ -267,6 +280,7 @@ export function AppContextProvider({
 			data,
 			fieldValues,
 			workflowResult,
+			routeParams,
 			isDataLoading,
 			handleNavigate,
 			handleTriggerWorkflow,
@@ -275,6 +289,7 @@ export function AppContextProvider({
 			setFieldValue,
 			handleRefreshTable,
 			handleSetVariable,
+			activeWorkflows,
 		],
 	);
 
@@ -294,7 +309,10 @@ export function AppContextProvider({
 
 	// Register custom action handler
 	const registerCustomAction = useCallback(
-		(actionId: string, handler: (params?: Record<string, unknown>) => void) => {
+		(
+			actionId: string,
+			handler: (params?: Record<string, unknown>) => void,
+		) => {
 			setCustomActions((prev) => {
 				const next = new Map(prev);
 				next.set(actionId, handler);
@@ -352,7 +370,9 @@ export function AppContextProvider({
 export function useAppContext(): AppContextValue {
 	const context = useContext(AppContext);
 	if (!context) {
-		throw new Error("useAppContext must be used within an AppContextProvider");
+		throw new Error(
+			"useAppContext must be used within an AppContextProvider",
+		);
 	}
 	return context;
 }

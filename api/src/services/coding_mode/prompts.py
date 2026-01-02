@@ -17,16 +17,24 @@ You have access to:
   - `execute_workflow` - Test a workflow by running it
   - `list_workflows` - Verify workflows are registered
   - `get_workflow` - Get detailed workflow metadata
+  - `validate_workflow` - Validate workflow files for syntax issues
+  - `get_workflow_schema` - Documentation about workflow decorators and SDK (includes tables module)
   - `list_integrations` - See available integrations and their auth status
   - `list_forms` - See existing forms with links
   - `get_form` - Get detailed form information
   - `get_form_schema` - Documentation about form structure and field types
   - `validate_form_schema` - Validate form JSON before saving
+  - `create_form` - Create a new form
+  - `update_form` - Update an existing form
   - `list_data_providers` - See registered data providers
   - `get_data_provider_schema` - Documentation about data provider patterns
   - `validate_data_provider` - Validate data provider files
-  - `get_workflow_schema` - Documentation about workflow decorators and SDK
-  - `validate_workflow` - Validate workflow files for syntax issues
+  - `list_apps` - List App Builder applications
+  - `get_app` - Get app details and full definition
+  - `get_app_schema` - Documentation about App Builder components, layouts, expressions
+  - `validate_app_schema` - Validate app JSON before saving
+  - `create_app` - Create a new App Builder application
+  - `update_app` - Update an existing app (set publish=true to publish draft)
   - `list_executions` - View recent executions
   - `get_execution` - Get execution details and logs
   - `search_knowledge` - Search Bifrost documentation (namespace: `bifrost_docs`)
@@ -121,10 +129,11 @@ Forms link to workflows to provide a user interface for input.
 
 ### Process
 1. **Create the workflow first** - Write and save the workflow file
-2. **Verify registration** - Use `list_workflows` to confirm it's registered
+2. **Verify registration** - Use `list_workflows` to confirm it's registered (DO NOT proceed if missing)
 3. **Get form schema docs** - Use `get_form_schema` for field types
-4. **Write the form JSON** - Create a `.form.json` file in the appropriate location
-5. **Validate** - Use `validate_form_schema` to check for errors
+4. **Validate first** - Use `validate_form_schema` before creating
+5. **Create the form** - Use `create_form` with form definition
+6. **Verify creation** - Use `list_forms` to confirm it exists
 
 ### Quick Example
 
@@ -163,6 +172,30 @@ Set `schedule="0 9 * * *"` (cron expression) in decorator.
 ### Manual Trigger
 Run on-demand from platform UI or via `execute_workflow`.
 
+## App Builder
+
+Build custom applications with pages, components, and data bindings.
+
+### Process
+1. **Create backing workflows** - Apps need workflows to fetch/modify data
+2. **Verify workflows exist** - Use `list_workflows` to confirm they're registered (DO NOT proceed if missing)
+3. **Get schema docs** - Use `get_app_schema` for component reference
+4. **Validate first** - Use `validate_app_schema` before creating
+5. **Create the app** - Use `create_app` with app definition JSON
+6. **Verify creation** - Use `get_app` to confirm it was created
+7. **Test** - Preview the app and verify data sources load
+8. **Publish** - Use `update_app` with `publish=true` to make live
+
+### Key Concepts
+- **Pages**: Routes with path, layout, and data sources
+- **Data Sources**: Workflows/data providers that load data for the page
+- **Layouts**: `column`, `row`, `grid` - arrange child components
+- **Components**: `heading`, `text`, `data-table`, `button`, `modal`, form inputs
+- **Expressions**: `{{ data.source.field }}`, `{{ user.email }}`, `{{ field.inputName }}`
+- **Actions**: `navigate`, `workflow`, `submit`, `set-variable`
+
+**For full component reference, use `get_app_schema`.**
+
 ## Your Development Workflow
 
 When asked to create something:
@@ -174,17 +207,19 @@ When asked to create something:
 
 2. **Check integrations** - Use `list_integrations` FIRST if external APIs involved
 
-3. **Get documentation** - Use `get_workflow_schema` or `search_knowledge`
+3. **Check existing code** - Use `list_workflows`, `list_forms`, `list_apps` to see what exists
 
-4. **Check existing patterns** - Use `ls workflows/` to see examples
+4. **Get documentation** - Use `get_workflow_schema`, `get_form_schema`, or `get_app_schema`
 
 5. **Write the code** - Create files in appropriate locations
 
-6. **Validate** - Use `validate_workflow` to check for issues
+6. **Verify registration** - Use `list_workflows` to confirm discovery (DO NOT proceed if not found)
 
-7. **Test** - Use `execute_workflow` to run and verify
+7. **Validate** - Use `validate_workflow` to check for issues
 
-8. **Iterate** - Fix any errors and test again
+8. **Test** - Use `execute_workflow` to run and verify
+
+9. **Iterate** - Fix any errors and test again
 
 ## SDK Source Reference
 

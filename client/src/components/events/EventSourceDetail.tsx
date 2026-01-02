@@ -74,7 +74,10 @@ function getSourceTypeLabel(type: EventSourceType) {
 	}
 }
 
-export function EventSourceDetail({ sourceId, onClose }: EventSourceDetailProps) {
+export function EventSourceDetail({
+	sourceId,
+	onClose,
+}: EventSourceDetailProps) {
 	const { isPlatformAdmin } = useAuth();
 	const { eventId } = useParams<{ eventId?: string }>();
 	const queryClient = useQueryClient();
@@ -93,7 +96,11 @@ export function EventSourceDetail({ sourceId, onClose }: EventSourceDetailProps)
 				params: { path: { source_id: sourceId } },
 				body: { is_active: !source.is_active },
 			});
-			toast.success(source.is_active ? "Event source deactivated" : "Event source activated");
+			toast.success(
+				source.is_active
+					? "Event source deactivated"
+					: "Event source activated",
+			);
 		} catch {
 			toast.error("Failed to update event source");
 		}
@@ -159,7 +166,9 @@ export function EventSourceDetail({ sourceId, onClose }: EventSourceDetailProps)
 		return (
 			<div className="flex flex-col items-center justify-center py-12">
 				<AlertTriangle className="h-12 w-12 text-muted-foreground mb-4" />
-				<h3 className="text-lg font-semibold mb-2">Event Source Not Found</h3>
+				<h3 className="text-lg font-semibold mb-2">
+					Event Source Not Found
+				</h3>
 				<p className="text-muted-foreground mb-4">
 					The event source may have been deleted.
 				</p>
@@ -183,9 +192,13 @@ export function EventSourceDetail({ sourceId, onClose }: EventSourceDetailProps)
 						{getSourceTypeIcon(source.source_type)}
 					</div>
 					<div>
-						<h1 className="text-2xl font-bold tracking-tight">{source.name}</h1>
+						<h1 className="text-2xl font-bold tracking-tight">
+							{source.name}
+						</h1>
 						<div className="flex items-center gap-2 text-sm text-muted-foreground">
-							<span>{getSourceTypeLabel(source.source_type)}</span>
+							<span>
+								{getSourceTypeLabel(source.source_type)}
+							</span>
 							<span>·</span>
 							{source.organization_id ? (
 								<span className="flex items-center gap-1">
@@ -212,7 +225,9 @@ export function EventSourceDetail({ sourceId, onClose }: EventSourceDetailProps)
 										disabled={updateMutation.isPending}
 									/>
 									<span className="text-sm text-muted-foreground">
-										{source.is_active ? "Active" : "Inactive"}
+										{source.is_active
+											? "Active"
+											: "Inactive"}
 									</span>
 								</div>
 							</TooltipTrigger>
@@ -257,13 +272,17 @@ export function EventSourceDetail({ sourceId, onClose }: EventSourceDetailProps)
 			{/* Metadata badges row */}
 			<div className="flex items-center gap-2 flex-wrap">
 				{source.webhook?.adapter_name && (
-					<Badge variant="outline">{source.webhook.adapter_name}</Badge>
+					<Badge variant="outline">
+						{source.webhook.adapter_name}
+					</Badge>
 				)}
 				<Badge variant="outline">
-					{source.subscription_count || 0} subscription{(source.subscription_count || 0) !== 1 ? "s" : ""}
+					{source.subscription_count || 0} subscription
+					{(source.subscription_count || 0) !== 1 ? "s" : ""}
 				</Badge>
 				<Badge variant="outline">
-					{source.event_count_24h || 0} event{(source.event_count_24h || 0) !== 1 ? "s" : ""} (24h)
+					{source.event_count_24h || 0} event
+					{(source.event_count_24h || 0) !== 1 ? "s" : ""} (24h)
 				</Badge>
 				{webhookUrl && (
 					<Tooltip>
@@ -278,12 +297,16 @@ export function EventSourceDetail({ sourceId, onClose }: EventSourceDetailProps)
 								) : (
 									<Copy className="h-3 w-3 mr-1 flex-shrink-0" />
 								)}
-								<span className="truncate font-mono text-xs">{webhookUrl}</span>
+								<span className="truncate font-mono text-xs">
+									{webhookUrl}
+								</span>
 							</Badge>
 						</TooltipTrigger>
 						<TooltipContent side="bottom" className="max-w-lg">
 							<p className="text-xs mb-1">Click to copy</p>
-							<code className="text-xs break-all">{webhookUrl}</code>
+							<code className="text-xs break-all">
+								{webhookUrl}
+							</code>
 						</TooltipContent>
 					</Tooltip>
 				)}
@@ -293,14 +316,21 @@ export function EventSourceDetail({ sourceId, onClose }: EventSourceDetailProps)
 			{source.error_message && (
 				<div className="flex items-start gap-2 p-3 bg-destructive/10 rounded-lg">
 					<AlertTriangle className="h-4 w-4 text-destructive mt-0.5" />
-					<p className="text-sm text-destructive">{source.error_message}</p>
+					<p className="text-sm text-destructive">
+						{source.error_message}
+					</p>
 				</div>
 			)}
 
 			{/* Tabs section - takes remaining space */}
-			<Tabs defaultValue="events" className="flex-1 flex flex-col min-h-0">
+			<Tabs
+				defaultValue="events"
+				className="flex-1 flex flex-col min-h-0"
+			>
 				<TabsList className="w-fit">
-					<TabsTrigger value="subscriptions">Subscriptions</TabsTrigger>
+					<TabsTrigger value="subscriptions">
+						Subscriptions
+					</TabsTrigger>
 					<TabsTrigger value="events">Events</TabsTrigger>
 				</TabsList>
 
@@ -308,7 +338,10 @@ export function EventSourceDetail({ sourceId, onClose }: EventSourceDetailProps)
 					<SubscriptionsTable sourceId={sourceId} />
 				</TabsContent>
 
-				<TabsContent value="events" className="mt-4 flex-1 flex flex-col min-h-0">
+				<TabsContent
+					value="events"
+					className="mt-4 flex-1 flex flex-col min-h-0"
+				>
 					<EventsTable sourceId={sourceId} initialEventId={eventId} />
 				</TabsContent>
 			</Tabs>
@@ -321,14 +354,17 @@ export function EventSourceDetail({ sourceId, onClose }: EventSourceDetailProps)
 			/>
 
 			{/* Delete Confirmation Dialog */}
-			<AlertDialog open={deleteDialogOpen} onOpenChange={setDeleteDialogOpen}>
+			<AlertDialog
+				open={deleteDialogOpen}
+				onOpenChange={setDeleteDialogOpen}
+			>
 				<AlertDialogContent>
 					<AlertDialogHeader>
 						<AlertDialogTitle>Delete Event Source</AlertDialogTitle>
 						<AlertDialogDescription>
-							Are you sure you want to delete "{source.name}"? This will also
-							delete all subscriptions and event history. This action cannot be
-							undone.
+							Are you sure you want to delete "{source.name}"?
+							This will also delete all subscriptions and event
+							history. This action cannot be undone.
 						</AlertDialogDescription>
 					</AlertDialogHeader>
 					<AlertDialogFooter>

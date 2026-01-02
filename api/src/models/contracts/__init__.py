@@ -406,6 +406,7 @@ from src.models.contracts.decorators import (
 
 # Maintenance
 from src.models.contracts.maintenance import (
+    DocsIndexResponse,
     MaintenanceStatus,
     ReindexProgress,
     ReindexRequest,
@@ -757,6 +758,7 @@ __all__ = [
     "UpdatePropertiesRequest",
     "UpdatePropertiesResponse",
     # Maintenance
+    "DocsIndexResponse",
     "MaintenanceStatus",
     "ReindexRequest",
     "ReindexProgress",

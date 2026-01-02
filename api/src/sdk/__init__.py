@@ -20,11 +20,10 @@ Usage:
         return [{"value": "user1", "label": "User 1"}]
 """
 
-from src.sdk.decorators import data_provider, param, tool, workflow
+from src.sdk.decorators import data_provider, tool, workflow
 
 __all__ = [
     "workflow",
     "tool",
     "data_provider",
-    "param",  # Deprecated but kept for backward compatibility
 ]

@@ -75,6 +75,10 @@ interface AppRendererProps {
 	workflowResult?: WorkflowResult;
 	/** Custom navigate function (for relative path handling) */
 	navigate?: (path: string) => void;
+	/** Route parameters from URL (e.g., { id: "123" } for /tickets/:id) */
+	routeParams?: Record<string, string>;
+	/** Currently executing workflow IDs/names for loading states */
+	activeWorkflows?: Set<string>;
 }
 
 /**
@@ -106,6 +110,8 @@ export function AppRenderer({
 	onRefreshTable,
 	workflowResult,
 	navigate: customNavigate,
+	routeParams = {},
+	activeWorkflows,
 }: AppRendererProps) {
 	const { user: authUser } = useAuth();
 
@@ -151,20 +157,29 @@ export function AppRenderer({
 	}, [definition, isApplication, page]);
 
 	// Build base context for page data loading
-	const baseContext = useMemo(() => ({
-		user: authUser ? {
-			id: authUser.id,
-			name: authUser.name,
-			email: authUser.email,
-			role: authUser.roles[0] || "user",
-		} : undefined,
-		variables: initialVariables,
-	}), [authUser, initialVariables]);
+	const baseContext = useMemo(
+		() => ({
+			user: authUser
+				? {
+						id: authUser.id,
+						name: authUser.name,
+						email: authUser.email,
+						role: authUser.roles[0] || "user",
+					}
+				: undefined,
+			variables: initialVariables,
+			params: routeParams,
+		}),
+		[authUser, initialVariables, routeParams],
+	);
 
 	// Dummy executeWorkflow if not provided
 	const dummyExecuteWorkflow = useMemo(() => {
 		if (executeWorkflow) return executeWorkflow;
-		return async (_workflowId: string, _params: Record<string, unknown>) => {
+		return async (
+			_workflowId: string,
+			_params: Record<string, unknown>,
+		) => {
 			console.warn("No executeWorkflow handler provided to AppRenderer");
 			return undefined;
 		};
@@ -214,7 +229,9 @@ export function AppRenderer({
 			<div className="flex items-center justify-center p-8">
 				<div className="flex flex-col items-center gap-3">
 					<Loader2 className="h-6 w-6 animate-spin text-primary" />
-					<p className="text-sm text-muted-foreground">Initializing page...</p>
+					<p className="text-sm text-muted-foreground">
+						Initializing page...
+					</p>
 				</div>
 			</div>
 		);
@@ -229,6 +246,8 @@ export function AppRenderer({
 			onRefreshTable={handleRefreshTable}
 			workflowResult={combinedWorkflowResult}
 			customNavigate={customNavigate}
+			routeParams={routeParams}
+			activeWorkflows={activeWorkflows}
 		>
 			{isDataLoading && (
 				<div className="absolute top-2 right-2 flex items-center gap-2 text-xs text-muted-foreground bg-background/80 px-2 py-1 rounded">

@@ -46,7 +46,10 @@ import type {
 	TableAction,
 } from "@/lib/app-builder-types";
 import type { RegisteredComponentProps } from "../ComponentRegistry";
-import { evaluateExpression, evaluateVisibility } from "@/lib/expression-parser";
+import {
+	evaluateExpression,
+	evaluateVisibility,
+} from "@/lib/expression-parser";
 
 interface SortState {
 	column: string | null;
@@ -62,17 +65,16 @@ function getNestedValue(obj: Record<string, unknown>, path: string): unknown {
 	}, obj as unknown);
 }
 
-function formatCellValue(
-	value: unknown,
-	column: TableColumn,
-): React.ReactNode {
+function formatCellValue(value: unknown, column: TableColumn): React.ReactNode {
 	if (value === null || value === undefined) {
 		return "-";
 	}
 
 	switch (column.type) {
 		case "number":
-			return typeof value === "number" ? value.toLocaleString() : String(value);
+			return typeof value === "number"
+				? value.toLocaleString()
+				: String(value);
 
 		case "date":
 			if (value instanceof Date) {
@@ -218,18 +220,23 @@ export function DataTableComponent({
 		setSortState((prev) => ({
 			column: columnKey,
 			direction:
-				prev.column === columnKey && prev.direction === "asc" ? "desc" : "asc",
+				prev.column === columnKey && prev.direction === "asc"
+					? "desc"
+					: "asc",
 		}));
 	};
 
 	const handleRowClick = (row: Record<string, unknown>, index: number) => {
 		if (!props.onRowClick) return;
 
-		if (props.onRowClick.type === "navigate" && props.onRowClick.navigateTo) {
+		if (
+			props.onRowClick.type === "navigate" &&
+			props.onRowClick.navigateTo
+		) {
 			const path = String(
 				evaluateExpression(props.onRowClick.navigateTo, {
 					...context,
-					variables: { ...context.variables, row },
+					row,
 				}) ?? "",
 			);
 			context.navigate?.(path);
@@ -278,15 +285,22 @@ export function DataTableComponent({
 			// Create a scoped context with row data available for expression evaluation
 			const rowContext: typeof context = {
 				...context,
-				variables: { ...context.variables, row },
+				row,
 			};
 
-			if (action.onClick.type === "navigate" && action.onClick.navigateTo) {
+			if (
+				action.onClick.type === "navigate" &&
+				action.onClick.navigateTo
+			) {
 				const path = String(
-					evaluateExpression(action.onClick.navigateTo, rowContext) ?? "",
+					evaluateExpression(action.onClick.navigateTo, rowContext) ??
+						"",
 				);
 				context.navigate?.(path);
-			} else if (action.onClick.type === "workflow" && action.onClick.workflowId) {
+			} else if (
+				action.onClick.type === "workflow" &&
+				action.onClick.workflowId
+			) {
 				// Evaluate actionParams expressions with row context
 				const actionParams = action.onClick.actionParams ?? {};
 				const evaluatedParams: Record<string, unknown> = { row };
@@ -294,17 +308,29 @@ export function DataTableComponent({
 				// Evaluate each param value if it contains expressions
 				for (const [key, value] of Object.entries(actionParams)) {
 					if (typeof value === "string" && value.includes("{{")) {
-						evaluatedParams[key] = evaluateExpression(value, rowContext);
+						evaluatedParams[key] = evaluateExpression(
+							value,
+							rowContext,
+						);
 					} else {
 						evaluatedParams[key] = value;
 					}
 				}
 
-				context.triggerWorkflow?.(action.onClick.workflowId, evaluatedParams);
-			} else if (action.onClick.type === "set-variable" && action.onClick.variableName) {
+				context.triggerWorkflow?.(
+					action.onClick.workflowId,
+					evaluatedParams,
+				);
+			} else if (
+				action.onClick.type === "set-variable" &&
+				action.onClick.variableName
+			) {
 				// Evaluate variable value with row context
 				const value = action.onClick.variableValue
-					? evaluateExpression(action.onClick.variableValue, rowContext)
+					? evaluateExpression(
+							action.onClick.variableValue,
+							rowContext,
+						)
 					: row;
 				context.setVariable?.(action.onClick.variableName, value);
 			}
@@ -319,15 +345,25 @@ export function DataTableComponent({
 				// Create row context for evaluating expressions in confirmation text
 				const rowContext: typeof context = {
 					...context,
-					variables: { ...context.variables, row },
+					row,
 				};
 
 				// Evaluate any expressions in title/message
 				const title = action.confirm.title.includes("{{")
-					? String(evaluateExpression(action.confirm.title, rowContext) ?? action.confirm.title)
+					? String(
+							evaluateExpression(
+								action.confirm.title,
+								rowContext,
+							) ?? action.confirm.title,
+						)
 					: action.confirm.title;
 				const message = action.confirm.message.includes("{{")
-					? String(evaluateExpression(action.confirm.message, rowContext) ?? action.confirm.message)
+					? String(
+							evaluateExpression(
+								action.confirm.message,
+								rowContext,
+							) ?? action.confirm.message,
+						)
 					: action.confirm.message;
 
 				setConfirmDialog({
@@ -374,7 +410,12 @@ export function DataTableComponent({
 	// Don't show empty message when loading - skeleton will be shown instead
 	if (data.length === 0 && !props.emptyMessage && !isLoading) {
 		return (
-			<div className={cn("text-center py-8 text-muted-foreground", props.className)}>
+			<div
+				className={cn(
+					"text-center py-8 text-muted-foreground",
+					props.className,
+				)}
+			>
 				No data available
 			</div>
 		);
@@ -426,7 +467,8 @@ export function DataTableComponent({
 									<Checkbox
 										checked={
 											paginatedData.length > 0 &&
-											selectedRows.size === paginatedData.length
+											selectedRows.size ===
+												paginatedData.length
 										}
 										onCheckedChange={handleSelectAll}
 									/>
@@ -436,7 +478,8 @@ export function DataTableComponent({
 								<TableHead
 									key={column.key}
 									className={cn(
-										column.sortable && "cursor-pointer select-none",
+										column.sortable &&
+											"cursor-pointer select-none",
 									)}
 									style={{
 										width:
@@ -444,16 +487,22 @@ export function DataTableComponent({
 												? column.width
 												: undefined,
 									}}
-									onClick={() => column.sortable && handleSort(column.key)}
+									onClick={() =>
+										column.sortable &&
+										handleSort(column.key)
+									}
 								>
 									<div className="flex items-center">
 										{column.header}
-										{column.sortable && getSortIcon(column.key)}
+										{column.sortable &&
+											getSortIcon(column.key)}
 									</div>
 								</TableHead>
 							))}
 							{props.rowActions?.length && (
-								<TableHead className="w-24 text-right">Actions</TableHead>
+								<TableHead className="w-24 text-right">
+									Actions
+								</TableHead>
 							)}
 						</TableRow>
 					</TableHeader>
@@ -493,77 +542,131 @@ export function DataTableComponent({
 								</TableCell>
 							</TableRow>
 						) : (
-							paginatedData.map((row: Record<string, unknown>, rowIndex) => (
-								<TableRow
-									key={rowIndex}
-									className={cn(
-										props.onRowClick && "cursor-pointer",
-										selectedRows.has(rowIndex) && "bg-muted/50",
-									)}
-									onClick={() => handleRowClick(row, rowIndex)}
-								>
-									{props.selectable && (
-										<TableCell
-											onClick={(e) => e.stopPropagation()}
-										>
-											<Checkbox
-												checked={selectedRows.has(rowIndex)}
-												onCheckedChange={(checked) =>
-													handleRowSelect(rowIndex, !!checked)
+							paginatedData.map(
+								(row: Record<string, unknown>, rowIndex) => (
+									<TableRow
+										key={rowIndex}
+										className={cn(
+											props.onRowClick &&
+												"cursor-pointer",
+											selectedRows.has(rowIndex) &&
+												"bg-muted/50",
+										)}
+										onClick={() =>
+											handleRowClick(row, rowIndex)
+										}
+									>
+										{props.selectable && (
+											<TableCell
+												onClick={(e) =>
+													e.stopPropagation()
 												}
-											/>
-										</TableCell>
-									)}
-									{props.columns.map((column) => (
-										<TableCell key={column.key}>
-											{formatCellValue(
-												getNestedValue(row, column.key),
-												column,
-											)}
-										</TableCell>
-									))}
-									{props.rowActions?.length && (
-										<TableCell
-											className="text-right"
-											onClick={(e) => e.stopPropagation()}
-										>
-											<div className="flex items-center justify-end gap-1">
-												{props.rowActions.map((action, idx) => {
-													// Create row-scoped context for expression evaluation
-													const actionRowContext = {
-														...context,
-														variables: { ...context.variables, row },
-													};
-													// Check visibility expression
-													if (action.visible && !evaluateVisibility(action.visible, actionRowContext)) {
-														return null;
+											>
+												<Checkbox
+													checked={selectedRows.has(
+														rowIndex,
+													)}
+													onCheckedChange={(
+														checked,
+													) =>
+														handleRowSelect(
+															rowIndex,
+															!!checked,
+														)
 													}
-													// Check disabled expression
-													const isDisabled = action.disabled
-														? Boolean(evaluateExpression(action.disabled, actionRowContext))
-														: false;
-													// Evaluate label with row context
-													const label = action.label.includes("{{")
-														? String(evaluateExpression(action.label, actionRowContext) ?? action.label)
-														: action.label;
+												/>
+											</TableCell>
+										)}
+										{props.columns.map((column) => (
+											<TableCell key={column.key}>
+												{formatCellValue(
+													getNestedValue(
+														row,
+														column.key,
+													),
+													column,
+												)}
+											</TableCell>
+										))}
+										{props.rowActions?.length && (
+											<TableCell
+												className="text-right"
+												onClick={(e) =>
+													e.stopPropagation()
+												}
+											>
+												<div className="flex items-center justify-end gap-1">
+													{props.rowActions.map(
+														(action, idx) => {
+															// Create row-scoped context for expression evaluation
+															const actionRowContext =
+																{
+																	...context,
+																	row,
+																};
+															// Check visibility expression
+															if (
+																action.visible &&
+																!evaluateVisibility(
+																	action.visible,
+																	actionRowContext,
+																)
+															) {
+																return null;
+															}
+															// Check disabled expression
+															const isDisabled =
+																action.disabled
+																	? Boolean(
+																			evaluateExpression(
+																				action.disabled,
+																				actionRowContext,
+																			),
+																		)
+																	: false;
+															// Evaluate label with row context
+															const label =
+																action.label.includes(
+																	"{{",
+																)
+																	? String(
+																			evaluateExpression(
+																				action.label,
+																				actionRowContext,
+																			) ??
+																				action.label,
+																		)
+																	: action.label;
 
-													return (
-														<Button
-															key={idx}
-															variant={action.variant || "ghost"}
-															size="sm"
-															disabled={isDisabled}
-															onClick={() => handleAction(action, row)}
-														>
-															{label}
-														</Button>
-													);
-												})}
-											</div>
-										</TableCell>
-									)}
-								</TableRow>
-							))
+															return (
+																<Button
+																	key={idx}
+																	variant={
+																		action.variant ||
+																		"ghost"
+																	}
+																	size="sm"
+																	disabled={
+																		isDisabled
+																	}
+																	onClick={() =>
+																		handleAction(
+																			action,
+																			row,
+																		)
+																	}
+																>
+																	{label}
+																</Button>
+															);
+														},
+													)}
+												</div>
+											</TableCell>
+										)}
+									</TableRow>
+								),
+							)
 						)}
 					</TableBody>
 				</Table>
@@ -589,7 +692,9 @@ export function DataTableComponent({
 						<Button
 							variant="outline"
 							size="sm"
-							onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
+							onClick={() =>
+								setCurrentPage((p) => Math.max(1, p - 1))
+							}
 							disabled={currentPage === 1}
 						>
 							<ChevronLeft className="h-4 w-4" />
@@ -601,7 +706,9 @@ export function DataTableComponent({
 							variant="outline"
 							size="sm"
 							onClick={() =>
-								setCurrentPage((p) => Math.min(totalPages, p + 1))
+								setCurrentPage((p) =>
+									Math.min(totalPages, p + 1),
+								)
 							}
 							disabled={currentPage === totalPages}
 						>
@@ -620,10 +727,15 @@ export function DataTableComponent({
 			)}
 
 			{/* Confirmation Dialog */}
-			<AlertDialog open={confirmDialog.isOpen} onOpenChange={(open) => !open && handleCancel()}>
+			<AlertDialog
+				open={confirmDialog.isOpen}
+				onOpenChange={(open) => !open && handleCancel()}
+			>
 				<AlertDialogContent>
 					<AlertDialogHeader>
-						<AlertDialogTitle>{confirmDialog.title}</AlertDialogTitle>
+						<AlertDialogTitle>
+							{confirmDialog.title}
+						</AlertDialogTitle>
 						<AlertDialogDescription>
 							{confirmDialog.message}
 						</AlertDialogDescription>

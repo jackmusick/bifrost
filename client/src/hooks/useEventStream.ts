@@ -7,10 +7,7 @@
 
 import { useEffect, useState, useCallback } from "react";
 import { useQueryClient } from "@tanstack/react-query";
-import {
-	webSocketService,
-	type EventSourceUpdate,
-} from "@/services/websocket";
+import { webSocketService, type EventSourceUpdate } from "@/services/websocket";
 
 interface UseEventStreamOptions {
 	enabled?: boolean;
@@ -30,7 +27,10 @@ export function useEventStream(
 
 			// Invalidate events queries to trigger refetch
 			// Using partial key match so it works regardless of filter params
-			if (update.type === "event_created" || update.type === "event_updated") {
+			if (
+				update.type === "event_created" ||
+				update.type === "event_updated"
+			) {
 				// Invalidate events list
 				queryClient.invalidateQueries({
 					queryKey: ["get", "/api/events/sources/{source_id}/events"],
@@ -47,7 +47,8 @@ export function useEventStream(
 				queryClient.invalidateQueries({
 					predicate: (query) =>
 						query.queryKey[0] === "get" &&
-						query.queryKey[1] === "/api/events/{event_id}/deliveries",
+						query.queryKey[1] ===
+							"/api/events/{event_id}/deliveries",
 				});
 			}
 		},

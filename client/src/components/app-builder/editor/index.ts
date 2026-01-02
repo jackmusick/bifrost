@@ -5,7 +5,11 @@
  */
 
 export { EditorShell, type EditorShellProps } from "./EditorShell";
-export { ComponentPalette, type ComponentPaletteProps, type PaletteDragData } from "./ComponentPalette";
+export {
+	ComponentPalette,
+	type ComponentPaletteProps,
+	type PaletteDragData,
+} from "./ComponentPalette";
 export { EditorCanvas, type DragData, type DropTarget } from "./EditorCanvas";
 export { PropertyEditor, type PropertyEditorProps } from "./PropertyEditor";
 export { PageTree, type PageTreeProps } from "./PageTree";

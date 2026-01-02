@@ -1106,7 +1106,13 @@ function FormRendererInner({
 	if (showLoadingState) {
 		return (
 			<div className={devMode ? "flex gap-6" : ""}>
-				<div className={devMode ? "flex-1 flex justify-center" : "flex justify-center"}>
+				<div
+					className={
+						devMode
+							? "flex-1 flex justify-center"
+							: "flex justify-center"
+					}
+				>
 					<Card className="w-full max-w-2xl">
 						<CardContent className="pt-6">
 							<div className="space-y-6">
@@ -1139,14 +1145,22 @@ function FormRendererInner({
 						</CardContent>
 					</Card>
 				</div>
-				{devMode && <FormContextPanel className="w-80 shrink-0 sticky top-4" />}
+				{devMode && (
+					<FormContextPanel className="w-80 shrink-0 sticky top-4" />
+				)}
 			</div>
 		);
 	}
 
 	return (
 		<div className={devMode ? "flex gap-6" : ""}>
-			<div className={devMode ? "flex-1 flex justify-center" : "flex justify-center"}>
+			<div
+				className={
+					devMode
+						? "flex-1 flex justify-center"
+						: "flex justify-center"
+				}
+			>
 				<Card className="w-full max-w-2xl">
 					<CardContent className="pt-6">
 						<form
@@ -1207,7 +1221,9 @@ function FormRendererInner({
 					</CardContent>
 				</Card>
 			</div>
-			{devMode && <FormContextPanel className="w-80 shrink-0 sticky top-4" />}
+			{devMode && (
+				<FormContextPanel className="w-80 shrink-0 sticky top-4" />
+			)}
 		</div>
 	);
 }

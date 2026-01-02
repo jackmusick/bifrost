@@ -59,7 +59,9 @@ export function CodeEditor() {
 	const activeTabIndex = useEditorStore((state) => state.activeTabIndex);
 
 	// Line reveal state (for scrolling to specific line when opening from maintenance page, etc.)
-	const pendingLineReveal = useEditorStore((state) => state.pendingLineReveal);
+	const pendingLineReveal = useEditorStore(
+		(state) => state.pendingLineReveal,
+	);
 	const clearPendingLineReveal = useEditorStore(
 		(state) => state.clearPendingLineReveal,
 	);
@@ -122,7 +124,10 @@ export function CodeEditor() {
 					?.run();
 			}
 
-			const response = await fileService.writeFile(openFile.path, fileContent);
+			const response = await fileService.writeFile(
+				openFile.path,
+				fileContent,
+			);
 
 			// Store diagnostics in tab state - the useEffect watching diagnostics will apply to Monaco
 			setDiagnostics(
@@ -141,7 +146,14 @@ export function CodeEditor() {
 					error instanceof Error ? error.message : String(error),
 			});
 		}
-	}, [openFile, fileContent, unsavedChanges, markSaved, setDiagnostics, activeTabIndex]);
+	}, [
+		openFile,
+		fileContent,
+		unsavedChanges,
+		markSaved,
+		setDiagnostics,
+		activeTabIndex,
+	]);
 
 	// Register global Cmd/Ctrl+S shortcut for saving
 	useCmdCtrlShortcut("editor-save", "s", () => {
@@ -299,18 +311,27 @@ export function CodeEditor() {
 		monaco.editor.setModelMarkers(model, "bifrost", markers);
 
 		// Show toast with summary
-		const errorCount = diagnostics.filter((d) => d.severity === "error").length;
-		const warningCount = diagnostics.filter((d) => d.severity === "warning").length;
+		const errorCount = diagnostics.filter(
+			(d) => d.severity === "error",
+		).length;
+		const warningCount = diagnostics.filter(
+			(d) => d.severity === "warning",
+		).length;
 
 		if (errorCount > 0) {
-			toast.warning(`${errorCount} error${errorCount > 1 ? "s" : ""} found`, {
-				description:
-					warningCount > 0
-						? `Plus ${warningCount} warning${warningCount > 1 ? "s" : ""}`
-						: undefined,
-			});
+			toast.warning(
+				`${errorCount} error${errorCount > 1 ? "s" : ""} found`,
+				{
+					description:
+						warningCount > 0
+							? `Plus ${warningCount} warning${warningCount > 1 ? "s" : ""}`
+							: undefined,
+				},
+			);
 		} else if (warningCount > 0) {
-			toast.info(`${warningCount} warning${warningCount > 1 ? "s" : ""} found`);
+			toast.info(
+				`${warningCount} warning${warningCount > 1 ? "s" : ""} found`,
+			);
 		}
 	}, [diagnostics]);
 
@@ -326,7 +347,12 @@ export function CodeEditor() {
 
 	// Handle pending line reveal (scroll to specific line after file loads)
 	useEffect(() => {
-		if (!editorRef.current || !pendingLineReveal || isLoadingFile || !openFile) {
+		if (
+			!editorRef.current ||
+			!pendingLineReveal ||
+			isLoadingFile ||
+			!openFile
+		) {
 			return;
 		}
 
@@ -569,7 +595,8 @@ export function CodeEditor() {
 					conflicts={pendingWorkflowConflict?.conflicts ?? []}
 					open={pendingWorkflowConflict !== null}
 					onUseExisting={async () => {
-						const response = await resolveWorkflowIdConflict("use_existing");
+						const response =
+							await resolveWorkflowIdConflict("use_existing");
 						if (response && pendingWorkflowConflict) {
 							// Update tab with the new content (IDs injected)
 							if (response.content_modified && response.content) {
@@ -583,7 +610,8 @@ export function CodeEditor() {
 						}
 					}}
 					onGenerateNew={async () => {
-						const response = await resolveWorkflowIdConflict("generate_new");
+						const response =
+							await resolveWorkflowIdConflict("generate_new");
 						if (response && pendingWorkflowConflict) {
 							// Update tab with the new content (new IDs generated)
 							if (response.content_modified && response.content) {

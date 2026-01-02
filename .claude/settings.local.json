@@ -124,7 +124,14 @@
       "mcp__bifrost__get_app",
       "mcp__bifrost__search_files",
       "mcp__bifrost__get_workflow",
-      "Bash(docker compose:*)"
+      "Bash(docker compose:*)",
+      "Bash(tree:*)",
+      "Bash(npx pyright:*)",
+      "mcp__bifrost__list_apps",
+      "mcp__bifrost__list_forms",
+      "mcp__bifrost__get_form_schema",
+      "Bash(npm run tsc:*)",
+      "Bash(find:*)"
     ],
     "deny": [],
     "ask": [],

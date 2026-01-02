@@ -66,51 +66,51 @@ export function AssignUsersDialog({
 					</DialogHeader>
 
 					<div className="max-h-[400px] overflow-y-auto py-4">
-					{isLoading ? (
-						<div className="space-y-2">
-							{[...Array(5)].map((_, i) => (
-								<Skeleton key={i} className="h-16 w-full" />
-							))}
-						</div>
-					) : users && users.length > 0 ? (
-						<div className="space-y-2">
-							{users.map((user: User) => {
-								const selected = isSelected(user.id);
-								return (
-									<button
-										key={user.id}
-										onClick={() => toggle(user.id)}
-										className={`w-full rounded-lg border p-4 text-left transition-colors ${
-											selected
-												? "border-primary bg-primary/5"
-												: "border-border hover:bg-accent"
-										}`}
-									>
-										<div className="flex items-center justify-between">
-											<div>
-												<p className="font-medium">
-													{user.name}
-												</p>
-												<p className="text-sm text-muted-foreground">
-													{user.email}
-												</p>
+						{isLoading ? (
+							<div className="space-y-2">
+								{[...Array(5)].map((_, i) => (
+									<Skeleton key={i} className="h-16 w-full" />
+								))}
+							</div>
+						) : users && users.length > 0 ? (
+							<div className="space-y-2">
+								{users.map((user: User) => {
+									const selected = isSelected(user.id);
+									return (
+										<button
+											key={user.id}
+											onClick={() => toggle(user.id)}
+											className={`w-full rounded-lg border p-4 text-left transition-colors ${
+												selected
+													? "border-primary bg-primary/5"
+													: "border-border hover:bg-accent"
+											}`}
+										>
+											<div className="flex items-center justify-between">
+												<div>
+													<p className="font-medium">
+														{user.name}
+													</p>
+													<p className="text-sm text-muted-foreground">
+														{user.email}
+													</p>
+												</div>
+												{selected && (
+													<Badge>Selected</Badge>
+												)}
 											</div>
-											{selected && (
-												<Badge>Selected</Badge>
-											)}
-										</div>
-									</button>
-								);
-							})}
-						</div>
-					) : (
-						<div className="flex flex-col items-center justify-center py-8 text-center">
-							<UserPlus className="h-12 w-12 text-muted-foreground" />
-							<p className="mt-2 text-sm text-muted-foreground">
-								No organization users available
-							</p>
-						</div>
-					)}
+										</button>
+									);
+								})}
+							</div>
+						) : (
+							<div className="flex flex-col items-center justify-center py-8 text-center">
+								<UserPlus className="h-12 w-12 text-muted-foreground" />
+								<p className="mt-2 text-sm text-muted-foreground">
+									No organization users available
+								</p>
+							</div>
+						)}
 					</div>
 
 					<DialogFooter>

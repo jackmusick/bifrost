@@ -47,10 +47,10 @@ context.field.email && context.field.email.length > 0
   
 
   
-Default values only support static values, not context expressions. Set default values directly in the field configuration:
+    Default values only support static values, not context expressions. Set default values directly in the field configuration:
 
-- Use literal strings, numbers, or booleans
-- For dynamic defaults, use a launch workflow to pre-populate fields
+    - Use literal strings, numbers, or booleans
+    - For dynamic defaults, use a launch workflow to pre-populate fields
   
 
   

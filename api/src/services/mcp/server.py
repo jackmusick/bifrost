@@ -2143,6 +2143,150 @@ Workflows can return:
 """
 
 
+async def _get_sdk_schema_impl(context: MCPContext) -> str:
+    """Get comprehensive SDK documentation auto-generated from source code."""
+    import inspect
+    from importlib import import_module
+
+    lines = [
+        "# Bifrost SDK Reference",
+        "",
+        "All SDK methods are async and must be awaited.",
+        "",
+    ]
+
+    # SDK modules to document
+    sdk_modules = [
+        ("ai", "AI completions with structured output and RAG"),
+        ("config", "Configuration and secrets management"),
+        ("files", "File operations (workspace, temp, uploads)"),
+        ("tables", "Document storage and querying"),
+        ("integrations", "Integration and OAuth management"),
+        ("workflows", "Workflow listing and execution status"),
+        ("executions", "Execution details and history"),
+        ("knowledge", "Vector knowledge base operations"),
+        ("organizations", "Organization management"),
+        ("users", "User management"),
+        ("roles", "Role management"),
+        ("forms", "Form management"),
+    ]
+
+    for module_name, description in sdk_modules:
+        try:
+            mod = import_module(f"bifrost.{module_name}")
+            # Get the class with the same name as the module
+            cls = getattr(mod, module_name, None)
+            if cls is None:
+                continue
+
+            lines.append(f"## {module_name}")
+            lines.append(f"")
+            lines.append(f"{description}")
+            lines.append("")
+            lines.append("```python")
+            lines.append(f"from bifrost import {module_name}")
+            lines.append("```")
+            lines.append("")
+
+            # Get all public static methods
+            for method_name, method in inspect.getmembers(cls):
+                if method_name.startswith("_"):
+                    continue
+                if not callable(method):
+                    continue
+
+                # Get the underlying function from staticmethod
+                if isinstance(inspect.getattr_static(cls, method_name), staticmethod):
+                    func = method
+                else:
+                    continue
+
+                # Get signature and docstring
+                try:
+                    sig = inspect.signature(func)
+                    doc = inspect.getdoc(func) or ""
+
+                    # Format method signature
+                    params = []
+                    for param_name, param in sig.parameters.items():
+                        if param_name in ("self", "cls"):
+                            continue
+                        if param.default is inspect.Parameter.empty:
+                            if param.annotation is not inspect.Parameter.empty:
+                                type_hint = _format_type_hint(param.annotation)
+                                params.append(f"{param_name}: {type_hint}")
+                            else:
+                                params.append(param_name)
+                        else:
+                            if param.annotation is not inspect.Parameter.empty:
+                                type_hint = _format_type_hint(param.annotation)
+                                default_repr = repr(param.default)
+                                params.append(f"{param_name}: {type_hint} = {default_repr}")
+                            else:
+                                params.append(f"{param_name}={repr(param.default)}")
+
+                    # Get return type
+                    return_type = ""
+                    if sig.return_annotation is not inspect.Parameter.empty:
+                        return_type = f" -> {_format_type_hint(sig.return_annotation)}"
+
+                    param_str = ", ".join(params)
+                    lines.append(f"### {module_name}.{method_name}({param_str}){return_type}")
+                    lines.append("")
+
+                    # Extract first paragraph of docstring as summary
+                    if doc:
+                        # Get first paragraph (up to blank line)
+                        first_para = doc.split("\n\n")[0].replace("\n", " ").strip()
+                        lines.append(first_para)
+                        lines.append("")
+
+                        # Extract example if present
+                        if "Example:" in doc:
+                            example_start = doc.find("Example:")
+                            example_section = doc[example_start:]
+                            # Find the code block
+                            if ">>>" in example_section:
+                                lines.append("**Example:**")
+                                lines.append("```python")
+                                for line in example_section.split("\n"):
+                                    if line.strip().startswith(">>>"):
+                                        lines.append(line.strip()[4:])
+                                    elif line.strip().startswith("..."):
+                                        lines.append(line.strip()[4:])
+                                    elif line.strip() and not line.strip().startswith("Example"):
+                                        break
+                                lines.append("```")
+                                lines.append("")
+                except Exception:
+                    continue
+
+        except ImportError:
+            continue
+
+    return "\n".join(lines)
+
+
+def _format_type_hint(annotation: Any) -> str:
+    """Format a type annotation for display."""
+    if annotation is type(None):
+        return "None"
+    if hasattr(annotation, "__origin__"):
+        # Handle generic types like Optional, list, dict
+        origin = annotation.__origin__
+        args = getattr(annotation, "__args__", ())
+        if origin is type(None):
+            return "None"
+        origin_name = getattr(origin, "__name__", str(origin))
+        if args:
+            args_str = ", ".join(_format_type_hint(a) for a in args)
+            return f"{origin_name}[{args_str}]"
+        return origin_name
+    if hasattr(annotation, "__name__"):
+        return annotation.__name__
+    return str(annotation)
+
+
 async def _get_workflow_impl(
     context: MCPContext,
     workflow_id: str | None = None,
@@ -2376,8 +2520,8 @@ from bifrost import data_provider
     description="Returns list of customers",
     cache_ttl_seconds=300,  # Cache for 5 minutes
 )
-async def get_customers():
-    # Return list of options
+async def get_customers() -> list[dict]:
+    '''Return list of customers for dropdown.'''
     return [
         {"label": "Acme Corp", "value": "acme-123"},
         {"label": "TechCo", "value": "tech-456"},
@@ -2386,26 +2530,24 @@ async def get_customers():
 
 ## Decorator Properties
 
-- `name`: Display name for the data provider (required)
-- `description`: Human-readable description of what data it provides
-- `cache_ttl_seconds`: How long to cache results (0 = no caching)
-- `category`: Group related providers
+- `name`: Display name for the data provider (defaults to function name)
+- `description`: Human-readable description (defaults to docstring)
+- `cache_ttl_seconds`: How long to cache results (default: 300, 0 = no caching)
+- `category`: Group related providers (default: "General")
 
 ## With Parameters
 
-Data providers can accept input parameters from form field mappings:
+Parameters are automatically derived from the function signature:
 
 ```python
-from bifrost import data_provider, param
+from bifrost import data_provider
 
-@data_provider(
-    name="Users by Department",
-    description="Returns users filtered by department",
-)
-@param(name="department_id", type="string", required=True)
-@param(name="include_inactive", type="boolean", required=False)
-async def get_users_by_dept(department_id: str, include_inactive: bool = False):
-    # Query users based on department
+@data_provider
+async def get_users_by_dept(
+    department_id: str,
+    include_inactive: bool = False
+) -> list[dict]:
+    '''Get users filtered by department.'''
     users = await fetch_users(department_id, include_inactive)
     return [
         {"label": user.name, "value": str(user.id)}
@@ -2446,11 +2588,13 @@ Reference a data provider in form field definitions:
 
 ## Parameter Types
 
-Valid parameter types for `@param`:
-- `string` - Text input
-- `number` - Numeric value
-- `boolean` - True/false
-- `json` - Complex object (as JSON string)
+Supported parameter types (derived from function signature):
+- `str` - Text input
+- `int` - Integer value
+- `float` - Decimal value
+- `bool` - True/false
+- `dict` - Complex object (as JSON)
+- `Optional[T]` - Optional parameter with None default
 """
 
 
@@ -2857,6 +3001,17 @@ def _create_sdk_tools(context: MCPContext, enabled_tools: set[str] | None) -> li
             result = await _get_workflow_schema_impl(context)
             return {"content": [{"type": "text", "text": result}]}
         tools.append(get_workflow_schema)
+
+    if enabled_tools is None or "get_sdk_schema" in enabled_tools:
+        @sdk_tool(
+            name="get_sdk_schema",
+            description="Get comprehensive SDK documentation for all Bifrost modules (ai, config, files, tables, integrations, etc.) auto-generated from source code.",
+            input_schema={"type": "object", "properties": {}, "required": []},
+        )
+        async def get_sdk_schema(args: dict[str, Any]) -> dict[str, Any]:
+            result = await _get_sdk_schema_impl(context)
+            return {"content": [{"type": "text", "text": result}]}
+        tools.append(get_sdk_schema)
 
     if enabled_tools is None or "get_workflow" in enabled_tools:
         @sdk_tool(
@@ -3699,6 +3854,14 @@ def _register_fastmcp_tools(mcp: "FastMCP", context: MCPContext, enabled_tools: 
         )
         async def get_workflow_schema() -> str:
             return await _get_workflow_schema_impl(_get_context())
+
+    if enabled_tools is None or "get_sdk_schema" in enabled_tools:
+        @mcp.tool(
+            name="get_sdk_schema",
+            description="Get comprehensive SDK documentation for all Bifrost modules (ai, config, files, tables, integrations, etc.) auto-generated from source code.",
+        )
+        async def get_sdk_schema() -> str:
+            return await _get_sdk_schema_impl(_get_context())
 
     if enabled_tools is None or "get_workflow" in enabled_tools:
         @mcp.tool(

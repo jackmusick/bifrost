@@ -63,21 +63,31 @@ function getNestedValue(obj: unknown, path: string): unknown {
  * - {{ data.customers }} - data from data sources
  * - {{ field.customerName }} - form field values
  * - {{ workflow.result.id }} - workflow result
+ * - {{ row.id }} - current row in table row click handlers
+ * - {{ params.id }} - route parameters from URL
  */
-function buildEvaluationContext(context: ExpressionContext): Record<string, unknown> {
+function buildEvaluationContext(
+	context: ExpressionContext,
+): Record<string, unknown> {
 	return {
 		user: context.user,
 		variables: context.variables,
 		data: context.data,
 		field: context.field,
 		workflow: context.workflow,
+		row: context.row,
+		params: context.params,
 	};
 }
 
 /**
  * Parse and evaluate a comparison expression
  */
-function evaluateComparison(left: unknown, operator: string, right: unknown): boolean {
+function evaluateComparison(
+	left: unknown,
+	operator: string,
+	right: unknown,
+): boolean {
 	switch (operator) {
 		case "==":
 		case "===":
@@ -86,13 +96,29 @@ function evaluateComparison(left: unknown, operator: string, right: unknown): bo
 		case "!==":
 			return left !== right;
 		case ">":
-			return typeof left === "number" && typeof right === "number" && left > right;
+			return (
+				typeof left === "number" &&
+				typeof right === "number" &&
+				left > right
+			);
 		case ">=":
-			return typeof left === "number" && typeof right === "number" && left >= right;
+			return (
+				typeof left === "number" &&
+				typeof right === "number" &&
+				left >= right
+			);
 		case "<":
-			return typeof left === "number" && typeof right === "number" && left < right;
+			return (
+				typeof left === "number" &&
+				typeof right === "number" &&
+				left < right
+			);
 		case "<=":
-			return typeof left === "number" && typeof right === "number" && left <= right;
+			return (
+				typeof left === "number" &&
+				typeof right === "number" &&
+				left <= right
+			);
 		default:
 			return false;
 	}
@@ -101,12 +127,17 @@ function evaluateComparison(left: unknown, operator: string, right: unknown): bo
 /**
  * Parse a value from an expression string
  */
-function parseValue(valueStr: string, evalContext: Record<string, unknown>): unknown {
+function parseValue(
+	valueStr: string,
+	evalContext: Record<string, unknown>,
+): unknown {
 	const trimmed = valueStr.trim();
 
 	// String literal (single or double quotes)
-	if ((trimmed.startsWith("'") && trimmed.endsWith("'")) ||
-		(trimmed.startsWith('"') && trimmed.endsWith('"'))) {
+	if (
+		(trimmed.startsWith("'") && trimmed.endsWith("'")) ||
+		(trimmed.startsWith('"') && trimmed.endsWith('"'))
+	) {
 		return trimmed.slice(1, -1);
 	}
 
@@ -141,12 +172,17 @@ function evaluateSimpleExpression(
 
 	// Handle negation
 	if (trimmed.startsWith("!")) {
-		const innerValue = evaluateSimpleExpression(trimmed.slice(1), evalContext);
+		const innerValue = evaluateSimpleExpression(
+			trimmed.slice(1),
+			evalContext,
+		);
 		return !innerValue;
 	}
 
 	// Check for comparison operators
-	const comparisonMatch = trimmed.match(/^(.+?)\s*(===|!==|==|!=|>=|<=|>|<)\s*(.+)$/);
+	const comparisonMatch = trimmed.match(
+		/^(.+?)\s*(===|!==|==|!=|>=|<=|>|<)\s*(.+)$/,
+	);
 	if (comparisonMatch) {
 		const [, leftStr, operator, rightStr] = comparisonMatch;
 		const leftValue = parseValue(leftStr, evalContext);
@@ -214,7 +250,10 @@ function splitByOperator(expression: string, operator: string): string[] {
 		} else if (char === ")") {
 			parenDepth--;
 			current += char;
-		} else if (parenDepth === 0 && expression.slice(i, i + operator.length) === operator) {
+		} else if (
+			parenDepth === 0 &&
+			expression.slice(i, i + operator.length) === operator
+		) {
 			parts.push(current.trim());
 			current = "";
 			i += operator.length - 1;
@@ -351,7 +390,9 @@ export function extractVariablePaths(template: string): string[] {
 	while ((match = regex.exec(template)) !== null) {
 		const expression = match[1];
 		// Extract simple variable references (excluding operators and literals)
-		const varMatches = expression.match(/[a-zA-Z_][a-zA-Z0-9_.[\]]*(?![=('"<>!&|])/g);
+		const varMatches = expression.match(
+			/[a-zA-Z_][a-zA-Z0-9_.[\]]*(?![=('"<>!&|])/g,
+		);
 		if (varMatches) {
 			for (const varMatch of varMatches) {
 				const cleaned = varMatch.trim();

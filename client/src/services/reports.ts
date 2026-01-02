@@ -79,14 +79,22 @@ export interface ROITrends {
  * @param endDate - End date in YYYY-MM-DD format
  * @param scope - Optional scope filter (undefined = all, null = global, string = specific org UUID)
  */
-export function useROISummary(startDate: string, endDate: string, scope?: string | null) {
+export function useROISummary(
+	startDate: string,
+	endDate: string,
+	scope?: string | null,
+) {
 	return $api.useQuery("get", "/api/reports/roi/summary", {
 		params: {
 			query: {
 				start_date: startDate,
 				end_date: endDate,
 				// Pass scope: 'global' for null, org UUID for string, omit for undefined (all)
-				...(scope === null ? { scope: "global" } : typeof scope === "string" ? { scope } : {}),
+				...(scope === null
+					? { scope: "global" }
+					: typeof scope === "string"
+						? { scope }
+						: {}),
 			},
 		},
 	}) as { data: ROISummary | undefined; isLoading: boolean; error: unknown };
@@ -99,13 +107,21 @@ export function useROISummary(startDate: string, endDate: string, scope?: string
  * @param endDate - End date in YYYY-MM-DD format
  * @param scope - Optional scope filter (undefined = all, null = global, string = specific org UUID)
  */
-export function useROIByWorkflow(startDate: string, endDate: string, scope?: string | null) {
+export function useROIByWorkflow(
+	startDate: string,
+	endDate: string,
+	scope?: string | null,
+) {
 	return $api.useQuery("get", "/api/reports/roi/by-workflow", {
 		params: {
 			query: {
 				start_date: startDate,
 				end_date: endDate,
-				...(scope === null ? { scope: "global" } : typeof scope === "string" ? { scope } : {}),
+				...(scope === null
+					? { scope: "global" }
+					: typeof scope === "string"
+						? { scope }
+						: {}),
 			},
 		},
 	}) as {
@@ -154,7 +170,11 @@ export function useROITrends(
 				start_date: startDate,
 				end_date: endDate,
 				granularity,
-				...(scope === null ? { scope: "global" } : typeof scope === "string" ? { scope } : {}),
+				...(scope === null
+					? { scope: "global" }
+					: typeof scope === "string"
+						? { scope }
+						: {}),
 			},
 		},
 	}) as { data: ROITrends | undefined; isLoading: boolean; error: unknown };

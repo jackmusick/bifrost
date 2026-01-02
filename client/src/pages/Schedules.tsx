@@ -354,12 +354,10 @@ async def my_scheduled_workflow(context):
 					</DialogTrigger>
 					<DialogContent className="max-w-2xl">
 						<DialogHeader>
-							<DialogTitle>
-								CRON Expression Tester
-							</DialogTitle>
+							<DialogTitle>CRON Expression Tester</DialogTitle>
 							<DialogDescription>
-								Test and validate CRON expressions before
-								using them in workflows
+								Test and validate CRON expressions before using
+								them in workflows
 							</DialogDescription>
 						</DialogHeader>
 						<CronTester />
@@ -371,8 +369,9 @@ async def my_scheduled_workflow(context):
 			<Alert>
 				<AlertCircle className="h-4 w-4" />
 				<AlertDescription>
-					Schedules are checked every 5 minutes. {filteredSchedules.length} of {scheduleList.length}{" "}
-					workflow{scheduleList.length !== 1 ? "s" : ""} scheduled.
+					Schedules are checked every 5 minutes.{" "}
+					{filteredSchedules.length} of {scheduleList.length} workflow
+					{scheduleList.length !== 1 ? "s" : ""} scheduled.
 				</AlertDescription>
 			</Alert>
 
@@ -422,15 +421,13 @@ async def my_scheduled_workflow(context):
 											"warning" &&
 											schedule.validation_message && (
 												<p className="text-xs text-yellow-600 dark:text-yellow-500">
-													Minimum interval: 5
-													minutes
+													Minimum interval: 5 minutes
 												</p>
 											)}
 									</div>
 								</DataTableCell>
 								<DataTableCell>
-									{schedule.validation_status ===
-									"error" ? (
+									{schedule.validation_status === "error" ? (
 										<Badge variant="destructive">
 											Invalid CRON
 										</Badge>
@@ -538,12 +535,11 @@ async def my_scheduled_workflow(context):
 						))}
 					</DataTableBody>
 				</DataTable>
-				{filteredSchedules.length === 0 &&
-					scheduleList.length > 0 && (
-						<div className="text-center py-8 text-muted-foreground">
-							No schedules match your search.
-						</div>
-					)}
+				{filteredSchedules.length === 0 && scheduleList.length > 0 && (
+					<div className="text-center py-8 text-muted-foreground">
+						No schedules match your search.
+					</div>
+				)}
 			</div>
 		</div>
 	);

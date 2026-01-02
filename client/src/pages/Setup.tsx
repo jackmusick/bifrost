@@ -34,7 +34,12 @@ type SetupMode = "choose" | "passkey" | "password";
 
 export function Setup() {
 	const navigate = useNavigate();
-	const { needsSetup, isLoading: authLoading, checkAuthStatus, loginWithPasskey } = useAuth();
+	const {
+		needsSetup,
+		isLoading: authLoading,
+		checkAuthStatus,
+		loginWithPasskey,
+	} = useAuth();
 
 	const [isLoading, setIsLoading] = useState(false);
 	const [error, setError] = useState<string | null>(null);
@@ -186,14 +191,16 @@ export function Setup() {
 					onClick={() => handleModeChange("password")}
 				>
 					<KeyRound className="h-4 w-4 mr-2" />
-					{passkeysSupported ? "Use password instead" : "Continue with Password"}
+					{passkeysSupported
+						? "Use password instead"
+						: "Continue with Password"}
 				</Button>
 			</div>
 
 			{passkeysSupported && (
 				<p className="text-xs text-center text-muted-foreground pt-2">
-					Passkeys use Face ID, Touch ID, or your device PIN for secure,
-					passwordless authentication.
+					Passkeys use Face ID, Touch ID, or your device PIN for
+					secure, passwordless authentication.
 				</p>
 			)}
 		</div>
@@ -207,14 +214,18 @@ export function Setup() {
 					<Fingerprint className="h-6 w-6 text-primary" />
 				</div>
 				<p className="text-sm text-muted-foreground">
-					Create a passkey using Face ID, Touch ID, or your device PIN.
-					No password needed!
+					Create a passkey using Face ID, Touch ID, or your device
+					PIN. No password needed!
 				</p>
 			</div>
 
 			<div className="space-y-2">
 				<Label>Name</Label>
-				<Input value={name || "Not provided"} disabled className="bg-muted" />
+				<Input
+					value={name || "Not provided"}
+					disabled
+					className="bg-muted"
+				/>
 			</div>
 			<div className="space-y-2">
 				<Label>Email</Label>
@@ -247,7 +258,11 @@ export function Setup() {
 		<form onSubmit={handlePasswordSubmit} className="space-y-4">
 			<div className="space-y-2">
 				<Label>Name</Label>
-				<Input value={name || "Not provided"} disabled className="bg-muted" />
+				<Input
+					value={name || "Not provided"}
+					disabled
+					className="bg-muted"
+				/>
 			</div>
 			<div className="space-y-2">
 				<Label>Email</Label>
@@ -343,8 +358,10 @@ export function Setup() {
 								Welcome to Bifrost
 							</CardTitle>
 							<CardDescription className="text-base">
-								{mode === "choose" && "Create your admin account to get started"}
-								{mode === "passkey" && "Set up passwordless authentication"}
+								{mode === "choose" &&
+									"Create your admin account to get started"}
+								{mode === "passkey" &&
+									"Set up passwordless authentication"}
 								{mode === "password" && "Create your password"}
 							</CardDescription>
 						</div>

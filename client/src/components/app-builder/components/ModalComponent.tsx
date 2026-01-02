@@ -18,7 +18,10 @@ import {
 	DialogTitle,
 	DialogTrigger,
 } from "@/components/ui/dialog";
-import type { ModalComponentProps, ExpressionContext } from "@/lib/app-builder-types";
+import type {
+	ModalComponentProps,
+	ExpressionContext,
+} from "@/lib/app-builder-types";
 import type { RegisteredComponentProps } from "../ComponentRegistry";
 import { evaluateExpression } from "@/lib/expression-parser";
 import { LayoutRenderer } from "../LayoutRenderer";
@@ -26,7 +29,9 @@ import { LayoutRenderer } from "../LayoutRenderer";
 /**
  * Get modal size classes
  */
-function getModalSizeClass(size?: ModalComponentProps["props"]["size"]): string {
+function getModalSizeClass(
+	size?: ModalComponentProps["props"]["size"],
+): string {
 	switch (size) {
 		case "sm":
 			return "max-w-sm";
@@ -42,21 +47,36 @@ function getModalSizeClass(size?: ModalComponentProps["props"]["size"]): string 
 	}
 }
 
-export function ModalComponent({ component, context }: RegisteredComponentProps) {
+export function ModalComponent({
+	component,
+	context,
+}: RegisteredComponentProps) {
 	const { props } = component as ModalComponentProps;
 	const [isOpen, setIsOpen] = useState(false);
 	const [loadingAction, setLoadingAction] = useState<number | null>(null);
 
 	// Evaluate expressions
-	const title = String(evaluateExpression(props.title, context) ?? props.title);
+	const title = String(
+		evaluateExpression(props.title, context) ?? props.title,
+	);
 	const description = props.description
-		? String(evaluateExpression(props.description, context) ?? props.description)
+		? String(
+				evaluateExpression(props.description, context) ??
+					props.description,
+			)
 		: undefined;
-	const triggerLabel = String(evaluateExpression(props.triggerLabel, context) ?? props.triggerLabel);
+	const triggerLabel = String(
+		evaluateExpression(props.triggerLabel, context) ?? props.triggerLabel,
+	);
 
 	// Handle footer action click
 	const handleActionClick = useCallback(
-		async (action: NonNullable<ModalComponentProps["props"]["footerActions"]>[number], index: number) => {
+		async (
+			action: NonNullable<
+				ModalComponentProps["props"]["footerActions"]
+			>[number],
+			index: number,
+		) => {
 			setLoadingAction(index);
 
 			try {
@@ -64,7 +84,12 @@ export function ModalComponent({ component, context }: RegisteredComponentProps)
 					case "navigate":
 						if (action.navigateTo && context.navigate) {
 							const path = action.navigateTo.includes("{{")
-								? String(evaluateExpression(action.navigateTo, context) ?? action.navigateTo)
+								? String(
+										evaluateExpression(
+											action.navigateTo,
+											context,
+										) ?? action.navigateTo,
+									)
 								: action.navigateTo;
 							context.navigate(path);
 						}
@@ -75,32 +100,54 @@ export function ModalComponent({ component, context }: RegisteredComponentProps)
 							// Evaluate action params
 							const params: Record<string, unknown> = {};
 							if (action.actionParams) {
-								for (const [key, value] of Object.entries(action.actionParams)) {
-									if (typeof value === "string" && value.includes("{{")) {
-										params[key] = evaluateExpression(value, context);
+								for (const [key, value] of Object.entries(
+									action.actionParams,
+								)) {
+									if (
+										typeof value === "string" &&
+										value.includes("{{")
+									) {
+										params[key] = evaluateExpression(
+											value,
+											context,
+										);
 									} else {
 										params[key] = value;
 									}
 								}
 							}
-							context.triggerWorkflow(action.workflowId, params, action.onComplete);
+							context.triggerWorkflow(
+								action.workflowId,
+								params,
+								action.onComplete,
+							);
 						}
 						break;
 
 					case "submit":
 						if (action.workflowId && context.submitForm) {
 							// Evaluate additional params
-							const additionalParams: Record<string, unknown> = {};
+							const additionalParams: Record<string, unknown> =
+								{};
 							if (action.actionParams) {
-								for (const [key, value] of Object.entries(action.actionParams)) {
-									if (typeof value === "string" && value.includes("{{")) {
-										additionalParams[key] = evaluateExpression(value, context);
+								for (const [key, value] of Object.entries(
+									action.actionParams,
+								)) {
+									if (
+										typeof value === "string" &&
+										value.includes("{{")
+									) {
+										additionalParams[key] =
+											evaluateExpression(value, context);
 									} else {
 										additionalParams[key] = value;
 									}
 								}
 							}
-							context.submitForm(action.workflowId, additionalParams);
+							context.submitForm(
+								action.workflowId,
+								additionalParams,
+							);
 						}
 						break;
 				}
@@ -148,12 +195,17 @@ export function ModalComponent({ component, context }: RegisteredComponentProps)
 			>
 				<DialogHeader>
 					<DialogTitle>{title}</DialogTitle>
-					{description && <DialogDescription>{description}</DialogDescription>}
+					{description && (
+						<DialogDescription>{description}</DialogDescription>
+					)}
 				</DialogHeader>
 
 				{/* Modal Content - Render the layout */}
 				<div className="py-4">
-					<LayoutRenderer layout={props.content} context={modalContext} />
+					<LayoutRenderer
+						layout={props.content}
+						context={modalContext}
+					/>
 				</div>
 
 				{/* Footer Actions */}
@@ -162,17 +214,26 @@ export function ModalComponent({ component, context }: RegisteredComponentProps)
 						{props.footerActions.map((action, index) => {
 							const isLoading = loadingAction === index;
 							const label = action.label.includes("{{")
-								? String(evaluateExpression(action.label, context) ?? action.label)
+								? String(
+										evaluateExpression(
+											action.label,
+											context,
+										) ?? action.label,
+									)
 								: action.label;
 
 							return (
 								<Button
 									key={index}
 									variant={action.variant || "default"}
-									onClick={() => handleActionClick(action, index)}
+									onClick={() =>
+										handleActionClick(action, index)
+									}
 									disabled={isLoading}
 								>
-									{isLoading && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+									{isLoading && (
+										<Loader2 className="mr-2 h-4 w-4 animate-spin" />
+									)}
 									{label}
 								</Button>
 							);

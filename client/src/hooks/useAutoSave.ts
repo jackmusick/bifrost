@@ -225,7 +225,9 @@ export function useAutoSave() {
 			// Store diagnostics in tab state for CodeEditor to display
 			setDiagnostics(
 				activeTabIndex,
-				response.diagnostics as import("@/stores/editorStore").FileDiagnostic[] | undefined,
+				response.diagnostics as
+					| import("@/stores/editorStore").FileDiagnostic[]
+					| undefined,
 			);
 
 			// If server modified content, update editor buffer

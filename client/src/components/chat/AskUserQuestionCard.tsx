@@ -117,7 +117,10 @@ export function AskUserQuestionCard({
 				// User selected "Other" and provided text
 				if (q.multi_select) {
 					// For multi-select, combine selected options with other text
-					const allSelected = [...state.selected, state.otherText.trim()];
+					const allSelected = [
+						...state.selected,
+						state.otherText.trim(),
+					];
 					answers[q.question] = allSelected.join(", ");
 				} else {
 					answers[q.question] = state.otherText.trim();
@@ -144,7 +147,9 @@ export function AskUserQuestionCard({
 			{/* Header */}
 			<div className="flex items-center gap-2 px-4 py-3 bg-primary/5 border-b border-primary/20">
 				<HelpCircle className="h-4 w-4 text-primary" />
-				<span className="text-sm font-medium">Question from Assistant</span>
+				<span className="text-sm font-medium">
+					Question from Assistant
+				</span>
 			</div>
 
 			{/* Questions */}
@@ -168,9 +173,9 @@ export function AskUserQuestionCard({
 									>
 										<Checkbox
 											id={`${q.question}-${option.label}`}
-											checked={questionStates[q.question]?.selected.includes(
-												option.label,
-											)}
+											checked={questionStates[
+												q.question
+											]?.selected.includes(option.label)}
 											onCheckedChange={(checked) =>
 												handleMultiSelect(
 													q.question,
@@ -198,9 +203,16 @@ export function AskUserQuestionCard({
 								<div className="flex items-start space-x-3">
 									<Checkbox
 										id={`${q.question}-other`}
-										checked={questionStates[q.question]?.showOther}
+										checked={
+											questionStates[q.question]
+												?.showOther
+										}
 										onCheckedChange={(checked) =>
-											handleMultiSelect(q.question, "__other__", !!checked)
+											handleMultiSelect(
+												q.question,
+												"__other__",
+												!!checked,
+											)
 										}
 									/>
 									<div className="flex-1 space-y-1">
@@ -210,12 +222,19 @@ export function AskUserQuestionCard({
 										>
 											Other
 										</Label>
-										{questionStates[q.question]?.showOther && (
+										{questionStates[q.question]
+											?.showOther && (
 											<Input
 												placeholder="Enter your response..."
-												value={questionStates[q.question]?.otherText || ""}
+												value={
+													questionStates[q.question]
+														?.otherText || ""
+												}
 												onChange={(e) =>
-													handleOtherTextChange(q.question, e.target.value)
+													handleOtherTextChange(
+														q.question,
+														e.target.value,
+													)
 												}
 												className="mt-1"
 												autoFocus
@@ -230,7 +249,8 @@ export function AskUserQuestionCard({
 								value={
 									questionStates[q.question]?.showOther
 										? "__other__"
-										: questionStates[q.question]?.selected[0] || ""
+										: questionStates[q.question]
+												?.selected[0] || ""
 								}
 								onValueChange={(value) =>
 									handleSingleSelect(q.question, value)
@@ -273,12 +293,19 @@ export function AskUserQuestionCard({
 										>
 											Other
 										</Label>
-										{questionStates[q.question]?.showOther && (
+										{questionStates[q.question]
+											?.showOther && (
 											<Input
 												placeholder="Enter your response..."
-												value={questionStates[q.question]?.otherText || ""}
+												value={
+													questionStates[q.question]
+														?.otherText || ""
+												}
 												onChange={(e) =>
-													handleOtherTextChange(q.question, e.target.value)
+													handleOtherTextChange(
+														q.question,
+														e.target.value,
+													)
 												}
 												className="mt-1"
 												autoFocus

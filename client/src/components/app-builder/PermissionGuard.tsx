@@ -78,7 +78,9 @@ function LoginRequired() {
 				</p>
 			</div>
 			<Button asChild>
-				<a href={`/login?redirect=${encodeURIComponent(location.pathname)}`}>
+				<a
+					href={`/login?redirect=${encodeURIComponent(location.pathname)}`}
+				>
 					Sign In
 				</a>
 			</Button>
@@ -143,7 +145,9 @@ export function PermissionGuard({
 	// Check app-level access
 	if (!hasAppLevelAccess) {
 		if (fallback) return <>{fallback}</>;
-		return <AccessDenied message="You don't have access to this application." />;
+		return (
+			<AccessDenied message="You don't have access to this application." />
+		);
 	}
 
 	// Check page-level access
@@ -155,7 +159,9 @@ export function PermissionGuard({
 		}
 
 		if (fallback) return <>{fallback}</>;
-		return <AccessDenied message="You don't have permission to view this page." />;
+		return (
+			<AccessDenied message="You don't have permission to view this page." />
+		);
 	}
 
 	// Access granted

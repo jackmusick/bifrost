@@ -67,11 +67,16 @@ export function CheckboxComponent({
 	})();
 
 	// Evaluate label if it contains expressions
-	const label = String(evaluateExpression(props.label, context) ?? props.label);
+	const label = String(
+		evaluateExpression(props.label, context) ?? props.label,
+	);
 
 	// Evaluate description if it contains expressions
 	const description = props.description
-		? String(evaluateExpression(props.description, context) ?? props.description)
+		? String(
+				evaluateExpression(props.description, context) ??
+					props.description,
+			)
 		: undefined;
 
 	// Get setFieldValue from context (stable reference)
@@ -91,11 +96,14 @@ export function CheckboxComponent({
 		}
 	}, [props.fieldId, defaultChecked, setFieldValue]);
 
-	const handleChange = useCallback((newChecked: boolean | "indeterminate") => {
-		if (newChecked !== "indeterminate") {
-			setChecked(newChecked);
-		}
-	}, []);
+	const handleChange = useCallback(
+		(newChecked: boolean | "indeterminate") => {
+			if (newChecked !== "indeterminate") {
+				setChecked(newChecked);
+			}
+		},
+		[],
+	);
 
 	const inputId = `field-${component.id}`;
 
@@ -114,10 +122,14 @@ export function CheckboxComponent({
 					className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70"
 				>
 					{label}
-					{props.required && <span className="text-destructive ml-1">*</span>}
+					{props.required && (
+						<span className="text-destructive ml-1">*</span>
+					)}
 				</Label>
 				{description && (
-					<p className="text-sm text-muted-foreground">{description}</p>
+					<p className="text-sm text-muted-foreground">
+						{description}
+					</p>
 				)}
 			</div>
 		</div>

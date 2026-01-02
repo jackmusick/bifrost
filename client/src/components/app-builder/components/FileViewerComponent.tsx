@@ -6,7 +6,16 @@
  */
 
 import { useState, useMemo } from "react";
-import { Download, ExternalLink, File, FileImage, FileText, FileVideo, FileAudio, type LucideIcon } from "lucide-react";
+import {
+	Download,
+	ExternalLink,
+	File,
+	FileImage,
+	FileText,
+	FileVideo,
+	FileAudio,
+	type LucideIcon,
+} from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import {
@@ -69,7 +78,12 @@ function getFileCategory(mimeType: string): FileCategory {
 	if (mimeType === "application/pdf") return "pdf";
 	if (mimeType.startsWith("video/")) return "video";
 	if (mimeType.startsWith("audio/")) return "audio";
-	if (mimeType.startsWith("text/") || mimeType === "application/json" || mimeType === "application/xml") return "text";
+	if (
+		mimeType.startsWith("text/") ||
+		mimeType === "application/json" ||
+		mimeType === "application/xml"
+	)
+		return "text";
 	return "other";
 }
 
@@ -108,14 +122,23 @@ interface FileContentProps {
 /**
  * Render file content based on type
  */
-function FileContent({ src, mimeType, category, maxWidth, maxHeight, className }: FileContentProps) {
+function FileContent({
+	src,
+	mimeType,
+	category,
+	maxWidth,
+	maxHeight,
+	className,
+}: FileContentProps) {
 	const style: React.CSSProperties = {};
 
 	if (maxWidth) {
-		style.maxWidth = typeof maxWidth === "number" ? `${maxWidth}px` : maxWidth;
+		style.maxWidth =
+			typeof maxWidth === "number" ? `${maxWidth}px` : maxWidth;
 	}
 	if (maxHeight) {
-		style.maxHeight = typeof maxHeight === "number" ? `${maxHeight}px` : maxHeight;
+		style.maxHeight =
+			typeof maxHeight === "number" ? `${maxHeight}px` : maxHeight;
 	}
 
 	switch (category) {
@@ -134,7 +157,11 @@ function FileContent({ src, mimeType, category, maxWidth, maxHeight, className }
 				<iframe
 					src={src}
 					title="PDF viewer"
-					style={{ ...style, width: style.maxWidth || "100%", height: style.maxHeight || "600px" }}
+					style={{
+						...style,
+						width: style.maxWidth || "100%",
+						height: style.maxHeight || "600px",
+					}}
 					className={cn("border-0", className)}
 				/>
 			);
@@ -167,7 +194,11 @@ function FileContent({ src, mimeType, category, maxWidth, maxHeight, className }
 				<iframe
 					src={src}
 					title="Text viewer"
-					style={{ ...style, width: style.maxWidth || "100%", height: style.maxHeight || "400px" }}
+					style={{
+						...style,
+						width: style.maxWidth || "100%",
+						height: style.maxHeight || "400px",
+					}}
 					className={cn("border rounded bg-muted", className)}
 				/>
 			);
@@ -175,7 +206,12 @@ function FileContent({ src, mimeType, category, maxWidth, maxHeight, className }
 		default:
 			// For unsupported types, show a file icon with download option
 			return (
-				<div className={cn("flex flex-col items-center gap-4 p-8 border rounded-lg bg-muted/50", className)}>
+				<div
+					className={cn(
+						"flex flex-col items-center gap-4 p-8 border rounded-lg bg-muted/50",
+						className,
+					)}
+				>
 					<File className="h-16 w-16 text-muted-foreground" />
 					<p className="text-sm text-muted-foreground">
 						Preview not available for {mimeType}
@@ -188,12 +224,21 @@ function FileContent({ src, mimeType, category, maxWidth, maxHeight, className }
 /**
  * Icon component that renders based on category
  */
-function FileIcon({ category, className }: { category: FileCategory; className?: string }) {
+function FileIcon({
+	category,
+	className,
+}: {
+	category: FileCategory;
+	className?: string;
+}) {
 	const IconComponent = FILE_ICONS[category];
 	return <IconComponent className={className} />;
 }
 
-export function FileViewerComponent({ component, context }: RegisteredComponentProps) {
+export function FileViewerComponent({
+	component,
+	context,
+}: RegisteredComponentProps) {
 	const { props } = component as FileViewerComponentProps;
 	const [isModalOpen, setIsModalOpen] = useState(false);
 
@@ -204,12 +249,19 @@ export function FileViewerComponent({ component, context }: RegisteredComponentP
 		: undefined;
 
 	// Detect file type
-	const mimeType = useMemo(() => detectMimeType(src, props.mimeType), [src, props.mimeType]);
+	const mimeType = useMemo(
+		() => detectMimeType(src, props.mimeType),
+		[src, props.mimeType],
+	);
 	const category = useMemo(() => getFileCategory(mimeType), [mimeType]);
-	const displayName = useMemo(() => getFileName(src, fileName), [src, fileName]);
+	const displayName = useMemo(
+		() => getFileName(src, fileName),
+		[src, fileName],
+	);
 
 	const displayMode = props.displayMode || "inline";
-	const showDownloadButton = props.showDownloadButton ?? (displayMode !== "download");
+	const showDownloadButton =
+		props.showDownloadButton ?? displayMode !== "download";
 
 	// Download handler
 	const handleDownload = () => {
@@ -270,7 +322,11 @@ export function FileViewerComponent({ component, context }: RegisteredComponentP
 					</div>
 					{showDownloadButton && (
 						<div className="mt-4 flex justify-end">
-							<Button variant="outline" onClick={handleDownload} className="gap-2">
+							<Button
+								variant="outline"
+								onClick={handleDownload}
+								className="gap-2"
+							>
 								<Download className="h-4 w-4" />
 								Download
 							</Button>
@@ -293,7 +349,12 @@ export function FileViewerComponent({ component, context }: RegisteredComponentP
 			/>
 			{showDownloadButton && (
 				<div className="mt-2 flex justify-end">
-					<Button variant="ghost" size="sm" onClick={handleDownload} className="gap-2">
+					<Button
+						variant="ghost"
+						size="sm"
+						onClick={handleDownload}
+						className="gap-2"
+					>
 						<Download className="h-4 w-4" />
 						Download
 					</Button>

@@ -48,10 +48,7 @@ import {
 	DataTableHeader,
 	DataTableRow,
 } from "@/components/ui/data-table";
-import {
-	useApplications,
-	useDeleteApplication,
-} from "@/hooks/useApplications";
+import { useApplications, useDeleteApplication } from "@/hooks/useApplications";
 import { useOrgScope } from "@/contexts/OrgScopeContext";
 import { useAuth } from "@/contexts/AuthContext";
 import { useOrganizations } from "@/hooks/useOrganizations";
@@ -82,7 +79,13 @@ export function Applications() {
 		data: applicationsData,
 		isLoading,
 		refetch,
-	} = useApplications(isPlatformAdmin ? (filterOrgId === undefined ? undefined : filterOrgId ?? undefined) : undefined);
+	} = useApplications(
+		isPlatformAdmin
+			? filterOrgId === undefined
+				? undefined
+				: (filterOrgId ?? undefined)
+			: undefined,
+	);
 	const applications = applicationsData?.applications ?? [];
 	const deleteApplication = useDeleteApplication();
 
@@ -269,12 +272,18 @@ export function Applications() {
 													{app.name}
 												</CardTitle>
 												{app.is_published && (
-													<Badge variant="default" className="text-xs">
+													<Badge
+														variant="default"
+														className="text-xs"
+													>
 														Published
 													</Badge>
 												)}
 												{app.has_unpublished_changes && (
-													<Badge variant="outline" className="text-xs">
+													<Badge
+														variant="outline"
+														className="text-xs"
+													>
 														Draft
 													</Badge>
 												)}
@@ -294,12 +303,20 @@ export function Applications() {
 									{isPlatformAdmin && (
 										<div className="mb-2">
 											{app.organization_id ? (
-												<Badge variant="outline" className="text-xs">
+												<Badge
+													variant="outline"
+													className="text-xs"
+												>
 													<Building2 className="mr-1 h-3 w-3" />
-													{getOrgName(app.organization_id)}
+													{getOrgName(
+														app.organization_id,
+													)}
 												</Badge>
 											) : (
-												<Badge variant="default" className="text-xs">
+												<Badge
+													variant="default"
+													className="text-xs"
+												>
 													<Globe className="mr-1 h-3 w-3" />
 													Global
 												</Badge>
@@ -317,7 +334,9 @@ export function Applications() {
 									<div className="flex gap-2 mt-auto">
 										<Button
 											className="flex-1"
-											onClick={() => handleLaunch(app.slug)}
+											onClick={() =>
+												handleLaunch(app.slug)
+											}
 											disabled={!app.is_published}
 											title={
 												!app.is_published
@@ -334,7 +353,11 @@ export function Applications() {
 													<Button
 														variant="outline"
 														size="icon"
-														onClick={() => handlePreview(app.slug)}
+														onClick={() =>
+															handlePreview(
+																app.slug,
+															)
+														}
 														title="Preview draft"
 													>
 														<Eye className="h-4 w-4" />
@@ -343,7 +366,9 @@ export function Applications() {
 												<Button
 													variant="outline"
 													size="icon"
-													onClick={() => handleEdit(app.slug)}
+													onClick={() =>
+														handleEdit(app.slug)
+													}
 													title="Edit application"
 												>
 													<Pencil className="h-4 w-4" />
@@ -352,7 +377,10 @@ export function Applications() {
 													variant="outline"
 													size="icon"
 													onClick={() =>
-														handleDelete(app.slug, app.name)
+														handleDelete(
+															app.slug,
+															app.name,
+														)
 													}
 													title="Delete application"
 												>
@@ -371,7 +399,9 @@ export function Applications() {
 							<DataTableHeader>
 								<DataTableRow>
 									{isPlatformAdmin && (
-										<DataTableHead>Organization</DataTableHead>
+										<DataTableHead>
+											Organization
+										</DataTableHead>
 									)}
 									<DataTableHead>Name</DataTableHead>
 									<DataTableHead>Description</DataTableHead>
@@ -391,7 +421,9 @@ export function Applications() {
 														className="text-xs"
 													>
 														<Building2 className="mr-1 h-3 w-3" />
-														{getOrgName(app.organization_id)}
+														{getOrgName(
+															app.organization_id,
+														)}
 													</Badge>
 												) : (
 													<Badge
@@ -450,7 +482,9 @@ export function Applications() {
 											<div className="flex gap-1 justify-end">
 												<Button
 													size="sm"
-													onClick={() => handleLaunch(app.slug)}
+													onClick={() =>
+														handleLaunch(app.slug)
+													}
 													disabled={!app.is_published}
 													title={
 														!app.is_published
@@ -467,7 +501,9 @@ export function Applications() {
 																variant="ghost"
 																size="sm"
 																onClick={() =>
-																	handlePreview(app.slug)
+																	handlePreview(
+																		app.slug,
+																	)
 																}
 																title="Preview draft"
 															>
@@ -478,7 +514,9 @@ export function Applications() {
 															variant="ghost"
 															size="sm"
 															onClick={() =>
-																handleEdit(app.slug)
+																handleEdit(
+																	app.slug,
+																)
 															}
 															title="Edit application"
 														>
@@ -548,8 +586,8 @@ export function Applications() {
 						<AlertDialogTitle>Delete Application?</AlertDialogTitle>
 						<AlertDialogDescription>
 							This will permanently delete the application "
-							{selectedApp?.name}" including all versions and data.
-							This action cannot be undone.
+							{selectedApp?.name}" including all versions and
+							data. This action cannot be undone.
 						</AlertDialogDescription>
 					</AlertDialogHeader>
 					<AlertDialogFooter>

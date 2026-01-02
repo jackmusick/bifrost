@@ -50,7 +50,8 @@ export function useChatStream({
 }: UseChatStreamOptions): UseChatStreamReturn {
 	const queryClient = useQueryClient();
 	const [isConnected, setIsConnected] = useState(false);
-	const [pendingQuestion, setPendingQuestion] = useState<PendingQuestion | null>(null);
+	const [pendingQuestion, setPendingQuestion] =
+		useState<PendingQuestion | null>(null);
 
 	// Track current conversation for closure safety
 	const currentConversationIdRef = useRef<string | undefined>(conversationId);
@@ -197,7 +198,8 @@ export function useChatStream({
 					const convId = currentConversationIdRef.current;
 					const storeState = useChatStore.getState();
 					const streamState = storeState.streamingMessage;
-					const completedMessages = storeState.completedStreamingMessages;
+					const completedMessages =
+						storeState.completedStreamingMessages;
 
 					if (convId) {
 						// Save tool executions from current streaming message
@@ -205,7 +207,10 @@ export function useChatStream({
 							streamState &&
 							Object.keys(streamState.toolExecutions).length > 0
 						) {
-							saveToolExecutions(convId, streamState.toolExecutions);
+							saveToolExecutions(
+								convId,
+								streamState.toolExecutions,
+							);
 						}
 						// Save tool executions from completed streaming messages
 						for (const msg of completedMessages) {
@@ -386,14 +391,20 @@ export function useChatStream({
 			startStreaming();
 
 			// Send the chat message
-			const sent = webSocketService.sendChatMessage(conversationId, message);
+			const sent = webSocketService.sendChatMessage(
+				conversationId,
+				message,
+			);
 			if (!sent) {
 				// Retry after connecting
 				try {
 					await webSocketService.connectToChat(conversationId);
 					webSocketService.sendChatMessage(conversationId, message);
 				} catch (error) {
-					console.error("[useChatStream] Failed to send message:", error);
+					console.error(
+						"[useChatStream] Failed to send message:",
+						error,
+					);
 					setStreamError("Failed to send message");
 					resetStream();
 				}

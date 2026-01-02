@@ -68,7 +68,9 @@ export function WorkflowPicker({
 		return (
 			<div className="flex items-center gap-2 h-10 px-3 border rounded-md bg-muted/50">
 				<Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />
-				<span className="text-sm text-muted-foreground">Loading workflows...</span>
+				<span className="text-sm text-muted-foreground">
+					Loading workflows...
+				</span>
 			</div>
 		);
 	}
@@ -76,7 +78,9 @@ export function WorkflowPicker({
 	if (error) {
 		return (
 			<div className="flex items-center h-10 px-3 border border-destructive/50 rounded-md bg-destructive/10">
-				<span className="text-sm text-destructive">Failed to load workflows</span>
+				<span className="text-sm text-destructive">
+					Failed to load workflows
+				</span>
 			</div>
 		);
 	}
@@ -84,7 +88,9 @@ export function WorkflowPicker({
 	return (
 		<Select
 			value={value ?? ""}
-			onValueChange={(val) => onChange(val === "__clear__" ? undefined : val)}
+			onValueChange={(val) =>
+				onChange(val === "__clear__" ? undefined : val)
+			}
 		>
 			<SelectTrigger className={className}>
 				<SelectValue placeholder={placeholder}>
@@ -93,7 +99,10 @@ export function WorkflowPicker({
 			</SelectTrigger>
 			<SelectContent>
 				{allowClear && value && (
-					<SelectItem value="__clear__" className="text-muted-foreground italic">
+					<SelectItem
+						value="__clear__"
+						className="text-muted-foreground italic"
+					>
 						Clear selection
 					</SelectItem>
 				)}

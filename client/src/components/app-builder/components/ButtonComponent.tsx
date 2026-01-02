@@ -4,9 +4,13 @@
  * Action button supporting navigation, workflow triggers, and custom actions.
  */
 
-import { useCallback } from "react";
+import { useCallback, useMemo } from "react";
+import { Loader2 } from "lucide-react";
 import { cn } from "@/lib/utils";
-import type { ButtonComponentProps } from "@/lib/app-builder-types";
+import type {
+	ButtonComponentProps,
+	OnCompleteAction,
+} from "@/lib/app-builder-types";
 import { evaluateExpression } from "@/lib/expression-parser";
 import type { RegisteredComponentProps } from "../ComponentRegistry";
 import { Button } from "@/components/ui/button";
@@ -60,8 +64,31 @@ export function ButtonComponent({
 }: RegisteredComponentProps) {
 	const { props } = component as ButtonComponentProps;
 	// Support both 'label' and 'text' for button text
-	const labelValue = props?.label ?? (props as Record<string, unknown>)?.text ?? "";
-	const label = String(evaluateExpression(labelValue as string, context) ?? "");
+	const labelValue =
+		props?.label ?? (props as Record<string, unknown>)?.text ?? "";
+	const label = String(
+		evaluateExpression(labelValue as string, context) ?? "",
+	);
+
+	// Check if this button's workflow is currently executing
+	const isWorkflowLoading = useMemo(() => {
+		// Support both old format (actionType at top level) and new format (onClick object)
+		const onClick = (props as Record<string, unknown>)?.onClick as
+			| { type?: string; workflowId?: string }
+			| undefined;
+		const actionType = props?.actionType || onClick?.type;
+		const workflowId = props?.workflowId || onClick?.workflowId;
+
+		// Only check for workflow and submit action types
+		if (
+			(actionType === "workflow" || actionType === "submit") &&
+			workflowId &&
+			context.activeWorkflows
+		) {
+			return context.activeWorkflows.has(workflowId);
+		}
+		return false;
+	}, [props, context.activeWorkflows]);
 
 	// Evaluate disabled state - can be boolean or expression string
 	const isDisabled = (() => {
@@ -77,19 +104,23 @@ export function ButtonComponent({
 
 	const handleClick = useCallback(() => {
 		// Support both old format (actionType at top level) and new format (onClick object)
-		const onClick = (props as Record<string, unknown>)?.onClick as {
-			type?: string;
-			navigateTo?: string;
-			workflowId?: string;
-			actionParams?: Record<string, unknown>;
-			onComplete?: unknown[];
-		} | undefined;
+		const onClick = (props as Record<string, unknown>)?.onClick as
+			| {
+					type?: string;
+					navigateTo?: string;
+					workflowId?: string;
+					actionParams?: Record<string, unknown>;
+					onComplete?: OnCompleteAction[];
+			  }
+			| undefined;
 
 		const actionType = props?.actionType || onClick?.type;
 		const navigateTo = props?.navigateTo || onClick?.navigateTo;
 		const workflowId = props?.workflowId || onClick?.workflowId;
 		const actionParams = props?.actionParams || onClick?.actionParams;
-		const onComplete = props?.onComplete || onClick?.onComplete;
+		const onComplete = (props?.onComplete || onClick?.onComplete) as
+			| OnCompleteAction[]
+			| undefined;
 
 		switch (actionType) {
 			case "navigate":
@@ -104,7 +135,7 @@ export function ButtonComponent({
 
 			case "workflow":
 				if (workflowId && context.triggerWorkflow) {
-					context.triggerWorkflow(workflowId, actionParams, onComplete as never);
+					context.triggerWorkflow(workflowId, actionParams, onComplete);
 				}
 				break;
 
@@ -123,8 +154,12 @@ export function ButtonComponent({
 		}
 	}, [props, context]);
 
-	// Render button with optional icon
+	// Render button with optional icon (or loading spinner)
 	const renderIcon = () => {
+		// Show loading spinner when workflow is executing
+		if (isWorkflowLoading) {
+			return <Loader2 className="h-4 w-4 mr-2 animate-spin" />;
+		}
 		if (!props?.icon) return null;
 		const Icon = getIcon(props.icon);
 		return <Icon className="h-4 w-4 mr-2" />;
@@ -134,7 +169,7 @@ export function ButtonComponent({
 		<Button
 			variant={props?.variant || "default"}
 			size={props?.size || "default"}
-			disabled={isDisabled}
+			disabled={isDisabled || isWorkflowLoading}
 			onClick={handleClick}
 			className={cn(props?.className)}
 		>

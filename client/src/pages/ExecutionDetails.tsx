@@ -99,7 +99,6 @@ interface ExecutionDetailsProps {
 	embedded?: boolean;
 }
 
-
 export function ExecutionDetails({
 	executionId: propExecutionId,
 	embedded = false,
@@ -172,7 +171,10 @@ export function ExecutionDetails({
 		data: executionData,
 		isLoading,
 		error,
-	} = useExecution(shouldFetchExecution ? executionId : undefined, signalrEnabled);
+	} = useExecution(
+		shouldFetchExecution ? executionId : undefined,
+		signalrEnabled,
+	);
 
 	// Cast execution data to the correct type
 	const execution = executionData as WorkflowExecution | undefined;
@@ -273,7 +275,12 @@ export function ExecutionDetails({
 	// Auto-scroll to bottom when new streaming logs arrive
 	useEffect(() => {
 		const container = logsContainerRef.current;
-		if (autoScroll && logsEndRef.current && streamingLogs.length > 0 && container) {
+		if (
+			autoScroll &&
+			logsEndRef.current &&
+			streamingLogs.length > 0 &&
+			container
+		) {
 			// Only scroll if content exceeds container height
 			if (container.scrollHeight > container.clientHeight) {
 				logsEndRef.current.scrollIntoView({ behavior: "smooth" });
@@ -1424,7 +1431,9 @@ export function ExecutionDetails({
 																	{(
 																		execution.duration_ms /
 																		1000
-																	).toFixed(2)}
+																	).toFixed(
+																		2,
+																	)}
 																	s
 																</p>
 															</div>
@@ -1437,13 +1446,15 @@ export function ExecutionDetails({
 												(execution?.peak_memory_bytes ||
 													execution?.cpu_total_seconds) &&
 												execution?.ai_usage &&
-												execution.ai_usage.length > 0 && (
+												execution.ai_usage.length >
+													0 && (
 													<div className="border-t pt-4" />
 												)}
 
 											{/* AI Usage - Available to all users */}
 											{execution?.ai_usage &&
-												execution.ai_usage.length > 0 && (
+												execution.ai_usage.length >
+													0 && (
 													<Collapsible
 														open={isAiUsageOpen}
 														onOpenChange={

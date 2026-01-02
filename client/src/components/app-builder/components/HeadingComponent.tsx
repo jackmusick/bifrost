@@ -5,7 +5,10 @@
  */
 
 import { cn } from "@/lib/utils";
-import type { HeadingComponentProps, HeadingLevel } from "@/lib/app-builder-types";
+import type {
+	HeadingComponentProps,
+	HeadingLevel,
+} from "@/lib/app-builder-types";
 import { evaluateExpression } from "@/lib/expression-parser";
 import type { RegisteredComponentProps } from "../ComponentRegistry";
 

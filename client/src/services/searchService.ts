@@ -30,7 +30,8 @@ export const searchService = {
 
 		if (error) {
 			throw new Error(
-				(error as { detail?: string }).detail || "Failed to search files",
+				(error as { detail?: string }).detail ||
+					"Failed to search files",
 			);
 		}
 

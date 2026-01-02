@@ -78,7 +78,9 @@ function isDragData(data: Record<string, unknown>): data is DragData {
  * Type guard to check if data is from ComponentPalette
  */
 function isPaletteDragData(data: Record<string, unknown>): boolean {
-	return data.type === "new-component" && typeof data.componentType === "string";
+	return (
+		data.type === "new-component" && typeof data.componentType === "string"
+	);
 }
 
 /**
@@ -218,9 +220,13 @@ function getComponentInfo(element: LayoutContainer | AppComponent): string {
 	const component = element as AppComponent;
 	switch (component.type) {
 		case "heading":
-			return (component.props as { text?: string }).text?.slice(0, 30) || "";
+			return (
+				(component.props as { text?: string }).text?.slice(0, 30) || ""
+			);
 		case "text":
-			return (component.props as { text?: string }).text?.slice(0, 30) || "";
+			return (
+				(component.props as { text?: string }).text?.slice(0, 30) || ""
+			);
 		case "button":
 			return (component.props as { label?: string }).label || "";
 		case "card":
@@ -384,7 +390,10 @@ function CanvasElement({
 					// Only handle the drop if we're the innermost (first) drop target
 					// This prevents parent containers from also handling the drop
 					const dropTargets = location.current.dropTargets;
-					if (dropTargets.length > 0 && dropTargets[0].element !== ref.current) {
+					if (
+						dropTargets.length > 0 &&
+						dropTargets[0].element !== ref.current
+					) {
 						return;
 					}
 
@@ -445,15 +454,29 @@ function CanvasElement({
 				// Base transition for smooth state changes
 				"transition-all duration-200 ease-out",
 				// Dragging state - ghosted appearance
-				isDragging && "opacity-40 scale-[0.98] border-dashed border-gray-400 dark:border-gray-500",
+				isDragging &&
+					"opacity-40 scale-[0.98] border-dashed border-gray-400 dark:border-gray-500",
 				// Selected state
-				!isDragging && isSelected && "border-blue-500 bg-blue-50 dark:bg-blue-950/30 shadow-md",
+				!isDragging &&
+					isSelected &&
+					"border-blue-500 bg-blue-50 dark:bg-blue-950/30 shadow-md",
 				// Dragged over state (something hovering)
-				!isDragging && !isSelected && isDraggedOver && "border-blue-400 bg-blue-50/50 dark:bg-blue-950/20 shadow-sm",
+				!isDragging &&
+					!isSelected &&
+					isDraggedOver &&
+					"border-blue-400 bg-blue-50/50 dark:bg-blue-950/20 shadow-sm",
 				// Hover state
-				!isDragging && !isSelected && !isDraggedOver && isHovered && "border-gray-300 dark:border-gray-600 bg-gray-50/50 dark:bg-gray-800/50",
+				!isDragging &&
+					!isSelected &&
+					!isDraggedOver &&
+					isHovered &&
+					"border-gray-300 dark:border-gray-600 bg-gray-50/50 dark:bg-gray-800/50",
 				// Default state
-				!isDragging && !isSelected && !isDraggedOver && !isHovered && "border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900",
+				!isDragging &&
+					!isSelected &&
+					!isDraggedOver &&
+					!isHovered &&
+					"border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900",
 				// Size constraints
 				isContainer ? "min-h-[80px]" : "min-h-[48px]",
 			)}
@@ -575,7 +598,10 @@ function ContainerDropZone({
 
 				// Only handle the drop if we're the innermost (first) drop target
 				const dropTargets = location.current.dropTargets;
-				if (dropTargets.length > 0 && dropTargets[0].element !== dropRef.current) {
+				if (
+					dropTargets.length > 0 &&
+					dropTargets[0].element !== dropRef.current
+				) {
 					return;
 				}
 
@@ -634,8 +660,16 @@ function ContainerChildren({
 	const getGapClass = (gap?: number): string => {
 		if (gap === undefined) return "gap-2"; // Default editor gap
 		const gapMap: Record<number, string> = {
-			0: "gap-0", 4: "gap-1", 8: "gap-2", 12: "gap-3", 16: "gap-4",
-			20: "gap-5", 24: "gap-6", 32: "gap-8", 40: "gap-10", 48: "gap-12",
+			0: "gap-0",
+			4: "gap-1",
+			8: "gap-2",
+			12: "gap-3",
+			16: "gap-4",
+			20: "gap-5",
+			24: "gap-6",
+			32: "gap-8",
+			40: "gap-10",
+			48: "gap-12",
 		};
 		return gapMap[gap] || `gap-[${gap}px]`;
 	};
@@ -643,8 +677,16 @@ function ContainerChildren({
 	const getPaddingClass = (padding?: number): string => {
 		if (padding === undefined) return "p-2"; // Default editor padding
 		const paddingMap: Record<number, string> = {
-			0: "p-0", 4: "p-1", 8: "p-2", 12: "p-3", 16: "p-4",
-			20: "p-5", 24: "p-6", 32: "p-8", 40: "p-10", 48: "p-12",
+			0: "p-0",
+			4: "p-1",
+			8: "p-2",
+			12: "p-3",
+			16: "p-4",
+			20: "p-5",
+			24: "p-6",
+			32: "p-8",
+			40: "p-10",
+			48: "p-12",
 		};
 		return paddingMap[padding] || `p-[${padding}px]`;
 	};

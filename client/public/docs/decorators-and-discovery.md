@@ -2,29 +2,29 @@
 
 ## Overview
 
-Bifrost uses a decorator-based system to automatically discover and register workflows and data providers from `/platform` and `/home` directories. This document explains how the system works end-to-end.
+Bifrost uses a decorator-based system to automatically discover and register workflows and data providers from workspace directories. Parameters are automatically derived from function signatures - no additional decorators needed.
 
 ## System Architecture
 
 ```
 ┌─────────────────────────────────────────────────────────────┐
-│  1. Function App Startup (function_app.py)                  │
-│     - Initializes Azure Functions                           │
+│  1. App Startup                                             │
+│     - Initializes API server                                │
 │     - Calls discover_workspace_modules()                    │
 └─────────────────────────────────────────────────────────────┘
                             ↓
 ┌─────────────────────────────────────────────────────────────┐
-│  2. Workspace Discovery (function_app.py:170-246)           │
-│     - Scans /platform and /home directories                 │
+│  2. Workspace Discovery                                     │
+│     - Scans workspace directories                           │
 │     - Finds all *.py files (except __init__.py)             │
 │     - Imports each file as a module                         │
 │     - No __init__.py files required!                        │
 └─────────────────────────────────────────────────────────────┘
                             ↓
 ┌─────────────────────────────────────────────────────────────┐
-│  3. Decorator Execution (shared/decorators.py)              │
+│  3. Decorator Execution (sdk/decorators.py)                 │
 │     - @workflow and @data_provider decorators run           │
-│     - @param decorators attach parameter metadata           │
+│     - Parameters extracted from function signatures         │
 │     - Metadata is registered in WorkflowRegistry            │
 └─────────────────────────────────────────────────────────────┘
                             ↓
@@ -60,11 +60,9 @@ Bifrost uses a decorator-based system to automatically discover and register wor
 
 ### 1. Workspace Discovery
 
-**Location**: `function_app.py` lines 170-246
-
 **What it does**:
 
-- Scans `/platform` and `/home` directories recursively
+- Scans workspace directories recursively
 - Finds all `.py` files (except those starting with `_`)
 - Imports each file using `importlib`
 - Module names follow pattern: `workspace.{path}.{filename}`
@@ -72,40 +70,35 @@ Bifrost uses a decorator-based system to automatically discover and register wor
 **Example**:
 
 ```
-File: platform/examples/data_providers/my_provider.py
-Module name: workspace.examples.data_providers.my_provider
+File: workspace/workflows/my_workflow.py
+Module name: workspace.workflows.my_workflow
 ```
 
 **Key characteristics**:
 
 - No `__init__.py` files required
 - Hot-reload friendly (paths determined dynamically)
-- Import restrictions enforced (`/home` can only use `bifrost`, `/platform` can use `shared.*`)
 
 ### 2. The `@workflow` Decorator
 
-**Location**: `shared/decorators.py` line 70-170
+**Location**: `sdk/decorators.py`
 
 **What it does**:
 
 1. Wraps your async function
-2. Collects metadata (name, description, parameters, etc.)
-3. Registers function in `WorkflowRegistry`
-4. Returns the original function (unmodified)
+2. Extracts parameters from function signature (type hints)
+3. Collects metadata (name from function, description from docstring)
+4. Registers function in `WorkflowRegistry`
+5. Returns the original function (unmodified)
 
 **Example**:
 
 ```python
-from bifrost import workflow, param
+from bifrost import workflow
 
-@workflow(
-    name="process_order",
-    description="Process customer order",
-    category="sales"
-)
-@param("order_id", type="string", required=True)
-@param("priority", type="string", default_value="normal")
-async def process_order(context, order_id: str, priority: str = "normal"):
+@workflow
+async def process_order(order_id: str, priority: str = "normal") -> dict:
+    """Process customer order."""
     # Your logic here
     return {"status": "processed"}
 ```
@@ -113,14 +106,17 @@ async def process_order(context, order_id: str, priority: str = "normal"):
 **Behind the scenes**:
 
 ```python
-# Decorator creates WorkflowMetadata dataclass
+# Decorator extracts parameters from signature
+# name = "process_order" (from function name)
+# description = "Process customer order." (from docstring)
+# parameters extracted from: order_id: str, priority: str = "normal"
+
 metadata = WorkflowMetadata(
     name="process_order",
-    description="Process customer order",
-    category="sales",
+    description="Process customer order.",
     parameters=[
         WorkflowParameter(name="order_id", type="string", required=True),
-        WorkflowParameter(name="priority", type="string", default_value="normal")
+        WorkflowParameter(name="priority", type="string", required=False, default_value="normal")
     ],
     function=process_order  # Your actual function
 )
@@ -131,30 +127,24 @@ get_registry().register_workflow(metadata)
 
 ### 3. The `@data_provider` Decorator
 
-**Location**: `shared/decorators.py` line 250-360
+**Location**: `sdk/decorators.py`
 
 **What it does**:
 
 1. Wraps your async function
-2. Collects metadata (name, description, category, cache TTL)
-3. Collects parameters from `@param` decorators
+2. Extracts parameters from function signature
+3. Collects metadata (name, description from docstring, cache TTL)
 4. Registers function in `WorkflowRegistry`
 5. Returns the original function (unmodified)
 
 **Example**:
 
 ```python
-from bifrost import data_provider, param
+from bifrost import data_provider
 
-@data_provider(
-    name="get_github_repos",
-    description="Get GitHub repositories",
-    category="github",
-    cache_ttl_seconds=300
-)
-@param("token", type="string", required=True, label="GitHub Token")
-@param("org", type="string", required=False, default_value="")
-async def get_github_repos(context, token: str, org: str = ""):
+@data_provider(cache_ttl_seconds=300)
+async def get_github_repos(token: str, org: str = "") -> list[dict]:
+    """Get GitHub repositories."""
     # Your logic here
     return [
         {"label": "repo-1", "value": "org/repo-1"},
@@ -162,33 +152,38 @@ async def get_github_repos(context, token: str, org: str = ""):
     ]
 ```
 
-### 4. The `@param` Decorator
+### 4. Parameter Extraction from Signatures
 
-**Location**: `shared/decorators.py` line 10-68
-
-**What it does**:
-
-1. Creates a `WorkflowParameter` object
-2. Attaches it to the function via `__workflow_params__` or `__data_provider_params__`
-3. Parent decorator (`@workflow` or `@data_provider`) collects these during registration
-
-**Stacking**:
+Parameters are automatically extracted from your function signature:
 
 ```python
-@workflow(name="example")
-@param("field1", type="string")  # Collected third (top-down)
-@param("field2", type="number")  # Collected second
-@param("field3", type="boolean") # Collected first
-async def example(context, field1, field2, field3):
+@workflow
+async def create_user(
+    email: str,                # Required string
+    name: str,                 # Required string
+    department: str = "IT",    # Optional with default
+    active: bool = True,       # Optional boolean
+    tags: list | None = None   # Optional list
+) -> dict:
+    """Create a new user."""
     pass
-
-# Results in parameters list: [field3, field2, field1]
-# We reverse the list to match declaration order!
 ```
+
+**Type mapping**:
+- `str` → string input
+- `int` → integer input
+- `float` → decimal input
+- `bool` → checkbox
+- `dict` → JSON editor
+- `list` → array input
+
+**Labels** are auto-generated from parameter names:
+- `first_name` → "First Name"
+- `userEmail` → "User Email"
 
 ### 5. WorkflowRegistry (Singleton)
 
-**Location**: `shared/registry.py` line 70-215
+**Location**: `shared/registry.py`
 
 **What it stores**:
 
@@ -208,7 +203,6 @@ class DataProviderMetadata:
     description: str
     parameters: list[WorkflowParameter]
     function: Any  # The actual Python function
-    category: str
     cache_ttl_seconds: int
 ```
 
@@ -218,7 +212,7 @@ class DataProviderMetadata:
 
 ### 6. Model Conversion for API
 
-**Location**: `shared/handlers/discovery_handlers.py` line 70-108
+**Location**: `shared/handlers/discovery_handlers.py`
 
 **Why needed**:
 
@@ -254,22 +248,19 @@ def convert_registry_provider_to_model(registry_provider):
 
 ```json
 {
-	"name": "Create Ticket",
-	"formSchema": {
-		"fields": [
-			{
-				"name": "priority",
-				"type": "select",
-				"dataProvider": "get_priority_levels",
-				"dataProviderInputs": {
-					"filter": {
-						"mode": "static",
-						"value": "active"
-					}
-				}
-			}
-		]
-	}
+    "name": "Create Ticket",
+    "formSchema": {
+        "fields": [
+            {
+                "name": "priority",
+                "type": "select",
+                "data_provider_id": "uuid-of-get-priority-levels",
+                "data_provider_inputs": {
+                    "filter": "{{status}}"
+                }
+            }
+        ]
+    }
 }
 ```
 
@@ -279,29 +270,27 @@ def convert_registry_provider_to_model(registry_provider):
 
 ```python
 # Validates that data provider exists
-provider = registry.get_data_provider("get_priority_levels")
+provider = registry.get_data_provider(data_provider_id)
 if not provider:
     raise ValidationError("Unknown provider")
 
 # Validates required parameters are configured
 for param in provider.parameters:
-    if param.required and param.name not in field.dataProviderInputs:
+    if param.required and param.name not in field.data_provider_inputs:
         raise ValidationError(f"Missing required parameter: {param.name}")
 ```
 
 ### Step 3: Form startup (when user opens form)
 
-**Location**: `functions/http/forms.py` → `execute_form_startup_handler`
-
 ```python
-# For each field with dataProvider
+# For each field with data_provider_id
 for field in form.fields:
-    if field.dataProvider:
-        # Resolve inputs (static, fieldRef, expression)
-        inputs = resolve_data_provider_inputs(field.dataProviderInputs, context)
+    if field.data_provider_id:
+        # Resolve inputs (static values, field references like {{field_name}})
+        inputs = resolve_data_provider_inputs(field.data_provider_inputs, context)
 
         # Call data provider
-        options = await call_data_provider(field.dataProvider, inputs, context)
+        options = await call_data_provider(field.data_provider_id, inputs, context)
 
         # Return options to client
         response["fields"][field.name]["options"] = options
@@ -313,12 +302,12 @@ for field in form.fields:
 
 ```python
 async def get_data_provider_options_handler(
-    provider_name: str,
+    provider_id: str,
     inputs: dict,
     context: RequestContext
 ):
     # Get provider from registry
-    provider = registry.get_data_provider(provider_name)
+    provider = registry.get_data_provider(provider_id)
 
     # Validate inputs against parameters
     errors = validate_data_provider_inputs(provider, inputs)
@@ -326,40 +315,19 @@ async def get_data_provider_options_handler(
         return {"error": "ValidationError", "details": errors}, 400
 
     # Check cache
-    cache_key = compute_cache_key(provider_name, inputs, context.org_id)
+    cache_key = compute_cache_key(provider_id, inputs, context.org_id)
     cached = get_from_cache(cache_key)
     if cached:
         return cached, 200
 
     # Call provider function with inputs as kwargs
-    options = await provider.function(context, **inputs)
+    options = await provider.function(**inputs)
 
     # Cache result
     set_cache(cache_key, options, ttl=provider.cache_ttl_seconds)
 
-    return {"provider": provider_name, "options": options}, 200
+    return {"provider_id": provider_id, "options": options}, 200
 ```
-
-## Import Restrictions
-
-**Location**: `shared/import_restrictor.py`
-
-### /home code (user workflows)
-
-- ✅ Can import: `bifrost.*`
-- ❌ Cannot import: `shared.*`, `functions.*`, `azure.*`
-- **Why**: Users should only use the public SDK
-
-### /platform code (platform workflows, examples)
-
-- ✅ Can import: `bifrost.*`, `shared.*`
-- ❌ Cannot import: `functions.*` (HTTP handlers)
-- **Why**: Platform code may need internal handlers but shouldn't touch HTTP layer
-
-### /functions code (HTTP endpoints)
-
-- ✅ Can import: Everything
-- **Why**: HTTP layer orchestrates all other layers
 
 ## Key Design Decisions
 
@@ -383,25 +351,31 @@ async def get_data_provider_options_handler(
 - **Thread safety**: Multiple imports during startup
 - **Performance**: No repeated initialization
 
-### 3. Why no **init**.py required?
+### 3. Why no __init__.py required?
 
 - **User experience**: Drop files, they just work
 - **Hot reload**: No module structure to maintain
 - **Flexibility**: Mix Python packages and standalone files
+
+### 4. Why extract parameters from signatures?
+
+- **DRY**: Define parameters once in the function signature
+- **Type safety**: Python type hints provide validation
+- **IDE support**: Full autocomplete and type checking
+- **Less boilerplate**: No separate parameter decorators needed
 
 ## Troubleshooting
 
 ### Provider not showing up in /api/data-providers
 
 1. **Check file is being imported**:
-    - Look for startup logs: `✓ Discovered: workspace.examples.providers.my_provider`
+    - Look for startup logs: `✓ Discovered: workspace.providers.my_provider`
     - If missing: File starts with `_` or import failed
 
 2. **Check decorator is correct**:
 
     ```python
-    from bifrost import data_provider  # ✅ Correct
-    from shared.decorators import data_provider  # ❌ Wrong (import restrictions)
+    from bifrost import data_provider  # Correct
     ```
 
 3. **Check registry**:
@@ -414,34 +388,28 @@ async def get_data_provider_options_handler(
 
 ### Parameters not showing up
 
-1. **Check `@param` comes AFTER `@data_provider`**:
+1. **Check function has type hints**:
 
     ```python
-    @data_provider(name="test")  # First
-    @param("field", ...)          # After
-    async def test(context, field):
+    @data_provider
+    async def test(field: str) -> list[dict]:  # Type hint required
         pass
     ```
 
-2. **Check registry dataclass has `parameters` field**:
-    - Should be in `shared/registry.py` line 68
-    - Added in T024
-
-3. **Check conversion function includes parameters**:
-    - Should be in `shared/handlers/discovery_handlers.py` line 82-108
-    - Converts registry dataclass → Pydantic model
+2. **Check parameters have correct types**:
+    - Use `str`, `int`, `float`, `bool`, `list`, `dict`
+    - Optional parameters need defaults: `field: str = "default"`
 
 ## Related Files
 
-- **Decorators**: `shared/decorators.py`
+- **Decorators**: `sdk/decorators.py`
 - **Registry**: `shared/registry.py`
-- **Discovery**: `function_app.py` (lines 170-246)
+- **Discovery**: `shared/discovery.py`
 - **API Endpoints**:
-    - `functions/http/discovery.py`
-    - `functions/http/data_providers.py`
+    - `src/routers/discovery.py`
+    - `src/routers/data_providers.py`
 - **Handlers**:
     - `shared/handlers/discovery_handlers.py`
     - `shared/handlers/data_providers_handlers.py`
     - `shared/handlers/forms_handlers.py`
-- **Models**: `shared/models.py` (lines 750-800)
-- **SDK**: `bifrost.py`, `sdk/__init__.py`
+- **Models**: `shared/models.py`
