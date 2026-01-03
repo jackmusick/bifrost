@@ -204,6 +204,21 @@ export function useWorkflowExecution(
 					}
 				}, timeout);
 
+				// Store tracker IMMEDIATELY so buttons can show loading state
+				// This happens before WebSocket connects to avoid race conditions
+				activeExecutionsRef.current.set(executionId, {
+					executionId,
+					workflowId,
+					workflowName,
+					startedAt: Date.now(),
+					resolve,
+					reject,
+					timeoutId,
+					unsubscribe: () => {}, // Placeholder until WebSocket connects
+				});
+				updateActiveState();
+				onExecutionStart?.(executionId, workflowName);
+
 				// Connect to WebSocket and subscribe
 				webSocketService
 					.connect([channel])
@@ -248,24 +263,17 @@ export function useWorkflowExecution(
 							},
 						);
 
-						// Store tracker
-						activeExecutionsRef.current.set(executionId, {
-							executionId,
-							workflowId,
-							workflowName,
-							startedAt: Date.now(),
-							resolve,
-							reject,
-							timeoutId,
-							unsubscribe,
-						});
-
-						updateActiveState();
-						onExecutionStart?.(executionId, workflowName);
+						// Update tracker with real unsubscribe function
+						const tracker =
+							activeExecutionsRef.current.get(executionId);
+						if (tracker) {
+							tracker.unsubscribe = unsubscribe;
+						}
 					})
 					.catch((error) => {
-						// WebSocket connection failed, still resolve with pending status
-						// The caller can handle this case
+						// WebSocket connection failed - remove from active
+						activeExecutionsRef.current.delete(executionId);
+						updateActiveState();
 						clearTimeout(timeoutId);
 						const result: WorkflowResult = {
 							executionId,

@@ -353,12 +353,13 @@ export function ApplicationRunner({
 		[appNavigate, refreshDataSource],
 	);
 
-	// Workflow trigger handler with onComplete support
+	// Workflow trigger handler with onComplete and onError support
 	const handleTriggerWorkflow = useCallback(
 		async (
 			workflowId: string,
 			params?: Record<string, unknown>,
 			onComplete?: OnCompleteAction[],
+			onError?: OnCompleteAction[],
 		) => {
 			const workflow = findWorkflow(workflowId);
 			const providedParams = params ?? {};
@@ -367,8 +368,14 @@ export function ApplicationRunner({
 				finalParams: Record<string, unknown>,
 			) => {
 				const result = await executeWorkflow(workflowId, finalParams);
-				// Execute onComplete actions after workflow finishes
-				if (onComplete && onComplete.length > 0 && result) {
+				if (!result) return;
+
+				// Execute onError actions if workflow failed
+				if (result.status === "failed" && onError && onError.length > 0) {
+					executeOnCompleteActions(onError, result);
+				}
+				// Execute onComplete actions if workflow succeeded
+				else if (result.status === "completed" && onComplete && onComplete.length > 0) {
 					executeOnCompleteActions(onComplete, result);
 				}
 			};
@@ -415,12 +422,20 @@ export function ApplicationRunner({
 		[refreshDataSource],
 	);
 
-	// Build a Set of active workflow names for button loading states
+	// Build a Set of active workflow IDs and names for button loading states
+	// Include both ID and name so buttons can match either format
 	const activeWorkflowsSet = useMemo(() => {
 		const set = new Set<string>();
-		activeWorkflowNames.forEach((name) => set.add(name));
+		activeWorkflowNames.forEach((name) => {
+			set.add(name); // workflow name (e.g., "ticket_create")
+			// Also add the workflow ID so buttons can match by either ID or name
+			const workflow = workflows?.find((w) => w.name === name);
+			if (workflow?.id) {
+				set.add(workflow.id); // workflow UUID
+			}
+		});
 		return set;
-	}, [activeWorkflowNames]);
+	}, [activeWorkflowNames, workflows]);
 
 	// Build inline styles for embed theme customization
 	const embedThemeStyles = useMemo(() => {

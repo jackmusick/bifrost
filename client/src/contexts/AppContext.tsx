@@ -65,6 +65,7 @@ interface AppContextProviderProps {
 		workflowId: string,
 		params?: Record<string, unknown>,
 		onComplete?: OnCompleteAction[],
+		onError?: OnCompleteAction[],
 	) => void;
 	/** Handler for refreshing a data table */
 	onRefreshTable?: (dataSourceKey: string) => void;
@@ -165,9 +166,10 @@ export function AppContextProvider({
 			workflowId: string,
 			params?: Record<string, unknown>,
 			onComplete?: OnCompleteAction[],
+			onError?: OnCompleteAction[],
 		) => {
 			if (onTriggerWorkflow) {
-				onTriggerWorkflow(workflowId, params, onComplete);
+				onTriggerWorkflow(workflowId, params, onComplete, onError);
 			} else {
 				console.warn(
 					`No workflow handler registered. Cannot trigger workflow: ${workflowId}`,
@@ -209,16 +211,16 @@ export function AppContextProvider({
 
 	// Submit form handler - collects field values and triggers workflow
 	const handleSubmitForm = useCallback(
-		(workflowId: string, additionalParams?: Record<string, unknown>) => {
+		(workflowId: string, additionalParams?: Record<string, unknown>, onComplete?: OnCompleteAction[], onError?: OnCompleteAction[]) => {
 			// Merge field values with any additional params
 			const params = {
 				...fieldValues,
 				...additionalParams,
 			};
 
-			// Trigger the workflow with the form data
+			// Trigger the workflow with the form data and onComplete/onError actions
 			if (onTriggerWorkflow) {
-				onTriggerWorkflow(workflowId, params);
+				onTriggerWorkflow(workflowId, params, onComplete, onError);
 			} else {
 				console.warn(
 					`No workflow handler registered. Cannot submit form to workflow: ${workflowId}`,

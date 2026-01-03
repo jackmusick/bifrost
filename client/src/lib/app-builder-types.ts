@@ -145,16 +145,19 @@ export interface ExpressionContext {
 	isDataLoading?: boolean;
 	/** Navigation function for button actions */
 	navigate?: (path: string) => void;
-	/** Workflow trigger function - returns Promise with result for onComplete handling */
+	/** Workflow trigger function - returns Promise with result for onComplete/onError handling */
 	triggerWorkflow?: (
 		workflowId: string,
 		params?: Record<string, unknown>,
 		onComplete?: OnCompleteAction[],
+		onError?: OnCompleteAction[],
 	) => void;
 	/** Submit form to workflow - collects all field values and triggers workflow */
 	submitForm?: (
 		workflowId: string,
 		additionalParams?: Record<string, unknown>,
+		onComplete?: OnCompleteAction[],
+		onError?: OnCompleteAction[],
 	) => void;
 	/** Custom action handler */
 	onCustomAction?: (
@@ -308,8 +311,10 @@ export interface ButtonComponentProps extends BaseComponentProps {
 		customActionId?: string;
 		/** Parameters to pass to action */
 		actionParams?: Record<string, unknown>;
-		/** Action(s) to execute after workflow completes */
+		/** Action(s) to execute after workflow completes successfully */
 		onComplete?: OnCompleteAction[];
+		/** Action(s) to execute if workflow fails */
+		onError?: OnCompleteAction[];
 		/** Button variant */
 		variant?:
 			| "default"

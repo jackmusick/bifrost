@@ -162,7 +162,7 @@ export function TableDetail() {
 		});
 	};
 
-	const truncateJson = (obj: Record<string, unknown>, maxLength = 100) => {
+	const truncateJson = (obj: Record<string, unknown>, maxLength = 60) => {
 		const str = JSON.stringify(obj);
 		if (str.length <= maxLength) return str;
 		return str.substring(0, maxLength) + "...";
@@ -334,8 +334,21 @@ export function TableDetail() {
 													: "-"}
 											</DataTableCell>
 										))}
-										<DataTableCell className="max-w-xs font-mono text-xs text-muted-foreground">
-											{truncateJson(doc.data)}
+										<DataTableCell className="max-w-[200px] font-mono text-xs text-muted-foreground">
+											<TooltipProvider>
+												<Tooltip>
+													<TooltipTrigger asChild>
+														<span className="block truncate cursor-help">
+															{truncateJson(doc.data)}
+														</span>
+													</TooltipTrigger>
+													<TooltipContent side="bottom" className="max-w-md">
+														<pre className="text-xs whitespace-pre-wrap break-all">
+															{JSON.stringify(doc.data, null, 2)}
+														</pre>
+													</TooltipContent>
+												</Tooltip>
+											</TooltipProvider>
 										</DataTableCell>
 										<DataTableCell className="text-sm text-muted-foreground whitespace-nowrap">
 											{formatDate(doc.created_at)}

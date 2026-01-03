@@ -307,7 +307,10 @@ class tables:
         if response.status_code == 404:
             return None
         response.raise_for_status()
-        return DocumentData.model_validate(response.json())
+        data = response.json()
+        if data is None:
+            return None
+        return DocumentData.model_validate(data)
 
     @staticmethod
     async def update(
@@ -351,7 +354,10 @@ class tables:
         if response.status_code == 404:
             return None
         response.raise_for_status()
-        return DocumentData.model_validate(response.json())
+        result = response.json()
+        if result is None:
+            return None
+        return DocumentData.model_validate(result)
 
     @staticmethod
     async def delete_document(

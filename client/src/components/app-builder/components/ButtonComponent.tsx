@@ -111,6 +111,7 @@ export function ButtonComponent({
 					workflowId?: string;
 					actionParams?: Record<string, unknown>;
 					onComplete?: OnCompleteAction[];
+					onError?: OnCompleteAction[];
 			  }
 			| undefined;
 
@@ -121,6 +122,21 @@ export function ButtonComponent({
 		const onComplete = (props?.onComplete || onClick?.onComplete) as
 			| OnCompleteAction[]
 			| undefined;
+		const onError = ((props as Record<string, unknown>)?.onError || onClick?.onError) as
+			| OnCompleteAction[]
+			| undefined;
+
+		// Evaluate expressions in actionParams before passing to workflows
+		const evaluatedParams: Record<string, unknown> = {};
+		if (actionParams) {
+			for (const [key, value] of Object.entries(actionParams)) {
+				if (typeof value === "string" && value.includes("{{")) {
+					evaluatedParams[key] = evaluateExpression(value, context);
+				} else {
+					evaluatedParams[key] = value;
+				}
+			}
+		}
 
 		switch (actionType) {
 			case "navigate":
@@ -135,20 +151,20 @@ export function ButtonComponent({
 
 			case "workflow":
 				if (workflowId && context.triggerWorkflow) {
-					context.triggerWorkflow(workflowId, actionParams, onComplete);
+					context.triggerWorkflow(workflowId, evaluatedParams, onComplete, onError);
 				}
 				break;
 
 			case "submit":
 				// Submit form - collects all field values and triggers workflow
 				if (workflowId && context.submitForm) {
-					context.submitForm(workflowId, actionParams);
+					context.submitForm(workflowId, evaluatedParams, onComplete, onError);
 				}
 				break;
 
 			case "custom":
 				if (props?.customActionId && context.onCustomAction) {
-					context.onCustomAction(props.customActionId, actionParams);
+					context.onCustomAction(props.customActionId, evaluatedParams);
 				}
 				break;
 		}

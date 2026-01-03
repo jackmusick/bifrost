@@ -24,6 +24,8 @@ interface LayoutRendererProps {
 	context: ExpressionContext;
 	/** Optional additional class names */
 	className?: string;
+	/** Parent key for generating unique keys for nested layouts */
+	parentKey?: string;
 }
 
 /**
@@ -134,12 +136,31 @@ function getGridColumnsClass(columns?: number): string {
 }
 
 /**
+ * Generate a stable unique key for a layout child
+ * For components, use their id. For layout containers, generate a key from
+ * the parent's key/type and child index to ensure uniqueness across the tree.
+ */
+function generateChildKey(
+	child: LayoutContainer | AppComponent,
+	index: number,
+	parentKey: string,
+): string {
+	if (isLayoutContainer(child)) {
+		// For layout containers, combine parent key with index and child type
+		return `${parentKey}-${child.type}-${index}`;
+	}
+	// For components, use their unique id
+	return child.id;
+}
+
+/**
  * Render a layout container (row, column, or grid)
  */
 function renderLayoutContainer(
 	layout: LayoutContainer,
 	context: ExpressionContext,
 	className?: string,
+	parentKey = "root",
 ): React.ReactElement | null {
 	// Check visibility
 	if (!evaluateVisibility(layout.visible, context)) {
@@ -155,6 +176,9 @@ function renderLayoutContainer(
 
 	const layoutStyles = getLayoutStyles(layout);
 
+	// Generate a unique key for this container based on parent
+	const containerKey = parentKey;
+
 	// For rows, we want children to flex and share space equally by default
 	// unless they have an explicit width set OR autoSize is enabled
 	const renderChild = (
@@ -163,7 +187,7 @@ function renderLayoutContainer(
 		parentType: "row" | "column" | "grid",
 		autoSize?: boolean,
 	) => {
-		const key = isLayoutContainer(child) ? `layout-${index}` : child.id;
+		const key = generateChildKey(child, index, containerKey);
 
 		// In row layouts, wrap children with flex-1 to distribute space evenly
 		// unless the child has an explicit width OR autoSize is enabled on the parent
@@ -177,12 +201,12 @@ function renderLayoutContainer(
 					key={key}
 					className={hasExplicitWidth ? undefined : "flex-1 min-w-0"}
 				>
-					<LayoutRenderer layout={child} context={context} />
+					<LayoutRenderer layout={child} context={context} parentKey={key} />
 				</div>
 			);
 		}
 
-		return <LayoutRenderer key={key} layout={child} context={context} />;
+		return <LayoutRenderer key={key} layout={child} context={context} parentKey={key} />;
 	};
 
 	switch (layout.type) {
@@ -282,9 +306,10 @@ export function LayoutRenderer({
 	layout,
 	context,
 	className,
+	parentKey = "root",
 }: LayoutRendererProps): React.ReactElement | null {
 	if (isLayoutContainer(layout)) {
-		return renderLayoutContainer(layout, context, className);
+		return renderLayoutContainer(layout, context, className, parentKey);
 	}
 
 	return renderComponent(layout, context, className);
