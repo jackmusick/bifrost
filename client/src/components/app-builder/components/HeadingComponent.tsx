@@ -1,7 +1,8 @@
 /**
  * Heading Component for App Builder
  *
- * Renders h1-h6 headings with expression support for text content.
+ * Renders h1-h6 headings. Expression evaluation is handled
+ * centrally by ComponentRegistry.
  */
 
 import { cn } from "@/lib/utils";
@@ -9,7 +10,6 @@ import type {
 	HeadingComponentProps,
 	HeadingLevel,
 } from "@/lib/app-builder-types";
-import { evaluateExpression } from "@/lib/expression-parser";
 import type { RegisteredComponentProps } from "../ComponentRegistry";
 
 /**
@@ -50,13 +50,11 @@ function getHeadingClasses(level: HeadingLevel): string {
  *   }
  * }
  */
-export function HeadingComponent({
-	component,
-	context,
-}: RegisteredComponentProps) {
+export function HeadingComponent({ component }: RegisteredComponentProps) {
 	const { props } = component as HeadingComponentProps;
 	const level = props?.level || 1;
-	const text = String(evaluateExpression(props?.text ?? "", context) ?? "");
+	// Props are pre-evaluated by ComponentRegistry
+	const text = String(props?.text ?? "");
 
 	const classes = cn(getHeadingClasses(level), props?.className);
 

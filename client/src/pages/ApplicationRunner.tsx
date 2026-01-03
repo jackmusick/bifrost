@@ -292,8 +292,9 @@ export function ApplicationRunner({
 			// If the path is relative (doesn't start with /apps/), make it relative to current app
 			if (!path.startsWith("/apps/") && !path.startsWith("http")) {
 				const basePath = `/apps/${slugParam}`;
-				const relativePath = path.startsWith("/") ? path : `/${path}`;
-				navigate(`${basePath}${relativePath}`);
+				// Normalize path to avoid double slashes
+				const relativePath = path.startsWith("/") ? path.slice(1) : path;
+				navigate(`${basePath}/${relativePath}`);
 			} else {
 				navigate(path);
 			}

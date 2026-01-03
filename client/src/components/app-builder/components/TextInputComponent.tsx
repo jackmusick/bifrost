@@ -2,12 +2,12 @@
  * Text Input Component for App Builder
  *
  * Text input field with label, placeholder, validation, and field tracking.
+ * Expression evaluation is handled centrally by ComponentRegistry.
  */
 
 import { useCallback, useEffect, useState } from "react";
 import { cn } from "@/lib/utils";
 import type { TextInputComponentProps } from "@/lib/app-builder-types";
-import { evaluateExpression } from "@/lib/expression-parser";
 import type { RegisteredComponentProps } from "../ComponentRegistry";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -50,37 +50,16 @@ export function TextInputComponent({
 }: RegisteredComponentProps) {
 	const { props } = component as TextInputComponentProps;
 
-	// Evaluate default value if it's an expression
-	const defaultValue = props.defaultValue
-		? String(evaluateExpression(props.defaultValue, context) ?? "")
-		: "";
+	// Props are pre-evaluated by ComponentRegistry
+	const defaultValue = props.defaultValue ? String(props.defaultValue) : "";
 
 	// Local state for the input value
 	const [value, setValue] = useState(defaultValue);
 
-	// Evaluate disabled state
-	const isDisabled = (() => {
-		if (props.disabled === undefined || props.disabled === null) {
-			return false;
-		}
-		if (typeof props.disabled === "boolean") {
-			return props.disabled;
-		}
-		return Boolean(evaluateExpression(props.disabled, context));
-	})();
-
-	// Evaluate label if it contains expressions
-	const label = props.label
-		? String(evaluateExpression(props.label, context) ?? props.label)
-		: undefined;
-
-	// Evaluate placeholder if it contains expressions
-	const placeholder = props.placeholder
-		? String(
-				evaluateExpression(props.placeholder, context) ??
-					props.placeholder,
-			)
-		: undefined;
+	// Props are pre-evaluated by ComponentRegistry (disabled is now boolean)
+	const isDisabled = Boolean(props.disabled);
+	const label = props.label ? String(props.label) : undefined;
+	const placeholder = props.placeholder ? String(props.placeholder) : undefined;
 
 	// Get setFieldValue from context (stable reference)
 	const setFieldValue = context.setFieldValue;

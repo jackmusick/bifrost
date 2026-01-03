@@ -406,3 +406,182 @@ export function extractVariablePaths(template: string): string[] {
 
 	return [...new Set(paths)];
 }
+
+// ============================================================================
+// Centralized Component Props Evaluation
+// ============================================================================
+
+/**
+ * Props that should NEVER be evaluated (structural/identifier props)
+ */
+const NON_EVALUABLE_PROPS = new Set([
+	// Identifiers
+	"type",
+	"id",
+	"fieldId",
+	"workflowId",
+	"dataSourceKey",
+
+	// Already handled by LayoutRenderer
+	"visible",
+
+	// UI config enums (should remain as literal strings)
+	"className",
+	"variant",
+	"size",
+	"level",
+	"inputType",
+	"orientation",
+	"objectFit",
+	"displayMode",
+
+	// Layout numbers (should remain as numbers)
+	"columns",
+	"gap",
+	"padding",
+
+	// Nested components/layouts (handled recursively by LayoutRenderer)
+	"children",
+	"content",
+	"layout",
+
+	// Special objects processed separately by components
+	"items", // Tabs items
+	"footerActions", // Modal footer
+	"rowActions", // DataTable row actions
+	"headerActions", // DataTable header actions
+
+	// Action handlers (evaluated at runtime with dynamic context)
+	"onClick",
+	"onRowClick",
+	"onComplete",
+	"onError",
+
+	// StatCard trend object (contains direction enum)
+	"trend",
+]);
+
+/**
+ * Props that can be boolean OR string expression, result should be boolean
+ */
+const BOOLEAN_EXPRESSION_PROPS = new Set(["disabled", "required"]);
+
+/**
+ * Recursively evaluate expressions in a value
+ *
+ * @param value - The value to evaluate
+ * @param context - The expression context
+ * @returns The evaluated value
+ */
+export function evaluateDeep(
+	value: unknown,
+	context: ExpressionContext,
+): unknown {
+	// Null/undefined pass through
+	if (value === null || value === undefined) {
+		return value;
+	}
+
+	// String - evaluate if contains expression
+	if (typeof value === "string") {
+		if (value.includes("{{")) {
+			return evaluateExpression(value, context);
+		}
+		return value;
+	}
+
+	// Array - recursively evaluate each element
+	if (Array.isArray(value)) {
+		return value.map((item) => evaluateDeep(item, context));
+	}
+
+	// Object - recursively evaluate each property
+	if (typeof value === "object") {
+		const result: Record<string, unknown> = {};
+		for (const [key, val] of Object.entries(value)) {
+			result[key] = evaluateDeep(val, context);
+		}
+		return result;
+	}
+
+	// Primitives (number, boolean) pass through
+	return value;
+}
+
+/**
+ * Evaluate all evaluable props in a component's props object
+ *
+ * This function centralizes expression evaluation for App Builder components,
+ * handling various prop types appropriately:
+ * - Strings with expressions are evaluated
+ * - Boolean/expression props (like disabled) are evaluated to boolean
+ * - Arrays and nested objects are recursively evaluated
+ * - Non-evaluable props (identifiers, enums) are passed through unchanged
+ *
+ * @param props - The component props object
+ * @param context - The expression context
+ * @returns New props object with expressions evaluated
+ *
+ * @example
+ * const props = { label: "{{ user.name }}", disabled: "{{ !user.active }}", variant: "default" };
+ * const evaluated = evaluateComponentProps(props, context);
+ * // { label: "John", disabled: false, variant: "default" }
+ */
+export function evaluateComponentProps<T extends Record<string, unknown>>(
+	props: T | undefined,
+	context: ExpressionContext,
+): T {
+	if (!props) {
+		return {} as T;
+	}
+
+	const result: Record<string, unknown> = {};
+
+	for (const [key, value] of Object.entries(props)) {
+		// Skip non-evaluable props
+		if (NON_EVALUABLE_PROPS.has(key)) {
+			result[key] = value;
+			continue;
+		}
+
+		// Handle boolean-or-expression props
+		if (BOOLEAN_EXPRESSION_PROPS.has(key)) {
+			if (typeof value === "boolean") {
+				result[key] = value;
+			} else if (typeof value === "string") {
+				if (value.includes("{{")) {
+					result[key] = Boolean(evaluateExpression(value, context));
+				} else {
+					// Treat string "true"/"false" as boolean
+					result[key] = value === "true";
+				}
+			} else {
+				result[key] = Boolean(value);
+			}
+			continue;
+		}
+
+		// Handle arrays (like options) - recursively evaluate
+		if (Array.isArray(value)) {
+			result[key] = evaluateDeep(value, context);
+			continue;
+		}
+
+		// Handle objects (like actionParams) - recursively evaluate
+		if (value !== null && typeof value === "object") {
+			result[key] = evaluateDeep(value, context);
+			continue;
+		}
+
+		// Handle string expressions
+		if (typeof value === "string" && value.includes("{{")) {
+			result[key] = evaluateExpression(value, context);
+			continue;
+		}
+
+		// Pass through other values unchanged
+		result[key] = value;
+	}
+
+	return result as T;
+}

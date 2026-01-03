@@ -2,12 +2,12 @@
  * Checkbox Component for App Builder
  *
  * Boolean checkbox with label, description, and field tracking.
+ * Expression evaluation is handled centrally by ComponentRegistry.
  */
 
 import { useCallback, useEffect, useState } from "react";
 import { cn } from "@/lib/utils";
 import type { CheckboxComponentProps } from "@/lib/app-builder-types";
-import { evaluateExpression } from "@/lib/expression-parser";
 import type { RegisteredComponentProps } from "../ComponentRegistry";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Label } from "@/components/ui/label";
@@ -55,29 +55,10 @@ export function CheckboxComponent({
 	// Local state for the checked value
 	const [checked, setChecked] = useState(defaultChecked);
 
-	// Evaluate disabled state
-	const isDisabled = (() => {
-		if (props.disabled === undefined || props.disabled === null) {
-			return false;
-		}
-		if (typeof props.disabled === "boolean") {
-			return props.disabled;
-		}
-		return Boolean(evaluateExpression(props.disabled, context));
-	})();
-
-	// Evaluate label if it contains expressions
-	const label = String(
-		evaluateExpression(props.label, context) ?? props.label,
-	);
-
-	// Evaluate description if it contains expressions
-	const description = props.description
-		? String(
-				evaluateExpression(props.description, context) ??
-					props.description,
-			)
-		: undefined;
+	// Props are pre-evaluated by ComponentRegistry (disabled is now boolean)
+	const isDisabled = Boolean(props.disabled);
+	const label = String(props.label ?? "");
+	const description = props.description ? String(props.description) : undefined;
 
 	// Get setFieldValue from context (stable reference)
 	const setFieldValue = context.setFieldValue;

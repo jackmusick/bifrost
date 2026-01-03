@@ -2,24 +2,19 @@
  * Image Component for App Builder
  *
  * Displays an image with optional sizing constraints.
+ * Expression evaluation is handled centrally by ComponentRegistry.
  */
 
 import { cn } from "@/lib/utils";
 import type { ImageComponentProps } from "@/lib/app-builder-types";
 import type { RegisteredComponentProps } from "../ComponentRegistry";
-import { evaluateExpression } from "@/lib/expression-parser";
 
-export function ImageComponent({
-	component,
-	context,
-}: RegisteredComponentProps) {
+export function ImageComponent({ component }: RegisteredComponentProps) {
 	const { props } = component as ImageComponentProps;
 
-	// Evaluate expressions
-	const src = String(evaluateExpression(props?.src ?? "", context) ?? "");
-	const alt = props?.alt
-		? String(evaluateExpression(props.alt, context) ?? "")
-		: "";
+	// Props are pre-evaluated by ComponentRegistry
+	const src = String(props?.src ?? "");
+	const alt = props?.alt ? String(props.alt) : "";
 
 	const style: React.CSSProperties = {};
 

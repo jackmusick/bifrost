@@ -109,11 +109,20 @@ export function DataTableComponent({
 	const { props } = component as DataTableComponentProps;
 
 	// Get data from context - memoize to prevent dependency changes
+	// Support dot-notation paths like "tickets.tickets" for nested data access
 	const rawData = useMemo(() => {
-		const dataSource = props.dataSource.startsWith("{{")
-			? evaluateExpression(props.dataSource, context)
-			: context.data?.[props.dataSource];
-		return dataSource;
+		if (props.dataSource.startsWith("{{")) {
+			return evaluateExpression(props.dataSource, context);
+		}
+		// Use getNestedValue for dot-notation paths (e.g., "tickets.tickets")
+		if (context.data && props.dataSource.includes(".")) {
+			return getNestedValue(
+				context.data as Record<string, unknown>,
+				props.dataSource,
+			);
+		}
+		// Simple key lookup for single-level paths
+		return context.data?.[props.dataSource];
 	}, [props.dataSource, context]);
 
 	const data = useMemo(() => {
@@ -545,7 +554,11 @@ export function DataTableComponent({
 							paginatedData.map(
 								(row: Record<string, unknown>, rowIndex) => (
 									<TableRow
-										key={rowIndex}
+										key={
+											(row.id as string) ??
+											(row._id as string) ??
+											`row-${rowIndex}`
+										}
 										className={cn(
 											props.onRowClick &&
 												"cursor-pointer",

@@ -2,12 +2,12 @@
  * Number Input Component for App Builder
  *
  * Numeric input field with label, min/max validation, and field tracking.
+ * Expression evaluation is handled centrally by ComponentRegistry.
  */
 
 import { useCallback, useEffect, useState } from "react";
 import { cn } from "@/lib/utils";
 import type { NumberInputComponentProps } from "@/lib/app-builder-types";
-import { evaluateExpression } from "@/lib/expression-parser";
 import type { RegisteredComponentProps } from "../ComponentRegistry";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -52,7 +52,7 @@ export function NumberInputComponent({
 }: RegisteredComponentProps) {
 	const { props } = component as NumberInputComponentProps;
 
-	// Evaluate default value if it's an expression
+	// Props are pre-evaluated by ComponentRegistry
 	const getDefaultValue = (): number | "" => {
 		if (props.defaultValue === undefined || props.defaultValue === null) {
 			return "";
@@ -60,12 +60,8 @@ export function NumberInputComponent({
 		if (typeof props.defaultValue === "number") {
 			return props.defaultValue;
 		}
-		// It's a string - could be an expression
-		const evaluated = evaluateExpression(props.defaultValue, context);
-		if (evaluated === undefined || evaluated === null || evaluated === "") {
-			return "";
-		}
-		const num = Number(evaluated);
+		// Already evaluated - just convert to number
+		const num = Number(props.defaultValue);
 		return isNaN(num) ? "" : num;
 	};
 
@@ -74,29 +70,10 @@ export function NumberInputComponent({
 	// Local state for the input value
 	const [value, setValue] = useState<number | "">(defaultValue);
 
-	// Evaluate disabled state
-	const isDisabled = (() => {
-		if (props.disabled === undefined || props.disabled === null) {
-			return false;
-		}
-		if (typeof props.disabled === "boolean") {
-			return props.disabled;
-		}
-		return Boolean(evaluateExpression(props.disabled, context));
-	})();
-
-	// Evaluate label if it contains expressions
-	const label = props.label
-		? String(evaluateExpression(props.label, context) ?? props.label)
-		: undefined;
-
-	// Evaluate placeholder if it contains expressions
-	const placeholder = props.placeholder
-		? String(
-				evaluateExpression(props.placeholder, context) ??
-					props.placeholder,
-			)
-		: undefined;
+	// Props are pre-evaluated by ComponentRegistry (disabled is now boolean)
+	const isDisabled = Boolean(props.disabled);
+	const label = props.label ? String(props.label) : undefined;
+	const placeholder = props.placeholder ? String(props.placeholder) : undefined;
 
 	// Get setFieldValue from context (stable reference)
 	const setFieldValue = context.setFieldValue;

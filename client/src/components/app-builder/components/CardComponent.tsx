@@ -2,11 +2,11 @@
  * Card Component for App Builder
  *
  * Card wrapper with optional header, supporting nested content.
+ * Expression evaluation is handled centrally by ComponentRegistry.
  */
 
 import { cn } from "@/lib/utils";
 import type { CardComponentProps } from "@/lib/app-builder-types";
-import { evaluateExpression } from "@/lib/expression-parser";
 import type { RegisteredComponentProps } from "../ComponentRegistry";
 import {
 	Card,
@@ -42,12 +42,9 @@ export function CardComponent({
 	context,
 }: RegisteredComponentProps) {
 	const { props } = component as CardComponentProps;
-	const title = props?.title
-		? String(evaluateExpression(props.title, context) ?? "")
-		: undefined;
-	const description = props?.description
-		? String(evaluateExpression(props.description, context) ?? "")
-		: undefined;
+	// Props are pre-evaluated by ComponentRegistry
+	const title = props?.title ? String(props.title) : undefined;
+	const description = props?.description ? String(props.description) : undefined;
 
 	const hasHeader = title || description;
 

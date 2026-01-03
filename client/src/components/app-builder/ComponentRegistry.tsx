@@ -11,6 +11,7 @@ import type {
 	AppComponent,
 	ExpressionContext,
 } from "@/lib/app-builder-types";
+import { evaluateComponentProps } from "@/lib/expression-parser";
 
 /**
  * Props passed to each registered component
@@ -121,6 +122,15 @@ export function UnknownComponent({ component }: RegisteredComponentProps) {
 /**
  * Render a component from the registry
  *
+ * Props are automatically evaluated before being passed to the component,
+ * so components receive pre-evaluated values and don't need to call
+ * evaluateExpression() for most props.
+ *
+ * Note: Some props are intentionally NOT evaluated here because they
+ * require special handling (e.g., rowActions need row context, onClick
+ * handlers are evaluated at runtime). See NON_EVALUABLE_PROPS in
+ * expression-parser.ts for the full list.
+ *
  * @param component - The component definition
  * @param context - The expression context
  * @returns The rendered React element
@@ -130,7 +140,24 @@ export function renderRegisteredComponent(
 	context: ExpressionContext,
 ): React.ReactElement {
 	const Component = getComponent(component.type) || UnknownComponent;
+
+	// Automatically evaluate props before passing to component
+	// We use type assertion here because evaluateComponentProps preserves
+	// the shape of props but TypeScript can't verify this statically
+	const evaluatedProps = evaluateComponentProps(
+		component.props as Record<string, unknown>,
+		context,
+	);
+	const evaluatedComponent = {
+		...component,
+		props: evaluatedProps,
+	} as AppComponent;
+
 	return (
-		<Component key={component.id} component={component} context={context} />
+		<Component
+			key={component.id}
+			component={evaluatedComponent}
+			context={context}
+		/>
 	);
 }

@@ -2,22 +2,19 @@
  * Progress Component for App Builder
  *
  * Displays a progress bar with optional label.
+ * Expression evaluation is handled centrally by ComponentRegistry.
  */
 
 import { cn } from "@/lib/utils";
 import { Progress } from "@/components/ui/progress";
 import type { ProgressComponentProps } from "@/lib/app-builder-types";
 import type { RegisteredComponentProps } from "../ComponentRegistry";
-import { evaluateExpression } from "@/lib/expression-parser";
 
-export function ProgressComponent({
-	component,
-	context,
-}: RegisteredComponentProps) {
+export function ProgressComponent({ component }: RegisteredComponentProps) {
 	const { props } = component as ProgressComponentProps;
 
-	// Evaluate expressions
-	const rawValue = evaluateExpression(String(props?.value ?? 0), context);
+	// Props are pre-evaluated by ComponentRegistry
+	const rawValue = props?.value ?? 0;
 	const value =
 		typeof rawValue === "number"
 			? rawValue

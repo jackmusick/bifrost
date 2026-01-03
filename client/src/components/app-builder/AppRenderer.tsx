@@ -21,6 +21,8 @@ import { LayoutRenderer } from "./LayoutRenderer";
 import { registerBasicComponents } from "./components";
 import { usePageData } from "@/hooks/usePageData";
 import { useAuth } from "@/contexts/AuthContext";
+import { evaluateExpression } from "@/lib/expression-parser";
+import type { ExpressionContext } from "@/lib/app-builder-types";
 
 // Track if components have been registered
 let componentsRegistered = false;
@@ -139,6 +141,7 @@ export function AppRenderer({
 	}, [definition, isApplication, pageId]);
 
 	// Build initial variables from app and page
+	// Page variables can contain expressions like {{ params.ticketId }} that need evaluation
 	const initialVariables = useMemo((): Record<string, unknown> => {
 		const vars: Record<string, unknown> = {};
 
@@ -150,11 +153,36 @@ export function AppRenderer({
 		}
 
 		if (page?.variables) {
-			Object.assign(vars, page.variables);
+			// Create a minimal context for evaluating variable expressions
+			// Variables can reference params (route params) and user
+			const evalContext: Partial<ExpressionContext> = {
+				params: routeParams,
+				user: authUser
+					? {
+							id: authUser.id,
+							name: authUser.name,
+							email: authUser.email,
+							role: authUser.roles[0] || "user",
+						}
+					: undefined,
+				variables: vars, // Already-evaluated variables for chained refs
+			};
+
+			// Evaluate each variable value if it contains expressions
+			for (const [key, value] of Object.entries(page.variables)) {
+				if (typeof value === "string" && value.includes("{{")) {
+					vars[key] = evaluateExpression(
+						value,
+						evalContext as ExpressionContext,
+					);
+				} else {
+					vars[key] = value;
+				}
+			}
 		}
 
 		return vars;
-	}, [definition, isApplication, page]);
+	}, [definition, isApplication, page, routeParams, authUser]);
 
 	// Build base context for page data loading
 	const baseContext = useMemo(

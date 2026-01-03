@@ -149,8 +149,9 @@ function generateChildKey(
 		// For layout containers, combine parent key with index and child type
 		return `${parentKey}-${child.type}-${index}`;
 	}
-	// For components, use their unique id
-	return child.id;
+	// For components, prefer their unique id but fall back to generated key
+	// (some components like spacer, divider may not have explicit ids)
+	return child.id || `${parentKey}-${child.type}-${index}`;
 }
 
 /**

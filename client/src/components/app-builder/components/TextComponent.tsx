@@ -1,12 +1,12 @@
 /**
  * Text Component for App Builder
  *
- * Renders paragraph text with optional label and expression support.
+ * Renders paragraph text with optional label. Expression evaluation
+ * is handled centrally by ComponentRegistry.
  */
 
 import { cn } from "@/lib/utils";
 import type { TextComponentProps } from "@/lib/app-builder-types";
-import { evaluateExpression } from "@/lib/expression-parser";
 import type { RegisteredComponentProps } from "../ComponentRegistry";
 
 /**
@@ -26,15 +26,11 @@ import type { RegisteredComponentProps } from "../ComponentRegistry";
  *   }
  * }
  */
-export function TextComponent({
-	component,
-	context,
-}: RegisteredComponentProps) {
+export function TextComponent({ component }: RegisteredComponentProps) {
 	const { props } = component as TextComponentProps;
-	const text = String(evaluateExpression(props?.text ?? "", context) ?? "");
-	const label = props?.label
-		? String(evaluateExpression(props.label, context) ?? "")
-		: undefined;
+	// Props are pre-evaluated by ComponentRegistry
+	const text = String(props?.text ?? "");
+	const label = props?.label ? String(props.label) : undefined;
 
 	return (
 		<div className={cn("space-y-1", props?.className)}>

@@ -2,6 +2,7 @@
  * Select Component for App Builder
  *
  * Dropdown select with static or data-driven options and field tracking.
+ * Expression evaluation is handled centrally by ComponentRegistry.
  */
 
 import { useCallback, useEffect, useState, useMemo } from "react";
@@ -10,7 +11,6 @@ import type {
 	SelectComponentProps,
 	SelectOption,
 } from "@/lib/app-builder-types";
-import { evaluateExpression } from "@/lib/expression-parser";
 import type { RegisteredComponentProps } from "../ComponentRegistry";
 import {
 	Select,
@@ -64,66 +64,44 @@ export function SelectComponent({
 }: RegisteredComponentProps) {
 	const { props } = component as SelectComponentProps;
 
-	// Evaluate default value if it's an expression
-	const defaultValue = props.defaultValue
-		? String(evaluateExpression(props.defaultValue, context) ?? "")
-		: "";
+	// Props are pre-evaluated by ComponentRegistry
+	const defaultValue = props.defaultValue ? String(props.defaultValue) : "";
 
 	// Local state for the selected value
 	const [value, setValue] = useState(defaultValue);
 
-	// Evaluate disabled state
-	const isDisabled = (() => {
-		if (props.disabled === undefined || props.disabled === null) {
-			return false;
-		}
-		if (typeof props.disabled === "boolean") {
-			return props.disabled;
-		}
-		return Boolean(evaluateExpression(props.disabled, context));
-	})();
-
-	// Evaluate label if it contains expressions
-	const label = props.label
-		? String(evaluateExpression(props.label, context) ?? props.label)
-		: undefined;
-
-	// Evaluate placeholder if it contains expressions
+	// Props are pre-evaluated by ComponentRegistry (disabled is now boolean)
+	const isDisabled = Boolean(props.disabled);
+	const label = props.label ? String(props.label) : undefined;
 	const placeholder = props.placeholder
-		? String(
-				evaluateExpression(props.placeholder, context) ??
-					props.placeholder,
-			)
+		? String(props.placeholder)
 		: "Select an option";
 
 	// Build options from static config or data source
+	// Note: options array is pre-evaluated by ComponentRegistry (evaluateDeep)
 	const options: SelectOption[] = useMemo(() => {
-		// If static options are provided as an array, use them
-		if (
-			props.options &&
-			Array.isArray(props.options) &&
-			props.options.length > 0
-		) {
-			return props.options;
-		}
-
-		// If options is an expression string, evaluate it
-		if (
-			props.options &&
-			typeof props.options === "string" &&
-			props.options.includes("{{")
-		) {
-			const evaluated = evaluateExpression(props.options, context);
-			if (Array.isArray(evaluated)) {
-				const valueField = props.valueField || "value";
-				const labelField = props.labelField || "label";
-				return evaluated.map(
-					(item: Record<string, unknown>): SelectOption => ({
-						value: String(item[valueField] ?? ""),
-						label: String(item[labelField] ?? item[valueField] ?? ""),
-					}),
-				);
+		// If options were evaluated to an array, use them directly
+		if (Array.isArray(props.options) && props.options.length > 0) {
+			// Check if it's already SelectOption[] or raw data needing field mapping
+			const firstOption = props.options[0];
+			if (
+				typeof firstOption === "object" &&
+				firstOption !== null &&
+				"value" in firstOption &&
+				"label" in firstOption
+			) {
+				return props.options as SelectOption[];
 			}
+			// Raw data - apply field mapping
+			const valueField = props.valueField || "value";
+			const labelField = props.labelField || "label";
+			return props.options.map((item): SelectOption => {
+				const itemObj = item as unknown as Record<string, unknown>;
+				return {
+					value: String(itemObj[valueField] ?? ""),
+					label: String(itemObj[labelField] ?? itemObj[valueField] ?? ""),
+				};
+			});
 		}
 
 		// If optionsSource is specified, get from context data
@@ -147,7 +125,6 @@ export function SelectComponent({
 		props.valueField,
 		props.labelField,
 		context.data,
-		context,
 	]);
 
 	// Get setFieldValue from context (stable reference)
