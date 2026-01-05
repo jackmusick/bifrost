@@ -9,9 +9,15 @@ All methods are async and must be awaited.
 from __future__ import annotations
 
 from typing import Any
+from urllib.parse import quote
 
 from .client import get_client
 from .models import TableInfo, DocumentData, DocumentList
+
+
+def _encode_table_name(name: str) -> str:
+    """URL-encode table name for path parameters."""
+    return quote(name, safe="")
 
 
 class tables:
@@ -80,14 +86,16 @@ class tables:
             >>> app_table = await tables.create("app_data", app="app-uuid")
         """
         client = get_client()
+        params = {}
+        if scope:
+            params["scope"] = scope
         response = await client.post(
-            "/api/cli/tables/create",
+            "/api/tables",
+            params=params,
             json={
                 "name": name,
                 "description": description,
-                "table_schema": table_schema,
-                "scope": scope,
-                "app": app,
+                "schema": table_schema,
             }
         )
         response.raise_for_status()
@@ -120,10 +128,10 @@ class tables:
             >>> app_tables = await tables.list(app="app-uuid")
         """
         client = get_client()
-        response = await client.post(
-            "/api/cli/tables/list",
-            json={"scope": scope, "app": app}
-        )
+        params = {}
+        if scope:
+            params["scope"] = scope
+        response = await client.get("/api/tables", params=params)
         response.raise_for_status()
         data = response.json()
         return [TableInfo.model_validate(t) for t in data.get("tables", [])]
@@ -154,12 +162,15 @@ class tables:
             >>> await tables.delete("old_customers")
         """
         client = get_client()
-        response = await client.post(
-            "/api/cli/tables/delete",
-            json={"name": name, "scope": scope, "app": app}
+        params = {}
+        if scope:
+            params["scope"] = scope
+        response = await client.delete(
+            f"/api/tables/{_encode_table_name(name)}",
+            params=params,
         )
         response.raise_for_status()
-        return response.json()
+        return True
 
     # =========================================================================
     # Document Operations
@@ -206,15 +217,18 @@ class tables:
             ... })
         """
         client = get_client()
+        params = {}
+        if scope:
+            params["scope"] = scope
+
+        body: dict[str, Any] = {"data": data}
+        if id:
+            body["id"] = id
+
         response = await client.post(
-            "/api/cli/tables/documents/insert",
-            json={
-                "table": table,
-                "id": id,
-                "data": data,
-                "scope": scope,
-                "app": app,
-            }
+            f"/api/tables/{_encode_table_name(table)}/documents",
+            params=params,
+            json=body,
         )
         response.raise_for_status()
         return DocumentData.model_validate(response.json())
@@ -254,19 +268,12 @@ class tables:
             ...     "department": "Engineering",
             ... })
         """
-        client = get_client()
-        response = await client.post(
-            "/api/cli/tables/documents/upsert",
-            json={
-                "table": table,
-                "id": id,
-                "data": data,
-                "scope": scope,
-                "app": app,
-            }
-        )
-        response.raise_for_status()
-        return DocumentData.model_validate(response.json())
+        # Try to get existing, then update or insert
+        existing = await tables.get(table, id, scope=scope, app=app)
+        if existing:
+            return await tables.update(table, id, data, scope=scope, app=app)
+        else:
+            return await tables.insert(table, data, id=id, scope=scope, app=app)
 
     @staticmethod
     async def get(
@@ -295,14 +302,12 @@ class tables:
             >>> doc = await tables.get("customers", "acme-001")
         """
         client = get_client()
-        response = await client.post(
-            "/api/cli/tables/documents/get",
-            json={
-                "table": table,
-                "doc_id": doc_id,
-                "scope": scope,
-                "app": app,
-            }
+        params = {}
+        if scope:
+            params["scope"] = scope
+        response = await client.get(
+            f"/api/tables/{_encode_table_name(table)}/documents/{quote(doc_id, safe='')}",
+            params=params,
         )
         if response.status_code == 404:
             return None
@@ -341,15 +346,13 @@ class tables:
             >>> doc = await tables.update("customers", "uuid-here", {"status": "inactive"})
         """
         client = get_client()
-        response = await client.post(
-            "/api/cli/tables/documents/update",
-            json={
-                "table": table,
-                "doc_id": doc_id,
-                "data": data,
-                "scope": scope,
-                "app": app,
-            }
+        params = {}
+        if scope:
+            params["scope"] = scope
+        response = await client.patch(
+            f"/api/tables/{_encode_table_name(table)}/documents/{quote(doc_id, safe='')}",
+            params=params,
+            json={"data": data},
         )
         if response.status_code == 404:
             return None
@@ -386,19 +389,17 @@ class tables:
             >>> deleted = await tables.delete_document("customers", "uuid-here")
         """
         client = get_client()
-        response = await client.post(
-            "/api/cli/tables/documents/delete",
-            json={
-                "table": table,
-                "doc_id": doc_id,
-                "scope": scope,
-                "app": app,
-            }
+        params = {}
+        if scope:
+            params["scope"] = scope
+        response = await client.delete(
+            f"/api/tables/{_encode_table_name(table)}/documents/{quote(doc_id, safe='')}",
+            params=params,
         )
         if response.status_code == 404:
             return False
         response.raise_for_status()
-        return response.json()
+        return True
 
     @staticmethod
     async def query(
@@ -456,17 +457,18 @@ class tables:
             ... )
         """
         client = get_client()
+        params = {}
+        if scope:
+            params["scope"] = scope
         response = await client.post(
-            "/api/cli/tables/documents/query",
+            f"/api/tables/{_encode_table_name(table)}/documents/query",
+            params=params,
             json={
-                "table": table,
                 "where": where,
                 "order_by": order_by,
                 "order_dir": order_dir,
                 "limit": limit,
                 "offset": offset,
-                "scope": scope,
-                "app": app,
             }
         )
         response.raise_for_status()
@@ -502,14 +504,13 @@ class tables:
             >>> high_value = await tables.count("customers", where={"revenue": {"gte": 10000}})
         """
         client = get_client()
-        response = await client.post(
-            "/api/cli/tables/documents/count",
-            json={
-                "table": table,
-                "where": where,
-                "scope": scope,
-                "app": app,
-            }
+        params = {}
+        if scope:
+            params["scope"] = scope
+        response = await client.get(
+            f"/api/tables/{_encode_table_name(table)}/documents/count",
+            params=params,
         )
         response.raise_for_status()
-        return response.json()
+        data = response.json()
+        return data.get("count", 0)

@@ -9,7 +9,8 @@ For API schemas (Create/Update/Public), see schemas.py
 
 from src.models.orm.agents import Agent, AgentDelegation, AgentRole, AgentTool, Conversation, Message
 from src.models.orm.ai_usage import AIModelPricing, AIUsage
-from src.models.orm.applications import Application
+from src.models.orm.app_roles import AppRole
+from src.models.orm.applications import AppComponent, Application, AppPage
 from src.models.orm.audit import AuditLog
 from src.models.orm.base import Base
 from src.models.orm.branding import GlobalBranding
@@ -28,6 +29,7 @@ from src.models.orm.organizations import Organization
 from src.models.orm.tables import Document, Table
 from src.models.orm.users import Role, User, UserRole
 from src.models.orm.workspace import WorkspaceFile
+from src.models.orm.workflow_access import WorkflowAccess
 from src.models.orm.workflows import DataProvider, Workflow
 
 __all__ = [
@@ -37,6 +39,9 @@ __all__ = [
     "Organization",
     # Applications (App Builder)
     "Application",
+    "AppPage",
+    "AppComponent",
+    "AppRole",
     # Users and Roles
     "User",
     "Role",
@@ -66,6 +71,7 @@ __all__ = [
     # Workflows
     "Workflow",
     "DataProvider",
+    "WorkflowAccess",
     # OAuth
     "OAuthProvider",
     "OAuthToken",

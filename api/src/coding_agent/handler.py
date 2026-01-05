@@ -12,6 +12,7 @@ from uuid import UUID
 
 from src.core.database import get_db_context
 from src.jobs.rabbitmq import consume_from_exchange, publish_to_exchange
+from src.models.enums import CodingModePermission
 from src.services.coding_mode.client import CodingModeClient
 from src.services.coding_mode.models import CodingModeChunk
 from src.services.llm.factory import get_coding_mode_config
@@ -190,6 +191,14 @@ class CodingAgentHandler:
         # Use model from context (API sends it), fall back to config
         model = context.get("model") or coding_config.model
 
+        # Get permission mode from context (default to EXECUTE)
+        permission_mode_str = context.get("permission_mode", CodingModePermission.EXECUTE.value)
+        try:
+            permission_mode = CodingModePermission(permission_mode_str)
+        except ValueError:
+            logger.warning(f"Invalid permission_mode '{permission_mode_str}', defaulting to EXECUTE")
+            permission_mode = CodingModePermission.EXECUTE
+
         client = CodingModeClient(
             user_id=UUID(context["user_id"]) if context.get("user_id") else None,
             user_email=context.get("user_email", "unknown@example.com"),
@@ -201,10 +210,11 @@ class CodingAgentHandler:
             session_id=session_id,
             system_tools=context.get("system_tools", []),
             knowledge_sources=context.get("knowledge_sources", []),
+            permission_mode=permission_mode,
         )
 
         self._clients[session_id] = client
-        logger.info(f"Created new SDK client for session {session_id}")
+        logger.info(f"Created new SDK client for session {session_id}, mode={permission_mode.value}")
 
         return client
 
@@ -244,6 +254,45 @@ class CodingAgentHandler:
                 logger.info(f"Cleaned up SDK client for session {session_id}")
             except Exception as e:
                 logger.warning(f"Error cleaning up SDK client: {e}")
+
+    async def set_permission_mode(
+        self, session_id: str, permission_mode: CodingModePermission
+    ) -> bool:
+        """
+        Change the permission mode for a session.
+
+        This will update the SDK client's permission mode, which will
+        recreate the client with the new mode on the next chat() call.
+
+        Args:
+            session_id: Session to update
+            permission_mode: New permission mode (PLAN or EXECUTE)
+
+        Returns:
+            True if session was found and mode was changed, False otherwise
+        """
+        if session_id in self._clients:
+            client = self._clients[session_id]
+            await client.set_permission_mode(permission_mode)
+            logger.info(f"Changed permission mode to {permission_mode.value} for session {session_id}")
+            return True
+        else:
+            logger.warning(f"No client found for session {session_id} to change permission mode")
+            return False
+
+    def get_permission_mode(self, session_id: str) -> CodingModePermission | None:
+        """
+        Get the current permission mode for a session.
+
+        Args:
+            session_id: Session to query
+
+        Returns:
+            Current permission mode or None if session not found
+        """
+        if session_id in self._clients:
+            return self._clients[session_id].permission_mode
+        return None
 
     async def cleanup_all(self) -> None:
         """Clean up all SDK clients (called on shutdown)."""

@@ -15,6 +15,7 @@ import { initializeMonaco } from "@/lib/monaco-setup";
 import { ConflictDiffView } from "./ConflictDiffView";
 import { IndexingOverlay } from "./IndexingOverlay";
 import { WorkflowIdConflictDialog } from "./WorkflowIdConflictDialog";
+import { WorkflowDeactivationDialog } from "./WorkflowDeactivationDialog";
 
 /**
  * Monaco editor component wrapper
@@ -54,6 +55,15 @@ export function CodeEditor() {
 	const resolveWorkflowIdConflict = useEditorStore(
 		(state) => state.resolveWorkflowIdConflict,
 	);
+
+	// Deactivation conflict state
+	const pendingDeactivationConflict = useEditorStore(
+		(state) => state.pendingDeactivationConflict,
+	);
+	const resolveDeactivationConflict = useEditorStore(
+		(state) => state.resolveDeactivationConflict,
+	);
+
 	const updateTabContent = useEditorStore((state) => state.updateTabContent);
 	const setDiagnostics = useEditorStore((state) => state.setDiagnostics);
 	const activeTabIndex = useEditorStore((state) => state.activeTabIndex);
@@ -626,6 +636,59 @@ export function CodeEditor() {
 					}}
 					onCancel={() => {
 						resolveWorkflowIdConflict("cancel");
+					}}
+				/>
+
+				{/* Workflow Deactivation dialog */}
+				<WorkflowDeactivationDialog
+					pendingDeactivations={
+						pendingDeactivationConflict?.pendingDeactivations ?? []
+					}
+					availableReplacements={
+						pendingDeactivationConflict?.availableReplacements ?? []
+					}
+					open={pendingDeactivationConflict !== null}
+					onForceDeactivate={async () => {
+						const response =
+							await resolveDeactivationConflict(
+								"force_deactivate",
+							);
+						if (response && pendingDeactivationConflict) {
+							// Update tab with new etag
+							updateTabContent(
+								pendingDeactivationConflict.tabIndex,
+								response.content,
+								response.etag,
+							);
+							toast.info("Workflows deactivated");
+						}
+					}}
+					onApplyReplacements={async (replacements) => {
+						const response = await resolveDeactivationConflict(
+							"apply_replacements",
+							replacements,
+						);
+						if (response && pendingDeactivationConflict) {
+							// Update tab with new content (may have ID injections)
+							if (response.content_modified && response.content) {
+								updateTabContent(
+									pendingDeactivationConflict.tabIndex,
+									response.content,
+									response.etag,
+								);
+							} else {
+								// Just update etag
+								updateTabContent(
+									pendingDeactivationConflict.tabIndex,
+									pendingDeactivationConflict.content,
+									response.etag,
+								);
+							}
+							toast.success("Workflow identities transferred");
+						}
+					}}
+					onCancel={() => {
+						resolveDeactivationConflict("cancel");
 					}}
 				/>
 			</div>

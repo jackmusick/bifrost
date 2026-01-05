@@ -44,6 +44,17 @@ import { StructureTree } from "./StructureTree";
 import { NavigationEditor } from "./NavigationEditor";
 import { VariablePreview } from "./VariablePreview";
 
+/**
+ * Component data for save operations
+ */
+export interface ComponentSaveData {
+	componentId: string;
+	type: string;
+	props: Record<string, unknown>;
+	parentId: string | null;
+	order: number;
+}
+
 export interface EditorShellProps {
 	/** The application definition being edited */
 	definition: ApplicationDefinition;
@@ -53,8 +64,24 @@ export interface EditorShellProps {
 	selectedComponentId: string | null;
 	/** Callback when a component is selected */
 	onSelectComponent: (id: string | null) => void;
+	/** Current page ID being edited */
+	pageId?: string;
+	/** Callback when a component is created (for real-time saves) */
+	onComponentCreate?: (data: ComponentSaveData) => void;
+	/** Callback when a component's props are updated (for real-time saves) */
+	onComponentUpdate?: (
+		componentId: string,
+		props: Record<string, unknown>,
+	) => void;
+	/** Callback when a component is deleted (for real-time saves) */
+	onComponentDelete?: (componentId: string) => void;
+	/** Callback when a component is moved (for real-time saves) */
+	onComponentMove?: (
+		componentId: string,
+		newParentId: string | null,
+		newOrder: number,
+	) => void;
 }
-
 
 /**
  * Editor Shell Component
@@ -67,17 +94,39 @@ export function EditorShell({
 	onDefinitionChange,
 	selectedComponentId,
 	onSelectComponent,
+	pageId: externalPageId,
+	onComponentCreate,
+	onComponentUpdate,
+	onComponentDelete,
+	onComponentMove,
 }: EditorShellProps) {
 	// Panel collapse state
 	const [isLeftPanelCollapsed, setIsLeftPanelCollapsed] = useState(false);
 	const [isRightPanelCollapsed, setIsRightPanelCollapsed] = useState(false);
 
 	// Right panel tab state
-	const [rightPanelTab, setRightPanelTab] = useState<"properties" | "variables">("properties");
+	const [rightPanelTab, setRightPanelTab] = useState<
+		"properties" | "variables"
+	>("properties");
 
-	// Current page being edited
-	const [currentPageId, setCurrentPageId] = useState<string>(
-		definition.pages[0]?.id || "",
+	// Current page being edited - use external pageId if provided, otherwise first page
+	// Controlled/uncontrolled: prefer external pageId when provided
+	const [internalPageId, setInternalPageId] = useState<string>(
+		externalPageId || definition.pages[0]?.id || "",
+	);
+
+	// Use external pageId if provided, otherwise use internal state
+	const currentPageId = externalPageId || internalPageId;
+
+	// Handler for setting current page - works in both controlled and uncontrolled modes
+	const handleSetCurrentPageId = useCallback(
+		(pageId: string) => {
+			if (!externalPageId) {
+				setInternalPageId(pageId);
+			}
+			// In controlled mode, the parent handles page changes
+		},
+		[externalPageId],
 	);
 
 	// Left panel tab - now "structure" (tree view), "pages", or "navigation"
@@ -155,8 +204,7 @@ export function EditorShell({
 			const elementToInsert = createDefaultComponent(componentType);
 
 			// Map position to insertIntoTree format
-			const insertPosition =
-				position === "inside" ? "inside" : position;
+			const insertPosition = position === "inside" ? "inside" : position;
 
 			const updatedLayout = insertIntoTree(
 				currentPage.layout,
@@ -169,10 +217,33 @@ export function EditorShell({
 
 			// Select the newly added component (components have IDs, layouts don't need selection)
 			if (!isLayoutContainer(elementToInsert)) {
-				onSelectComponent((elementToInsert as AppComponent).id);
+				const componentId = (elementToInsert as AppComponent).id;
+				onSelectComponent(componentId);
+
+				// Call granular create callback if provided
+				if (onComponentCreate) {
+					// Find the newly inserted element to get its actual parent and order
+					const insertedInfo = findElementInTree(
+						updatedLayout,
+						componentId,
+					);
+					if (insertedInfo) {
+						onComponentCreate({
+							componentId,
+							type: (elementToInsert as AppComponent).type,
+							props:
+								(elementToInsert as AppComponent).props || {},
+							parentId:
+								insertedInfo.parentPath === "root"
+									? null
+									: insertedInfo.parentPath,
+							order: insertedInfo.index,
+						});
+					}
+				}
 			}
 		},
-		[currentPage, updatePageLayout, onSelectComponent],
+		[currentPage, updatePageLayout, onSelectComponent, onComponentCreate],
 	);
 
 	// Handle moving a component within the StructureTree
@@ -193,9 +264,27 @@ export function EditorShell({
 
 			if (moveResult.moved) {
 				updatePageLayout(currentPage.id, moveResult.layout);
+
+				// Call granular move callback if provided
+				if (onComponentMove) {
+					// Find the moved element to get its new parent and order
+					const movedInfo = findElementInTree(
+						moveResult.layout,
+						sourceId,
+					);
+					if (movedInfo) {
+						onComponentMove(
+							sourceId,
+							movedInfo.parentPath === "root"
+								? null
+								: movedInfo.parentPath,
+							movedInfo.index,
+						);
+					}
+				}
 			}
 		},
-		[currentPage, updatePageLayout],
+		[currentPage, updatePageLayout, onComponentMove],
 	);
 
 	// Handle duplicating a component
@@ -208,16 +297,15 @@ export function EditorShell({
 			if (!found) return;
 
 			// Deep clone the element (and regenerate IDs)
-			const cloned = JSON.parse(
-				JSON.stringify(found.element),
-			) as LayoutContainer | AppComponent;
+			const cloned = JSON.parse(JSON.stringify(found.element)) as
+				| LayoutContainer
+				| AppComponent;
 
 			// Regenerate IDs for the cloned element and all children
-			function regenerateIds(
-				el: LayoutContainer | AppComponent,
-			): void {
+			function regenerateIds(el: LayoutContainer | AppComponent): void {
 				if (!isLayoutContainer(el) && el.id) {
-					(el as AppComponent).id = `comp_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`;
+					(el as AppComponent).id =
+						`comp_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`;
 				}
 				if (isLayoutContainer(el)) {
 					for (const child of el.children) {
@@ -239,10 +327,31 @@ export function EditorShell({
 
 			// Select the new component
 			if (!isLayoutContainer(cloned)) {
-				onSelectComponent((cloned as AppComponent).id);
+				const newComponentId = (cloned as AppComponent).id;
+				onSelectComponent(newComponentId);
+
+				// Call granular create callback if provided
+				if (onComponentCreate) {
+					const insertedInfo = findElementInTree(
+						updatedLayout,
+						newComponentId,
+					);
+					if (insertedInfo) {
+						onComponentCreate({
+							componentId: newComponentId,
+							type: (cloned as AppComponent).type,
+							props: (cloned as AppComponent).props || {},
+							parentId:
+								insertedInfo.parentPath === "root"
+									? null
+									: insertedInfo.parentPath,
+							order: insertedInfo.index,
+						});
+					}
+				}
 			}
 		},
-		[currentPage, updatePageLayout, onSelectComponent],
+		[currentPage, updatePageLayout, onSelectComponent, onComponentCreate],
 	);
 
 	// Handle component deletion
@@ -257,8 +366,17 @@ export function EditorShell({
 			if (selectedComponentId === componentId) {
 				onSelectComponent(null);
 			}
+
+			// Call granular delete callback if provided
+			onComponentDelete?.(componentId);
 		},
-		[currentPage, updatePageLayout, selectedComponentId, onSelectComponent],
+		[
+			currentPage,
+			updatePageLayout,
+			selectedComponentId,
+			onSelectComponent,
+			onComponentDelete,
+		],
 	);
 
 	// Keyboard shortcuts
@@ -316,8 +434,14 @@ export function EditorShell({
 				updates,
 			);
 			updatePageLayout(currentPage.id, updatedLayout);
+
+			// Call granular update callback if provided
+			// Only for non-layout components (layout containers don't have a component_id)
+			if (onComponentUpdate && "props" in updates && updates.props) {
+				onComponentUpdate(selectedComponentId, updates.props);
+			}
 		},
-		[selectedComponentId, currentPage, updatePageLayout],
+		[selectedComponentId, currentPage, updatePageLayout, onComponentUpdate],
 	);
 
 	// Handle component deletion from PropertyEditor
@@ -362,8 +486,8 @@ export function EditorShell({
 		});
 
 		// Select the new page
-		setCurrentPageId(newPageId);
-	}, [definition, onDefinitionChange]);
+		handleSetCurrentPageId(newPageId);
+	}, [definition, onDefinitionChange, handleSetCurrentPageId]);
 
 	const handleDeletePage = useCallback(
 		(pageId: string) => {
@@ -377,10 +501,10 @@ export function EditorShell({
 
 			// If we deleted the current page, select the first remaining page
 			if (currentPageId === pageId && updatedPages.length > 0) {
-				setCurrentPageId(updatedPages[0].id);
+				handleSetCurrentPageId(updatedPages[0].id);
 			}
 		},
-		[definition, onDefinitionChange, currentPageId],
+		[definition, onDefinitionChange, currentPageId, handleSetCurrentPageId],
 	);
 
 	const handleReorderPages = useCallback(
@@ -460,7 +584,9 @@ export function EditorShell({
 									variant="ghost"
 									size="icon-sm"
 									className="shrink-0 h-8 w-8 rounded-none"
-									onClick={() => setIsLeftPanelCollapsed(true)}
+									onClick={() =>
+										setIsLeftPanelCollapsed(true)
+									}
 								>
 									<ChevronLeft className="h-4 w-4" />
 								</Button>
@@ -474,12 +600,14 @@ export function EditorShell({
 									pages={definition.pages}
 									selectedPageId={currentPageId}
 									selectedComponentId={selectedComponentId}
-									onSelectPage={setCurrentPageId}
+									onSelectPage={handleSetCurrentPageId}
 									onSelectComponent={onSelectComponent}
 									onAddComponent={handleAddComponent}
 									onMoveComponent={handleMoveComponent}
 									onDeleteComponent={handleDelete}
-									onDuplicateComponent={handleDuplicateComponent}
+									onDuplicateComponent={
+										handleDuplicateComponent
+									}
 									className="h-full"
 								/>
 							</TabsContent>
@@ -491,7 +619,7 @@ export function EditorShell({
 								<PageTree
 									pages={definition.pages}
 									selectedPageId={currentPageId}
-									onSelectPage={setCurrentPageId}
+									onSelectPage={handleSetCurrentPageId}
 									onAddPage={handleAddPage}
 									onDeletePage={handleDeletePage}
 									onReorderPages={handleReorderPages}
@@ -560,7 +688,9 @@ export function EditorShell({
 						<Tabs
 							value={rightPanelTab}
 							onValueChange={(v) =>
-								setRightPanelTab(v as "properties" | "variables")
+								setRightPanelTab(
+									v as "properties" | "variables",
+								)
 							}
 							className="flex flex-1 flex-col overflow-hidden"
 						>
@@ -584,7 +714,9 @@ export function EditorShell({
 									variant="ghost"
 									size="icon-sm"
 									className="shrink-0 h-8 w-8 rounded-none"
-									onClick={() => setIsRightPanelCollapsed(true)}
+									onClick={() =>
+										setIsRightPanelCollapsed(true)
+									}
 								>
 									<ChevronRight className="h-4 w-4" />
 								</Button>

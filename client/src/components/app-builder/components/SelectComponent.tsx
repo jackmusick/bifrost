@@ -99,7 +99,9 @@ export function SelectComponent({
 				const itemObj = item as unknown as Record<string, unknown>;
 				return {
 					value: String(itemObj[valueField] ?? ""),
-					label: String(itemObj[labelField] ?? itemObj[valueField] ?? ""),
+					label: String(
+						itemObj[labelField] ?? itemObj[valueField] ?? "",
+					),
 				};
 			});
 		}

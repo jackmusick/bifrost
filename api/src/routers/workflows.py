@@ -148,23 +148,83 @@ async def list_workflows(
 @router.post(
     "/execute",
     response_model=WorkflowExecutionResponse,
-    summary="Execute a workflow or script",
-    description="Execute a workflow by name or inline Python code (Platform admin only)",
+    summary="Execute a workflow, data provider, or script",
+    description="Execute a workflow or data provider by ID. For data providers, returns options list in result field. Requires platform admin, API key, or access via form/app/integration.",
 )
 async def execute_workflow(
     request: WorkflowExecutionRequest,
     ctx: Context,
-    user: CurrentSuperuser,  # Platform admin only
+    db: DbSession,
+    user: CurrentActiveUser,  # Changed from CurrentSuperuser - auth check below
 ) -> WorkflowExecutionResponse:
-    """Execute a workflow or script with the provided parameters."""
+    """Execute a workflow, data provider, or inline script.
+
+    Authorization:
+    - Inline code execution requires platform admin
+    - Workflow/data provider execution requires one of:
+      - Platform admin
+      - User has access to a form using this workflow
+      - User has access to an app using this workflow
+      - Data provider is tied to an integration (any authenticated user)
+    """
     from uuid import uuid4
     from src.sdk.context import ExecutionContext as SharedContext, Organization
     from src.services.execution.service import (
         run_workflow,
         run_code,
+        run_data_provider,
         WorkflowNotFoundError,
         WorkflowLoadError,
+        DataProviderNotFoundError,
+        DataProviderLoadError,
     )
+    from src.services.execution_auth import ExecutionAuthService
+    from src.models.contracts.executions import ExecutionStatus
+
+    # Look up workflow metadata for type checking (needed for data provider handling)
+    workflow = None
+    if request.workflow_id:
+        result = await db.execute(
+            select(WorkflowORM).where(
+                WorkflowORM.id == request.workflow_id,
+                WorkflowORM.is_active.is_(True),
+            )
+        )
+        workflow = result.scalar_one_or_none()
+        if not workflow:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=f"Workflow '{request.workflow_id}' not found",
+            )
+
+    # Authorization check
+    if request.code:
+        # Inline code execution requires platform admin
+        if not ctx.user.is_superuser:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Inline code execution requires platform admin access",
+            )
+    elif request.workflow_id:
+        # Workflow execution - check unified permissions
+        auth_service = ExecutionAuthService(db)
+        can_execute = await auth_service.can_execute_workflow(
+            workflow_id=request.workflow_id,
+            user_id=ctx.user.user_id,
+            user_org_id=ctx.org_id,
+            is_superuser=ctx.user.is_superuser,
+            is_api_key=False,
+        )
+        if not can_execute:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Access denied to execute this workflow",
+            )
+    else:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Either workflow_id or code must be provided",
+        )
 
     # Build shared context for execution
     org = None
@@ -196,14 +256,24 @@ async def execute_workflow(
                 input_data=request.input_data,
                 transient=request.transient,
             )
+        elif workflow and workflow.type == "data_provider":
+            # Execute data provider - returns list of options directly
+            options = await run_data_provider(
+                context=shared_ctx,
+                provider_name=workflow.name,
+                params=request.input_data,
+            )
+            # Data providers are transient by default (no execution tracking)
+            return WorkflowExecutionResponse(
+                execution_id=str(uuid4()),
+                workflow_id=request.workflow_id,
+                workflow_name=workflow.name,
+                status=ExecutionStatus.SUCCESS,
+                result=options,  # list[dict] with value, label, description
+                is_transient=True,
+            )
         else:
             # Execute workflow by ID
-            if not request.workflow_id:
-                raise HTTPException(
-                    status_code=status.HTTP_400_BAD_REQUEST,
-                    detail="Either workflow_id or code must be provided",
-                )
-
             result = await run_workflow(
                 context=shared_ctx,
                 workflow_id=request.workflow_id,
@@ -237,12 +307,12 @@ async def execute_workflow(
 
         return result
 
-    except WorkflowNotFoundError as e:
+    except (WorkflowNotFoundError, DataProviderNotFoundError) as e:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail=str(e),
         )
-    except WorkflowLoadError as e:
+    except (WorkflowLoadError, DataProviderLoadError) as e:
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=str(e),

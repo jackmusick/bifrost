@@ -61,43 +61,117 @@ This distinction matters because end users can't fix system bugs, but they WILL 
 - `get_app_schema` - Documentation about app structure and components
 - `search_knowledge` - Search the Bifrost knowledge base
 
+### Creation Tools (Auto-Validating)
+- `create_workflow` - Create workflow, tool, or data provider (validates automatically)
+- `create_form` - Create a form (validates automatically)
+
+### App Builder Tools
+See **App Builder Tool Hierarchy** section below for granular app management tools.
+
 ### File Operations
 - `list_files` - List files and directories in workspace
 - `read_file` - Read a file from workspace
-- `write_file` - Write content to a file
+- `write_file` - Write content to a file (for non-platform artifacts)
 - `delete_file` - Delete a file or directory
 - `search_files` - Search for text patterns across files
 - `create_folder` - Create a new folder
 
-### Validation & Execution
-- `validate_workflow` - Validate workflow file syntax
-- `validate_form_schema` - Validate form JSON structure
-- `validate_data_provider` - Validate data provider file
-- `validate_app_schema` - Validate app JSON structure
+### Execution Tools
 - `execute_workflow` - Execute a workflow by ID
 - `list_executions` - List recent executions
 - `get_execution` - Get execution details and logs
 
 ## Artifact Types
 
-| Artifact | File Type | Schema Tool | Validation Tool |
-|----------|-----------|-------------|-----------------|
-| Workflow | `*.py` | `get_workflow_schema` | `validate_workflow` |
-| Tool | `*.py` | `get_workflow_schema` | `validate_workflow` |
-| Data Provider | `*.py` | `get_data_provider_schema` | `validate_data_provider` |
-| Form | `*.form.json` | `get_form_schema` | `validate_form_schema` |
-| App | `app.json` | `get_app_schema` | `validate_app_schema` |
+| Artifact | Creation Method | Schema Tool | Notes |
+|----------|-----------------|-------------|-------|
+| Workflow | `create_workflow` | `get_workflow_schema` | Auto-validates |
+| Tool | `create_workflow` | `get_workflow_schema` | Auto-validates |
+| Data Provider | `create_workflow` | `get_data_provider_schema` | Auto-validates |
+| Form | `create_form` | `get_form_schema` | Auto-validates |
+| App | App-level tools | `get_app_schema` | See tool hierarchy |
 
 ## Development Process
 
 1. **Read the schema** - Use appropriate schema tool to understand structure
 2. **Explore patterns** - Use `list_files` and `read_file` to see existing examples
 3. **Check dependencies** - Use `list_integrations` to verify integrations exist
-4. **Create the artifact** - Use `write_file`
-5. **Validate** - Use appropriate validation tool
-6. **Test** - Use `execute_workflow` for workflows/tools
+4. **Create the artifact** - Use `create_workflow`, `create_form`, or app tools (auto-validates)
+5. **Test** - Use `execute_workflow` for workflows/tools, verify apps render correctly
 
-**Always validate before declaring something ready.**
+**Creation tools auto-validate. Always test execution before declaring something ready.**
+
+## App Builder Tool Hierarchy
+
+Apps are managed at three levels:
+
+### App Level
+- `list_apps` - List all apps
+- `get_app` - Get app metadata and structure
+- `update_app` - Update app settings
+- `publish_app` - Publish app for users
+
+### Page Level
+- `create_page` - Add a new page to an app
+- `get_page` - Get page definition
+- `update_page` - Update page settings/layout
+- `delete_page` - Remove a page
+
+### Component Level
+- `list_components` - List components on a page
+- `create_component` - Add component to a page
+- `get_component` - Get component details
+- `update_component` - Update component props/settings
+- `delete_component` - Remove component
+- `move_component` - Reposition component
+
+## App Layout Properties
+
+### Component Width
+All components support a `width` property:
+- `"auto"` (default) - Natural size
+- `"full"` - Full width of container
+- `"1/2"`, `"1/3"`, `"1/4"`, `"2/3"`, `"3/4"` - Fractional widths
+
+### Layout autoSize
+Row layouts have an `autoSize` property:
+- `false` (default) - Children expand equally to fill space (flex-1)
+- `true` - Children keep their natural size
+
+Example for right-aligned button group:
+```json
+{
+  "type": "row",
+  "justify": "end",
+  "autoSize": true,
+  "gap": 8,
+  "children": [
+    {"type": "button", "props": {"label": "Cancel", "variant": "outline"}},
+    {"type": "button", "props": {"label": "Save"}}
+  ]
+}
+```
+
+## Required Testing Workflow
+
+Before declaring any artifact complete, you MUST test it:
+
+### Workflow/Tool/Data Provider Testing
+1. Create via `create_workflow` (auto-validates)
+2. Verify it appears in list tools (`list_workflows` or `list_data_providers`)
+3. Execute with sample data via `execute_workflow`
+4. Verify the result matches expectations
+
+### Form Testing
+1. Create via `create_form` (auto-validates)
+2. Verify referenced `workflow_id` exists and works
+
+### App Testing
+1. Use granular tools (`create_page`, `create_component`)
+2. Verify all `loadingWorkflows` exist and work
+3. Test component layout (use `width` and `autoSize` for proper alignment)
+
+DO NOT report success until all applicable tests pass.
 
 ## Decorators and IDs
 

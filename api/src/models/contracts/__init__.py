@@ -237,17 +237,21 @@ from src.models.contracts.health import (
 
 # Editor & Code
 from src.models.contracts.editor import (
+    AffectedEntity,
+    AvailableReplacement,
     FileConflictResponse,
     FileContentRequest,
     FileContentResponse,
     FileDiagnostic,
     FileMetadata,
     FileType,
+    PendingDeactivation,
     ScriptExecutionRequest,
     ScriptExecutionResponse,
     SearchRequest,
     SearchResponse,
     SearchResult,
+    WorkflowDeactivationConflict,
     WorkflowIdConflict,
 )
 
@@ -640,6 +644,10 @@ __all__ = [
     "FileConflictResponse",
     "FileDiagnostic",
     "WorkflowIdConflict",
+    "AffectedEntity",
+    "PendingDeactivation",
+    "AvailableReplacement",
+    "WorkflowDeactivationConflict",
     "SearchRequest",
     "SearchResult",
     "SearchResponse",

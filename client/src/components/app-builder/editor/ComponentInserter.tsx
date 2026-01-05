@@ -135,7 +135,9 @@ export function ComponentInserter({
 			items: category.items.filter(
 				(item) =>
 					item.label.toLowerCase().includes(search.toLowerCase()) ||
-					item.description.toLowerCase().includes(search.toLowerCase()),
+					item.description
+						.toLowerCase()
+						.includes(search.toLowerCase()),
 			),
 		}))
 		.filter((category) => category.items.length > 0);
@@ -175,7 +177,9 @@ export function ComponentInserter({
 									{category.items.map((item) => (
 										<button
 											key={item.type}
-											onClick={() => handleSelect(item.type)}
+											onClick={() =>
+												handleSelect(item.type)
+											}
 											className={cn(
 												"w-full flex items-start gap-3 rounded-md px-2 py-1.5 text-left transition-colors",
 												"hover:bg-muted focus:bg-muted focus:outline-none",

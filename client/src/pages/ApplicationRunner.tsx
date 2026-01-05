@@ -3,6 +3,11 @@
  *
  * Renders and runs a published App Builder application.
  * Integrates with the Zustand store for runtime state management.
+ *
+ * Uses the page-based API:
+ * 1. Fetches page list via useAppPages
+ * 2. Fetches each page's full layout via getAppPage
+ * 3. Assembles ApplicationDefinition for the renderer
  */
 
 import { useMemo, useCallback, useEffect, useState } from "react";
@@ -19,8 +24,9 @@ import {
 } from "@/components/ui/card";
 import {
 	useApplication,
-	useApplicationDefinition,
-	useApplicationDraft,
+	useAppPages,
+	getAppPage,
+	type PageDefinition as PageDefinitionAPI,
 } from "@/hooks/useApplications";
 import { useWorkflows } from "@/hooks/useWorkflows";
 import { useWorkflowExecution } from "@/hooks/useWorkflowExecution";
@@ -33,13 +39,43 @@ import { WorkflowLoadingIndicator } from "@/components/app-builder/WorkflowLoadi
 import { useAppBuilderStore } from "@/stores/app-builder.store";
 import type {
 	ApplicationDefinition,
+	PageDefinition,
 	WorkflowResult,
 	OnCompleteAction,
+	LayoutContainer,
+	DataSource,
 } from "@/lib/app-builder-types";
 import { evaluateExpression } from "@/lib/expression-parser";
 import type { components } from "@/lib/v1";
 
 type WorkflowMetadata = components["schemas"]["WorkflowMetadata"];
+
+/**
+ * Convert API PageDefinition to frontend PageDefinition type.
+ * The API returns camelCase JSON that should match frontend types,
+ * but we cast to ensure type safety.
+ */
+function convertApiPageToFrontend(apiPage: PageDefinitionAPI): PageDefinition {
+	// API already returns camelCase - just cast with proper type coercion
+	return {
+		id: apiPage.id,
+		title: apiPage.title,
+		path: apiPage.path,
+		layout: apiPage.layout as unknown as LayoutContainer,
+		dataSources: (apiPage.dataSources ?? []) as unknown as DataSource[],
+		variables: (apiPage.variables ?? {}) as Record<string, unknown>,
+		launchWorkflowId: apiPage.launchWorkflowId ?? undefined,
+		launchWorkflowParams: apiPage.launchWorkflowParams ?? undefined,
+		permission: apiPage.permission
+			? {
+					allowedRoles: apiPage.permission.allowedRoles ?? undefined,
+					accessExpression:
+						apiPage.permission.accessExpression ?? undefined,
+					redirectTo: apiPage.permission.redirectTo ?? undefined,
+				}
+			: undefined,
+	};
+}
 
 interface ApplicationRunnerProps {
 	/** Whether to render in preview mode (uses draft instead of live) */
@@ -124,29 +160,81 @@ export function ApplicationRunner({
 		error: appError,
 	} = useApplication(slugParam);
 
-	// Fetch the live or draft definition based on preview mode
+	// Fetch pages list (draft for preview, live for published)
+	// isDraft=true for preview mode, isDraft=false for live mode
 	const {
-		data: liveDefinition,
-		isLoading: isLoadingLive,
-		error: liveError,
-	} = useApplicationDefinition(!preview && slugParam ? slugParam : undefined);
+		data: pagesResponse,
+		isLoading: isLoadingPages,
+		error: pagesError,
+	} = useAppPages(application?.id, preview); // isDraft = preview
 
-	const {
-		data: draftDefinition,
-		isLoading: isLoadingDraft,
-		error: draftError,
-	} = useApplicationDraft(preview && slugParam ? slugParam : undefined);
+	// Track loaded page definitions
+	const [loadedPages, setLoadedPages] = useState<PageDefinition[]>([]);
+	const [isLoadingPageDefinitions, setIsLoadingPageDefinitions] =
+		useState(false);
+	const [pageLoadError, setPageLoadError] = useState<Error | null>(null);
 
-	// Use the appropriate definition based on preview mode
-	const definition = preview ? draftDefinition : liveDefinition;
-	const isLoadingDef = preview ? isLoadingDraft : isLoadingLive;
-	const defError = preview ? draftError : liveError;
+	// Load full page definitions when page list is available
+	useEffect(() => {
+		if (!application?.id || !pagesResponse?.pages?.length) {
+			setLoadedPages([]);
+			return;
+		}
 
-	// Parse the definition into our ApplicationDefinition type
+		const loadPageDefinitions = async () => {
+			setIsLoadingPageDefinitions(true);
+			setPageLoadError(null);
+
+			try {
+				const pages = await Promise.all(
+					pagesResponse.pages.map(async (pageSummary) => {
+						const pageData = await getAppPage(
+							application.id,
+							pageSummary.page_id,
+							preview, // isDraft = preview (draft for preview mode)
+						);
+						// Convert API PageDefinition to frontend PageDefinition
+						return convertApiPageToFrontend(pageData);
+					}),
+				);
+				setLoadedPages(pages);
+			} catch (err) {
+				console.error("Failed to load page definitions:", err);
+				setPageLoadError(
+					err instanceof Error
+						? err
+						: new Error("Failed to load pages"),
+				);
+			} finally {
+				setIsLoadingPageDefinitions(false);
+			}
+		};
+
+		loadPageDefinitions();
+	}, [application?.id, pagesResponse?.pages, preview]);
+
+	// Combine loading states
+	const isLoadingDef = isLoadingPages || isLoadingPageDefinitions;
+	const defError = pagesError || pageLoadError;
+
+	// Build ApplicationDefinition from loaded pages
 	const appDefinition = useMemo((): ApplicationDefinition | null => {
-		if (!definition?.definition) return null;
-		return definition.definition as unknown as ApplicationDefinition;
-	}, [definition]);
+		if (!application || loadedPages.length === 0) return null;
+
+		return {
+			id: application.id,
+			name: application.name,
+			description: application.description ?? undefined,
+			version: String(
+				preview ? application.draft_version : application.live_version,
+			),
+			pages: loadedPages,
+			navigation: undefined, // TODO: Load from application metadata if needed
+			permissions: undefined, // TODO: Load from application metadata if needed
+			globalDataSources: undefined,
+			globalVariables: undefined,
+		};
+	}, [application, loadedPages, preview]);
 
 	// Match a URL path against a route pattern (e.g., /tickets/:id matches /tickets/123)
 	const matchRoutePath = useCallback(
@@ -294,7 +382,9 @@ export function ApplicationRunner({
 			if (!path.startsWith("/apps/") && !path.startsWith("http")) {
 				const basePath = `/apps/${slugParam}`;
 				// Normalize path to avoid double slashes
-				const relativePath = path.startsWith("/") ? path.slice(1) : path;
+				const relativePath = path.startsWith("/")
+					? path.slice(1)
+					: path;
 				navigate(`${basePath}/${relativePath}`);
 			} else {
 				navigate(path);
@@ -373,11 +463,19 @@ export function ApplicationRunner({
 				if (!result) return;
 
 				// Execute onError actions if workflow failed
-				if (result.status === "failed" && onError && onError.length > 0) {
+				if (
+					result.status === "failed" &&
+					onError &&
+					onError.length > 0
+				) {
 					executeOnCompleteActions(onError, result);
 				}
 				// Execute onComplete actions if workflow succeeded
-				else if (result.status === "completed" && onComplete && onComplete.length > 0) {
+				else if (
+					result.status === "completed" &&
+					onComplete &&
+					onComplete.length > 0
+				) {
 					executeOnCompleteActions(onComplete, result);
 				}
 			};

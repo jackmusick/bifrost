@@ -15,10 +15,12 @@ from typing import Any
 from uuid import UUID, uuid4
 
 from src.models.contracts.agents import ToolCall, ToolResult
+from src.models.enums import CodingModePermission
 from src.services.coding_mode.models import (
     AskUserQuestion,
     AskUserQuestionOption,
     CodingModeChunk,
+    TodoItem,
 )
 from src.services.coding_mode.prompts import get_system_prompt
 from src.services.coding_mode.session import SessionManager
@@ -109,6 +111,7 @@ class CodingModeClient:
         session_id: str | None = None,
         system_tools: list[str] | None = None,
         knowledge_sources: list[str] | None = None,
+        permission_mode: CodingModePermission = CodingModePermission.EXECUTE,
     ):
         """
         Initialize coding mode client.
@@ -125,6 +128,7 @@ class CodingModeClient:
             system_tools: List of enabled system tool IDs (e.g., ["execute_workflow", "list_integrations"]).
                          If empty or None, no system MCP tools will be available.
             knowledge_sources: List of knowledge namespaces this agent can search.
+            permission_mode: Permission mode for the SDK (plan or execute).
         """
         self.user_id = str(user_id)
         self.user_email = user_email
@@ -137,6 +141,7 @@ class CodingModeClient:
         self.session_manager = SessionManager()
         self._system_tools = system_tools or []
         self._knowledge_sources = knowledge_sources or []
+        self._permission_mode = permission_mode
 
         # Create MCP context with all fields
         self._mcp_context = MCPContext(
@@ -164,7 +169,7 @@ class CodingModeClient:
         self._last_text_content: str = ""
 
         logger.info(
-            f"Initialized CodingModeClient for user {user_email}, session {self.session_id}"
+            f"Initialized CodingModeClient for user {user_email}, session {self.session_id}, mode={permission_mode.value}"
         )
 
     def _get_options(self) -> ClaudeAgentOptions:
@@ -181,8 +186,8 @@ class CodingModeClient:
         system_prompt = get_system_prompt()
         logger.info(f"Using system prompt ({len(system_prompt)} chars) for model {self._model}")
 
-        # Standard file tools are always available, plus WebSearch
-        allowed_tools = ["Read", "Write", "Edit", "Glob", "Grep", "Bash", "WebSearch"]
+        # Standard file tools are always available, plus WebSearch and TodoWrite
+        allowed_tools = ["Read", "Write", "Edit", "Glob", "Grep", "Bash", "WebSearch", "TodoWrite"]
 
         # Map system tool IDs to MCP tool names
         tool_id_to_mcp_name = {
@@ -208,7 +213,7 @@ class CodingModeClient:
             cwd=str(WORKSPACE_PATH),
             mcp_servers={"bifrost": self._mcp_server.get_sdk_server()},
             allowed_tools=allowed_tools,
-            permission_mode="acceptEdits",  # Auto-accept file edits in coding mode
+            permission_mode=self._permission_mode.value,  # Plan mode restricts writes, Execute mode auto-accepts
             include_partial_messages=True,  # Stream events as they happen (tools, text)
             can_use_tool=self._can_use_tool,  # Handle AskUserQuestion and other permissions
         )
@@ -296,6 +301,30 @@ class CodingModeClient:
                 }
             )
 
+        # Handle TodoWrite - emit todo_update to frontend
+        if tool_name == "TodoWrite":
+            todos_data = input_data.get("todos", [])
+            logger.info(f"TodoWrite received with {len(todos_data)} items")
+
+            if self._chunk_callback and todos_data:
+                todos = [
+                    TodoItem(
+                        content=t.get("content", ""),
+                        status=t.get("status", "pending"),
+                        active_form=t.get("activeForm", t.get("active_form", "")),
+                    )
+                    for t in todos_data
+                ]
+                await self._chunk_callback(
+                    CodingModeChunk(
+                        type="todo_update",
+                        todos=todos,
+                    )
+                )
+
+            # Allow the tool to proceed
+            return PermissionResultAllow(updated_input=input_data)
+
         # All other tools: allow by default
         return PermissionResultAllow(updated_input=input_data)
 
@@ -377,6 +406,38 @@ class CodingModeClient:
                 logger.warning(f"Error closing SDK client: {e}")
             finally:
                 self._sdk_client = None
+
+    async def set_permission_mode(self, mode: CodingModePermission) -> None:
+        """
+        Change the permission mode for this session.
+
+        This will close the existing SDK client and create a new one
+        with the updated permission mode on the next chat() call.
+
+        Args:
+            mode: New permission mode (PLAN or EXECUTE)
+        """
+        if self._permission_mode == mode:
+            logger.info(f"Permission mode already {mode.value}, no change needed")
+            return
+
+        old_mode = self._permission_mode
+        self._permission_mode = mode
+
+        # Close existing client - it will be recreated with new options on next chat()
+        if self._sdk_client is not None:
+            await self.close()
+            logger.info("Closed SDK client to apply permission mode change")
+
+        # Update session state
+        await self.session_manager.set_permission_mode(self.session_id, mode)
+
+        logger.info(f"Permission mode changed from {old_mode.value} to {mode.value} for session {self.session_id}")
+
+    @property
+    def permission_mode(self) -> CodingModePermission:
+        """Get the current permission mode."""
+        return self._permission_mode
 
     async def chat(self, message: str) -> AsyncIterator[CodingModeChunk]:
         """

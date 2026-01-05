@@ -40,6 +40,9 @@ except ImportError:
     CACHE_INVALIDATION_AVAILABLE = False
     invalidate_form = None  # type: ignore
 
+# Import workflow access sync
+from src.services.workflow_access_service import sync_form_workflow_access
+
 logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/api/forms", tags=["Forms"])
@@ -551,6 +554,9 @@ async def create_form(
         logger.error(f"Failed to write form file for {form.id}: {e}", exc_info=True)
         # Continue - database write succeeded, file write can be retried
 
+    # Sync workflow_access table for execution authorization
+    await sync_form_workflow_access(db, form, form.fields)
+
     logger.info(f"Created form {form.id}: {form.name} (file: {form.file_path})")
 
     # Invalidate cache after successful create
@@ -733,6 +739,9 @@ async def update_form(
         logger.error(f"Failed to update form file for {form_id}: {e}", exc_info=True)
         # Continue - database write succeeded
 
+    # Sync workflow_access table for execution authorization
+    await sync_form_workflow_access(db, form, form.fields)
+
     logger.info(f"Updated form {form_id} (file: {form.file_path})")
 
     # Invalidate cache after successful update
@@ -822,18 +831,25 @@ async def _check_form_access(
     db: DbSession,
     form: FormORM,
     user_id: UUID,
+    user_org_id: UUID | None,
     is_superuser: bool,
 ) -> bool:
     """
     Check if user has access to execute a form.
 
-    Access levels:
-    - 'authenticated': Any logged-in user can access
-    - 'role_based': User must be assigned to a role that has this form
+    Access control:
+    1. Org scoping: User can only access forms in their org or global (null org_id) forms
+    2. Access levels:
+       - 'authenticated': Any logged-in user can access
+       - 'role_based': User must be assigned to a role that has this form
     """
     # Platform admins always have access
     if is_superuser:
         return True
+
+    # Check org scoping - user can only access their org's forms + global forms
+    if form.organization_id is not None and form.organization_id != user_org_id:
+        return False  # Form belongs to a different organization
 
     access_level = form.access_level or "authenticated"
 
@@ -909,7 +925,7 @@ async def execute_form(
         )
 
     # Check access
-    has_access = await _check_form_access(db, form, ctx.user.user_id, ctx.user.is_superuser)
+    has_access = await _check_form_access(db, form, ctx.user.user_id, ctx.org_id, ctx.user.is_superuser)
     if not has_access:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
@@ -1028,7 +1044,7 @@ async def execute_startup_workflow(
         )
 
     # Check access
-    has_access = await _check_form_access(db, form, ctx.user.user_id, ctx.user.is_superuser)
+    has_access = await _check_form_access(db, form, ctx.user.user_id, ctx.org_id, ctx.user.is_superuser)
     if not has_access:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
@@ -1153,7 +1169,7 @@ async def generate_upload_url(
         )
 
     # Check access
-    has_access = await _check_form_access(db, form, ctx.user.user_id, ctx.user.is_superuser)
+    has_access = await _check_form_access(db, form, ctx.user.user_id, ctx.org_id, ctx.user.is_superuser)
     if not has_access:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,

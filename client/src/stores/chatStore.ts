@@ -17,6 +17,7 @@ import type {
 	ToolExecutionLog,
 } from "@/components/chat/ToolExecutionCard";
 import type { SystemEvent } from "@/components/chat/ChatSystemEvent";
+import type { TodoItem } from "@/services/websocket";
 
 // Use generated types from API
 type AgentSummary = components["schemas"]["AgentSummary"];
@@ -83,6 +84,9 @@ interface ChatState {
 	// Connection state
 	isConnected: boolean;
 	error: string | null;
+
+	// Todo list from coding mode (SDK's TodoWrite tool)
+	todos: TodoItem[];
 }
 
 interface ChatActions {
@@ -142,6 +146,10 @@ interface ChatActions {
 	setConnected: (connected: boolean) => void;
 	setError: (error: string | null) => void;
 
+	// Todo list actions
+	setTodos: (todos: TodoItem[]) => void;
+	clearTodos: () => void;
+
 	// Reset
 	reset: () => void;
 }
@@ -163,6 +171,7 @@ const initialState: ChatState = {
 	selectedToolCallId: null,
 	isConnected: false,
 	error: null,
+	todos: [],
 };
 
 export const useChatStore = create<ChatStore>((set, get) => ({
@@ -624,6 +633,15 @@ export const useChatStore = create<ChatStore>((set, get) => ({
 		set({ error });
 	},
 
+	// Todo list actions
+	setTodos: (todos) => {
+		set({ todos });
+	},
+
+	clearTodos: () => {
+		set({ todos: [] });
+	},
+
 	// Reset
 	reset: () => {
 		set(initialState);
@@ -642,3 +660,4 @@ export const useStreamingMessage = () =>
 	useChatStore((state) => state.streamingMessage);
 export const useIsStudioMode = () =>
 	useChatStore((state) => state.isStudioMode);
+export const useTodos = () => useChatStore((state) => state.todos);

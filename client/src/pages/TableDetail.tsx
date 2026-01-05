@@ -339,12 +339,21 @@ export function TableDetail() {
 												<Tooltip>
 													<TooltipTrigger asChild>
 														<span className="block truncate cursor-help">
-															{truncateJson(doc.data)}
+															{truncateJson(
+																doc.data,
+															)}
 														</span>
 													</TooltipTrigger>
-													<TooltipContent side="bottom" className="max-w-md">
+													<TooltipContent
+														side="bottom"
+														className="max-w-md"
+													>
 														<pre className="text-xs whitespace-pre-wrap break-all">
-															{JSON.stringify(doc.data, null, 2)}
+															{JSON.stringify(
+																doc.data,
+																null,
+																2,
+															)}
 														</pre>
 													</TooltipContent>
 												</Tooltip>

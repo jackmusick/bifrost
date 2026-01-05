@@ -21,12 +21,15 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from src.core.auth import Context, CurrentSuperuser
 from src.core.database import get_db
 from src.models import (
+    AffectedEntity,
+    AvailableReplacement,
     FileContentRequest,
     FileContentResponse,
     FileConflictResponse,
     FileDiagnostic,
     FileMetadata,
     FileType,
+    PendingDeactivation,
     SearchRequest,
     SearchResponse,
     WorkflowIdConflict,
@@ -371,9 +374,60 @@ async def put_file_content_editor(
                     detail={"reason": "path_not_found", "message": "File was deleted"}
                 )
 
-        # Write file
+        # Write file with deactivation protection
         updated_by = user.email if user else "system"
-        write_result = await storage.write_file(request.path, content, updated_by)
+        write_result = await storage.write_file(
+            request.path,
+            content,
+            updated_by,
+            force_deactivation=request.force_deactivation,
+            replacements=request.replacements,
+        )
+
+        # Check for pending deactivations - return 409 if any
+        if write_result.pending_deactivations:
+            pending = [
+                PendingDeactivation(
+                    id=pd.id,
+                    name=pd.name,
+                    function_name=pd.function_name,
+                    path=pd.path,
+                    description=pd.description,
+                    decorator_type=pd.decorator_type,  # type: ignore[arg-type]
+                    has_executions=pd.has_executions,
+                    last_execution_at=pd.last_execution_at,
+                    schedule=pd.schedule,
+                    endpoint_enabled=pd.endpoint_enabled,
+                    affected_entities=[
+                        AffectedEntity(
+                            entity_type=ae["entity_type"],  # type: ignore[arg-type]
+                            id=ae["id"],
+                            name=ae["name"],
+                            reference_type=ae["reference_type"],
+                        )
+                        for ae in pd.affected_entities
+                    ],
+                )
+                for pd in write_result.pending_deactivations
+            ]
+            replacements = [
+                AvailableReplacement(
+                    function_name=ar.function_name,
+                    name=ar.name,
+                    decorator_type=ar.decorator_type,  # type: ignore[arg-type]
+                    similarity_score=ar.similarity_score,
+                )
+                for ar in (write_result.available_replacements or [])
+            ]
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail={
+                    "reason": "workflows_would_deactivate",
+                    "message": f"{len(pending)} workflow(s) would be deactivated",
+                    "pending_deactivations": [p.model_dump() for p in pending],
+                    "available_replacements": [r.model_dump() for r in replacements],
+                }
+            )
 
         etag = hashlib.md5(write_result.final_content).hexdigest()
 

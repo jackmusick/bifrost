@@ -149,7 +149,8 @@
       "Bash(tests/unit/services/test_mcp_tools.py )",
       "Bash(tests/unit/services/mcp/test_tool_implementations.py )",
       "Bash(/Users/jack/GitHub/bifrost-api/venv/bin/pip list:*)",
-      "Bash(/Users/jack/GitHub/bifrost-api/venv/bin/pip install:*)"
+      "Bash(/Users/jack/GitHub/bifrost-api/venv/bin/pip install:*)",
+      "WebFetch(domain:lucide.dev)"
     ],
     "deny": [],
     "ask": [],

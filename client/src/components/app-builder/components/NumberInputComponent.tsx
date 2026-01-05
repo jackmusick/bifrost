@@ -73,7 +73,9 @@ export function NumberInputComponent({
 	// Props are pre-evaluated by ComponentRegistry (disabled is now boolean)
 	const isDisabled = Boolean(props.disabled);
 	const label = props.label ? String(props.label) : undefined;
-	const placeholder = props.placeholder ? String(props.placeholder) : undefined;
+	const placeholder = props.placeholder
+		? String(props.placeholder)
+		: undefined;
 
 	// Get setFieldValue from context (stable reference)
 	const setFieldValue = context.setFieldValue;

@@ -2,21 +2,24 @@
  * Application Editor Page
  *
  * Editor for creating and modifying App Builder applications.
- * Includes visual drag-and-drop builder, JSON editor, and preview.
+ * Uses the 3-table schema (applications -> pages -> components).
+ *
+ * Pages are loaded and assembled into an ApplicationDefinition for the EditorShell.
+ * Changes are saved per-page via the layout replace API.
  */
 
-import { useState, useEffect, useMemo, useCallback } from "react";
+import { useState, useEffect, useCallback, useMemo } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import {
 	ArrowLeft,
 	Save,
 	Eye,
 	Upload,
-	RotateCcw,
 	AlertTriangle,
-	Code2,
 	Layout,
 	Settings,
+	Loader2,
+	Check,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -39,31 +42,93 @@ import {
 	DialogHeader,
 	DialogTitle,
 } from "@/components/ui/dialog";
-import {
-	AlertDialog,
-	AlertDialogAction,
-	AlertDialogCancel,
-	AlertDialogContent,
-	AlertDialogDescription,
-	AlertDialogFooter,
-	AlertDialogHeader,
-	AlertDialogTitle,
-} from "@/components/ui/alert-dialog";
 import { Skeleton } from "@/components/ui/skeleton";
 import { toast } from "sonner";
 import {
 	useApplication,
-	useApplicationDraft,
-	useApplicationDefinition,
+	useAppPages,
 	useCreateApplication,
-	useSaveApplicationDraft,
 	usePublishApplication,
-	useRollbackApplication,
+	getAppPage,
 } from "@/hooks/useApplications";
+import { apiClient } from "@/lib/api-client";
 import { useAuth } from "@/contexts/AuthContext";
 import { OrganizationSelect } from "@/components/forms/OrganizationSelect";
 import { AppRenderer, EditorShell } from "@/components/app-builder";
-import type { ApplicationDefinition as AppDefinitionType } from "@/lib/app-builder-types";
+import type { ComponentSaveData } from "@/components/app-builder/editor/EditorShell";
+import { useComponentSaveQueue } from "@/hooks/useComponentSaveQueue";
+import { useAppBuilderEditorStore } from "@/stores/app-builder-editor.store";
+import type {
+	ApplicationDefinition as AppDefinitionType,
+	PageDefinition as FrontendPageDefinition,
+	LayoutContainer,
+	AppComponent,
+	DataSource,
+} from "@/lib/app-builder-types";
+import type { components } from "@/lib/v1";
+
+type ApiLayoutContainer = components["schemas"]["LayoutContainer"];
+type ApiComponentNode = components["schemas"]["AppComponentNode"];
+type ApiDataSource = components["schemas"]["DataSourceConfig"];
+
+/**
+ * Convert API LayoutContainer (with null values) to frontend LayoutContainer (with undefined).
+ * Recursively processes children.
+ */
+function convertApiLayout(apiLayout: ApiLayoutContainer): LayoutContainer {
+	return {
+		type: apiLayout.type,
+		gap: apiLayout.gap ?? undefined,
+		padding: apiLayout.padding ?? undefined,
+		align: apiLayout.align ?? undefined,
+		justify: apiLayout.justify ?? undefined,
+		columns: apiLayout.columns ?? undefined,
+		autoSize: apiLayout.autoSize ?? undefined,
+		visible: apiLayout.visible ?? undefined,
+		className: apiLayout.className ?? undefined,
+		children: (apiLayout.children ?? []).map(
+			(child): LayoutContainer | AppComponent => {
+				// Check if it's a layout container (has type: row/column/grid and children)
+				if (
+					"children" in child &&
+					(child.type === "row" ||
+						child.type === "column" ||
+						child.type === "grid")
+				) {
+					return convertApiLayout(child as ApiLayoutContainer);
+				}
+				// It's a component node - cast through unknown to AppComponent
+				const component = child as ApiComponentNode;
+				return {
+					id: component.id,
+					type: component.type,
+					props: component.props ?? {},
+					visible: component.visible ?? undefined,
+					width: component.width ?? undefined,
+					loadingWorkflows: component.loadingWorkflows ?? undefined,
+				} as AppComponent;
+			},
+		),
+	};
+}
+
+/**
+ * Convert API DataSource (with null values) to frontend DataSource (with undefined).
+ */
+function convertApiDataSource(apiDs: ApiDataSource): DataSource {
+	return {
+		id: apiDs.id,
+		type: apiDs.type,
+		endpoint: apiDs.endpoint ?? undefined,
+		data: apiDs.data ?? undefined,
+		expression: apiDs.expression ?? undefined,
+		dataProviderId: apiDs.dataProviderId ?? undefined,
+		workflowId: apiDs.workflowId ?? undefined,
+		inputParams: apiDs.inputParams ?? undefined,
+		autoRefresh: apiDs.autoRefresh ?? undefined,
+		refreshInterval: apiDs.refreshInterval ?? undefined,
+	};
+}
 
 // Default empty application template
 const DEFAULT_APP_DEFINITION: AppDefinitionType = {
@@ -113,21 +178,20 @@ export function ApplicationEditor() {
 		? null
 		: (user?.organizationId ?? null);
 
-	// Fetch existing application and draft (pass undefined if not editing)
+	// Fetch existing application metadata
 	const { data: existingApp, isLoading: isLoadingApp } = useApplication(
 		isEditing ? slugParam : undefined,
 	);
-	const { data: existingDraft, isLoading: isLoadingDraft } =
-		useApplicationDraft(isEditing ? slugParam : undefined);
-	const { data: liveDefinition } = useApplicationDefinition(
-		isEditing && existingApp?.is_published ? slugParam : undefined,
+
+	// Fetch pages list (summaries)
+	const { data: pagesData, isLoading: isLoadingPages } = useAppPages(
+		existingApp?.id,
+		true, // draft
 	);
 
 	// Mutations
 	const createApplication = useCreateApplication();
-	const saveDraft = useSaveApplicationDraft();
 	const publishApplication = usePublishApplication();
-	const rollbackApplication = useRollbackApplication();
 
 	// Form state
 	const [name, setName] = useState("");
@@ -136,11 +200,15 @@ export function ApplicationEditor() {
 	const [organizationId, setOrganizationId] = useState<string | null>(
 		defaultOrgId,
 	);
-	const [definitionJson, setDefinitionJson] = useState("");
+
+	// Application definition state (built from pages)
+	const [definition, setDefinition] = useState<AppDefinitionType | null>(
+		null,
+	);
+	const [isLoadingDefinition, setIsLoadingDefinition] = useState(false);
 
 	// Dialog state
 	const [isPublishDialogOpen, setIsPublishDialogOpen] = useState(false);
-	const [isRollbackDialogOpen, setIsRollbackDialogOpen] = useState(false);
 	const [publishMessage, setPublishMessage] = useState("");
 
 	// Visual editor state
@@ -148,17 +216,56 @@ export function ApplicationEditor() {
 		string | null
 	>(null);
 
-	// Parse result (combined definition + error)
-	type ParseResult =
-		| { definition: AppDefinitionType; error: null }
-		| { definition: null; error: string };
-
 	// Active tab
 	const [activeTab, setActiveTab] = useState("visual");
 
-	// Initialize state from existing data (sync from React Query to local form state)
-	// This is an intentional pattern for form editing - we need local state for user edits
-	/* eslint-disable react-hooks/set-state-in-effect */
+	// Currently active page ID for save operations
+	const [currentPageId, setCurrentPageId] = useState<string | null>(null);
+
+	// Editor store for dirty tracking
+	const editorStore = useAppBuilderEditorStore();
+
+	// Component save queue - only active when we have an app and page
+	const saveQueue = useComponentSaveQueue({
+		appId: existingApp?.id || "",
+		pageId: currentPageId || "",
+		debounceMs: 500,
+		maxRetries: 2,
+		onSaveError: (_componentId, operation, error) => {
+			console.error(
+				`[ApplicationEditor] Component ${operation} failed:`,
+				error,
+			);
+		},
+	});
+
+	// Track if we have unsaved changes - combine local state tracking with save queue
+	const hasUnsavedChanges = useMemo(() => {
+		return (
+			saveQueue.hasPendingOperations || editorStore.hasUnsavedChanges()
+		);
+	}, [saveQueue.hasPendingOperations, editorStore]);
+
+	// Initialize current page when definition loads
+	useEffect(() => {
+		if (definition?.pages?.[0]?.id && !currentPageId) {
+			setCurrentPageId(definition.pages[0].id);
+		}
+	}, [definition, currentPageId]);
+
+	// Set editor context when app/page changes
+	// Note: We intentionally exclude editorStore from deps since we only need the stable method references
+	useEffect(() => {
+		if (existingApp?.id && currentPageId) {
+			editorStore.setContext(existingApp.id, currentPageId);
+		}
+		return () => {
+			editorStore.clearContext();
+		};
+		// eslint-disable-next-line react-hooks/exhaustive-deps
+	}, [existingApp?.id, currentPageId]);
+
+	// Initialize state from existing app metadata
 	useEffect(() => {
 		if (existingApp) {
 			setName(existingApp.name || "");
@@ -167,66 +274,86 @@ export function ApplicationEditor() {
 			setOrganizationId(existingApp.organization_id ?? defaultOrgId);
 		}
 	}, [existingApp, defaultOrgId]);
-	/* eslint-enable react-hooks/set-state-in-effect */
 
-	// Initialize definition from draft or live version (sync from React Query to local form state)
-	// This is an intentional pattern for form editing - we need local state for user edits
-	/* eslint-disable react-hooks/set-state-in-effect */
+	// Load full page definitions when we have the pages list
 	useEffect(() => {
-		if (existingDraft?.definition) {
+		const loadPages = async () => {
+			if (!existingApp?.id || !pagesData?.pages) return;
+
+			setIsLoadingDefinition(true);
 			try {
-				const formatted = JSON.stringify(
-					existingDraft.definition,
-					null,
-					2,
+				// Fetch each page with its full layout
+				const pagePromises = pagesData.pages.map((pageSummary) =>
+					getAppPage(existingApp.id, pageSummary.page_id, true),
 				);
-				setDefinitionJson(formatted);
-			} catch {
-				setDefinitionJson("");
-			}
-		} else if (liveDefinition?.definition) {
-			try {
-				const formatted = JSON.stringify(
-					liveDefinition.definition,
-					null,
-					2,
+				const loadedPages = await Promise.all(pagePromises);
+
+				// Build the ApplicationDefinition
+				// Convert API page format to frontend format, handling null -> undefined
+				const convertedPages: FrontendPageDefinition[] =
+					loadedPages.map((page) => ({
+						id: page.id,
+						title: page.title,
+						path: page.path,
+						layout: convertApiLayout(page.layout),
+						dataSources: (page.dataSources ?? []).map(
+							convertApiDataSource,
+						),
+						variables: page.variables ?? {},
+						launchWorkflowId: page.launchWorkflowId ?? undefined,
+						launchWorkflowParams:
+							page.launchWorkflowParams ?? undefined,
+						permission: page.permission
+							? {
+									allowedRoles:
+										page.permission.allowedRoles ??
+										undefined,
+									accessExpression:
+										page.permission.accessExpression ??
+										undefined,
+									redirectTo:
+										page.permission.redirectTo ?? undefined,
+								}
+							: undefined,
+					}));
+
+				const appDefinition: AppDefinitionType = {
+					id: existingApp.id,
+					name: existingApp.name,
+					description: existingApp.description || "",
+					version: `${existingApp.draft_version}`,
+					pages: convertedPages,
+					navigation: undefined, // TODO: Load from app metadata if needed
+					globalDataSources: undefined,
+					globalVariables: undefined,
+				};
+
+				setDefinition(appDefinition);
+			} catch (error) {
+				console.error(
+					"[ApplicationEditor] Failed to load pages:",
+					error,
 				);
-				setDefinitionJson(formatted);
-			} catch {
-				setDefinitionJson("");
+				toast.error("Failed to load application pages");
+			} finally {
+				setIsLoadingDefinition(false);
 			}
-		} else if (!isEditing) {
-			// New application - use default template
-			const template = {
+		};
+
+		loadPages();
+	}, [existingApp, pagesData]);
+
+	// For new applications, use the default template
+	useEffect(() => {
+		if (!isEditing && !definition) {
+			setDefinition({
 				...DEFAULT_APP_DEFINITION,
 				name: name || "New Application",
-			};
-			setDefinitionJson(JSON.stringify(template, null, 2));
+			});
 		}
-	}, [existingDraft, liveDefinition, isEditing, name]);
-	/* eslint-enable react-hooks/set-state-in-effect */
+	}, [isEditing, definition, name]);
 
-	// Parse and validate JSON - derive both result and error together
-	const parseResult = useMemo((): ParseResult => {
-		if (!definitionJson)
-			return { definition: null, error: "No definition" };
-		try {
-			const parsed = JSON.parse(definitionJson);
-			return { definition: parsed as AppDefinitionType, error: null };
-		} catch (e) {
-			return {
-				definition: null,
-				error: e instanceof Error ? e.message : "Invalid JSON",
-			};
-		}
-	}, [definitionJson]);
-
-	const parsedDefinition = parseResult.definition;
-	const jsonError = parseResult.error;
-
-	// Auto-generate slug from name (derived state that also needs to be editable)
-	// This is an intentional pattern - user can override the generated slug
-	/* eslint-disable react-hooks/set-state-in-effect */
+	// Auto-generate slug from name
 	useEffect(() => {
 		if (!isEditing && name && !slug) {
 			const generated = name
@@ -236,28 +363,96 @@ export function ApplicationEditor() {
 			setSlug(generated);
 		}
 	}, [name, slug, isEditing]);
-	/* eslint-enable react-hooks/set-state-in-effect */
 
-	// Handlers
+	// Handle definition changes from visual editor
+	// Note: This is called for ALL definition changes (including those from granular saves)
+	// The save queue handles actual persistence, this just updates local state
+	const handleDefinitionChange = useCallback(
+		(newDefinition: AppDefinitionType) => {
+			setDefinition(newDefinition);
+		},
+		[],
+	);
+
+	// Granular save callbacks - these are called by EditorShell for real-time saves
+	const handleComponentCreate = useCallback(
+		(data: ComponentSaveData) => {
+			if (!existingApp?.id || !currentPageId) {
+				console.warn(
+					"[ApplicationEditor] Cannot save component - no app/page context",
+				);
+				return;
+			}
+			saveQueue.enqueueCreate(data.componentId, {
+				component_id: data.componentId,
+				type: data.type,
+				props: data.props,
+				parent_id: data.parentId,
+				component_order: data.order,
+			});
+		},
+		[existingApp?.id, currentPageId, saveQueue],
+	);
+
+	const handleComponentUpdate = useCallback(
+		(componentId: string, props: Record<string, unknown>) => {
+			if (!existingApp?.id || !currentPageId) {
+				console.warn(
+					"[ApplicationEditor] Cannot update component - no app/page context",
+				);
+				return;
+			}
+			saveQueue.enqueueUpdate(componentId, { props });
+		},
+		[existingApp?.id, currentPageId, saveQueue],
+	);
+
+	const handleComponentDelete = useCallback(
+		(componentId: string) => {
+			if (!existingApp?.id || !currentPageId) {
+				console.warn(
+					"[ApplicationEditor] Cannot delete component - no app/page context",
+				);
+				return;
+			}
+			saveQueue.enqueueDelete(componentId);
+		},
+		[existingApp?.id, currentPageId, saveQueue],
+	);
+
+	const handleComponentMove = useCallback(
+		(componentId: string, newParentId: string | null, newOrder: number) => {
+			if (!existingApp?.id || !currentPageId) {
+				console.warn(
+					"[ApplicationEditor] Cannot move component - no app/page context",
+				);
+				return;
+			}
+			saveQueue.enqueueMove(componentId, {
+				new_parent_id: newParentId,
+				new_order: newOrder,
+			});
+		},
+		[existingApp?.id, currentPageId, saveQueue],
+	);
+
+	// Save changes - flushes pending queue operations
+	// For new apps, still uses bulk layout save
 	const handleSave = async () => {
-		if (!parsedDefinition) {
-			toast.error("Please fix JSON errors before saving");
+		if (!definition) {
+			toast.error("No definition to save");
 			return;
 		}
 
 		try {
-			if (isEditing && slugParam) {
-				// Save draft - serialize and re-parse to ensure clean JSON
-				const cleanDefinition = JSON.parse(
-					JSON.stringify(parsedDefinition),
-				);
-				await saveDraft.mutateAsync({
-					params: { path: { slug: slugParam } },
-					body: {
-						definition: cleanDefinition,
-					},
-				});
-				toast.success("Draft saved successfully");
+			if (isEditing && existingApp?.id) {
+				// Flush any pending granular saves first
+				await saveQueue.flushAll();
+
+				// Clear dirty tracking
+				editorStore.clearAllDirty();
+
+				toast.success("Changes saved");
 			} else {
 				// Create new application
 				const result = await createApplication.mutateAsync({
@@ -265,54 +460,74 @@ export function ApplicationEditor() {
 						name,
 						description: description || null,
 						slug,
+						access_level: "authenticated",
 					},
 				});
 
-				// Save initial draft - serialize and re-parse to ensure clean JSON
-				const cleanDefinition = JSON.parse(
-					JSON.stringify(parsedDefinition),
-				);
-				await saveDraft.mutateAsync({
-					params: { path: { slug: result.slug } },
-					body: {
-						definition: cleanDefinition,
-					},
-				});
+				// Create the initial home page
+				const homePage = definition.pages[0];
+				if (homePage) {
+					await apiClient.POST("/api/applications/{app_id}/pages", {
+						params: {
+							path: { app_id: result.id },
+						},
+						body: {
+							page_id: homePage.id,
+							title: homePage.title,
+							path: homePage.path,
+							page_order: 0,
+							root_layout_type: homePage.layout.type,
+							root_layout_config: {
+								gap: homePage.layout.gap,
+								padding: homePage.layout.padding,
+							},
+						},
+					});
 
-				toast.success("Application created successfully");
+					// Set the layout
+					await apiClient.PUT(
+						"/api/applications/{app_id}/pages/{page_id}/layout",
+						{
+							params: {
+								path: {
+									app_id: result.id,
+									page_id: homePage.id,
+								},
+							},
+							body: homePage.layout as unknown as Record<
+								string,
+								unknown
+							>,
+						},
+					);
+				}
+
+				toast.success("Application created");
 				navigate(`/apps/${result.slug}/edit`);
 			}
 		} catch (error) {
 			console.error("[ApplicationEditor] Save error:", error);
-			const errorDetail =
-				error instanceof Error ? error.message : JSON.stringify(error);
-			toast.error(`Failed to save application: ${errorDetail}`);
+			toast.error(
+				error instanceof Error ? error.message : "Failed to save",
+			);
 		}
 	};
 
 	const handlePublish = async () => {
-		if (!slugParam || !parsedDefinition) return;
+		if (!existingApp?.id || !definition) return;
 
 		try {
-			// Auto-save draft before publishing to ensure latest changes are included
-			const cleanDefinition = JSON.parse(
-				JSON.stringify(parsedDefinition),
-			);
-			await saveDraft.mutateAsync({
-				params: { path: { slug: slugParam } },
-				body: {
-					definition: cleanDefinition,
-				},
-			});
+			// Save first
+			await handleSave();
 
-			// Now publish the saved draft
+			// Publish
 			await publishApplication.mutateAsync({
-				params: { path: { slug: slugParam } },
+				params: { path: { app_id: existingApp.id } },
 				body: {
 					message: publishMessage || null,
 				},
 			});
-			toast.success("Application published successfully");
+			toast.success("Application published");
 			setIsPublishDialogOpen(false);
 			setPublishMessage("");
 		} catch (error) {
@@ -324,49 +539,14 @@ export function ApplicationEditor() {
 		}
 	};
 
-	const handleRollback = async () => {
-		if (!slugParam || !existingApp?.live_version) return;
-
-		try {
-			await rollbackApplication.mutateAsync({
-				params: { path: { slug: slugParam } },
-				body: {
-					version: existingApp.live_version,
-				},
-			});
-			toast.success("Draft discarded, reverted to live version");
-			setIsRollbackDialogOpen(false);
-		} catch (error) {
-			toast.error(
-				error instanceof Error ? error.message : "Failed to rollback",
-			);
-		}
-	};
-
-	const handleFormatJson = useCallback(() => {
-		try {
-			const parsed = JSON.parse(definitionJson);
-			setDefinitionJson(JSON.stringify(parsed, null, 2));
-		} catch {
-			// Error state is derived from parseResult, no need to handle here
-			// The toast or other user feedback could be added if needed
-		}
-	}, [definitionJson]);
-
-	// Handle definition changes from visual editor
-	const handleDefinitionChange = useCallback(
-		(newDefinition: AppDefinitionType) => {
-			setDefinitionJson(JSON.stringify(newDefinition, null, 2));
-		},
-		[],
-	);
-
-	// Navigate handler for preview - prefixes relative paths with app base path
+	// Navigate handler for preview
 	const previewNavigate = useCallback(
 		(path: string) => {
 			if (!path.startsWith("/apps/") && !path.startsWith("http")) {
 				const basePath = `/apps/${slugParam}`;
-				const relativePath = path.startsWith("/") ? path.slice(1) : path;
+				const relativePath = path.startsWith("/")
+					? path.slice(1)
+					: path;
 				navigate(`${basePath}/${relativePath}`);
 			} else {
 				navigate(path);
@@ -376,7 +556,10 @@ export function ApplicationEditor() {
 	);
 
 	// Loading state
-	if (isEditing && (isLoadingApp || isLoadingDraft)) {
+	const isLoading =
+		isEditing && (isLoadingApp || isLoadingPages || isLoadingDefinition);
+
+	if (isLoading) {
 		return (
 			<div className="space-y-6">
 				<div className="flex items-center gap-4">
@@ -388,10 +571,10 @@ export function ApplicationEditor() {
 		);
 	}
 
-	const isSaving = createApplication.isPending || saveDraft.isPending;
+	const isSaving = createApplication.isPending;
 	const isPublishing = publishApplication.isPending;
-	const hasDraft = existingApp?.has_unpublished_changes || !isEditing;
-	const hasLiveVersion = existingApp?.is_published;
+	const hasDraft =
+		existingApp?.has_unpublished_changes || hasUnsavedChanges || !isEditing;
 
 	return (
 		<Tabs
@@ -416,6 +599,27 @@ export function ApplicationEditor() {
 								? existingApp?.name || "Edit Application"
 								: "New Application"}
 						</h1>
+						{/* Real-time save status indicator */}
+						{saveQueue.isSaving && (
+							<Badge variant="outline" className="gap-1">
+								<Loader2 className="h-3 w-3 animate-spin" />
+								Saving...
+							</Badge>
+						)}
+						{!saveQueue.isSaving && hasUnsavedChanges && (
+							<Badge variant="outline">Unsaved</Badge>
+						)}
+						{!saveQueue.isSaving &&
+							!hasUnsavedChanges &&
+							isEditing && (
+								<Badge
+									variant="outline"
+									className="gap-1 text-green-600 border-green-600/30"
+								>
+									<Check className="h-3 w-3" />
+									Saved
+								</Badge>
+							)}
 						{existingApp?.has_unpublished_changes && (
 							<Badge variant="outline">Draft</Badge>
 						)}
@@ -437,10 +641,6 @@ export function ApplicationEditor() {
 						<Settings className="mr-2 h-4 w-4" />
 						Settings
 					</TabsTrigger>
-					<TabsTrigger value="definition">
-						<Code2 className="mr-2 h-4 w-4" />
-						JSON
-					</TabsTrigger>
 					<TabsTrigger value="preview">
 						<Eye className="mr-2 h-4 w-4" />
 						Preview
@@ -449,31 +649,20 @@ export function ApplicationEditor() {
 
 				{/* Right: Actions */}
 				<div className="flex items-center gap-2">
-					{hasDraft && hasLiveVersion && (
-						<Button
-							variant="outline"
-							size="sm"
-							onClick={() => setIsRollbackDialogOpen(true)}
-							disabled={rollbackApplication.isPending}
-						>
-							<RotateCcw className="mr-2 h-4 w-4" />
-							Discard Draft
-						</Button>
-					)}
 					<Button
 						variant="outline"
 						size="sm"
 						onClick={handleSave}
-						disabled={isSaving || !!jsonError}
+						disabled={isSaving || !definition}
 					>
 						<Save className="mr-2 h-4 w-4" />
-						{isSaving ? "Saving..." : "Save Draft"}
+						{isSaving ? "Saving..." : "Save"}
 					</Button>
 					{isEditing && hasDraft && (
 						<Button
 							size="sm"
 							onClick={() => setIsPublishDialogOpen(true)}
-							disabled={isPublishing || !!jsonError}
+							disabled={isPublishing || !definition}
 						>
 							<Upload className="mr-2 h-4 w-4" />
 							{isPublishing ? "Publishing..." : "Publish"}
@@ -487,49 +676,49 @@ export function ApplicationEditor() {
 				value="visual"
 				className="flex-1 -mx-6 lg:-mx-8 -mb-6 lg:-mb-8 overflow-hidden mt-0"
 			>
-					{parsedDefinition ? (
-						<EditorShell
-							definition={parsedDefinition}
-							onDefinitionChange={handleDefinitionChange}
-							selectedComponentId={selectedComponentId}
-							onSelectComponent={setSelectedComponentId}
-						/>
-					) : (
-						<div className="flex h-full items-center justify-center">
-							<Card className="max-w-md">
-								<CardContent className="flex flex-col items-center justify-center py-12">
-									<AlertTriangle className="h-12 w-12 text-destructive" />
-									<p className="mt-4 text-center text-muted-foreground">
-										Fix JSON errors in the JSON tab to use
-										the visual editor
-									</p>
-									<Button
-										variant="outline"
-										className="mt-4"
-										onClick={() =>
-											setActiveTab("definition")
-										}
-									>
-										<Code2 className="mr-2 h-4 w-4" />
-										Go to JSON Editor
-									</Button>
-								</CardContent>
-							</Card>
-						</div>
-					)}
-				</TabsContent>
+				{definition ? (
+					<EditorShell
+						definition={definition}
+						onDefinitionChange={handleDefinitionChange}
+						selectedComponentId={selectedComponentId}
+						onSelectComponent={setSelectedComponentId}
+						pageId={currentPageId || undefined}
+						onComponentCreate={
+							isEditing ? handleComponentCreate : undefined
+						}
+						onComponentUpdate={
+							isEditing ? handleComponentUpdate : undefined
+						}
+						onComponentDelete={
+							isEditing ? handleComponentDelete : undefined
+						}
+						onComponentMove={
+							isEditing ? handleComponentMove : undefined
+						}
+					/>
+				) : (
+					<div className="flex h-full items-center justify-center">
+						<Card className="max-w-md">
+							<CardContent className="flex flex-col items-center justify-center py-12">
+								<AlertTriangle className="h-12 w-12 text-muted-foreground" />
+								<p className="mt-4 text-center text-muted-foreground">
+									Loading application...
+								</p>
+							</CardContent>
+						</Card>
+					</div>
+				)}
+			</TabsContent>
 
-				{/* Settings Tab */}
-			<TabsContent
-				value="settings"
-				className="flex-1 overflow-auto mt-0"
-			>
+			{/* Settings Tab */}
+			<TabsContent value="settings" className="flex-1 overflow-auto mt-0">
 				<div className="max-w-2xl mx-auto py-6">
 					<Card>
 						<CardHeader>
 							<CardTitle>Application Settings</CardTitle>
 							<CardDescription>
-								Configure the basic settings for your application.
+								Configure the basic settings for your
+								application.
 							</CardDescription>
 						</CardHeader>
 						<CardContent className="space-y-4">
@@ -591,59 +780,25 @@ export function ApplicationEditor() {
 				</div>
 			</TabsContent>
 
-				{/* Definition Tab */}
-			<TabsContent
-				value="definition"
-				className="flex-1 flex flex-col min-h-0 mt-0"
-			>
-					<div className="flex items-center justify-between mb-2">
-						<div className="flex items-center gap-2">
-							<Label>Application Definition (JSON)</Label>
-							{jsonError && (
-								<Badge variant="destructive" className="gap-1">
-									<AlertTriangle className="h-3 w-3" />
-									{jsonError}
-								</Badge>
-							)}
-						</div>
-						<Button
-							variant="outline"
-							size="sm"
-							onClick={handleFormatJson}
-						>
-							Format JSON
-						</Button>
+			{/* Preview Tab */}
+			<TabsContent value="preview" className="flex-1 overflow-auto mt-0">
+				{definition ? (
+					<div className="border rounded-lg overflow-hidden h-full">
+						<AppRenderer
+							definition={definition}
+							navigate={previewNavigate}
+						/>
 					</div>
-					<Textarea
-						value={definitionJson}
-						onChange={(e) => setDefinitionJson(e.target.value)}
-						className="flex-1 font-mono text-sm resize-none"
-						placeholder="Enter application definition JSON..."
-					/>
-				</TabsContent>
-
-				{/* Preview Tab */}
-			<TabsContent
-				value="preview"
-				className="flex-1 overflow-auto mt-0"
-			>
-					{parsedDefinition ? (
-						<div className="border rounded-lg overflow-hidden h-full">
-							<AppRenderer
-								definition={parsedDefinition}
-								navigate={previewNavigate}
-							/>
-						</div>
-					) : (
-						<Card>
-							<CardContent className="flex flex-col items-center justify-center py-12">
-								<AlertTriangle className="h-12 w-12 text-muted-foreground" />
-								<p className="mt-4 text-muted-foreground">
-									Fix JSON errors to preview the application
-								</p>
-							</CardContent>
-						</Card>
-					)}
+				) : (
+					<Card>
+						<CardContent className="flex flex-col items-center justify-center py-12">
+							<AlertTriangle className="h-12 w-12 text-muted-foreground" />
+							<p className="mt-4 text-muted-foreground">
+								Loading application...
+							</p>
+						</CardContent>
+					</Card>
+				)}
 			</TabsContent>
 
 			{/* Publish Dialog */}
@@ -688,32 +843,6 @@ export function ApplicationEditor() {
 					</DialogFooter>
 				</DialogContent>
 			</Dialog>
-
-			{/* Rollback Dialog */}
-			<AlertDialog
-				open={isRollbackDialogOpen}
-				onOpenChange={setIsRollbackDialogOpen}
-			>
-				<AlertDialogContent>
-					<AlertDialogHeader>
-						<AlertDialogTitle>Discard Draft?</AlertDialogTitle>
-						<AlertDialogDescription>
-							This will discard all changes in the current draft
-							and revert to the last published version. This
-							action cannot be undone.
-						</AlertDialogDescription>
-					</AlertDialogHeader>
-					<AlertDialogFooter>
-						<AlertDialogCancel>Cancel</AlertDialogCancel>
-						<AlertDialogAction
-							onClick={handleRollback}
-							className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
-						>
-							Discard Draft
-						</AlertDialogAction>
-					</AlertDialogFooter>
-				</AlertDialogContent>
-			</AlertDialog>
 		</Tabs>
 	);
 }

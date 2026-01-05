@@ -129,7 +129,10 @@ interface FileTabProps {
 		file: { name: string; path: string };
 		unsavedChanges: boolean;
 		saveState?: "clean" | "dirty" | "saving" | "saved" | "conflict";
-		conflictReason?: "content_changed" | "path_not_found";
+		conflictReason?:
+			| "content_changed"
+			| "path_not_found"
+			| "workflows_would_deactivate";
 		serverContentDiffers?: boolean;
 	};
 	index: number;

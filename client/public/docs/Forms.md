@@ -375,32 +375,74 @@ Display rich HTML with dynamic context access.
 
 ### File Upload
 
-Upload files with type and size restrictions.
+Upload files with type and size restrictions. Files are uploaded directly to S3 storage using presigned URLs, bypassing the API for efficient large file handling.
 
 **Settings**:
 
 - **Allowed Types**: File type restrictions (`.pdf`, `image/*`, etc.)
-- **Multiple Files**: Allow multiple file selection
+- **Multiple Files**: Allow multiple file selection (requires `list[str]` workflow parameter)
 - **Max Size**: Maximum file size in MB
 
-**Workflow Integration**:
+**Upload Flow**:
 
-- Generates secure SAS URI for upload
-- Returns array of file information
-- Always returns array, even for single files
+1. User selects a file in the form
+2. Client requests a presigned upload URL from the API
+3. File uploads directly to S3 (with progress indicator)
+4. The S3 path is stored as the field value
+5. On form submit, the path (string) is passed to the workflow
 
-**File Info Structure**:
+**Workflow Parameter Types**:
 
-```javascript
-[
-	{
-		filename: "document.pdf",
-		content_type: "application/pdf",
-		size_bytes: 1024000,
-		sas_uri: "https://...",
-	},
-];
+- **Single file field**: Workflow parameter should be `str`
+- **Multiple file field**: Workflow parameter should be `list[str]`
+
+**What Workflows Receive**:
+
+- **Single file**: A path string like `"form-id/uuid/document.pdf"`
+- **Multiple files**: An array of paths like `["form-id/uuid/doc1.pdf", "form-id/uuid/doc2.pdf"]`
+
+**Accessing Files in Workflows**:
+
+Use the `files.read()` function with `location="uploads"`:
+
+```python
+from bifrost import files, workflow
+
+@workflow
+async def process_document(document: str):
+    """Process an uploaded document.
+
+    Args:
+        document: Path from form file field
+    """
+    # Read file content from S3
+    content = await files.read(document, location="uploads")
+
+    # For binary files (images, PDFs, etc.)
+    binary_data = await files.read_bytes(document, location="uploads")
+
+    return {"processed": True, "size": len(content)}
+
+@workflow
+async def process_multiple_documents(documents: list[str]):
+    """Process multiple uploaded documents.
+
+    Args:
+        documents: List of paths from multi-file upload field
+    """
+    results = []
+    for doc_path in documents:
+        content = await files.read(doc_path, location="uploads")
+        results.append({"path": doc_path, "size": len(content)})
+    return results
 ```
+
+**Important Notes**:
+
+- The path passed to `files.read()` should NOT include the `uploads/` prefix
+- The `location="uploads"` parameter tells the SDK to look in the uploads storage
+- Files are organized by form ID and upload UUID for isolation
+- Uploaded files persist until explicitly deleted
 
 ## Form Execution
 

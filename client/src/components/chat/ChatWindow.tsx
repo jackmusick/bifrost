@@ -14,10 +14,12 @@ import { ToolExecutionBadge } from "./ToolExecutionBadge";
 import { ToolExecutionGroup } from "./ToolExecutionGroup";
 import { ChatSystemEvent, type SystemEvent } from "./ChatSystemEvent";
 import { AskUserQuestionCard } from "./AskUserQuestionCard";
+import { TodoList } from "./TodoList";
 import {
 	useChatStore,
 	useStreamingMessage,
 	useCompletedStreamingMessages,
+	useTodos,
 	type StreamingMessage,
 } from "@/stores/chatStore";
 import { useMessages } from "@/hooks/useChat";
@@ -251,6 +253,7 @@ export function ChatWindow({
 	);
 	const completedStreamingMessages = useCompletedStreamingMessages();
 	const streamingMessage = useStreamingMessage();
+	const todos = useTodos();
 
 	// Use WebSocket streaming
 	const {
@@ -558,6 +561,11 @@ export function ChatWindow({
 						)}
 
 					{/* Streaming Error - now shown inline via system events */}
+
+					{/* Todo List - persistent checklist from SDK */}
+					{todos.length > 0 && (
+						<TodoList todos={todos} className="my-4" />
+					)}
 
 					{/* AskUserQuestion Card - inline at end of stream */}
 					{pendingQuestion && (

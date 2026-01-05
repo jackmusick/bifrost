@@ -355,7 +355,8 @@ export function Workflows() {
 														Tool
 													</Badge>
 												)}
-												{workflow.type === "data_provider" && (
+												{workflow.type ===
+													"data_provider" && (
 													<Badge
 														variant="secondary"
 														className="bg-blue-100 text-blue-700 dark:bg-blue-900 dark:text-blue-300 text-xs"

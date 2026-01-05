@@ -50,6 +50,14 @@ class FileContentRequest(BaseModel):
     content: str = Field(..., description="File content (plain text or base64 encoded)")
     encoding: str = Field(default="utf-8", description="Content encoding (utf-8 or base64)")
     expected_etag: str | None = Field(default=None, description="Expected ETag for conflict detection (optional)")
+    force_deactivation: bool = Field(
+        default=False,
+        description="Skip deactivation protection and allow workflows to be deactivated"
+    )
+    replacements: dict[str, str] | None = Field(
+        default=None,
+        description="Map of workflow_id -> new_function_name to transfer identity when renaming"
+    )
 
     model_config = ConfigDict(from_attributes=True)
 
@@ -88,6 +96,84 @@ class FileDiagnostic(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
 
+# ==================== DEACTIVATION PROTECTION MODELS ====================
+
+
+class AffectedEntity(BaseModel):
+    """Entity that depends on a workflow being deactivated."""
+    entity_type: Literal["form", "agent", "app"] = Field(
+        ..., description="Type of the affected entity"
+    )
+    id: str = Field(..., description="Entity ID")
+    name: str = Field(..., description="Entity display name")
+    reference_type: str = Field(
+        ...,
+        description="How the entity references the workflow (e.g., 'workflow', 'launch_workflow', 'data_provider', 'tool')"
+    )
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+class PendingDeactivation(BaseModel):
+    """Workflow/tool/data_provider that would be deactivated by a file save."""
+    id: str = Field(..., description="Workflow UUID")
+    name: str = Field(..., description="Display name from decorator")
+    function_name: str = Field(..., description="Python function name")
+    path: str = Field(..., description="File path")
+    description: str | None = Field(default=None, description="Workflow description")
+    decorator_type: Literal["workflow", "tool", "data_provider"] = Field(
+        ..., description="Type of decorator"
+    )
+    has_executions: bool = Field(
+        default=False, description="Whether this workflow has execution history"
+    )
+    last_execution_at: str | None = Field(
+        default=None, description="Last execution timestamp (ISO 8601)"
+    )
+    schedule: str | None = Field(default=None, description="CRON schedule if any")
+    endpoint_enabled: bool = Field(
+        default=False, description="Whether HTTP endpoint is enabled"
+    )
+    affected_entities: list[AffectedEntity] = Field(
+        default_factory=list,
+        description="Forms, agents, and apps that depend on this workflow"
+    )
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+class AvailableReplacement(BaseModel):
+    """Function that could replace a deactivated workflow."""
+    function_name: str = Field(..., description="Python function name")
+    name: str = Field(..., description="Display name from decorator or function name")
+    decorator_type: Literal["workflow", "tool", "data_provider"] = Field(
+        ..., description="Type of decorator"
+    )
+    similarity_score: float = Field(
+        ..., ge=0.0, le=1.0, description="Similarity score to the deactivated workflow (0.0-1.0)"
+    )
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+class WorkflowDeactivationConflict(BaseModel):
+    """409 response when workflows would be deactivated."""
+    reason: Literal["workflows_would_deactivate"] = Field(
+        default="workflows_would_deactivate",
+        description="Conflict reason identifier"
+    )
+    message: str = Field(..., description="Human-readable description")
+    pending_deactivations: list[PendingDeactivation] = Field(
+        ..., description="Workflows that would be deactivated"
+    )
+    available_replacements: list[AvailableReplacement] = Field(
+        default_factory=list,
+        description="New functions that could replace deactivated workflows"
+    )
+
+    model_config = ConfigDict(from_attributes=True)
+
+
 class FileContentResponse(BaseModel):
     """Response with file content"""
     path: str = Field(..., description="Relative path from /home/repo")
@@ -118,8 +204,19 @@ class FileContentResponse(BaseModel):
 
 class FileConflictResponse(BaseModel):
     """Response when file write encounters a conflict"""
-    reason: Literal["content_changed", "path_not_found"] = Field(..., description="Type of conflict")
+    reason: Literal["content_changed", "path_not_found", "workflows_would_deactivate"] = Field(
+        ..., description="Type of conflict"
+    )
     message: str = Field(..., description="Human-readable conflict description")
+    # Fields for workflows_would_deactivate conflicts
+    pending_deactivations: list[PendingDeactivation] | None = Field(
+        default=None,
+        description="Workflows that would be deactivated (only for workflows_would_deactivate)"
+    )
+    available_replacements: list[AvailableReplacement] | None = Field(
+        default=None,
+        description="New functions that could replace deactivated workflows (only for workflows_would_deactivate)"
+    )
 
     model_config = ConfigDict(from_attributes=True)
 

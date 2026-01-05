@@ -483,10 +483,7 @@ export function NavigationEditor({
 		};
 	}, [app.navigation, app.pages]);
 
-	const items = useMemo(
-		() => navigation.sidebar || [],
-		[navigation.sidebar],
-	);
+	const items = useMemo(() => navigation.sidebar || [], [navigation.sidebar]);
 
 	const handleUpdateItem = (index: number, item: NavItem) => {
 		const newItems = [...items];

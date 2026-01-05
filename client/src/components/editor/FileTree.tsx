@@ -10,6 +10,20 @@ import {
 	Edit2,
 	RefreshCw,
 	Loader2,
+	Workflow,
+	FileText,
+	AppWindow,
+	Bot,
+	FileCode,
+	FileJson,
+	FileImage,
+	FileSpreadsheet,
+	FileArchive,
+	FileTerminal,
+	Settings,
+	FileType,
+	Braces,
+	type LucideIcon,
 } from "lucide-react";
 import { useFileTree, type FileTreeNode } from "@/hooks/useFileTree";
 import { useEditorStore } from "@/stores/editorStore";
@@ -119,6 +133,91 @@ function isTextFile(file: File): boolean {
 		)
 	);
 }
+
+/**
+ * Platform entity type icons and colors (highest priority)
+ */
+const ENTITY_TYPE_ICONS: Record<
+	string,
+	{ icon: LucideIcon; className: string }
+> = {
+	workflow: { icon: Workflow, className: "text-blue-500" },
+	form: { icon: FileText, className: "text-green-500" },
+	app: { icon: AppWindow, className: "text-purple-500" },
+	agent: { icon: Bot, className: "text-orange-500" },
+};
+
+/**
+ * File extension icons and colors (fallback when no entity type)
+ */
+const EXTENSION_ICONS: Record<string, { icon: LucideIcon; className: string }> =
+	{
+		// Code files
+		py: { icon: FileCode, className: "text-yellow-500" },
+		js: { icon: Braces, className: "text-yellow-400" },
+		jsx: { icon: Braces, className: "text-cyan-400" },
+		ts: { icon: Braces, className: "text-blue-400" },
+		tsx: { icon: Braces, className: "text-blue-400" },
+		html: { icon: FileCode, className: "text-orange-500" },
+		css: { icon: FileCode, className: "text-blue-500" },
+		scss: { icon: FileCode, className: "text-pink-400" },
+		// Data files
+		json: { icon: FileJson, className: "text-yellow-500" },
+		yaml: { icon: FileJson, className: "text-red-400" },
+		yml: { icon: FileJson, className: "text-red-400" },
+		xml: { icon: FileCode, className: "text-orange-400" },
+		csv: { icon: FileSpreadsheet, className: "text-green-500" },
+		// Text/Docs
+		txt: { icon: FileType, className: "text-gray-400" },
+		md: { icon: FileText, className: "text-gray-500" },
+		// Shell/Terminal
+		sh: { icon: FileTerminal, className: "text-green-400" },
+		bash: { icon: FileTerminal, className: "text-green-400" },
+		zsh: { icon: FileTerminal, className: "text-green-400" },
+		// Images
+		png: { icon: FileImage, className: "text-purple-400" },
+		jpg: { icon: FileImage, className: "text-purple-400" },
+		jpeg: { icon: FileImage, className: "text-purple-400" },
+		gif: { icon: FileImage, className: "text-purple-400" },
+		svg: { icon: FileImage, className: "text-orange-400" },
+		webp: { icon: FileImage, className: "text-purple-400" },
+		ico: { icon: FileImage, className: "text-purple-400" },
+		// Archives
+		zip: { icon: FileArchive, className: "text-amber-500" },
+		tar: { icon: FileArchive, className: "text-amber-500" },
+		gz: { icon: FileArchive, className: "text-amber-500" },
+		// Config
+		toml: { icon: Settings, className: "text-gray-400" },
+		ini: { icon: Settings, className: "text-gray-400" },
+		env: { icon: Settings, className: "text-yellow-600" },
+		gitignore: { icon: Settings, className: "text-gray-500" },
+	};
+
+/**
+ * Get the appropriate icon and styling for a file based on its entity type or extension
+ */
+function getFileIcon(
+	entityType: string | null | undefined,
+	extension: string | null | undefined,
+): {
+	icon: LucideIcon;
+	className: string;
+} {
+	// Platform entity types take priority
+	if (entityType && ENTITY_TYPE_ICONS[entityType]) {
+		return ENTITY_TYPE_ICONS[entityType];
+	}
+	// Fall back to extension-based icons
+	if (extension) {
+		const ext = extension.toLowerCase();
+		if (EXTENSION_ICONS[ext]) {
+			return EXTENSION_ICONS[ext];
+		}
+	}
+	// Default file icon
+	return { icon: File, className: "text-muted-foreground" };
+}
+
 import {
 	ContextMenu,
 	ContextMenuContent,
@@ -1280,10 +1379,23 @@ function FileTreeItem({
 							<Folder className="h-4 w-4 flex-shrink-0 text-primary" />
 						</>
 					) : (
-						<>
-							<div className="w-4" />
-							<File className="h-4 w-4 flex-shrink-0 text-muted-foreground" />
-						</>
+						(() => {
+							const { icon: FileIcon, className } = getFileIcon(
+								file.entity_type,
+								file.extension,
+							);
+							return (
+								<>
+									<div className="w-4" />
+									<FileIcon
+										className={cn(
+											"h-4 w-4 flex-shrink-0",
+											className,
+										)}
+									/>
+								</>
+							);
+						})()
 					)}
 					<input
 						ref={renameInputRef}
@@ -1344,12 +1456,25 @@ function FileTreeItem({
 									<Folder className="h-4 w-4 flex-shrink-0 text-primary" />
 								</>
 							)}
-							{!isFolder && (
-								<>
-									<div className="w-4" />
-									<File className="h-4 w-4 flex-shrink-0 text-muted-foreground" />
-								</>
-							)}
+							{!isFolder &&
+								(() => {
+									const { icon: FileIcon, className } =
+										getFileIcon(
+											file.entity_type,
+											file.extension,
+										);
+									return (
+										<>
+											<div className="w-4" />
+											<FileIcon
+												className={cn(
+													"h-4 w-4 flex-shrink-0",
+													className,
+												)}
+											/>
+										</>
+									);
+								})()}
 							<span className="flex-1 truncate">{file.name}</span>
 						</button>
 					</ContextMenuTrigger>

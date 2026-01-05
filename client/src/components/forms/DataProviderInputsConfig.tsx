@@ -22,10 +22,12 @@ import type {
 	DataProviderInputMode,
 } from "@/lib/client-types";
 
-type DataProviderMetadata = components["schemas"]["DataProviderMetadata"];
+// Data providers are stored in workflows table with type='data_provider'
+// They have the same metadata structure (including parameters)
+type WorkflowMetadata = components["schemas"]["WorkflowMetadata"];
 
 interface DataProviderInputsConfigProps {
-	provider: DataProviderMetadata;
+	provider: WorkflowMetadata;
 	inputs: Record<string, DataProviderInputConfig>;
 	onChange: (inputs: Record<string, DataProviderInputConfig>) => void;
 	availableFields?: string[]; // Field names available for reference

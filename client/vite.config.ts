@@ -84,13 +84,31 @@ export default defineConfig({
 	},
 	optimizeDeps: {
 		include: [
+			// React core
 			"react",
 			"react-dom",
+			"react-dom/client",
 			"react-router-dom",
+
+			// State management
+			"zustand",
+			"zustand/middleware",
+			"zustand/react/shallow",
+
+			// Data fetching
 			"@tanstack/react-query",
+			"openapi-fetch",
+			"openapi-react-query",
+
+			// UI utilities
 			"lucide-react",
 			"sonner",
-			// Pre-bundle common Radix UI packages to reduce request count
+			"clsx",
+			"tailwind-merge",
+			"class-variance-authority",
+			"cmdk",
+
+			// Radix UI primitives
 			"@radix-ui/react-dialog",
 			"@radix-ui/react-dropdown-menu",
 			"@radix-ui/react-label",
@@ -101,6 +119,38 @@ export default defineConfig({
 			"@radix-ui/react-tabs",
 			"@radix-ui/react-alert-dialog",
 			"@radix-ui/react-popover",
+			"@radix-ui/react-checkbox",
+			"@radix-ui/react-context-menu",
+			"@radix-ui/react-collapsible",
+			"@radix-ui/react-avatar",
+			"@radix-ui/react-progress",
+			"@radix-ui/react-radio-group",
+			"@radix-ui/react-switch",
+			"@radix-ui/react-toggle",
+			"@radix-ui/react-toggle-group",
+
+			// Animation and drag-drop
+			"framer-motion",
+			"@atlaskit/pragmatic-drag-and-drop/element/adapter",
+			"@atlaskit/pragmatic-drag-and-drop/combine",
+
+			// Content rendering
+			"react-markdown",
+			"remark-gfm",
+			"rehype-raw",
+			"react-syntax-highlighter",
+			"react-syntax-highlighter/dist/esm/styles/prism",
+			"dompurify",
+			"date-fns",
+
+			// Charts
+			"recharts",
+
+			// Monaco editor
+			"@monaco-editor/react",
+
+			// Auth
+			"@simplewebauthn/browser",
 		],
 	},
 	server: {

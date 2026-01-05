@@ -959,7 +959,9 @@ function EmbeddingConfigCard({ llmProvider }: { llmProvider?: string }) {
 								<Button
 									variant="outline"
 									size="sm"
-									onClick={() => navigate("/settings/maintenance")}
+									onClick={() =>
+										navigate("/settings/maintenance")
+									}
 								>
 									Index Docs
 									<ArrowRight className="h-4 w-4 ml-1" />
@@ -968,7 +970,9 @@ function EmbeddingConfigCard({ llmProvider }: { llmProvider?: string }) {
 									<Button
 										variant="ghost"
 										size="sm"
-										onClick={() => setShowDeleteConfirm(true)}
+										onClick={() =>
+											setShowDeleteConfirm(true)
+										}
 										className="text-destructive hover:text-destructive"
 									>
 										<Trash2 className="h-4 w-4 mr-1" />

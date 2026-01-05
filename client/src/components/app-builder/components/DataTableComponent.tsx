@@ -120,7 +120,9 @@ export function DataTableComponent({
 	// Table cache from store
 	const cachedEntry = useTableCache(props.cacheKey);
 	const setTableCache = useAppBuilderStore((state) => state.setTableCache);
-	const clearTableCache = useAppBuilderStore((state) => state.clearTableCache);
+	const clearTableCache = useAppBuilderStore(
+		(state) => state.clearTableCache,
+	);
 	const [isRefreshing, setIsRefreshing] = useState(false);
 
 	// Get data from context - memoize to prevent dependency changes
@@ -147,7 +149,10 @@ export function DataTableComponent({
 			return rawData;
 		}
 		// If we have cached data and context data is empty/undefined, use cache
-		if (cachedEntry?.data && (!rawData || (Array.isArray(rawData) && rawData.length === 0))) {
+		if (
+			cachedEntry?.data &&
+			(!rawData || (Array.isArray(rawData) && rawData.length === 0))
+		) {
 			return cachedEntry.data;
 		}
 		// Otherwise use raw data (may be empty)
@@ -164,7 +169,8 @@ export function DataTableComponent({
 	}, [props.cacheKey, rawData, props.dataSource, setTableCache]);
 
 	// Show skeleton if data is undefined AND we're loading
-	const isLoading = (rawData === undefined && context.isDataLoading) || isRefreshing;
+	const isLoading =
+		(rawData === undefined && context.isDataLoading) || isRefreshing;
 
 	// Refresh handler
 	const handleRefresh = useCallback(() => {
@@ -480,456 +486,473 @@ export function DataTableComponent({
 		<TooltipProvider>
 			<div className={cn("space-y-4", props.className)}>
 				{/* Header with search, refresh, and actions */}
-			{(props.searchable || props.headerActions?.length || props.cacheKey) && (
-				<div className="flex items-center justify-between gap-4">
-					{props.searchable && (
-						<div className="relative flex-1 max-w-sm">
-							<Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-							<Input
-								placeholder="Search..."
-								value={searchQuery}
-								onChange={(e) => {
-									setSearchQuery(e.target.value);
-									setCurrentPage(1);
-								}}
-								className="pl-10"
-							/>
-						</div>
-					)}
-					<div className="flex items-center gap-2">
-						{/* Refresh Button */}
-						{props.cacheKey && (
-							<Tooltip>
-								<TooltipTrigger asChild>
-									<Button
-										variant="outline"
-										size="icon"
-										onClick={handleRefresh}
-										disabled={isLoading}
-										className="h-8 w-8"
-									>
-										<RefreshCw
-											className={cn(
-												"h-4 w-4",
-												isLoading && "animate-spin",
-											)}
-										/>
-									</Button>
-								</TooltipTrigger>
-								<TooltipContent>
-									<p>Refresh data</p>
-								</TooltipContent>
-							</Tooltip>
-						)}
-						{/* Header Actions */}
-						{props.headerActions?.map((action, idx) => {
-							const IconComponent = action.icon
-								? getIcon(action.icon)
-								: null;
-							const isIconOnly =
-								IconComponent && !action.label.trim();
-
-							const buttonElement = (
-								<Button
-									key={idx}
-									variant={action.variant || "default"}
-									size={isIconOnly ? "icon" : "sm"}
-									onClick={() => handleAction(action, {})}
-									className={
-										isIconOnly ? "h-8 w-8" : undefined
-									}
-								>
-									{IconComponent && (
-										<IconComponent
-											className={cn(
-												"h-4 w-4",
-												!isIconOnly && "mr-1.5",
-											)}
-										/>
-									)}
-									{!isIconOnly && action.label}
-								</Button>
-							);
-
-							if (isIconOnly) {
-								return (
-									<Tooltip key={idx}>
-										<TooltipTrigger asChild>
-											{buttonElement}
-										</TooltipTrigger>
-										<TooltipContent>
-											<p>{action.label}</p>
-										</TooltipContent>
-									</Tooltip>
-								);
-							}
-
-							return buttonElement;
-						})}
-					</div>
-				</div>
-			)}
-
-			{/* Table */}
-			<div className="rounded-md border">
-				<Table>
-					<TableHeader>
-						<TableRow>
-							{props.selectable && (
-								<TableHead className="w-12">
-									<Checkbox
-										checked={
-											paginatedData.length > 0 &&
-											selectedRows.size ===
-												paginatedData.length
-										}
-										onCheckedChange={handleSelectAll}
-									/>
-								</TableHead>
-							)}
-							{props.columns.map((column) => (
-								<TableHead
-									key={column.key}
-									className={cn(
-										column.sortable &&
-											"cursor-pointer select-none",
-									)}
-									style={{
-										width:
-											column.width !== "auto"
-												? column.width
-												: undefined,
+				{(props.searchable ||
+					props.headerActions?.length ||
+					props.cacheKey) && (
+					<div className="flex items-center justify-between gap-4">
+						{props.searchable && (
+							<div className="relative flex-1 max-w-sm">
+								<Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+								<Input
+									placeholder="Search..."
+									value={searchQuery}
+									onChange={(e) => {
+										setSearchQuery(e.target.value);
+										setCurrentPage(1);
 									}}
-									onClick={() =>
-										column.sortable &&
-										handleSort(column.key)
-									}
-								>
-									<div className="flex items-center">
-										{column.header}
-										{column.sortable &&
-											getSortIcon(column.key)}
-									</div>
-								</TableHead>
-							))}
-							{props.rowActions?.length && (
-								<TableHead className="w-24 text-right">
-									Actions
-								</TableHead>
+									className="pl-10"
+								/>
+							</div>
+						)}
+						<div className="flex items-center gap-2">
+							{/* Refresh Button */}
+							{props.cacheKey && (
+								<Tooltip>
+									<TooltipTrigger asChild>
+										<Button
+											variant="outline"
+											size="icon"
+											onClick={handleRefresh}
+											disabled={isLoading}
+											className="h-8 w-8"
+										>
+											<RefreshCw
+												className={cn(
+													"h-4 w-4",
+													isLoading && "animate-spin",
+												)}
+											/>
+										</Button>
+									</TooltipTrigger>
+									<TooltipContent>
+										<p>Refresh data</p>
+									</TooltipContent>
+								</Tooltip>
 							)}
-						</TableRow>
-					</TableHeader>
-					<TableBody>
-						{isLoading ? (
-							// Show skeleton rows when loading
-							Array.from({ length: 5 }).map((_, rowIndex) => (
-								<TableRow key={`skeleton-${rowIndex}`}>
-									{props.selectable && (
-										<TableCell>
-											<Skeleton className="h-4 w-4" />
-										</TableCell>
-									)}
-									{props.columns.map((column) => (
-										<TableCell key={column.key}>
-											<Skeleton className="h-4 w-full" />
-										</TableCell>
-									))}
-									{props.rowActions?.length && (
-										<TableCell className="text-right">
-											<Skeleton className="h-8 w-16 ml-auto" />
-										</TableCell>
-									)}
-								</TableRow>
-							))
-						) : paginatedData.length === 0 ? (
-							<TableRow>
-								<TableCell
-									colSpan={
-										props.columns.length +
-										(props.selectable ? 1 : 0) +
-										(props.rowActions?.length ? 1 : 0)
-									}
-									className="text-center py-8 text-muted-foreground"
-								>
-									{props.emptyMessage || "No results found"}
-								</TableCell>
-							</TableRow>
-						) : (
-							paginatedData.map(
-								(row: Record<string, unknown>, rowIndex) => (
-									<TableRow
-										key={
-											(row.id as string) ??
-											(row._id as string) ??
-											`row-${rowIndex}`
-										}
-										className={cn(
-											props.onRowClick &&
-												"cursor-pointer",
-											selectedRows.has(rowIndex) &&
-												"bg-muted/50",
-										)}
-										onClick={() =>
-											handleRowClick(row, rowIndex)
+							{/* Header Actions */}
+							{props.headerActions?.map((action, idx) => {
+								const IconComponent = action.icon
+									? getIcon(action.icon)
+									: null;
+								const isIconOnly =
+									IconComponent && !action.label.trim();
+
+								const buttonElement = (
+									<Button
+										key={idx}
+										variant={action.variant || "default"}
+										size={isIconOnly ? "icon" : "sm"}
+										onClick={() => handleAction(action, {})}
+										className={
+											isIconOnly ? "h-8 w-8" : undefined
 										}
 									>
+										{IconComponent && (
+											<IconComponent
+												className={cn(
+													"h-4 w-4",
+													!isIconOnly && "mr-1.5",
+												)}
+											/>
+										)}
+										{!isIconOnly && action.label}
+									</Button>
+								);
+
+								if (isIconOnly) {
+									return (
+										<Tooltip key={idx}>
+											<TooltipTrigger asChild>
+												{buttonElement}
+											</TooltipTrigger>
+											<TooltipContent>
+												<p>{action.label}</p>
+											</TooltipContent>
+										</Tooltip>
+									);
+								}
+
+								return buttonElement;
+							})}
+						</div>
+					</div>
+				)}
+
+				{/* Table */}
+				<div className="rounded-md border">
+					<Table>
+						<TableHeader>
+							<TableRow>
+								{props.selectable && (
+									<TableHead className="w-12">
+										<Checkbox
+											checked={
+												paginatedData.length > 0 &&
+												selectedRows.size ===
+													paginatedData.length
+											}
+											onCheckedChange={handleSelectAll}
+										/>
+									</TableHead>
+								)}
+								{props.columns.map((column) => (
+									<TableHead
+										key={column.key}
+										className={cn(
+											column.sortable &&
+												"cursor-pointer select-none",
+										)}
+										style={{
+											width:
+												column.width !== "auto"
+													? column.width
+													: undefined,
+										}}
+										onClick={() =>
+											column.sortable &&
+											handleSort(column.key)
+										}
+									>
+										<div className="flex items-center">
+											{column.header}
+											{column.sortable &&
+												getSortIcon(column.key)}
+										</div>
+									</TableHead>
+								))}
+								{props.rowActions?.length && (
+									<TableHead className="w-24 text-right">
+										Actions
+									</TableHead>
+								)}
+							</TableRow>
+						</TableHeader>
+						<TableBody>
+							{isLoading ? (
+								// Show skeleton rows when loading
+								Array.from({ length: 5 }).map((_, rowIndex) => (
+									<TableRow key={`skeleton-${rowIndex}`}>
 										{props.selectable && (
-											<TableCell
-												onClick={(e) =>
-													e.stopPropagation()
-												}
-											>
-												<Checkbox
-													checked={selectedRows.has(
-														rowIndex,
-													)}
-													onCheckedChange={(
-														checked,
-													) =>
-														handleRowSelect(
-															rowIndex,
-															!!checked,
-														)
-													}
-												/>
+											<TableCell>
+												<Skeleton className="h-4 w-4" />
 											</TableCell>
 										)}
 										{props.columns.map((column) => (
 											<TableCell key={column.key}>
-												{formatCellValue(
-													getNestedValue(
-														row,
-														column.key,
-													),
-													column,
-												)}
+												<Skeleton className="h-4 w-full" />
 											</TableCell>
 										))}
 										{props.rowActions?.length && (
-											<TableCell
-												className="text-right"
-												onClick={(e) =>
-													e.stopPropagation()
-												}
-											>
-												<div className="flex items-center justify-end gap-1">
-													{props.rowActions.map(
-														(action, idx) => {
-															// Create row-scoped context for expression evaluation
-															const actionRowContext =
-																{
-																	...context,
-																	row,
-																};
-															// Check visibility expression
-															if (
-																action.visible &&
-																!evaluateVisibility(
-																	action.visible,
-																	actionRowContext,
-																)
-															) {
-																return null;
-															}
-															// Check disabled expression
-															const isDisabled =
-																action.disabled
-																	? Boolean(
-																			evaluateExpression(
-																				action.disabled,
-																				actionRowContext,
-																			),
-																		)
-																	: false;
-															// Evaluate label with row context
-															const label =
-																action.label.includes(
-																	"{{",
-																)
-																	? String(
-																			evaluateExpression(
-																				action.label,
-																				actionRowContext,
-																			) ??
-																				action.label,
-																		)
-																	: action.label;
-
-															// Get icon component if specified
-															const IconComponent =
-																action.icon
-																	? getIcon(
-																			action.icon,
-																		)
-																	: null;
-
-															// Icon-only when there's an icon but no label text
-															const isIconOnly =
-																IconComponent &&
-																!label.trim();
-
-															// For icon-only buttons, default to outline variant to match platform style
-															const buttonVariant = action.variant || (isIconOnly ? "outline" : "ghost");
-
-															const buttonElement =
-																(
-																	<Button
-																		key={
-																			idx
-																		}
-																		variant={buttonVariant}
-																		size={
-																			isIconOnly
-																				? "icon"
-																				: "sm"
-																		}
-																		disabled={
-																			isDisabled
-																		}
-																		onClick={() =>
-																			handleAction(
-																				action,
-																				row,
-																			)
-																		}
-																		className={
-																			isIconOnly
-																				? "h-8 w-8"
-																				: undefined
-																		}
-																	>
-																		{IconComponent && (
-																			<IconComponent
-																				className={cn(
-																					"h-4 w-4",
-																					!isIconOnly &&
-																						"mr-1.5",
-																				)}
-																			/>
-																		)}
-																		{!isIconOnly &&
-																			label}
-																	</Button>
-																);
-
-															// Wrap icon-only buttons in tooltip for accessibility
-															if (isIconOnly) {
-																return (
-																	<Tooltip
-																		key={
-																			idx
-																		}
-																	>
-																		<TooltipTrigger
-																			asChild
-																		>
-																			{
-																				buttonElement
-																			}
-																		</TooltipTrigger>
-																		<TooltipContent>
-																			<p>
-																				{
-																					action.label
-																				}
-																			</p>
-																		</TooltipContent>
-																	</Tooltip>
-																);
-															}
-
-															return buttonElement;
-														},
-													)}
-												</div>
+											<TableCell className="text-right">
+												<Skeleton className="h-8 w-16 ml-auto" />
 											</TableCell>
 										)}
 									</TableRow>
-								),
-							)
-						)}
-					</TableBody>
-				</Table>
-			</div>
+								))
+							) : paginatedData.length === 0 ? (
+								<TableRow>
+									<TableCell
+										colSpan={
+											props.columns.length +
+											(props.selectable ? 1 : 0) +
+											(props.rowActions?.length ? 1 : 0)
+										}
+										className="text-center py-8 text-muted-foreground"
+									>
+										{props.emptyMessage ||
+											"No results found"}
+									</TableCell>
+								</TableRow>
+							) : (
+								paginatedData.map(
+									(
+										row: Record<string, unknown>,
+										rowIndex,
+									) => (
+										<TableRow
+											key={
+												(row.id as string) ??
+												(row._id as string) ??
+												`row-${rowIndex}`
+											}
+											className={cn(
+												props.onRowClick &&
+													"cursor-pointer",
+												selectedRows.has(rowIndex) &&
+													"bg-muted/50",
+											)}
+											onClick={() =>
+												handleRowClick(row, rowIndex)
+											}
+										>
+											{props.selectable && (
+												<TableCell
+													onClick={(e) =>
+														e.stopPropagation()
+													}
+												>
+													<Checkbox
+														checked={selectedRows.has(
+															rowIndex,
+														)}
+														onCheckedChange={(
+															checked,
+														) =>
+															handleRowSelect(
+																rowIndex,
+																!!checked,
+															)
+														}
+													/>
+												</TableCell>
+											)}
+											{props.columns.map((column) => (
+												<TableCell key={column.key}>
+													{formatCellValue(
+														getNestedValue(
+															row,
+															column.key,
+														),
+														column,
+													)}
+												</TableCell>
+											))}
+											{props.rowActions?.length && (
+												<TableCell
+													className="text-right"
+													onClick={(e) =>
+														e.stopPropagation()
+													}
+												>
+													<div className="flex items-center justify-end gap-1">
+														{props.rowActions.map(
+															(action, idx) => {
+																// Create row-scoped context for expression evaluation
+																const actionRowContext =
+																	{
+																		...context,
+																		row,
+																	};
+																// Check visibility expression
+																if (
+																	action.visible &&
+																	!evaluateVisibility(
+																		action.visible,
+																		actionRowContext,
+																	)
+																) {
+																	return null;
+																}
+																// Check disabled expression
+																const isDisabled =
+																	action.disabled
+																		? Boolean(
+																				evaluateExpression(
+																					action.disabled,
+																					actionRowContext,
+																				),
+																			)
+																		: false;
+																// Evaluate label with row context
+																const label =
+																	action.label.includes(
+																		"{{",
+																	)
+																		? String(
+																				evaluateExpression(
+																					action.label,
+																					actionRowContext,
+																				) ??
+																					action.label,
+																			)
+																		: action.label;
 
-			{/* Pagination */}
-			{props.paginated && totalPages > 1 && (
-				<div className="flex items-center justify-between">
-					<p className="text-sm text-muted-foreground">
-						Showing {(currentPage - 1) * pageSize + 1} to{" "}
-						{Math.min(currentPage * pageSize, sortedData.length)} of{" "}
-						{sortedData.length} results
-					</p>
-					<div className="flex items-center gap-1">
-						<Button
-							variant="outline"
-							size="sm"
-							onClick={() => setCurrentPage(1)}
-							disabled={currentPage === 1}
-						>
-							<ChevronsLeft className="h-4 w-4" />
-						</Button>
-						<Button
-							variant="outline"
-							size="sm"
-							onClick={() =>
-								setCurrentPage((p) => Math.max(1, p - 1))
-							}
-							disabled={currentPage === 1}
-						>
-							<ChevronLeft className="h-4 w-4" />
-						</Button>
-						<span className="px-3 text-sm">
-							Page {currentPage} of {totalPages}
-						</span>
-						<Button
-							variant="outline"
-							size="sm"
-							onClick={() =>
-								setCurrentPage((p) =>
-									Math.min(totalPages, p + 1),
+																// Get icon component if specified
+																const IconComponent =
+																	action.icon
+																		? getIcon(
+																				action.icon,
+																			)
+																		: null;
+
+																// Icon-only when there's an icon but no label text
+																const isIconOnly =
+																	IconComponent &&
+																	!label.trim();
+
+																// For icon-only buttons, default to outline variant to match platform style
+																const buttonVariant =
+																	action.variant ||
+																	(isIconOnly
+																		? "outline"
+																		: "ghost");
+
+																const buttonElement =
+																	(
+																		<Button
+																			key={
+																				idx
+																			}
+																			variant={
+																				buttonVariant
+																			}
+																			size={
+																				isIconOnly
+																					? "icon"
+																					: "sm"
+																			}
+																			disabled={
+																				isDisabled
+																			}
+																			onClick={() =>
+																				handleAction(
+																					action,
+																					row,
+																				)
+																			}
+																			className={
+																				isIconOnly
+																					? "h-8 w-8"
+																					: undefined
+																			}
+																		>
+																			{IconComponent && (
+																				<IconComponent
+																					className={cn(
+																						"h-4 w-4",
+																						!isIconOnly &&
+																							"mr-1.5",
+																					)}
+																				/>
+																			)}
+																			{!isIconOnly &&
+																				label}
+																		</Button>
+																	);
+
+																// Wrap icon-only buttons in tooltip for accessibility
+																if (
+																	isIconOnly
+																) {
+																	return (
+																		<Tooltip
+																			key={
+																				idx
+																			}
+																		>
+																			<TooltipTrigger
+																				asChild
+																			>
+																				{
+																					buttonElement
+																				}
+																			</TooltipTrigger>
+																			<TooltipContent>
+																				<p>
+																					{
+																						action.label
+																					}
+																				</p>
+																			</TooltipContent>
+																		</Tooltip>
+																	);
+																}
+
+																return buttonElement;
+															},
+														)}
+													</div>
+												</TableCell>
+											)}
+										</TableRow>
+									),
 								)
-							}
-							disabled={currentPage === totalPages}
-						>
-							<ChevronRight className="h-4 w-4" />
-						</Button>
-						<Button
-							variant="outline"
-							size="sm"
-							onClick={() => setCurrentPage(totalPages)}
-							disabled={currentPage === totalPages}
-						>
-							<ChevronsRight className="h-4 w-4" />
-						</Button>
-					</div>
+							)}
+						</TableBody>
+					</Table>
 				</div>
-			)}
 
-			{/* Confirmation Dialog */}
-			<AlertDialog
-				open={confirmDialog.isOpen}
-				onOpenChange={(open) => !open && handleCancel()}
-			>
-				<AlertDialogContent>
-					<AlertDialogHeader>
-						<AlertDialogTitle>
-							{confirmDialog.title}
-						</AlertDialogTitle>
-						<AlertDialogDescription>
-							{confirmDialog.message}
-						</AlertDialogDescription>
-					</AlertDialogHeader>
-					<AlertDialogFooter>
-						<AlertDialogCancel onClick={handleCancel}>
-							{confirmDialog.cancelLabel}
-						</AlertDialogCancel>
-						<AlertDialogAction onClick={handleConfirm}>
-							{confirmDialog.confirmLabel}
-						</AlertDialogAction>
-					</AlertDialogFooter>
-				</AlertDialogContent>
-			</AlertDialog>
+				{/* Pagination */}
+				{props.paginated && totalPages > 1 && (
+					<div className="flex items-center justify-between">
+						<p className="text-sm text-muted-foreground">
+							Showing {(currentPage - 1) * pageSize + 1} to{" "}
+							{Math.min(
+								currentPage * pageSize,
+								sortedData.length,
+							)}{" "}
+							of {sortedData.length} results
+						</p>
+						<div className="flex items-center gap-1">
+							<Button
+								variant="outline"
+								size="sm"
+								onClick={() => setCurrentPage(1)}
+								disabled={currentPage === 1}
+							>
+								<ChevronsLeft className="h-4 w-4" />
+							</Button>
+							<Button
+								variant="outline"
+								size="sm"
+								onClick={() =>
+									setCurrentPage((p) => Math.max(1, p - 1))
+								}
+								disabled={currentPage === 1}
+							>
+								<ChevronLeft className="h-4 w-4" />
+							</Button>
+							<span className="px-3 text-sm">
+								Page {currentPage} of {totalPages}
+							</span>
+							<Button
+								variant="outline"
+								size="sm"
+								onClick={() =>
+									setCurrentPage((p) =>
+										Math.min(totalPages, p + 1),
+									)
+								}
+								disabled={currentPage === totalPages}
+							>
+								<ChevronRight className="h-4 w-4" />
+							</Button>
+							<Button
+								variant="outline"
+								size="sm"
+								onClick={() => setCurrentPage(totalPages)}
+								disabled={currentPage === totalPages}
+							>
+								<ChevronsRight className="h-4 w-4" />
+							</Button>
+						</div>
+					</div>
+				)}
+
+				{/* Confirmation Dialog */}
+				<AlertDialog
+					open={confirmDialog.isOpen}
+					onOpenChange={(open) => !open && handleCancel()}
+				>
+					<AlertDialogContent>
+						<AlertDialogHeader>
+							<AlertDialogTitle>
+								{confirmDialog.title}
+							</AlertDialogTitle>
+							<AlertDialogDescription>
+								{confirmDialog.message}
+							</AlertDialogDescription>
+						</AlertDialogHeader>
+						<AlertDialogFooter>
+							<AlertDialogCancel onClick={handleCancel}>
+								{confirmDialog.cancelLabel}
+							</AlertDialogCancel>
+							<AlertDialogAction onClick={handleConfirm}>
+								{confirmDialog.confirmLabel}
+							</AlertDialogAction>
+						</AlertDialogFooter>
+					</AlertDialogContent>
+				</AlertDialog>
 			</div>
 		</TooltipProvider>
 	);

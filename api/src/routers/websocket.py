@@ -368,6 +368,45 @@ async def websocket_connect(
                 # Send stop signal to coding agent
                 await _send_coding_stop(conversation_id)
 
+            elif data.get("type") == "set_mode":
+                # Handle user's request to change coding mode permission mode
+                conversation_id = data.get("conversation_id")
+                permission_mode = data.get("permission_mode")
+
+                if not conversation_id:
+                    await websocket.send_json({
+                        "type": "error",
+                        "error": "Missing conversation_id"
+                    })
+                    continue
+
+                if not permission_mode:
+                    await websocket.send_json({
+                        "type": "error",
+                        "error": "Missing permission_mode"
+                    })
+                    continue
+
+                # Validate permission mode
+                if permission_mode not in ("plan", "acceptEdits"):
+                    await websocket.send_json({
+                        "type": "error",
+                        "error": "Invalid permission_mode. Must be 'plan' or 'acceptEdits'"
+                    })
+                    continue
+
+                # Validate access
+                has_access, conversation = await can_access_conversation(user, conversation_id)
+                if not has_access or not conversation:
+                    await websocket.send_json({
+                        "type": "error",
+                        "error": "Conversation not found or access denied"
+                    })
+                    continue
+
+                # Send set_mode command to coding agent
+                await _send_coding_set_mode(conversation_id, permission_mode)
+
     except WebSocketDisconnect:
         manager.disconnect(websocket)
         logger.info(f"WebSocket disconnected for user {user.user_id}")
@@ -904,3 +943,29 @@ async def _send_coding_stop(conversation_id: str) -> None:
 
     await publish_to_exchange(answer_exchange, stop_message)
     logger.info(f"Published stop signal for session {session_id}")
+
+
+async def _send_coding_set_mode(conversation_id: str, permission_mode: str) -> None:
+    """
+    Send set_mode command to the coding agent.
+
+    Publishes a set_mode message to the coding agent's request queue.
+
+    Args:
+        conversation_id: Conversation ID (used as session_id)
+        permission_mode: New permission mode ("plan" or "acceptEdits")
+    """
+    from src.jobs.rabbitmq import publish_message
+
+    CODING_AGENT_QUEUE = "coding-agent-requests"
+    session_id = conversation_id
+
+    set_mode_message = {
+        "type": "set_mode",
+        "session_id": session_id,
+        "conversation_id": conversation_id,
+        "permission_mode": permission_mode,
+    }
+
+    await publish_message(CODING_AGENT_QUEUE, set_mode_message)
+    logger.info(f"Published set_mode ({permission_mode}) for session {session_id}")

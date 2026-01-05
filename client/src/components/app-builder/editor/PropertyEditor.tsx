@@ -562,9 +562,13 @@ function ButtonPropertiesSection({
 						value={String(labelValue)}
 						onChange={(e) => {
 							// Normalize to use 'label' and remove 'text' if present
-							const newProps = { ...props, label: e.target.value };
+							const newProps = {
+								...props,
+								label: e.target.value,
+							};
 							if ("text" in newProps) {
-								delete (newProps as Record<string, unknown>).text;
+								delete (newProps as Record<string, unknown>)
+									.text;
 							}
 							onChange({ props: newProps });
 						}}
@@ -2043,7 +2047,9 @@ function SelectPropertiesSection({
 					description="Static options for the dropdown"
 				>
 					<OptionBuilder
-						value={Array.isArray(props.options) ? props.options : []}
+						value={
+							Array.isArray(props.options) ? props.options : []
+						}
 						onChange={(options) =>
 							onChange({
 								props: { ...props, options },

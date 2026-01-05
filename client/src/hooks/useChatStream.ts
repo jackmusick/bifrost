@@ -80,6 +80,7 @@ export function useChatStream({
 		addSystemEvent,
 		saveToolExecutions,
 		addMessage,
+		setTodos,
 	} = useChatStore();
 
 	// Update ref when conversationId changes
@@ -278,6 +279,14 @@ export function useChatStream({
 					break;
 				}
 
+				case "todo_update": {
+					// SDK is updating the todo list
+					if (chunk.todos) {
+						setTodos(chunk.todos);
+					}
+					break;
+				}
+
 				case "error": {
 					const errorMsg = chunk.error || "Unknown error occurred";
 					setStreamError(errorMsg);
@@ -316,6 +325,7 @@ export function useChatStream({
 			onAgentSwitch,
 			addSystemEvent,
 			saveToolExecutions,
+			setTodos,
 		],
 	);
 

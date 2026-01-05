@@ -1154,12 +1154,13 @@ async def continue_cli_session(
     "/sessions/{session_id}/pending",
     summary="Poll for pending execution",
     response_model=CLISessionPendingResponse,
+    responses={204: {"description": "No pending execution"}},
 )
 async def get_pending_execution(
     session_id: str,
     current_user: CurrentUser,
     db: AsyncSession = Depends(get_db),
-) -> CLISessionPendingResponse:
+) -> CLISessionPendingResponse | Response:
     """
     Poll for pending workflow execution.
 
@@ -1182,19 +1183,13 @@ async def get_pending_execution(
     session = await repo.get_session_for_user(session_uuid, current_user.user_id)
 
     if session is None or not session.pending:
-        raise HTTPException(
-            status_code=status.HTTP_204_NO_CONTENT,
-            detail="No pending execution",
-        )
+        return Response(status_code=status.HTTP_204_NO_CONTENT)
 
     workflow_name = session.selected_workflow
     params = session.params
 
     if workflow_name is None or params is None:
-        raise HTTPException(
-            status_code=status.HTTP_204_NO_CONTENT,
-            detail="No pending execution",
-        )
+        return Response(status_code=status.HTTP_204_NO_CONTENT)
 
     # Find the most recent pending execution for this session
     from src.models.orm import Execution
@@ -1206,10 +1201,7 @@ async def get_pending_execution(
     execution = result.scalar_one_or_none()
 
     if not execution:
-        raise HTTPException(
-            status_code=status.HTTP_204_NO_CONTENT,
-            detail="No pending execution",
-        )
+        return Response(status_code=status.HTTP_204_NO_CONTENT)
 
     execution_id = str(execution.id)
 
@@ -1233,7 +1225,7 @@ async def get_pending_execution(
         executed_by=execution.executed_by,
         executed_by_name=execution.executed_by_name,
         workflow_name=workflow_name,
-        org_id=execution.org_id,
+        org_id=execution.organization_id,
         started_at=execution.started_at,
     )
 
@@ -1476,7 +1468,7 @@ async def post_cli_result(
         executed_by=execution.executed_by,
         executed_by_name=execution.executed_by_name,
         workflow_name=execution.workflow_name,
-        org_id=execution.org_id,
+        org_id=execution.organization_id,
         started_at=execution.started_at,
         completed_at=execution.completed_at,
         duration_ms=request.duration_ms or 0,

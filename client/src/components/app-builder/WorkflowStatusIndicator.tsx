@@ -133,26 +133,29 @@ export function WorkflowStatusIndicator({
 				)}
 
 				{/* Error State */}
-				{!isRunning && showError && lastCompletedResult?.status === "failed" && (
-					<motion.div
-						key="error"
-						initial={{ opacity: 0, x: 10 }}
-						animate={{ opacity: 1, x: 0 }}
-						transition={{ duration: 0.15 }}
-					>
-						<Button
-							variant="ghost"
-							size="sm"
-							className="h-auto py-1 px-2 text-destructive hover:text-destructive hover:bg-destructive/10"
-							onClick={() => setErrorDialogOpen(true)}
+				{!isRunning &&
+					showError &&
+					lastCompletedResult?.status === "failed" && (
+						<motion.div
+							key="error"
+							initial={{ opacity: 0, x: 10 }}
+							animate={{ opacity: 1, x: 0 }}
+							transition={{ duration: 0.15 }}
 						>
-							<XCircle className="h-4 w-4 mr-1.5" />
-							<span className="text-sm">
-								{lastCompletedResult.workflowName} failed - Click for details
-							</span>
-						</Button>
-					</motion.div>
-				)}
+							<Button
+								variant="ghost"
+								size="sm"
+								className="h-auto py-1 px-2 text-destructive hover:text-destructive hover:bg-destructive/10"
+								onClick={() => setErrorDialogOpen(true)}
+							>
+								<XCircle className="h-4 w-4 mr-1.5" />
+								<span className="text-sm">
+									{lastCompletedResult.workflowName} failed -
+									Click for details
+								</span>
+							</Button>
+						</motion.div>
+					)}
 			</AnimatePresence>
 
 			{/* Error Details Dialog */}
@@ -164,12 +167,14 @@ export function WorkflowStatusIndicator({
 							Workflow Failed
 						</DialogTitle>
 						<DialogDescription>
-							{lastCompletedResult?.workflowName || "Workflow"} encountered an error
+							{lastCompletedResult?.workflowName || "Workflow"}{" "}
+							encountered an error
 						</DialogDescription>
 					</DialogHeader>
 					<div className="mt-2 p-4 bg-muted rounded-md max-h-64 overflow-auto">
 						<pre className="text-sm whitespace-pre-wrap font-mono">
-							{lastCompletedResult?.error || "Unknown error occurred"}
+							{lastCompletedResult?.error ||
+								"Unknown error occurred"}
 						</pre>
 					</div>
 				</DialogContent>

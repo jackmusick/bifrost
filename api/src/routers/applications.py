@@ -7,11 +7,13 @@ Uses OrgScopedRepository for standardized org scoping.
 Applications follow the same scoping pattern as configs:
 - organization_id = NULL: Global application (platform-wide)
 - organization_id = UUID: Organization-scoped application
+
+NOTE: This router handles app-level operations. Page and component operations
+are in separate routers (app_pages.py, app_components.py).
 """
 
 import logging
 from datetime import datetime
-from typing import Any
 from uuid import UUID
 
 from fastapi import APIRouter, HTTPException, Query, status
@@ -23,23 +25,22 @@ from src.models.contracts.applications import (
     ApplicationCreate,
     ApplicationDefinition,
     ApplicationDraftSave,
+    ApplicationExport,
+    ApplicationImport,
     ApplicationListResponse,
     ApplicationPublic,
     ApplicationPublishRequest,
-    ApplicationRollbackRequest,
     ApplicationUpdate,
-    VersionHistoryEntry,
-    VersionHistoryResponse,
 )
-from src.models.orm.applications import Application
+from src.models.orm.app_roles import AppRole
+from src.models.orm.applications import AppComponent, AppPage, Application
 from src.repositories.org_scoped import OrgScopedRepository
+from src.services.app_builder_service import AppBuilderService
+from src.services.workflow_access_service import sync_app_workflow_access
 
 logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/api/applications", tags=["Applications"])
-
-# Maximum number of versions to keep in history
-MAX_VERSION_HISTORY = 10
 
 
 # =============================================================================
@@ -72,6 +73,14 @@ class ApplicationRepository(OrgScopedRepository[Application]):
         result = await self.session.execute(query)
         return result.scalar_one_or_none()
 
+    async def get_by_id(self, app_id: UUID) -> Application | None:
+        """Get application by UUID with cascade scoping."""
+        query = select(self.model).where(self.model.id == app_id)
+        query = self.filter_cascade(query)
+
+        result = await self.session.execute(query)
+        return result.scalar_one_or_none()
+
     async def get_by_slug_strict(self, slug: str) -> Application | None:
         """Get application by slug strictly in current org scope (no fallback)."""
         query = select(self.model).where(
@@ -81,12 +90,18 @@ class ApplicationRepository(OrgScopedRepository[Application]):
         result = await self.session.execute(query)
         return result.scalar_one_or_none()
 
+    async def get_role_ids(self, app_id: UUID) -> list[UUID]:
+        """Get list of role IDs assigned to an application."""
+        query = select(AppRole.role_id).where(AppRole.app_id == app_id)
+        result = await self.session.execute(query)
+        return list(result.scalars().all())
+
     async def create_application(
         self,
         data: ApplicationCreate,
         created_by: str,
     ) -> Application:
-        """Create a new application."""
+        """Create a new application with access control settings."""
         # Check if application already exists in this scope
         existing = await self.get_by_slug_strict(data.slug)
         if existing:
@@ -101,21 +116,38 @@ class ApplicationRepository(OrgScopedRepository[Application]):
             created_by=created_by,
             live_version=0,
             draft_version=1,
-            version_history=[],
+            navigation={},
+            global_data_sources=[],
+            global_variables={},
+            permissions={},
+            access_level=data.access_level,
         )
         self.session.add(application)
         await self.session.flush()
+
+        # Add role associations if role_based access
+        if data.access_level == "role_based" and data.role_ids:
+            for role_id in data.role_ids:
+                app_role = AppRole(
+                    app_id=application.id,
+                    role_id=role_id,
+                    assigned_by=created_by,
+                )
+                self.session.add(app_role)
+            await self.session.flush()
+
         await self.session.refresh(application)
 
-        logger.info(f"Created application '{data.slug}' in org {self.org_id}")
+        logger.info(f"Created application '{data.slug}' in org {self.org_id} with access_level={data.access_level}")
         return application
 
     async def update_application(
         self,
         slug: str,
         data: ApplicationUpdate,
+        updated_by: str,
     ) -> Application | None:
-        """Update application metadata."""
+        """Update application metadata and access control."""
         application = await self.get_by_slug_strict(slug)
         if not application:
             return None
@@ -126,6 +158,25 @@ class ApplicationRepository(OrgScopedRepository[Application]):
             application.description = data.description
         if data.icon is not None:
             application.icon = data.icon
+        if data.access_level is not None:
+            application.access_level = data.access_level
+
+        # Update role associations if provided
+        if data.role_ids is not None:
+            # Delete existing role associations
+            existing_roles_query = select(AppRole).where(AppRole.app_id == application.id)
+            result = await self.session.execute(existing_roles_query)
+            for existing_role in result.scalars().all():
+                await self.session.delete(existing_role)
+
+            # Add new role associations
+            for role_id in data.role_ids:
+                app_role = AppRole(
+                    app_id=application.id,
+                    role_id=role_id,
+                    assigned_by=updated_by,
+                )
+                self.session.add(app_role)
 
         await self.session.flush()
         await self.session.refresh(application)
@@ -134,7 +185,7 @@ class ApplicationRepository(OrgScopedRepository[Application]):
         return application
 
     async def delete_application(self, slug: str) -> bool:
-        """Delete an application."""
+        """Delete an application (cascade deletes pages and components)."""
         application = await self.get_by_slug_strict(slug)
         if not application:
             return False
@@ -145,112 +196,86 @@ class ApplicationRepository(OrgScopedRepository[Application]):
         logger.info(f"Deleted application '{slug}'")
         return True
 
-    async def save_draft(
-        self,
-        slug: str,
-        definition: dict[str, Any],
-    ) -> Application | None:
-        """Save draft definition."""
-        application = await self.get_by_slug_strict(slug)
-        if not application:
-            return None
-
-        application.draft_definition = definition
-        application.draft_version = application.draft_version + 1
-
-        await self.session.flush()
-        await self.session.refresh(application)
-
-        logger.info(f"Saved draft for application '{slug}' (v{application.draft_version})")
-        return application
-
     async def publish(
         self,
-        slug: str,
+        app_id: UUID,
         published_by: str,
         message: str | None = None,
     ) -> Application | None:
-        """Publish draft to live."""
-        application = await self.get_by_slug_strict(slug)
+        """
+        Publish draft to live.
+
+        Copies all draft pages and components to live versions.
+        """
+        application = await self.get_by_id(app_id)
         if not application:
             return None
 
-        if application.draft_definition is None:
-            raise ValueError("No draft definition to publish")
+        # Get all draft pages
+        pages_query = select(AppPage).where(
+            AppPage.application_id == app_id,
+            AppPage.is_draft == True,  # noqa: E712
+        )
+        result = await self.session.execute(pages_query)
+        draft_pages = list(result.scalars().all())
 
-        # Save current live version to history before overwriting
-        if application.live_definition is not None and application.live_version > 0:
-            history_entry = {
-                "version": application.live_version,
-                "definition": application.live_definition,
-                "published_at": application.published_at.isoformat() if application.published_at else None,
-                "published_by": None,  # We don't track who published previous versions
-                "message": None,
-            }
-            # Prepend to history and trim to max size
-            history = [history_entry] + (application.version_history or [])
-            application.version_history = history[:MAX_VERSION_HISTORY]
+        if not draft_pages:
+            raise ValueError("No draft pages to publish")
 
-        # Publish draft to live
-        application.live_definition = application.draft_definition
+        # Delete existing live pages and components
+        live_pages_query = select(AppPage).where(
+            AppPage.application_id == app_id,
+            AppPage.is_draft == False,  # noqa: E712
+        )
+        live_result = await self.session.execute(live_pages_query)
+        for live_page in live_result.scalars().all():
+            await self.session.delete(live_page)
+
+        # Copy each draft page to live using AppBuilderService
+        service = AppBuilderService(self.session)
+        for draft_page in draft_pages:
+            await service.copy_page_to_live(draft_page)
+
+        # Update application version
         application.live_version = application.draft_version
         application.published_at = datetime.utcnow()
 
         await self.session.flush()
         await self.session.refresh(application)
 
-        logger.info(f"Published application '{slug}' (v{application.live_version})")
-        return application
-
-    async def rollback(
-        self,
-        slug: str,
-        version: int,
-    ) -> Application | None:
-        """Rollback to a previous version from history."""
-        application = await self.get_by_slug_strict(slug)
-        if not application:
-            return None
-
-        # Find version in history
-        history = application.version_history or []
-        target_entry = None
-        for entry in history:
-            if entry.get("version") == version:
-                target_entry = entry
-                break
-
-        if not target_entry:
-            raise ValueError(f"Version {version} not found in history")
-
-        # Save current live version to history before overwriting
-        if application.live_definition is not None and application.live_version > 0:
-            history_entry = {
-                "version": application.live_version,
-                "definition": application.live_definition,
-                "published_at": application.published_at.isoformat() if application.published_at else None,
-                "published_by": None,
-                "message": None,
-            }
-            # Prepend to history and trim to max size
-            history = [history_entry] + history
-            application.version_history = history[:MAX_VERSION_HISTORY]
-
-        # Restore from history
-        application.live_definition = target_entry["definition"]
-        application.live_version = application.live_version + 1  # New version number
-        application.published_at = datetime.utcnow()
-
-        await self.session.flush()
-        await self.session.refresh(application)
-
-        logger.info(f"Rolled back application '{slug}' from v{version} to v{application.live_version}")
+        logger.info(f"Published application {app_id} (v{application.live_version})")
         return application
 
 
 # =============================================================================
 # Helper functions
 # =============================================================================
+
+
+async def application_to_public(
+    application: Application,
+    repo: "ApplicationRepository",
+) -> ApplicationPublic:
+    """Convert Application ORM to ApplicationPublic with role_ids."""
+    role_ids = await repo.get_role_ids(application.id)
+    return ApplicationPublic(
+        id=application.id,
+        name=application.name,
+        slug=application.slug,
+        description=application.description,
+        icon=application.icon,
+        organization_id=application.organization_id,
+        live_version=application.live_version,
+        draft_version=application.draft_version,
+        published_at=application.published_at,
+        created_at=application.created_at,
+        updated_at=application.updated_at,
+        created_by=application.created_by,
+        is_published=application.is_published,
+        has_unpublished_changes=application.has_unpublished_changes,
+        access_level=application.access_level,
+        role_ids=role_ids,
+    )
 
 
 def parse_scope(scope: str | None, default_org_id: UUID | None) -> UUID | None:
@@ -287,6 +312,25 @@ async def get_application_or_404(
     return application
 
 
+async def get_application_by_id_or_404(
+    ctx: Context,
+    app_id: UUID,
+    scope: str | None = None,
+) -> Application:
+    """Get application by UUID or raise 404."""
+    target_org_id = parse_scope(scope, ctx.org_id)
+    repo = ApplicationRepository(ctx.db, target_org_id)
+    application = await repo.get_by_id(app_id)
+
+    if not application:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Application '{app_id}' not found",
+        )
+
+    return application
+
+
 # =============================================================================
 # CRUD Endpoints
 # =============================================================================
@@ -313,7 +357,7 @@ async def create_application(
 
     try:
         application = await repo.create_application(data, created_by=user.email)
-        return ApplicationPublic.model_validate(application)
+        return await application_to_public(application, repo)
     except ValueError as e:
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
@@ -346,8 +390,11 @@ async def list_applications(
     repo = ApplicationRepository(ctx.db, filter_org)
     applications = await repo.list_applications(filter_type)
 
+    # Convert each application with role_ids
+    public_apps = [await application_to_public(app, repo) for app in applications]
+
     return ApplicationListResponse(
-        applications=[ApplicationPublic.model_validate(a) for a in applications],
+        applications=public_apps,
         total=len(applications),
     )
 
@@ -364,8 +411,10 @@ async def get_application(
     scope: str | None = Query(default=None),
 ) -> ApplicationPublic:
     """Get application metadata by slug."""
+    target_org_id = parse_scope(scope, ctx.org_id)
+    repo = ApplicationRepository(ctx.db, target_org_id)
     application = await get_application_or_404(ctx, slug, scope)
-    return ApplicationPublic.model_validate(application)
+    return await application_to_public(application, repo)
 
 
 @router.patch(
@@ -380,10 +429,10 @@ async def update_application(
     user: CurrentUser,
     scope: str | None = Query(default=None),
 ) -> ApplicationPublic:
-    """Update application metadata."""
+    """Update application metadata and access control."""
     target_org_id = parse_scope(scope, ctx.org_id)
     repo = ApplicationRepository(ctx.db, target_org_id)
-    application = await repo.update_application(slug, data)
+    application = await repo.update_application(slug, data, updated_by=ctx.user.email)
 
     if not application:
         raise HTTPException(
@@ -391,7 +440,7 @@ async def update_application(
             detail=f"Application '{slug}' not found",
         )
 
-    return ApplicationPublic.model_validate(application)
+    return await application_to_public(application, repo)
 
 
 @router.delete(
@@ -418,143 +467,129 @@ async def delete_application(
 
 
 # =============================================================================
-# Definition Endpoints
+# Draft Endpoints
 # =============================================================================
 
 
 @router.get(
-    "/{slug}/definition",
-    response_model=ApplicationDefinition,
-    summary="Get live definition",
-)
-async def get_live_definition(
-    slug: str,
-    ctx: Context,
-    user: CurrentUser,
-    scope: str | None = Query(default=None),
-) -> ApplicationDefinition:
-    """Get the live (published) definition of an application."""
-    application = await get_application_or_404(ctx, slug, scope)
-
-    return ApplicationDefinition(
-        definition=application.live_definition,
-        version=application.live_version,
-        is_live=True,
-    )
-
-
-@router.get(
-    "/{slug}/draft",
+    "/{app_id}/draft",
     response_model=ApplicationDefinition,
     summary="Get draft definition",
 )
-async def get_draft_definition(
-    slug: str,
+async def get_draft(
+    app_id: UUID,
     ctx: Context,
     user: CurrentUser,
     scope: str | None = Query(default=None),
 ) -> ApplicationDefinition:
-    """Get the draft definition of an application."""
-    application = await get_application_or_404(ctx, slug, scope)
+    """
+    Get the current draft definition.
 
+    Returns the draft pages and components serialized as JSON.
+    """
+    app = await get_application_by_id_or_404(ctx, app_id, scope)
+    service = AppBuilderService(ctx.db)
+    export_data = await service.export_application(app, is_draft=True)
     return ApplicationDefinition(
-        definition=application.draft_definition,
-        version=application.draft_version,
+        definition=export_data,
+        version=app.draft_version,
         is_live=False,
     )
 
 
 @router.put(
-    "/{slug}/draft",
+    "/{app_id}/draft",
     response_model=ApplicationDefinition,
     summary="Save draft definition",
 )
 async def save_draft(
-    slug: str,
+    app_id: UUID,
     data: ApplicationDraftSave,
     ctx: Context,
     user: CurrentUser,
     scope: str | None = Query(default=None),
 ) -> ApplicationDefinition:
-    """Save a new draft definition."""
-    target_org_id = parse_scope(scope, ctx.org_id)
-    repo = ApplicationRepository(ctx.db, target_org_id)
+    """
+    Save a new draft definition.
 
-    application = await repo.save_draft(slug, data.definition)
-    if not application:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail=f"Application '{slug}' not found",
-        )
-
+    Replaces all existing draft pages and components with the provided definition.
+    """
+    app = await get_application_by_id_or_404(ctx, app_id, scope)
+    service = AppBuilderService(ctx.db)
+    await service.update_draft_definition(app, data.definition)
+    app.draft_version += 1
+    await ctx.db.flush()
+    await ctx.db.refresh(app)
     return ApplicationDefinition(
-        definition=application.draft_definition,
-        version=application.draft_version,
+        definition=data.definition,
+        version=app.draft_version,
         is_live=False,
     )
 
 
 # =============================================================================
-# Publish/Rollback Endpoints
+# Publish Endpoint
 # =============================================================================
 
 
 @router.post(
-    "/{slug}/publish",
+    "/{app_id}/publish",
     response_model=ApplicationPublic,
     summary="Publish draft to live",
 )
 async def publish_application(
-    slug: str,
+    app_id: UUID,
     ctx: Context,
     user: CurrentUser,
     data: ApplicationPublishRequest | None = None,
     scope: str | None = Query(default=None),
 ) -> ApplicationPublic:
-    """Publish the draft definition to live."""
+    """
+    Publish the draft to live.
+
+    Copies all draft pages and components to live versions.
+    Also syncs workflow_access table for execution authorization.
+    """
     target_org_id = parse_scope(scope, ctx.org_id)
     repo = ApplicationRepository(ctx.db, target_org_id)
 
     try:
         message = data.message if data else None
-        application = await repo.publish(slug, user.email, message)
+        application = await repo.publish(app_id, user.email, message)
         if not application:
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
-                detail=f"Application '{slug}' not found",
+                detail=f"Application '{app_id}' not found",
             )
-        return ApplicationPublic.model_validate(application)
-    except ValueError as e:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail=str(e),
+
+        # Sync workflow_access for the newly published live pages/components
+        live_pages_query = select(AppPage).where(
+            AppPage.application_id == app_id,
+            AppPage.is_draft == False,  # noqa: E712
+        )
+        live_pages_result = await ctx.db.execute(live_pages_query)
+        live_pages = list(live_pages_result.scalars().all())
+
+        # Get all live components for these pages
+        live_components: list[AppComponent] = []
+        for page in live_pages:
+            comp_query = select(AppComponent).where(
+                AppComponent.page_id == page.id,
+                AppComponent.is_draft == False,  # noqa: E712
+            )
+            comp_result = await ctx.db.execute(comp_query)
+            live_components.extend(comp_result.scalars().all())
+
+        await sync_app_workflow_access(
+            db=ctx.db,
+            app_id=app_id,
+            access_level=application.access_level,
+            organization_id=application.organization_id,
+            pages=live_pages,
+            components=live_components,
         )
 
-
-@router.post(
-    "/{slug}/rollback",
-    response_model=ApplicationPublic,
-    summary="Rollback to previous version",
-)
-async def rollback_application(
-    slug: str,
-    data: ApplicationRollbackRequest,
-    ctx: Context,
-    user: CurrentUser,
-    scope: str | None = Query(default=None),
-) -> ApplicationPublic:
-    """Rollback to a previous version from history."""
-    target_org_id = parse_scope(scope, ctx.org_id)
-    repo = ApplicationRepository(ctx.db, target_org_id)
-
-    try:
-        application = await repo.rollback(slug, data.version)
-        if not application:
-            raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND,
-                detail=f"Application '{slug}' not found",
-            )
-        return ApplicationPublic.model_validate(application)
+        return await application_to_public(application, repo)
     except ValueError as e:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
@@ -563,44 +598,72 @@ async def rollback_application(
 
 
 # =============================================================================
-# Version History Endpoint
+# Export/Import Endpoints
 # =============================================================================
 
 
 @router.get(
-    "/{slug}/history",
-    response_model=VersionHistoryResponse,
-    summary="Get version history",
+    "/{app_id}/export",
+    response_model=ApplicationExport,
+    summary="Export application to JSON",
 )
-async def get_version_history(
-    slug: str,
+async def export_application(
+    app_id: UUID,
     ctx: Context,
     user: CurrentUser,
+    is_draft: bool = Query(default=False, description="Export draft or live version"),
     scope: str | None = Query(default=None),
-) -> VersionHistoryResponse:
-    """Get the version history of an application."""
-    application = await get_application_or_404(ctx, slug, scope)
+) -> ApplicationExport:
+    """
+    Export full application to JSON for GitHub sync/portability.
 
-    history_entries = []
-    for entry in application.version_history or []:
-        published_at = entry.get("published_at")
-        if isinstance(published_at, str):
-            published_at = datetime.fromisoformat(published_at)
-        elif published_at is None:
-            published_at = application.created_at  # Fallback
+    Returns the complete application structure including all pages and components.
+    """
+    application = await get_application_by_id_or_404(ctx, app_id, scope)
 
-        history_entries.append(
-            VersionHistoryEntry(
-                version=entry.get("version", 0),
-                definition=entry.get("definition", {}),
-                published_at=published_at,
-                published_by=entry.get("published_by"),
-                message=entry.get("message"),
-            )
+    service = AppBuilderService(ctx.db)
+    export_data = await service.export_application(application, is_draft)
+
+    return ApplicationExport(**export_data)
+
+
+@router.post(
+    "/import",
+    response_model=ApplicationPublic,
+    status_code=status.HTTP_201_CREATED,
+    summary="Import application from JSON",
+)
+async def import_application(
+    data: ApplicationImport,
+    ctx: Context,
+    user: CurrentUser,
+    scope: str | None = Query(
+        default=None,
+        description="Target scope: 'global' or org UUID. Defaults to current org.",
+    ),
+) -> ApplicationPublic:
+    """
+    Import application from JSON.
+
+    Creates a new application with all pages and components from the exported data.
+    """
+    target_org_id = parse_scope(scope, ctx.org_id)
+
+    # Check if application already exists
+    repo = ApplicationRepository(ctx.db, target_org_id)
+    existing = await repo.get_by_slug_strict(data.slug)
+    if existing:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail=f"Application with slug '{data.slug}' already exists",
         )
 
-    return VersionHistoryResponse(
-        history=history_entries,
-        current_live_version=application.live_version,
-        current_draft_version=application.draft_version,
+    service = AppBuilderService(ctx.db)
+    application = await service.import_application(
+        data.model_dump(),
+        organization_id=target_org_id,
+        created_by=user.email,
     )
+
+    logger.info(f"Imported application '{data.slug}' with {len(data.pages)} pages")
+    return await application_to_public(application, repo)

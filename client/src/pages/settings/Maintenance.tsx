@@ -423,9 +423,11 @@ export function Maintenance() {
 							<RefreshCw className="h-5 w-5 text-blue-600 dark:text-blue-400 flex-shrink-0 mt-0.5" />
 							<div className="text-sm text-blue-800 dark:text-blue-200">
 								<p className="text-blue-700 dark:text-blue-300">
-									Re-scan all workspace files to refresh workflow, tool, and data provider metadata
-									(names, descriptions, parameters, categories). Use this after migrations or
-									if metadata appears out of sync.
+									Re-scan all workspace files to refresh
+									workflow, tool, and data provider metadata
+									(names, descriptions, parameters,
+									categories). Use this after migrations or if
+									metadata appears out of sync.
 								</p>
 							</div>
 						</div>
@@ -448,8 +450,10 @@ export function Maintenance() {
 							<div className="space-y-2 rounded-lg border bg-muted/50 p-4">
 								<div className="flex items-center justify-between text-sm">
 									<span className="font-medium capitalize">
-										{reindexState.phase.replace(/_/g, " ") ||
-											"Starting..."}
+										{reindexState.phase.replace(
+											/_/g,
+											" ",
+										) || "Starting..."}
 									</span>
 									{reindexState.total > 0 && (
 										<span className="text-muted-foreground">
@@ -637,9 +641,7 @@ function ReindexResults({
 					<div className="text-xl font-bold">
 						{result.counts.files_skipped}
 					</div>
-					<div className="text-xs text-muted-foreground">
-						Skipped
-					</div>
+					<div className="text-xs text-muted-foreground">Skipped</div>
 				</div>
 				<div className="rounded-lg border bg-muted/50 p-3 text-center">
 					<div className="text-xl font-bold">
@@ -665,9 +667,7 @@ function ReindexResults({
 					<div className="text-xl font-bold">
 						{result.counts.files_deleted}
 					</div>
-					<div className="text-xs text-muted-foreground">
-						Deleted
-					</div>
+					<div className="text-xs text-muted-foreground">Deleted</div>
 				</div>
 			</div>
 
@@ -688,7 +688,9 @@ function ReindexResults({
 									<FileCode className="h-4 w-4 text-destructive flex-shrink-0" />
 									<button
 										type="button"
-										onClick={() => onOpenFile(error.file_path)}
+										onClick={() =>
+											onOpenFile(error.file_path)
+										}
 										className="truncate text-left hover:text-primary hover:underline"
 									>
 										{error.file_path}
@@ -696,11 +698,15 @@ function ReindexResults({
 								</div>
 								<div className="ml-6 text-xs text-muted-foreground space-y-0.5">
 									<p>
-										<span className="font-medium">Field:</span>{" "}
+										<span className="font-medium">
+											Field:
+										</span>{" "}
 										{error.field}
 									</p>
 									<p>
-										<span className="font-medium">References:</span>{" "}
+										<span className="font-medium">
+											References:
+										</span>{" "}
 										<code className="bg-muted px-1 py-0.5 rounded">
 											{error.referenced_id}
 										</code>
@@ -923,7 +929,9 @@ function DocsIndexResults({ result }: { result: DocsIndexResponse }) {
 
 			{/* Message */}
 			{result.message && (
-				<p className="text-sm text-muted-foreground">{result.message}</p>
+				<p className="text-sm text-muted-foreground">
+					{result.message}
+				</p>
 			)}
 		</div>
 	);

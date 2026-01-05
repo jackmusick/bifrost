@@ -170,6 +170,7 @@ async def create_user(
 ```
 
 **Type mapping**:
+
 - `str` → string input
 - `int` → integer input
 - `float` → decimal input
@@ -178,6 +179,7 @@ async def create_user(
 - `list` → array input
 
 **Labels** are auto-generated from parameter names:
+
 - `first_name` → "First Name"
 - `userEmail` → "User Email"
 
@@ -248,19 +250,19 @@ def convert_registry_provider_to_model(registry_provider):
 
 ```json
 {
-    "name": "Create Ticket",
-    "formSchema": {
-        "fields": [
-            {
-                "name": "priority",
-                "type": "select",
-                "data_provider_id": "uuid-of-get-priority-levels",
-                "data_provider_inputs": {
-                    "filter": "{{status}}"
-                }
-            }
-        ]
-    }
+	"name": "Create Ticket",
+	"formSchema": {
+		"fields": [
+			{
+				"name": "priority",
+				"type": "select",
+				"data_provider_id": "uuid-of-get-priority-levels",
+				"data_provider_inputs": {
+					"filter": "{{status}}"
+				}
+			}
+		]
+	}
 }
 ```
 
@@ -351,7 +353,7 @@ async def get_data_provider_options_handler(
 - **Thread safety**: Multiple imports during startup
 - **Performance**: No repeated initialization
 
-### 3. Why no __init__.py required?
+### 3. Why no **init**.py required?
 
 - **User experience**: Drop files, they just work
 - **Hot reload**: No module structure to maintain

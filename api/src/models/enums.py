@@ -86,6 +86,12 @@ class AgentAccessLevel(str, Enum):
     ROLE_BASED = "role_based"
 
 
+class AppAccessLevel(str, Enum):
+    """Application access control levels"""
+    AUTHENTICATED = "authenticated"
+    ROLE_BASED = "role_based"
+
+
 class MessageRole(str, Enum):
     """Message roles in chat conversations"""
     USER = "user"
@@ -124,3 +130,15 @@ class EventDeliveryStatus(str, Enum):
     SUCCESS = "success"
     FAILED = "failed"
     SKIPPED = "skipped"
+
+
+class CodingModePermission(str, Enum):
+    """
+    Permission mode for coding mode sessions (Claude Agent SDK).
+
+    Controls what actions the agent can take:
+    - PLAN: Read-only planning mode, no file writes or tool execution
+    - EXECUTE: Full execution mode with file writes and tool execution
+    """
+    PLAN = "plan"
+    EXECUTE = "acceptEdits"

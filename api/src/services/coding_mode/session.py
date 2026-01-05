@@ -13,6 +13,7 @@ from datetime import datetime
 from typing import Any
 
 from src.core.redis_client import RedisClient, get_redis_client
+from src.models.enums import CodingModePermission
 
 logger = logging.getLogger(__name__)
 
@@ -40,13 +41,19 @@ class SessionManager:
             self._redis = get_redis_client()
         return self._redis
 
-    async def create_session(self, session_id: str, user_id: str) -> dict[str, Any]:
+    async def create_session(
+        self,
+        session_id: str,
+        user_id: str,
+        permission_mode: CodingModePermission = CodingModePermission.EXECUTE,
+    ) -> dict[str, Any]:
         """
         Create a new coding mode session.
 
         Args:
             session_id: Unique session identifier
             user_id: User who owns this session
+            permission_mode: Permission mode for the session (plan or execute)
 
         Returns:
             Session data dict
@@ -57,6 +64,7 @@ class SessionManager:
         session_data = {
             "session_id": session_id,
             "user_id": user_id,
+            "permission_mode": permission_mode.value,
             "created_at": now.isoformat(),
             "last_activity": now.isoformat(),
         }
@@ -64,7 +72,7 @@ class SessionManager:
         key = f"{SESSION_KEY_PREFIX}{session_id}"
         await redis.setex(key, SESSION_TTL_SECONDS, json.dumps(session_data))
 
-        logger.info(f"Created coding mode session: {session_id} for user {user_id}")
+        logger.info(f"Created coding mode session: {session_id} for user {user_id}, mode={permission_mode.value}")
         return session_data
 
     async def get_session(self, session_id: str) -> dict[str, Any] | None:
@@ -108,12 +116,64 @@ class SessionManager:
             session_data = {
                 "session_id": session_id,
                 "user_id": user_id,
+                "permission_mode": CodingModePermission.EXECUTE.value,
                 "created_at": datetime.utcnow().isoformat(),
                 "last_activity": datetime.utcnow().isoformat(),
             }
 
         # Update with refreshed TTL
         await redis.setex(key, SESSION_TTL_SECONDS, json.dumps(session_data))
+
+    async def set_permission_mode(
+        self, session_id: str, permission_mode: CodingModePermission
+    ) -> bool:
+        """
+        Update the permission mode for an existing session.
+
+        Args:
+            session_id: Session identifier
+            permission_mode: New permission mode (plan or execute)
+
+        Returns:
+            True if session was updated, False if not found
+        """
+        redis = self._get_redis()
+        key = f"{SESSION_KEY_PREFIX}{session_id}"
+
+        data = await redis.get(key)
+        if not data:
+            logger.warning(f"Cannot set permission mode: session {session_id} not found")
+            return False
+
+        session_data = json.loads(data)
+        old_mode = session_data.get("permission_mode", CodingModePermission.EXECUTE.value)
+        session_data["permission_mode"] = permission_mode.value
+        session_data["last_activity"] = datetime.utcnow().isoformat()
+
+        await redis.setex(key, SESSION_TTL_SECONDS, json.dumps(session_data))
+        logger.info(f"Session {session_id} permission mode changed: {old_mode} -> {permission_mode.value}")
+        return True
+
+    async def get_permission_mode(self, session_id: str) -> CodingModePermission:
+        """
+        Get the permission mode for a session.
+
+        Args:
+            session_id: Session identifier
+
+        Returns:
+            Permission mode (defaults to EXECUTE if session not found)
+        """
+        session_data = await self.get_session(session_id)
+        if not session_data:
+            return CodingModePermission.EXECUTE
+
+        mode_value = session_data.get("permission_mode", CodingModePermission.EXECUTE.value)
+        try:
+            return CodingModePermission(mode_value)
+        except ValueError:
+            logger.warning(f"Unknown permission mode '{mode_value}' in session {session_id}, defaulting to EXECUTE")
+            return CodingModePermission.EXECUTE
 
     async def delete_session(self, session_id: str) -> bool:
         """

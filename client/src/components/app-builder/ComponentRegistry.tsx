@@ -124,7 +124,11 @@ export function UnknownComponent({ component }: RegisteredComponentProps) {
  * Component-specific loading skeleton
  * Returns a skeleton that approximates the shape of the component type
  */
-function ComponentSkeleton({ type }: { type: ComponentType }): React.ReactElement {
+function ComponentSkeleton({
+	type,
+}: {
+	type: ComponentType;
+}): React.ReactElement {
 	switch (type) {
 		case "stat-card":
 			return (
@@ -180,7 +184,11 @@ function isWorkflowLoading(
 	loadingWorkflows: string[] | undefined,
 	activeWorkflows: Set<string> | undefined,
 ): boolean {
-	if (!loadingWorkflows || loadingWorkflows.length === 0 || !activeWorkflows) {
+	if (
+		!loadingWorkflows ||
+		loadingWorkflows.length === 0 ||
+		!activeWorkflows
+	) {
 		return false;
 	}
 	return loadingWorkflows.some((wfId) => activeWorkflows.has(wfId));
@@ -210,7 +218,9 @@ export function renderRegisteredComponent(
 	context: ExpressionContext,
 ): React.ReactElement {
 	// Check if component should show loading skeleton
-	if (isWorkflowLoading(component.loadingWorkflows, context.activeWorkflows)) {
+	if (
+		isWorkflowLoading(component.loadingWorkflows, context.activeWorkflows)
+	) {
 		return <ComponentSkeleton key={component.id} type={component.type} />;
 	}
 

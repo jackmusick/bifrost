@@ -28,6 +28,9 @@ export function useAutoSave() {
 	const setPendingWorkflowConflict = useEditorStore(
 		(state) => state.setPendingWorkflowConflict,
 	);
+	const setPendingDeactivationConflict = useEditorStore(
+		(state) => state.setPendingDeactivationConflict,
+	);
 
 	// Compute active tab values from subscribed state
 	const activeTab =
@@ -179,9 +182,29 @@ export function useAutoSave() {
 					reloadWorkflowFile();
 				}
 			},
-			(reason) => {
+			(reason, conflictData) => {
 				// This runs when a conflict is detected
-				setConflictState(activeTabIndex, reason);
+				if (
+					reason === "workflows_would_deactivate" &&
+					conflictData?.pending_deactivations
+				) {
+					// Show deactivation dialog instead of conflict state
+					setPendingDeactivationConflict({
+						pendingDeactivations:
+							conflictData.pending_deactivations,
+						availableReplacements:
+							conflictData.available_replacements ?? [],
+						filePath: openFile?.path ?? "",
+						content: fileContent,
+						encoding,
+						etag: currentEtag,
+						tabIndex: activeTabIndex,
+					});
+					// Reset save state to dirty (not conflict)
+					setSaveState(activeTabIndex, "dirty");
+				} else {
+					setConflictState(activeTabIndex, reason);
+				}
 			},
 			false, // index=false: detect only, don't inject
 		);
@@ -321,11 +344,29 @@ export function useAutoSave() {
 			}
 		} catch (error) {
 			if (error instanceof FileConflictError) {
-				// Show conflict state
-				setConflictState(
-					activeTabIndex,
-					error.conflictData.reason as ConflictReason,
-				);
+				const reason = error.conflictData.reason as ConflictReason;
+				if (
+					reason === "workflows_would_deactivate" &&
+					error.conflictData.pending_deactivations
+				) {
+					// Show deactivation dialog instead of conflict state
+					setPendingDeactivationConflict({
+						pendingDeactivations:
+							error.conflictData.pending_deactivations,
+						availableReplacements:
+							error.conflictData.available_replacements ?? [],
+						filePath: openFile?.path ?? "",
+						content: fileContent,
+						encoding,
+						etag: currentEtag,
+						tabIndex: activeTabIndex,
+					});
+					// Reset save state to dirty (not conflict)
+					setSaveState(activeTabIndex, "dirty");
+				} else {
+					// Show conflict state for other conflict types
+					setConflictState(activeTabIndex, reason);
+				}
 			} else {
 				console.error("Failed to save:", error);
 				setSaveState(activeTabIndex, "dirty");
@@ -345,6 +386,7 @@ export function useAutoSave() {
 		updateTabContent,
 		reloadWorkflowFile,
 		setPendingWorkflowConflict,
+		setPendingDeactivationConflict,
 	]);
 
 	return { manualSave };

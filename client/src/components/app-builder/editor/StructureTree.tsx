@@ -305,7 +305,8 @@ function TreeItem({
 					if (edge === "top") {
 						position = "before";
 					} else if (edge === "bottom") {
-						position = isContainer && isExpanded ? "inside" : "after";
+						position =
+							isContainer && isExpanded ? "inside" : "after";
 					}
 
 					onMoveComponent(sourceData.id, elementId, position);
@@ -425,7 +426,13 @@ function TreeItem({
 						<ComponentInserter
 							open={inserterOpen !== null}
 							onOpenChange={(open) =>
-								setInserterOpen(open ? (isContainer ? "inside" : "after") : null)
+								setInserterOpen(
+									open
+										? isContainer
+											? "inside"
+											: "after"
+										: null,
+								)
 							}
 							onSelect={handleInsert}
 							trigger={
@@ -434,7 +441,8 @@ function TreeItem({
 									size="icon"
 									className={cn(
 										"h-5 w-5 opacity-0 group-hover:opacity-100 transition-opacity",
-										isSelected && "text-primary-foreground hover:bg-primary-foreground/20",
+										isSelected &&
+											"text-primary-foreground hover:bg-primary-foreground/20",
 									)}
 									onClick={handleAddClick}
 								>
@@ -499,21 +507,33 @@ function TreeItem({
 								<ContextMenuSubContent>
 									<ContextMenuItem
 										onClick={() =>
-											onAddComponent(elementId, "row", "before")
+											onAddComponent(
+												elementId,
+												"row",
+												"before",
+											)
 										}
 									>
 										Row
 									</ContextMenuItem>
 									<ContextMenuItem
 										onClick={() =>
-											onAddComponent(elementId, "column", "before")
+											onAddComponent(
+												elementId,
+												"column",
+												"before",
+											)
 										}
 									>
 										Column
 									</ContextMenuItem>
 									<ContextMenuItem
 										onClick={() =>
-											onAddComponent(elementId, "grid", "before")
+											onAddComponent(
+												elementId,
+												"grid",
+												"before",
+											)
 										}
 									>
 										Grid
@@ -563,7 +583,9 @@ function TreeItem({
 					{(element as LayoutContainer).children.length === 0 && (
 						<div
 							className="text-xs text-muted-foreground italic py-2"
-							style={{ paddingLeft: `${(depth + 1) * 16 + 24}px` }}
+							style={{
+								paddingLeft: `${(depth + 1) * 16 + 24}px`,
+							}}
 						>
 							Empty - click + to add
 						</div>
@@ -620,7 +642,12 @@ export function StructureTree({
 
 	if (!currentPage) {
 		return (
-			<div className={cn("p-4 text-center text-muted-foreground", className)}>
+			<div
+				className={cn(
+					"p-4 text-center text-muted-foreground",
+					className,
+				)}
+			>
 				No page selected
 			</div>
 		);
@@ -639,7 +666,9 @@ export function StructureTree({
 				onClick={() => onSelectComponent("root")}
 			>
 				<FileText className="h-4 w-4 shrink-0" />
-				<span className="text-sm font-medium truncate">{currentPage.title}</span>
+				<span className="text-sm font-medium truncate">
+					{currentPage.title}
+				</span>
 				<span
 					className={cn(
 						"text-xs ml-auto truncate",

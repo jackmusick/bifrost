@@ -1,30 +1,37 @@
 """
-Bifrost MCP Tools
+MCP System Tools
 
-This module previously contained individual tool implementations.
-All tools have been consolidated into src/services/mcp/server.py
-for unified SDK and FastMCP support.
+All system tool implementations live in this package.
+Each tool has the @system_tool decorator which registers it automatically.
 
-The tool implementations are now in server.py as:
-- _execute_workflow_impl
-- _list_workflows_impl
-- _list_integrations_impl
-- _list_forms_impl
-- _get_form_schema_impl
-- _validate_form_schema_impl
-- _search_knowledge_impl
+To add a new tool:
+1. Add your function to the appropriate file (or create a new one)
+2. Add the @system_tool decorator with metadata
+3. Import the module in this __init__.py
+4. Done - it's automatically available everywhere
 
-These are exposed via BifrostMCPServer.get_sdk_server() for SDK use
-and BifrostMCPServer.get_fastmcp_server() for external HTTP access.
+Structure:
+- workflow.py     - execute, list, validate, create workflows
+- forms.py        - form CRUD and schema
+- files.py        - workspace file operations
+- knowledge.py    - knowledge base search
+- integrations.py - list integrations
+- execution.py    - execution history
+- data_providers.py - data provider tools
+- apps.py         - application CRUD
+- pages.py        - page CRUD
+- components.py   - component CRUD
 """
 
-# Re-export from server for backwards compatibility if needed
-from src.services.mcp.server import (
-    BifrostMCPServer,
-    MCPContext,
-)
-
-__all__ = [
-    "BifrostMCPServer",
-    "MCPContext",
-]
+# Import all tool modules to trigger registration
+# The @system_tool decorator registers each function in the global registry
+from src.services.mcp.tools import workflow  # noqa: F401
+from src.services.mcp.tools import forms  # noqa: F401
+from src.services.mcp.tools import files  # noqa: F401
+from src.services.mcp.tools import knowledge  # noqa: F401
+from src.services.mcp.tools import integrations  # noqa: F401
+from src.services.mcp.tools import execution  # noqa: F401
+from src.services.mcp.tools import data_providers  # noqa: F401
+from src.services.mcp.tools import apps  # noqa: F401
+from src.services.mcp.tools import pages  # noqa: F401
+from src.services.mcp.tools import components  # noqa: F401

@@ -116,6 +116,56 @@ All paths below are relative to `/tmp/bifrost/workspace/`. This is your workspac
 - Include docstrings explaining what the workflow does and any assumptions
 - Follow patterns you see in the SDK
 
+## Required Testing Workflow
+
+Before declaring any artifact complete, you MUST test it:
+
+### Workflow/Tool Testing
+1. Create via `create_workflow` (validates automatically)
+2. Verify it appears in `list_workflows`
+3. Execute with sample data via `execute_workflow`
+4. Verify the result matches expectations
+
+### Data Provider Testing
+1. Create via `create_workflow` (validates automatically)
+2. Verify it appears in `list_data_providers`
+3. Execute via `execute_workflow`
+4. Verify output is `[{"label": "...", "value": "..."}]` format
+
+### Form Testing
+1. Create via `create_form` (validates automatically)
+2. Verify referenced `workflow_id` exists and works
+
+### App Testing
+1. Create app and pages using app-level tools (`create_page`)
+2. Add components using `create_component` (validates automatically)
+3. Verify all `loadingWorkflows` exist and work
+4. Test component layout (use `width` and `autoSize` for proper alignment)
+
+### CRUD Testing (when building CRUD functionality)
+1. Test CREATE - execute, verify record created
+2. Test GET - retrieve record, verify data
+3. Test LIST - execute data provider, verify results
+4. Test DELETE - execute, verify record removed
+
+DO NOT report success until all applicable tests pass.
+
+## Failure Handling
+
+If you encounter ANY of these, STOP and report to the user:
+- An artifact fails to create after 2 attempts
+- A workflow fails to execute after 2 retry attempts
+- Missing integrations the workflow requires
+- Data provider returns invalid format
+
+DO NOT continue building on broken foundations.
+
+When stopped:
+1. Explain what failed and why
+2. Show the specific error message
+3. Suggest possible fixes
+4. Ask user how to proceed
+
 ## Questions to Ask
 
 If the user hasn't provided these, ask before building:

@@ -69,20 +69,25 @@ async def clean_workspace():
 
 @pytest_asyncio.fixture
 async def clean_tables(db_session: AsyncSession):
-    """Clean up test data from tables before and after test."""
-    # Clean before test - delete executions first to avoid FK constraint violations
-    await db_session.execute(delete(Execution))
-    await db_session.execute(delete(Workflow))
-    # Note: DataProvider table no longer exists - data providers are in workflows table with type='data_provider'
-    await db_session.execute(delete(WorkspaceFile))
+    """Clean up test data from tables before and after test.
+
+    Uses TRUNCATE CASCADE for reliable cleanup that handles FK constraints
+    and ensures complete isolation between tests.
+    """
+    from sqlalchemy import text
+
+    # Clean before test using TRUNCATE CASCADE for complete cleanup
+    await db_session.execute(text("TRUNCATE TABLE executions CASCADE"))
+    await db_session.execute(text("TRUNCATE TABLE workflows CASCADE"))
+    await db_session.execute(text("TRUNCATE TABLE workspace_files CASCADE"))
     await db_session.commit()
 
     yield
 
-    # Clean after test - delete executions first to avoid FK constraint violations
-    await db_session.execute(delete(Execution))
-    await db_session.execute(delete(Workflow))
-    await db_session.execute(delete(WorkspaceFile))
+    # Clean after test
+    await db_session.execute(text("TRUNCATE TABLE executions CASCADE"))
+    await db_session.execute(text("TRUNCATE TABLE workflows CASCADE"))
+    await db_session.execute(text("TRUNCATE TABLE workspace_files CASCADE"))
     await db_session.commit()
 
 

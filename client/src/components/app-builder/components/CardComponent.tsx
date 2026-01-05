@@ -44,7 +44,9 @@ export function CardComponent({
 	const { props } = component as CardComponentProps;
 	// Props are pre-evaluated by ComponentRegistry
 	const title = props?.title ? String(props.title) : undefined;
-	const description = props?.description ? String(props.description) : undefined;
+	const description = props?.description
+		? String(props.description)
+		: undefined;
 
 	const hasHeader = title || description;
 

@@ -232,17 +232,29 @@ function PageItem({
 			</div>
 
 			{/* Page icon */}
-			<Icon className={cn("h-4 w-4 shrink-0", isSelected ? "text-primary-foreground" : "text-muted-foreground")} />
+			<Icon
+				className={cn(
+					"h-4 w-4 shrink-0",
+					isSelected
+						? "text-primary-foreground"
+						: "text-muted-foreground",
+				)}
+			/>
 
 			{/* Page info */}
 			<div className="flex-1 min-w-0">
-				<div className="text-sm truncate">
-					{page.title}
-				</div>
+				<div className="text-sm truncate">{page.title}</div>
 			</div>
 
 			{/* Path */}
-			<span className={cn("text-xs shrink-0", isSelected ? "text-primary-foreground/70" : "text-muted-foreground")}>
+			<span
+				className={cn(
+					"text-xs shrink-0",
+					isSelected
+						? "text-primary-foreground/70"
+						: "text-muted-foreground",
+				)}
+			>
 				{page.path}
 			</span>
 

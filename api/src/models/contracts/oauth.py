@@ -420,6 +420,10 @@ class OAuthCallbackRequest(BaseModel):
     code: str = Field(..., description="Authorization code from OAuth provider")
     state: str | None = Field(default=None, description="State parameter for CSRF protection")
     redirect_uri: str | None = Field(default=None, description="Redirect URI used in authorization request")
+    organization_id: str | None = Field(
+        default=None,
+        description="Organization ID for org-specific token storage (optional, for org overrides)"
+    )
 
 
 class OAuthCallbackResponse(BaseModel):

@@ -718,7 +718,9 @@ export function getComponentInfo(
 		case "stat-card":
 			return (component.props as { title?: string }).title || "";
 		case "data-table":
-			return (component.props as { dataSource?: string }).dataSource || "";
+			return (
+				(component.props as { dataSource?: string }).dataSource || ""
+			);
 		default:
 			return "";
 	}
@@ -785,14 +787,22 @@ export const componentCategories: ComponentCategory[] = [
 	{
 		name: "Form Inputs",
 		items: [
-			{ type: "text-input", label: "Text Input", description: "Text field" },
+			{
+				type: "text-input",
+				label: "Text Input",
+				description: "Text field",
+			},
 			{
 				type: "number-input",
 				label: "Number Input",
 				description: "Number field",
 			},
 			{ type: "select", label: "Select", description: "Dropdown select" },
-			{ type: "checkbox", label: "Checkbox", description: "Boolean checkbox" },
+			{
+				type: "checkbox",
+				label: "Checkbox",
+				description: "Boolean checkbox",
+			},
 			{
 				type: "form-group",
 				label: "Form Group",

@@ -834,14 +834,15 @@ async def oauth_callback(
     connection_name: str,
     request: OAuthCallbackRequest,
     ctx: Context,
+    user: CurrentSuperuser,
 ) -> OAuthCallbackResponse:
     """Handle OAuth callback and exchange authorization code for tokens."""
     from src.core.security import decrypt_secret
     from src.services.oauth_provider import OAuthProviderClient
 
     repo = OAuthConnectionRepository(ctx.db)
-    # Callbacks may come from non-authenticated contexts
-    org_id = None
+    # Use org_id from request body for org-specific token storage (None for global)
+    org_id = UUID(request.organization_id) if request.organization_id else None
 
     provider = await repo.get_connection(connection_name, org_id)
 

@@ -8,8 +8,10 @@ and streams response chunks back via RabbitMQ exchange.
 import logging
 from typing import Any
 
-from src.jobs.rabbitmq import BaseConsumer
 from src.coding_agent.handler import CodingAgentHandler
+from src.jobs.rabbitmq import BaseConsumer, publish_to_exchange
+from src.models.enums import CodingModePermission
+from src.services.coding_mode.models import CodingModeChunk
 
 logger = logging.getLogger(__name__)
 
@@ -65,6 +67,8 @@ class CodingAgentConsumer(BaseConsumer):
             await self._handle_disconnect(body)
         elif message_type == "stop":
             await self._handle_stop(body)
+        elif message_type == "set_mode":
+            await self._handle_set_mode(body)
         else:
             logger.warning(f"Unknown message type: {message_type}")
 
@@ -118,3 +122,52 @@ class CodingAgentConsumer(BaseConsumer):
 
         logger.info(f"Handling stop for session {session_id}")
         await self._handler.interrupt_session(session_id)
+
+    async def _handle_set_mode(self, body: dict[str, Any]) -> None:
+        """
+        Handle a set_mode request (change permission mode).
+
+        Expected message format:
+        {
+            "type": "set_mode",
+            "session_id": "uuid",
+            "conversation_id": "uuid",
+            "permission_mode": "plan" | "acceptEdits"
+        }
+        """
+        session_id = body.get("session_id")
+        conversation_id = body.get("conversation_id")
+        permission_mode_str = body.get("permission_mode")
+
+        if not session_id:
+            logger.warning("set_mode message missing session_id")
+            return
+
+        if not permission_mode_str:
+            logger.warning("set_mode message missing permission_mode")
+            return
+
+        # Parse permission mode
+        try:
+            permission_mode = CodingModePermission(permission_mode_str)
+        except ValueError:
+            logger.error(f"Invalid permission_mode: {permission_mode_str}")
+            return
+
+        logger.info(f"Handling set_mode for session {session_id}: {permission_mode.value}")
+
+        # Update the permission mode
+        await self._handler.set_permission_mode(session_id, permission_mode)
+
+        # Send mode_changed event back through the response exchange
+        if conversation_id:
+            response_exchange = f"coding.responses.{session_id}"
+            chunk = CodingModeChunk(
+                type="mode_changed",
+                session_id=session_id,
+                permission_mode=permission_mode,
+            )
+            chunk_data = chunk.model_dump(exclude_none=True)
+            chunk_data["conversation_id"] = conversation_id
+            await publish_to_exchange(response_exchange, chunk_data)
+            logger.info(f"Published mode_changed event for session {session_id}")

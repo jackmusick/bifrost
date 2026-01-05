@@ -13,6 +13,12 @@ export type FileContentResponse = components["schemas"]["FileContentResponse"];
 export type FileConflictResponse =
 	components["schemas"]["FileConflictResponse"];
 
+// Deactivation protection types
+export type PendingDeactivation = components["schemas"]["PendingDeactivation"];
+export type AvailableReplacement =
+	components["schemas"]["AvailableReplacement"];
+export type AffectedEntity = components["schemas"]["AffectedEntity"];
+
 // Custom error for file conflicts
 export class FileConflictError extends Error {
 	constructor(public conflictData: FileConflictResponse) {
@@ -64,6 +70,8 @@ export const fileService = {
 	 *
 	 * @param index - If true, inject IDs into decorators. If false (default), detect if IDs needed.
 	 * @param forceIds - Map of function_name -> ID to inject. Used when user chooses "Use Existing IDs".
+	 * @param forceDeactivation - If true, skip deactivation protection and allow removing functions with dependencies.
+	 * @param replacements - Map of workflow_id -> new_function_name for identity transfer during deactivation.
 	 */
 	async writeFile(
 		path: string,
@@ -72,17 +80,21 @@ export const fileService = {
 		expectedEtag?: string,
 		index: boolean = false,
 		forceIds?: Record<string, string>,
+		forceDeactivation?: boolean,
+		replacements?: Record<string, string>,
 	): Promise<FileContentResponse> {
-		// Note: force_ids is a new field that may not be in the generated types yet
-		// until types are regenerated with npm run generate:types
 		const body: FileContentRequest & {
 			force_ids?: Record<string, string> | null;
+			force_deactivation?: boolean;
+			replacements?: Record<string, string> | null;
 		} = {
 			path,
 			content,
 			encoding,
 			expected_etag: expectedEtag ?? null,
 			force_ids: forceIds ?? null,
+			force_deactivation: forceDeactivation ?? false,
+			replacements: replacements ?? null,
 		};
 
 		const url = index
@@ -96,8 +108,10 @@ export const fileService = {
 
 		// Handle conflict responses
 		if (response.status === 409) {
-			const conflictData =
-				(await response.json()) as FileConflictResponse;
+			const responseBody = await response.json();
+			// FastAPI's HTTPException wraps the response in { detail: {...} }
+			const conflictData = (responseBody.detail ??
+				responseBody) as FileConflictResponse;
 			throw new FileConflictError(conflictData);
 		}
 

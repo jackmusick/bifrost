@@ -14,7 +14,7 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { Combobox, type ComboboxOption } from "@/components/ui/combobox";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { Skeleton } from "@/components/ui/skeleton";
-import { Loader2, Upload } from "lucide-react";
+import { Loader2 } from "lucide-react";
 import DOMPurify from "dompurify";
 import ReactMarkdown from "react-markdown";
 import type { components } from "@/lib/v1";
@@ -32,6 +32,7 @@ import { getDataProviderOptions } from "@/services/dataProviders";
 import { FormContextProvider, useFormContext } from "@/contexts/FormContext";
 import { useLaunchWorkflow } from "@/hooks/useLaunchWorkflow";
 import { FormContextPanel } from "@/components/forms/FormContextPanel";
+import { FileUploadField } from "@/components/forms/FileUploadField";
 
 interface FormRendererProps {
 	form: Form;
@@ -114,6 +115,11 @@ function FormRendererInner({
 
 	// Track navigation state to keep button disabled through redirect
 	const [isNavigating, setIsNavigating] = useState(false);
+
+	// Track which file fields are currently uploading
+	const [uploadingFields, setUploadingFields] = useState<Set<string>>(
+		new Set(),
+	);
 
 	// Helper to evaluate data provider inputs (T040, T055, T075 - All three modes)
 	const evaluateDataProviderInputs = useCallback(
@@ -325,6 +331,14 @@ function FormRendererInner({
 				case "checkbox":
 					fieldSchema = z.boolean();
 					break;
+				case "file":
+					// File fields store S3 paths as strings (or array of strings for multiple)
+					if (field.multiple) {
+						fieldSchema = z.array(z.string()).nullable();
+					} else {
+						fieldSchema = z.string().nullable();
+					}
+					break;
 				default:
 					fieldSchema = z.string();
 			}
@@ -335,6 +349,23 @@ function FormRendererInner({
 					fieldSchema = z.boolean().refine((val) => val === true, {
 						message: "This field is required",
 					});
+				} else if (field.type === "file") {
+					// File fields: check for non-null and non-empty
+					if (field.multiple) {
+						fieldSchema = z
+							.array(z.string())
+							.nullable()
+							.refine((val) => val !== null && val.length > 0, {
+								message: "At least one file is required",
+							});
+					} else {
+						fieldSchema = z
+							.string()
+							.nullable()
+							.refine((val) => val !== null && val !== "", {
+								message: "This field is required",
+							});
+					}
 				} else {
 					fieldSchema = fieldSchema.refine((val) => val !== "", {
 						message: "This field is required",
@@ -405,9 +436,18 @@ function FormRendererInner({
 		mode: "onChange", // Validate on change to keep isValid up-to-date
 		defaultValues: fields.reduce(
 			(acc: Record<string, unknown>, field: FormField) => {
-				acc[field.name] =
-					field.default_value ||
-					(field.type === "checkbox" ? false : "");
+				if (
+					field.default_value !== undefined &&
+					field.default_value !== null
+				) {
+					acc[field.name] = field.default_value;
+				} else if (field.type === "checkbox") {
+					acc[field.name] = false;
+				} else if (field.type === "file") {
+					acc[field.name] = null; // File fields start as null
+				} else {
+					acc[field.name] = "";
+				}
 				return acc;
 			},
 			{} as Record<string, unknown>,
@@ -999,56 +1039,39 @@ function FormRendererInner({
 
 			case "file":
 				return (
-					<div className="space-y-2">
-						<Label htmlFor={field.name}>
-							{field.label}
-							{field.required && (
-								<span className="text-destructive ml-1">*</span>
-							)}
-						</Label>
-						<div className="border-2 border-dashed rounded-lg p-6 hover:border-primary/50 transition-colors">
-							<div className="flex flex-col items-center gap-2">
-								<Upload className="h-8 w-8 text-muted-foreground" />
-								<div className="text-center">
-									<Label
-										htmlFor={field.name}
-										className="cursor-pointer text-sm font-medium text-primary hover:underline"
-									>
-										Choose file{field.multiple ? "s" : ""}
-									</Label>
-									<Input
-										id={field.name}
-										type="file"
-										className="hidden"
-										{...register(field.name)}
-										accept={
-											field.allowed_types?.join(",") ??
-											undefined
-										}
-										multiple={field.multiple ?? undefined}
-									/>
-									<p className="text-xs text-muted-foreground mt-1">
-										{field.allowed_types &&
-										field.allowed_types.length > 0
-											? `Allowed: ${field.allowed_types.join(", ")}`
-											: "All file types allowed"}
-										{field.max_size_mb &&
-											` • Max ${field.max_size_mb}MB`}
-									</p>
-								</div>
-							</div>
-						</div>
-						{field.help_text && (
-							<p className="text-sm text-muted-foreground">
-								{field.help_text}
-							</p>
-						)}
-						{error && (
-							<p className="text-sm text-destructive">
-								{error.message as string}
-							</p>
-						)}
-					</div>
+					<FileUploadField
+						formId={form.id}
+						fieldName={field.name}
+						label={field.label ?? null}
+						required={field.required ?? false}
+						helpText={field.help_text ?? null}
+						allowedTypes={field.allowed_types ?? null}
+						multiple={field.multiple ?? null}
+						maxSizeMb={field.max_size_mb ?? null}
+						value={
+							formValues[field.name] as string | string[] | null
+						}
+						onChange={(value) =>
+							setValue(field.name, value, {
+								shouldValidate: true,
+							})
+						}
+						onUploadStart={() =>
+							setUploadingFields((prev) => {
+								const next = new Set(prev);
+								next.add(field.name);
+								return next;
+							})
+						}
+						onUploadEnd={() =>
+							setUploadingFields((prev) => {
+								const next = new Set(prev);
+								next.delete(field.name);
+								return next;
+							})
+						}
+						error={error}
+					/>
 				);
 
 			default:
@@ -1209,12 +1232,15 @@ function FormRendererInner({
 									disabled={
 										!isValid ||
 										submitForm.isPending ||
-										isNavigating
+										isNavigating ||
+										uploadingFields.size > 0
 									}
 								>
-									{submitForm.isPending || isNavigating
-										? "Submitting..."
-										: "Submit"}
+									{uploadingFields.size > 0
+										? "Uploading files..."
+										: submitForm.isPending || isNavigating
+											? "Submitting..."
+											: "Submit"}
 								</Button>
 							</div>
 						</form>

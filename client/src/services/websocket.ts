@@ -198,6 +198,13 @@ export interface AskUserQuestion {
 	multi_select: boolean;
 }
 
+// TodoItem type for todo list updates from SDK
+export interface TodoItem {
+	content: string;
+	status: "pending" | "in_progress" | "completed";
+	active_form: string;
+}
+
 export interface ChatStreamChunk {
 	type:
 		| "message_start"
@@ -211,7 +218,8 @@ export interface ChatStreamChunk {
 		| "title_update"
 		| "ask_user_question"
 		| "assistant_message_start"
-		| "assistant_message_end";
+		| "assistant_message_end"
+		| "todo_update";
 	conversation_id?: string;
 	content?: string | null;
 	tool_call?: ChatToolCall | null;
@@ -233,6 +241,8 @@ export interface ChatStreamChunk {
 	request_id?: string | null;
 	// Message boundary fields (for assistant_message_end)
 	stop_reason?: "tool_use" | "end_turn" | null;
+	// Todo list fields (for todo_update)
+	todos?: TodoItem[] | null;
 }
 
 // Message types from backend
@@ -591,6 +601,7 @@ class WebSocketService {
 			case "ask_user_question":
 			case "assistant_message_start":
 			case "assistant_message_end":
+			case "todo_update":
 				this.dispatchChatStreamChunk(message as ChatStreamChunk);
 				break;
 
@@ -731,7 +742,8 @@ class WebSocketService {
 			started_at: (message["started_at"] as string) || "",
 			completed_at: message["completed_at"] as string | undefined,
 			duration_ms: message["duration_ms"] as number | undefined,
-			timestamp: (message["timestamp"] as string) || new Date().toISOString(),
+			timestamp:
+				(message["timestamp"] as string) || new Date().toISOString(),
 		};
 		this.historyUpdateCallbacks.forEach((cb) => cb(historyUpdate));
 	}

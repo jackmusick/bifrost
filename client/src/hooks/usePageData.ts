@@ -140,7 +140,8 @@ export function usePageData({
 			// Support both 'inputParams' (canonical) and 'params' (shorthand) for data sources
 			const inputParams =
 				dataSource.inputParams ??
-				(dataSource as unknown as { params?: Record<string, unknown> }).params;
+				(dataSource as unknown as { params?: Record<string, unknown> })
+					.params;
 			const params = evaluateInputParams(inputParams, expressionContext);
 
 			switch (dataSource.type) {
@@ -160,20 +161,20 @@ export function usePageData({
 							params,
 						);
 					}
-					// Fall back to API call
+					// Fall back to API call via /execute endpoint
 					try {
 						const response = await apiClient.POST(
-							"/api/data-providers/{provider_id}/invoke",
+							"/api/workflows/execute",
 							{
-								params: {
-									path: {
-										provider_id: dataSource.dataProviderId,
-									},
+								body: {
+									workflow_id: dataSource.dataProviderId,
+									input_data: params,
+									transient: true, // Data providers are transient
 								},
-								body: { inputs: params },
 							},
 						);
-						return response.data;
+						// Data providers return options in result field
+						return response.data?.result ?? null;
 					} catch (error) {
 						console.error(
 							`Failed to load data provider "${dataSource.dataProviderId}":`,

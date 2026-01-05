@@ -2,7 +2,7 @@
 Tools Router
 
 Unified endpoint for listing all available tools (system + workflow).
-Provides a single source of truth for tool discovery.
+System tools are auto-discovered from the tool registry.
 """
 
 import logging
@@ -17,243 +17,81 @@ from src.core.org_filter import resolve_org_filter
 from src.models.contracts.agents import ToolInfo, ToolsResponse
 from src.models.orm import Workflow
 
+# Import tools package to trigger registration of all @system_tool decorated functions
+import src.services.mcp.tools  # noqa: F401
+from src.services.mcp.tool_registry import get_all_system_tools, get_all_tool_ids
+
 logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/api/tools", tags=["Tools"])
 
 
 # =============================================================================
-# System Tools Registry
+# System Tools (Auto-generated from Registry)
 # =============================================================================
-
-# These are the built-in MCP tools available to agents.
-# For coding agents, all system tools are enabled by default.
-SYSTEM_TOOLS: list[ToolInfo] = [
-    ToolInfo(
-        id="execute_workflow",
-        name="Execute Workflow",
-        description="Execute a Bifrost workflow by name and get results",
-        type="system",
-        default_enabled_for_coding_agent=True,
-    ),
-    ToolInfo(
-        id="list_workflows",
-        name="List Workflows",
-        description="List all registered workflows to verify file watcher discovery",
-        type="system",
-        default_enabled_for_coding_agent=True,
-    ),
-    ToolInfo(
-        id="list_integrations",
-        name="List Integrations",
-        description="List available integrations and their OAuth/config status",
-        type="system",
-        default_enabled_for_coding_agent=True,
-    ),
-    ToolInfo(
-        id="list_forms",
-        name="List Forms",
-        description="List all forms with their URLs for viewing in the platform",
-        type="system",
-        default_enabled_for_coding_agent=True,
-    ),
-    ToolInfo(
-        id="get_form_schema",
-        name="Get Form Schema",
-        description="Get documentation about form structure, field types, and examples",
-        type="system",
-        default_enabled_for_coding_agent=True,
-    ),
-    ToolInfo(
-        id="validate_form_schema",
-        name="Validate Form Schema",
-        description="Validate a form JSON structure before saving",
-        type="system",
-        default_enabled_for_coding_agent=True,
-    ),
-    ToolInfo(
-        id="create_form",
-        name="Create Form",
-        description="Create a new form with fields linked to a workflow",
-        type="system",
-        default_enabled_for_coding_agent=False,  # File ops for coding agent
-    ),
-    ToolInfo(
-        id="get_form",
-        name="Get Form",
-        description="Get detailed information about a specific form including all fields",
-        type="system",
-        default_enabled_for_coding_agent=True,
-    ),
-    ToolInfo(
-        id="update_form",
-        name="Update Form",
-        description="Update an existing form's properties or fields",
-        type="system",
-        default_enabled_for_coding_agent=False,  # File ops for coding agent
-    ),
-    ToolInfo(
-        id="search_knowledge",
-        name="Search Knowledge",
-        description="Search the Bifrost knowledge base for documentation and examples",
-        type="system",
-        default_enabled_for_coding_agent=True,
-    ),
-    # File Operations (disabled for coding agent - it has local file access)
-    ToolInfo(
-        id="read_file",
-        name="Read File",
-        description="Read a file from the workspace",
-        type="system",
-        default_enabled_for_coding_agent=False,
-    ),
-    ToolInfo(
-        id="write_file",
-        name="Write File",
-        description="Write content to a file in the workspace (creates or overwrites)",
-        type="system",
-        default_enabled_for_coding_agent=False,
-    ),
-    ToolInfo(
-        id="list_files",
-        name="List Files",
-        description="List files and directories in the workspace",
-        type="system",
-        default_enabled_for_coding_agent=False,
-    ),
-    ToolInfo(
-        id="delete_file",
-        name="Delete File",
-        description="Delete a file or directory from the workspace",
-        type="system",
-        default_enabled_for_coding_agent=False,
-    ),
-    ToolInfo(
-        id="search_files",
-        name="Search Files",
-        description="Search for text patterns across files in the workspace",
-        type="system",
-        default_enabled_for_coding_agent=False,
-    ),
-    ToolInfo(
-        id="create_folder",
-        name="Create Folder",
-        description="Create a new folder in the workspace",
-        type="system",
-        default_enabled_for_coding_agent=False,
-    ),
-    # Workflow and Execution Tools
-    ToolInfo(
-        id="validate_workflow",
-        name="Validate Workflow",
-        description="Validate a workflow Python file for syntax and decorator issues",
-        type="system",
-        default_enabled_for_coding_agent=True,
-    ),
-    ToolInfo(
-        id="get_workflow_schema",
-        name="Get Workflow Schema",
-        description="Get documentation about workflow structure, decorators, and SDK features",
-        type="system",
-        default_enabled_for_coding_agent=True,
-    ),
-    ToolInfo(
-        id="get_workflow",
-        name="Get Workflow",
-        description="Get detailed metadata for a specific workflow by ID or name",
-        type="system",
-        default_enabled_for_coding_agent=True,
-    ),
-    ToolInfo(
-        id="list_executions",
-        name="List Executions",
-        description="List recent workflow executions with optional filtering",
-        type="system",
-        default_enabled_for_coding_agent=True,
-    ),
-    ToolInfo(
-        id="get_execution",
-        name="Get Execution",
-        description="Get details and logs for a specific workflow execution",
-        type="system",
-        default_enabled_for_coding_agent=True,
-    ),
-    # Data Provider Tools
-    ToolInfo(
-        id="list_data_providers",
-        name="List Data Providers",
-        description="List all available data providers with their parameters",
-        type="system",
-        default_enabled_for_coding_agent=True,
-    ),
-    ToolInfo(
-        id="get_data_provider_schema",
-        name="Get Data Provider Schema",
-        description="Get documentation about data provider structure, decorators, and examples",
-        type="system",
-        default_enabled_for_coding_agent=True,
-    ),
-    ToolInfo(
-        id="validate_data_provider",
-        name="Validate Data Provider",
-        description="Validate a data provider Python file for syntax and decorator issues",
-        type="system",
-        default_enabled_for_coding_agent=True,
-    ),
-    # App Builder Tools
-    ToolInfo(
-        id="get_app_schema",
-        name="Get App Schema",
-        description="Get documentation about App Builder application structure, components, expressions, and actions",
-        type="system",
-        default_enabled_for_coding_agent=True,
-    ),
-    ToolInfo(
-        id="validate_app_schema",
-        name="Validate App Schema",
-        description="Validate an App Builder application JSON structure",
-        type="system",
-        default_enabled_for_coding_agent=True,
-    ),
-    ToolInfo(
-        id="list_apps",
-        name="List Apps",
-        description="List all App Builder applications with their URLs",
-        type="system",
-        default_enabled_for_coding_agent=True,
-    ),
-    ToolInfo(
-        id="get_app",
-        name="Get App",
-        description="Get detailed information about a specific App Builder application",
-        type="system",
-        default_enabled_for_coding_agent=True,
-    ),
-    ToolInfo(
-        id="create_app",
-        name="Create App",
-        description="Create a new App Builder application with pages, layouts, and components",
-        type="system",
-        default_enabled_for_coding_agent=True,
-    ),
-    ToolInfo(
-        id="update_app",
-        name="Update App",
-        description="Update an existing App Builder application",
-        type="system",
-        default_enabled_for_coding_agent=True,
-    ),
-]
 
 
 def get_system_tools() -> list[ToolInfo]:
-    """Get the list of system tools."""
-    return SYSTEM_TOOLS.copy()
+    """
+    Get the list of system tools from the registry.
+
+    Tools are automatically registered via @system_tool decorator.
+    """
+    return [
+        ToolInfo(
+            id=meta.id,
+            name=meta.name,
+            description=meta.description,
+            type="system",
+            category=meta.category.value if meta.category else None,
+            default_enabled_for_coding_agent=meta.default_enabled_for_coding_agent,
+        )
+        for meta in get_all_system_tools()
+    ]
 
 
 def get_system_tool_ids() -> list[str]:
-    """Get list of all system tool IDs (single source of truth)."""
-    return [tool.id for tool in SYSTEM_TOOLS]
+    """Get list of all system tool IDs."""
+    return get_all_tool_ids()
+
+
+# Backwards compatibility - some code imports SYSTEM_TOOLS directly
+# This is now a computed property from the registry
+def _get_system_tools_list() -> list[ToolInfo]:
+    return get_system_tools()
+
+
+# For backwards compatibility with imports like: from src.routers.tools import SYSTEM_TOOLS
+# We create a lazy-loading wrapper
+class _SystemToolsList(list):  # type: ignore[type-arg]
+    """Lazy-loading list that populates from registry on first access."""
+
+    _populated = False
+
+    def _populate(self) -> None:
+        if not self._populated:
+            self.clear()
+            self.extend(get_system_tools())
+            self._populated = True
+
+    def __iter__(self):  # type: ignore[override]
+        self._populate()
+        return super().__iter__()
+
+    def __len__(self) -> int:
+        self._populate()
+        return super().__len__()
+
+    def __getitem__(self, key):  # type: ignore[override]
+        self._populate()
+        return super().__getitem__(key)
+
+    def copy(self) -> list[ToolInfo]:
+        self._populate()
+        return list(self)
+
+
+SYSTEM_TOOLS: list[ToolInfo] = _SystemToolsList()  # type: ignore[assignment]
 
 
 # =============================================================================
@@ -267,11 +105,11 @@ async def list_tools(
     user: CurrentActiveUser,
     type: Literal["system", "workflow"] | None = Query(
         default=None,
-        description="Filter by tool type: 'system' for built-in tools, 'workflow' for user workflows"
+        description="Filter by tool type: 'system' for built-in tools, 'workflow' for user workflows",
     ),
     scope: str | None = Query(
         default=None,
-        description="Filter scope for workflows: omit for all, 'global' for global only, or org UUID"
+        description="Filter scope for workflows: omit for all, 'global' for global only, or org UUID",
     ),
 ) -> ToolsResponse:
     """
@@ -299,9 +137,7 @@ async def list_tools(
 
         # Query workflows that are tools
         query = (
-            select(Workflow)
-            .where(Workflow.type == "tool")
-            .where(Workflow.is_active.is_(True))
+            select(Workflow).where(Workflow.type == "tool").where(Workflow.is_active.is_(True))
         )
 
         # Apply org filter
@@ -315,20 +151,22 @@ async def list_tools(
         workflows = result.scalars().all()
 
         for workflow in workflows:
-            tools.append(ToolInfo(
-                id=str(workflow.id),
-                name=workflow.name,
-                description=workflow.tool_description or workflow.description or "",
-                type="workflow",
-                category=workflow.category,
-                default_enabled_for_coding_agent=False,
-            ))
+            tools.append(
+                ToolInfo(
+                    id=str(workflow.id),
+                    name=workflow.name,
+                    description=workflow.tool_description or workflow.description or "",
+                    type="workflow",
+                    category=workflow.category,
+                    default_enabled_for_coding_agent=False,
+                )
+            )
 
     return ToolsResponse(tools=tools)
 
 
 @router.get("/system")
-async def list_system_tools(
+async def list_system_tools_endpoint(
     user: CurrentActiveUser,
 ) -> ToolsResponse:
     """

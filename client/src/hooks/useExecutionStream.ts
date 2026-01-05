@@ -341,7 +341,16 @@ export function useExecutionHistory(
 
 							// Check if this is a paginated query (has continuationToken in params)
 							const params = queryKey[2] as
-								| { params?: { query?: { continuationToken?: string } } }
+								| {
+										params?: {
+											query?: {
+												continuationToken?: string;
+												status?: string;
+												startDate?: string;
+												endDate?: string;
+											};
+										};
+								  }
 								| undefined;
 							const hasContinuationToken =
 								params?.params?.query?.continuationToken;

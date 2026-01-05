@@ -211,7 +211,12 @@ export function AppContextProvider({
 
 	// Submit form handler - collects field values and triggers workflow
 	const handleSubmitForm = useCallback(
-		(workflowId: string, additionalParams?: Record<string, unknown>, onComplete?: OnCompleteAction[], onError?: OnCompleteAction[]) => {
+		(
+			workflowId: string,
+			additionalParams?: Record<string, unknown>,
+			onComplete?: OnCompleteAction[],
+			onError?: OnCompleteAction[],
+		) => {
 			// Merge field values with any additional params
 			const params = {
 				...fieldValues,

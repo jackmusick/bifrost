@@ -86,7 +86,11 @@ interface AppBuilderState {
 
 	// Table data cache (persists across page navigations)
 	tableCache: Record<string, TableCacheEntry>;
-	setTableCache: (cacheKey: string, data: unknown[], dataSourceKey: string) => void;
+	setTableCache: (
+		cacheKey: string,
+		data: unknown[],
+		dataSourceKey: string,
+	) => void;
 	getTableCache: (cacheKey: string) => TableCacheEntry | undefined;
 	clearTableCache: (cacheKey: string) => void;
 	clearAllTableCache: () => void;
@@ -362,7 +366,9 @@ export const useAppSelectedRows = (tableId: string): Set<string> => {
 };
 
 /** Get table cache entry */
-export const useTableCache = (cacheKey: string | undefined): TableCacheEntry | undefined => {
+export const useTableCache = (
+	cacheKey: string | undefined,
+): TableCacheEntry | undefined => {
 	return useAppBuilderStore((state) =>
 		cacheKey ? state.tableCache[cacheKey] : undefined,
 	);

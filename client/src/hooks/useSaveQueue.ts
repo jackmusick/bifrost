@@ -1,5 +1,9 @@
 import { useRef, useCallback } from "react";
-import { fileService, FileConflictError } from "@/services/fileService";
+import {
+	fileService,
+	FileConflictError,
+	type FileConflictResponse,
+} from "@/services/fileService";
 import type { ConflictReason, FileDiagnostic } from "@/stores/editorStore";
 
 interface SaveQueueEntry {
@@ -18,7 +22,12 @@ interface SaveQueueEntry {
 				diagnostics?: FileDiagnostic[],
 		  ) => void)
 		| undefined;
-	onConflict?: ((reason: ConflictReason) => void) | undefined;
+	onConflict?:
+		| ((
+				reason: ConflictReason,
+				conflictData?: FileConflictResponse,
+		  ) => void)
+		| undefined;
 }
 
 /**
@@ -73,8 +82,10 @@ export function useSaveQueue() {
 						error.conflictData.reason,
 					);
 					if (entry.onConflict) {
+						// Pass full conflict data for deactivation conflicts
 						entry.onConflict(
 							error.conflictData.reason as ConflictReason,
+							error.conflictData,
 						);
 					}
 					return { success: false };
@@ -161,7 +172,10 @@ export function useSaveQueue() {
 				needsIndexing?: boolean,
 				diagnostics?: FileDiagnostic[],
 			) => void,
-			onConflict?: (reason: ConflictReason) => void,
+			onConflict?: (
+				reason: ConflictReason,
+				conflictData?: FileConflictResponse,
+			) => void,
 			index: boolean = false,
 		) => {
 			const queue = saveQueueRef.current;

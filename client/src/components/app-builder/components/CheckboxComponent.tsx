@@ -58,7 +58,9 @@ export function CheckboxComponent({
 	// Props are pre-evaluated by ComponentRegistry (disabled is now boolean)
 	const isDisabled = Boolean(props.disabled);
 	const label = String(props.label ?? "");
-	const description = props.description ? String(props.description) : undefined;
+	const description = props.description
+		? String(props.description)
+		: undefined;
 
 	// Get setFieldValue from context (stable reference)
 	const setFieldValue = context.setFieldValue;

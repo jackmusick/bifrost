@@ -11,7 +11,6 @@ from src.routers.executions import router as executions_router
 from src.routers.workflows import router as workflows_router
 from src.routers.forms import router as forms_router
 from src.routers.config import router as config_router
-from src.routers.data_providers import router as data_providers_router
 from src.routers.websocket import router as websocket_router
 from src.routers.branding import router as branding_router
 from src.routers.files import router as files_router
@@ -44,6 +43,8 @@ from src.routers.events import router as events_router
 from src.routers.hooks import router as hooks_router
 from src.routers.tables import router as tables_router
 from src.routers.applications import router as applications_router
+from src.routers.app_pages import router as app_pages_router
+from src.routers.app_components import router as app_components_router
 
 __all__ = [
     "auth_router",
@@ -58,7 +59,6 @@ __all__ = [
     "workflows_router",
     "forms_router",
     "config_router",
-    "data_providers_router",
     "websocket_router",
     "branding_router",
     "files_router",
@@ -91,4 +91,6 @@ __all__ = [
     "hooks_router",
     "tables_router",
     "applications_router",
+    "app_pages_router",
+    "app_components_router",
 ]

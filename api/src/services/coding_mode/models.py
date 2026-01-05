@@ -10,6 +10,7 @@ from typing import Literal
 from pydantic import BaseModel
 
 from src.models.contracts.agents import ToolCall, ToolProgress, ToolResult
+from src.models.enums import CodingModePermission
 
 
 class CodingModeSession(BaseModel):
@@ -17,8 +18,17 @@ class CodingModeSession(BaseModel):
 
     session_id: str
     user_id: str
+    permission_mode: CodingModePermission = CodingModePermission.EXECUTE
     created_at: datetime
     last_activity: datetime
+
+
+class TodoItem(BaseModel):
+    """A todo item from the SDK's TodoWrite tool."""
+
+    content: str
+    status: Literal["pending", "in_progress", "completed"]
+    active_form: str
 
 
 class AskUserQuestionOption(BaseModel):
@@ -65,6 +75,8 @@ class CodingModeChunk(BaseModel):
         "ask_user_question",
         "assistant_message_start",
         "assistant_message_end",
+        "todo_update",
+        "mode_changed",
     ]
 
     # Session info (for session_start)
@@ -95,3 +107,9 @@ class CodingModeChunk(BaseModel):
     # Message boundary fields (for assistant_message_end)
     # stop_reason indicates why the message ended: "tool_use" or "end_turn"
     stop_reason: str | None = None
+
+    # Todo list fields (for todo_update)
+    todos: list[TodoItem] | None = None
+
+    # Permission mode fields (for mode_changed)
+    permission_mode: CodingModePermission | None = None

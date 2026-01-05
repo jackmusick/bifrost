@@ -203,11 +203,7 @@ function DocumentDialogInner({
 					onClick={handleSubmit}
 					disabled={isPending || !!jsonError}
 				>
-					{isPending
-						? "Saving..."
-						: isEditing
-							? "Update"
-							: "Create"}
+					{isPending ? "Saving..." : isEditing ? "Update" : "Create"}
 				</Button>
 			</DialogFooter>
 		</>

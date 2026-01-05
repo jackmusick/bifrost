@@ -5,6 +5,8 @@ import { fileService } from "@/services/fileService";
 import type { components } from "@/lib/v1";
 
 type WorkflowIdConflict = components["schemas"]["WorkflowIdConflict"];
+type PendingDeactivation = components["schemas"]["PendingDeactivation"];
+type AvailableReplacement = components["schemas"]["AvailableReplacement"];
 
 /**
  * Editor state store using Zustand with persistence
@@ -44,7 +46,10 @@ export interface TerminalOutput {
 }
 
 export type SaveState = "clean" | "dirty" | "saving" | "saved" | "conflict";
-export type ConflictReason = "content_changed" | "path_not_found";
+export type ConflictReason =
+	| "content_changed"
+	| "path_not_found"
+	| "workflows_would_deactivate";
 
 // Define ConflictInfo locally since it's not in the OpenAPI spec
 interface ConflictInfo {
@@ -106,6 +111,17 @@ interface EditorState {
 	// Workflow ID conflict resolution state
 	pendingWorkflowConflict: {
 		conflicts: WorkflowIdConflict[];
+		filePath: string;
+		content: string;
+		encoding: "utf-8" | "base64";
+		etag?: string;
+		tabIndex: number;
+	} | null;
+
+	// Workflow deactivation protection state
+	pendingDeactivationConflict: {
+		pendingDeactivations: PendingDeactivation[];
+		availableReplacements: AvailableReplacement[];
 		filePath: string;
 		content: string;
 		encoding: "utf-8" | "base64";
@@ -200,6 +216,23 @@ interface EditorState {
 	resolveWorkflowIdConflict: (
 		action: "use_existing" | "generate_new" | "cancel",
 	) => Promise<FileContentResponse | null>;
+
+	// Deactivation protection
+	setPendingDeactivationConflict: (
+		conflict: {
+			pendingDeactivations: PendingDeactivation[];
+			availableReplacements: AvailableReplacement[];
+			filePath: string;
+			content: string;
+			encoding: "utf-8" | "base64";
+			etag?: string;
+			tabIndex: number;
+		} | null,
+	) => void;
+	resolveDeactivationConflict: (
+		action: "force_deactivate" | "apply_replacements" | "cancel",
+		replacements?: Record<string, string>,
+	) => Promise<FileContentResponse | null>;
 }
 
 export const useEditorStore = create<EditorState>()(
@@ -225,6 +258,9 @@ export const useEditorStore = create<EditorState>()(
 
 			// Workflow ID conflict resolution state
 			pendingWorkflowConflict: null,
+
+			// Workflow deactivation protection state
+			pendingDeactivationConflict: null,
 
 			// Line reveal state (for scrolling to specific line after file loads)
 			pendingLineReveal: null,
@@ -801,6 +837,58 @@ export const useEditorStore = create<EditorState>()(
 				} catch (error) {
 					console.error(
 						"Failed to resolve workflow ID conflict:",
+						error,
+					);
+					return null;
+				}
+			},
+
+			// Deactivation protection
+			setPendingDeactivationConflict: (conflict) =>
+				set({ pendingDeactivationConflict: conflict }),
+
+			resolveDeactivationConflict: async (action, replacements) => {
+				const state = get();
+				const conflict = state.pendingDeactivationConflict;
+				if (!conflict) return null;
+
+				// Clear the pending conflict first
+				set({ pendingDeactivationConflict: null });
+
+				if (action === "cancel") {
+					return null;
+				}
+
+				try {
+					if (action === "force_deactivate") {
+						// Re-save with force_deactivation=true
+						const response = await fileService.writeFile(
+							conflict.filePath,
+							conflict.content,
+							conflict.encoding,
+							conflict.etag,
+							false, // index
+							undefined, // forceIds
+							true, // forceDeactivation
+						);
+						return response;
+					} else {
+						// apply_replacements: Save with replacements map
+						const response = await fileService.writeFile(
+							conflict.filePath,
+							conflict.content,
+							conflict.encoding,
+							conflict.etag,
+							false, // index
+							undefined, // forceIds
+							false, // forceDeactivation
+							replacements,
+						);
+						return response;
+					}
+				} catch (error) {
+					console.error(
+						"Failed to resolve deactivation conflict:",
 						error,
 					);
 					return null;

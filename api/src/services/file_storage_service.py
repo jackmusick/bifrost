@@ -16,8 +16,10 @@ import re
 from contextlib import asynccontextmanager
 from dataclasses import dataclass
 from datetime import datetime
+from difflib import SequenceMatcher
 from pathlib import Path
 from typing import Any, Awaitable, Callable, TYPE_CHECKING
+from uuid import UUID as UUID_type
 
 from sqlalchemy import delete, select, update
 from sqlalchemy.dialects.postgresql import insert
@@ -58,6 +60,33 @@ class FileDiagnosticInfo:
 
 
 @dataclass
+class PendingDeactivationInfo:
+    """Info about a workflow that would be deactivated on save."""
+
+    id: str  # Workflow UUID
+    name: str  # Display name from decorator
+    function_name: str  # Python function name
+    path: str  # File path
+    description: str | None
+    decorator_type: str  # "workflow", "tool", "data_provider"
+    has_executions: bool
+    last_execution_at: str | None  # ISO 8601
+    schedule: str | None
+    endpoint_enabled: bool
+    affected_entities: list[dict[str, str]]  # List of {entity_type, id, name, reference_type}
+
+
+@dataclass
+class AvailableReplacementInfo:
+    """Info about a function that could replace a deactivated workflow."""
+
+    function_name: str
+    name: str  # From decorator or function name
+    decorator_type: str  # "workflow", "tool", "data_provider"
+    similarity_score: float  # 0.0-1.0
+
+
+@dataclass
 class WriteResult:
     """Result of a file write operation."""
 
@@ -67,6 +96,9 @@ class WriteResult:
     needs_indexing: bool = False  # Legacy field, always False
     workflow_id_conflicts: list[WorkflowIdConflictInfo] | None = None  # Legacy field, always None
     diagnostics: list[FileDiagnosticInfo] | None = None  # File issues detected during save
+    # Deactivation protection
+    pending_deactivations: list[PendingDeactivationInfo] | None = None
+    available_replacements: list[AvailableReplacementInfo] | None = None
 
 
 def _serialize_form_to_json(form: Form) -> bytes:
@@ -269,6 +301,290 @@ class FileStorageService:
 
         return None
 
+    # ==================== DEACTIVATION PROTECTION ====================
+
+    def _compute_similarity(self, old_name: str, new_name: str) -> float:
+        """
+        Compute similarity score between old and new function names.
+
+        Uses SequenceMatcher for basic similarity plus bonus for shared word parts.
+
+        Args:
+            old_name: Original function name
+            new_name: New function name
+
+        Returns:
+            Similarity score between 0.0 and 1.0
+        """
+        # Basic sequence matching
+        ratio = SequenceMatcher(None, old_name.lower(), new_name.lower()).ratio()
+
+        # Bonus for common word parts (split by underscore for snake_case)
+        old_parts = set(old_name.lower().split("_"))
+        new_parts = set(new_name.lower().split("_"))
+        if old_parts and new_parts:
+            overlap = len(old_parts & new_parts) / max(len(old_parts), len(new_parts))
+        else:
+            overlap = 0.0
+
+        return (ratio * 0.7) + (overlap * 0.3)
+
+    async def _find_affected_entities(
+        self,
+        workflow_id: str,
+    ) -> list[dict[str, str]]:
+        """
+        Find forms, agents, and apps that reference a workflow.
+
+        Args:
+            workflow_id: UUID of the workflow
+
+        Returns:
+            List of affected entities with entity_type, id, name, reference_type
+        """
+        from src.models import Form, FormField, Agent, AgentTool
+        from src.models.orm.applications import Application
+        from sqlalchemy import or_
+
+        affected: list[dict[str, str]] = []
+
+        # Find forms that reference this workflow
+        # Forms reference workflows via workflow_id (main) and launch_workflow_id
+        form_stmt = select(Form).where(
+            Form.is_active == True,  # noqa: E712
+            or_(
+                Form.workflow_id == workflow_id,
+                Form.launch_workflow_id == workflow_id,
+            )
+        )
+        form_result = await self.db.execute(form_stmt)
+        forms = form_result.scalars().all()
+
+        for form in forms:
+            ref_types = []
+            if form.workflow_id == workflow_id:
+                ref_types.append("workflow")
+            if form.launch_workflow_id == workflow_id:
+                ref_types.append("launch_workflow")
+
+            affected.append({
+                "entity_type": "form",
+                "id": str(form.id),
+                "name": form.name,
+                "reference_type": ", ".join(ref_types),
+            })
+
+        # Find form fields that use this workflow as a data provider
+        field_stmt = select(FormField).where(
+            FormField.data_provider_id == UUID_type(workflow_id)
+        )
+        field_result = await self.db.execute(field_stmt)
+        form_fields = field_result.scalars().all()
+
+        # Get unique form IDs from fields and fetch form names
+        form_ids_from_fields = {field.form_id for field in form_fields}
+        for form_id in form_ids_from_fields:
+            # Skip if we already have this form
+            if any(e["entity_type"] == "form" and e["id"] == str(form_id) for e in affected):
+                continue
+
+            form_stmt = select(Form).where(Form.id == form_id)
+            form_result = await self.db.execute(form_stmt)
+            form = form_result.scalar_one_or_none()
+            if form:
+                affected.append({
+                    "entity_type": "form",
+                    "id": str(form.id),
+                    "name": form.name,
+                    "reference_type": "data_provider",
+                })
+
+        # Find agents that use this workflow as a tool
+        agent_stmt = (
+            select(Agent)
+            .join(AgentTool, Agent.id == AgentTool.agent_id)
+            .where(
+                Agent.is_active == True,  # noqa: E712
+                AgentTool.workflow_id == UUID_type(workflow_id),
+            )
+        )
+        agent_result = await self.db.execute(agent_stmt)
+        agents = agent_result.scalars().all()
+
+        for agent in agents:
+            affected.append({
+                "entity_type": "agent",
+                "id": str(agent.id),
+                "name": agent.name,
+                "reference_type": "tool",
+            })
+
+        # Find apps that reference this workflow
+        # Apps use a versioned page/component structure:
+        # - AppPage.launch_workflow_id references workflows
+        # - AppComponent.props may contain workflow_id references
+        from src.models.orm.applications import AppPage, AppComponent
+
+        try:
+            workflow_uuid = UUID_type(workflow_id)
+        except ValueError:
+            workflow_uuid = None
+
+        if workflow_uuid:
+            # Check pages with this workflow as launch_workflow_id
+            page_stmt = select(AppPage).where(AppPage.launch_workflow_id == workflow_uuid)
+            page_result = await self.db.execute(page_stmt)
+            pages = page_result.scalars().all()
+
+            # Track which apps we've already added
+            added_app_ids: set[UUID_type] = set()
+            for page in pages:
+                if page.application_id not in added_app_ids:
+                    # Get the app to include its name
+                    app_stmt = select(Application).where(Application.id == page.application_id)
+                    app_result = await self.db.execute(app_stmt)
+                    app = app_result.scalar_one_or_none()
+                    if app:
+                        affected.append({
+                            "entity_type": "app",
+                            "id": str(app.id),
+                            "name": app.name,
+                            "reference_type": "page_launch_workflow",
+                        })
+                        added_app_ids.add(page.application_id)
+
+        return affected
+
+    async def _detect_pending_deactivations(
+        self,
+        path: str,
+        new_function_names: set[str],
+        new_decorator_info: dict[str, tuple[str, str]],  # function_name -> (decorator_type, display_name)
+    ) -> tuple[list[PendingDeactivationInfo], list[AvailableReplacementInfo]]:
+        """
+        Detect workflows that would be deactivated by saving a file.
+
+        Compares existing active workflows at this path against the new
+        function names found in the file content.
+
+        Args:
+            path: File path being saved
+            new_function_names: Set of function names with decorators in new content
+            new_decorator_info: Mapping of function_name to (decorator_type, display_name)
+
+        Returns:
+            Tuple of (pending_deactivations, available_replacements)
+        """
+        from src.models import Workflow, Execution
+
+        pending_deactivations: list[PendingDeactivationInfo] = []
+        available_replacements: list[AvailableReplacementInfo] = []
+
+        # Get all active workflows at this path
+        stmt = select(Workflow).where(
+            Workflow.path == path,
+            Workflow.is_active == True,  # noqa: E712
+        )
+        result = await self.db.execute(stmt)
+        existing_workflows = list(result.scalars().all())
+
+        # Find workflows that would be deactivated
+        existing_function_names = {wf.function_name for wf in existing_workflows}
+
+        for wf in existing_workflows:
+            if wf.function_name not in new_function_names:
+                # This workflow would be deactivated
+
+                # Check for execution history
+                # Note: Executions are linked by workflow_name, not workflow_id
+                exec_stmt = (
+                    select(Execution)
+                    .where(Execution.workflow_name == wf.function_name)
+                    .order_by(Execution.started_at.desc())
+                    .limit(1)
+                )
+                exec_result = await self.db.execute(exec_stmt)
+                last_exec = exec_result.scalar_one_or_none()
+
+                # Find affected entities
+                affected_entities = await self._find_affected_entities(str(wf.id))
+
+                pending_deactivations.append(PendingDeactivationInfo(
+                    id=str(wf.id),
+                    name=wf.name,
+                    function_name=wf.function_name,
+                    path=wf.path,
+                    description=wf.description,
+                    decorator_type=wf.type or "workflow",
+                    has_executions=last_exec is not None,
+                    last_execution_at=last_exec.started_at.isoformat() if last_exec else None,
+                    schedule=wf.schedule,
+                    endpoint_enabled=wf.endpoint_enabled or False,
+                    affected_entities=affected_entities,
+                ))
+
+        # Find available replacements (new functions not in existing)
+        if pending_deactivations:
+            new_only_functions = new_function_names - existing_function_names
+
+            for func_name in new_only_functions:
+                decorator_type, display_name = new_decorator_info.get(
+                    func_name, ("workflow", func_name)
+                )
+
+                # Calculate best similarity score against any pending deactivation
+                best_score = 0.0
+                for pd in pending_deactivations:
+                    score = self._compute_similarity(pd.function_name, func_name)
+                    best_score = max(best_score, score)
+
+                # Only include if there's some similarity (threshold 0.2)
+                if best_score >= 0.2:
+                    available_replacements.append(AvailableReplacementInfo(
+                        function_name=func_name,
+                        name=display_name,
+                        decorator_type=decorator_type,
+                        similarity_score=round(best_score, 2),
+                    ))
+
+            # Sort by similarity descending
+            available_replacements.sort(key=lambda x: x.similarity_score, reverse=True)
+
+        return pending_deactivations, available_replacements
+
+    async def _apply_workflow_replacements(
+        self,
+        replacements: dict[str, str],
+    ) -> None:
+        """
+        Apply workflow identity replacements.
+
+        For each mapping of old_workflow_id -> new_function_name, update the
+        existing workflow record to use the new function name while preserving
+        the ID (and thus execution history, schedules, etc.).
+
+        Args:
+            replacements: Mapping of workflow_id -> new_function_name
+        """
+        from src.models import Workflow
+
+        for old_id, new_function_name in replacements.items():
+            try:
+                workflow_uuid = UUID_type(old_id)
+            except ValueError:
+                logger.warning(f"Invalid workflow ID in replacement: {old_id}")
+                continue
+
+            # Update the workflow's function_name
+            # The rest of the metadata will be updated by the indexing pass
+            stmt = (
+                update(Workflow)
+                .where(Workflow.id == workflow_uuid)
+                .values(function_name=new_function_name)
+            )
+            await self.db.execute(stmt)
+            logger.info(f"Applied replacement: workflow {old_id} -> function {new_function_name}")
+
     @asynccontextmanager
     async def _get_s3_client(self):
         """Get S3 client context manager."""
@@ -446,6 +762,8 @@ class FileStorageService:
         path: str,
         content: bytes,
         updated_by: str = "system",
+        force_deactivation: bool = False,
+        replacements: dict[str, str] | None = None,
     ) -> WriteResult:
         """
         Write file content to storage and update index.
@@ -458,10 +776,12 @@ class FileStorageService:
             path: Relative path within workspace
             content: File content as bytes
             updated_by: User who made the change
+            force_deactivation: Skip deactivation protection for Python files
+            replacements: Map of workflow_id -> new_function_name for identity transfer
 
         Returns:
             WriteResult containing file record, final content, modification flag,
-            and diagnostics for any issues detected.
+            diagnostics, and pending deactivations if any.
 
         Raises:
             ValueError: If path is excluded (system files, caches, etc.)
@@ -529,7 +849,22 @@ class FileStorageService:
             needs_indexing,
             workflow_id_conflicts,
             diagnostics,
-        ) = await self._extract_metadata(path, content)
+            pending_deactivations,
+            available_replacements,
+        ) = await self._extract_metadata(path, content, force_deactivation, replacements)
+
+        # If there are pending deactivations, return early (caller should raise 409)
+        if pending_deactivations:
+            return WriteResult(
+                file_record=file_record,
+                final_content=final_content,
+                content_modified=content_modified,
+                needs_indexing=needs_indexing,
+                workflow_id_conflicts=workflow_id_conflicts,
+                diagnostics=diagnostics if diagnostics else None,
+                pending_deactivations=pending_deactivations,
+                available_replacements=available_replacements,
+            )
 
         # Publish to Redis pub/sub so other containers sync
         # This notifies workers and other API instances about the file change
@@ -1773,7 +2108,17 @@ class FileStorageService:
         self,
         path: str,
         content: bytes,
-    ) -> tuple[bytes, bool, bool, list[WorkflowIdConflictInfo] | None, list[FileDiagnosticInfo]]:
+        force_deactivation: bool = False,
+        replacements: dict[str, str] | None = None,
+    ) -> tuple[
+        bytes,
+        bool,
+        bool,
+        list[WorkflowIdConflictInfo] | None,
+        list[FileDiagnosticInfo],
+        list[PendingDeactivationInfo] | None,
+        list[AvailableReplacementInfo] | None,
+    ]:
         """
         Extract workflow/form/agent metadata from file content.
 
@@ -1782,35 +2127,56 @@ class FileStorageService:
         Args:
             path: Relative file path
             content: File content bytes
+            force_deactivation: Skip deactivation protection for Python files
+            replacements: Map of workflow_id -> new_function_name for identity transfer
 
         Returns:
-            Tuple of (final_content, content_modified, needs_indexing, conflicts, diagnostics) where:
+            Tuple of (final_content, content_modified, needs_indexing, conflicts, diagnostics,
+                      pending_deactivations, available_replacements) where:
             - final_content: The content (unchanged for Python files)
             - content_modified: True if the content was modified (for forms/agents with ID alignment)
             - needs_indexing: Always False (legacy field)
             - conflicts: Always None (legacy field)
             - diagnostics: List of file issues detected during indexing
+            - pending_deactivations: Workflows that would be deactivated (Python files only)
+            - available_replacements: New functions that could replace deactivated workflows
         """
         try:
             if path.endswith(".py"):
-                return await self._index_python_file(path, content)
+                return await self._index_python_file(
+                    path, content, force_deactivation, replacements
+                )
             elif path.endswith(".form.json"):
-                return await self._index_form(path, content)
+                result = await self._index_form(path, content)
+                # Extend result with None for deactivation fields
+                return (*result, None, None)
             elif path.endswith(".app.json"):
-                return await self._index_app(path, content)
+                result = await self._index_app(path, content)
+                return (*result, None, None)
             elif path.endswith(".agent.json"):
-                return await self._index_agent(path, content)
+                result = await self._index_agent(path, content)
+                return (*result, None, None)
         except Exception as e:
             # Log but don't fail the write
             logger.warning(f"Failed to extract metadata from {path}: {e}")
 
-        return content, False, False, None, []
+        return content, False, False, None, [], None, None
 
     async def _index_python_file(
         self,
         path: str,
         content: bytes,
-    ) -> tuple[bytes, bool, bool, list[WorkflowIdConflictInfo] | None, list[FileDiagnosticInfo]]:
+        force_deactivation: bool = False,
+        replacements: dict[str, str] | None = None,
+    ) -> tuple[
+        bytes,
+        bool,
+        bool,
+        list[WorkflowIdConflictInfo] | None,
+        list[FileDiagnosticInfo],
+        list[PendingDeactivationInfo] | None,
+        list[AvailableReplacementInfo] | None,
+    ]:
         """
         Extract and index workflows/providers from Python file.
 
@@ -1821,17 +2187,25 @@ class FileStorageService:
         IDs are DB-only. Workflows without IDs in decorators will have IDs
         generated in the database using path + function_name as the identity key.
 
+        Includes deactivation protection: if a save would deactivate workflows,
+        returns early with pending_deactivations unless force_deactivation=True.
+
         Args:
             path: File path
             content: File content
+            force_deactivation: If True, skip deactivation protection
+            replacements: Map of workflow_id -> new_function_name for identity transfer
 
         Returns:
-            Tuple of (final_content, content_modified, needs_indexing, conflicts, diagnostics) where:
+            Tuple of (final_content, content_modified, needs_indexing, conflicts, diagnostics,
+                      pending_deactivations, available_replacements) where:
             - final_content: The content (unchanged)
             - content_modified: Always False (no file modifications)
             - needs_indexing: Always False (legacy field)
             - conflicts: Always None (legacy field)
             - diagnostics: List of file issues detected during indexing
+            - pending_deactivations: Workflows that would be deactivated (None if force or none found)
+            - available_replacements: New functions that could replace deactivated workflows
         """
         from src.models import Workflow  # Data providers are in workflows table with type='data_provider'
 
@@ -1841,6 +2215,8 @@ class FileStorageService:
         needs_indexing = False
         workflow_id_conflicts: list[WorkflowIdConflictInfo] | None = None
         diagnostics: list[FileDiagnosticInfo] = []
+        pending_deactivations: list[PendingDeactivationInfo] | None = None
+        available_replacements: list[AvailableReplacementInfo] | None = None
 
         try:
             tree = ast.parse(content_str, filename=path)
@@ -1853,10 +2229,84 @@ class FileStorageService:
                 column=e.offset,
                 source="syntax",
             ))
-            return final_content, content_modified, needs_indexing, workflow_id_conflicts, diagnostics
+            return (
+                final_content, content_modified, needs_indexing, workflow_id_conflicts, diagnostics,
+                pending_deactivations, available_replacements
+            )
 
         now = datetime.utcnow()
 
+        # === PHASE 1: Pre-scan for deactivation detection ===
+        # First pass: collect all decorated function names and their info
+        new_function_names: set[str] = set()
+        new_decorator_info: dict[str, tuple[str, str]] = {}  # func_name -> (decorator_type, display_name)
+
+        for node in ast.walk(tree):
+            if not isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
+                continue
+            for decorator in node.decorator_list:
+                decorator_info = self._parse_decorator(decorator)
+                if not decorator_info:
+                    continue
+                decorator_name, kwargs = decorator_info
+                if decorator_name in ("workflow", "tool", "data_provider"):
+                    func_name = node.name
+                    new_function_names.add(func_name)
+                    display_name = kwargs.get("name") or func_name
+                    # Map decorator type
+                    if decorator_name == "tool":
+                        dtype = "tool"
+                    elif decorator_name == "data_provider":
+                        dtype = "data_provider"
+                    else:
+                        dtype = "workflow"
+                    new_decorator_info[func_name] = (dtype, display_name)
+
+        # Apply replacements first if provided
+        # This transfers workflow identity (preserves ID, execution history, schedules)
+        # by updating the existing record's function_name
+        if replacements:
+            await self._apply_workflow_replacements(replacements)
+
+        # Check for pending deactivations (unless forced)
+        # This runs AFTER replacements so transferred workflows are not flagged
+        if not force_deactivation:
+            pending, replacements_available = await self._detect_pending_deactivations(
+                path, new_function_names, new_decorator_info
+            )
+            if pending:
+                # Return early - caller should raise 409
+                return (
+                    final_content, content_modified, needs_indexing, workflow_id_conflicts, diagnostics,
+                    pending, replacements_available
+                )
+
+        # If force_deactivation is True, deactivate workflows that are no longer in the file
+        # This happens after replacements are applied, so transferred identities are preserved
+        if force_deactivation:
+            # Get workflows at this path that are not in the new content
+            existing_stmt = (
+                select(Workflow)
+                .where(
+                    Workflow.path == path,
+                    Workflow.is_active == True,  # noqa: E712
+                )
+            )
+            existing_result = await self.db.execute(existing_stmt)
+            existing_workflows = existing_result.scalars().all()
+
+            for wf in existing_workflows:
+                if wf.function_name not in new_function_names:
+                    # Deactivate this workflow
+                    deactivate_stmt = (
+                        update(Workflow)
+                        .where(Workflow.id == wf.id)
+                        .values(is_active=False)
+                    )
+                    await self.db.execute(deactivate_stmt)
+                    logger.info(f"Deactivated workflow: {wf.name} ({wf.function_name}) at {path}")
+
+        # === PHASE 2: Main indexing loop ===
         # Track what decorators we find to update workspace_files
         found_workflow = False
         found_data_provider = False
@@ -2137,7 +2587,10 @@ class FileStorageService:
         stmt = update(WorkspaceFile).where(WorkspaceFile.path == path).values(**update_values)
         await self.db.execute(stmt)
 
-        return final_content, content_modified, needs_indexing, workflow_id_conflicts, diagnostics
+        return (
+            final_content, content_modified, needs_indexing, workflow_id_conflicts, diagnostics,
+            pending_deactivations, available_replacements
+        )
 
     def _parse_decorator(self, decorator: ast.AST) -> tuple[str, dict[str, Any]] | None:
         """

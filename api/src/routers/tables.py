@@ -314,26 +314,28 @@ class DocumentRepository:
 # =============================================================================
 
 
+def _resolve_target_org(ctx: Context, scope: str | None) -> UUID | None:
+    """Resolve the target organization ID from scope parameter."""
+    if scope is None:
+        return ctx.org_id
+    if scope == "global":
+        return None
+    try:
+        return UUID(scope)
+    except ValueError:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail=f"Invalid scope: {scope}",
+        )
+
+
 async def get_table_or_404(
     ctx: Context,
     name: str,
     scope: str | None = None,
 ) -> Table:
     """Get table by name or raise 404."""
-    # Determine target org
-    target_org_id = ctx.org_id
-    if scope is not None:
-        if scope == "global":
-            target_org_id = None
-        else:
-            try:
-                target_org_id = UUID(scope)
-            except ValueError:
-                raise HTTPException(
-                    status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
-                    detail=f"Invalid scope: {scope}",
-                )
-
+    target_org_id = _resolve_target_org(ctx, scope)
     repo = TableRepository(ctx.db, target_org_id)
     table = await repo.get_by_name(name)
 
@@ -342,6 +344,32 @@ async def get_table_or_404(
             status_code=status.HTTP_404_NOT_FOUND,
             detail=f"Table '{name}' not found",
         )
+
+    return table
+
+
+async def get_or_create_table(
+    ctx: Context,
+    name: str,
+    scope: str | None = None,
+    created_by: str | None = None,
+) -> Table:
+    """Get table by name, auto-creating if it doesn't exist.
+
+    This is used by insert/upsert/query operations to enable
+    schema-less table usage without explicit table creation.
+    """
+    target_org_id = _resolve_target_org(ctx, scope)
+    repo = TableRepository(ctx.db, target_org_id)
+    table = await repo.get_by_name(name)
+
+    if not table:
+        # Auto-create table with minimal defaults
+        from src.models.contracts.tables import TableCreate
+
+        table_data = TableCreate(name=name)
+        table = await repo.create_table(table_data, created_by=created_by or "system")
+        logger.info(f"Auto-created table '{name}' in org {target_org_id}")
 
     return table
 
@@ -533,8 +561,11 @@ async def insert_document(
     user: CurrentUser,
     scope: str | None = Query(default=None),
 ) -> DocumentPublic:
-    """Insert a new document into the table."""
-    table = await get_table_or_404(ctx, name, scope)
+    """Insert a new document into the table.
+
+    Auto-creates the table if it doesn't exist.
+    """
+    table = await get_or_create_table(ctx, name, scope, created_by=user.email)
     repo = DocumentRepository(ctx.db, table)
 
     doc = await repo.insert(data.data, created_by=user.email)
@@ -630,8 +661,11 @@ async def query_documents(
     user: CurrentUser,
     scope: str | None = Query(default=None),
 ) -> DocumentListResponse:
-    """Query documents with filtering and pagination."""
-    table = await get_table_or_404(ctx, name, scope)
+    """Query documents with filtering and pagination.
+
+    Auto-creates the table if it doesn't exist (returns empty results).
+    """
+    table = await get_or_create_table(ctx, name, scope, created_by=user.email)
     repo = DocumentRepository(ctx.db, table)
 
     documents, total = await repo.query(query_params)
@@ -655,8 +689,11 @@ async def count_documents(
     user: CurrentUser,
     scope: str | None = Query(default=None),
 ) -> DocumentCountResponse:
-    """Count documents in a table."""
-    table = await get_table_or_404(ctx, name, scope)
+    """Count documents in a table.
+
+    Auto-creates the table if it doesn't exist (returns 0).
+    """
+    table = await get_or_create_table(ctx, name, scope, created_by=user.email)
     repo = DocumentRepository(ctx.db, table)
 
     count = await repo.count()
