@@ -12,9 +12,9 @@ from uuid import UUID
 
 from src.core.database import get_db_context
 from src.jobs.rabbitmq import consume_from_exchange, publish_to_exchange
+from src.models.contracts.agents import ChatStreamChunk
 from src.models.enums import CodingModePermission
 from src.services.coding_mode.client import CodingModeClient
-from src.services.coding_mode.models import CodingModeChunk
 from src.services.llm.factory import get_coding_mode_config
 
 logger = logging.getLogger(__name__)
@@ -73,7 +73,7 @@ class CodingAgentHandler:
         client = await self._get_or_create_client(session_id, context)
 
         # Helper to publish chunks to RabbitMQ
-        async def publish_chunk(chunk: CodingModeChunk) -> None:
+        async def publish_chunk(chunk: ChatStreamChunk) -> None:
             chunk_data = chunk.model_dump(exclude_none=True)
             chunk_data["session_id"] = session_id
             chunk_data["conversation_id"] = conversation_id
@@ -134,9 +134,9 @@ class CodingAgentHandler:
         except asyncio.CancelledError:
             logger.info(f"Chat cancelled for session {session_id}")
             # Publish error chunk so frontend knows
-            error_chunk = CodingModeChunk(
+            error_chunk = ChatStreamChunk(
                 type="error",
-                error_message="Chat was cancelled",
+                error="Chat was cancelled",
             )
             await publish_chunk(error_chunk)
 
@@ -144,9 +144,9 @@ class CodingAgentHandler:
             logger.error(f"Error in chat processing: {e}", exc_info=True)
 
             # Publish error chunk so API knows something went wrong
-            error_chunk = CodingModeChunk(
+            error_chunk = ChatStreamChunk(
                 type="error",
-                error_message=str(e),
+                error=str(e),
             )
             await publish_chunk(error_chunk)
 

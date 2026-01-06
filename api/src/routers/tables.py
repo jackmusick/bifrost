@@ -17,8 +17,8 @@ from fastapi import APIRouter, HTTPException, Query, status
 from sqlalchemy import String, cast, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from src.core.auth import Context, CurrentUser
-from src.core.org_filter import OrgFilterType, resolve_org_filter
+from src.core.auth import Context, CurrentSuperuser
+from src.core.org_filter import OrgFilterType, resolve_org_filter, resolve_target_org
 from src.models.contracts.tables import (
     DocumentCountResponse,
     DocumentCreate,
@@ -314,18 +314,14 @@ class DocumentRepository:
 # =============================================================================
 
 
-def _resolve_target_org(ctx: Context, scope: str | None) -> UUID | None:
-    """Resolve the target organization ID from scope parameter."""
-    if scope is None:
-        return ctx.org_id
-    if scope == "global":
-        return None
+def _resolve_target_org_safe(ctx: Context, scope: str | None) -> UUID | None:
+    """Resolve the target organization ID from scope parameter (with auth check)."""
     try:
-        return UUID(scope)
-    except ValueError:
+        return resolve_target_org(ctx.user, scope, ctx.org_id)
+    except ValueError as e:
         raise HTTPException(
             status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
-            detail=f"Invalid scope: {scope}",
+            detail=str(e),
         )
 
 
@@ -335,7 +331,7 @@ async def get_table_or_404(
     scope: str | None = None,
 ) -> Table:
     """Get table by name or raise 404."""
-    target_org_id = _resolve_target_org(ctx, scope)
+    target_org_id = _resolve_target_org_safe(ctx, scope)
     repo = TableRepository(ctx.db, target_org_id)
     table = await repo.get_by_name(name)
 
@@ -359,7 +355,7 @@ async def get_or_create_table(
     This is used by insert/upsert/query operations to enable
     schema-less table usage without explicit table creation.
     """
-    target_org_id = _resolve_target_org(ctx, scope)
+    target_org_id = _resolve_target_org_safe(ctx, scope)
     repo = TableRepository(ctx.db, target_org_id)
     table = await repo.get_by_name(name)
 
@@ -388,27 +384,14 @@ async def get_or_create_table(
 async def create_table(
     data: TableCreate,
     ctx: Context,
-    user: CurrentUser,
+    user: CurrentSuperuser,
     scope: str | None = Query(
         default=None,
         description="Target scope: 'global' or org UUID. Defaults to current org.",
     ),
 ) -> TablePublic:
-    """Create a new table for storing documents."""
-    # Determine target org
-    target_org_id = ctx.org_id
-    if scope is not None:
-        if scope == "global":
-            target_org_id = None
-        else:
-            try:
-                target_org_id = UUID(scope)
-            except ValueError:
-                raise HTTPException(
-                    status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
-                    detail=f"Invalid scope: {scope}",
-                )
-
+    """Create a new table for storing documents (platform admin only)."""
+    target_org_id = _resolve_target_org_safe(ctx, scope)
     repo = TableRepository(ctx.db, target_org_id)
 
     try:
@@ -428,13 +411,13 @@ async def create_table(
 )
 async def list_tables(
     ctx: Context,
-    user: CurrentUser,
+    user: CurrentSuperuser,
     scope: str | None = Query(
         default=None,
         description="Filter scope: 'global' for global only, org UUID for specific org.",
     ),
 ) -> TableListResponse:
-    """List all tables in the current scope."""
+    """List all tables in the current scope (platform admin only)."""
     try:
         filter_type, filter_org = resolve_org_filter(ctx.user, scope)
     except ValueError as e:
@@ -460,10 +443,10 @@ async def list_tables(
 async def get_table(
     name: str,
     ctx: Context,
-    user: CurrentUser,
+    user: CurrentSuperuser,
     scope: str | None = Query(default=None),
 ) -> TablePublic:
-    """Get table metadata by name."""
+    """Get table metadata by name (platform admin only)."""
     table = await get_table_or_404(ctx, name, scope)
     return TablePublic.model_validate(table)
 
@@ -477,24 +460,11 @@ async def update_table(
     name: str,
     data: TableUpdate,
     ctx: Context,
-    user: CurrentUser,
+    user: CurrentSuperuser,
     scope: str | None = Query(default=None),
 ) -> TablePublic:
-    """Update table metadata."""
-    # Determine target org
-    target_org_id = ctx.org_id
-    if scope is not None:
-        if scope == "global":
-            target_org_id = None
-        else:
-            try:
-                target_org_id = UUID(scope)
-            except ValueError:
-                raise HTTPException(
-                    status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
-                    detail=f"Invalid scope: {scope}",
-                )
-
+    """Update table metadata (platform admin only)."""
+    target_org_id = _resolve_target_org_safe(ctx, scope)
     repo = TableRepository(ctx.db, target_org_id)
     table = await repo.update_table(name, data)
 
@@ -515,24 +485,11 @@ async def update_table(
 async def delete_table(
     name: str,
     ctx: Context,
-    user: CurrentUser,
+    user: CurrentSuperuser,
     scope: str | None = Query(default=None),
 ) -> None:
-    """Delete a table and all its documents."""
-    # Determine target org
-    target_org_id = ctx.org_id
-    if scope is not None:
-        if scope == "global":
-            target_org_id = None
-        else:
-            try:
-                target_org_id = UUID(scope)
-            except ValueError:
-                raise HTTPException(
-                    status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
-                    detail=f"Invalid scope: {scope}",
-                )
-
+    """Delete a table and all its documents (platform admin only)."""
+    target_org_id = _resolve_target_org_safe(ctx, scope)
     repo = TableRepository(ctx.db, target_org_id)
     success = await repo.delete_table(name)
 
@@ -558,10 +515,10 @@ async def insert_document(
     name: str,
     data: DocumentCreate,
     ctx: Context,
-    user: CurrentUser,
+    user: CurrentSuperuser,
     scope: str | None = Query(default=None),
 ) -> DocumentPublic:
-    """Insert a new document into the table.
+    """Insert a new document into the table (platform admin only).
 
     Auto-creates the table if it doesn't exist.
     """
@@ -581,10 +538,10 @@ async def get_document(
     name: str,
     doc_id: str,
     ctx: Context,
-    user: CurrentUser,
+    user: CurrentSuperuser,
     scope: str | None = Query(default=None),
 ) -> DocumentPublic:
-    """Get a document by ID."""
+    """Get a document by ID (platform admin only)."""
     table = await get_table_or_404(ctx, name, scope)
     repo = DocumentRepository(ctx.db, table)
 
@@ -608,10 +565,10 @@ async def update_document(
     doc_id: str,
     data: DocumentUpdate,
     ctx: Context,
-    user: CurrentUser,
+    user: CurrentSuperuser,
     scope: str | None = Query(default=None),
 ) -> DocumentPublic:
-    """Update a document (partial update, merges with existing)."""
+    """Update a document (platform admin only, partial update, merges with existing)."""
     table = await get_table_or_404(ctx, name, scope)
     repo = DocumentRepository(ctx.db, table)
 
@@ -634,10 +591,10 @@ async def delete_document(
     name: str,
     doc_id: str,
     ctx: Context,
-    user: CurrentUser,
+    user: CurrentSuperuser,
     scope: str | None = Query(default=None),
 ) -> None:
-    """Delete a document."""
+    """Delete a document (platform admin only)."""
     table = await get_table_or_404(ctx, name, scope)
     repo = DocumentRepository(ctx.db, table)
 
@@ -658,10 +615,10 @@ async def query_documents(
     name: str,
     query_params: DocumentQuery,
     ctx: Context,
-    user: CurrentUser,
+    user: CurrentSuperuser,
     scope: str | None = Query(default=None),
 ) -> DocumentListResponse:
-    """Query documents with filtering and pagination.
+    """Query documents with filtering and pagination (platform admin only).
 
     Auto-creates the table if it doesn't exist (returns empty results).
     """
@@ -686,10 +643,10 @@ async def query_documents(
 async def count_documents(
     name: str,
     ctx: Context,
-    user: CurrentUser,
+    user: CurrentSuperuser,
     scope: str | None = Query(default=None),
 ) -> DocumentCountResponse:
-    """Count documents in a table.
+    """Count documents in a table (platform admin only).
 
     Auto-creates the table if it doesn't exist (returns 0).
     """

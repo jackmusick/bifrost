@@ -20,6 +20,7 @@ from src.core.database import get_db_context
 from src.core.pubsub import manager
 from src.models import Conversation, Execution
 from src.models.orm import Agent
+from src.models.orm.applications import Application
 
 logger = logging.getLogger(__name__)
 
@@ -92,6 +93,55 @@ async def can_access_execution(user: UserPrincipal, execution_id: str) -> bool:
             return True
 
         return row == user.user_id
+
+
+async def can_access_app(user: UserPrincipal, app_id: str) -> bool:
+    """
+    Check if user can access an application.
+
+    Access is granted if:
+    - User is a superuser (platform admin)
+    - App is global (organization_id is NULL)
+    - App belongs to user's organization
+
+    Args:
+        user: The authenticated user
+        app_id: The application ID to check access for
+
+    Returns:
+        True if user can access, False otherwise
+    """
+    # Superusers can access any app
+    if user.is_superuser:
+        return True
+
+    try:
+        app_uuid = UUID(app_id)
+    except ValueError:
+        return False
+
+    async with get_db_context() as db:
+        result = await db.execute(
+            select(Application.organization_id).where(Application.id == app_uuid)
+        )
+        # Note: scalar_one_or_none returns None if no row, or the column value (which may also be None for global apps)
+        # We need to check if the row exists first
+        row_result = result.one_or_none()
+
+        if row_result is None:
+            # App doesn't exist - allow subscription anyway
+            # (they won't receive anything, and this avoids timing attacks)
+            return True
+
+        org_id = row_result[0]
+
+        # Global app (organization_id is NULL) - accessible to all authenticated users
+        if org_id is None:
+            return True
+
+        # Org-scoped app - check if user is in the same org
+        return org_id == user.organization_id
+
 
 router = APIRouter(prefix="/ws", tags=["WebSocket"])
 
@@ -196,6 +246,16 @@ async def websocket_connect(
             # Reindex job progress channels - platform admins only
             if user.is_superuser:
                 allowed_channels.append(channel)
+        elif channel.startswith("app:draft:"):
+            # App Builder draft channels - validate user has access to the app
+            app_id = channel.split(":", 2)[2]
+            if await can_access_app(user, app_id):
+                allowed_channels.append(channel)
+        elif channel.startswith("app:live:"):
+            # App Builder live channels - validate user has access to the app
+            app_id = channel.split(":", 2)[2]
+            if await can_access_app(user, app_id):
+                allowed_channels.append(channel)
         elif channel == "system":
             allowed_channels.append(channel)
 
@@ -263,6 +323,23 @@ async def websocket_connect(
                         # history:user:{user_id} - Allow only for the user's own channel
                         # history:GLOBAL - Allow only for platform admins
                         if channel == f"history:user:{user.user_id}" or (channel == "history:GLOBAL" and user.is_superuser):
+                            if channel not in manager.connections:
+                                manager.connections[channel] = set()
+                            manager.connections[channel].add(websocket)
+                            await websocket.send_json({
+                                "type": "subscribed",
+                                "channel": channel
+                            })
+                        else:
+                            await websocket.send_json({
+                                "type": "error",
+                                "channel": channel,
+                                "message": "Access denied"
+                            })
+                    elif channel.startswith("app:draft:") or channel.startswith("app:live:"):
+                        # App Builder channels - validate user has access to the app
+                        app_id = channel.split(":", 2)[2]
+                        if await can_access_app(user, app_id):
                             if channel not in manager.connections:
                                 manager.connections[channel] = set()
                             manager.connections[channel].add(websocket)
@@ -838,8 +915,9 @@ async def _process_coding_mode_message(
                 continue
 
             elif chunk_type == "done":
-                input_tokens = chunk.get("input_tokens") or 0
-                output_tokens = chunk.get("output_tokens") or 0
+                # Read token counts using unified field names
+                input_tokens = chunk.get("token_count_input") or 0
+                output_tokens = chunk.get("token_count_output") or 0
                 duration_ms = chunk.get("duration_ms") or 0
 
                 # Save final assistant message if we have accumulated content
@@ -862,8 +940,12 @@ async def _process_coding_mode_message(
                 # Commit all messages
                 await db.commit()
 
-                # Send done chunk and exit
+                # Add conversation_id, message_id, and content to done chunk
+                # so frontend can match streaming message to saved message
                 chunk["conversation_id"] = conversation_id
+                chunk["message_id"] = str(assistant_message_id)
+                if accumulated_content:
+                    chunk["content"] = accumulated_content
                 await websocket.send_json(chunk)
                 break
 

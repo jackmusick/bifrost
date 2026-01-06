@@ -10,8 +10,8 @@ from typing import Any
 
 from src.coding_agent.handler import CodingAgentHandler
 from src.jobs.rabbitmq import BaseConsumer, publish_to_exchange
+from src.models.contracts.agents import ChatStreamChunk
 from src.models.enums import CodingModePermission
-from src.services.coding_mode.models import CodingModeChunk
 
 logger = logging.getLogger(__name__)
 
@@ -162,7 +162,7 @@ class CodingAgentConsumer(BaseConsumer):
         # Send mode_changed event back through the response exchange
         if conversation_id:
             response_exchange = f"coding.responses.{session_id}"
-            chunk = CodingModeChunk(
+            chunk = ChatStreamChunk(
                 type="mode_changed",
                 session_id=session_id,
                 permission_mode=permission_mode,

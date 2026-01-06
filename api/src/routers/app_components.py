@@ -14,6 +14,7 @@ from fastapi import APIRouter, HTTPException, Path, Query, status
 from sqlalchemy import select
 
 from src.core.auth import Context, CurrentUser
+from src.core.pubsub import publish_app_draft_update
 from src.models.contracts.applications import (
     AppComponentCreate,
     AppComponentListResponse,
@@ -237,6 +238,16 @@ async def create_component(
 
     await ctx.db.flush()
 
+    # Emit event for real-time updates
+    await publish_app_draft_update(
+        app_id=str(app_id),
+        user_id=str(user.user_id),
+        user_name=user.name or user.email or "Unknown",
+        entity_type="component",
+        entity_id=data.component_id,
+        page_id=page_id,
+    )
+
     logger.info(f"Created component '{data.component_id}' in page {page_id}")
     return service.to_response(component)
 
@@ -271,6 +282,16 @@ async def update_component(
     component = await service.update_component(component, data)
     await ctx.db.flush()
 
+    # Emit event for real-time updates
+    await publish_app_draft_update(
+        app_id=str(app_id),
+        user_id=str(user.user_id),
+        user_name=user.name or user.email or "Unknown",
+        entity_type="component",
+        entity_id=component_id,
+        page_id=page_id,
+    )
+
     logger.info(f"Updated component '{component_id}' in page {page_id}")
     return service.to_response(component)
 
@@ -303,6 +324,16 @@ async def delete_component(
 
     await service.delete_component(component)
     await ctx.db.flush()
+
+    # Emit event for real-time updates
+    await publish_app_draft_update(
+        app_id=str(app_id),
+        user_id=str(user.user_id),
+        user_name=user.name or user.email or "Unknown",
+        entity_type="component",
+        entity_id=component_id,
+        page_id=page_id,
+    )
 
     logger.info(f"Deleted component '{component_id}' from page {page_id}")
 
@@ -343,6 +374,16 @@ async def move_component(
         )
 
     await ctx.db.flush()
+
+    # Emit event for real-time updates
+    await publish_app_draft_update(
+        app_id=str(app_id),
+        user_id=str(user.user_id),
+        user_name=user.name or user.email or "Unknown",
+        entity_type="component",
+        entity_id=component_id,
+        page_id=page_id,
+    )
 
     logger.info(f"Moved component '{component_id}' in page {page_id}")
     return service.to_response(component)

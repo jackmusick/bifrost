@@ -87,6 +87,10 @@ interface ChatState {
 
 	// Todo list from coding mode (SDK's TodoWrite tool)
 	todos: TodoItem[];
+
+	// Real message ID for streaming message (from assistant_message_id in message_start)
+	// Used for seamless handoff from streaming to API message
+	streamingMessageId: string | null;
 }
 
 interface ChatActions {
@@ -151,6 +155,9 @@ interface ChatActions {
 	setTodos: (todos: TodoItem[]) => void;
 	clearTodos: () => void;
 
+	// Streaming message ID (for seamless handoff to API message)
+	setStreamingMessageId: (id: string | null) => void;
+
 	// Reset
 	reset: () => void;
 }
@@ -173,6 +180,7 @@ const initialState: ChatState = {
 	isConnected: false,
 	error: null,
 	todos: [],
+	streamingMessageId: null,
 };
 
 export const useChatStore = create<ChatStore>((set, get) => ({
@@ -609,6 +617,7 @@ export const useChatStore = create<ChatStore>((set, get) => ({
 			isStreaming: false,
 			completedStreamingMessages: [],
 			streamingMessage: null,
+			streamingMessageId: null,
 		});
 	},
 
@@ -645,6 +654,11 @@ export const useChatStore = create<ChatStore>((set, get) => ({
 
 	clearTodos: () => {
 		set({ todos: [] });
+	},
+
+	// Streaming message ID (for seamless handoff to API message)
+	setStreamingMessageId: (id) => {
+		set({ streamingMessageId: id });
 	},
 
 	// Reset

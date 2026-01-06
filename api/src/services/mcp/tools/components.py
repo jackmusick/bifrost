@@ -9,6 +9,7 @@ import logging
 from typing import Any
 from uuid import UUID
 
+from src.core.pubsub import publish_app_draft_update
 from src.services.mcp.tool_decorator import system_tool
 from src.services.mcp.tool_registry import ToolCategory
 
@@ -294,6 +295,16 @@ async def create_component(
 
             await db.commit()
 
+            # Emit event for real-time updates
+            await publish_app_draft_update(
+                app_id=app_id,
+                user_id=str(context.user_id),
+                user_name=context.user_name or context.user_email or "Unknown",
+                entity_type="component",
+                entity_id=component_id,
+                page_id=page_id,
+            )
+
             return json.dumps({
                 "success": True,
                 "component_id": component_id,
@@ -403,6 +414,16 @@ async def update_component(
             await service.update_component(component, data)
             await db.commit()
 
+            # Emit event for real-time updates
+            await publish_app_draft_update(
+                app_id=app_id,
+                user_id=str(context.user_id),
+                user_name=context.user_name or context.user_email or "Unknown",
+                entity_type="component",
+                entity_id=component_id,
+                page_id=page_id,
+            )
+
             return json.dumps({
                 "success": True,
                 "component_id": component_id,
@@ -470,6 +491,16 @@ async def delete_component(
 
             await service.delete_component(component)
             await db.commit()
+
+            # Emit event for real-time updates
+            await publish_app_draft_update(
+                app_id=app_id,
+                user_id=str(context.user_id),
+                user_name=context.user_name or context.user_email or "Unknown",
+                entity_type="component",
+                entity_id=component_id,
+                page_id=page_id,
+            )
 
             return json.dumps({
                 "success": True,
@@ -561,6 +592,16 @@ async def move_component(
                 return json.dumps({"error": str(e)})
 
             await db.commit()
+
+            # Emit event for real-time updates
+            await publish_app_draft_update(
+                app_id=app_id,
+                user_id=str(context.user_id),
+                user_name=context.user_name or context.user_email or "Unknown",
+                entity_type="component",
+                entity_id=component_id,
+                page_id=page_id,
+            )
 
             return json.dumps({
                 "success": True,

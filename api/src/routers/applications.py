@@ -13,14 +13,14 @@ are in separate routers (app_pages.py, app_components.py).
 """
 
 import logging
-from datetime import datetime
 from uuid import UUID
 
 from fastapi import APIRouter, HTTPException, Query, status
 from sqlalchemy import select
 
 from src.core.auth import Context, CurrentUser
-from src.core.org_filter import OrgFilterType, resolve_org_filter
+from src.core.org_filter import OrgFilterType, resolve_org_filter, resolve_target_org
+from src.core.pubsub import publish_app_draft_update, publish_app_published
 from src.models.contracts.applications import (
     ApplicationCreate,
     ApplicationDefinition,
@@ -275,18 +275,14 @@ async def application_to_public(
     )
 
 
-def parse_scope(scope: str | None, default_org_id: UUID | None) -> UUID | None:
-    """Parse scope parameter to target org ID."""
-    if scope is None:
-        return default_org_id
-    if scope == "global":
-        return None
+def _resolve_target_org_safe(ctx: Context, scope: str | None) -> UUID | None:
+    """Resolve target org ID with proper auth check, raising HTTPException on error."""
     try:
-        return UUID(scope)
-    except ValueError:
+        return resolve_target_org(ctx.user, scope, ctx.org_id)
+    except ValueError as e:
         raise HTTPException(
             status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
-            detail=f"Invalid scope: {scope}",
+            detail=str(e),
         )
 
 
@@ -296,7 +292,7 @@ async def get_application_or_404(
     scope: str | None = None,
 ) -> Application:
     """Get application by slug or raise 404."""
-    target_org_id = parse_scope(scope, ctx.org_id)
+    target_org_id = _resolve_target_org_safe(ctx, scope)
     repo = ApplicationRepository(ctx.db, target_org_id)
     application = await repo.get_by_slug(slug)
 
@@ -315,7 +311,7 @@ async def get_application_by_id_or_404(
     scope: str | None = None,
 ) -> Application:
     """Get application by UUID or raise 404."""
-    target_org_id = parse_scope(scope, ctx.org_id)
+    target_org_id = _resolve_target_org_safe(ctx, scope)
     repo = ApplicationRepository(ctx.db, target_org_id)
     application = await repo.get_by_id(app_id)
 
@@ -349,7 +345,7 @@ async def create_application(
     ),
 ) -> ApplicationPublic:
     """Create a new application."""
-    target_org_id = parse_scope(scope, ctx.org_id)
+    target_org_id = _resolve_target_org_safe(ctx, scope)
     repo = ApplicationRepository(ctx.db, target_org_id)
 
     try:
@@ -408,7 +404,7 @@ async def get_application(
     scope: str | None = Query(default=None),
 ) -> ApplicationPublic:
     """Get application metadata by slug."""
-    target_org_id = parse_scope(scope, ctx.org_id)
+    target_org_id = _resolve_target_org_safe(ctx, scope)
     repo = ApplicationRepository(ctx.db, target_org_id)
     application = await get_application_or_404(ctx, slug, scope)
     return await application_to_public(application, repo)
@@ -427,7 +423,7 @@ async def update_application(
     scope: str | None = Query(default=None),
 ) -> ApplicationPublic:
     """Update application metadata and access control."""
-    target_org_id = parse_scope(scope, ctx.org_id)
+    target_org_id = _resolve_target_org_safe(ctx, scope)
     repo = ApplicationRepository(ctx.db, target_org_id)
     application = await repo.update_application(slug, data, updated_by=ctx.user.email)
 
@@ -436,6 +432,15 @@ async def update_application(
             status_code=status.HTTP_404_NOT_FOUND,
             detail=f"Application '{slug}' not found",
         )
+
+    # Emit event for real-time updates
+    await publish_app_draft_update(
+        app_id=str(application.id),
+        user_id=str(user.user_id),
+        user_name=user.name or user.email or "Unknown",
+        entity_type="app",
+        entity_id=str(application.id),
+    )
 
     return await application_to_public(application, repo)
 
@@ -452,7 +457,7 @@ async def delete_application(
     scope: str | None = Query(default=None),
 ) -> None:
     """Delete an application."""
-    target_org_id = parse_scope(scope, ctx.org_id)
+    target_org_id = _resolve_target_org_safe(ctx, scope)
     repo = ApplicationRepository(ctx.db, target_org_id)
     success = await repo.delete_application(slug)
 
@@ -546,7 +551,7 @@ async def publish_application(
     Copies all draft pages and components to live versions.
     Also syncs workflow_access table for execution authorization.
     """
-    target_org_id = parse_scope(scope, ctx.org_id)
+    target_org_id = _resolve_target_org_safe(ctx, scope)
     repo = ApplicationRepository(ctx.db, target_org_id)
 
     try:
@@ -589,6 +594,14 @@ async def publish_application(
             organization_id=application.organization_id,
             pages=live_pages,
             components=live_components,
+        )
+
+        # Emit event for real-time updates
+        await publish_app_published(
+            app_id=str(app_id),
+            user_id=str(user.user_id),
+            user_name=user.name or user.email or "Unknown",
+            new_version_id=str(application.active_version_id),
         )
 
         return await application_to_public(application, repo)
@@ -650,7 +663,7 @@ async def import_application(
 
     Creates a new application with all pages and components from the exported data.
     """
-    target_org_id = parse_scope(scope, ctx.org_id)
+    target_org_id = _resolve_target_org_safe(ctx, scope)
 
     # Check if application already exists
     repo = ApplicationRepository(ctx.db, target_org_id)
@@ -695,7 +708,7 @@ async def rollback_application(
     Sets the specified version as the new active version.
     The draft version remains unchanged.
     """
-    target_org_id = parse_scope(scope, ctx.org_id)
+    target_org_id = _resolve_target_org_safe(ctx, scope)
     repo = ApplicationRepository(ctx.db, target_org_id)
     application = await get_application_by_id_or_404(ctx, app_id, scope)
 

@@ -86,3 +86,53 @@ def resolve_org_filter(
         else:
             # Edge case: org user with no org assigned sees only global
             return (OrgFilterType.GLOBAL_ONLY, None)
+
+
+def resolve_target_org(
+    user: UserPrincipal,
+    scope: str | None,
+    default_org_id: UUID | None = None,
+) -> UUID | None:
+    """
+    Resolve target organization ID for write operations.
+
+    This helper provides consistent organization targeting for create/update/delete:
+    - Superusers can target any org via scope parameter
+    - Non-superusers always target their own org (scope is ignored)
+
+    Args:
+        user: The authenticated user principal
+        scope: Target scope - None (use default), "global", or org UUID string
+        default_org_id: Default org ID when scope is None (usually from context)
+
+    Returns:
+        UUID of target organization, or None for global scope
+
+    Examples:
+        Superuser with scope=None:
+            -> default_org_id (usually their context org or None)
+
+        Superuser with scope="global":
+            -> None (targets global/platform-level resources)
+
+        Superuser with scope="{uuid}":
+            -> UUID (targets specific org)
+
+        Non-superuser (any scope value):
+            -> user.organization_id (always their own org, scope ignored)
+
+    Raises:
+        ValueError: If scope is not a valid UUID or "global"
+    """
+    if user.is_superuser:
+        if scope is None:
+            return default_org_id
+        if scope == "global":
+            return None
+        try:
+            return UUID(scope)
+        except ValueError:
+            raise ValueError(f"Invalid scope value: {scope}")
+    else:
+        # Non-superusers always use their own org, scope is ignored
+        return user.organization_id

@@ -36,6 +36,8 @@ import { evaluateExpression } from "@/lib/expression-parser";
 import { hasPageAccess } from "@/lib/app-builder-permissions";
 import { getIcon } from "@/lib/icons";
 import { WorkflowStatusIndicator } from "./WorkflowStatusIndicator";
+import { AppUpdateIndicator } from "./AppUpdateIndicator";
+import { NewVersionBanner } from "./NewVersionBanner";
 import { useAppBuilderStore } from "@/stores/app-builder.store";
 
 interface AppShellProps {
@@ -61,6 +63,12 @@ interface AppShellProps {
 	 * Useful for editor preview mode where we want to stay on the editor page.
 	 */
 	onNavigate?: (pageId: string) => void;
+	/** Info about the last app update (for showing attribution) */
+	lastUpdate?: { userName: string; timestamp: Date } | null;
+	/** Whether a new published version is available */
+	newVersionAvailable?: boolean;
+	/** Callback to refresh the app when new version is clicked */
+	onRefresh?: () => void;
 }
 
 /**
@@ -77,6 +85,9 @@ export function AppShell({
 	lastCompletedResult,
 	onClearWorkflowResult,
 	onNavigate,
+	lastUpdate,
+	newVersionAvailable,
+	onRefresh,
 }: AppShellProps) {
 	const navigate = useNavigate();
 	// Get base path from store - correctly handles preview mode
@@ -472,6 +483,23 @@ export function AppShell({
 									activeWorkflowNames={activeWorkflowNames}
 									lastCompletedResult={lastCompletedResult}
 									onClearResult={onClearWorkflowResult}
+								/>
+							</div>
+						)}
+
+						{/* App Update Indicator */}
+						{lastUpdate && (
+							<div className="ml-4 hidden sm:block">
+								<AppUpdateIndicator lastUpdate={lastUpdate} />
+							</div>
+						)}
+
+						{/* New Version Banner */}
+						{newVersionAvailable && onRefresh && (
+							<div className="ml-4 hidden sm:block">
+								<NewVersionBanner
+									isVisible={newVersionAvailable}
+									onRefresh={onRefresh}
 								/>
 							</div>
 						)}

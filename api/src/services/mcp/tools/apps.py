@@ -9,6 +9,7 @@ import json
 import logging
 from typing import Any
 
+from src.core.pubsub import publish_app_draft_update, publish_app_published
 from src.services.mcp.tool_decorator import system_tool
 from src.services.mcp.tool_registry import ToolCategory
 
@@ -411,6 +412,15 @@ async def update_app(
 
             await db.commit()
 
+            # Emit event for real-time updates
+            await publish_app_draft_update(
+                app_id=app_id,
+                user_id=str(context.user_id),
+                user_name=context.user_name or context.user_email or "Unknown",
+                entity_type="app",
+                entity_id=app_id,
+            )
+
             return json.dumps({
                 "success": True,
                 "id": str(app.id),
@@ -490,6 +500,14 @@ async def publish_app(context: Any, app_id: str) -> str:
             new_version = await service.publish_with_versioning(app)
 
             await db.commit()
+
+            # Emit event for real-time updates
+            await publish_app_published(
+                app_id=app_id,
+                user_id=str(context.user_id),
+                user_name=context.user_name or context.user_email or "Unknown",
+                new_version_id=str(new_version.id),
+            )
 
             return json.dumps({
                 "success": True,

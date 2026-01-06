@@ -17,6 +17,27 @@ import type { Notification } from "@/stores/notificationStore";
 // Wait reasons for pending executions
 export type WaitReason = "queued" | "memory_pressure";
 
+// App Builder live update types
+export interface AppDraftUpdate {
+	type: "app_draft_update";
+	appId: string;
+	entityType: "page" | "component" | "app";
+	entityId: string;
+	pageId?: string;
+	userId: string;
+	userName: string;
+	timestamp: string;
+}
+
+export interface AppPublishedUpdate {
+	type: "app_published";
+	appId: string;
+	newVersionId: string;
+	userId: string;
+	userName: string;
+	timestamp: string;
+}
+
 // Frontend-specific WebSocket event types (wrappers around backend messages)
 export interface ExecutionUpdate {
 	executionId: string;
@@ -278,7 +299,9 @@ type WebSocketMessage =
 			event: EventSourceEvent;
 	  }
 	| ChatStreamChunk
-	| (ReindexMessage & { jobId: string });
+	| (ReindexMessage & { jobId: string })
+	| AppDraftUpdate
+	| AppPublishedUpdate;
 
 // Notification payload from backend (snake_case)
 interface NotificationPayload {
@@ -307,6 +330,8 @@ type ReindexCallback = (message: ReindexMessage) => void;
 type CLISessionUpdateCallback = (update: CLISessionUpdate) => void;
 type EventSourceUpdateCallback = (update: EventSourceUpdate) => void;
 type ChatStreamCallback = (chunk: ChatStreamChunk) => void;
+type AppDraftUpdateCallback = (update: AppDraftUpdate) => void;
+type AppPublishedUpdateCallback = (update: AppPublishedUpdate) => void;
 
 class WebSocketService {
 	private ws: WebSocket | null = null;
@@ -342,6 +367,14 @@ class WebSocketService {
 	>();
 	private chatStreamCallbacks = new Map<string, ChatStreamCallback>();
 	private reindexCallbacks = new Map<string, Set<ReindexCallback>>();
+	private appDraftUpdateCallbacks = new Map<
+		string,
+		Set<AppDraftUpdateCallback>
+	>();
+	private appPublishedUpdateCallbacks = new Map<
+		string,
+		Set<AppPublishedUpdateCallback>
+	>();
 
 	// Track subscribed channels
 	private subscribedChannels = new Set<string>();
@@ -613,6 +646,15 @@ class WebSocketService {
 					message as ReindexMessage & { jobId: string },
 				);
 				break;
+
+			// App Builder live update message types
+			case "app_draft_update":
+				this.dispatchAppDraftUpdate(message as AppDraftUpdate);
+				break;
+
+			case "app_published":
+				this.dispatchAppPublished(message as AppPublishedUpdate);
+				break;
 		}
 	}
 
@@ -663,6 +705,18 @@ class WebSocketService {
 		// Dispatch to single conversation callback (no duplicates possible)
 		const callback = this.chatStreamCallbacks.get(conversationId);
 		callback?.(chunk);
+	}
+
+	private dispatchAppDraftUpdate(update: AppDraftUpdate) {
+		const appId = update.appId;
+		const callbacks = this.appDraftUpdateCallbacks.get(appId);
+		callbacks?.forEach((cb) => cb(update));
+	}
+
+	private dispatchAppPublished(update: AppPublishedUpdate) {
+		const appId = update.appId;
+		const callbacks = this.appPublishedUpdateCallbacks.get(appId);
+		callbacks?.forEach((cb) => cb(update));
 	}
 
 	private dispatchExecutionUpdate(
@@ -1094,6 +1148,82 @@ class WebSocketService {
 			this.reindexCallbacks.get(jobId)?.delete(callback);
 			if (this.reindexCallbacks.get(jobId)?.size === 0) {
 				this.reindexCallbacks.delete(jobId);
+			}
+		};
+	}
+
+	/**
+	 * Connect to an app's draft channel for live updates
+	 */
+	async connectToAppDraft(appId: string): Promise<void> {
+		const channel = `app:draft:${appId}`;
+		if (this.subscribedChannels.has(channel)) {
+			return;
+		}
+
+		if (this.ws?.readyState === WebSocket.OPEN) {
+			await this.subscribe(channel);
+			return;
+		}
+
+		await this.connect([channel]);
+	}
+
+	/**
+	 * Connect to an app's live channel for publish notifications
+	 */
+	async connectToAppLive(appId: string): Promise<void> {
+		const channel = `app:live:${appId}`;
+		if (this.subscribedChannels.has(channel)) {
+			return;
+		}
+
+		if (this.ws?.readyState === WebSocket.OPEN) {
+			await this.subscribe(channel);
+			return;
+		}
+
+		await this.connect([channel]);
+	}
+
+	/**
+	 * Subscribe to draft updates for an app
+	 */
+	onAppDraftUpdate(
+		appId: string,
+		callback: AppDraftUpdateCallback,
+	): () => void {
+		if (!this.appDraftUpdateCallbacks.has(appId)) {
+			this.appDraftUpdateCallbacks.set(appId, new Set());
+		}
+		this.appDraftUpdateCallbacks.get(appId)!.add(callback);
+
+		// Return unsubscribe function
+		return () => {
+			this.appDraftUpdateCallbacks.get(appId)?.delete(callback);
+			if (this.appDraftUpdateCallbacks.get(appId)?.size === 0) {
+				this.appDraftUpdateCallbacks.delete(appId);
+			}
+		};
+	}
+
+	/**
+	 * Subscribe to publish events for an app
+	 */
+	onAppPublished(
+		appId: string,
+		callback: AppPublishedUpdateCallback,
+	): () => void {
+		if (!this.appPublishedUpdateCallbacks.has(appId)) {
+			this.appPublishedUpdateCallbacks.set(appId, new Set());
+		}
+		this.appPublishedUpdateCallbacks.get(appId)!.add(callback);
+
+		// Return unsubscribe function
+		return () => {
+			this.appPublishedUpdateCallbacks.get(appId)?.delete(callback);
+			if (this.appPublishedUpdateCallbacks.get(appId)?.size === 0) {
+				this.appPublishedUpdateCallbacks.delete(appId);
 			}
 		};
 	}

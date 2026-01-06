@@ -9,6 +9,7 @@ import logging
 from typing import Any
 from uuid import UUID
 
+from src.core.pubsub import publish_app_draft_update
 from src.services.mcp.tool_decorator import system_tool
 from src.services.mcp.tool_registry import ToolCategory
 
@@ -243,6 +244,15 @@ async def create_page(
 
             await db.commit()
 
+            # Emit event for real-time updates
+            await publish_app_draft_update(
+                app_id=app_id,
+                user_id=str(context.user_id),
+                user_name=context.user_name or context.user_email or "Unknown",
+                entity_type="page",
+                entity_id=page_id,
+            )
+
             return json.dumps({
                 "success": True,
                 "page_id": new_page.page_id,
@@ -391,6 +401,15 @@ async def update_page(
 
             await db.commit()
 
+            # Emit event for real-time updates
+            await publish_app_draft_update(
+                app_id=app_id,
+                user_id=str(context.user_id),
+                user_name=context.user_name or context.user_email or "Unknown",
+                entity_type="page",
+                entity_id=page_id,
+            )
+
             return json.dumps({
                 "success": True,
                 "page_id": page.page_id,
@@ -468,6 +487,15 @@ async def delete_page(context: Any, app_id: str, page_id: str) -> str:
             title = page.title
             await db.delete(page)
             await db.commit()
+
+            # Emit event for real-time updates
+            await publish_app_draft_update(
+                app_id=app_id,
+                user_id=str(context.user_id),
+                user_name=context.user_name or context.user_email or "Unknown",
+                entity_type="page",
+                entity_id=page_id,
+            )
 
             return json.dumps({
                 "success": True,

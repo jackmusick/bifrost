@@ -8,7 +8,6 @@ Uses OrgScopedRepository for standardized org scoping.
 
 import logging
 from datetime import datetime
-from uuid import UUID
 
 from fastapi import APIRouter, HTTPException, Query, status
 from sqlalchemy import select
@@ -21,7 +20,7 @@ from src.models import (
 )
 
 from src.core.auth import Context, CurrentSuperuser
-from src.core.org_filter import resolve_org_filter, OrgFilterType
+from src.core.org_filter import resolve_org_filter, resolve_target_org, OrgFilterType
 from src.models import Config as ConfigModel
 from src.models.enums import ConfigType as ConfigTypeEnum
 from src.repositories.org_scoped import OrgScopedRepository
@@ -248,19 +247,13 @@ async def set_config(
     Superusers can specify a scope to create configs in a specific organization
     or explicitly create global configs.
     """
-    # Determine target organization for the config
-    target_org_id = ctx.org_id
-    if user.is_superuser and scope is not None:
-        if scope == "global":
-            target_org_id = None
-        else:
-            try:
-                target_org_id = UUID(scope)
-            except ValueError:
-                raise HTTPException(
-                    status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
-                    detail=f"Invalid scope value: {scope}",
-                )
+    try:
+        target_org_id = resolve_target_org(ctx.user, scope, ctx.org_id)
+    except ValueError as e:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail=str(e),
+        )
 
     repo = ConfigRepository(ctx.db, target_org_id)
 

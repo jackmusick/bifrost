@@ -77,6 +77,7 @@ export function useChatStream({
 		saveToolExecutions,
 		addMessage,
 		setTodos,
+		setStreamingMessageId,
 	} = useChatStore();
 
 	// Update ref when conversationId changes
@@ -121,6 +122,11 @@ export function useChatStream({
 			switch (chunk.type) {
 				case "message_start": {
 					// Backend has saved the user message and generated real IDs
+					// Store the assistant message ID for seamless handoff when streaming completes
+					if (chunk.assistant_message_id) {
+						setStreamingMessageId(chunk.assistant_message_id);
+					}
+
 					// Invalidate messages query to fetch the real user message from DB
 					const convId = currentConversationIdRef.current;
 					if (convId) {
@@ -322,6 +328,7 @@ export function useChatStream({
 			addSystemEvent,
 			saveToolExecutions,
 			setTodos,
+			setStreamingMessageId,
 		],
 	);
 

@@ -14,14 +14,15 @@ from pathlib import Path
 from typing import Any
 from uuid import UUID, uuid4
 
-from src.models.contracts.agents import ToolCall, ToolResult
-from src.models.enums import CodingModePermission
-from src.services.coding_mode.models import (
+from src.models.contracts.agents import (
     AskUserQuestion,
     AskUserQuestionOption,
-    CodingModeChunk,
+    ChatStreamChunk,
     TodoItem,
+    ToolCall,
+    ToolResult,
 )
+from src.models.enums import CodingModePermission
 from src.services.coding_mode.prompts import get_system_prompt
 from src.services.coding_mode.session import SessionManager
 from src.services.mcp import BifrostMCPServer, MCPContext
@@ -163,7 +164,7 @@ class CodingModeClient:
         # For AskUserQuestion support
         self._pending_question: asyncio.Future[dict[str, str]] | None = None
         self._pending_request_id: str | None = None
-        self._chunk_callback: Callable[[CodingModeChunk], Awaitable[None]] | None = None
+        self._chunk_callback: Callable[[ChatStreamChunk], Awaitable[None]] | None = None
 
         # For streaming delta tracking (SDK sends cumulative content, we compute deltas)
         self._last_text_content: str = ""
@@ -219,7 +220,7 @@ class CodingModeClient:
         )
 
     def set_chunk_callback(
-        self, callback: Callable[[CodingModeChunk], Awaitable[None]]
+        self, callback: Callable[[ChatStreamChunk], Awaitable[None]]
     ) -> None:
         """
         Set callback for emitting chunks during can_use_tool.
@@ -274,7 +275,7 @@ class CodingModeClient:
                     for q in input_data.get("questions", [])
                 ]
                 await self._chunk_callback(
-                    CodingModeChunk(
+                    ChatStreamChunk(
                         type="ask_user_question",
                         request_id=request_id,
                         questions=questions,
@@ -316,7 +317,7 @@ class CodingModeClient:
                     for t in todos_data
                 ]
                 await self._chunk_callback(
-                    CodingModeChunk(
+                    ChatStreamChunk(
                         type="todo_update",
                         todos=todos,
                     )
@@ -439,7 +440,7 @@ class CodingModeClient:
         """Get the current permission mode."""
         return self._permission_mode
 
-    async def chat(self, message: str) -> AsyncIterator[CodingModeChunk]:
+    async def chat(self, message: str) -> AsyncIterator[ChatStreamChunk]:
         """
         Send a message and stream the response.
 
@@ -447,7 +448,7 @@ class CodingModeClient:
             message: User message to process
 
         Yields:
-            CodingModeChunk objects for streaming to frontend
+            ChatStreamChunk objects for streaming to frontend
         """
         start_time = time.time()
         total_input_tokens = 0
@@ -486,40 +487,33 @@ class CodingModeClient:
                 # Per Claude Agent SDK docs: usage is a dict with 'input_tokens' and 'output_tokens'
                 # Also available: total_cost_usd for direct cost
                 if isinstance(sdk_message, ResultMessage):
-                    logger.info(f"[SDK DEBUG] ResultMessage received: {sdk_message}")
                     if hasattr(sdk_message, "usage") and sdk_message.usage:
                         total_input_tokens = sdk_message.usage.get("input_tokens", 0) or 0
                         total_output_tokens = sdk_message.usage.get("output_tokens", 0) or 0
-                        logger.info(f"[SDK DEBUG] Token usage: input={total_input_tokens}, output={total_output_tokens}")
-                    else:
-                        logger.warning("[SDK DEBUG] ResultMessage has no 'usage' attribute or it's empty")
                     if hasattr(sdk_message, "total_cost_usd"):
                         total_cost_usd = sdk_message.total_cost_usd or 0.0
-                        logger.info(f"[SDK DEBUG] Total cost: ${total_cost_usd:.4f}")
-                    else:
-                        logger.warning("[SDK DEBUG] ResultMessage has no 'total_cost_usd' attribute")
 
             # Send done chunk with metrics
             duration_ms = int((time.time() - start_time) * 1000)
-            yield CodingModeChunk(
+            yield ChatStreamChunk(
                 type="done",
                 session_id=self.session_id,
-                input_tokens=total_input_tokens,
-                output_tokens=total_output_tokens,
+                token_count_input=total_input_tokens,
+                token_count_output=total_output_tokens,
                 cost_usd=total_cost_usd if total_cost_usd > 0 else None,
                 duration_ms=duration_ms,
             )
 
         except Exception as e:
             logger.exception(f"Error in coding mode chat: {e}")
-            yield CodingModeChunk(
+            yield ChatStreamChunk(
                 type="error",
-                error_message=str(e),
+                error=str(e),
             )
 
     async def _convert_sdk_message(
         self, sdk_message: Any, has_prior_content: bool = False
-    ) -> AsyncIterator[CodingModeChunk]:
+    ) -> AsyncIterator[ChatStreamChunk]:
         """
         Convert Claude Agent SDK message to our chunk format.
 
@@ -532,27 +526,21 @@ class CodingModeClient:
             sdk_message: Message from Claude Agent SDK
             has_prior_content: Whether we've already sent content (for separators)
         """
-        # Debug logging to understand SDK message structure
-        logger.info(f"[SDK DEBUG] Message received: {type(sdk_message).__name__}")
-
         # Handle StreamEvent for ALL real-time streaming data
         if HAS_CLAUDE_SDK and isinstance(sdk_message, StreamEvent):
             event = sdk_message.event
             event_type = event.get("type")
-            logger.info(f"[SDK DEBUG] StreamEvent type: {event_type}")
 
             if event_type == "message_start":
-                yield CodingModeChunk(type="assistant_message_start")
+                yield ChatStreamChunk(type="assistant_message_start")
 
             elif event_type == "content_block_start":
                 content_block = event.get("content_block", {})
                 block_type = content_block.get("type")
-                index = event.get("index", 0)
-                logger.info(f"[SDK DEBUG] content_block_start: type={block_type}, index={index}")
 
                 if block_type == "tool_use":
                     # Tool is being called
-                    yield CodingModeChunk(
+                    yield ChatStreamChunk(
                         type="tool_call",
                         tool_call=ToolCall(
                             id=content_block.get("id", ""),
@@ -574,8 +562,7 @@ class CodingModeClient:
                                 text_parts.append(item.get("text", ""))
                         content = "\n".join(text_parts)
 
-                    logger.info(f"[SDK DEBUG] tool_result: tool_use_id={tool_use_id}, is_error={is_error}")
-                    yield CodingModeChunk(
+                    yield ChatStreamChunk(
                         type="tool_result",
                         tool_result=ToolResult(
                             tool_call_id=tool_use_id,
@@ -592,18 +579,15 @@ class CodingModeClient:
                 if delta_type == "text_delta":
                     text = delta.get("text", "")
                     if text:
-                        yield CodingModeChunk(type="delta", content=text)
+                        yield ChatStreamChunk(type="delta", content=text)
                 # Note: input_json_delta for tool arguments could be handled here too
 
             elif event_type == "message_delta":
-                # Contains stop_reason
-                delta = event.get("delta", {})
-                stop_reason = delta.get("stop_reason")
-                if stop_reason:
-                    logger.info(f"[SDK DEBUG] message_delta stop_reason: {stop_reason}")
+                # Contains stop_reason - no action needed, just consume the event
+                pass
 
             elif event_type == "message_stop":
-                yield CodingModeChunk(
+                yield ChatStreamChunk(
                     type="assistant_message_end",
                     stop_reason="end_turn",
                 )
@@ -613,10 +597,7 @@ class CodingModeClient:
         # AssistantMessage contains final content - skip text (already streamed via StreamEvent)
         # but process ToolResultBlock for tool completion
         if isinstance(sdk_message, AssistantMessage):
-            logger.info(f"[SDK DEBUG] AssistantMessage has {len(sdk_message.content)} content blocks")
-            for i, block in enumerate(sdk_message.content):
-                block_type = type(block).__name__
-                logger.info(f"[SDK DEBUG]   Block {i}: {block_type}")
+            for block in sdk_message.content:
 
                 # Skip TextBlock - already streamed via StreamEvent
                 if isinstance(block, TextBlock):
@@ -626,7 +607,6 @@ class CodingModeClient:
                 elif isinstance(block, ToolResultBlock):
                     tool_use_id = getattr(block, "tool_use_id", None)
                     is_error = getattr(block, "is_error", False)
-                    logger.info(f"[SDK DEBUG]     ToolResultBlock: tool_use_id={tool_use_id}, is_error={is_error}")
 
                     result_content = block.content
                     if isinstance(result_content, list):
@@ -636,7 +616,7 @@ class CodingModeClient:
                                 text_parts.append(item.get("text", ""))
                         result_content = "\n".join(text_parts)
 
-                    yield CodingModeChunk(
+                    yield ChatStreamChunk(
                         type="tool_result",
                         tool_result=ToolResult(
                             tool_call_id=tool_use_id or "",
@@ -649,15 +629,11 @@ class CodingModeClient:
 
         # Handle UserMessage which contains ToolResultBlock from SDK tool execution
         elif isinstance(sdk_message, UserMessage):
-            logger.info(f"[SDK DEBUG] UserMessage has {len(sdk_message.content)} content blocks")
-            for i, block in enumerate(sdk_message.content):
-                block_type = type(block).__name__
-                logger.info(f"[SDK DEBUG]   Block {i}: {block_type}")
+            for block in sdk_message.content:
                 if isinstance(block, ToolResultBlock):
                     # Tool result from SDK execution
                     tool_use_id = getattr(block, "tool_use_id", None)
                     is_error = getattr(block, "is_error", False)
-                    logger.info(f"[SDK DEBUG]     ToolResultBlock: tool_use_id={tool_use_id}, is_error={is_error}")
 
                     result_content = block.content
                     if isinstance(result_content, list):
@@ -669,7 +645,7 @@ class CodingModeClient:
                         result_content = "\n".join(text_parts)
 
                     # Yield tool_result chunk for frontend to update status
-                    yield CodingModeChunk(
+                    yield ChatStreamChunk(
                         type="tool_result",
                         tool_result=ToolResult(
                             tool_call_id=tool_use_id or "",

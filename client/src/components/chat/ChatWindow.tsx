@@ -253,6 +253,9 @@ export function ChatWindow({
 	);
 	const completedStreamingMessages = useCompletedStreamingMessages();
 	const streamingMessage = useStreamingMessage();
+	const streamingMessageId = useChatStore(
+		(state) => state.streamingMessageId,
+	);
 	const todos = useTodos();
 
 	// Use WebSocket streaming
@@ -404,23 +407,22 @@ export function ChatWindow({
 
 	// Clear streaming message once API returns the authoritative data
 	// This prevents the streaming message from lingering after the API message arrives
+	// Uses ID-based matching for reliable handoff (no flashing)
 	const resetStream = useChatStore((state) => state.resetStream);
 	useEffect(() => {
-		if (!streamingMessage?.isComplete || !apiMessages) return;
+		if (!streamingMessage?.isComplete || !streamingMessageId || !apiMessages)
+			return;
 
-		// Check if API now has a message matching the streamed content
-		const streamContent = streamingMessage.content?.slice(0, 100) || "";
+		// Check if API now has the message with matching ID
 		const apiHasMessage = apiMessages.some(
-			(m) =>
-				m.role === "assistant" &&
-				m.content?.slice(0, 100) === streamContent,
+			(m) => m.id === streamingMessageId,
 		);
 
 		if (apiHasMessage) {
 			// API has the message - clear the streaming state
 			resetStream();
 		}
-	}, [streamingMessage, apiMessages, resetStream]);
+	}, [streamingMessage, streamingMessageId, apiMessages, resetStream]);
 
 	// Auto-scroll to bottom on new messages or events (only if user is at bottom)
 	useEffect(() => {
@@ -542,15 +544,13 @@ export function ChatWindow({
 									streamingMessage.toolCalls.length > 0
 								);
 							}
-							// Streaming complete - show until API returns the message
-							// Check if any API message has matching content (first 100 chars)
-							const streamContent =
-								streamingMessage.content?.slice(0, 100) || "";
-							const apiHasMessage = apiMessages?.some(
-								(m) =>
-									m.role === "assistant" &&
-									m.content?.slice(0, 100) === streamContent,
-							);
+							// Streaming complete - show until API returns the message with matching ID
+							// Using ID-based matching for reliable handoff (no flashing)
+							const apiHasMessage =
+								streamingMessageId &&
+								apiMessages?.some(
+									(m) => m.id === streamingMessageId,
+								);
 							return !apiHasMessage;
 						})() && (
 							<StreamingMessageDisplay

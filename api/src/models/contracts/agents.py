@@ -3,13 +3,40 @@ Agent and Chat contract models for Bifrost.
 """
 
 from datetime import datetime
-from typing import Any
+from typing import Any, Literal
 from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field, field_serializer
 
 
-from src.models.enums import AgentAccessLevel, AgentChannel, MessageRole
+from src.models.enums import AgentAccessLevel, AgentChannel, CodingModePermission, MessageRole
+
+
+# ==================== CODING MODE MODELS (shared with coding agent) ====================
+
+
+class TodoItem(BaseModel):
+    """A todo item from the SDK's TodoWrite tool."""
+
+    content: str
+    status: Literal["pending", "in_progress", "completed"]
+    active_form: str
+
+
+class AskUserQuestionOption(BaseModel):
+    """Option for a user question from the SDK."""
+
+    label: str
+    description: str
+
+
+class AskUserQuestion(BaseModel):
+    """Question from SDK requiring user input."""
+
+    question: str
+    header: str
+    options: list[AskUserQuestionOption]
+    multi_select: bool = False
 
 
 # ==================== TOOL CALL MODELS ====================
@@ -275,23 +302,91 @@ class ToolProgress(BaseModel):
 
 
 class ChatStreamChunk(BaseModel):
-    """Streaming chat response chunk."""
-    type: str = Field(..., description="Chunk type: message_start, delta, tool_call, tool_progress, tool_result, agent_switch, context_warning, done, error")
+    """
+    Unified streaming chat response chunk.
+
+    Used by both regular agents and coding agents. This is the single source
+    of truth for streaming chunk format.
+
+    Message boundary signals (coding mode):
+    - assistant_message_start: Emitted when an AssistantMessage begins
+    - assistant_message_end: Emitted when an AssistantMessage is complete
+      (all text and tool_call chunks for this message have been sent)
+
+    This allows the frontend to know when to finalize a message segment,
+    especially important for parallel tool execution where multiple tool_calls
+    belong to the same message.
+    """
+
+    type: Literal[
+        # Regular agent types
+        "message_start",
+        "delta",
+        "tool_call",
+        "tool_progress",
+        "tool_result",
+        "agent_switch",
+        "context_warning",
+        "title_update",
+        "done",
+        "error",
+        # Coding agent types
+        "session_start",
+        "ask_user_question",
+        "assistant_message_start",
+        "assistant_message_end",
+        "todo_update",
+        "mode_changed",
+    ]
+
+    # Text content (for delta)
     content: str | None = None
+
+    # Tool-related fields
     tool_call: ToolCall | None = None
     tool_progress: ToolProgress | None = None
     tool_result: ToolResult | None = None
+    execution_id: str | None = Field(default=None, description="Execution ID for tool_call chunks")
+
+    # Agent switch and context warning
     agent_switch: AgentSwitch | None = None
     context_warning: ContextWarning | None = None
+
+    # Message IDs
     message_id: str | None = None
-    # message_start fields - sent before streaming begins with real UUIDs
     user_message_id: str | None = Field(default=None, description="Real UUID of user message (sent in message_start)")
     assistant_message_id: str | None = Field(default=None, description="Real UUID of assistant message (sent in message_start)")
-    execution_id: str | None = Field(default=None, description="Execution ID for tool_call chunks")
+
+    # Conversation ID (for routing chunks to correct conversation)
+    conversation_id: str | None = None
+
+    # Usage metrics (for done)
     token_count_input: int | None = None
     token_count_output: int | None = None
     duration_ms: int | None = None
+    cost_usd: float | None = Field(default=None, description="Cost in USD (coding mode)")
+
+    # Error info
     error: str | None = None
+
+    # Title update (for title_update type)
+    title: str | None = None
+
+    # Coding mode session fields (for session_start)
+    session_id: str | None = None
+
+    # AskUserQuestion fields (for ask_user_question)
+    questions: list[AskUserQuestion] | None = None
+    request_id: str | None = None
+
+    # Message boundary fields (for assistant_message_end)
+    stop_reason: str | None = Field(default=None, description="Why message ended: 'tool_use' or 'end_turn'")
+
+    # Todo list fields (for todo_update)
+    todos: list[TodoItem] | None = None
+
+    # Permission mode fields (for mode_changed)
+    permission_mode: CodingModePermission | None = None
 
 
 # ==================== ROLE ASSIGNMENT MODELS ====================

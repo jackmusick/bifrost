@@ -37,6 +37,7 @@ import {
 } from "@/components/app-builder/WorkflowExecutionModal";
 import { WorkflowLoadingIndicator } from "@/components/app-builder/WorkflowLoadingIndicator";
 import { useAppBuilderStore } from "@/stores/app-builder.store";
+import { useAppLiveUpdates } from "@/hooks/useAppLiveUpdates";
 import type {
 	ApplicationDefinition,
 	PageDefinition,
@@ -175,13 +176,22 @@ export function ApplicationRunner({
 		error: pagesError,
 	} = useAppPages(application?.id, versionId);
 
+	// Live updates for real-time sync
+	const { lastUpdate, newVersionAvailable, refreshApp, updateCounter } =
+		useAppLiveUpdates({
+			appId: application?.id,
+			mode: preview ? "draft" : "live",
+			currentVersionId: versionId ?? undefined,
+			enabled: !!application?.id,
+		});
+
 	// Track loaded page definitions
 	const [loadedPages, setLoadedPages] = useState<PageDefinition[]>([]);
 	const [isLoadingPageDefinitions, setIsLoadingPageDefinitions] =
 		useState(false);
 	const [pageLoadError, setPageLoadError] = useState<Error | null>(null);
 
-	// Load full page definitions when page list is available
+	// Load full page definitions when page list is available or when live update occurs
 	useEffect(() => {
 		if (!application?.id || !versionId || !pagesResponse?.pages?.length) {
 			setLoadedPages([]);
@@ -218,7 +228,8 @@ export function ApplicationRunner({
 		};
 
 		loadPageDefinitions();
-	}, [application?.id, versionId, pagesResponse?.pages]);
+		// Include updateCounter to reload when live updates arrive
+	}, [application?.id, versionId, pagesResponse?.pages, updateCounter]);
 
 	// Combine loading states
 	const isLoadingDef = isLoadingPages || isLoadingPageDefinitions;
@@ -774,6 +785,9 @@ export function ApplicationRunner({
 				activeWorkflowNames={activeWorkflowNames}
 				lastCompletedResult={lastCompletedResult}
 				onClearWorkflowResult={() => setLastCompletedResult(undefined)}
+				lastUpdate={lastUpdate}
+				newVersionAvailable={newVersionAvailable}
+				onRefresh={refreshApp}
 			>
 				{appContent}
 			</AppShell>

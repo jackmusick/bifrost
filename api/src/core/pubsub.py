@@ -732,3 +732,81 @@ async def publish_reindex_failed(
         "error": error,
     }
     await manager.broadcast(f"reindex:{job_id}", message)
+
+
+# =============================================================================
+# App Builder Pub/Sub
+# =============================================================================
+# These functions enable real-time updates for App Builder applications.
+# - Draft mode viewers see changes instantly when MCP/editor makes modifications
+# - Published app users see a "New Version Available" indicator when republished
+
+
+async def publish_app_draft_update(
+    app_id: str,
+    user_id: str,
+    user_name: str,
+    entity_type: str,  # 'page' | 'component' | 'app'
+    entity_id: str,
+    page_id: str | None = None,
+) -> None:
+    """
+    Broadcast draft changes to app:draft:{app_id} channel.
+
+    Notifies draft mode viewers when pages, components, or app settings
+    are modified by MCP tools or the visual editor.
+
+    Args:
+        app_id: Application ID
+        user_id: User who made the change
+        user_name: Display name of the user
+        entity_type: Type of entity changed ('page', 'component', 'app')
+        entity_id: ID of the changed entity
+        page_id: Page ID (for component changes)
+    """
+    from datetime import datetime, timezone
+
+    channel = f"app:draft:{app_id}"
+    message = {
+        "type": "app_draft_update",
+        "appId": app_id,
+        "entityType": entity_type,
+        "entityId": entity_id,
+        "pageId": page_id,
+        "userId": user_id,
+        "userName": user_name,
+        "timestamp": datetime.now(timezone.utc).isoformat(),
+    }
+    await manager.broadcast(channel, message)
+
+
+async def publish_app_published(
+    app_id: str,
+    user_id: str,
+    user_name: str,
+    new_version_id: str,
+) -> None:
+    """
+    Broadcast publish event to app:live:{app_id} channel.
+
+    Notifies live app viewers that a new version has been published,
+    allowing them to see a "New Version Available" indicator.
+
+    Args:
+        app_id: Application ID
+        user_id: User who published the app
+        user_name: Display name of the user
+        new_version_id: ID of the newly published version
+    """
+    from datetime import datetime, timezone
+
+    channel = f"app:live:{app_id}"
+    message = {
+        "type": "app_published",
+        "appId": app_id,
+        "newVersionId": new_version_id,
+        "userId": user_id,
+        "userName": user_name,
+        "timestamp": datetime.now(timezone.utc).isoformat(),
+    }
+    await manager.broadcast(channel, message)

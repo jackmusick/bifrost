@@ -12,7 +12,8 @@ Usage:
         yield chunk
 """
 
+from src.models.contracts.agents import ChatStreamChunk
 from src.services.coding_mode.client import CodingModeClient
-from src.services.coding_mode.models import CodingModeChunk, CodingModeSession
+from src.services.coding_mode.models import CodingModeSession
 
-__all__ = ["CodingModeClient", "CodingModeChunk", "CodingModeSession"]
+__all__ = ["CodingModeClient", "ChatStreamChunk", "CodingModeSession"]

@@ -23,6 +23,7 @@ from src.models.contracts.applications import (
     AppPageUpdate,
     PageDefinition,
 )
+from src.core.pubsub import publish_app_draft_update
 from src.models.orm.applications import AppPage, Application
 from src.services.app_builder_service import AppBuilderService
 
@@ -305,6 +306,15 @@ async def create_page(
 
     await ctx.db.flush()
 
+    # Emit event for real-time updates
+    await publish_app_draft_update(
+        app_id=str(app_id),
+        user_id=str(user.user_id),
+        user_name=user.name or user.email or "Unknown",
+        entity_type="page",
+        entity_id=data.page_id,
+    )
+
     logger.info(f"Created page '{data.page_id}' in app {app_id}")
     return page_to_response(page)
 
@@ -353,6 +363,15 @@ async def update_page(
     await ctx.db.flush()
     await ctx.db.refresh(page)
 
+    # Emit event for real-time updates
+    await publish_app_draft_update(
+        app_id=str(app_id),
+        user_id=str(user.user_id),
+        user_name=user.name or user.email or "Unknown",
+        entity_type="page",
+        entity_id=page_id,
+    )
+
     logger.info(f"Updated page '{page_id}' in app {app_id}")
     return page_to_response(page)
 
@@ -377,6 +396,15 @@ async def delete_page(
     await ctx.db.delete(page)
 
     await ctx.db.flush()
+
+    # Emit event for real-time updates
+    await publish_app_draft_update(
+        app_id=str(app_id),
+        user_id=str(user.user_id),
+        user_name=user.name or user.email or "Unknown",
+        entity_type="page",
+        entity_id=page_id,
+    )
 
     logger.info(f"Deleted page '{page_id}' from app {app_id}")
 
@@ -408,6 +436,15 @@ async def replace_page_layout(
 
     await ctx.db.flush()
     await ctx.db.refresh(page)
+
+    # Emit event for real-time updates
+    await publish_app_draft_update(
+        app_id=str(app_id),
+        user_id=str(user.user_id),
+        user_name=user.name or user.email or "Unknown",
+        entity_type="page",
+        entity_id=page_id,
+    )
 
     logger.info(f"Replaced layout for page '{page_id}' in app {app_id}")
     return page_to_response(page)
