@@ -35,7 +35,7 @@ class UserPrincipal:
     """
     user_id: UUID
     email: str
-    organization_id: UUID  # User's home organization (always set)
+    organization_id: UUID | None  # User's home org (None for PLATFORM users)
     name: str = ""
     user_type: str = "ORG"  # PLATFORM, ORG, or SYSTEM
     is_active: bool = True
@@ -160,7 +160,24 @@ async def get_current_user_optional(
         )
         return None
 
-    # Extract org_id from JWT - required for all users
+    # Check user_type first to handle PLATFORM users (engine, system)
+    user_type = payload.get("user_type", "ORG")
+
+    # PLATFORM users (engine, system) don't require org_id - they operate globally
+    if user_type == "PLATFORM":
+        return UserPrincipal(
+            user_id=user_id,
+            email=payload.get("email", ""),
+            organization_id=None,  # PLATFORM users operate globally
+            name=payload.get("name", ""),
+            user_type=user_type,
+            is_active=True,
+            is_superuser=payload.get("is_superuser", False),
+            is_verified=True,
+            roles=payload.get("roles", []),
+        )
+
+    # For non-PLATFORM users, org_id is required
     org_id_str = payload.get("org_id")
     if not org_id_str:
         logger.warning(
@@ -180,7 +197,7 @@ async def get_current_user_optional(
         email=payload.get("email", ""),
         organization_id=org_id,
         name=payload.get("name", ""),
-        user_type=payload.get("user_type", "ORG"),
+        user_type=user_type,
         is_active=True,  # Token is valid, user was active at issue time
         is_superuser=payload.get("is_superuser", False),
         is_verified=True,
@@ -402,7 +419,24 @@ async def get_current_user_ws(websocket) -> UserPrincipal | None:
         )
         return None
 
-    # Extract org_id from JWT - required for all users
+    # Check user_type first to handle PLATFORM users (engine, system)
+    user_type = payload.get("user_type", "ORG")
+
+    # PLATFORM users (engine, system) don't require org_id - they operate globally
+    if user_type == "PLATFORM":
+        return UserPrincipal(
+            user_id=user_id,
+            email=payload.get("email", ""),
+            organization_id=None,  # PLATFORM users operate globally
+            name=payload.get("name", ""),
+            user_type=user_type,
+            is_active=True,
+            is_superuser=payload.get("is_superuser", False),
+            is_verified=True,
+            roles=payload.get("roles", []),
+        )
+
+    # For non-PLATFORM users, org_id is required
     org_id_str = payload.get("org_id")
     if not org_id_str:
         logger.warning(
@@ -422,7 +456,7 @@ async def get_current_user_ws(websocket) -> UserPrincipal | None:
         email=payload.get("email", ""),
         organization_id=org_id,
         name=payload.get("name", ""),
-        user_type=payload.get("user_type", "ORG"),
+        user_type=user_type,
         is_active=True,
         is_superuser=payload.get("is_superuser", False),
         is_verified=True,

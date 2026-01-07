@@ -193,6 +193,7 @@ async def get_workflow_for_execution(
         "time_saved": workflow_record.time_saved or 0,
         "value": float(workflow_record.value) if workflow_record.value else 0.0,
         "execution_mode": workflow_record.execution_mode or "async",
+        "organization_id": str(workflow_record.organization_id) if workflow_record.organization_id else None,
     }
 
 

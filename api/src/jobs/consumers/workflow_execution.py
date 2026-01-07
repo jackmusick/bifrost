@@ -176,6 +176,14 @@ class WorkflowExecutionConsumer(BaseConsumer):
                     # Initialize ROI from workflow defaults
                     roi_time_saved = workflow_data["time_saved"]
                     roi_value = workflow_data["value"]
+
+                    # Fallback: if user's org_id is None, use workflow's organization_id
+                    # This handles system-triggered workflows (schedules, webhooks) that
+                    # need to use the workflow's org scope for SDK operations
+                    workflow_org_id = workflow_data.get("organization_id")
+                    if org_id is None and workflow_org_id:
+                        org_id = workflow_org_id
+                        logger.info(f"Using workflow org_id fallback: {org_id}")
                 except WorkflowNotFoundError:
                     logger.error(f"Workflow not found: {workflow_id}")
                     duration_ms = int((datetime.utcnow() - start_time).total_seconds() * 1000)
