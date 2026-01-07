@@ -21,6 +21,7 @@ import {
 	Webhook,
 	Database,
 	AppWindow,
+	Network,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useAuth } from "@/contexts/AuthContext";
@@ -131,6 +132,12 @@ const navSections: NavSection[] = [
 				title: "Schedules",
 				href: "/schedules",
 				icon: Clock,
+				requiresPlatformAdmin: true,
+			},
+			{
+				title: "Dependencies",
+				href: "/dependencies",
+				icon: Network,
 				requiresPlatformAdmin: true,
 			},
 		],

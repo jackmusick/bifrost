@@ -153,9 +153,11 @@ class ApplicationRepository(OrgScopedRepository[Application]):
         slug: str,
         data: ApplicationUpdate,
         updated_by: str,
+        is_platform_admin: bool = False,
     ) -> Application | None:
         """Update application metadata and access control."""
-        application = await self.get_by_slug_strict(slug)
+        # Use cascade lookup to find global or org-scoped apps
+        application = await self.get_by_slug(slug)
         if not application:
             return None
 
@@ -168,6 +170,16 @@ class ApplicationRepository(OrgScopedRepository[Application]):
         if data.access_level is not None:
             application.access_level = data.access_level
 
+        # Handle scope change (platform admin only)
+        if data.scope is not None and is_platform_admin:
+            if data.scope == "global":
+                application.organization_id = None
+            else:
+                try:
+                    application.organization_id = UUID(data.scope)
+                except ValueError:
+                    pass  # Invalid UUID, ignore
+
         # Update role associations if provided
         if data.role_ids is not None:
             # Delete existing role associations
@@ -176,8 +188,9 @@ class ApplicationRepository(OrgScopedRepository[Application]):
             for existing_role in result.scalars().all():
                 await self.session.delete(existing_role)
 
-            # Add new role associations
-            for role_id in data.role_ids:
+            # Add new role associations (deduplicate to avoid unique constraint violation)
+            unique_role_ids = set(data.role_ids)
+            for role_id in unique_role_ids:
                 app_role = AppRole(
                     app_id=application.id,
                     role_id=role_id,
@@ -193,7 +206,8 @@ class ApplicationRepository(OrgScopedRepository[Application]):
 
     async def delete_application(self, slug: str) -> bool:
         """Delete an application (cascade deletes pages and components)."""
-        application = await self.get_by_slug_strict(slug)
+        # Use cascade lookup to find global or org-scoped apps
+        application = await self.get_by_slug(slug)
         if not application:
             return False
 
@@ -425,7 +439,12 @@ async def update_application(
     """Update application metadata and access control."""
     target_org_id = _resolve_target_org_safe(ctx, scope)
     repo = ApplicationRepository(ctx.db, target_org_id)
-    application = await repo.update_application(slug, data, updated_by=ctx.user.email)
+    application = await repo.update_application(
+        slug,
+        data,
+        updated_by=ctx.user.email,
+        is_platform_admin=user.is_platform_admin,
+    )
 
     if not application:
         raise HTTPException(

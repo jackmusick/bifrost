@@ -22,6 +22,8 @@ import {
 	Check,
 	Variable,
 	PanelRightClose,
+	Shield,
+	Users,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -36,6 +38,9 @@ import {
 	CardHeader,
 	CardTitle,
 } from "@/components/ui/card";
+import { Alert, AlertDescription } from "@/components/ui/alert";
+import { Checkbox } from "@/components/ui/checkbox";
+import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import {
 	Dialog,
 	DialogContent,
@@ -50,9 +55,11 @@ import {
 	useApplication,
 	useAppPages,
 	useCreateApplication,
+	useUpdateApplication,
 	usePublishApplication,
 	getAppPage,
 } from "@/hooks/useApplications";
+import { useRoles } from "@/hooks/useRoles";
 import { useWorkflows } from "@/hooks/useWorkflows";
 import { useWorkflowExecution } from "@/hooks/useWorkflowExecution";
 import { apiClient } from "@/lib/api-client";
@@ -190,6 +197,15 @@ export function ApplicationEditor() {
 	const [organizationId, setOrganizationId] = useState<string | null>(
 		defaultOrgId,
 	);
+	const [accessLevel, setAccessLevel] = useState<"authenticated" | "role_based">("authenticated");
+	const [selectedRoleIds, setSelectedRoleIds] = useState<string[]>([]);
+
+	// Track original values for scope change warning
+	const [originalOrganizationId, setOriginalOrganizationId] = useState<string | null>(null);
+
+	// Fetch roles for role-based access
+	const { data: rolesData } = useRoles();
+	const updateApplication = useUpdateApplication();
 
 	// Application definition state (built from pages)
 	const [definition, setDefinition] = useState<AppDefinitionType | null>(
@@ -215,6 +231,11 @@ export function ApplicationEditor() {
 	// Preview tab state
 	const [previewPageId, setPreviewPageId] = useState<string | null>(null);
 	const [isVariablesPanelOpen, setIsVariablesPanelOpen] = useState(false);
+
+	// Save badge state
+	const [recentlySaved, setRecentlySaved] = useState(false);
+	const recentlySavedTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+	const prevIsSavingRef = useRef(false);
 
 	// App runtime store for expression context
 	const appStore = useAppBuilderStore();
@@ -357,6 +378,11 @@ export function ApplicationEditor() {
 			setDescription(existingApp.description || "");
 			setSlug(existingApp.slug || "");
 			setOrganizationId(existingApp.organization_id ?? defaultOrgId);
+			setOriginalOrganizationId(existingApp.organization_id ?? defaultOrgId);
+			setAccessLevel(
+				(existingApp.access_level as "authenticated" | "role_based") || "authenticated"
+			);
+			setSelectedRoleIds(existingApp.role_ids || []);
 		}
 	}, [existingApp, defaultOrgId]);
 
@@ -449,54 +475,18 @@ export function ApplicationEditor() {
 		}
 	}, [name, slug, isEditing]);
 
-	// Debounced page metadata save
-	const pageMetadataSaveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+	// Track last saved page metadata to avoid duplicate saves
 	const lastSavedPageMetadataRef = useRef<string>("");
-
-	// Save page metadata (launch workflow, variables, etc.) to backend
-	const savePageMetadata = useCallback(
-		async (page: FrontendPageDefinition) => {
-			if (!existingApp?.id || !page.id) return;
-
-			try {
-				await apiClient.PATCH(
-					"/api/applications/{app_id}/pages/{page_id}",
-					{
-						params: {
-							path: { app_id: existingApp.id, page_id: page.id },
-						},
-						body: {
-							title: page.title,
-							path: page.path,
-							variables: page.variables,
-							launch_workflow_id: page.launchWorkflowId ?? null,
-							launch_workflow_params:
-								page.launchWorkflowParams ?? null,
-							launch_workflow_data_source_id:
-								page.launchWorkflowDataSourceId ?? null,
-						},
-					},
-				);
-			} catch (error) {
-				console.error(
-					"[ApplicationEditor] Failed to save page metadata:",
-					error,
-				);
-				toast.error("Failed to save page settings");
-			}
-		},
-		[existingApp?.id],
-	);
 
 	// Handle definition changes from visual editor
 	// Note: This is called for ALL definition changes (including those from granular saves)
-	// The save queue handles actual persistence for components, page metadata is saved here
+	// The save queue handles actual persistence for both components and page metadata
 	const handleDefinitionChange = useCallback(
 		(newDefinition: AppDefinitionType) => {
 			setDefinition(newDefinition);
 
-			// Check if page metadata changed and trigger debounced save
-			if (isEditing && currentPageId) {
+			// Check if page metadata changed and enqueue to save queue
+			if (isEditing && currentPageId && existingApp?.id) {
 				const currentPage = newDefinition.pages.find(
 					(p) => p.id === currentPageId,
 				);
@@ -510,25 +500,30 @@ export function ApplicationEditor() {
 						launchWorkflowParams: currentPage.launchWorkflowParams,
 						launchWorkflowDataSourceId:
 							currentPage.launchWorkflowDataSourceId,
+						permission: currentPage.permission,
 					});
 
 					// Only save if metadata actually changed
 					if (metadataKey !== lastSavedPageMetadataRef.current) {
-						// Clear any pending save
-						if (pageMetadataSaveTimerRef.current) {
-							clearTimeout(pageMetadataSaveTimerRef.current);
-						}
+						lastSavedPageMetadataRef.current = metadataKey;
 
-						// Debounced save (500ms)
-						pageMetadataSaveTimerRef.current = setTimeout(() => {
-							lastSavedPageMetadataRef.current = metadataKey;
-							savePageMetadata(currentPage);
-						}, 500);
+						// Enqueue page update to save queue (debounced automatically)
+						saveQueue.enqueuePageUpdate(currentPage.id, {
+							title: currentPage.title,
+							path: currentPage.path,
+							variables: currentPage.variables,
+							launch_workflow_id: currentPage.launchWorkflowId ?? null,
+							launch_workflow_params:
+								currentPage.launchWorkflowParams ?? null,
+							launch_workflow_data_source_id:
+								currentPage.launchWorkflowDataSourceId ?? null,
+							permission: currentPage.permission as { [key: string]: unknown } | null | undefined,
+						});
 					}
 				}
 			}
 		},
-		[isEditing, currentPageId, savePageMetadata],
+		[isEditing, currentPageId, existingApp?.id, saveQueue],
 	);
 
 	// Initialize the lastSavedPageMetadata when page loads
@@ -546,10 +541,41 @@ export function ApplicationEditor() {
 					launchWorkflowParams: currentPage.launchWorkflowParams,
 					launchWorkflowDataSourceId:
 						currentPage.launchWorkflowDataSourceId,
+					permission: currentPage.permission,
 				});
 			}
 		}
 	}, [definition, currentPageId]);
+
+	// Watch for save completion to show "Saved" badge briefly
+	useEffect(() => {
+		const wasSaving = prevIsSavingRef.current;
+		const nowSaving = saveQueue.isSaving;
+
+		// Transition from saving → not saving = save completed
+		if (wasSaving && !nowSaving && !hasUnsavedChanges) {
+			setRecentlySaved(true);
+
+			// Clear any existing timeout
+			if (recentlySavedTimeoutRef.current) {
+				clearTimeout(recentlySavedTimeoutRef.current);
+			}
+
+			// Hide "Saved" badge after 2 seconds
+			recentlySavedTimeoutRef.current = setTimeout(() => {
+				setRecentlySaved(false);
+			}, 2000);
+		}
+
+		prevIsSavingRef.current = nowSaving;
+
+		// Cleanup on unmount
+		return () => {
+			if (recentlySavedTimeoutRef.current) {
+				clearTimeout(recentlySavedTimeoutRef.current);
+			}
+		};
+	}, [saveQueue.isSaving, hasUnsavedChanges]);
 
 	// Handle page reordering with immediate save to backend
 	const handleReorderPages = useCallback(
@@ -586,15 +612,6 @@ export function ApplicationEditor() {
 		},
 		[existingApp?.id],
 	);
-
-	// Cleanup debounce timer on unmount
-	useEffect(() => {
-		return () => {
-			if (pageMetadataSaveTimerRef.current) {
-				clearTimeout(pageMetadataSaveTimerRef.current);
-			}
-		};
-	}, []);
 
 	// Granular save callbacks - these are called by EditorShell for real-time saves
 	const handleComponentCreate = useCallback(
@@ -672,7 +689,8 @@ export function ApplicationEditor() {
 					name,
 					description: description || null,
 					slug,
-					access_level: "authenticated",
+					access_level: accessLevel,
+					role_ids: accessLevel === "role_based" ? selectedRoleIds : undefined,
 				},
 			});
 
@@ -825,6 +843,7 @@ export function ApplicationEditor() {
 						)}
 						{!saveQueue.isSaving &&
 							!hasUnsavedChanges &&
+							recentlySaved &&
 							isEditing && (
 								<Badge
 									variant="outline"
@@ -834,9 +853,11 @@ export function ApplicationEditor() {
 									Saved
 								</Badge>
 							)}
-						{existingApp?.has_unpublished_changes && (
-							<Badge variant="outline">Draft</Badge>
-						)}
+						{!recentlySaved &&
+							existingApp?.has_unpublished_changes &&
+							isEditing && (
+								<Badge variant="outline">Draft</Badge>
+							)}
 					</div>
 				</div>
 
@@ -909,6 +930,8 @@ export function ApplicationEditor() {
 						onReorderPages={
 							isEditing ? handleReorderPages : undefined
 						}
+						appAccessLevel={accessLevel}
+						appRoleIds={selectedRoleIds}
 					/>
 				) : (
 					<div className="flex h-full items-center justify-center">
@@ -926,7 +949,8 @@ export function ApplicationEditor() {
 
 			{/* Settings Tab */}
 			<TabsContent value="settings" className="flex-1 overflow-auto mt-0">
-				<div className="max-w-2xl mx-auto py-6">
+				<div className="max-w-2xl mx-auto py-6 space-y-6">
+					{/* Basic Settings Card */}
 					<Card>
 						<CardHeader>
 							<CardTitle>Application Settings</CardTitle>
@@ -978,15 +1002,172 @@ export function ApplicationEditor() {
 
 							{isPlatformAdmin && (
 								<div className="space-y-2">
-									<Label>Organization</Label>
+									<Label>Organization Scope</Label>
 									<OrganizationSelect
 										value={organizationId}
 										onChange={(val) =>
 											setOrganizationId(val ?? null)
 										}
 										showGlobal={true}
-										disabled={isEditing}
 									/>
+									{isEditing && organizationId !== originalOrganizationId && (
+										<Alert className="mt-2 bg-amber-50 border-amber-200 dark:bg-amber-950 dark:border-amber-800">
+											<AlertTriangle className="h-4 w-4 text-amber-600 dark:text-amber-400" />
+											<AlertDescription className="text-amber-800 dark:text-amber-200">
+												Changing application scope affects which organizations can access this app.
+												Users from other organizations may lose access.
+											</AlertDescription>
+										</Alert>
+									)}
+								</div>
+							)}
+						</CardContent>
+					</Card>
+
+					{/* Access Control Card */}
+					<Card>
+						<CardHeader>
+							<CardTitle className="flex items-center gap-2">
+								<Shield className="h-5 w-5" />
+								Access Control
+							</CardTitle>
+							<CardDescription>
+								Configure who can access this application.
+							</CardDescription>
+						</CardHeader>
+						<CardContent className="space-y-4">
+							<div className="space-y-3">
+								<Label>Access Level</Label>
+								<RadioGroup
+									value={accessLevel}
+									onValueChange={(value) => setAccessLevel(value as "authenticated" | "role_based")}
+									className="space-y-2"
+								>
+									<div className="flex items-center space-x-3 rounded-lg border p-4 hover:bg-accent/50 transition-colors">
+										<RadioGroupItem value="authenticated" id="access-authenticated" />
+										<div className="flex-1">
+											<Label htmlFor="access-authenticated" className="cursor-pointer font-medium">
+												<div className="flex items-center gap-2">
+													<Users className="h-4 w-4" />
+													All Authenticated Users
+												</div>
+											</Label>
+											<p className="text-sm text-muted-foreground">
+												Any logged-in user within the organization scope can access this app.
+											</p>
+										</div>
+									</div>
+									<div className="flex items-center space-x-3 rounded-lg border p-4 hover:bg-accent/50 transition-colors">
+										<RadioGroupItem value="role_based" id="access-role-based" />
+										<div className="flex-1">
+											<Label htmlFor="access-role-based" className="cursor-pointer font-medium">
+												<div className="flex items-center gap-2">
+													<Shield className="h-4 w-4" />
+													Specific Roles Only
+												</div>
+											</Label>
+											<p className="text-sm text-muted-foreground">
+												Only users with selected roles can access this app.
+											</p>
+										</div>
+									</div>
+								</RadioGroup>
+							</div>
+
+							{accessLevel === "role_based" && (
+								<div className="space-y-3 pt-2">
+									<Label>Allowed Roles</Label>
+									{!rolesData?.length ? (
+										<p className="text-sm text-muted-foreground">
+											No roles available. Create roles in the Roles section first.
+										</p>
+									) : (
+										<div className="space-y-2 max-h-64 overflow-y-auto">
+											{rolesData.map((role) => {
+												const isSelected = selectedRoleIds.includes(role.id);
+												return (
+													<label
+														key={role.id}
+														htmlFor={`role-${role.id}`}
+														className={`flex items-start space-x-3 rounded-lg border p-3 hover:bg-accent/50 transition-colors cursor-pointer ${
+															isSelected ? 'border-primary bg-primary/5' : ''
+														}`}
+													>
+														<Checkbox
+															id={`role-${role.id}`}
+															checked={isSelected}
+															onCheckedChange={(checked) => {
+																setSelectedRoleIds(prev =>
+																	checked
+																		? [...prev, role.id]
+																		: prev.filter(id => id !== role.id)
+																);
+															}}
+														/>
+														<div className="flex-1">
+															<span className="cursor-pointer font-medium">
+																{role.name}
+															</span>
+															{role.description && (
+																<p className="text-sm text-muted-foreground">
+																	{role.description}
+																</p>
+															)}
+														</div>
+													</label>
+												);
+											})}
+										</div>
+									)}
+									{accessLevel === "role_based" && selectedRoleIds.length === 0 && (
+										<Alert className="mt-2">
+											<AlertTriangle className="h-4 w-4" />
+											<AlertDescription>
+												No roles selected. Select at least one role to allow access.
+											</AlertDescription>
+										</Alert>
+									)}
+								</div>
+							)}
+
+							{/* Save Settings Button (for editing existing apps) */}
+							{isEditing && (
+								<div className="pt-4 border-t">
+									<Button
+										onClick={async () => {
+											if (!existingApp?.slug) return;
+											try {
+												await updateApplication.mutateAsync({
+													params: { path: { slug: existingApp.slug } },
+													body: {
+														name: name || undefined,
+														description: description || undefined,
+														access_level: accessLevel,
+														role_ids: accessLevel === "role_based" ? selectedRoleIds : [],
+													},
+												});
+												// Update original org ID after successful save
+												if (organizationId !== originalOrganizationId) {
+													setOriginalOrganizationId(organizationId);
+												}
+											} catch {
+												// Error toast is handled by the hook
+											}
+										}}
+										disabled={updateApplication.isPending}
+									>
+										{updateApplication.isPending ? (
+											<>
+												<Loader2 className="mr-2 h-4 w-4 animate-spin" />
+												Saving...
+											</>
+										) : (
+											<>
+												<Save className="mr-2 h-4 w-4" />
+												Save Settings
+											</>
+										)}
+									</Button>
 								</div>
 							)}
 						</CardContent>

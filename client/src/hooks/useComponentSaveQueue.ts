@@ -1,7 +1,7 @@
 /**
  * Component Save Queue Hook
  *
- * Manages a queue of pending component CRUD operations with debouncing.
+ * Manages a queue of pending component CRUD operations and page updates with debouncing.
  * Property updates are debounced (500ms), structural changes (create/delete/move) are immediate.
  *
  * Uses the granular component API endpoints:
@@ -9,6 +9,9 @@
  * - PATCH /api/applications/{app_id}/pages/{page_id}/components/{component_id}
  * - DELETE /api/applications/{app_id}/pages/{page_id}/components/{component_id}
  * - POST /api/applications/{app_id}/pages/{page_id}/components/{component_id}/move
+ *
+ * And page metadata endpoint:
+ * - PATCH /api/applications/{app_id}/pages/{page_id}
  */
 
 import { useRef, useCallback, useState, useEffect } from "react";
@@ -21,6 +24,7 @@ type AppComponentCreate = components["schemas"]["AppComponentCreate"];
 type AppComponentUpdate = components["schemas"]["AppComponentUpdate"];
 type AppComponentMove = components["schemas"]["AppComponentMove"];
 type AppComponentResponse = components["schemas"]["AppComponentResponse"];
+type AppPageUpdate = components["schemas"]["AppPageUpdate"];
 
 /**
  * Operation types for the save queue
@@ -68,6 +72,8 @@ interface UseComponentSaveQueueReturn {
 	enqueueDelete: (componentId: string) => void;
 	/** Enqueue a move operation (immediate) */
 	enqueueMove: (componentId: string, data: AppComponentMove) => void;
+	/** Enqueue a page update operation (debounced) */
+	enqueuePageUpdate: (pageId: string, data: Partial<AppPageUpdate>) => void;
 	/** Force all pending operations to execute immediately */
 	flushAll: () => Promise<void>;
 	/** Cancel a pending operation for a component */
@@ -93,20 +99,29 @@ export function useComponentSaveQueue({
 	onSaveSuccess,
 	onSaveError,
 }: UseComponentSaveQueueOptions): UseComponentSaveQueueReturn {
-	// Queue of pending operations
+	// Queue of pending component operations
 	const queueRef = useRef<Map<string, QueuedOperation>>(new Map());
+
+	// Queue of pending page updates (pageId -> merged update data)
+	const pageQueueRef = useRef<Map<string, Partial<AppPageUpdate>>>(
+		new Map(),
+	);
+	const pageDebounceTimerRef = useRef<
+		Map<string, ReturnType<typeof setTimeout>>
+	>(new Map());
 
 	// Processing state
 	const [isSaving, setIsSaving] = useState(false);
 	const [pendingCount, setPendingCount] = useState(0);
 	const processingRef = useRef(false);
+	const processingPagesRef = useRef(false);
 
 	// Get editor store actions
 	const editorStore = useAppBuilderEditorStore();
 
-	// Update pending count when queue changes
+	// Update pending count when queues change
 	const updatePendingCount = useCallback(() => {
-		setPendingCount(queueRef.current.size);
+		setPendingCount(queueRef.current.size + pageQueueRef.current.size);
 	}, []);
 
 	/**
@@ -230,7 +245,72 @@ export function useComponentSaveQueue({
 	);
 
 	/**
-	 * Process the queue
+	 * Process page updates
+	 */
+	const processPageQueue = useCallback(async () => {
+		if (processingPagesRef.current) return;
+
+		const pageQueue = pageQueueRef.current;
+		if (pageQueue.size === 0) return;
+
+		processingPagesRef.current = true;
+		const hasComponentOps = queueRef.current.size > 0;
+		setIsSaving(true);
+		editorStore.setSaving(true);
+
+		for (const [pageIdToUpdate, updates] of Array.from(
+			pageQueue.entries(),
+		)) {
+			try {
+				const { error } = await apiClient.PATCH(
+					"/api/applications/{app_id}/pages/{page_id}",
+					{
+						params: {
+							path: {
+								app_id: appId,
+								page_id: pageIdToUpdate,
+							},
+						},
+						body: updates as AppPageUpdate,
+					},
+				);
+
+				if (error) {
+					throw new Error(
+						(error as { detail?: string }).detail ??
+							"Failed to update page",
+					);
+				}
+
+				// Mark page as clean in editor store
+				editorStore.markPageClean(pageIdToUpdate);
+
+				// Remove from queue
+				pageQueue.delete(pageIdToUpdate);
+			} catch (error) {
+				console.error(
+					`[ComponentSaveQueue] Failed to update page ${pageIdToUpdate}:`,
+					error,
+				);
+
+				// Show toast
+				toast.error(`Failed to save page`, {
+					description: `Could not update page metadata. Changes may be lost.`,
+				});
+
+				// Remove from queue even on error to avoid infinite retry
+				pageQueue.delete(pageIdToUpdate);
+			}
+		}
+
+		processingPagesRef.current = false;
+		setIsSaving(hasComponentOps || pageQueue.size > 0);
+		editorStore.setSaving(hasComponentOps || pageQueue.size > 0);
+		updatePendingCount();
+	}, [appId, editorStore, updatePendingCount]);
+
+	/**
+	 * Process the component queue
 	 */
 	const processQueue = useCallback(async () => {
 		if (processingRef.current) return;
@@ -243,6 +323,7 @@ export function useComponentSaveQueue({
 		if (readyOperations.length === 0) return;
 
 		processingRef.current = true;
+		const hasPageOps = pageQueueRef.current.size > 0;
 		setIsSaving(true);
 		editorStore.setSaving(true);
 
@@ -290,8 +371,8 @@ export function useComponentSaveQueue({
 		}
 
 		processingRef.current = false;
-		setIsSaving(queue.size > 0);
-		editorStore.setSaving(queue.size > 0);
+		setIsSaving(hasPageOps || queue.size > 0);
+		editorStore.setSaving(hasPageOps || queue.size > 0);
 		updatePendingCount();
 
 		// Process any remaining items
@@ -416,12 +497,48 @@ export function useComponentSaveQueue({
 	);
 
 	/**
+	 * Enqueue a page update operation (debounced)
+	 */
+	const enqueuePageUpdate = useCallback(
+		(pageIdToUpdate: string, updates: Partial<AppPageUpdate>) => {
+			const pageQueue = pageQueueRef.current;
+			const timers = pageDebounceTimerRef.current;
+
+			// Clear existing debounce timer
+			const existingTimer = timers.get(pageIdToUpdate);
+			if (existingTimer) {
+				clearTimeout(existingTimer);
+			}
+
+			// Merge with existing updates
+			const existing = pageQueue.get(pageIdToUpdate) || {};
+			const merged = { ...existing, ...updates };
+			pageQueue.set(pageIdToUpdate, merged);
+
+			// Mark page as dirty
+			editorStore.markPageDirty(pageIdToUpdate);
+
+			// Set new debounce timer
+			const timer = setTimeout(() => {
+				timers.delete(pageIdToUpdate);
+				processPageQueue();
+			}, debounceMs);
+
+			timers.set(pageIdToUpdate, timer);
+			updatePendingCount();
+		},
+		[debounceMs, editorStore, processPageQueue, updatePendingCount],
+	);
+
+	/**
 	 * Force all pending operations to execute immediately
 	 */
 	const flushAll = useCallback(async () => {
 		const queue = queueRef.current;
+		const pageQueue = pageQueueRef.current;
+		const pageTimers = pageDebounceTimerRef.current;
 
-		// Clear all debounce timers
+		// Clear all component debounce timers
 		for (const [, operation] of queue) {
 			if (operation.debounceTimer) {
 				clearTimeout(operation.debounceTimer);
@@ -429,19 +546,28 @@ export function useComponentSaveQueue({
 			}
 		}
 
-		// Wait for processing to complete
-		await processQueue();
+		// Clear all page debounce timers
+		for (const [, timer] of pageTimers) {
+			clearTimeout(timer);
+		}
+		pageTimers.clear();
 
-		// Poll until queue is empty
+		// Wait for processing to complete
+		await Promise.all([processQueue(), processPageQueue()]);
+
+		// Poll until both queues are empty
 		const maxWait = 10000;
 		const startTime = Date.now();
 		while (
-			(queue.size > 0 || processingRef.current) &&
+			(queue.size > 0 ||
+				pageQueue.size > 0 ||
+				processingRef.current ||
+				processingPagesRef.current) &&
 			Date.now() - startTime < maxWait
 		) {
 			await new Promise((resolve) => setTimeout(resolve, 50));
 		}
-	}, [processQueue]);
+	}, [processQueue, processPageQueue]);
 
 	/**
 	 * Cancel a pending operation
@@ -463,27 +589,44 @@ export function useComponentSaveQueue({
 	 */
 	const cancelAll = useCallback(() => {
 		const queue = queueRef.current;
+		const pageQueue = pageQueueRef.current;
+		const pageTimers = pageDebounceTimerRef.current;
 
+		// Cancel component operations
 		for (const [, operation] of queue) {
 			if (operation.debounceTimer) {
 				clearTimeout(operation.debounceTimer);
 			}
 		}
-
 		queue.clear();
+
+		// Cancel page operations
+		for (const [, timer] of pageTimers) {
+			clearTimeout(timer);
+		}
+		pageTimers.clear();
+		pageQueue.clear();
+
 		setPendingCount(0);
 	}, []);
 
 	// Cleanup on unmount
 	useEffect(() => {
-		// Capture ref value for cleanup
+		// Capture ref values for cleanup
 		const queue = queueRef.current;
+		const pageTimers = pageDebounceTimerRef.current;
+
 		return () => {
-			// Clear all timers
+			// Clear all component timers
 			for (const [, operation] of queue) {
 				if (operation.debounceTimer) {
 					clearTimeout(operation.debounceTimer);
 				}
+			}
+
+			// Clear all page timers
+			for (const [, timer] of pageTimers) {
+				clearTimeout(timer);
 			}
 		};
 	}, []);
@@ -493,6 +636,7 @@ export function useComponentSaveQueue({
 		enqueueUpdate,
 		enqueueDelete,
 		enqueueMove,
+		enqueuePageUpdate,
 		flushAll,
 		cancel,
 		cancelAll,

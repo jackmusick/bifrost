@@ -1727,6 +1727,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/workflows/{workflow_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        /**
+         * Update a workflow
+         * @description Update editable workflow properties like organization scope (Platform admin only)
+         */
+        patch: operations["update_workflow_api_workflows__workflow_id__patch"];
+        trace?: never;
+    };
     "/api/forms": {
         parameters: {
             query?: never;
@@ -3093,22 +3113,22 @@ export interface paths {
          * Execute workflow via API key
          * @description Execute an endpoint-enabled workflow using an API key for authentication
          */
-        get: operations["execute_endpoint_api_endpoints__workflow_name__get"];
+        get: operations["execute_endpoint_api_endpoints__workflow_name__delete"];
         /**
          * Execute workflow via API key
          * @description Execute an endpoint-enabled workflow using an API key for authentication
          */
-        put: operations["execute_endpoint_api_endpoints__workflow_name__get"];
+        put: operations["execute_endpoint_api_endpoints__workflow_name__delete"];
         /**
          * Execute workflow via API key
          * @description Execute an endpoint-enabled workflow using an API key for authentication
          */
-        post: operations["execute_endpoint_api_endpoints__workflow_name__get"];
+        post: operations["execute_endpoint_api_endpoints__workflow_name__delete"];
         /**
          * Execute workflow via API key
          * @description Execute an endpoint-enabled workflow using an API key for authentication
          */
-        delete: operations["execute_endpoint_api_endpoints__workflow_name__get"];
+        delete: operations["execute_endpoint_api_endpoints__workflow_name__delete"];
         options?: never;
         head?: never;
         patch?: never;
@@ -6115,6 +6135,41 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/dependencies/{entity_type}/{entity_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Dependency Graph
+         * @description Get dependency graph for an entity.
+         *
+         *     Returns a graph of nodes and edges representing dependencies
+         *     between workflows, forms, apps, and agents.
+         *
+         *     - **entity_type**: Type of the root entity (workflow, form, app, agent)
+         *     - **entity_id**: UUID of the root entity
+         *     - **depth**: How many levels to traverse (default 2, max 5)
+         *
+         *     Relationships:
+         *     - Forms USE workflows (main, launch, data providers)
+         *     - Apps USE workflows (page launch, data sources, component actions)
+         *     - Agents USE workflows (via tools)
+         *     - Workflows are USED BY forms, apps, and agents
+         *
+         *     Platform admin only.
+         */
+        get: operations["get_dependency_graph_api_dependencies__entity_type___entity_id__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/": {
         parameters: {
             query?: never;
@@ -7212,6 +7267,11 @@ export interface components {
             /** Icon */
             icon?: string | null;
             /**
+             * Scope
+             * @description Organization scope: 'global' for platform-wide, or org UUID string. Platform admin only.
+             */
+            scope?: string | null;
+            /**
              * Access Level
              * @description Access level: 'authenticated' (any logged-in user) or 'role_based' (specific roles)
              */
@@ -7286,7 +7346,7 @@ export interface components {
             /** Mfa Required For Password */
             mfa_required_for_password: boolean;
             /** Oauth Providers */
-            oauth_providers: components["schemas"]["src__models__contracts__auth__OAuthProviderInfo"][];
+            oauth_providers: components["schemas"]["OAuthProviderInfo"][];
         };
         /**
          * AuthorizeResponse
@@ -8598,6 +8658,27 @@ export interface components {
              * @description List of discovered decorators
              */
             decorators: components["schemas"]["DecoratorInfo"][];
+        };
+        /**
+         * DependencyGraphResponse
+         * @description Complete dependency graph for visualization.
+         */
+        DependencyGraphResponse: {
+            /**
+             * Nodes
+             * @description All nodes in the graph
+             */
+            nodes?: components["schemas"]["GraphNodeResponse"][];
+            /**
+             * Edges
+             * @description All edges in the graph
+             */
+            edges?: components["schemas"]["GraphEdgeResponse"][];
+            /**
+             * Root Id
+             * @description ID of the root node
+             */
+            root_id: string;
         };
         /**
          * DetailedHealthCheck
@@ -10787,6 +10868,54 @@ export interface components {
              */
             client_secret: string;
         };
+        /**
+         * GraphEdgeResponse
+         * @description Edge in the dependency graph.
+         */
+        GraphEdgeResponse: {
+            /**
+             * Source
+             * @description Source node ID
+             */
+            source: string;
+            /**
+             * Target
+             * @description Target node ID
+             */
+            target: string;
+            /**
+             * Relationship
+             * @description Relationship type (uses, used_by)
+             */
+            relationship: string;
+        };
+        /**
+         * GraphNodeResponse
+         * @description Node in the dependency graph.
+         */
+        GraphNodeResponse: {
+            /**
+             * Id
+             * @description Unique node ID in format 'type:uuid'
+             */
+            id: string;
+            /**
+             * Type
+             * @description Entity type
+             * @enum {string}
+             */
+            type: "workflow" | "form" | "app" | "agent";
+            /**
+             * Name
+             * @description Entity name
+             */
+            name: string;
+            /**
+             * Org Id
+             * @description Organization ID if scoped
+             */
+            org_id?: string | null;
+        };
         /** HTTPValidationError */
         HTTPValidationError: {
             /** Detail */
@@ -11809,6 +11938,11 @@ export interface components {
             issuer: string;
             /** Account Name */
             account_name: string;
+            /**
+             * Is Existing
+             * @default false
+             */
+            is_existing: boolean;
         };
         /**
          * MFAStatusResponse
@@ -11828,11 +11962,20 @@ export interface components {
         };
         /**
          * MFAVerifyRequest
-         * @description Request to verify MFA code.
+         * @description Request to verify MFA code during login.
          */
         MFAVerifyRequest: {
+            /** Mfa Token */
+            mfa_token: string;
             /** Code */
             code: string;
+            /**
+             * Trust Device
+             * @default false
+             */
+            trust_device: boolean;
+            /** Device Name */
+            device_name?: string | null;
         };
         /**
          * MFAVerifyResponse
@@ -12049,15 +12192,29 @@ export interface components {
         };
         /**
          * OAuthCallbackRequest
-         * @description OAuth callback request (for when frontend handles callback).
+         * @description Request model for OAuth callback endpoint
          */
         OAuthCallbackRequest: {
-            /** Provider */
-            provider: string;
-            /** Code */
+            /**
+             * Code
+             * @description Authorization code from OAuth provider
+             */
             code: string;
-            /** State */
-            state: string;
+            /**
+             * State
+             * @description State parameter for CSRF protection
+             */
+            state?: string | null;
+            /**
+             * Redirect Uri
+             * @description Redirect URI used in authorization request
+             */
+            redirect_uri?: string | null;
+            /**
+             * Organization Id
+             * @description Organization ID for org-specific token storage (optional, for org overrides)
+             */
+            organization_id?: string | null;
         };
         /**
          * OAuthCallbackResponse
@@ -12487,7 +12644,7 @@ export interface components {
         };
         /**
          * OAuthProviderInfo
-         * @description OAuth provider information.
+         * @description OAuth provider information for login page
          */
         OAuthProviderInfo: {
             /** Name */
@@ -12503,7 +12660,7 @@ export interface components {
          */
         OAuthProvidersResponse: {
             /** Providers */
-            providers: components["schemas"]["OAuthProviderInfo"][];
+            providers: components["schemas"]["src__routers__oauth_sso__OAuthProviderInfo"][];
         };
         /**
          * OAuthTokenResponse
@@ -16014,6 +16171,17 @@ export interface components {
             total_value: number;
         };
         /**
+         * WorkflowUpdateRequest
+         * @description Request model for updating a workflow's editable properties.
+         */
+        WorkflowUpdateRequest: {
+            /**
+             * Organization Id
+             * @description Organization ID to scope the workflow to, or null for global scope
+             */
+            organization_id?: string | null;
+        };
+        /**
          * WorkflowUsage
          * @description AI usage by workflow.
          */
@@ -16137,82 +16305,6 @@ export interface components {
             backup_will_be_created: boolean;
         };
         /**
-         * OAuthProviderInfo
-         * @description OAuth provider information for login page
-         */
-        src__models__contracts__auth__OAuthProviderInfo: {
-            /** Name */
-            name: string;
-            /** Display Name */
-            display_name: string;
-            /** Icon */
-            icon?: string | null;
-        };
-        /**
-         * OAuthCallbackRequest
-         * @description Request model for OAuth callback endpoint
-         */
-        src__models__contracts__oauth__OAuthCallbackRequest: {
-            /**
-             * Code
-             * @description Authorization code from OAuth provider
-             */
-            code: string;
-            /**
-             * State
-             * @description State parameter for CSRF protection
-             */
-            state?: string | null;
-            /**
-             * Redirect Uri
-             * @description Redirect URI used in authorization request
-             */
-            redirect_uri?: string | null;
-            /**
-             * Organization Id
-             * @description Organization ID for org-specific token storage (optional, for org overrides)
-             */
-            organization_id?: string | null;
-        };
-        /**
-         * MFASetupResponse
-         * @description MFA setup response with secret.
-         */
-        src__routers__auth__MFASetupResponse: {
-            /** Secret */
-            secret: string;
-            /** Qr Code Uri */
-            qr_code_uri: string;
-            /** Provisioning Uri */
-            provisioning_uri: string;
-            /** Issuer */
-            issuer: string;
-            /** Account Name */
-            account_name: string;
-            /**
-             * Is Existing
-             * @default false
-             */
-            is_existing: boolean;
-        };
-        /**
-         * MFAVerifyRequest
-         * @description Request to verify MFA code during login.
-         */
-        src__routers__auth__MFAVerifyRequest: {
-            /** Mfa Token */
-            mfa_token: string;
-            /** Code */
-            code: string;
-            /**
-             * Trust Device
-             * @default false
-             */
-            trust_device: boolean;
-            /** Device Name */
-            device_name?: string | null;
-        };
-        /**
          * UserCreate
          * @description User creation request model.
          */
@@ -16226,6 +16318,54 @@ export interface components {
             password: string;
             /** Name */
             name?: string | null;
+        };
+        /**
+         * MFASetupResponse
+         * @description MFA setup response with secret.
+         */
+        src__routers__mfa__MFASetupResponse: {
+            /** Secret */
+            secret: string;
+            /** Qr Code Uri */
+            qr_code_uri: string;
+            /** Provisioning Uri */
+            provisioning_uri: string;
+            /** Issuer */
+            issuer: string;
+            /** Account Name */
+            account_name: string;
+        };
+        /**
+         * MFAVerifyRequest
+         * @description Request to verify MFA code.
+         */
+        src__routers__mfa__MFAVerifyRequest: {
+            /** Code */
+            code: string;
+        };
+        /**
+         * OAuthCallbackRequest
+         * @description OAuth callback request (for when frontend handles callback).
+         */
+        src__routers__oauth_sso__OAuthCallbackRequest: {
+            /** Provider */
+            provider: string;
+            /** Code */
+            code: string;
+            /** State */
+            state: string;
+        };
+        /**
+         * OAuthProviderInfo
+         * @description OAuth provider information.
+         */
+        src__routers__oauth_sso__OAuthProviderInfo: {
+            /** Name */
+            name: string;
+            /** Display Name */
+            display_name: string;
+            /** Icon */
+            icon?: string | null;
         };
     };
     responses: never;
@@ -16328,7 +16468,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["src__routers__auth__MFASetupResponse"];
+                    "application/json": components["schemas"]["MFASetupResponse"];
                 };
             };
             /** @description Validation Error */
@@ -16371,7 +16511,7 @@ export interface operations {
         };
         requestBody: {
             content: {
-                "application/json": components["schemas"]["src__routers__auth__MFAVerifyRequest"];
+                "application/json": components["schemas"]["MFAVerifyRequest"];
             };
         };
         responses: {
@@ -16774,7 +16914,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["MFASetupResponse"];
+                    "application/json": components["schemas"]["src__routers__mfa__MFASetupResponse"];
                 };
             };
         };
@@ -16788,7 +16928,7 @@ export interface operations {
         };
         requestBody: {
             content: {
-                "application/json": components["schemas"]["MFAVerifyRequest"];
+                "application/json": components["schemas"]["src__routers__mfa__MFAVerifyRequest"];
             };
         };
         responses: {
@@ -17038,7 +17178,7 @@ export interface operations {
         };
         requestBody: {
             content: {
-                "application/json": components["schemas"]["OAuthCallbackRequest"];
+                "application/json": components["schemas"]["src__routers__oauth_sso__OAuthCallbackRequest"];
             };
         };
         responses: {
@@ -18446,7 +18586,7 @@ export interface operations {
     get_workflow_usage_stats_api_workflows_usage_stats_get: {
         parameters: {
             query?: {
-                /** @description Filter scope: omit for user's org + global, 'global' for global only, 'all' for all (platform admins only), or org UUID for specific org. */
+                /** @description Filter scope: omit for all (superusers), 'global' for global only, or org UUID for specific org only. */
                 scope?: string | null;
             };
             header?: never;
@@ -18528,6 +18668,41 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["WorkflowValidationResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    update_workflow_api_workflows__workflow_id__patch: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                workflow_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["WorkflowUpdateRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WorkflowMetadata"];
                 };
             };
             /** @description Validation Error */
@@ -20767,7 +20942,7 @@ export interface operations {
         };
         requestBody: {
             content: {
-                "application/json": components["schemas"]["src__models__contracts__oauth__OAuthCallbackRequest"];
+                "application/json": components["schemas"]["OAuthCallbackRequest"];
             };
         };
         responses: {
@@ -20862,7 +21037,7 @@ export interface operations {
             };
         };
     };
-    execute_endpoint_api_endpoints__workflow_name__get: {
+    execute_endpoint_api_endpoints__workflow_name__delete: {
         parameters: {
             query?: never;
             header: {
@@ -20895,7 +21070,7 @@ export interface operations {
             };
         };
     };
-    execute_endpoint_api_endpoints__workflow_name__get: {
+    execute_endpoint_api_endpoints__workflow_name__delete: {
         parameters: {
             query?: never;
             header: {
@@ -20928,7 +21103,7 @@ export interface operations {
             };
         };
     };
-    execute_endpoint_api_endpoints__workflow_name__get: {
+    execute_endpoint_api_endpoints__workflow_name__delete: {
         parameters: {
             query?: never;
             header: {
@@ -20961,7 +21136,7 @@ export interface operations {
             };
         };
     };
-    execute_endpoint_api_endpoints__workflow_name__get: {
+    execute_endpoint_api_endpoints__workflow_name__delete: {
         parameters: {
             query?: never;
             header: {
@@ -26804,6 +26979,41 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["AppComponentResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_dependency_graph_api_dependencies__entity_type___entity_id__get: {
+        parameters: {
+            query?: {
+                /** @description Maximum traversal depth (1-5) */
+                depth?: number;
+            };
+            header?: never;
+            path: {
+                entity_type: "workflow" | "form" | "app" | "agent";
+                entity_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DependencyGraphResponse"];
                 };
             };
             /** @description Validation Error */

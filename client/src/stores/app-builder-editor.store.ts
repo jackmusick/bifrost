@@ -2,7 +2,7 @@
  * App Builder Editor Store
  *
  * Zustand store for managing App Builder editing state:
- * - Dirty tracking: which components have unsaved changes
+ * - Dirty tracking: which components and pages have unsaved changes
  * - UUID mapping: frontend component IDs to backend UUIDs
  * - Save state: pending operations and save status
  *
@@ -36,6 +36,9 @@ interface AppBuilderEditorState {
 	// Dirty tracking: component_id -> status
 	dirtyComponents: Map<string, ComponentSnapshot>;
 
+	// Dirty tracking: page_id set (pages are simpler, just dirty or not)
+	dirtyPages: Set<string>;
+
 	// Frontend component ID -> Backend UUID mapping
 	// Populated when components are fetched or created
 	uuidMap: Map<string, string>;
@@ -48,7 +51,7 @@ interface AppBuilderEditorState {
 	setContext: (appId: string | null, pageId: string | null) => void;
 	clearContext: () => void;
 
-	// Actions: Dirty tracking
+	// Actions: Component dirty tracking
 	markNew: (componentId: string) => void;
 	markModified: (
 		componentId: string,
@@ -57,6 +60,10 @@ interface AppBuilderEditorState {
 	markDeleted: (componentId: string) => void;
 	markClean: (componentId: string) => void;
 	clearAllDirty: () => void;
+
+	// Actions: Page dirty tracking
+	markPageDirty: (pageId: string) => void;
+	markPageClean: (pageId: string) => void;
 
 	// Actions: UUID mapping
 	setUUID: (componentId: string, uuid: string) => void;
@@ -89,6 +96,7 @@ const initialState = {
 	appId: null as string | null,
 	pageId: null as string | null,
 	dirtyComponents: new Map<string, ComponentSnapshot>(),
+	dirtyPages: new Set<string>(),
 	uuidMap: new Map<string, string>(),
 	isSaving: false,
 	lastSaveError: null as string | null,
@@ -112,6 +120,7 @@ export const useAppBuilderEditorStore = create<AppBuilderEditorState>()(
 				pageId,
 				// Clear dirty state when switching pages
 				dirtyComponents: new Map(),
+				dirtyPages: new Set(),
 			}),
 
 		clearContext: () =>
@@ -119,6 +128,7 @@ export const useAppBuilderEditorStore = create<AppBuilderEditorState>()(
 				appId: null,
 				pageId: null,
 				dirtyComponents: new Map(),
+				dirtyPages: new Set(),
 			}),
 
 		// Dirty tracking
@@ -169,7 +179,23 @@ export const useAppBuilderEditorStore = create<AppBuilderEditorState>()(
 				return { dirtyComponents: newMap };
 			}),
 
-		clearAllDirty: () => set({ dirtyComponents: new Map() }),
+		clearAllDirty: () =>
+			set({ dirtyComponents: new Map(), dirtyPages: new Set() }),
+
+		// Page dirty tracking
+		markPageDirty: (pageId) =>
+			set((state) => {
+				const newSet = new Set(state.dirtyPages);
+				newSet.add(pageId);
+				return { dirtyPages: newSet };
+			}),
+
+		markPageClean: (pageId) =>
+			set((state) => {
+				const newSet = new Set(state.dirtyPages);
+				newSet.delete(pageId);
+				return { dirtyPages: newSet };
+			}),
 
 		// UUID mapping
 		setUUID: (componentId, uuid) =>
@@ -201,12 +227,13 @@ export const useAppBuilderEditorStore = create<AppBuilderEditorState>()(
 
 		// Computed
 		hasUnsavedChanges: () => {
-			const { dirtyComponents, isSaving } = get();
-			return dirtyComponents.size > 0 || isSaving;
+			const { dirtyComponents, dirtyPages, isSaving } = get();
+			return dirtyComponents.size > 0 || dirtyPages.size > 0 || isSaving;
 		},
 
 		getDirtyCount: () => {
-			return get().dirtyComponents.size;
+			const { dirtyComponents, dirtyPages } = get();
+			return dirtyComponents.size + dirtyPages.size;
 		},
 
 		// Rollback support
@@ -234,6 +261,7 @@ export const useAppBuilderEditorStore = create<AppBuilderEditorState>()(
 			set({
 				...initialState,
 				dirtyComponents: new Map(),
+				dirtyPages: new Set(),
 				uuidMap: new Map(),
 			}),
 	})),

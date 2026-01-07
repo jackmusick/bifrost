@@ -6,7 +6,10 @@
  */
 
 import { useState, useCallback } from "react";
-import { Trash2 } from "lucide-react";
+import { Trash2, Shield, AlertTriangle } from "lucide-react";
+import { useRoles } from "@/hooks/useRoles";
+import { Checkbox } from "@/components/ui/checkbox";
+import { Alert, AlertDescription } from "@/components/ui/alert";
 import {
 	Accordion,
 	AccordionContent,
@@ -59,6 +62,10 @@ export interface PropertyEditorProps {
 	page?: PageDefinition;
 	/** Callback when page properties change */
 	onPageChange?: (updates: Partial<PageDefinition>) => void;
+	/** App-level access control settings */
+	appAccessLevel?: "authenticated" | "role_based";
+	/** Role IDs allowed for the app (when role_based) */
+	appRoleIds?: string[];
 	/** Additional CSS classes */
 	className?: string;
 }
@@ -178,10 +185,40 @@ function CommonPropertiesSection({
 function PagePropertiesSection({
 	page,
 	onChange,
+	appAccessLevel,
+	appRoleIds,
 }: {
 	page: PageDefinition;
 	onChange: (updates: Partial<PageDefinition>) => void;
+	appAccessLevel?: "authenticated" | "role_based";
+	appRoleIds?: string[];
 }) {
+	// Fetch roles for page-level access control
+	const { data: rolesData } = useRoles();
+
+	// Get current page-level allowed roles
+	const pageAllowedRoles = page.permission?.allowedRoles ?? [];
+
+	// Filter roles to only show those that are allowed at app level
+	const availableRoles = rolesData?.filter(
+		(role) => !appRoleIds?.length || appRoleIds.includes(role.id)
+	) ?? [];
+
+	// Handle role toggle
+	const handleRoleToggle = (roleId: string, checked: boolean) => {
+		const currentRoles = pageAllowedRoles;
+		const newRoles = checked
+			? [...currentRoles, roleId]
+			: currentRoles.filter((id) => id !== roleId);
+
+		onChange({
+			permission: {
+				...page.permission,
+				allowedRoles: newRoles.length > 0 ? newRoles : undefined,
+			},
+		});
+	};
+
 	return (
 		<AccordionItem value="page">
 			<AccordionTrigger>Page Settings</AccordionTrigger>
@@ -263,6 +300,80 @@ function PagePropertiesSection({
 						</>
 					)}
 				</div>
+
+				{/* Page Access Control (only shown when app uses role-based access) */}
+				{appAccessLevel === "role_based" && (
+					<div className="pt-2 border-t">
+						<div className="flex items-center gap-2 mb-2">
+							<Shield className="h-4 w-4" />
+							<Label className="text-sm font-medium">Page Access</Label>
+						</div>
+						<p className="text-xs text-muted-foreground mb-3">
+							Restrict this page to specific roles. Leave empty to allow all app roles.
+						</p>
+
+						{availableRoles.length === 0 ? (
+							<p className="text-sm text-muted-foreground">
+								No roles available at app level.
+							</p>
+						) : (
+							<div className="space-y-2 max-h-40 overflow-y-auto">
+								{availableRoles.map((role) => {
+									const isSelected = pageAllowedRoles.includes(role.id);
+									return (
+										<label
+											key={role.id}
+											htmlFor={`page-role-${role.id}`}
+											className={`flex items-start space-x-3 rounded-md border p-2 hover:bg-accent/50 transition-colors cursor-pointer ${
+												isSelected ? "border-primary bg-primary/5" : ""
+											}`}
+										>
+											<Checkbox
+												id={`page-role-${role.id}`}
+												checked={isSelected}
+												onCheckedChange={(checked) =>
+													handleRoleToggle(role.id, checked as boolean)
+												}
+											/>
+											<div className="flex-1 min-w-0">
+												<span className="cursor-pointer text-sm font-medium">
+													{role.name}
+												</span>
+											</div>
+										</label>
+									);
+								})}
+							</div>
+						)}
+
+						{pageAllowedRoles.length > 0 && (
+							<Alert className="mt-2 py-2">
+								<AlertTriangle className="h-3 w-3" />
+								<AlertDescription className="text-xs">
+									Only selected roles can access this page.
+								</AlertDescription>
+							</Alert>
+						)}
+
+						<FormField
+							label="Redirect Path"
+							description="Where to redirect users without access"
+						>
+							<Input
+								value={page.permission?.redirectTo ?? ""}
+								onChange={(e) =>
+									onChange({
+										permission: {
+											...page.permission,
+											redirectTo: e.target.value || undefined,
+										},
+									})
+								}
+								placeholder="/access-denied (optional)"
+							/>
+						</FormField>
+					</div>
+				)}
 			</AccordionContent>
 		</AccordionItem>
 	);
@@ -2498,6 +2609,8 @@ export function PropertyEditor({
 	onDelete,
 	page,
 	onPageChange,
+	appAccessLevel,
+	appRoleIds,
 	className,
 }: PropertyEditorProps) {
 	if (!component) {
@@ -2554,6 +2667,8 @@ export function PropertyEditor({
 						<PagePropertiesSection
 							page={page}
 							onChange={onPageChange}
+							appAccessLevel={appAccessLevel}
+							appRoleIds={appRoleIds}
 						/>
 					)}
 

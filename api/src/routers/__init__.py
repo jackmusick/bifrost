@@ -45,6 +45,7 @@ from src.routers.tables import router as tables_router
 from src.routers.applications import router as applications_router
 from src.routers.app_pages import router as app_pages_router
 from src.routers.app_components import router as app_components_router
+from src.routers.dependencies import router as dependencies_router
 
 __all__ = [
     "auth_router",
@@ -93,4 +94,5 @@ __all__ = [
     "applications_router",
     "app_pages_router",
     "app_components_router",
+    "dependencies_router",
 ]

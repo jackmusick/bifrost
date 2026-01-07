@@ -153,6 +153,11 @@ const ApplicationEmbed = lazy(() =>
 		default: m.ApplicationEmbed,
 	})),
 );
+const DependencyCanvas = lazy(() =>
+	import("@/pages/DependencyCanvas").then((m) => ({
+		default: m.DependencyCanvas,
+	})),
+);
 
 function AppRoutes() {
 	const { brandingLoaded } = useOrgScope();
@@ -398,6 +403,16 @@ function AppRoutes() {
 							element={
 								<ProtectedRoute requirePlatformAdmin>
 									<Agents />
+								</ProtectedRoute>
+							}
+						/>
+
+						{/* Dependencies - PlatformAdmin only */}
+						<Route
+							path="dependencies"
+							element={
+								<ProtectedRoute requirePlatformAdmin>
+									<DependencyCanvas />
 								</ProtectedRoute>
 							}
 						/>

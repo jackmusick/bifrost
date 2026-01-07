@@ -416,11 +416,12 @@ class EventProcessor:
         }
 
         # Use the centralized system execution helper
+        # Use workflow's org_id so org-scoped workflows only access their org's data
         execution_id = await enqueue_system_workflow_execution(
             workflow_id=str(workflow.id),
             parameters=parameters,
             source="Event System",
-            org_id=str(event_source.organization_id) if event_source and event_source.organization_id else None,
+            org_id=str(workflow.organization_id) if workflow.organization_id else None,
         )
 
         # Store the execution ID on the delivery for tracking

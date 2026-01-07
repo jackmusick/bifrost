@@ -81,6 +81,10 @@ class ApplicationUpdate(BaseModel):
     name: str | None = Field(default=None, min_length=1, max_length=255)
     description: str | None = None
     icon: str | None = Field(default=None, max_length=50)
+    scope: str | None = Field(
+        default=None,
+        description="Organization scope: 'global' for platform-wide, or org UUID string. Platform admin only.",
+    )
     access_level: str | None = Field(
         default=None,
         description="Access level: 'authenticated' (any logged-in user) or 'role_based' (specific roles)",

@@ -86,6 +86,10 @@ export interface EditorShellProps {
 	onPageIdChange?: (pageId: string) => void;
 	/** Callback when pages are reordered (for immediate save to backend) */
 	onReorderPages?: (pages: PageDefinition[]) => void;
+	/** App-level access control settings */
+	appAccessLevel?: "authenticated" | "role_based";
+	/** Role IDs allowed for the app (when role_based) */
+	appRoleIds?: string[];
 }
 
 /**
@@ -106,6 +110,8 @@ export function EditorShell({
 	onComponentMove,
 	onPageIdChange,
 	onReorderPages,
+	appAccessLevel,
+	appRoleIds,
 }: EditorShellProps) {
 	// Panel collapse state
 	const [isLeftPanelCollapsed, setIsLeftPanelCollapsed] = useState(false);
@@ -742,6 +748,8 @@ export function EditorShell({
 									onPageChange={
 										isRootLayout ? handlePageChange : undefined
 									}
+									appAccessLevel={appAccessLevel}
+									appRoleIds={appRoleIds}
 									className="h-full"
 								/>
 							</TabsContent>
