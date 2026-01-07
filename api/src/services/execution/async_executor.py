@@ -18,16 +18,12 @@ import logging
 import uuid
 from typing import Any
 
+from src.core.constants import SYSTEM_USER_ID, SYSTEM_USER_EMAIL
 from src.sdk.context import ExecutionContext
 
 logger = logging.getLogger(__name__)
 
 QUEUE_NAME = "workflow-executions"
-
-# System user for automated executions (created by migration)
-# Used for webhooks, schedules, and other system-triggered workflows
-SYSTEM_USER_ID = "00000000-0000-0000-0000-000000000001"
-SYSTEM_USER_EMAIL = "system@bifrost.local"
 
 
 async def enqueue_workflow_execution(

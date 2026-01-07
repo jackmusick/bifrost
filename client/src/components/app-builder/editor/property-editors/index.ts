@@ -4,8 +4,8 @@
  * Visual builders for complex property types in the App Builder editor.
  */
 
-export { WorkflowPicker } from "./WorkflowPicker";
-export type { WorkflowPickerProps } from "./WorkflowPicker";
+export { WorkflowSelector } from "@/components/forms/WorkflowSelector";
+export type { WorkflowSelectorProps } from "@/components/forms/WorkflowSelector";
 
 export { KeyValueEditor } from "./KeyValueEditor";
 export type { KeyValueEditorProps, KeyValuePair } from "./KeyValueEditor";

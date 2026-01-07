@@ -23,6 +23,7 @@ from uuid import uuid4
 from fastapi import APIRouter, Header, HTTPException, Request, status
 from pydantic import BaseModel
 
+from src.core.constants import SYSTEM_USER_ID, SYSTEM_USER_EMAIL
 from src.sdk.context import ExecutionContext
 from src.services.execution.module_loader import get_workflow
 from src.core.database import get_db_context
@@ -46,10 +47,6 @@ class CachedWorkflowMetadata:
 logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/api/endpoints", tags=["Endpoints"])
-
-# System user ID for API key executions (created by migration)
-SYSTEM_USER_ID = "00000000-0000-0000-0000-000000000001"
-SYSTEM_USER_EMAIL = "system@bifrost.local"
 
 
 def _coerce_query_params(query_params: dict[str, str], workflow_func: Any) -> dict[str, Any]:

@@ -40,6 +40,21 @@ function CreateUserDialogContent({
 	const createMutation = useCreateUser();
 	const { data: organizations, isLoading: orgsLoading } = useOrganizations();
 
+	// Find the provider org (for auto-selecting when platform admin is chosen)
+	const providerOrg = organizations?.find((org: Organization) => org.is_provider);
+
+	// Auto-select provider org when switching to platform admin
+	const handleUserTypeChange = (value: string) => {
+		const isAdmin = value === "platform";
+		setIsPlatformAdmin(isAdmin);
+		if (isAdmin && providerOrg) {
+			setOrgId(providerOrg.id);
+		} else if (!isAdmin && orgId === providerOrg?.id) {
+			// Clear provider org if switching to org user
+			setOrgId("");
+		}
+	};
+
 	const validateForm = (): boolean => {
 		if (!email || !email.includes("@")) {
 			setValidationError("Please enter a valid email address");
@@ -49,16 +64,8 @@ function CreateUserDialogContent({
 			setValidationError("Please enter a display name");
 			return false;
 		}
-		if (!isPlatformAdmin && !orgId) {
-			setValidationError(
-				"Please select an organization for non-admin users",
-			);
-			return false;
-		}
-		if (isPlatformAdmin && orgId) {
-			setValidationError(
-				"Platform administrators cannot be assigned to an organization",
-			);
+		if (!orgId) {
+			setValidationError("Please select an organization");
 			return false;
 		}
 		setValidationError(null);
@@ -80,7 +87,7 @@ function CreateUserDialogContent({
 					is_active: true,
 					is_superuser: isPlatformAdmin,
 					user_type: isPlatformAdmin ? "PLATFORM" : "ORG",
-					organization_id: isPlatformAdmin ? null : orgId || null,
+					organization_id: orgId || null,
 				},
 			});
 
@@ -153,9 +160,7 @@ function CreateUserDialogContent({
 					<Combobox
 						id="userType"
 						value={isPlatformAdmin ? "platform" : "org"}
-						onValueChange={(value) =>
-							setIsPlatformAdmin(value === "platform")
-						}
+						onValueChange={handleUserTypeChange}
 						options={[
 							{
 								value: "platform",
@@ -174,39 +179,42 @@ function CreateUserDialogContent({
 					/>
 				</div>
 
-				{!isPlatformAdmin && (
-					<div className="space-y-2">
-						<Label htmlFor="organization">Organization</Label>
-						<Combobox
-							id="organization"
-							value={orgId}
-							onValueChange={setOrgId}
-							options={
-								organizations?.map((org: Organization) => {
-									const option: {
-										value: string;
-										label: string;
-										description?: string;
-									} = {
-										value: org.id,
-										label: org.name,
-									};
-									if (org.domain) {
-										option.description = `@${org.domain}`;
-									}
-									return option;
-								}) ?? []
-							}
-							placeholder="Select an organization..."
-							searchPlaceholder="Search organizations..."
-							emptyText="No organizations found."
-							isLoading={orgsLoading}
-						/>
-						<p className="text-xs text-muted-foreground">
-							The organization this user belongs to
-						</p>
-					</div>
-				)}
+				<div className="space-y-2">
+					<Label htmlFor="organization">Organization</Label>
+					<Combobox
+						id="organization"
+						value={orgId}
+						onValueChange={setOrgId}
+						disabled={isPlatformAdmin}
+						options={
+							organizations?.map((org: Organization) => {
+								const option: {
+									value: string;
+									label: string;
+									description?: string;
+								} = {
+									value: org.id,
+									label: org.is_provider
+										? `${org.name} (Provider)`
+										: org.name,
+								};
+								if (org.domain) {
+									option.description = `@${org.domain}`;
+								}
+								return option;
+							}) ?? []
+						}
+						placeholder="Select an organization..."
+						searchPlaceholder="Search organizations..."
+						emptyText="No organizations found."
+						isLoading={orgsLoading}
+					/>
+					<p className="text-xs text-muted-foreground">
+						{isPlatformAdmin
+							? "Platform administrators are assigned to the provider organization"
+							: "The organization this user belongs to"}
+					</p>
+				</div>
 
 				{isPlatformAdmin && (
 					<Alert>

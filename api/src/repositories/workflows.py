@@ -8,13 +8,19 @@ The workflows table now stores all executable types:
 - 'workflow': Standard workflows (@workflow decorator)
 - 'tool': AI agent tools (@tool decorator)
 - 'data_provider': Data providers for forms/app builder (@data_provider decorator)
+
+Organization Scoping:
+- Workflows with organization_id = NULL are global (available to all orgs)
+- Workflows with organization_id set are org-scoped
+- Queries filter: global + user's org (unless platform admin requests all)
 """
 
 from datetime import datetime
 from typing import Literal, Sequence
 from uuid import UUID
 
-from sqlalchemy import func, select
+from sqlalchemy import func, or_, select
+from sqlalchemy.sql import Select
 
 from src.models import Workflow
 from src.repositories.base import BaseRepository
@@ -29,6 +35,43 @@ class WorkflowRepository(BaseRepository[Workflow]):
     model = Workflow
 
     # ==========================================================================
+    # Organization Scoping Helpers
+    # ==========================================================================
+
+    def _apply_org_filter(
+        self,
+        stmt: Select,
+        org_id: UUID | None = None,
+        include_global: bool = True,
+    ) -> Select:
+        """Apply organization scoping filter to a query.
+
+        Args:
+            stmt: SQLAlchemy select statement
+            org_id: If provided, filter to this org (+ global if include_global=True)
+                   If None, return all workflows (no org filter)
+            include_global: Whether to include global (organization_id=NULL) workflows
+
+        Returns:
+            Modified statement with org filter applied
+        """
+        if org_id is None:
+            # No filtering - return all (for platform admins viewing all)
+            return stmt
+
+        if include_global:
+            # Standard case: org's workflows + global workflows
+            return stmt.where(
+                or_(
+                    Workflow.organization_id == org_id,
+                    Workflow.organization_id.is_(None),
+                )
+            )
+        else:
+            # Only org-specific workflows (no global)
+            return stmt.where(Workflow.organization_id == org_id)
+
+    # ==========================================================================
     # Type-Based Queries
     # ==========================================================================
 
@@ -36,12 +79,14 @@ class WorkflowRepository(BaseRepository[Workflow]):
         self,
         type: WorkflowType,
         active_only: bool = True,
+        org_id: UUID | None = None,
     ) -> Sequence[Workflow]:
         """Get workflows filtered by type.
 
         Args:
             type: The type to filter by ('workflow', 'tool', 'data_provider')
             active_only: If True, only return active workflows
+            org_id: If provided, filter to org + global. If None, return all.
 
         Returns:
             Sequence of workflows matching the type
@@ -49,30 +94,43 @@ class WorkflowRepository(BaseRepository[Workflow]):
         stmt = select(Workflow).where(Workflow.type == type)
         if active_only:
             stmt = stmt.where(Workflow.is_active.is_(True))
+        stmt = self._apply_org_filter(stmt, org_id)
         stmt = stmt.order_by(Workflow.name)
         result = await self.session.execute(stmt)
         return result.scalars().all()
 
-    async def get_data_providers(self, active_only: bool = True) -> Sequence[Workflow]:
+    async def get_data_providers(
+        self,
+        active_only: bool = True,
+        org_id: UUID | None = None,
+    ) -> Sequence[Workflow]:
         """Get all data providers.
 
         Convenience method for get_by_type('data_provider').
         """
-        return await self.get_by_type("data_provider", active_only=active_only)
+        return await self.get_by_type("data_provider", active_only=active_only, org_id=org_id)
 
-    async def get_tools(self, active_only: bool = True) -> Sequence[Workflow]:
+    async def get_tools(
+        self,
+        active_only: bool = True,
+        org_id: UUID | None = None,
+    ) -> Sequence[Workflow]:
         """Get all AI agent tools.
 
         Convenience method for get_by_type('tool').
         """
-        return await self.get_by_type("tool", active_only=active_only)
+        return await self.get_by_type("tool", active_only=active_only, org_id=org_id)
 
-    async def get_workflows_only(self, active_only: bool = True) -> Sequence[Workflow]:
+    async def get_workflows_only(
+        self,
+        active_only: bool = True,
+        org_id: UUID | None = None,
+    ) -> Sequence[Workflow]:
         """Get only workflows (excludes tools and data providers).
 
         Convenience method for get_by_type('workflow').
         """
-        return await self.get_by_type("workflow", active_only=active_only)
+        return await self.get_by_type("workflow", active_only=active_only, org_id=org_id)
 
     # ==========================================================================
     # Standard Queries
@@ -110,13 +168,16 @@ class WorkflowRepository(BaseRepository[Workflow]):
         result = await self.session.execute(stmt)
         return result.scalar_one_or_none()
 
-    async def get_all_active(self) -> Sequence[Workflow]:
-        """Get all active workflows."""
-        result = await self.session.execute(
-            select(Workflow)
-            .where(Workflow.is_active.is_(True))
-            .order_by(Workflow.name)
-        )
+    async def get_all_active(self, org_id: UUID | None = None) -> Sequence[Workflow]:
+        """Get all active workflows.
+
+        Args:
+            org_id: If provided, filter to org + global. If None, return all.
+        """
+        stmt = select(Workflow).where(Workflow.is_active.is_(True))
+        stmt = self._apply_org_filter(stmt, org_id)
+        stmt = stmt.order_by(Workflow.name)
+        result = await self.session.execute(stmt)
         return result.scalars().all()
 
     async def get_scheduled(self) -> Sequence[Workflow]:
@@ -164,6 +225,7 @@ class WorkflowRepository(BaseRepository[Workflow]):
         type: WorkflowType | None = None,
         has_schedule: bool | None = None,
         endpoint_enabled: bool | None = None,
+        org_id: UUID | None = None,
         limit: int = 100,
         offset: int = 0,
     ) -> Sequence[Workflow]:
@@ -175,6 +237,7 @@ class WorkflowRepository(BaseRepository[Workflow]):
             type: Filter by type ('workflow', 'tool', 'data_provider')
             has_schedule: Filter by whether schedule is set
             endpoint_enabled: Filter by endpoint_enabled flag
+            org_id: If provided, filter to org + global. If None, return all.
             limit: Maximum number of results
             offset: Result offset for pagination
 
@@ -182,6 +245,9 @@ class WorkflowRepository(BaseRepository[Workflow]):
             Sequence of matching workflows
         """
         stmt = select(Workflow).where(Workflow.is_active.is_(True))
+
+        # Apply org filter
+        stmt = self._apply_org_filter(stmt, org_id)
 
         if query:
             stmt = stmt.where(

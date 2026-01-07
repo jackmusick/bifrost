@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Building2, Plus, Pencil, Trash2, RefreshCw } from "lucide-react";
+import { Building2, Plus, Pencil, Trash2, RefreshCw, Star } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
 	DataTable,
@@ -97,6 +97,7 @@ export function Organizations() {
 				name: formData.name,
 				domain: formData.domain || null,
 				is_active: true,
+				is_provider: false,
 			},
 		});
 		setIsCreateDialogOpen(false);
@@ -203,9 +204,29 @@ export function Organizations() {
 						</DataTableHeader>
 						<DataTableBody>
 							{filteredOrgs.map((org) => (
-								<DataTableRow key={org.id}>
+								<DataTableRow
+									key={org.id}
+									className={
+										org.is_provider
+											? "bg-amber-50/50 dark:bg-amber-950/20"
+											: ""
+									}
+								>
 									<DataTableCell className="font-medium">
-										{org.name}
+										<div className="flex items-center gap-2">
+											{org.is_provider && (
+												<Star className="h-4 w-4 text-amber-500 fill-amber-500" />
+											)}
+											{org.name}
+											{org.is_provider && (
+												<Badge
+													variant="outline"
+													className="text-amber-600 border-amber-300 bg-amber-50 dark:bg-amber-950/50"
+												>
+													Provider
+												</Badge>
+											)}
+										</div>
 									</DataTableCell>
 									<DataTableCell className="text-sm text-muted-foreground">
 										{org.domain || "-"}
@@ -249,7 +270,12 @@ export function Organizations() {
 												onClick={() =>
 													handleDelete(org)
 												}
-												title="Delete organization"
+												disabled={org.is_provider}
+												title={
+													org.is_provider
+														? "Provider organization cannot be deleted"
+														: "Delete organization"
+												}
 											>
 												<Trash2 className="h-4 w-4" />
 											</Button>

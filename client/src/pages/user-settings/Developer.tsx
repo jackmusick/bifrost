@@ -24,6 +24,7 @@ import {
 	Download,
 	ExternalLink,
 	AlertCircle,
+	Star,
 } from "lucide-react";
 import { sdkService, type DeveloperContext } from "@/services/sdk";
 import { apiClient } from "@/lib/api-client";
@@ -225,7 +226,17 @@ export function DeveloperSettings() {
 								</SelectItem>
 								{organizations.map((org) => (
 									<SelectItem key={org.id} value={org.id}>
-										{org.name}
+										<div className="flex items-center gap-2">
+											{org.is_provider && (
+												<Star className="h-3 w-3 text-amber-500 fill-amber-500" />
+											)}
+											<span>{org.name}</span>
+											{org.is_provider && (
+												<span className="text-xs text-amber-600">
+													Provider
+												</span>
+											)}
+										</div>
 									</SelectItem>
 								))}
 							</SelectContent>

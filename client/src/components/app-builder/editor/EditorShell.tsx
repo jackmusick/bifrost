@@ -402,7 +402,7 @@ export function EditorShell({
 
 		document.addEventListener("keydown", handleKeyDown);
 		return () => document.removeEventListener("keydown", handleKeyDown);
-	}, [selectedComponentId, handleDelete, onSelectComponent]);
+	}, [selectedComponentId, handleDelete, onSelectComponent, currentPage?.layout?.id]);
 
 	// Check if selected component is the root layout
 	const isRootLayout =

@@ -24,7 +24,7 @@ import {
 	AccordionTrigger,
 } from "@/components/ui/accordion";
 import { cn } from "@/lib/utils";
-import { WorkflowPicker } from "./WorkflowPicker";
+import { WorkflowSelector } from "@/components/forms/WorkflowSelector";
 import { WorkflowParameterEditor } from "./WorkflowParameterEditor";
 import type { TableAction } from "@/lib/app-builder-types";
 
@@ -292,7 +292,7 @@ export function TableActionBuilder({
 											<Label className="text-sm">
 												Workflow
 											</Label>
-											<WorkflowPicker
+											<WorkflowSelector
 												value={
 													action.onClick.workflowId
 												}

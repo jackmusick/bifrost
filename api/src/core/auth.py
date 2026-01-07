@@ -35,12 +35,12 @@ class UserPrincipal:
     """
     user_id: UUID
     email: str
+    organization_id: UUID  # User's home organization (always set)
     name: str = ""
-    user_type: str = "ORG"  # PLATFORM or ORG
+    user_type: str = "ORG"  # PLATFORM, ORG, or SYSTEM
     is_active: bool = True
     is_superuser: bool = False
     is_verified: bool = False
-    organization_id: UUID | None = None
     roles: list[str] = field(default_factory=list)
 
     @property
@@ -63,9 +63,16 @@ class ExecutionContext:
     Execution context for request handling.
 
     Contains the authenticated user, organization scope, and database session.
+
+    Scope rules:
+    - Regular users: org_id = user's home organization (always set)
+    - System user: org_id = workflow's organization (None for global workflows)
+
+    This ensures org-scoped workflows only access their org's data,
+    even when triggered by schedules or webhooks.
     """
     user: UserPrincipal
-    org_id: UUID | None
+    org_id: UUID | None  # Execution scope (None only for system user + global workflow)
     db: "AsyncSession"
 
     @property
@@ -80,7 +87,7 @@ class ExecutionContext:
 
     @property
     def is_global_scope(self) -> bool:
-        """Check if operating in global scope."""
+        """Check if operating in global scope (system user + global workflow only)."""
         return self.org_id is None
 
     @property
@@ -153,23 +160,30 @@ async def get_current_user_optional(
         )
         return None
 
-    # Extract claims directly from JWT (efficient - no DB lookup)
-    org_id = None
-    if payload.get("org_id"):
-        try:
-            org_id = UUID(payload["org_id"])
-        except ValueError:
-            pass
+    # Extract org_id from JWT - required for all users
+    org_id_str = payload.get("org_id")
+    if not org_id_str:
+        logger.warning(
+            f"Token for user {user_id} missing org_id claim. "
+            "User must re-authenticate to get a token with organization."
+        )
+        return None
+
+    try:
+        org_id = UUID(org_id_str)
+    except ValueError:
+        logger.warning(f"Token for user {user_id} has invalid org_id format: {org_id_str}")
+        return None
 
     return UserPrincipal(
         user_id=user_id,
         email=payload.get("email", ""),
+        organization_id=org_id,
         name=payload.get("name", ""),
         user_type=payload.get("user_type", "ORG"),
         is_active=True,  # Token is valid, user was active at issue time
         is_superuser=payload.get("is_superuser", False),
         is_verified=True,
-        organization_id=org_id,
         roles=payload.get("roles", []),
     )
 
@@ -267,14 +281,17 @@ async def get_execution_context(
     db: DbSession,
 ) -> ExecutionContext:
     """
-    Get execution context with organization scope.
+    Get execution context for HTTP requests.
 
-    Organization context is determined by user's assigned organization:
-    - Superusers: org_id = None (global scope)
-    - Org users: org_id = user's organization
+    For regular users (including platform admins), org_id is always their
+    home organization. All users are treated the same for data access -
+    they see global resources + their organization's resources.
 
-    Note: Organization filtering for list endpoints should use query parameters
-    with the resolve_org_filter() helper, not this context.
+    Admin-only capabilities (org management, user management) are controlled
+    by endpoint-level authorization, not by ExecutionContext scope.
+
+    Note: For system user executions (schedules, webhooks), use
+    create_system_execution_context() which sets org_id from the workflow.
 
     Args:
         user: Current active user
@@ -283,15 +300,9 @@ async def get_execution_context(
     Returns:
         ExecutionContext with user and organization scope
     """
-    # Superusers get global scope, org users get their organization
-    if user.is_superuser:
-        org_id = None
-    else:
-        org_id = user.organization_id
-
     return ExecutionContext(
         user=user,
-        org_id=org_id,
+        org_id=user.organization_id,
         db=db,
     )
 
@@ -391,22 +402,29 @@ async def get_current_user_ws(websocket) -> UserPrincipal | None:
         )
         return None
 
-    # Extract claims directly from JWT (efficient - no DB lookup)
-    org_id = None
-    if payload.get("org_id"):
-        try:
-            org_id = UUID(payload["org_id"])
-        except ValueError:
-            pass
+    # Extract org_id from JWT - required for all users
+    org_id_str = payload.get("org_id")
+    if not org_id_str:
+        logger.warning(
+            f"WebSocket token for user {user_id} missing org_id claim. "
+            "User must re-authenticate to get a token with organization."
+        )
+        return None
+
+    try:
+        org_id = UUID(org_id_str)
+    except ValueError:
+        logger.warning(f"WebSocket token for user {user_id} has invalid org_id format: {org_id_str}")
+        return None
 
     return UserPrincipal(
         user_id=user_id,
         email=payload.get("email", ""),
+        organization_id=org_id,
         name=payload.get("name", ""),
         user_type=payload.get("user_type", "ORG"),
         is_active=True,
         is_superuser=payload.get("is_superuser", False),
         is_verified=True,
-        organization_id=org_id,
         roles=payload.get("roles", []),
     )

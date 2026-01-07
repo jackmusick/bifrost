@@ -23,6 +23,7 @@ from src.models import (
     UserFormsResponse,
 )
 from src.models.enums import UserType
+from src.core.constants import PROVIDER_ORG_ID
 
 logger = logging.getLogger(__name__)
 
@@ -197,8 +198,8 @@ async def update_user(
     if request.is_superuser is not None:
         db_user.is_superuser = request.is_superuser
         if request.is_superuser:
-            # Promoting to platform admin - remove org
-            db_user.organization_id = None
+            # Promoting to platform admin - move to provider org
+            db_user.organization_id = PROVIDER_ORG_ID
     if request.is_verified is not None:
         db_user.is_verified = request.is_verified
     if request.mfa_enabled is not None:

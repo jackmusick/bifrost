@@ -40,7 +40,7 @@ import type {
 } from "@/lib/app-builder-types";
 import { isLayoutContainer } from "@/lib/app-builder-types";
 import {
-	WorkflowPicker,
+	WorkflowSelector,
 	KeyValueEditor,
 	ColumnBuilder,
 	OptionBuilder,
@@ -211,9 +211,9 @@ function PagePropertiesSection({
 						label="Launch Workflow"
 						description="Workflow when page loads. Access via {{ workflow.<dataSourceId> }}"
 					>
-						<WorkflowPicker
+						<WorkflowSelector
 							value={page.launchWorkflowId}
-							onChange={(workflowId) =>
+							onChange={(workflowId: string | undefined) =>
 								onChange({
 									launchWorkflowId: workflowId || undefined,
 									launchWorkflowParams: workflowId
@@ -766,9 +766,9 @@ function ButtonPropertiesSection({
 				{props.actionType === "workflow" && (
 					<>
 						<FormField label="Workflow">
-							<WorkflowPicker
+							<WorkflowSelector
 								value={props.workflowId}
-								onChange={(workflowId) =>
+								onChange={(workflowId: string | undefined) =>
 									onChange({
 										props: {
 											...props,
@@ -807,9 +807,9 @@ function ButtonPropertiesSection({
 							label="Workflow"
 							description="All form field values will be passed automatically"
 						>
-							<WorkflowPicker
+							<WorkflowSelector
 								value={props.workflowId}
-								onChange={(workflowId) =>
+								onChange={(workflowId: string | undefined) =>
 									onChange({
 										props: {
 											...props,

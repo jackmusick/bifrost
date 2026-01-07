@@ -40,8 +40,18 @@ async def list_organizations(
     user: CurrentSuperuser,
     db: DbSession,
 ) -> list[OrganizationPublic]:
-    """List all organizations."""
-    query = select(OrganizationORM).where(OrganizationORM.is_active).order_by(OrganizationORM.name)
+    """List all organizations.
+
+    Provider organization is always listed first, followed by other orgs alphabetically.
+    """
+    query = (
+        select(OrganizationORM)
+        .where(OrganizationORM.is_active)
+        .order_by(
+            OrganizationORM.is_provider.desc(),  # Provider org first
+            OrganizationORM.name,
+        )
+    )
     result = await db.execute(query)
     orgs = result.scalars().all()
     return [OrganizationPublic.model_validate(org) for org in orgs]
@@ -187,6 +197,13 @@ async def delete_organization(
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="Organization not found",
+        )
+
+    # Provider organization cannot be deleted
+    if org.is_provider:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Provider organization cannot be deleted",
         )
 
     org.is_active = False

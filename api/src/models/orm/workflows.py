@@ -10,7 +10,7 @@ from datetime import datetime
 from typing import TYPE_CHECKING
 from uuid import UUID, uuid4
 
-from sqlalchemy import Boolean, DateTime, Index, Integer, Numeric, String, Text, UniqueConstraint, text
+from sqlalchemy import Boolean, DateTime, ForeignKey, Index, Integer, Numeric, String, Text, UniqueConstraint, text
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -18,6 +18,7 @@ from src.models.orm.base import Base
 
 if TYPE_CHECKING:
     from src.models.orm.agents import Agent
+    from src.models.orm.organizations import Organization
 
 
 class Workflow(Base):
@@ -44,6 +45,14 @@ class Workflow(Base):
 
     # Type discriminator: 'workflow', 'tool', or 'data_provider'
     type: Mapped[str] = mapped_column(String(20), default="workflow", index=True)
+
+    # Organization scoping - NULL means global (available to all orgs)
+    organization_id: Mapped[UUID | None] = mapped_column(
+        ForeignKey("organizations.id", ondelete="SET NULL"),
+        nullable=True,
+        default=None,
+        index=True,
+    )
 
     # File discovery metadata
     path: Mapped[str] = mapped_column(String(1000))  # Relative path from workspace root
@@ -99,6 +108,10 @@ class Workflow(Base):
     )
 
     # Relationships
+    organization: Mapped["Organization | None"] = relationship(
+        back_populates="workflows",
+        foreign_keys=[organization_id],
+    )
     agents: Mapped[list["Agent"]] = relationship(
         secondary="agent_tools",
         back_populates="tools",

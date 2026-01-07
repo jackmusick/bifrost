@@ -60,6 +60,9 @@ class WorkflowMetadata(BaseModel):
     # Type discriminator - distinguishes workflow/tool/data_provider
     type: ExecutableType = Field(default=ExecutableType.WORKFLOW, description="Executable type: workflow, tool, or data_provider")
 
+    # Organization scoping - NULL means global (available to all orgs)
+    organization_id: str | None = Field(default=None, description="Organization ID if org-scoped, None for global")
+
     # Optional fields with defaults
     category: str = Field(default="General", description="Category for organization")
     tags: list[str] = Field(default_factory=list, description="Tags for categorization and search")
@@ -201,3 +204,31 @@ class WorkflowKeyResponse(BaseModel):
     expires_at: datetime | None = None
     description: str | None = None
     disable_global_key: bool = Field(default=False, description="If true, workflow opts out of global API keys")
+
+
+# ==================== WORKFLOW USAGE STATS ====================
+
+
+class EntityUsage(BaseModel):
+    """Usage count for a single entity (form, app, agent)."""
+    id: str = Field(..., description="Entity UUID")
+    name: str = Field(..., description="Entity name")
+    workflow_count: int = Field(..., description="Number of workflows referenced by this entity")
+
+
+class WorkflowUsageStats(BaseModel):
+    """Aggregated workflow usage stats by entity type."""
+    forms: list[EntityUsage] = Field(default_factory=list, description="Forms and their workflow counts")
+    apps: list[EntityUsage] = Field(default_factory=list, description="Apps and their workflow counts")
+    agents: list[EntityUsage] = Field(default_factory=list, description="Agents and their workflow counts")
+
+
+# ==================== WORKFLOW UPDATE ====================
+
+
+class WorkflowUpdateRequest(BaseModel):
+    """Request model for updating a workflow's editable properties."""
+    organization_id: str | None = Field(
+        default=None,
+        description="Organization ID to scope the workflow to, or null for global scope"
+    )

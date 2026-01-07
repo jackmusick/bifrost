@@ -46,8 +46,8 @@ class User(Base):
         ),
         default=UserType.ORG,
     )
-    organization_id: Mapped[UUID | None] = mapped_column(
-        ForeignKey("organizations.id"), default=None
+    organization_id: Mapped[UUID] = mapped_column(
+        ForeignKey("organizations.id"), nullable=False
     )
     last_login: Mapped[datetime | None] = mapped_column(DateTime, default=None)
     created_at: Mapped[datetime] = mapped_column(
@@ -68,7 +68,7 @@ class User(Base):
     webauthn_user_id: Mapped[bytes | None] = mapped_column(LargeBinary(64), default=None)
 
     # Relationships
-    organization: Mapped["Organization | None"] = relationship(back_populates="users")
+    organization: Mapped["Organization"] = relationship(back_populates="users")
     roles: Mapped[list["UserRole"]] = relationship(back_populates="user")
     executions: Mapped[list["Execution"]] = relationship(
         back_populates="executed_by_user"

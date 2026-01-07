@@ -6,7 +6,7 @@
  * Org users should have this component hidden with their org pre-selected.
  */
 
-import { Building2, Globe } from "lucide-react";
+import { Building2, Globe, Star } from "lucide-react";
 import {
 	Select,
 	SelectContent,
@@ -92,7 +92,11 @@ export function OrganizationSelect({
 						</div>
 					) : selectedOrg ? (
 						<div className="flex items-center gap-2">
-							<Building2 className="h-4 w-4 text-muted-foreground" />
+							{selectedOrg.is_provider ? (
+								<Star className="h-4 w-4 text-amber-500 fill-amber-500" />
+							) : (
+								<Building2 className="h-4 w-4 text-muted-foreground" />
+							)}
 							<span>{selectedOrg.name}</span>
 						</div>
 					) : (
@@ -146,9 +150,20 @@ export function OrganizationSelect({
 						organizations.map((org: Organization) => (
 							<SelectItem key={org.id} value={org.id}>
 								<div className="flex items-center gap-2">
-									<Building2 className="h-4 w-4 text-muted-foreground" />
+									{org.is_provider ? (
+										<Star className="h-4 w-4 text-amber-500 fill-amber-500" />
+									) : (
+										<Building2 className="h-4 w-4 text-muted-foreground" />
+									)}
 									<div className="flex flex-col">
-										<span>{org.name}</span>
+										<span className="flex items-center gap-2">
+											{org.name}
+											{org.is_provider && (
+												<span className="text-xs text-amber-600 font-medium">
+													Provider
+												</span>
+											)}
+										</span>
 										{org.domain && (
 											<span className="text-xs text-muted-foreground">
 												@{org.domain}

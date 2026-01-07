@@ -14,6 +14,30 @@ export function useUsers() {
 }
 
 /**
+ * Fetch users with optional scope filter.
+ *
+ * @param scope - Organization scope filter:
+ *   - undefined: all users (platform admins only)
+ *   - null: global/platform users only (no org assignment)
+ *   - UUID string: users in that specific org
+ */
+export function useUsersFiltered(scope?: string | null) {
+	// Build query params - convert null to "global" for the API
+	const queryParams: { scope?: string } = {};
+	if (scope === null) {
+		queryParams.scope = "global";
+	} else if (scope !== undefined) {
+		queryParams.scope = scope;
+	}
+
+	return $api.useQuery("get", "/api/users", {
+		params: {
+			query: queryParams,
+		},
+	});
+}
+
+/**
  * Fetch a specific user by ID
  */
 export function useUser(userId: string | undefined) {

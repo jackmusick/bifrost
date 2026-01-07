@@ -43,12 +43,20 @@ function EditUserDialogContent({
 		user.user_type === "PLATFORM",
 	);
 	const [isSuperuser, setIsSuperuser] = useState(user.is_superuser);
-	const [orgId, setOrgId] = useState<string>("");
+	const [orgId, setOrgId] = useState<string>(user.organization_id || "");
 	const [validationError, setValidationError] = useState<string | null>(null);
 
 	const updateMutation = useUpdateUser();
 	const { data: organizations, isLoading: orgsLoading } = useOrganizations();
 	const { user: currentUser } = useAuth();
+
+	// Find the provider org (for auto-selecting when promoting to platform user)
+	const providerOrg = organizations?.find((org: Organization) => org.is_provider);
+
+	// Get current org name for display
+	const currentOrgName = user.organization_id
+		? organizations?.find((org: Organization) => org.id === user.organization_id)?.name || user.organization_id
+		: "Platform (no org)";
 
 	// Check if editing own account
 	const isEditingSelf = !!(currentUser && user.id === currentUser.id);
@@ -56,6 +64,18 @@ function EditUserDialogContent({
 	const isRoleChanging = (user.user_type === "PLATFORM") !== isPlatformUser;
 	const isDemoting = user.user_type === "PLATFORM" && !isPlatformUser;
 	const isPromoting = user.user_type !== "PLATFORM" && isPlatformUser;
+
+	// Auto-select provider org when promoting to platform user
+	const handleUserTypeChange = (value: string) => {
+		const isAdmin = value === "platform";
+		setIsPlatformUser(isAdmin);
+		if (isAdmin && providerOrg) {
+			setOrgId(providerOrg.id);
+		} else if (!isAdmin && !user.organization_id) {
+			// When demoting, they need to select an org
+			setOrgId("");
+		}
+	};
 
 	const validateForm = (): boolean => {
 		if (!displayName || displayName.trim().length === 0) {
@@ -221,9 +241,7 @@ function EditUserDialogContent({
 					<Combobox
 						id="userType"
 						value={isPlatformUser ? "platform" : "org"}
-						onValueChange={(value) =>
-							setIsPlatformUser(value === "platform")
-						}
+						onValueChange={handleUserTypeChange}
 						disabled={isEditingSelf}
 						options={[
 							{
@@ -242,6 +260,19 @@ function EditUserDialogContent({
 						placeholder="Select user type"
 					/>
 				</div>
+
+				{/* Show current org (read-only) when not changing role */}
+				{!isRoleChanging && (
+					<div className="space-y-2">
+						<Label>Organization</Label>
+						<div className="flex items-center gap-2 px-3 py-2 rounded-md border bg-muted">
+							<span className="text-sm">{currentOrgName}</span>
+						</div>
+						<p className="text-xs text-muted-foreground">
+							Organization cannot be changed without changing user type
+						</p>
+					</div>
+				)}
 
 				{isPlatformUser && (
 					<div className="flex items-center justify-between rounded-lg border p-4">

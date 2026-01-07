@@ -1667,6 +1667,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/workflows/usage-stats": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get workflow usage stats by entity
+         * @description Returns counts of workflows used by each form, app, and agent
+         */
+        get: operations["get_workflow_usage_stats_api_workflows_usage_stats_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/workflows/execute": {
         parameters: {
             query?: never;
@@ -9115,6 +9135,27 @@ export interface components {
             duration_ms?: number | null;
         };
         /**
+         * EntityUsage
+         * @description Usage count for a single entity (form, app, agent).
+         */
+        EntityUsage: {
+            /**
+             * Id
+             * @description Entity UUID
+             */
+            id: string;
+            /**
+             * Name
+             * @description Entity name
+             */
+            name: string;
+            /**
+             * Workflow Count
+             * @description Number of workflows referenced by this entity
+             */
+            workflow_count: number;
+        };
+        /**
          * EventDeliveryListResponse
          * @description Response model for listing event deliveries.
          *     GET /api/events/{event_id}/deliveries
@@ -11768,11 +11809,6 @@ export interface components {
             issuer: string;
             /** Account Name */
             account_name: string;
-            /**
-             * Is Existing
-             * @default false
-             */
-            is_existing: boolean;
         };
         /**
          * MFAStatusResponse
@@ -12525,6 +12561,11 @@ export interface components {
              * @default true
              */
             is_active: boolean;
+            /**
+             * Is Provider
+             * @default false
+             */
+            is_provider: boolean;
             /** Settings */
             settings?: {
                 [key: string]: unknown;
@@ -12578,6 +12619,11 @@ export interface components {
              * @default true
              */
             is_active: boolean;
+            /**
+             * Is Provider
+             * @default false
+             */
+            is_provider: boolean;
             /** Settings */
             settings?: {
                 [key: string]: unknown;
@@ -15776,6 +15822,11 @@ export interface components {
              */
             type: components["schemas"]["ExecutableType"];
             /**
+             * Organization Id
+             * @description Organization ID if org-scoped, None for global
+             */
+            organization_id?: string | null;
+            /**
              * Category
              * @description Category for organization
              * @default General
@@ -15998,6 +16049,27 @@ export interface components {
             memory_bytes: number;
         };
         /**
+         * WorkflowUsageStats
+         * @description Aggregated workflow usage stats by entity type.
+         */
+        WorkflowUsageStats: {
+            /**
+             * Forms
+             * @description Forms and their workflow counts
+             */
+            forms?: components["schemas"]["EntityUsage"][];
+            /**
+             * Apps
+             * @description Apps and their workflow counts
+             */
+            apps?: components["schemas"]["EntityUsage"][];
+            /**
+             * Agents
+             * @description Agents and their workflow counts
+             */
+            agents?: components["schemas"]["EntityUsage"][];
+        };
+        /**
          * WorkflowValidationRequest
          * @description Request model for workflow validation endpoint
          */
@@ -16103,6 +16175,27 @@ export interface components {
             organization_id?: string | null;
         };
         /**
+         * MFASetupResponse
+         * @description MFA setup response with secret.
+         */
+        src__routers__auth__MFASetupResponse: {
+            /** Secret */
+            secret: string;
+            /** Qr Code Uri */
+            qr_code_uri: string;
+            /** Provisioning Uri */
+            provisioning_uri: string;
+            /** Issuer */
+            issuer: string;
+            /** Account Name */
+            account_name: string;
+            /**
+             * Is Existing
+             * @default false
+             */
+            is_existing: boolean;
+        };
+        /**
          * MFAVerifyRequest
          * @description Request to verify MFA code during login.
          */
@@ -16133,22 +16226,6 @@ export interface components {
             password: string;
             /** Name */
             name?: string | null;
-        };
-        /**
-         * MFASetupResponse
-         * @description MFA setup response with secret.
-         */
-        src__routers__mfa__MFASetupResponse: {
-            /** Secret */
-            secret: string;
-            /** Qr Code Uri */
-            qr_code_uri: string;
-            /** Provisioning Uri */
-            provisioning_uri: string;
-            /** Issuer */
-            issuer: string;
-            /** Account Name */
-            account_name: string;
         };
     };
     responses: never;
@@ -16251,7 +16328,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["MFASetupResponse"];
+                    "application/json": components["schemas"]["src__routers__auth__MFASetupResponse"];
                 };
             };
             /** @description Validation Error */
@@ -16697,7 +16774,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["src__routers__mfa__MFASetupResponse"];
+                    "application/json": components["schemas"]["MFASetupResponse"];
                 };
             };
         };
@@ -18331,6 +18408,14 @@ export interface operations {
             query?: {
                 type?: string | null;
                 is_tool?: boolean | null;
+                /** @description Filter scope: omit for user's org + global, 'global' for global only, 'all' for all workflows (platform admins only), or org UUID for specific org. */
+                scope?: string | null;
+                /** @description Filter to workflows used by a specific form */
+                filter_by_form?: string | null;
+                /** @description Filter to workflows used by a specific app */
+                filter_by_app?: string | null;
+                /** @description Filter to workflows used by a specific agent */
+                filter_by_agent?: string | null;
             };
             header?: never;
             path?: never;
@@ -18345,6 +18430,38 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["WorkflowMetadata"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_workflow_usage_stats_api_workflows_usage_stats_get: {
+        parameters: {
+            query?: {
+                /** @description Filter scope: omit for user's org + global, 'global' for global only, 'all' for all (platform admins only), or org UUID for specific org. */
+                scope?: string | null;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WorkflowUsageStats"];
                 };
             };
             /** @description Validation Error */

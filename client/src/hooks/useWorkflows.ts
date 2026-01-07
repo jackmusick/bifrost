@@ -22,6 +22,95 @@ export function useWorkflows() {
 }
 
 /**
+ * Fetch workflows with optional entity filters and org scope.
+ * Used by the Workflows page for sidebar filtering.
+ *
+ * @param options.scope - Organization scope filter (consistent with forms):
+ *   - undefined: all workflows (platform admins only) - don't send scope param
+ *   - null: global workflows only - send scope=global
+ *   - UUID string: only that org's workflows (no global fallback)
+ */
+export function useWorkflowsFiltered(options?: {
+	scope?: string | null;
+	type?: string;
+	filterByForm?: string;
+	filterByApp?: string;
+	filterByAgent?: string;
+}) {
+	// Build query params - scope is the filter parameter
+	// undefined = don't send scope (show all)
+	// null = send "global" (global only)
+	// UUID = send the UUID (org only, no global)
+	const queryParams: Record<string, string | undefined> = {};
+
+	if (options?.scope === null) {
+		queryParams.scope = "global";
+	} else if (options?.scope !== undefined) {
+		queryParams.scope = options.scope;
+	}
+	// undefined = don't send scope param (backend defaults to "all")
+
+	if (options?.type) {
+		queryParams.type = options.type;
+	}
+
+	return $api.useQuery("get", "/api/workflows", {
+		params: {
+			query: {
+				scope: queryParams.scope,
+				type: queryParams.type,
+				filter_by_form: options?.filterByForm,
+				filter_by_app: options?.filterByApp,
+				filter_by_agent: options?.filterByAgent,
+			},
+		},
+	});
+}
+
+/**
+ * Update a workflow's properties (e.g., organization scope).
+ * Platform admin only.
+ *
+ * Note: Uses direct fetch since the PATCH endpoint may not be in generated types yet.
+ */
+export function useUpdateWorkflow() {
+	const queryClient = useQueryClient();
+
+	return {
+		mutateAsync: async (
+			workflowId: string,
+			organizationId: string | null,
+		) => {
+			// Use direct fetch since the PATCH endpoint might not be in generated types
+			const response = await fetch(`/api/workflows/${workflowId}`, {
+				method: "PATCH",
+				headers: {
+					"Content-Type": "application/json",
+				},
+				credentials: "include",
+				body: JSON.stringify({ organization_id: organizationId }),
+			});
+
+			if (!response.ok) {
+				const error = await response.json().catch(() => ({}));
+				throw new Error(
+					error.detail || `Failed to update workflow: ${response.status}`,
+				);
+			}
+
+			const data = await response.json();
+
+			// Invalidate workflows query to refresh the list
+			queryClient.invalidateQueries({
+				queryKey: ["get", "/api/workflows"],
+			});
+
+			return data;
+		},
+	};
+}
+
+/**
  * Fetch workflows that can be used as agent tools.
  * Uses the type="tool" query parameter for server-side filtering.
  */

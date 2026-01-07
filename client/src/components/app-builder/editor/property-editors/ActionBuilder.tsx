@@ -18,7 +18,7 @@ import {
 	SelectValue,
 } from "@/components/ui/select";
 import { cn } from "@/lib/utils";
-import { WorkflowPicker } from "./WorkflowPicker";
+import { WorkflowSelector } from "@/components/forms/WorkflowSelector";
 import { KeyValueEditor } from "./KeyValueEditor";
 
 /**
@@ -175,7 +175,7 @@ export function ActionBuilder({
 				<div className="space-y-4">
 					<div className="space-y-2">
 						<Label className="text-sm font-medium">Workflow</Label>
-						<WorkflowPicker
+						<WorkflowSelector
 							value={value.workflowId}
 							onChange={(workflowId) =>
 								onChange({ ...value, workflowId })

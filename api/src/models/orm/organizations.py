@@ -24,6 +24,7 @@ if TYPE_CHECKING:
     from src.models.orm.metrics import KnowledgeStorageDaily
     from src.models.orm.tables import Table
     from src.models.orm.users import User
+    from src.models.orm.workflows import Workflow
 
 
 class Organization(Base):
@@ -35,6 +36,7 @@ class Organization(Base):
     name: Mapped[str] = mapped_column(String(255))
     domain: Mapped[str | None] = mapped_column(String(255), default=None)
     is_active: Mapped[bool] = mapped_column(Boolean, default=True)
+    is_provider: Mapped[bool] = mapped_column(Boolean, default=False)
     settings: Mapped[dict] = mapped_column(JSONB, default={})
     created_at: Mapped[datetime] = mapped_column(
         DateTime, default=datetime.utcnow, server_default=text("NOW()")
@@ -64,5 +66,6 @@ class Organization(Base):
     )
     tables: Mapped[list["Table"]] = relationship(back_populates="organization")
     applications: Mapped[list["Application"]] = relationship(back_populates="organization")
+    workflows: Mapped[list["Workflow"]] = relationship(back_populates="organization")
 
     __table_args__ = (Index("ix_organizations_domain", "domain"),)

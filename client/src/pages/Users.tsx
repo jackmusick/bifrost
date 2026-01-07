@@ -7,6 +7,9 @@ import {
 	Edit,
 	Plus,
 	Trash2,
+	Globe,
+	Building2,
+	Star,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
@@ -31,14 +34,17 @@ import {
 } from "@/components/ui/alert-dialog";
 import { SearchBox } from "@/components/search/SearchBox";
 import { useSearch } from "@/hooks/useSearch";
-import { useUsers, useDeleteUser } from "@/hooks/useUsers";
+import { useUsersFiltered, useDeleteUser } from "@/hooks/useUsers";
+import { useOrganizations } from "@/hooks/useOrganizations";
 import { useAuth } from "@/contexts/AuthContext";
 import { useOrgScope } from "@/contexts/OrgScopeContext";
+import { OrganizationSelect } from "@/components/forms/OrganizationSelect";
 import { CreateUserDialog } from "@/components/users/CreateUserDialog";
 import { EditUserDialog } from "@/components/users/EditUserDialog";
 import { toast } from "sonner";
 import type { components } from "@/lib/v1";
 type User = components["schemas"]["UserPublic"];
+type Organization = components["schemas"]["OrganizationPublic"];
 
 export function Users() {
 	const [selectedUser, setSelectedUser] = useState<User | undefined>();
@@ -46,16 +52,34 @@ export function Users() {
 	const [isEditOpen, setIsEditOpen] = useState(false);
 	const [isDeleteOpen, setIsDeleteOpen] = useState(false);
 	const [searchTerm, setSearchTerm] = useState("");
+	const [filterOrgId, setFilterOrgId] = useState<string | null | undefined>(
+		undefined,
+	);
 
 	const { scope } = useOrgScope();
-	const { user: currentUser } = useAuth();
+	const { user: currentUser, isPlatformAdmin } = useAuth();
 
-	// Fetch users based on current scope
-	// Scope is sent via X-Organization-Id header (managed by api client from sessionStorage)
-	const { data: users, isLoading, refetch } = useUsers();
+	// Fetch users with scope filter (undefined = all, null = global only, UUID = specific org)
+	const {
+		data: users,
+		isLoading,
+		refetch,
+	} = useUsersFiltered(isPlatformAdmin ? filterOrgId : undefined);
 	const deleteMutation = useDeleteUser();
 
-	// React Query automatically refetches when scope changes (via orgId in query key)
+	// Fetch organizations for the org name lookup (platform admins only)
+	const { data: organizations } = useOrganizations({
+		enabled: isPlatformAdmin,
+	});
+
+	// Helper to get organization info from ID
+	const getOrgInfo = (
+		orgId: string | null | undefined,
+	): { name: string; isProvider: boolean } => {
+		if (!orgId) return { name: "Platform", isProvider: false };
+		const org = organizations?.find((o: Organization) => o.id === orgId);
+		return { name: org?.name || orgId, isProvider: org?.is_provider ?? false };
+	};
 
 	// Apply search filter
 	const filteredUsers = useSearch(users || [], searchTerm, ["email", "name"]);
@@ -145,7 +169,7 @@ export function Users() {
 				</div>
 			</div>
 
-			{/* Search Box */}
+			{/* Filters Row */}
 			<div className="flex items-center gap-4">
 				<SearchBox
 					value={searchTerm}
@@ -153,20 +177,34 @@ export function Users() {
 					placeholder="Search users by email or name..."
 					className="max-w-md"
 				/>
+				{isPlatformAdmin && (
+					<div className="w-64">
+						<OrganizationSelect
+							value={filterOrgId}
+							onChange={setFilterOrgId}
+							showAll={true}
+							showGlobal={false}
+							placeholder="All users"
+						/>
+					</div>
+				)}
 			</div>
 
 			{/* Content */}
-			{isLoading ? (
-				<div className="space-y-2">
-					{[...Array(5)].map((_, i) => (
-						<Skeleton key={i} className="h-12 w-full" />
-					))}
-				</div>
-			) : filteredUsers && filteredUsers.length > 0 ? (
-				<div className="flex-1 min-h-0 overflow-auto rounded-md border">
+			<div className="flex-1 min-h-0 overflow-auto">
+				{isLoading ? (
+					<div className="space-y-2">
+						{[...Array(5)].map((_, i) => (
+							<Skeleton key={i} className="h-12 w-full" />
+						))}
+					</div>
+				) : filteredUsers && filteredUsers.length > 0 ? (
 					<DataTable>
-						<DataTableHeader className="sticky top-0 bg-background z-10">
+						<DataTableHeader>
 							<DataTableRow>
+								{isPlatformAdmin && (
+									<DataTableHead>Organization</DataTableHead>
+								)}
 								<DataTableHead>Name</DataTableHead>
 								<DataTableHead>Email</DataTableHead>
 								<DataTableHead>Type</DataTableHead>
@@ -179,6 +217,36 @@ export function Users() {
 						<DataTableBody>
 							{filteredUsers.map((user) => (
 								<DataTableRow key={user.id}>
+									{isPlatformAdmin && (
+										<DataTableCell>
+											{(() => {
+												const orgInfo = getOrgInfo(
+													user.organization_id,
+												);
+												return user.organization_id ? (
+													<Badge
+														variant="outline"
+														className="text-xs"
+													>
+														{orgInfo.isProvider ? (
+															<Star className="mr-1 h-3 w-3 text-amber-500 fill-amber-500" />
+														) : (
+															<Building2 className="mr-1 h-3 w-3" />
+														)}
+														{orgInfo.name}
+													</Badge>
+												) : (
+													<Badge
+														variant="default"
+														className="text-xs"
+													>
+														<Globe className="mr-1 h-3 w-3" />
+														Platform
+													</Badge>
+												);
+											})()}
+										</DataTableCell>
+									)}
 									<DataTableCell className="font-medium">
 										{user.name || user.email}
 									</DataTableCell>
@@ -250,22 +318,22 @@ export function Users() {
 							))}
 						</DataTableBody>
 					</DataTable>
-				</div>
-			) : (
-				<div className="flex flex-col items-center justify-center py-12 text-center">
-					<UserCog className="h-12 w-12 text-muted-foreground" />
-					<h3 className="mt-4 text-lg font-semibold">
-						{searchTerm
-							? "No users match your search"
-							: "No users found"}
-					</h3>
-					<p className="mt-2 text-sm text-muted-foreground">
-						{searchTerm
-							? "Try adjusting your search term or clear the filter"
-							: "No users in the system"}
-					</p>
-				</div>
-			)}
+				) : (
+					<div className="flex flex-col items-center justify-center py-12 text-center">
+						<UserCog className="h-12 w-12 text-muted-foreground" />
+						<h3 className="mt-4 text-lg font-semibold">
+							{searchTerm
+								? "No users match your search"
+								: "No users found"}
+						</h3>
+						<p className="mt-2 text-sm text-muted-foreground">
+							{searchTerm
+								? "Try adjusting your search term or clear the filter"
+								: "No users in the system"}
+						</p>
+					</div>
+				)}
+			</div>
 
 			<CreateUserDialog
 				open={isCreateOpen}

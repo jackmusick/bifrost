@@ -200,8 +200,11 @@ from src.models.contracts.workflows import (
     WorkflowKeyResponse,
     WorkflowMetadata,
     WorkflowParameter,
+    WorkflowUpdateRequest,
     WorkflowValidationRequest,
     WorkflowValidationResponse,
+    EntityUsage,
+    WorkflowUsageStats,
 )
 
 # Data Providers
@@ -722,8 +725,11 @@ __all__ = [
     "MetadataResponse",
     "FormDiscoveryMetadata",
     "ValidationIssue",
+    "WorkflowUpdateRequest",
     "WorkflowValidationRequest",
     "WorkflowValidationResponse",
+    "EntityUsage",
+    "WorkflowUsageStats",
     "DataProviderRequest",
     "DataProviderOption",
     "DataProviderResponse",
