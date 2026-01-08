@@ -122,6 +122,31 @@ services:
       echo 'MinIO bucket created successfully'
       "
 
+  # Init Container (Test) - Runs migrations and warms module cache before API/workers start
+  init:
+    build:
+      context: .
+      dockerfile: api/Dockerfile.dev
+    container_name: bifrost-test-init
+    environment:
+      BIFROST_DATABASE_URL: postgresql+asyncpg://bifrost:bifrost_test@pgbouncer:5432/bifrost_test
+      BIFROST_DATABASE_URL_SYNC: postgresql://bifrost:bifrost_test@pgbouncer:5432/bifrost_test
+      BIFROST_REDIS_URL: redis://redis:6379/0
+      BIFROST_SECRET_KEY: test-secret-key-for-e2e-testing-must-be-32-chars
+      BIFROST_ENVIRONMENT: testing
+    volumes:
+      - ./api/src:/app/src:ro
+      - ./api/shared:/app/shared:ro
+      - ./api/alembic:/app/alembic:ro
+      - ./api/alembic.ini:/app/alembic.ini:ro
+      - ./api/scripts:/app/scripts:ro
+    depends_on:
+      pgbouncer:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    command: ["python", "-m", "scripts.init_container"]
+
   # FastAPI Application (Test) - Only started for E2E tests
   api:
     build:
@@ -163,6 +188,8 @@ services:
         condition: service_healthy
       minio-init:
         condition: service_completed_successfully
+      init:
+        condition: service_completed_successfully
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
       interval: 5s
@@ -170,7 +197,7 @@ services:
       retries: 10
     # Entrypoint handles permissions; run as root so it can fix volume ownership
     user: root
-    command: ["sh", "-c", "alembic upgrade head && uvicorn src.main:app --host 0.0.0.0 --port 8000"]
+    command: ["uvicorn", "src.main:app", "--host", "0.0.0.0", "--port", "8000"]
 
   # Background Worker (Test) - Only started for E2E tests
   # Note: Discovery service has been removed - workflow/form extraction
@@ -305,6 +332,7 @@ services:
       - ./api/bifrost:/app/bifrost:ro
       - ./api/bifrost_sdk:/app/bifrost_sdk:ro
       - ./api/platform:/app/platform:ro
+      - ./api/scripts:/app/scripts:ro  # Scripts for migration utilities
       - ./api/stubs:/app/stubs:ro
       - ./api/tests:/app/tests:ro
       - ./api/alembic:/app/alembic:ro
@@ -320,6 +348,8 @@ services:
       redis:
         condition: service_healthy
       minio-init:
+        condition: service_completed_successfully
+      init:
         condition: service_completed_successfully
     # Default command runs all tests except E2E
     command: ["pytest", "tests/", "--ignore=tests/e2e/", "-v"]

@@ -23,16 +23,13 @@ from typing import Any, Callable, Literal
 logger = logging.getLogger(__name__)
 
 
-# ==================== WORKSPACE INITIALIZATION ====================
-# Add workspace to sys.path at module load time
-# This ensures all processes (API, worker, consumer) can import workspace modules
-
-WORKSPACE_PATH = Path("/tmp/bifrost/workspace")
-WORKSPACE_PATH.mkdir(parents=True, exist_ok=True)
-
-if str(WORKSPACE_PATH) not in sys.path:
-    sys.path.insert(0, str(WORKSPACE_PATH))
-    logger.debug(f"Added workspace to sys.path: {WORKSPACE_PATH}")
+# ==================== VIRTUAL IMPORT NOTE ====================
+# Workspace modules are loaded from Redis via virtual_import.py, not from filesystem.
+# The virtual import hook must be installed before any workspace imports.
+# See: src/services/execution/virtual_import.py
+#
+# Paths are stored as relative paths (e.g., "features/ticketing/workflow.py")
+# and used directly in __file__ attributes for tracebacks.
 
 
 # ==================== METADATA DATACLASSES ====================
@@ -279,11 +276,9 @@ def exec_from_db(
         ImportError: If code cannot be compiled or executed
         SyntaxError: If code has syntax errors
     """
-    # Construct the implicit file path for __file__ injection
-    # This path may not exist on disk but is needed for:
-    # 1. Meaningful stack traces
-    # 2. Relative path resolution in the code
-    implicit_file_path = WORKSPACE_PATH / path
+    # Use the relative path directly for __file__
+    # Tracebacks will show: "features/ticketing/workflow.py", line 42
+    file_path_for_traceback = path
 
     # Calculate module name from path for proper __package__ and relative imports
     path_obj = Path(path)
@@ -293,14 +288,13 @@ def exec_from_db(
     # Calculate __package__ for relative imports (parent package)
     package_name = '.'.join(path_obj.parts[:-1]) if path_obj.parts[:-1] else None
 
-    # Ensure workspace is in sys.path for imports from regular files (modules/, etc.)
-    workspace_str = str(WORKSPACE_PATH)
-    if workspace_str not in sys.path:
-        sys.path.insert(0, workspace_str)
+    # Note: We don't add anything to sys.path here.
+    # Workspace modules are loaded via virtual_import.py from Redis,
+    # not from the filesystem.
 
     # Create module object
     module = ModuleType(module_name)
-    module.__file__ = str(implicit_file_path)
+    module.__file__ = file_path_for_traceback
     module.__loader__ = None  # type: ignore[assignment]
     module.__package__ = package_name
     module.__spec__ = None
@@ -309,7 +303,7 @@ def exec_from_db(
     # The namespace includes __builtins__ and module-level attributes
     namespace: dict[str, Any] = {
         "__name__": module_name,
-        "__file__": str(implicit_file_path),
+        "__file__": file_path_for_traceback,
         "__package__": package_name,
         "__builtins__": __builtins__,
         "__doc__": None,
@@ -319,7 +313,7 @@ def exec_from_db(
 
     # Compile with filename for meaningful stack traces
     try:
-        code_obj = compile(code, filename=str(implicit_file_path), mode='exec')
+        code_obj = compile(code, filename=file_path_for_traceback, mode='exec')
     except SyntaxError as e:
         logger.error(f"Syntax error in workflow code at {path}: {e}")
         raise
@@ -818,71 +812,30 @@ def load_workflow_by_file_path(
     function_name: str,
 ) -> tuple[Callable, WorkflowMetadata] | None:
     """
-    Load a specific executable (workflow, tool, or data provider) from a known file path.
+    DEPRECATED: Use load_workflow_from_db() instead.
 
-    This is a fallback path used when workflow code is not available in the database.
-    The primary path is load_workflow_from_db() which loads code directly from the database.
-
-    Use this when you already know the file path (from database or cache)
-    to skip the filesystem scan that load_workflow() does.
-
-    All executable types use the unified _executable_metadata attribute.
+    This function was used to load workflows from the filesystem.
+    Now all workflows are loaded from the database.
 
     Args:
-        file_path: Path to the Python file (relative or absolute)
-        function_name: Python function name to find (e.g., "get_client_detail")
+        file_path: Path to the Python file (no longer used)
+        function_name: Python function name to find
 
     Returns:
-        Tuple of (function, metadata) or None if not found
+        None - always returns None since filesystem loading is deprecated
     """
-    # Resolve to absolute path if relative
-    if isinstance(file_path, str):
-        file_path = Path(file_path)
-
-    if not file_path.is_absolute():
-        # Assume relative to workspace root
-        file_path = WORKSPACE_PATH / file_path
-
-    if not file_path.exists():
-        logger.warning(f"Workflow file not found: {file_path}")
-        return None
-
-    try:
-        module = import_module(file_path)
-
-        # Find the decorated function by name
-        for attr_name in dir(module):
-            attr = getattr(module, attr_name)
-            if not callable(attr):
-                continue
-
-            # All decorators (@workflow, @tool, @data_provider) use _executable_metadata
-            # Match by Python function name (attr_name), not display name (metadata.name)
-            if hasattr(attr, '_executable_metadata') and attr_name == function_name:
-                metadata = getattr(attr, '_executable_metadata', None)
-                if metadata:
-                    # For data providers, convert to WorkflowMetadata for consistent execution
-                    if hasattr(metadata, 'type') and metadata.type == 'data_provider':
-                        workflow_meta = WorkflowMetadata(
-                            name=metadata.name,
-                            description=metadata.description,
-                            category=getattr(metadata, 'category', 'General'),
-                            parameters=getattr(metadata, 'parameters', []),
-                            timeout_seconds=getattr(metadata, 'timeout_seconds', 300),
-                            type='data_provider',
-                        )
-                        return (attr, workflow_meta)
-                    elif isinstance(metadata, WorkflowMetadata):
-                        return (attr, metadata)
-                    else:
-                        return (attr, _convert_workflow_metadata(metadata))
-
-        logger.warning(f"Workflow function '{function_name}' not found in {file_path}")
-        return None
-
-    except Exception as e:
-        logger.error(f"Error loading workflow function '{function_name}' from {file_path}: {e}")
-        return None
+    import warnings
+    warnings.warn(
+        "load_workflow_by_file_path() is deprecated. Use load_workflow_from_db() instead. "
+        "All workflows are now loaded from the database.",
+        DeprecationWarning,
+        stacklevel=2,
+    )
+    logger.warning(
+        f"Deprecated load_workflow_by_file_path() called for {file_path}:{function_name}. "
+        "Use load_workflow_from_db() instead."
+    )
+    return None
 
 
 def get_workflow(name: str) -> tuple[Callable, WorkflowMetadata] | None:

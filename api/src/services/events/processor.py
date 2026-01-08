@@ -395,9 +395,6 @@ class EventProcessor:
         if not workflow:
             raise ValueError(f"Delivery {delivery.id} has no workflow")
 
-        # Get event source for org context
-        event_source = event.event_source
-
         # Build parameters for workflow (matches endpoint behavior)
         # Extract body fields as flat params so they match function signatures
         parameters: dict[str, Any] = {}

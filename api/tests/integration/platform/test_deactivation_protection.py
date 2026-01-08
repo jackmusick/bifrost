@@ -47,41 +47,47 @@ def get_file_storage_service(db_session):
     return FileStorageService(db_session)
 
 
-async def _truncate_tables_with_retry(db_session: AsyncSession, max_retries: int = 3):
-    """Truncate tables with retry logic for handling deadlocks."""
-    import asyncio
-    from sqlalchemy import text
-    from sqlalchemy.exc import DBAPIError
-
-    for attempt in range(max_retries):
-        try:
-            await db_session.execute(text("TRUNCATE TABLE executions CASCADE"))
-            await db_session.execute(text("TRUNCATE TABLE workflows CASCADE"))
-            await db_session.execute(text("TRUNCATE TABLE workspace_files CASCADE"))
-            await db_session.commit()
-            return
-        except DBAPIError as e:
-            if "deadlock" in str(e).lower() and attempt < max_retries - 1:
-                await db_session.rollback()
-                await asyncio.sleep(0.5 * (attempt + 1))  # Exponential backoff
-                continue
-            raise
-
-
 @pytest_asyncio.fixture
 async def clean_tables(db_session: AsyncSession):
-    """Clean up test data from tables before and after test.
+    """Clean up test-created data using targeted deletes.
 
-    Uses TRUNCATE CASCADE for reliable cleanup that handles FK constraints.
-    Includes retry logic for transient deadlocks.
+    Instead of truncating entire tables (which affects other concurrent tests),
+    this fixture deletes only records created by this test module.
     """
-    # Clean before test
-    await _truncate_tables_with_retry(db_session)
+    from sqlalchemy import delete
+    from src.models import Workflow, WorkspaceFile
 
     yield
 
-    # Clean after test
-    await _truncate_tables_with_retry(db_session)
+    # Clean up only test-specific records by path patterns
+    # These patterns match the workflow files created in this test module
+    test_paths = [
+        "test_file.py",
+        "test_workflow.py",
+        "data_provider_file.py",
+    ]
+    for path in test_paths:
+        await db_session.execute(
+            delete(Workflow).where(Workflow.path == path)
+        )
+        await db_session.execute(
+            delete(WorkspaceFile).where(WorkspaceFile.path == path)
+        )
+
+    # Also clean up by name patterns used in tests
+    await db_session.execute(
+        delete(Workflow).where(Workflow.name.like("Test Workflow%"))
+    )
+    await db_session.execute(
+        delete(Workflow).where(Workflow.name.like("First Workflow%"))
+    )
+    await db_session.execute(
+        delete(Workflow).where(Workflow.name.like("Second Workflow%"))
+    )
+    await db_session.execute(
+        delete(Workflow).where(Workflow.name == "Test Data Provider")
+    )
+    await db_session.commit()
 
 
 # Sample workflow code templates

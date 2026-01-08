@@ -16,7 +16,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from .models import PendingDeactivationInfo, AvailableReplacementInfo
 
 if TYPE_CHECKING:
-    from src.models import Workflow
+    pass
 
 logger = logging.getLogger(__name__)
 

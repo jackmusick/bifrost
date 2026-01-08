@@ -143,17 +143,17 @@ class AdapterRegistry:
 
     def _load_custom_adapters(self) -> None:
         """
-        Load custom adapters from workspace.
+        Load custom adapters from database.
 
-        Custom adapters are discovered from workspace/adapters/*.py files
-        that use the @adapter decorator.
+        Custom adapters would be discovered from workspace files stored
+        in the database that use the @adapter decorator.
         """
         self._loaded_custom = True
 
-        # TODO: Implement custom adapter discovery from workspace
+        # TODO: Implement custom adapter discovery from database
         # This would:
-        # 1. Scan /tmp/bifrost/workspace/adapters/*.py
-        # 2. Import modules and find classes with @adapter decorator
+        # 1. Query workspace_files for adapters/*.py files
+        # 2. Load code from database and find classes with @adapter decorator
         # 3. Register them in the registry
         #
         # For now, only built-in adapters are supported.

@@ -13,7 +13,7 @@ from typing import Literal
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from src.core.workspace_sync import TEMP_PATH, UPLOADS_PATH
+from src.core.paths import TEMP_PATH, UPLOADS_PATH
 from src.services.file_storage import FileStorageService
 
 Location = Literal["workspace", "temp", "uploads"]

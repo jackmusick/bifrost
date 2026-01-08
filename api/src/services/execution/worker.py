@@ -9,6 +9,10 @@ This module runs in a separate process and:
 5. Exits cleanly (or gets killed on timeout)
 
 The worker imports minimal dependencies to keep memory footprint low.
+
+IMPORTANT: The virtual import hook is installed at module load time
+(before any workspace imports can occur) to enable loading Python
+modules from Redis cache instead of the filesystem.
 """
 
 from __future__ import annotations
@@ -22,6 +26,13 @@ import sys
 from dataclasses import dataclass
 from datetime import datetime
 from typing import Any
+
+# Install virtual import hook IMMEDIATELY at module load time.
+# This must happen before any workspace imports (e.g., from shared import ...)
+# The hook intercepts imports and loads modules from Redis cache.
+from src.services.execution.virtual_import import install_virtual_import_hook
+
+install_virtual_import_hook()
 
 logger = logging.getLogger(__name__)
 
@@ -275,7 +286,6 @@ async def worker_main(execution_id: str):
 
     Called by the pool manager when spawning a new worker.
     """
-    from pathlib import Path
     import redis.asyncio as redis
     from src.config import get_settings
 
@@ -286,10 +296,8 @@ async def worker_main(execution_id: str):
 
     logger.info(f"Worker starting for execution: {execution_id}")
 
-    # Ensure workspace directory exists
-    # Note: sys.path setup is handled by module_loader when imported
-    workspace_dir = Path("/tmp/bifrost/workspace")
-    workspace_dir.mkdir(parents=True, exist_ok=True)
+    # Note: No workspace directory needed - modules are loaded from Redis via virtual imports
+    # The virtual import hook is installed below before any workspace imports
 
     # Connect to Redis
     redis_client = redis.from_url(

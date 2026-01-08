@@ -18,8 +18,8 @@ from src.models.contracts.agents import ToolInfo, ToolsResponse
 from src.models.orm import Workflow
 
 # Import tools package to trigger registration of all @system_tool decorated functions
-import src.services.mcp.tools  # noqa: F401
-from src.services.mcp.tool_registry import get_all_system_tools, get_all_tool_ids
+import src.services.mcp_server.tools  # noqa: F401
+from src.services.mcp_server.tool_registry import get_all_system_tools, get_all_tool_ids
 
 logger = logging.getLogger(__name__)
 

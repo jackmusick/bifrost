@@ -16,7 +16,7 @@ from uuid import uuid4
 import pytest
 
 from src.core.security import create_access_token
-from src.services.mcp.auth import (
+from src.services.mcp_server.auth import (
     BifrostAuthProvider,
     create_bifrost_auth_provider,
     _mcp_auth_code_key,
@@ -183,7 +183,7 @@ class TestCheckMcpAccess:
         mock_config.require_platform_admin = True
 
         with patch("src.core.database.get_db_context") as mock_db, \
-             patch("src.services.mcp.config_service.get_mcp_config_cached") as mock_get_config:
+             patch("src.services.mcp_server.config_service.get_mcp_config_cached") as mock_get_config:
             mock_db.return_value.__aenter__ = AsyncMock()
             mock_db.return_value.__aexit__ = AsyncMock()
             mock_get_config.return_value = mock_config
@@ -199,7 +199,7 @@ class TestCheckMcpAccess:
         mock_config.require_platform_admin = True
 
         with patch("src.core.database.get_db_context") as mock_db, \
-             patch("src.services.mcp.config_service.get_mcp_config_cached") as mock_get_config:
+             patch("src.services.mcp_server.config_service.get_mcp_config_cached") as mock_get_config:
             mock_db.return_value.__aenter__ = AsyncMock()
             mock_db.return_value.__aexit__ = AsyncMock()
             mock_get_config.return_value = mock_config
@@ -215,7 +215,7 @@ class TestCheckMcpAccess:
         mock_config.require_platform_admin = False
 
         with patch("src.core.database.get_db_context") as mock_db, \
-             patch("src.services.mcp.config_service.get_mcp_config_cached") as mock_get_config:
+             patch("src.services.mcp_server.config_service.get_mcp_config_cached") as mock_get_config:
             mock_db.return_value.__aenter__ = AsyncMock()
             mock_db.return_value.__aexit__ = AsyncMock()
             mock_get_config.return_value = mock_config
@@ -231,7 +231,7 @@ class TestCheckMcpAccess:
         mock_config.require_platform_admin = False
 
         with patch("src.core.database.get_db_context") as mock_db, \
-             patch("src.services.mcp.config_service.get_mcp_config_cached") as mock_get_config:
+             patch("src.services.mcp_server.config_service.get_mcp_config_cached") as mock_get_config:
             mock_db.return_value.__aenter__ = AsyncMock()
             mock_db.return_value.__aexit__ = AsyncMock()
             mock_get_config.return_value = mock_config

@@ -59,30 +59,37 @@ def detect_python_entity_type(content: bytes) -> str | None:
 
     Uses fast regex check first, then AST verification if needed.
     Returns "workflow" if decorators are found (includes data_provider since
-    it's stored in the workflows table).
+    it's stored in the workflows table). Returns "module" for all other
+    Python files (helper modules, utilities, etc.) - these are stored in
+    workspace_files.content instead of S3.
 
     Args:
         content: Python file content
 
     Returns:
-        "workflow" if SDK decorators found, None otherwise
+        "workflow" if SDK decorators found, "module" for other Python files
     """
     try:
         content_str = content.decode("utf-8", errors="replace")
     except Exception:
+        # Non-decodable content - not a valid Python module
         return None
 
-    # Fast regex check - if no decorator-like patterns, skip AST parsing
-    if "@workflow" not in content_str and "@data_provider" not in content_str:
-        return None
+    # Fast regex check - if no decorator-like patterns, it's a module
+    if (
+        "@workflow" not in content_str
+        and "@data_provider" not in content_str
+        and "@tool" not in content_str
+    ):
+        return "module"
 
     # AST verification - confirm decorators are actually used
     try:
         tree = ast.parse(content_str)
     except SyntaxError:
-        # Syntax error - can't determine entity type, treat as regular file
+        # Syntax error but still Python - store as module
         # The _index_python_file will report the syntax error
-        return None
+        return "module"
 
     for node in ast.walk(tree):
         if not isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
@@ -95,7 +102,9 @@ def detect_python_entity_type(content: bytes) -> str | None:
                 if decorator_name in ("workflow", "data_provider"):
                     return "workflow"  # Both are in workflows table
 
-    return None
+    # Has @workflow/@data_provider in content but not as actual decorators
+    # (e.g., in comments, strings, or as variable names) - treat as module
+    return "module"
 
 
 def _parse_decorator(decorator: ast.AST) -> tuple[str, dict[str, Any]] | None:

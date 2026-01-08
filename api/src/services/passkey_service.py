@@ -37,6 +37,7 @@ from webauthn.helpers.structs import (
 
 from src.config import get_settings
 from src.core.cache import get_shared_redis
+from src.core.constants import PROVIDER_ORG_ID
 from src.models import User
 from src.models.orm.mfa import UserPasskey
 
@@ -544,6 +545,7 @@ class PasskeyService:
             user_type=UserType.PLATFORM,
             hashed_password=None,  # Passwordless user
             webauthn_user_id=base64url_to_bytes(setup_data["webauthn_user_id"]),
+            organization_id=PROVIDER_ORG_ID,
         )
         self.db.add(user)
         await self.db.flush()  # Get user.id

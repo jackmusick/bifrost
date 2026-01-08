@@ -116,6 +116,28 @@ services:
       MINIO_ROOT_USER: ${MINIO_ROOT_USER:-bifrost}
       MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:?MINIO_ROOT_PASSWORD is required}
 
+  # Init Container - Runs migrations and warms module cache before services start
+  init:
+    build:
+      context: .
+      dockerfile: api/Dockerfile
+    container_name: bifrost-init
+    environment:
+      # Core (required by Settings during migrations)
+      BIFROST_ENVIRONMENT: ${BIFROST_ENVIRONMENT:-production}
+      BIFROST_SECRET_KEY: ${BIFROST_SECRET_KEY:?BIFROST_SECRET_KEY is required (32+ chars)}
+      # Database (via PgBouncer for connection pooling)
+      BIFROST_DATABASE_URL: postgresql+asyncpg://bifrost:${POSTGRES_PASSWORD}@pgbouncer:5432/bifrost
+      BIFROST_DATABASE_URL_SYNC: postgresql://bifrost:${POSTGRES_PASSWORD}@pgbouncer:5432/bifrost
+      # Redis (for module cache warming)
+      BIFROST_REDIS_URL: redis://redis:6379/0
+    depends_on:
+      pgbouncer:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    command: python -m scripts.init_container
+
   # PgBouncer - Connection Pooler for PostgreSQL
   # All services connect through PgBouncer for centralized connection management
   # Transaction mode: connections returned after each transaction (optimal for short-lived queries)
@@ -189,6 +211,8 @@ services:
     # Note: API port 8000 not exposed - access via client proxy at http://localhost:3000
     # Debug port (5678) only exposed in docker-compose.dev.yml
     depends_on:
+      init:
+        condition: service_completed_successfully
       pgbouncer:
         condition: service_healthy
       rabbitmq:
@@ -204,9 +228,7 @@ services:
       retries: 5
     deploy:
       replicas: ${API_REPLICAS:-1}
-    command: >
-      sh -c "alembic upgrade head &&
-             uvicorn src.main:app --host 0.0.0.0 --port 8000"
+    command: uvicorn src.main:app --host 0.0.0.0 --port 8000
 
   # Frontend (Vite)
   client:
@@ -265,7 +287,7 @@ services:
 
   # Worker Service (RabbitMQ Consumers)
   # Can be scaled horizontally for increased throughput
-  # Workers download workspace from S3 before execution
+  # Workers load Python modules from Redis cache (no filesystem sync needed)
   worker:
     build:
       context: .
@@ -282,7 +304,7 @@ services:
       BIFROST_REDIS_URL: redis://redis:6379/0
       # API URL (for SDK client injection in workflows)
       BIFROST_API_URL: http://api:8000
-      # S3 Storage (workers download workspace from S3)
+      # S3 Storage (for non-Python file access)
       BIFROST_S3_BUCKET: ${BIFROST_S3_BUCKET:-bifrost-local}
       BIFROST_S3_ENDPOINT_URL: ${BIFROST_S3_ENDPOINT_URL:-http://minio:9000}
       BIFROST_S3_ACCESS_KEY: ${BIFROST_S3_ACCESS_KEY:-${MINIO_ROOT_USER:-bifrost}}
@@ -290,8 +312,10 @@ services:
       BIFROST_S3_REGION: ${BIFROST_S3_REGION:-us-east-1}
       # Concurrency
       BIFROST_MAX_CONCURRENCY: ${BIFROST_MAX_CONCURRENCY:-10}
-    # No workspace volume mount needed - files downloaded from S3
+    # No workspace volume mount needed - modules loaded from Redis cache
     depends_on:
+      init:
+        condition: service_completed_successfully
       pgbouncer:
         condition: service_healthy
       rabbitmq:
@@ -302,8 +326,7 @@ services:
         condition: service_healthy
     deploy:
       replicas: ${WORKER_REPLICAS:-2}
-    command: >
-      python -m src.worker.main
+    command: python -m src.worker.main
 
   # Coding Agent Service (Claude Agent SDK)
   # Runs SDK in isolation - can block without affecting API health

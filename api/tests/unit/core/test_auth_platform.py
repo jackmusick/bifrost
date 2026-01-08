@@ -6,7 +6,7 @@ while regular ORG users still require org_id in their tokens.
 """
 
 import pytest
-from unittest.mock import MagicMock, AsyncMock
+from unittest.mock import MagicMock
 from uuid import uuid4
 
 from fastapi import Request

@@ -693,7 +693,7 @@ class TestComponentVersioning:
         )
         assert response.status_code == 200
         app_data = response.json()
-        initial_updated_at = app_data["updated_at"]
+        _ = app_data["updated_at"]  # Capture for potential future use
 
         # Create component
         response = e2e_client.post(

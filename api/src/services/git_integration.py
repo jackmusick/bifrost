@@ -5,8 +5,9 @@ Handles GitHub repository synchronization with workspace.
 Provides Git operations: clone, pull, push, conflict resolution.
 Uses Dulwich (pure Python Git implementation) - works without git binary.
 
-All operations work on /tmp/bifrost/workspace which is kept in sync with S3
-by the WorkspaceSyncService.
+Git operations use a dedicated directory at /tmp/bifrost/git. This is separate
+from the virtual module system - files are serialized from DB to git workspace
+for push operations, and parsed from git workspace back to DB on pull.
 """
 
 import asyncio
@@ -24,6 +25,7 @@ from dulwich.errors import NotGitRepository
 from dulwich.objects import Commit as DulwichCommit, Blob, Tree, ShaFile
 from github import Github, GithubException
 
+from src.core.paths import GIT_WORKSPACE_PATH
 from src.models import (
     FileChange,
     GitFileStatus,
@@ -34,6 +36,7 @@ from src.models import (
 )
 
 if TYPE_CHECKING:
+    from sqlalchemy.ext.asyncio import AsyncSession
     from src.config import Settings
 
 logger = logging.getLogger(__name__)
@@ -49,8 +52,9 @@ def _get_settings() -> "Settings":
     return get_settings()
 
 
-# Hardcoded workspace path - kept in sync with S3 by WorkspaceSyncService
-WORKSPACE_PATH = Path("/tmp/bifrost/workspace")
+# Git workspace path - used for git clone/pull/push operations
+# Files are serialized from DB to this location for push, and parsed back to DB on pull
+WORKSPACE_PATH = GIT_WORKSPACE_PATH
 
 
 def manual_copy_tree(
@@ -2575,7 +2579,9 @@ class GitIntegrationService:
     # Platform Entity Serialization (DB -> Files for Git Push)
     # =========================================================================
 
-    async def _serialize_platform_entities_to_workspace(self) -> list[str]:
+    async def _serialize_platform_entities_to_workspace(
+        self, session: "AsyncSession | None" = None
+    ) -> list[str]:
         """
         Serialize platform entities (workflows, forms, apps) from DB to workspace files.
 
@@ -2583,20 +2589,32 @@ class GitIntegrationService:
         Workflows have their IDs stripped from decorators.
         Forms and apps are serialized as JSON without environment-specific fields.
 
+        Args:
+            session: Optional database session. If not provided, creates a new one.
+
         Returns:
             List of paths that were serialized
         """
         import json
+        from contextlib import asynccontextmanager
         from sqlalchemy import select
         from src.core.database import get_session_factory
         from src.models.orm import Workflow, Form, FormField, Application
         from src.services.decorator_property_service import DecoratorPropertyService
 
-        session_factory = get_session_factory()
         serialized_paths: list[str] = []
         decorator_service = DecoratorPropertyService()
 
-        async with session_factory() as db:
+        @asynccontextmanager
+        async def get_db():
+            if session is not None:
+                yield session
+            else:
+                session_factory = get_session_factory()
+                async with session_factory() as db:
+                    yield db
+
+        async with get_db() as db:
             # 1. Serialize workflows
             workflow_stmt = select(Workflow).where(
                 Workflow.is_active == True,  # noqa: E712
@@ -2688,27 +2706,31 @@ class GitIntegrationService:
                 serialized_paths.append(form.file_path)
                 logger.debug(f"Serialized form to {form.file_path}")
 
-            # 3. Serialize applications
+            # 3. Serialize applications (only those with a published active_version)
             app_stmt = select(Application).where(
-                Application.live_definition.isnot(None),
+                Application.active_version_id.isnot(None),
             )
             app_result = await db.execute(app_stmt)
             apps = app_result.scalars().all()
 
             for app in apps:
-                if not app.live_definition:
+                if not app.active_version_id:
                     continue
 
                 # Derive file path from slug
                 file_path_str = f"apps/{app.slug}.app.json"
 
                 # Build app JSON (portable fields only)
+                # Note: Full page/component definitions are in separate tables
+                # and would need to be serialized separately if needed
                 app_data = {
                     "name": app.name,
                     "slug": app.slug,
                     "description": app.description,
                     "icon": app.icon,
-                    "definition": app.live_definition,
+                    "navigation": app.navigation,
+                    "global_data_sources": app.global_data_sources,
+                    "global_variables": app.global_variables,
                 }
 
                 # Write to workspace
@@ -2720,6 +2742,28 @@ class GitIntegrationService:
                 )
                 serialized_paths.append(file_path_str)
                 logger.debug(f"Serialized app to {file_path_str}")
+
+            # 4. Serialize modules from workspace_files.content
+            from src.models.orm.workspace import WorkspaceFile
+
+            module_stmt = select(WorkspaceFile).where(
+                WorkspaceFile.entity_type == "module",
+                WorkspaceFile.is_deleted == False,  # noqa: E712
+                WorkspaceFile.content.isnot(None),
+            )
+            module_result = await db.execute(module_stmt)
+            modules = module_result.scalars().all()
+
+            for module in modules:
+                if not module.content or not module.path:
+                    continue
+
+                # Write module to workspace
+                file_path = self.workspace_path / module.path
+                file_path.parent.mkdir(parents=True, exist_ok=True)
+                file_path.write_text(module.content, encoding="utf-8")
+                serialized_paths.append(module.path)
+                logger.debug(f"Serialized module to {module.path}")
 
         logger.info(f"Serialized {len(serialized_paths)} platform entities to workspace")
         return serialized_paths
@@ -2767,7 +2811,8 @@ class GitIntegrationService:
 
     async def _parse_and_upsert_platform_entities(
         self,
-        updated_files: list[str]
+        updated_files: list[str],
+        session: "AsyncSession | None" = None,
     ) -> None:
         """
         Parse platform entity files and upsert to database.
@@ -2776,18 +2821,33 @@ class GitIntegrationService:
 
         Args:
             updated_files: List of file paths that were updated during pull
+            session: Optional database session. If not provided, creates a new one.
         """
+        from contextlib import asynccontextmanager
         from src.core.database import get_session_factory
         from src.services.decorator_property_service import DecoratorPropertyService
 
-        session_factory = get_session_factory()
         decorator_service = DecoratorPropertyService()
 
-        async with session_factory() as db:
+        @asynccontextmanager
+        async def get_db():
+            if session is not None:
+                yield session
+            else:
+                session_factory = get_session_factory()
+                async with session_factory() as db:
+                    yield db
+
+        async with get_db() as db:
             for file_path in updated_files:
                 full_path = self.workspace_path / file_path
 
                 if not full_path.exists():
+                    # File was deleted in git - handle soft delete
+                    try:
+                        await self._handle_deleted_file(db, file_path)
+                    except Exception as e:
+                        logger.warning(f"Failed to handle deleted file {file_path}: {e}")
                     continue
 
                 try:
@@ -2803,7 +2863,9 @@ class GitIntegrationService:
                     logger.warning(f"Failed to parse {file_path}: {e}")
                     continue
 
-            await db.commit()
+            # Only commit if we created the session ourselves
+            if session is None:
+                await db.commit()
         logger.info(f"Parsed and upserted {len(updated_files)} files to database")
 
     async def _parse_python_file(
@@ -2813,17 +2875,66 @@ class GitIntegrationService:
         full_path: Path,
         decorator_service: Any,
     ) -> None:
-        """Parse a Python file and upsert workflows to database."""
+        """Parse a Python file and upsert workflows or modules to database.
+
+        Uses entity detection to determine if file is a workflow (has @workflow
+        or @data_provider decorator) or a module (helper code). Workflows are
+        stored in the workflows table, modules in workspace_files.content.
+
+        When a file changes from module to workflow (decorator added) or
+        workflow to module (decorator removed), the entity_type is updated
+        accordingly.
+        """
         from datetime import datetime
         from uuid import uuid4
         import hashlib
         from sqlalchemy.dialects.postgresql import insert
         from src.models.orm import Workflow
+        from src.models.orm.workspace import WorkspaceFile
+        from src.services.file_storage.entity_detector import detect_python_entity_type
 
         content = full_path.read_text(encoding="utf-8")
+        content_bytes = content.encode("utf-8")
 
+        # Detect entity type - will be "workflow" or "module"
+        entity_type = detect_python_entity_type(content_bytes)
+
+        # Calculate content hash
+        content_hash = hashlib.sha256(content_bytes).hexdigest()
+        now = datetime.utcnow()
+
+        if entity_type == "module":
+            # Upsert module to workspace_files.content
+            await self._parse_module_file(db, file_path, content, content_hash, now)
+            return
+
+        # Otherwise process as workflow (entity_type == "workflow")
         # Read decorators from the file
         decorators = decorator_service.read_decorators(content)
+
+        # Also update workspace_files to track the entity_type as "workflow"
+        # This ensures proper routing for file reads
+        ws_stmt = insert(WorkspaceFile).values(
+            path=file_path,
+            content_hash=content_hash,
+            size_bytes=len(content_bytes),
+            content_type="text/x-python",
+            entity_type="workflow",
+            is_deleted=False,
+            created_at=now,
+            updated_at=now,
+        ).on_conflict_do_update(
+            index_elements=[WorkspaceFile.path],
+            set_={
+                "content_hash": content_hash,
+                "size_bytes": len(content_bytes),
+                "entity_type": "workflow",
+                "is_deleted": False,
+                "updated_at": now,
+                "content": None,  # Clear any module content
+            },
+        )
+        await db.execute(ws_stmt)
 
         for dec in decorators:
             if dec.decorator_type not in ("workflow", "tool", "data_provider"):
@@ -2890,6 +3001,110 @@ class GitIntegrationService:
             )
             await db.execute(stmt)
             logger.debug(f"Upserted workflow {dec.function_name} from {file_path}")
+
+    async def _parse_module_file(
+        self,
+        db: Any,
+        file_path: str,
+        content: str,
+        content_hash: str,
+        now: Any,
+    ) -> None:
+        """Parse and upsert a Python module file to workspace_files.content.
+
+        Modules are Python files without @workflow or @data_provider decorators.
+        They are stored in workspace_files.content for virtual import loading.
+
+        Args:
+            db: Database session
+            file_path: Relative path to the file
+            content: File content as string
+            content_hash: SHA-256 hash of content
+            now: Current timestamp
+        """
+        from sqlalchemy.dialects.postgresql import insert
+        from src.models.orm.workspace import WorkspaceFile
+        from src.core.module_cache import set_module
+
+        content_bytes = content.encode("utf-8")
+
+        # Upsert to workspace_files with content
+        stmt = insert(WorkspaceFile).values(
+            path=file_path,
+            content=content,
+            content_hash=content_hash,
+            size_bytes=len(content_bytes),
+            content_type="text/x-python",
+            entity_type="module",
+            is_deleted=False,
+            created_at=now,
+            updated_at=now,
+        ).on_conflict_do_update(
+            index_elements=[WorkspaceFile.path],
+            set_={
+                "content": content,
+                "content_hash": content_hash,
+                "size_bytes": len(content_bytes),
+                "entity_type": "module",
+                "is_deleted": False,
+                "updated_at": now,
+            },
+        )
+        await db.execute(stmt)
+
+        # Update Redis cache for virtual imports
+        await set_module(file_path, content, content_hash)
+
+        logger.debug(f"Upserted module from git: {file_path}")
+
+    async def _handle_deleted_file(
+        self,
+        db: Any,
+        file_path: str,
+    ) -> None:
+        """Handle a file that was deleted in git.
+
+        Soft-deletes the workspace_files record and invalidates caches.
+        For modules, also clears the Redis cache.
+
+        Args:
+            db: Database session
+            file_path: Relative path to the deleted file
+        """
+        from sqlalchemy import select, update
+        from src.models.orm.workspace import WorkspaceFile
+        from src.core.module_cache import invalidate_module
+
+        # Find the existing record
+        stmt = select(WorkspaceFile).where(
+            WorkspaceFile.path == file_path,
+            WorkspaceFile.is_deleted == False,  # noqa: E712
+        )
+        result = await db.execute(stmt)
+        file_record = result.scalar_one_or_none()
+
+        if not file_record:
+            return  # Already doesn't exist or already deleted
+
+        entity_type = file_record.entity_type
+
+        # Soft delete the record and clear content
+        update_stmt = (
+            update(WorkspaceFile)
+            .where(WorkspaceFile.path == file_path)
+            .values(
+                is_deleted=True,
+                content=None,  # Clear content to save space
+            )
+        )
+        await db.execute(update_stmt)
+
+        # Invalidate module cache if it was a module
+        if entity_type == "module":
+            await invalidate_module(file_path)
+            logger.debug(f"Soft-deleted module and invalidated cache: {file_path}")
+        else:
+            logger.debug(f"Soft-deleted file: {file_path}")
 
     async def _parse_form_file(
         self,

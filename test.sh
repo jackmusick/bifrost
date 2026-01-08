@@ -536,15 +536,10 @@ for i in {1..60}; do
 done
 
 # =============================================================================
-# Run database migrations
-# =============================================================================
-echo ""
-echo "Running database migrations..."
-docker compose -f "$COMPOSE_FILE" --profile test run --rm -T test-runner alembic upgrade head
-
-# =============================================================================
 # Run backend tests (skip if --client-only)
 # =============================================================================
+# Note: Database migrations and cache warming are handled by the init container
+# which the test-runner depends on via docker-compose.test.yml
 TEST_EXIT_CODE=0
 
 if [ "$CLIENT_ONLY" = false ]; then

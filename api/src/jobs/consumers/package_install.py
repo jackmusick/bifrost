@@ -6,7 +6,6 @@ Uses broadcast delivery so all worker instances install the package.
 """
 
 import logging
-from pathlib import Path
 from typing import Any
 
 from src.core.pubsub import manager as pubsub_manager
@@ -70,12 +69,12 @@ class PackageInstallConsumer(BroadcastConsumer):
                 )
 
         try:
-            # Hardcoded workspace path - kept in sync with S3 by WorkspaceSyncService
-            workspace_path = Path("/tmp/bifrost/workspace")
-            workspace_path.mkdir(parents=True, exist_ok=True)
-
+            # Use ephemeral temp directory for package installation
+            # This is for installing packages into a workspace that can be cleaned up
+            from src.core.paths import create_ephemeral_temp_dir
             from src.services.package_manager import WorkspacePackageManager
 
+            workspace_path = create_ephemeral_temp_dir()
             pkg_manager = WorkspacePackageManager(workspace_path)
 
             if package:

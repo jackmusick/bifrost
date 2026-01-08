@@ -268,7 +268,6 @@ async def update_persist_workflow() -> str:
         )
         assert original is not None
         original_id = original["id"]
-        original_desc = original.get("description", "")
 
         # Update workflow
         updated_content = '''"""Updated Version"""

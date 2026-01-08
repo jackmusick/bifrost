@@ -377,8 +377,10 @@ class WorkflowIndexer:
             update_values["entity_type"] = primary_entity_type
             update_values["entity_id"] = UUID_type(primary_entity_id)
         else:
-            # Clear entity routing if no platform entities found (e.g., file became regular)
-            update_values["entity_type"] = None
+            # No workflow/data_provider found - this is a regular Python module
+            # Keep entity_type="module" (set by write_file) so content is read from
+            # workspace_files.content instead of S3. Only clear entity_id.
+            update_values["entity_type"] = "module"
             update_values["entity_id"] = None
 
         stmt = update(WorkspaceFile).where(WorkspaceFile.path == path).values(**update_values)

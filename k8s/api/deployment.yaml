@@ -19,11 +19,11 @@ spec:
         app.kubernetes.io/component: api
         app.kubernetes.io/part-of: bifrost
     spec:
-      # Init container runs database migrations
+      # Init container runs migrations and warms module cache
       initContainers:
-        - name: migrate
+        - name: init
           image: ghcr.io/jackmusick/bifrost:latest
-          command: ["sh", "-c", "alembic upgrade head"]
+          command: ["python", "-m", "scripts.init_container"]
           envFrom:
             - configMapRef:
                 name: bifrost-config

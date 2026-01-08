@@ -4,8 +4,8 @@ Clean service layer for executing workflows, code, and data providers.
 All execution runs in isolated subprocess via ExecutionPool.
 
 Workflows are loaded by ID:
-1. Look up workflow in database to get file_path and name
-2. Load Python module from local workspace (/tmp/bifrost/workspace)
+1. Look up workflow in database to get code and function name
+2. Execute code from database (no filesystem access needed)
 3. Find the @workflow decorated function by name
 4. Execute in isolated subprocess
 """
@@ -15,10 +15,9 @@ from __future__ import annotations
 import base64
 import logging
 import uuid
-from pathlib import Path
 from typing import TYPE_CHECKING, Any, Callable
 
-from src.services.execution.module_loader import get_data_provider, WorkflowMetadata, import_module, exec_from_db
+from src.services.execution.module_loader import get_data_provider, WorkflowMetadata, exec_from_db
 from src.models import WorkflowExecutionResponse
 from src.models.enums import ExecutionStatus
 
@@ -26,9 +25,6 @@ if TYPE_CHECKING:
     from src.sdk.context import ExecutionContext
 
 logger = logging.getLogger(__name__)
-
-# Local workspace path (synced from S3)
-WORKSPACE_PATH = Path("/tmp/bifrost/workspace")
 
 
 class WorkflowNotFoundError(Exception):
@@ -201,7 +197,7 @@ async def get_workflow_by_id(
     workflow_id: str,
 ) -> tuple[Callable, WorkflowMetadata]:
     """
-    Load a workflow by ID from the database and local workspace.
+    Load a workflow by ID from the database.
 
     Args:
         workflow_id: Workflow UUID from database
@@ -211,7 +207,7 @@ async def get_workflow_by_id(
 
     Raises:
         WorkflowNotFoundError: If workflow doesn't exist in database
-        WorkflowLoadError: If workflow file can't be loaded
+        WorkflowLoadError: If workflow code can't be loaded
     """
     from sqlalchemy import select
     from src.core.database import get_session_factory
@@ -230,35 +226,22 @@ async def get_workflow_by_id(
     if not workflow_record:
         raise WorkflowNotFoundError(f"Workflow with ID '{workflow_id}' not found")
 
-    # Load module - prefer DB code, fall back to file
-    module = None
+    # Load module from database code
+    if not workflow_record.code:
+        raise WorkflowLoadError(
+            f"Workflow '{workflow_record.name}' has no code stored in database. "
+            "All workflows must have their code stored in the database."
+        )
 
-    # DB-first: Try to execute code from database
-    if workflow_record.code:
-        try:
-            module = exec_from_db(
-                code=workflow_record.code,
-                path=workflow_record.path,
-                function_name=workflow_record.function_name,
-            )
-            logger.debug(f"Loaded workflow from DB: {workflow_record.name}")
-        except (SyntaxError, ImportError) as e:
-            logger.warning(f"Failed to execute workflow from DB, falling back to file: {e}")
-            module = None
-
-    # Fallback: Load from local workspace (legacy path)
-    if module is None:
-        file_path = WORKSPACE_PATH / workflow_record.path
-        if not file_path.exists():
-            raise WorkflowLoadError(
-                f"Workflow file not found: {workflow_record.path}. "
-                "Workspace may be out of sync and code not in database."
-            )
-
-        try:
-            module = import_module(file_path)
-        except ImportError as e:
-            raise WorkflowLoadError(f"Failed to load workflow module: {e}")
+    try:
+        module = exec_from_db(
+            code=workflow_record.code,
+            path=workflow_record.path,
+            function_name=workflow_record.function_name,
+        )
+        logger.debug(f"Loaded workflow from DB: {workflow_record.name}")
+    except (SyntaxError, ImportError) as e:
+        raise WorkflowLoadError(f"Failed to execute workflow from DB: {e}")
 
     # Find the decorated function by name
     # All decorators (@workflow, @tool, @data_provider) use unified _executable_metadata

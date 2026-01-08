@@ -10,9 +10,8 @@ model validation issues. The actual model compatibility is tested via
 integration tests.
 """
 
-from datetime import datetime
-from unittest.mock import AsyncMock, MagicMock, patch
-from uuid import UUID, uuid4
+from unittest.mock import AsyncMock
+from uuid import uuid4
 
 import pytest
 
@@ -386,8 +385,6 @@ class TestDeactivationProtectionScenarios:
 
     def test_affected_entities_aggregation_pattern(self):
         """Test that affected entities can be aggregated from multiple sources."""
-        workflow_id = str(uuid4())
-
         # Simulate affected entities from different sources
         form_affected = {
             "entity_type": "form",

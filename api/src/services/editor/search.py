@@ -2,90 +2,54 @@
 File content search for browser-based code editor.
 Provides fast full-text search with regex support.
 Platform admin resource - no org scoping.
+
+Search queries the database directly:
+- Workflows: search workflows.code column
+- Modules: search workspace_files.content column
+- Forms/Apps/Agents: search serialized JSON representations
 """
 
+import json
 import re
 import time
-from concurrent.futures import ThreadPoolExecutor, as_completed
-from pathlib import Path
+import logging
 from typing import List
 
+from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession
+
 from src.models import SearchRequest, SearchResponse, SearchResult
-from src.services.editor.file_operations import get_base_path, validate_and_resolve_path
+from src.models.orm import WorkspaceFile, Workflow, Form, Agent
 
-# Binary file extensions to skip
-BINARY_EXTENSIONS = {
-    '.pyc', '.pyo', '.so', '.dll', '.dylib', '.exe', '.bin',
-    '.jpg', '.jpeg', '.png', '.gif', '.bmp', '.ico', '.svg',
-    '.mp3', '.mp4', '.avi', '.mov', '.wav', '.flac',
-    '.zip', '.tar', '.gz', '.bz2', '.7z', '.rar',
-    '.pdf', '.doc', '.docx', '.xls', '.xlsx', '.ppt', '.pptx',
-    '.woff', '.woff2', '.ttf', '.eot', '.otf'
-}
+logger = logging.getLogger(__name__)
 
-# Maximum file size to search (10MB)
-MAX_FILE_SIZE = 10 * 1024 * 1024
+# Maximum results per entity type to prevent overwhelming queries
+MAX_RESULTS_PER_TYPE = 500
 
 
-def should_search_file(file_path: Path) -> bool:
-    """
-    Determine if file should be searched.
-
-    Args:
-        file_path: Path to file
-
-    Returns:
-        True if file should be searched, False otherwise
-    """
-    # Skip if not a file
-    if not file_path.is_file():
-        return False
-
-    # Skip binary extensions
-    if file_path.suffix.lower() in BINARY_EXTENSIONS:
-        return False
-
-    # Skip hidden files
-    if file_path.name.startswith('.'):
-        return False
-
-    # Skip large files
-    try:
-        if file_path.stat().st_size > MAX_FILE_SIZE:
-            return False
-    except (PermissionError, OSError):
-        return False
-
-    return True
-
-
-def search_file(
-    file_path: Path,
+def _search_content(
+    content: str,
+    path: str,
     query: str,
     case_sensitive: bool,
     is_regex: bool,
-    base_path: Path
 ) -> List[SearchResult]:
     """
-    Search a single file for matches.
+    Search content string for matches.
 
     Args:
-        file_path: Path to file to search
+        content: Text content to search
+        path: File path for results
         query: Search query (text or regex pattern)
         case_sensitive: Whether to match case-sensitively
         is_regex: Whether query is a regex pattern
-        base_path: Base path for relative path calculation
 
     Returns:
-        List of SearchResult objects for this file
+        List of SearchResult objects
     """
     results: List[SearchResult] = []
 
     try:
-        # Read file content
-        with open(file_path, 'r', encoding='utf-8', errors='ignore') as f:
-            lines = f.readlines()
-
         # Build regex pattern
         if is_regex:
             pattern = query
@@ -97,94 +61,57 @@ def search_file(
         flags = 0 if case_sensitive else re.IGNORECASE
         regex = re.compile(pattern, flags)
 
-        # Calculate relative path
-        try:
-            relative_path = str(file_path.resolve().relative_to(base_path.resolve()))
-        except ValueError:
-            # File is outside base path, use absolute path
-            relative_path = str(file_path)
+        # Split into lines
+        lines = content.split('\n')
 
         # Search each line
         for line_num, line in enumerate(lines, start=1):
-            # Remove newline for matching
-            line_content = line.rstrip('\n\r')
-
             # Find all matches in this line
-            for match in regex.finditer(line_content):
+            for match in regex.finditer(line):
                 # Get context lines (previous and next)
-                context_before = None
-                context_after = None
-
-                if line_num > 1:
-                    context_before = lines[line_num - 2].rstrip('\n\r')
-
-                if line_num < len(lines):
-                    context_after = lines[line_num].rstrip('\n\r')
+                context_before = lines[line_num - 2] if line_num > 1 else None
+                context_after = lines[line_num] if line_num < len(lines) else None
 
                 results.append(SearchResult(
-                    file_path=relative_path,
+                    file_path=path,
                     line=line_num,
                     column=match.start(),
-                    match_text=line_content,
+                    match_text=line,
                     context_before=context_before,
                     context_after=context_after
                 ))
 
-    except (UnicodeDecodeError, PermissionError, OSError):
-        # Skip files that can't be read
-        pass
+    except (re.error, Exception) as e:
+        logger.warning(f"Error searching {path}: {e}")
 
     return results
 
 
-def collect_files(root_path: Path, file_pattern: str) -> List[Path]:
+async def search_files_db(
+    db: AsyncSession,
+    request: SearchRequest,
+    root_path: str = ""
+) -> SearchResponse:
     """
-    Collect all files matching the pattern.
+    Search files for content matching the query using database queries.
+
+    Searches:
+    - workflows.code for workflow Python code
+    - workspace_files.content for module Python code
+    - Serialized JSON for forms, apps, agents
 
     Args:
-        root_path: Root directory to search
-        file_pattern: Glob pattern for files (e.g., "**/*.py")
-
-    Returns:
-        List of file paths to search
-    """
-    files_to_search: List[Path] = []
-
-    try:
-        # Use glob to find matching files
-        for file_path in root_path.glob(file_pattern):
-            if should_search_file(file_path):
-                files_to_search.append(file_path)
-    except (PermissionError, OSError):
-        # Skip directories we can't access
-        pass
-
-    return files_to_search
-
-
-def search_files(request: SearchRequest, root_path: str = "") -> SearchResponse:
-    """
-    Search files for content matching the query.
-
-    Uses parallel processing to search multiple files simultaneously.
-
-    Args:
+        db: Database session
         request: SearchRequest with query and options
-        root_path: Relative path to search root (empty = /home)
+        root_path: Path prefix filter (empty = all files)
 
     Returns:
         SearchResponse with results and metadata
 
     Raises:
-        ValueError: If query is invalid regex or root path is invalid
+        ValueError: If query is invalid regex
     """
     start_time = time.time()
-
-    # Validate root path
-    if root_path:
-        search_root = validate_and_resolve_path(root_path)
-    else:
-        search_root = get_base_path()
 
     # Validate regex if enabled
     if request.is_regex:
@@ -194,46 +121,142 @@ def search_files(request: SearchRequest, root_path: str = "") -> SearchResponse:
         except re.error as e:
             raise ValueError(f"Invalid regex pattern: {str(e)}")
 
-    # Collect files to search
-    files = collect_files(search_root, request.include_pattern or "**/*")
-    files_searched = len(files)
-
-    # Search files in parallel
     all_results: List[SearchResult] = []
-    base_path = get_base_path()
+    files_searched = 0
 
-    # Use ThreadPoolExecutor for parallel file searching
-    max_workers = min(8, len(files)) if len(files) > 0 else 1
+    # Build path filter
+    path_filter = WorkspaceFile.path.like(f"{root_path}%") if root_path else True
 
-    with ThreadPoolExecutor(max_workers=max_workers) as executor:
-        # Submit search tasks
-        future_to_file = {
-            executor.submit(
-                search_file,
-                file_path,
+    # Build file pattern filter if specified
+    include_filter = True
+    if request.include_pattern:
+        # Convert glob pattern to SQL LIKE pattern
+        # e.g., "**/*.py" -> "%.py", "workflows/*.py" -> "workflows/%.py"
+        like_pattern = request.include_pattern.replace("**/*", "%").replace("**", "%").replace("*", "%")
+        include_filter = WorkspaceFile.path.like(like_pattern)
+
+    # 1. Search workflows (code column)
+    workflow_stmt = (
+        select(Workflow.id, Workflow.code, WorkspaceFile.path)
+        .join(WorkspaceFile, WorkspaceFile.entity_id == Workflow.id)
+        .where(
+            WorkspaceFile.is_deleted == False,  # noqa: E712
+            WorkspaceFile.entity_type == "workflow",
+            Workflow.code.isnot(None),
+            path_filter,
+            include_filter,
+        )
+        .limit(MAX_RESULTS_PER_TYPE)
+    )
+    workflow_result = await db.execute(workflow_stmt)
+    for row in workflow_result:
+        files_searched += 1
+        if row.code:
+            results = _search_content(
+                row.code,
+                row.path,
                 request.query,
                 request.case_sensitive,
                 request.is_regex,
-                base_path
-            ): file_path
-            for file_path in files
-        }
+            )
+            all_results.extend(results)
+            if len(all_results) >= request.max_results:
+                break
 
-        # Collect results as they complete
-        for future in as_completed(future_to_file):
-            try:
-                file_results = future.result()
-                all_results.extend(file_results)
-
-                # Stop if we've hit the max results limit
+    # 2. Search modules (workspace_files.content column)
+    if len(all_results) < request.max_results:
+        module_stmt = (
+            select(WorkspaceFile.path, WorkspaceFile.content)
+            .where(
+                WorkspaceFile.is_deleted == False,  # noqa: E712
+                WorkspaceFile.entity_type == "module",
+                WorkspaceFile.content.isnot(None),
+                path_filter,
+                include_filter,
+            )
+            .limit(MAX_RESULTS_PER_TYPE)
+        )
+        module_result = await db.execute(module_stmt)
+        for row in module_result:
+            files_searched += 1
+            if row.content:
+                results = _search_content(
+                    row.content,
+                    row.path,
+                    request.query,
+                    request.case_sensitive,
+                    request.is_regex,
+                )
+                all_results.extend(results)
                 if len(all_results) >= request.max_results:
-                    # Cancel remaining tasks
-                    for f in future_to_file:
-                        f.cancel()
                     break
-            except Exception:
-                # Skip files that error during search
-                pass
+
+    # 3. Search forms (serialize to JSON and search)
+    if len(all_results) < request.max_results:
+        form_stmt = (
+            select(Form, WorkspaceFile.path)
+            .join(WorkspaceFile, WorkspaceFile.entity_id == Form.id)
+            .where(
+                WorkspaceFile.is_deleted == False,  # noqa: E712
+                WorkspaceFile.entity_type == "form",
+                path_filter,
+                include_filter,
+            )
+            .limit(MAX_RESULTS_PER_TYPE)
+        )
+        form_result = await db.execute(form_stmt)
+        for row in form_result:
+            files_searched += 1
+            # Serialize form to searchable JSON
+            form_json = json.dumps({
+                "name": row.Form.name,
+                "description": row.Form.description,
+                "workflow_id": str(row.Form.workflow_id) if row.Form.workflow_id else None,
+            }, indent=2)
+            results = _search_content(
+                form_json,
+                row.path,
+                request.query,
+                request.case_sensitive,
+                request.is_regex,
+            )
+            all_results.extend(results)
+            if len(all_results) >= request.max_results:
+                break
+
+    # 4. Search agents (serialize to JSON and search)
+    if len(all_results) < request.max_results:
+        agent_stmt = (
+            select(Agent, WorkspaceFile.path)
+            .join(WorkspaceFile, WorkspaceFile.entity_id == Agent.id)
+            .where(
+                WorkspaceFile.is_deleted == False,  # noqa: E712
+                WorkspaceFile.entity_type == "agent",
+                path_filter,
+                include_filter,
+            )
+            .limit(MAX_RESULTS_PER_TYPE)
+        )
+        agent_result = await db.execute(agent_stmt)
+        for row in agent_result:
+            files_searched += 1
+            # Serialize agent to searchable JSON
+            agent_json = json.dumps({
+                "name": row.Agent.name,
+                "description": row.Agent.description,
+                "system_prompt": row.Agent.system_prompt,
+                "model": row.Agent.model,
+            }, indent=2)
+            results = _search_content(
+                agent_json,
+                row.path,
+                request.query,
+                request.case_sensitive,
+                request.is_regex,
+            )
+            all_results.extend(results)
+            if len(all_results) >= request.max_results:
+                break
 
     # Truncate results if needed
     truncated = len(all_results) > request.max_results
@@ -249,4 +272,30 @@ def search_files(request: SearchRequest, root_path: str = "") -> SearchResponse:
         results=results,
         truncated=truncated,
         search_time_ms=search_time_ms
+    )
+
+
+# Legacy synchronous function - wraps async for backwards compatibility
+def search_files(request: SearchRequest, root_path: str = "") -> SearchResponse:
+    """
+    DEPRECATED: Use search_files_db with async database session instead.
+
+    This synchronous wrapper exists for backwards compatibility but will
+    return empty results. Callers should migrate to search_files_db.
+    """
+    import warnings
+    warnings.warn(
+        "search_files() is deprecated. Use search_files_db() with async database session.",
+        DeprecationWarning,
+        stacklevel=2,
+    )
+
+    # Return empty results - callers should use async version
+    return SearchResponse(
+        query=request.query,
+        total_matches=0,
+        files_searched=0,
+        results=[],
+        truncated=False,
+        search_time_ms=0
     )

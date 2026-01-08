@@ -1663,7 +1663,7 @@ async def generate_sdk(
         result = await example_api.list_users()
     """
     from src.services.sdk_generator import generate_sdk_from_url
-    from src.core.workspace_sync import get_local_workspace_path
+    from src.core.paths import get_local_workspace_path
 
     repo = IntegrationsRepository(ctx.db)
 

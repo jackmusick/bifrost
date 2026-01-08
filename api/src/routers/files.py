@@ -34,7 +34,7 @@ from src.models import (
     SearchResponse,
     WorkflowIdConflict,
 )
-from src.services.editor.search import search_files
+from src.services.editor.search import search_files_db
 from src.services.file_backend import get_backend
 from src.services.file_storage import FileStorageService
 
@@ -631,10 +631,10 @@ async def search_file_contents(
     """
     Search file contents for text or regex patterns.
 
-    Uses local workspace cache synced from S3.
+    Searches database directly - workflows, modules, forms, and agents.
     """
     try:
-        results = search_files(request, root_path="")
+        results = await search_files_db(db, request, root_path="")
         return results
 
     except ValueError as e:

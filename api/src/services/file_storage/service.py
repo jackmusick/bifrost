@@ -23,7 +23,7 @@ from .models import (
     AvailableReplacementInfo,
 )
 from .s3_client import S3StorageClient
-from .entity_detector import detect_platform_entity_type, detect_python_entity_type
+from .entity_detector import detect_platform_entity_type
 from .ast_parser import ASTMetadataParser
 from .git_tracker import GitStatusTracker
 from .diagnostics import DiagnosticsService

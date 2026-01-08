@@ -22,11 +22,11 @@ from uuid import uuid4
 
 import pytest
 
-from src.services.mcp.server import MCPContext
-from src.services.mcp.tools.forms import get_form_schema, list_forms
-from src.services.mcp.tools.integrations import list_integrations
-from src.services.mcp.tools.knowledge import search_knowledge
-from src.services.mcp.tools.workflow import execute_workflow, list_workflows
+from src.services.mcp_server.server import MCPContext
+from src.services.mcp_server.tools.forms import get_form_schema, list_forms
+from src.services.mcp_server.tools.integrations import list_integrations
+from src.services.mcp_server.tools.knowledge import search_knowledge
+from src.services.mcp_server.tools.workflow import execute_workflow, list_workflows
 
 
 # ==================== Fixtures ====================
@@ -704,14 +704,14 @@ class TestBifrostMCPServer:
 
     def test_creates_server_with_context(self, org_user_context):
         """Should create server with context."""
-        from src.services.mcp.server import BifrostMCPServer
+        from src.services.mcp_server.server import BifrostMCPServer
 
         server = BifrostMCPServer(org_user_context)
         assert server.context == org_user_context
 
     def test_get_tool_names_returns_all_tools(self, org_user_context):
         """Should return all tool names when no filter."""
-        from src.services.mcp.server import BifrostMCPServer
+        from src.services.mcp_server.server import BifrostMCPServer
 
         server = BifrostMCPServer(org_user_context)
         tool_names = server.get_tool_names()
@@ -725,7 +725,7 @@ class TestBifrostMCPServer:
 
     def test_get_tool_names_respects_enabled_filter(self):
         """Should return only enabled tools when filter applied."""
-        from src.services.mcp.server import BifrostMCPServer
+        from src.services.mcp_server.server import BifrostMCPServer
 
         context = MCPContext(
             user_id=uuid4(),
@@ -801,7 +801,7 @@ class TestMCPConfigService:
     @pytest.mark.asyncio
     async def test_get_config_returns_defaults_when_not_configured(self, mock_session):
         """Should return default config when no config exists."""
-        from src.services.mcp.config_service import MCPConfigService
+        from src.services.mcp_server.config_service import MCPConfigService
 
         # Mock no config found
         mock_result = MagicMock()
@@ -820,7 +820,7 @@ class TestMCPConfigService:
     @pytest.mark.asyncio
     async def test_get_config_returns_stored_config(self, mock_session):
         """Should return stored config values."""
-        from src.services.mcp.config_service import MCPConfigService
+        from src.services.mcp_server.config_service import MCPConfigService
 
         # Mock config found
         mock_config = MagicMock()
@@ -850,7 +850,7 @@ class TestMCPConfigService:
     @pytest.mark.asyncio
     async def test_save_config_creates_new_config(self, mock_session):
         """Should create new config when none exists."""
-        from src.services.mcp.config_service import MCPConfigService
+        from src.services.mcp_server.config_service import MCPConfigService
 
         # Mock no existing config
         mock_result = MagicMock()
@@ -875,7 +875,7 @@ class TestMCPConfigService:
     @pytest.mark.asyncio
     async def test_save_config_updates_existing_config(self, mock_session):
         """Should update existing config."""
-        from src.services.mcp.config_service import MCPConfigService
+        from src.services.mcp_server.config_service import MCPConfigService
 
         # Mock existing config
         mock_config = MagicMock()
@@ -901,7 +901,7 @@ class TestMCPConfigService:
     @pytest.mark.asyncio
     async def test_delete_config_removes_existing(self, mock_session):
         """Should delete existing config."""
-        from src.services.mcp.config_service import MCPConfigService
+        from src.services.mcp_server.config_service import MCPConfigService
 
         # Mock existing config
         mock_config = MagicMock()
@@ -919,7 +919,7 @@ class TestMCPConfigService:
     @pytest.mark.asyncio
     async def test_delete_config_returns_false_when_none_exists(self, mock_session):
         """Should return False when no config to delete."""
-        from src.services.mcp.config_service import MCPConfigService
+        from src.services.mcp_server.config_service import MCPConfigService
 
         # Mock no config
         mock_result = MagicMock()
@@ -938,7 +938,7 @@ class TestMCPConfigCache:
     @pytest.mark.asyncio
     async def test_invalidate_cache_clears_cached_values(self):
         """Should clear cached config on invalidation."""
-        from src.services.mcp.config_service import (
+        from src.services.mcp_server.config_service import (
             invalidate_mcp_config_cache,
         )
 
@@ -946,7 +946,7 @@ class TestMCPConfigCache:
         invalidate_mcp_config_cache()
 
         # Import again to check values
-        from src.services.mcp import config_service
+        from src.services.mcp_server import config_service
 
         assert config_service._cached_config is None
         assert config_service._cache_time is None
@@ -960,7 +960,7 @@ class TestToolFiltering:
 
     def test_allowed_tool_ids_limits_visible_tools(self):
         """Should only show tools in the allowed list when specified."""
-        from src.services.mcp.server import BifrostMCPServer
+        from src.services.mcp_server.server import BifrostMCPServer
 
         # Context with specific allowed tools
         context = MCPContext(
@@ -981,7 +981,7 @@ class TestToolFiltering:
 
     def test_empty_allowed_means_all_tools(self):
         """Should show all tools when allowed list is empty (falsy)."""
-        from src.services.mcp.server import BifrostMCPServer
+        from src.services.mcp_server.server import BifrostMCPServer
 
         # Context with empty enabled tools - empty list is falsy,
         # so BifrostMCPServer treats it as None (all tools allowed)
@@ -999,7 +999,7 @@ class TestToolFiltering:
 
     def test_no_enabled_tools_means_all_tools(self):
         """Should show all tools when enabled_system_tools is not set."""
-        from src.services.mcp.server import BifrostMCPServer
+        from src.services.mcp_server.server import BifrostMCPServer
 
         # Context without enabled_system_tools set
         context = MCPContext(
@@ -1038,7 +1038,7 @@ class TestToolFiltering:
 
     def test_single_tool_filtering(self):
         """Should correctly filter to single tool."""
-        from src.services.mcp.server import BifrostMCPServer
+        from src.services.mcp_server.server import BifrostMCPServer
 
         context = MCPContext(
             user_id=uuid4(),
@@ -1052,7 +1052,7 @@ class TestToolFiltering:
 
     def test_tool_filtering_preserves_order(self):
         """Should return tools in consistent order."""
-        from src.services.mcp.server import BifrostMCPServer
+        from src.services.mcp_server.server import BifrostMCPServer
 
         # Test multiple times to ensure consistent ordering
         for _ in range(3):
@@ -1072,7 +1072,7 @@ class TestToolFiltering:
 
     def test_unknown_tool_ids_ignored(self):
         """Should ignore unknown tool IDs in enabled list."""
-        from src.services.mcp.server import BifrostMCPServer
+        from src.services.mcp_server.server import BifrostMCPServer
 
         context = MCPContext(
             user_id=uuid4(),
@@ -1091,7 +1091,7 @@ class TestMCPContextFiltering:
 
     def test_platform_admin_sees_all_tools_by_default(self):
         """Platform admin should see all tools when no filter applied."""
-        from src.services.mcp.server import BifrostMCPServer
+        from src.services.mcp_server.server import BifrostMCPServer
 
         context = MCPContext(
             user_id=uuid4(),
@@ -1106,7 +1106,7 @@ class TestMCPContextFiltering:
 
     def test_org_user_respects_enabled_tools(self):
         """Org user should only see tools from enabled_system_tools."""
-        from src.services.mcp.server import BifrostMCPServer
+        from src.services.mcp_server.server import BifrostMCPServer
 
         context = MCPContext(
             user_id=uuid4(),
@@ -1124,7 +1124,7 @@ class TestMCPContextFiltering:
 
     def test_context_with_all_tools_enabled(self):
         """Context with all tools enabled should show all tools."""
-        from src.services.mcp.server import BifrostMCPServer
+        from src.services.mcp_server.server import BifrostMCPServer
 
         all_tool_ids = [
             "execute_workflow",
@@ -1147,7 +1147,7 @@ class TestMCPContextFiltering:
 
     def test_enabled_tools_are_case_sensitive(self):
         """Tool IDs should be case-sensitive."""
-        from src.services.mcp.server import BifrostMCPServer
+        from src.services.mcp_server.server import BifrostMCPServer
 
         context = MCPContext(
             user_id=uuid4(),

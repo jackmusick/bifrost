@@ -343,13 +343,14 @@ class Settings(BaseSettings):
         """
         Validate that required filesystem paths exist.
 
-        Creates workspace and temp directories if they don't exist.
-        Workspace is always /tmp/bifrost/workspace (hardcoded, kept in sync with S3).
-        """
-        # Create workspace directory (hardcoded path)
-        workspace = Path("/tmp/bifrost/workspace")
-        workspace.mkdir(parents=True, exist_ok=True)
+        Creates temp directory if it doesn't exist.
 
+        NOTE: We no longer pre-create /tmp/bifrost/workspace. Purpose-specific
+        paths are created on-demand by the services that need them:
+        - /tmp/bifrost/git - Created by git_integration.py
+        - /tmp/bifrost/coding-agent - Created by coding_mode/client.py
+        - /tmp/bifrost/temp - Created here for SDK temp operations
+        """
         # Create temp location if it doesn't exist
         temp = Path(self.temp_location)
         temp.mkdir(parents=True, exist_ok=True)

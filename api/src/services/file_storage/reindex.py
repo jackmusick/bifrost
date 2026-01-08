@@ -621,16 +621,19 @@ class WorkspaceReindexService:
 
     def _clear_temp_directories(self) -> None:
         """
-        Clear all temp directories before reindex.
+        Clear temporary directories before reindex.
 
         Standard paths (all under /tmp/bifrost/):
-        - /tmp/bifrost/workspace - Main workspace files
         - /tmp/bifrost/temp - SDK temp files
         - /tmp/bifrost/uploads - Uploaded form files
-        """
-        from src.core.workspace_sync import WORKSPACE_PATH, TEMP_PATH, UPLOADS_PATH
+        - /tmp/bifrost/git - Git operations workspace
 
-        for path in [WORKSPACE_PATH, TEMP_PATH, UPLOADS_PATH]:
+        Note: There is no longer a central "workspace" directory.
+        Files are stored in the database, not on the filesystem.
+        """
+        from src.core.paths import TEMP_PATH, UPLOADS_PATH, GIT_WORKSPACE_PATH
+
+        for path in [TEMP_PATH, UPLOADS_PATH, GIT_WORKSPACE_PATH]:
             try:
                 if path.exists():
                     shutil.rmtree(path)

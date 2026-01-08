@@ -21,11 +21,39 @@ Usage:
 import inspect
 import logging
 import re
-from typing import Any, Literal, Union, get_args, get_origin, get_type_hints
+from typing import TYPE_CHECKING, Any, Literal, Union, get_args, get_origin, get_type_hints
 
-from src.sdk.context import ExecutionContext
+if TYPE_CHECKING:
+    pass  # ExecutionContext type only needed for type hints, not runtime
 
 logger = logging.getLogger(__name__)
+
+
+def _is_execution_context(param_type: Any) -> bool:
+    """
+    Check if a type annotation refers to ExecutionContext.
+
+    This check is done by class name rather than identity to avoid
+    circular import issues between type_inference.py and sdk.context.
+    """
+    if param_type is None or param_type is inspect.Parameter.empty:
+        return False
+
+    # Handle string annotations
+    if isinstance(param_type, str):
+        return "ExecutionContext" in param_type
+
+    # Handle actual type
+    type_name = getattr(param_type, "__name__", "")
+    if type_name == "ExecutionContext":
+        return True
+
+    # Check qualname for nested classes
+    qualname = getattr(param_type, "__qualname__", "")
+    if "ExecutionContext" in qualname:
+        return True
+
+    return False
 
 # Type mapping: Python type -> UI type string
 TYPE_MAPPING: dict[type, str] = {
@@ -255,13 +283,8 @@ def extract_parameters_from_signature(func: Any) -> list[dict[str, Any]]:
             param_type = type_hints.get(param_name, param.annotation)
 
             # Skip ExecutionContext parameter (by type or by name)
-            if param_type is not inspect.Parameter.empty:
-                # Check if it's ExecutionContext
-                if param_type is ExecutionContext:
-                    continue
-                # Handle string annotations
-                if isinstance(param_type, str) and "ExecutionContext" in param_type:
-                    continue
+            if _is_execution_context(param_type):
+                continue
 
             # Skip parameter named "context" without type hint (legacy support)
             if param_name == "context" and param_type is inspect.Parameter.empty:

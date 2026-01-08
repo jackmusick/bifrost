@@ -99,13 +99,15 @@ class FileOperationsService:
         result = await self.db.execute(stmt)
         file_record = result.scalar_one_or_none()
 
+        logger.info(f"read_file({path}): file_record={file_record is not None}, entity_type={file_record.entity_type if file_record else None}")
+
         # Route based on entity type - platform entities are stored in the database
-        if file_record is not None and file_record.entity_id is not None:
+        if file_record is not None:
             entity_type = file_record.entity_type
             entity_id = file_record.entity_id
 
-            # Workflow: fetch code column
-            if entity_type == "workflow":
+            # Workflow: fetch code column (requires entity_id)
+            if entity_type == "workflow" and entity_id is not None:
                 workflow_stmt = select(Workflow).where(Workflow.id == entity_id)
                 workflow_result = await self.db.execute(workflow_stmt)
                 workflow = workflow_result.scalar_one_or_none()
@@ -114,8 +116,8 @@ class FileOperationsService:
                     return workflow.code.encode("utf-8"), file_record
                 # Fall through to S3 if workflow not found or code is None
 
-            # Form: serialize to JSON
-            elif entity_type == "form":
+            # Form: serialize to JSON (requires entity_id)
+            elif entity_type == "form" and entity_id is not None:
                 form_stmt = (
                     select(Form)
                     .options(selectinload(Form.fields))
@@ -128,8 +130,8 @@ class FileOperationsService:
                     return serialize_form_to_json(form), file_record
                 raise FileNotFoundError(f"Form not found: {entity_id}")
 
-            # App: return draft_definition as JSON
-            elif entity_type == "app":
+            # App: return draft_definition as JSON (requires entity_id)
+            elif entity_type == "app" and entity_id is not None:
                 app_stmt = select(Application).where(Application.id == entity_id)
                 app_result = await self.db.execute(app_stmt)
                 app = app_result.scalar_one_or_none()
@@ -139,8 +141,8 @@ class FileOperationsService:
                     return json.dumps(definition, indent=2).encode("utf-8"), file_record
                 raise FileNotFoundError(f"Application not found: {entity_id}")
 
-            # Agent: serialize to JSON
-            elif entity_type == "agent":
+            # Agent: serialize to JSON (requires entity_id)
+            elif entity_type == "agent" and entity_id is not None:
                 agent_stmt = select(Agent).where(Agent.id == entity_id)
                 agent_result = await self.db.execute(agent_stmt)
                 agent = agent_result.scalar_one_or_none()
@@ -149,7 +151,14 @@ class FileOperationsService:
                     return serialize_agent_to_json(agent), file_record
                 raise FileNotFoundError(f"Agent not found: {entity_id}")
 
+            # Module: fetch from workspace_files.content (no entity_id needed)
+            elif entity_type == "module":
+                if file_record.content is not None:
+                    return file_record.content.encode("utf-8"), file_record
+                raise FileNotFoundError(f"Module content not found: {path}")
+
         # Default: fetch from S3 (entity_type is NULL or unknown)
+        logger.info(f"read_file({path}): falling through to S3 (file_record={file_record is not None})")
         async with self._s3_client.get_client() as s3:
             try:
                 response = await s3.get_object(
@@ -159,6 +168,7 @@ class FileOperationsService:
                 content = await response["Body"].read()
                 return content, file_record
             except s3.exceptions.NoSuchKey:
+                logger.info(f"read_file({path}): S3 NoSuchKey - file not found")
                 raise FileNotFoundError(f"File not found: {path}")
 
     async def write_file(
@@ -203,6 +213,7 @@ class FileOperationsService:
         # Platform entities are stored in the database, not S3
         platform_entity_type = self._detect_platform_entity_type(path, content)
         is_platform_entity = platform_entity_type is not None
+        logger.info(f"write_file({path}): platform_entity_type={platform_entity_type}")
 
         # Only write to S3 for regular files (not platform entities)
         # Platform entity content is stored in DB tables via _extract_metadata
@@ -218,6 +229,13 @@ class FileOperationsService:
         # Upsert index record
         # Use UTC datetime without timezone info to match SQLAlchemy model defaults
         now = datetime.utcnow()
+
+        # For modules, store content directly in workspace_files.content
+        # Other entity types store content in their respective tables
+        module_content: str | None = None
+        if platform_entity_type == "module":
+            module_content = content.decode("utf-8")
+
         stmt = insert(WorkspaceFile).values(
             path=path,
             content_hash=content_hash,
@@ -227,6 +245,8 @@ class FileOperationsService:
             is_deleted=False,
             created_at=now,
             updated_at=now,
+            entity_type=platform_entity_type,
+            content=module_content,
         ).on_conflict_do_update(
             index_elements=[WorkspaceFile.path],
             set_={
@@ -236,11 +256,15 @@ class FileOperationsService:
                 "git_status": GitStatus.MODIFIED,
                 "is_deleted": False,
                 "updated_at": now,
+                "entity_type": platform_entity_type,
+                "content": module_content,
             },
         ).returning(WorkspaceFile)
 
         result = await self.db.execute(stmt)
         file_record = result.scalar_one()
+        await self.db.flush()  # Ensure changes are flushed before continuing
+        logger.info(f"write_file({path}): upserted record entity_type={file_record.entity_type}, content_len={len(file_record.content) if file_record.content else None}")
 
         # Dual-write: Update Redis cache with same state as DB
         cache = get_workspace_cache()
@@ -269,17 +293,6 @@ class FileOperationsService:
                 pending_deactivations=pending_deactivations,
                 available_replacements=available_replacements,
             )
-
-        # Publish to Redis pub/sub so other containers sync
-        # This notifies workers and other API instances about the file change
-        # Use final_content (with injected IDs if any) for sync
-        try:
-            from src.core.pubsub import publish_workspace_file_write
-            publish_content = final_content if content_modified else content
-            publish_hash = self._compute_hash(publish_content) if content_modified else content_hash
-            await publish_workspace_file_write(path, publish_content, publish_hash)
-        except Exception as e:
-            logger.warning(f"Failed to publish workspace file write event: {e}")
 
         # Scan Python files for missing SDK references (config.get, integrations.get)
         # and create platform admin notifications if issues are found
@@ -341,13 +354,14 @@ class FileOperationsService:
                     Key=path,
                 )
 
-        # Soft delete in index
+        # Soft delete in index and clear content for modules
         stmt = update(WorkspaceFile).where(
             WorkspaceFile.path == path,
         ).values(
             is_deleted=True,
             git_status=GitStatus.DELETED,
             updated_at=datetime.utcnow(),
+            content=None,  # Clear module content on delete
         )
         await self.db.execute(stmt)
 
@@ -357,13 +371,6 @@ class FileOperationsService:
 
         # Clean up related metadata
         await self._remove_metadata(path)
-
-        # Publish to Redis pub/sub so other containers sync
-        try:
-            from src.core.pubsub import publish_workspace_file_delete
-            await publish_workspace_file_delete(path)
-        except Exception as e:
-            logger.warning(f"Failed to publish workspace file delete event: {e}")
 
         logger.info(f"File deleted: {path}")
 
@@ -453,6 +460,11 @@ class FileOperationsService:
             await self.db.execute(stmt)
             logger.info(f"Updated agent {entity_id} path: {old_path} -> {new_path}")
 
+        elif entity_type == "module":
+            # Module content is stored in workspace_files.content
+            # No entity table to update, just workspace_files path (handled below)
+            logger.info(f"Module path update: {old_path} -> {new_path}")
+
         else:
             # Regular file: copy in S3
             async with self._s3_client.get_client() as s3:
@@ -482,14 +494,6 @@ class FileOperationsService:
         cache = get_workspace_cache()
         await cache.set_file_state(old_path, content_hash=None, is_deleted=True)
         await cache.set_file_state(new_path, content_hash=file_record.content_hash, is_deleted=False)
-
-        # Publish events
-        try:
-            from src.core.pubsub import publish_workspace_file_delete, publish_workspace_file_change
-            await publish_workspace_file_delete(old_path)
-            await publish_workspace_file_change(new_path)
-        except Exception as e:
-            logger.warning(f"Failed to publish workspace file move events: {e}")
 
         # Refresh the record to get updated values
         await self.db.refresh(file_record)

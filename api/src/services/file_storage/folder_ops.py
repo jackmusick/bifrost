@@ -98,20 +98,13 @@ class FolderOperationsService:
         cache = get_workspace_cache()
         await cache.set_file_state(folder_path, content_hash=None, is_deleted=False)
 
-        # Create on local filesystem too
+        # Create on local filesystem too (for tools that read files directly)
         try:
-            from src.core.workspace_sync import WORKSPACE_PATH
+            from src.core.paths import WORKSPACE_PATH
             local_folder = WORKSPACE_PATH / path.rstrip("/")
             local_folder.mkdir(parents=True, exist_ok=True)
         except Exception as e:
             logger.warning(f"Failed to create local folder: {e}")
-
-        # Publish to Redis pub/sub so other containers sync
-        try:
-            from src.core.pubsub import publish_workspace_folder_create
-            await publish_workspace_folder_create(folder_path)
-        except Exception as e:
-            logger.warning(f"Failed to publish workspace folder create event: {e}")
 
         logger.info(f"Folder created: {folder_path} by {updated_by}")
         return folder_record
@@ -185,19 +178,12 @@ class FolderOperationsService:
 
         # Delete from local filesystem
         try:
-            from src.core.workspace_sync import WORKSPACE_PATH
+            from src.core.paths import WORKSPACE_PATH
             local_folder = WORKSPACE_PATH / path.rstrip("/")
             if local_folder.exists():
                 shutil.rmtree(local_folder)
         except Exception as e:
             logger.warning(f"Failed to delete local folder: {e}")
-
-        # Publish to Redis pub/sub so other containers sync
-        try:
-            from src.core.pubsub import publish_workspace_folder_delete
-            await publish_workspace_folder_delete(folder_path)
-        except Exception as e:
-            logger.warning(f"Failed to publish workspace folder delete event: {e}")
 
         logger.info(f"Folder deleted: {folder_path}")
 

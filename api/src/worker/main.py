@@ -21,8 +21,6 @@ import sys
 
 from src.config import get_settings
 from src.core.database import init_db, close_db
-from src.core.workspace_sync import workspace_sync
-from src.core.workspace_watcher import workspace_watcher
 from src.jobs.rabbitmq import rabbitmq
 from src.jobs.consumers.workflow_execution import WorkflowExecutionConsumer
 from src.jobs.consumers.git_sync import GitSyncConsumer
@@ -36,8 +34,6 @@ logging.basicConfig(
 )
 
 # Suppress noisy third-party loggers
-logging.getLogger("watchdog").setLevel(logging.WARNING)
-logging.getLogger("watchdog.observers.inotify_buffer").setLevel(logging.WARNING)
 logging.getLogger("aiormq").setLevel(logging.WARNING)
 logging.getLogger("aio_pika").setLevel(logging.WARNING)
 
@@ -75,16 +71,6 @@ class Worker:
         logger.info("Initializing database connection...")
         await init_db()
         logger.info("Database connection established")
-
-        # Initialize workspace sync (downloads from S3, starts pub/sub listener)
-        logger.info("Initializing workspace sync...")
-        await workspace_sync.start()
-        logger.info("Workspace sync initialized")
-
-        # Start workspace watcher (detects local changes from SDK writes)
-        logger.info("Starting workspace watcher...")
-        await workspace_watcher.start()
-        logger.info("Workspace watcher started")
 
         # Initialize and start RabbitMQ consumers
         logger.info("Starting RabbitMQ consumers...")
@@ -127,10 +113,6 @@ class Worker:
                 logger.info(f"Stopped consumer: {consumer.queue_name}")
             except Exception as e:
                 logger.error(f"Error stopping consumer {consumer.queue_name}: {e}")
-
-        # Stop workspace sync
-        await workspace_sync.stop()
-        logger.info("Workspace sync stopped")
 
         # Close RabbitMQ connections
         await rabbitmq.close()

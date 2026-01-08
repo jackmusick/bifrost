@@ -83,23 +83,19 @@ async def my_workflow(param1: str) -> dict:
     ...
 ```
 
-## Paths
+## Working with Workflows (MCP-First)
 
-### Workspace (WRITE HERE)
-`/tmp/bifrost/workspace/`
+**You have MCP tools available for all file operations.** Use these tools instead of trying to access the filesystem directly:
 
-This is where you create and modify files. All workflows, features, and user code go here. Do not write files outside this directory.
+- `list_files` - List files in the workspace
+- `read_file` - Read file contents
+- `write_file` - Create or update files
+- `delete_file` - Delete files
+- `search_files` - Search across file contents
 
-### SDK (READ ONLY)
-`/app/bifrost/`
-
-This is where `from bifrost import x` comes from. Use this to understand platform features like retrieving secrets from configs, OAuth tokens from integrations, and workflow context. Do not modify files here.
-
-## Folder Structure
-
-All paths below are relative to `/tmp/bifrost/workspace/`. This is your workspace root.
+The workspace is organized as follows:
 ```
-/tmp/bifrost/workspace/
+/
 ├── examples/               # Your existing workflows, use as reference patterns
 ├── features/               # Feature-based organization (primary work area)
 │   └── <feature-name>/     # Group by business capability, not technology
@@ -118,11 +114,16 @@ All paths below are relative to `/tmp/bifrost/workspace/`. This is your workspac
 
 ### Folder Guidelines
 
-- **All writes go to `/tmp/bifrost/workspace/`** - Never write outside this directory
+- **Use MCP tools for all file operations** - The workspace is virtual, not a local filesystem
 - **Start in `features/`** - New work goes here, organized by what it does (ticket-review, onboarding, compliance-check), not how it works
 - **Promote to `shared/` reluctantly** - Only move something to shared when a second feature actually needs it
 - **Never edit `modules/` directly** - Use `modules/extensions/` to extend generated SDK code
 - **Check `examples/` first** - If there are existing workflows, review them for patterns before building
+
+### SDK (READ ONLY)
+`/app/bifrost/`
+
+This is where `from bifrost import x` comes from. Use this to understand platform features like retrieving secrets from configs, OAuth tokens from integrations, and workflow context.
 
 ## Code Standards
 

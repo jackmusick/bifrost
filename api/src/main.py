@@ -14,8 +14,6 @@ from src.config import get_settings
 from src.core.csrf import CSRFMiddleware
 from src.core.database import close_db, init_db
 from src.core.pubsub import manager as pubsub_manager
-from src.core.workspace_sync import workspace_sync
-from src.core.workspace_watcher import workspace_watcher
 from src.routers import (
     auth_router,
     mfa_router,
@@ -75,8 +73,6 @@ logging.basicConfig(
 # Suppress noisy third-party loggers
 logging.getLogger("aiormq").setLevel(logging.WARNING)
 logging.getLogger("aio_pika").setLevel(logging.WARNING)
-logging.getLogger("watchdog").setLevel(logging.WARNING)
-logging.getLogger("watchdog.observers.inotify_buffer").setLevel(logging.WARNING)
 
 # Enable DEBUG for execution engine to troubleshoot workflows
 logging.getLogger("src.services.execution").setLevel(logging.DEBUG)
@@ -101,16 +97,6 @@ async def app_lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     await init_db()
     logger.info("Database connection established")
 
-    # Start workspace sync service (downloads from S3, listens for pub/sub changes)
-    logger.info("Starting workspace sync service...")
-    await workspace_sync.start()
-    logger.info("Workspace sync service started")
-
-    # Start workspace watcher (detects local changes, publishes to others)
-    logger.info("Starting workspace watcher...")
-    await workspace_watcher.start()
-    logger.info("Workspace watcher started")
-
     # Register dynamic workflow endpoints for OpenAPI documentation
     logger.info("Registering workflow endpoints...")
     await register_dynamic_workflow_endpoints(app)
@@ -129,8 +115,6 @@ async def app_lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     # Shutdown
     logger.info("Shutting down Bifrost API...")
 
-    await workspace_watcher.stop()
-    await workspace_sync.stop()
     await pubsub_manager.close()
     await close_db()
     logger.info("Bifrost API shutdown complete")
@@ -322,7 +306,7 @@ def create_app() -> FastAPI:
     # Mount MCP OAuth routes at root level (required by RFC 8414/9728)
     # These must be registered BEFORE the FastMCP ASGI mount
     try:
-        from src.services.mcp.auth import create_bifrost_auth_provider
+        from src.services.mcp_server.auth import create_bifrost_auth_provider
         auth_provider = create_bifrost_auth_provider()
         for route in auth_provider.get_routes():
             app.add_api_route(

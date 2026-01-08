@@ -41,7 +41,7 @@ from src.models.contracts.mcp import (
     MCPToolInfo,
     MCPToolsResponse,
 )
-from src.services.mcp.config_service import (
+from src.services.mcp_server.config_service import (
     MCPConfigService,
     invalidate_mcp_config_cache,
 )
@@ -70,7 +70,7 @@ async def mcp_status(
     Returns information about which tools the user has access to based on
     their agent access permissions.
     """
-    from src.services.mcp.tool_access import MCPToolAccessService
+    from src.services.mcp_server.tool_access import MCPToolAccessService
 
     # Check MCP config for access control
     config_service = MCPConfigService(db)
@@ -137,14 +137,14 @@ def get_mcp_asgi_app():
     """
     from contextlib import asynccontextmanager
 
-    from src.services.mcp.server import HAS_FASTMCP
+    from src.services.mcp_server.server import HAS_FASTMCP
 
     if not HAS_FASTMCP:
         logger.warning("FastMCP not installed - MCP HTTP endpoint will not be available")
         return None
 
     # Import here to avoid circular imports and only when FastMCP is available
-    from src.services.mcp.server import (
+    from src.services.mcp_server.server import (
         BifrostMCPServer,
         MCPContext,
         _register_workflow_tools,
@@ -152,7 +152,7 @@ def get_mcp_asgi_app():
 
     # Create OAuth 2.1 auth provider for Bifrost
     try:
-        from src.services.mcp.auth import create_bifrost_auth_provider
+        from src.services.mcp_server.auth import create_bifrost_auth_provider
         auth_provider = create_bifrost_auth_provider()
         logger.info("Created Bifrost OAuth 2.1 auth provider for MCP")
     except ImportError as e:
@@ -171,7 +171,7 @@ def get_mcp_asgi_app():
 
     # Add tool filtering middleware to filter tools/list based on user permissions
     try:
-        from src.services.mcp.middleware import ToolFilterMiddleware
+        from src.services.mcp_server.middleware import ToolFilterMiddleware
         fastmcp_server.add_middleware(ToolFilterMiddleware())
         logger.info("Added ToolFilterMiddleware for per-user tool filtering")
     except ImportError as e:
@@ -345,7 +345,7 @@ async def list_mcp_tools(
     Returns tools from agents the user can access, filtered by
     global MCP config allowlist/blocklist.
     """
-    from src.services.mcp.tool_access import MCPToolAccessService
+    from src.services.mcp_server.tool_access import MCPToolAccessService
 
     # Check MCP config for access control
     config_service = MCPConfigService(db)

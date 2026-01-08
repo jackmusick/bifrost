@@ -10,10 +10,10 @@ import logging
 import os
 import time
 from collections.abc import AsyncIterator, Awaitable, Callable
-from pathlib import Path
 from typing import Any
 from uuid import UUID, uuid4
 
+from src.core.paths import CODING_AGENT_PATH
 from src.models.contracts.agents import (
     AskUserQuestion,
     AskUserQuestionOption,
@@ -25,7 +25,7 @@ from src.models.contracts.agents import (
 from src.models.enums import CodingModePermission
 from src.services.coding_mode.prompts import get_system_prompt
 from src.services.coding_mode.session import SessionManager
-from src.services.mcp import BifrostMCPServer, MCPContext
+from src.services.mcp_server import BifrostMCPServer, MCPContext
 
 logger = logging.getLogger(__name__)
 
@@ -74,19 +74,21 @@ except ImportError:
     ToolUseBlock = Any  # type: ignore
     UserMessage = Any  # type: ignore
 
-# Workspace path for coding mode
-WORKSPACE_PATH = Path("/tmp/bifrost/workspace")
+# Coding agent scratch space - for Claude SDK's bash/file tools
+# This is NOT the workspace for modules/workflows (those come from DB via MCP tools)
+# This is just a local sandbox for the LLM to do file operations
+WORKSPACE_PATH = CODING_AGENT_PATH
 
 # Allowed read paths for file access (SDK source for documentation)
 ALLOWED_READ_PATHS = [
-    "/tmp/bifrost/workspace",     # User's workspace (read/write)
+    str(CODING_AGENT_PATH),       # Agent's scratch space (read/write)
     "/app/shared/bifrost_sdk",    # SDK source code (read-only docs)
     "/app/shared/workflows",      # Workflow patterns (read-only docs)
 ]
 
 # Paths that can be written to
 ALLOWED_WRITE_PATHS = [
-    "/tmp/bifrost/workspace",     # Only the workspace is writable
+    str(CODING_AGENT_PATH),       # Only the scratch space is writable
 ]
 
 
@@ -383,6 +385,11 @@ class CodingModeClient:
         multiple chat() calls within the same session.
         """
         if self._sdk_client is None:
+            # Ensure the scratch space directory exists
+            # This is the coding agent's local sandbox for bash/file operations
+            WORKSPACE_PATH.mkdir(parents=True, exist_ok=True)
+            logger.debug(f"Ensured coding agent scratch space exists: {WORKSPACE_PATH}")
+
             # SDK reads API key from env var (doesn't accept api_key param directly)
             os.environ["ANTHROPIC_API_KEY"] = self._api_key
 

@@ -44,6 +44,20 @@ services:
     environment:
       DB_PASSWORD: ${POSTGRES_PASSWORD:-bifrost_dev}
 
+  # Init Container - development password defaults
+  init:
+    environment:
+      BIFROST_ENVIRONMENT: development
+      BIFROST_SECRET_KEY: ${BIFROST_SECRET_KEY:-dev-secret-key-change-in-production-must-be-32-chars}
+      BIFROST_DATABASE_URL: postgresql+asyncpg://bifrost:${POSTGRES_PASSWORD:-bifrost_dev}@pgbouncer:5432/bifrost
+      BIFROST_DATABASE_URL_SYNC: postgresql://bifrost:${POSTGRES_PASSWORD:-bifrost_dev}@pgbouncer:5432/bifrost
+    volumes:
+      - ./api/src:/app/src:ro
+      - ./api/shared:/app/shared:ro
+      - ./api/scripts:/app/scripts:ro
+      - ./api/alembic:/app/alembic:ro
+      - ./api/alembic.ini:/app/alembic.ini:ro
+
   # API with hot reload for development
   api:
     environment:
@@ -66,8 +80,7 @@ services:
       - ./api/alembic:/app/alembic:ro
       - ./api/alembic.ini:/app/alembic.ini:ro
     command: >
-      sh -c "alembic upgrade head &&
-             if [ \"$$ENABLE_DEBUG\" = \"true\" ]; then
+      sh -c "if [ \"$$ENABLE_DEBUG\" = \"true\" ]; then
                echo 'Starting with debugpy - waiting for VS Code to attach on port 5678...' &&
                python -m debugpy --listen 0.0.0.0:5678 --wait-for-client -m uvicorn src.main:app --host 0.0.0.0 --port 8000 --reload --reload-dir /app/src --reload-dir /app/shared;
              else

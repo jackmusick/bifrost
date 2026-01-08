@@ -287,8 +287,10 @@ class FormPublic(BaseModel):
                     field_dict["options"] = field.options
                 if field.data_provider_id:
                     field_dict["data_provider_id"] = str(field.data_provider_id)
-                if field.data_provider_inputs:
-                    field_dict["data_provider_inputs"] = field.data_provider_inputs
+                    # Only include data_provider_inputs if data_provider_id is set
+                    # (validation requires both to be set together)
+                    if field.data_provider_inputs:
+                        field_dict["data_provider_inputs"] = field.data_provider_inputs
                 if field.visibility_expression:
                     field_dict["visibility_expression"] = field.visibility_expression
                 if field.validation:

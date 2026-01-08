@@ -7,7 +7,6 @@ Tests the org resolution logic where:
 3. GLOBAL scope is used when both are None
 """
 
-import pytest
 
 
 class TestOrgIdFallbackLogic:

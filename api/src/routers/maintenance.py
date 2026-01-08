@@ -17,7 +17,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.core.auth import Context, CurrentSuperuser
 from src.core.database import get_db
-from src.core.workspace_sync import WORKSPACE_PATH
+from src.core.paths import WORKSPACE_PATH
 from src.models import (
     DocsIndexResponse,
     MaintenanceStatus,

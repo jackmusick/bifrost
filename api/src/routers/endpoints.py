@@ -25,7 +25,6 @@ from pydantic import BaseModel
 
 from src.core.constants import SYSTEM_USER_ID, SYSTEM_USER_EMAIL
 from src.sdk.context import ExecutionContext
-from src.services.execution.module_loader import get_workflow
 from src.core.database import get_db_context
 from src.core.redis_client import get_redis_client
 from src.routers.workflow_keys import validate_workflow_key
@@ -219,32 +218,14 @@ async def execute_endpoint(
                     detail=f"Endpoint workflow '{workflow_name}' not found or not enabled",
                 )
 
-            # Load workflow module to get metadata (SLOW path - only on cache miss)
-            try:
-                result = get_workflow(workflow_name)
-                if not result:
-                    logger.warning(f"Workflow module not found: {workflow_name}")
-                    raise HTTPException(
-                        status_code=status.HTTP_404_NOT_FOUND,
-                        detail=f"Workflow '{workflow_name}' not found",
-                    )
-                _, loaded_metadata = result
-            except HTTPException:
-                raise
-            except Exception as e:
-                logger.error(f"Failed to load workflow {workflow_name}: {e}", exc_info=True)
-                raise HTTPException(
-                    status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-                    detail=f"Failed to load workflow '{workflow_name}': {str(e)}",
-                )
-
-            # Build cached metadata
+            # Build cached metadata from DB workflow record
+            # All metadata (execution_mode, timeout, allowed_methods) is stored in the workflows table
             workflow_metadata = CachedWorkflowMetadata(
                 workflow_id=str(workflow.id),
                 file_path=workflow.path,
-                execution_mode=loaded_metadata.execution_mode,
-                timeout_seconds=loaded_metadata.timeout_seconds,
-                allowed_methods=loaded_metadata.allowed_methods or ["POST"],
+                execution_mode=workflow.execution_mode or "async",
+                timeout_seconds=workflow.timeout_seconds or 1800,
+                allowed_methods=workflow.allowed_methods or ["POST"],
             )
 
             # Cache for future requests

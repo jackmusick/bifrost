@@ -62,30 +62,38 @@ If user says "global", explain this makes the resource visible to all organizati
 - `organization` - Visible only to the specified organization (requires `organization_id`)
 - `application` - Scoped to a specific app (for tables only, requires `application_id`)
 
-## Workspace Structure
+## Working with Workflows (MCP-First)
 
-**Workspace Path**: `/tmp/bifrost/workspace/`
+**IMPORTANT**: All workflows and modules are managed through MCP tools, NOT local files.
+
+### Creating/Updating Workflows
+
+Use the MCP tools to manage workflows:
+- `create_workflow` - Create a new workflow with validation
+- `list_workflows` - See all registered workflows
+- `get_workflow` - Get workflow details and code
+- `execute_workflow` - Run a workflow
 
 ### Recommended Organization
 
 ```
-workspace/
-├── integrations/               # Integration-specific features
-│   └── microsoft_csp/
-│       ├── data_providers.py   # Data providers for this integration
-│       ├── forms/
-│       │   └── consent.form.json
-│       └── workflows/
-│           └── consent_tenant.py
-├── workflows/                  # General/standalone workflows
-│   └── hello_world.py
-├── data_providers/             # Shared data providers
-│   └── departments.py
-└── forms/                      # Standalone form definitions
-    └── user_onboarding.form.json
+integrations/               # Integration-specific features
+└── microsoft_csp/
+    ├── data_providers.py   # Data providers for this integration
+    ├── forms/
+    │   └── consent.form.json
+    └── workflows/
+        └── consent_tenant.py
+workflows/                  # General/standalone workflows
+└── hello_world.py
+data_providers/             # Shared data providers
+└── departments.py
+forms/                      # Standalone form definitions
+└── user_onboarding.form.json
 ```
 
 ### Key Points
+- **Use MCP tools** to create/update workflows - don't write to local filesystem
 - Any `.py` file with `@workflow` or `@data_provider` is auto-discovered
 - Files starting with `_` are ignored (use for private helpers)
 - Group related code by integration when building integration features
@@ -331,7 +339,7 @@ For detailed patterns, read the SDK source:
 - **Files Module**: `/app/shared/bifrost_sdk/files.py` - File operations
 - **Integrations**: `/app/shared/bifrost_sdk/integrations.py` - Integration access
 - **Knowledge**: `/app/shared/bifrost_sdk/knowledge.py` - RAG and document storage
-- **Example Workflows**: `/tmp/bifrost/workspace/` - User's existing workflows
+- **Existing Workflows**: Use `list_workflows` to see available workflows
 
 ## Best Practices
 

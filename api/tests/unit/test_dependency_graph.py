@@ -5,7 +5,7 @@ Unit tests for the DependencyGraphService.
 from uuid import uuid4
 
 import pytest
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock
 
 from src.services.dependency_graph import (
     DependencyGraphService,

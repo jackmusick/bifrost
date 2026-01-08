@@ -16,43 +16,21 @@ logger = logging.getLogger(__name__)
 
 def _extract_relative_path(source_file_path: str | None) -> str | None:
     """
-    Extract workspace-relative file path from absolute path.
-    Returns path with /workspace/ prefix for consistency with editor paths.
+    Return the relative file path for display.
 
     Args:
-        source_file_path: Absolute file path (e.g., /path/to/workspace/repo/workflows/my_workflow.py)
+        source_file_path: File path (should be relative from database)
 
     Returns:
-        Path with /workspace/ prefix (e.g., /workspace/workflows/my_workflow.py)
-        Returns None if source_file_path is None or no marker found
+        The relative path as-is, or None if not provided
     """
     if not source_file_path:
         return None
 
-    # Hardcoded workspace path - kept in sync with S3 by WorkspaceSyncService
-    workspace_path = Path("/tmp/bifrost/workspace")
-    source_path = Path(source_file_path)
-
-    # Check if source_path is relative to workspace
-    try:
-        relative = source_path.relative_to(workspace_path)
-        # Return with /workspace/ prefix for consistency
-        return f"/workspace/{relative}"
-    except ValueError:
-        # Not relative to workspace, fall through to marker check
-        pass
-
-    # Fallback: Extract everything after markers and prepend /workspace/
-    for marker in ['/home/', '/platform/']:
-        if marker in source_file_path:
-            relative = source_file_path.split(marker, 1)[1]
-            return f"/workspace/{relative}"
-
-    # If already has /workspace/ prefix, return as-is
-    if '/workspace/' in source_file_path:
-        return '/workspace/' + source_file_path.split('/workspace/', 1)[1]
-
-    return None
+    # Paths are now stored as relative paths in the database
+    # e.g., "features/ticketing/workflows/create_ticket.py"
+    # Just return as-is - no prefixes needed
+    return source_file_path
 
 
 def _convert_workflow_metadata_to_model(
@@ -119,10 +97,15 @@ async def validate_workflow_file(path: str, content: str | None = None):
 
     Args:
         path: Relative workspace path to the workflow file
-        content: Optional file content (if not provided, reads from disk)
+        content: File content (required - we no longer read from filesystem)
 
     Returns:
         WorkflowValidationResponse with validation results
+
+    Note:
+        Content is now required. The filesystem is no longer used for workflow
+        validation - all code is stored in the database. If content is not provided,
+        the function will attempt to load it from the database.
     """
     import tempfile
     import re
@@ -135,43 +118,45 @@ async def validate_workflow_file(path: str, content: str | None = None):
     valid = True
     metadata = None
 
-    # Determine the absolute file path
-    # Primary location is /tmp/bifrost/workspace (hardcoded, kept in sync with S3)
-    workspace_roots = ["/tmp/bifrost/workspace", "/home", "/platform", "/workspace"]
+    # If content not provided, try to load from database
+    if content is None:
+        from src.core.database import get_db_context
+        from src.services.file_storage import FileStorageService
 
-    abs_path = None
-    for root in workspace_roots:
-        candidate = Path(root) / path
-        if candidate.exists():
-            abs_path = candidate
-            break
-
-    # If content provided, use temporary file; otherwise use actual file
-    if content is not None:
-        # Create a temporary file with the content
-        temp_file = tempfile.NamedTemporaryFile(mode='w', suffix='.py', delete=False)
         try:
-            temp_file.write(content)
-            temp_file.close()
-            file_to_validate = Path(temp_file.name)
-            file_content = content
+            async with get_db_context() as db:
+                service = FileStorageService(db)
+                content_bytes, _ = await service.read_file(path)
+                content = content_bytes.decode("utf-8")
+        except FileNotFoundError:
+            issues.append(ValidationIssue(
+                line=None,
+                message=f"File not found in database: {path}",
+                severity="error"
+            ))
+            return WorkflowValidationResponse(valid=False, issues=issues, metadata=None)
         except Exception as e:
             issues.append(ValidationIssue(
                 line=None,
-                message=f"Failed to write temporary file: {str(e)}",
+                message=f"Failed to read file from database: {str(e)}",
                 severity="error"
             ))
             return WorkflowValidationResponse(valid=False, issues=issues, metadata=None)
-    else:
-        if abs_path is None or not abs_path.exists():
-            issues.append(ValidationIssue(
-                line=None,
-                message=f"File not found: {path}",
-                severity="error"
-            ))
-            return WorkflowValidationResponse(valid=False, issues=issues, metadata=None)
-        file_to_validate = abs_path
-        file_content = abs_path.read_text()
+
+    # Create a temporary file with the content for validation
+    temp_file = tempfile.NamedTemporaryFile(mode='w', suffix='.py', delete=False)
+    try:
+        temp_file.write(content)
+        temp_file.close()
+        file_to_validate = Path(temp_file.name)
+        file_content = content
+    except Exception as e:
+        issues.append(ValidationIssue(
+            line=None,
+            message=f"Failed to write temporary file: {str(e)}",
+            severity="error"
+        ))
+        return WorkflowValidationResponse(valid=False, issues=issues, metadata=None)
 
     try:
         # Step 1: Check for Python syntax errors
