@@ -12,8 +12,6 @@ Note: Authentication is done via session auth (platform_admin.headers).
 
 import logging
 
-import pytest
-
 logger = logging.getLogger(__name__)
 
 
@@ -131,10 +129,7 @@ class TestCLIFileOperations:
             },
             headers=headers,
         )
-        # Accept 204 (success) or 500 (temp dir not available in test env)
-        if response.status_code == 500:
-            pytest.skip("Temp directory not available in test environment")
-        assert response.status_code == 204
+        assert response.status_code == 204, f"Write failed: {response.text}"
 
         # Read file back
         response = e2e_client.post(
@@ -176,8 +171,7 @@ class TestCLIFileOperations:
             },
             headers=headers,
         )
-        if write_response.status_code == 500:
-            pytest.skip("Temp directory not available in test environment")
+        assert write_response.status_code == 204, f"Write failed: {write_response.text}"
 
         # List files
         response = e2e_client.post(
@@ -189,10 +183,7 @@ class TestCLIFileOperations:
             },
             headers=headers,
         )
-        # Accept 200 or 404 (if temp dir doesn't exist)
-        if response.status_code == 404:
-            pytest.skip("Temp directory not available in test environment")
-        assert response.status_code == 200
+        assert response.status_code == 200, f"List failed: {response.text}"
         data = response.json()
         assert isinstance(data["files"], list)
 
@@ -223,8 +214,7 @@ class TestCLIFileOperations:
             },
             headers=headers,
         )
-        if write_response.status_code == 500:
-            pytest.skip("Temp directory not available in test environment")
+        assert write_response.status_code == 204, f"Write failed: {write_response.text}"
 
         # Delete file
         response = e2e_client.post(
@@ -232,10 +222,7 @@ class TestCLIFileOperations:
             json={"path": test_path, "location": "temp", "mode": "cloud"},
             headers=headers,
         )
-        # Accept 204 (success) or 404 (file wasn't created)
-        if response.status_code == 404:
-            pytest.skip("File was not created (temp dir issue)")
-        assert response.status_code == 204
+        assert response.status_code == 204, f"Delete failed: {response.text}"
 
         # Verify deleted
         response = e2e_client.post(

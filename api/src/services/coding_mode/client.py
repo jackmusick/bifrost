@@ -40,7 +40,6 @@ try:
         StreamEvent,
         TextBlock,
         ToolResultBlock,
-        ToolUseBlock,
         UserMessage,
     )
 
@@ -71,7 +70,6 @@ except ImportError:
     StreamEvent = Any  # type: ignore
     TextBlock = Any  # type: ignore
     ToolResultBlock = Any  # type: ignore
-    ToolUseBlock = Any  # type: ignore
     UserMessage = Any  # type: ignore
 
 # Coding agent scratch space - for Claude SDK's bash/file tools
@@ -477,17 +475,12 @@ class CodingModeClient:
             # Send message to Claude
             await client.query(message)
 
-            # Track if we've already sent content (to add separators between messages)
-            has_sent_content = False
-
             # Stream response from Claude Agent SDK
             # Use receive_response() which terminates after ResultMessage
             # (receive_messages() never terminates - it's for interactive multi-turn sessions)
             async for sdk_message in client.receive_response():
                 # Convert SDK messages to our chunk format
-                async for chunk in self._convert_sdk_message(sdk_message, has_sent_content):
-                    if chunk.type == "delta" and chunk.content:
-                        has_sent_content = True
+                async for chunk in self._convert_sdk_message(sdk_message):
                     yield chunk
 
                 # Track token usage from result message
@@ -519,7 +512,7 @@ class CodingModeClient:
             )
 
     async def _convert_sdk_message(
-        self, sdk_message: Any, has_prior_content: bool = False
+        self, sdk_message: Any
     ) -> AsyncIterator[ChatStreamChunk]:
         """
         Convert Claude Agent SDK message to our chunk format.
@@ -531,7 +524,6 @@ class CodingModeClient:
 
         Args:
             sdk_message: Message from Claude Agent SDK
-            has_prior_content: Whether we've already sent content (for separators)
         """
         # Handle StreamEvent for ALL real-time streaming data
         if HAS_CLAUDE_SDK and isinstance(sdk_message, StreamEvent):

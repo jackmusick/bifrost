@@ -68,8 +68,8 @@ def _install_requirements_from_cache_sync(worker_id: str) -> None:
 
     import redis
 
-    # Get Redis URL from environment
-    redis_url = os.environ.get("REDIS_URL", "redis://localhost:6379")
+    # Get Redis URL from environment (check both BIFROST_REDIS_URL and REDIS_URL)
+    redis_url = os.environ.get("BIFROST_REDIS_URL") or os.environ.get("REDIS_URL", "redis://localhost:6379")
 
     # Retry logic for Redis connection
     max_retries = 3

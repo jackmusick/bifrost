@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { Cpu, Clock, CheckCircle, RefreshCw, ChevronDown, ChevronRight, MemoryStick } from "lucide-react";
+import { Cpu, Clock, CheckCircle, RefreshCw, ChevronDown, ChevronRight, MemoryStick, TrendingDown } from "lucide-react";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
@@ -22,6 +22,7 @@ interface ProcessCardProps {
 	workerId: string;
 	process: ProcessInfo;
 	executions?: ExecutionRowData[];
+	isBeingRemoved?: boolean;
 }
 
 /**
@@ -46,7 +47,7 @@ const stateVariants: Record<ProcessState | "unknown", { label: string; variant: 
 	unknown: { label: "Unknown", variant: "secondary" },
 };
 
-export function ProcessCard({ workerId, process, executions = [] }: ProcessCardProps) {
+export function ProcessCard({ workerId, process, executions = [], isBeingRemoved = false }: ProcessCardProps) {
 	const [recycleDialogOpen, setRecycleDialogOpen] = useState(false);
 	const [isExpanded, setIsExpanded] = useState(executions.length > 0);
 	const recycleMutation = useRecycleProcess();
@@ -79,7 +80,14 @@ export function ProcessCard({ workerId, process, executions = [] }: ProcessCardP
 	};
 
 	return (
-		<div className="border rounded-lg p-4 bg-card">
+		<motion.div
+			className={cn(
+				"border rounded-lg p-4 bg-card",
+				isBeingRemoved && "border-dashed border-orange-500/50 opacity-60"
+			)}
+			animate={isBeingRemoved ? { opacity: [0.6, 0.4, 0.6] } : {}}
+			transition={isBeingRemoved ? { duration: 1.5, repeat: Infinity } : {}}
+		>
 			{/* Process Header */}
 			<div className="flex items-center justify-between">
 				<div className="flex items-center gap-3">
@@ -94,10 +102,21 @@ export function ProcessCard({ workerId, process, executions = [] }: ProcessCardP
 							<ChevronRight className="h-4 w-4" />
 						)}
 					</button>
-					<Cpu className="h-5 w-5 text-muted-foreground" />
+					<Cpu className={cn("h-5 w-5", isBeingRemoved ? "text-orange-500/50" : "text-muted-foreground")} />
 					<span className="font-semibold">{process.process_id}</span>
 					<span className="text-sm text-muted-foreground">(PID {process.pid})</span>
 					<Badge variant={stateConfig.variant}>{stateConfig.label}</Badge>
+					{isBeingRemoved && (
+						<Badge variant="outline" className="border-orange-500 text-orange-600 bg-orange-50 dark:bg-orange-950">
+							<TrendingDown className="h-3 w-3 mr-1" />
+							Terminating...
+						</Badge>
+					)}
+					{process.pending_recycle && !isBeingRemoved && (
+						<Badge variant="warning" className="border-orange-500 text-orange-600 bg-orange-50 dark:bg-orange-950">
+							Pending Recycle
+						</Badge>
+					)}
 					{!process.is_alive && (
 						<Badge variant="destructive">Dead</Badge>
 					)}
@@ -179,6 +198,6 @@ export function ProcessCard({ workerId, process, executions = [] }: ProcessCardP
 					</AlertDialogFooter>
 				</AlertDialogContent>
 			</AlertDialog>
-		</div>
+		</motion.div>
 	);
 }

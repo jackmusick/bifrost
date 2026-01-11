@@ -6,71 +6,37 @@
  * - worker_online: New pool registration
  * - worker_offline: Pool disconnection
  * - process_state_changed: Process state transitions
+ * - pool_config_changed: Pool configuration updates
+ * - pool_scaling: Scaling events
+ * - pool_progress: Real-time progress during scaling operations
  */
 
 import { useEffect, useState, useCallback } from "react";
-import { webSocketService } from "@/services/websocket";
-import type { PoolDetail, QueueItem, ProcessInfo, ProcessState } from "@/services/workers";
+import { webSocketService, type PoolMessage } from "@/services/websocket";
+import type { PoolDetail, QueueItem, ProcessInfo } from "@/services/workers";
 
-// Internal types for WebSocket messages
-interface HeartbeatProcessInfo {
-	process_id: string;
-	pid: number;
-	state: ProcessState;
-	memory_mb: number;
-	uptime_seconds: number;
-	executions_completed: number;
-	execution?: {
-		execution_id: string;
-		started_at: string;
-		elapsed_seconds: number;
-	};
-}
-
-interface PoolHeartbeatMessage {
-	type: "worker_heartbeat";
+export interface ScalingState {
 	worker_id: string;
-	hostname?: string;
-	status?: string;
-	started_at?: string;
-	timestamp?: string;
-	pool_size?: number;
-	idle_count?: number;
-	busy_count?: number;
-	processes?: HeartbeatProcessInfo[];
+	action: "scale_up" | "scale_down" | "recycle_all";
+	processes_affected: number;
+	timestamp: number;
 }
 
-interface PoolOnlineMessage {
-	type: "worker_online";
+export interface ProgressState {
 	worker_id: string;
-	hostname?: string;
-	started_at?: string;
+	action: "scale_up" | "scale_down" | "recycle_all";
+	current: number;
+	total: number;
+	message: string;
+	timestamp: number;
 }
-
-interface PoolOfflineMessage {
-	type: "worker_offline";
-	worker_id: string;
-}
-
-interface ProcessStateChangedMessage {
-	type: "process_state_changed";
-	worker_id: string;
-	process_id: string;
-	pid: number;
-	old_state: ProcessState;
-	new_state: ProcessState;
-}
-
-type PoolMessage =
-	| PoolHeartbeatMessage
-	| PoolOnlineMessage
-	| PoolOfflineMessage
-	| ProcessStateChangedMessage;
 
 interface UseWorkerWebSocketReturn {
 	pools: PoolDetail[];
 	queue: QueueItem[];
 	isConnected: boolean;
+	scalingStates: Map<string, ScalingState>;
+	progressStates: Map<string, ProgressState>;
 }
 
 /**
@@ -80,6 +46,12 @@ export function useWorkerWebSocket(): UseWorkerWebSocketReturn {
 	const [pools, setPools] = useState<PoolDetail[]>([]);
 	const [queue] = useState<QueueItem[]>([]);
 	const [isConnected, setIsConnected] = useState(false);
+	const [scalingStates, setScalingStates] = useState<Map<string, ScalingState>>(
+		new Map()
+	);
+	const [progressStates, setProgressStates] = useState<Map<string, ProgressState>>(
+		new Map()
+	);
 
 	const handleMessage = useCallback((message: PoolMessage) => {
 		switch (message.type) {
@@ -101,6 +73,7 @@ export function useWorkerWebSocket(): UseWorkerWebSocketReturn {
 						uptime_seconds: p.uptime_seconds,
 						memory_mb: p.memory_mb,
 						is_alive: true,
+						pending_recycle: p.pending_recycle,
 					}));
 
 					const updatedPool: PoolDetail = {
@@ -109,8 +82,8 @@ export function useWorkerWebSocket(): UseWorkerWebSocketReturn {
 						status: message.status || null,
 						started_at: message.started_at || null,
 						last_heartbeat: message.timestamp || null,
-						min_workers: 2,
-						max_workers: 10,
+						min_workers: message.min_workers ?? 2,
+						max_workers: message.max_workers ?? 10,
 						processes,
 					};
 
@@ -176,16 +149,92 @@ export function useWorkerWebSocket(): UseWorkerWebSocketReturn {
 				});
 				break;
 			}
+
+			case "pool_config_changed": {
+				// Update pool config (min/max workers)
+				setPools((prev) => {
+					const idx = prev.findIndex(
+						(p) => p.worker_id === message.worker_id
+					);
+					if (idx < 0) return prev;
+
+					const updated = [...prev];
+					updated[idx] = {
+						...updated[idx],
+						min_workers: message.new_min,
+						max_workers: message.new_max,
+					};
+					return updated;
+				});
+				break;
+			}
+
+			case "pool_scaling": {
+				// Track scaling state for UI indicators
+				setScalingStates((prev) => {
+					const next = new Map(prev);
+					next.set(message.worker_id, {
+						worker_id: message.worker_id,
+						action: message.action,
+						processes_affected: message.processes_affected,
+						timestamp: Date.now(),
+					});
+					return next;
+				});
+
+				// Clear scaling state after 5 seconds
+				setTimeout(() => {
+					setScalingStates((prev) => {
+						const next = new Map(prev);
+						next.delete(message.worker_id);
+						return next;
+					});
+				}, 5000);
+				break;
+			}
+
+			case "pool_progress": {
+				// Track real-time progress for UI display
+				setProgressStates((prev) => {
+					const next = new Map(prev);
+					next.set(message.worker_id, {
+						worker_id: message.worker_id,
+						action: message.action,
+						current: message.current,
+						total: message.total,
+						message: message.message,
+						timestamp: Date.now(),
+					});
+					return next;
+				});
+
+				// Clear progress state after 3 seconds of no updates
+				// (the final progress will be cleared when operation completes)
+				setTimeout(() => {
+					setProgressStates((prev) => {
+						const current = prev.get(message.worker_id);
+						// Only clear if this is still the same progress message
+						if (current && current.current === message.current && current.total === message.total) {
+							const next = new Map(prev);
+							next.delete(message.worker_id);
+							return next;
+						}
+						return prev;
+					});
+				}, 3000);
+				break;
+			}
 		}
 	}, []);
 
 	useEffect(() => {
 		let mounted = true;
+		let unsubscribePoolMessages: (() => void) | null = null;
 
 		const connect = async () => {
 			try {
 				// Subscribe to platform workers channel
-				await webSocketService.connect(["platform:workers"]);
+				await webSocketService.connect(["platform_workers"]);
 
 				if (!mounted) return;
 
@@ -193,10 +242,8 @@ export function useWorkerWebSocket(): UseWorkerWebSocketReturn {
 					setIsConnected(true);
 				}
 
-				// Note: The WebSocket service would need to be extended to handle
-				// pool-specific message types. For now, we're setting up the structure.
-				// The actual message handling would require adding onPoolMessage()
-				// method to webSocketService similar to onExecutionUpdate().
+				// Register callback for pool messages
+				unsubscribePoolMessages = webSocketService.onPoolMessage(handleMessage);
 			} catch (error) {
 				console.error("[useWorkerWebSocket] Failed to connect:", error);
 				if (mounted) {
@@ -209,7 +256,10 @@ export function useWorkerWebSocket(): UseWorkerWebSocketReturn {
 
 		return () => {
 			mounted = false;
-			webSocketService.unsubscribe("platform:workers");
+			if (unsubscribePoolMessages) {
+				unsubscribePoolMessages();
+			}
+			webSocketService.unsubscribe("platform_workers");
 		};
 	}, [handleMessage]);
 
@@ -217,5 +267,7 @@ export function useWorkerWebSocket(): UseWorkerWebSocketReturn {
 		pools,
 		queue,
 		isConnected,
+		scalingStates,
+		progressStates,
 	};
 }

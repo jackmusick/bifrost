@@ -2610,6 +2610,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/github/config": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get GitHub configuration
+         * @description Retrieve current GitHub integration configuration
+         */
+        get: operations["get_config_endpoint_api_github_config_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/github/status": {
         parameters: {
             query?: never;
@@ -2622,266 +2642,6 @@ export interface paths {
          * @description Get current GitHub repository connection and sync status
          */
         get: operations["get_github_status_api_github_status_get"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/github/refresh": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /**
-         * Refresh Git status
-         * @description Get complete Git status including local changes, conflicts, and commit history
-         */
-        post: operations["refresh_github_status_api_github_refresh_post"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/github/pull": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /**
-         * Pull from GitHub
-         * @description Queue a pull operation from the connected GitHub repository
-         */
-        post: operations["pull_from_github_api_github_pull_post"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/github/push": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /**
-         * Push to GitHub
-         * @description Push local changes to the connected GitHub repository
-         */
-        post: operations["push_to_github_api_github_push_post"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/github/changes": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /**
-         * Get local changes
-         * @description List local changes not yet pushed to GitHub
-         */
-        get: operations["get_changes_api_github_changes_get"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/github/resolve-refs": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /**
-         * Resolve workflow references
-         * @description Manually resolve workflow references that couldn't be automatically matched
-         */
-        post: operations["resolve_refs_api_github_resolve_refs_post"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/github/init": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /**
-         * Initialize Git repository
-         * @description Initialize workspace as a Git repository with remote (stub)
-         */
-        post: operations["init_repo_api_github_init_post"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/github/commit": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /**
-         * Commit local changes
-         * @description Commit staged changes with a message (stub)
-         */
-        post: operations["commit_changes_api_github_commit_post"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/github/commits": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /**
-         * Get commit history
-         * @description Get commit history with pagination
-         */
-        get: operations["get_commits_api_github_commits_get"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/github/conflicts": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /**
-         * Get merge conflicts
-         * @description List files with merge conflicts (stub)
-         */
-        get: operations["get_conflicts_api_github_conflicts_get"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/github/abort-merge": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /**
-         * Abort merge
-         * @description Abort current merge operation (stub)
-         */
-        post: operations["abort_merge_api_github_abort_merge_post"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/github/discard-unpushed": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /**
-         * Discard unpushed commits
-         * @description Discard all unpushed commits and reset to remote
-         */
-        post: operations["discard_unpushed_commits_api_github_discard_unpushed_post"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/github/discard-commit": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /**
-         * Discard specific commit
-         * @description Discard a specific commit and all newer commits
-         */
-        post: operations["discard_commit_api_github_discard_commit_post"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/github/config": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /**
-         * Get GitHub configuration
-         * @description Retrieve current GitHub integration configuration
-         */
-        get: operations["get_github_config_api_github_config_get"];
         put?: never;
         post?: never;
         delete?: never;
@@ -2921,7 +2681,7 @@ export interface paths {
         put?: never;
         /**
          * Configure GitHub integration
-         * @description Save GitHub repository configuration. Cloning/syncing happens on first pull.
+         * @description Save GitHub repository configuration. Syncing happens via /sync endpoints.
          */
         post: operations["configure_github_api_github_configure_post"];
         delete?: never;
@@ -2970,26 +2730,6 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/api/github/analyze-workspace": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /**
-         * Analyze workspace
-         * @description Analyze workspace for potential conflicts before configuring GitHub
-         */
-        post: operations["analyze_workspace_api_github_analyze_workspace_post"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
     "/api/github/create-repository": {
         parameters: {
             query?: never;
@@ -3030,40 +2770,44 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/api/github/sync/preview": {
+    "/api/github/commits": {
         parameters: {
             query?: never;
             header?: never;
             path?: never;
             cookie?: never;
         };
-        get?: never;
-        put?: never;
         /**
-         * Preview sync changes
-         * @description Get a preview of what sync will do without executing
+         * Get commit history
+         * @description Get commit history with pagination
          */
-        post: operations["preview_sync_api_github_sync_preview_post"];
+        get: operations["get_commits_api_github_commits_get"];
+        put?: never;
+        post?: never;
         delete?: never;
         options?: never;
         head?: never;
         patch?: never;
         trace?: never;
     };
-    "/api/github/sync/execute": {
+    "/api/github/sync": {
         parameters: {
             query?: never;
             header?: never;
             path?: never;
             cookie?: never;
         };
-        get?: never;
+        /**
+         * Preview sync changes
+         * @description Get a preview of what sync will do without executing
+         */
+        get: operations["get_sync_preview_api_github_sync_get"];
         put?: never;
         /**
          * Execute sync
-         * @description Execute sync with user's conflict resolutions
+         * @description Queue sync execution with user's conflict resolutions
          */
-        post: operations["execute_sync_api_github_sync_execute_post"];
+        post: operations["execute_sync_api_github_sync_post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -6330,6 +6074,166 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/platform/workers": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List all process pools
+         * @description Get a list of all registered process pools and their current status
+         */
+        get: operations["list_pools_api_platform_workers_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/platform/workers/{worker_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get pool details
+         * @description Get detailed information about a specific process pool including all processes
+         */
+        get: operations["get_pool_api_platform_workers__worker_id__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/platform/workers/{worker_id}/processes/{pid}/recycle": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Recycle a process
+         * @description Trigger manual recycle of a process in the pool via Redis pub/sub
+         */
+        post: operations["recycle_process_api_platform_workers__worker_id__processes__pid__recycle_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/platform/workers/{worker_id}/config": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        /**
+         * Update pool configuration
+         * @description Update min/max workers for a pool. Changes take effect immediately and are persisted.
+         */
+        patch: operations["update_pool_config_api_platform_workers__worker_id__config_patch"];
+        trace?: never;
+    };
+    "/api/platform/workers/{worker_id}/recycle-all": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Recycle all processes
+         * @description Mark all processes in a pool for graceful recycling
+         */
+        post: operations["recycle_all_processes_api_platform_workers__worker_id__recycle_all_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/platform/workers/stats": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get pool statistics
+         * @description Get aggregated statistics across all process pools
+         */
+        get: operations["get_pool_stats_api_platform_workers_stats_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/platform/queue": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get queue status
+         * @description Get pending executions in the queue
+         */
+        get: operations["get_queue_api_platform_queue_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/platform/stuck-history": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get stuck execution history
+         * @description Get aggregated stuck workflow statistics
+         */
+        get: operations["get_stuck_history_api_platform_stuck_history_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/": {
         parameters: {
             query?: never;
@@ -7517,7 +7421,7 @@ export interface components {
             /** Mfa Required For Password */
             mfa_required_for_password: boolean;
             /** Oauth Providers */
-            oauth_providers: components["schemas"]["src__models__contracts__auth__OAuthProviderInfo"][];
+            oauth_providers: components["schemas"]["OAuthProviderInfo"][];
         };
         /**
          * AuthorizeResponse
@@ -9084,43 +8988,6 @@ export interface components {
             expires_in: number;
         };
         /**
-         * DiscardCommitRequest
-         * @description Request to discard a specific commit and all newer commits
-         */
-        DiscardCommitRequest: {
-            /**
-             * Commit Sha
-             * @description SHA of the commit to discard (this commit and all newer commits will be discarded)
-             */
-            commit_sha: string;
-        };
-        /**
-         * DiscardUnpushedCommitsResponse
-         * @description Response after discarding unpushed commits
-         */
-        DiscardUnpushedCommitsResponse: {
-            /**
-             * Success
-             * @description Whether discard was successful
-             */
-            success: boolean;
-            /**
-             * Discarded Commits
-             * @description List of commits that were discarded
-             */
-            discarded_commits?: components["schemas"]["CommitInfo"][];
-            /**
-             * New Head
-             * @description New HEAD commit SHA after discard
-             */
-            new_head?: string | null;
-            /**
-             * Error
-             * @description Error message if operation failed
-             */
-            error?: string | null;
-        };
-        /**
          * DocsIndexResponse
          * @description Response from documentation indexing operation.
          */
@@ -9985,7 +9852,7 @@ export interface components {
          * @description Workflow execution status
          * @enum {string}
          */
-        ExecutionStatus: "Pending" | "Running" | "Success" | "Failed" | "Timeout" | "CompletedWithErrors" | "Cancelling" | "Cancelled";
+        ExecutionStatus: "Pending" | "Running" | "Success" | "Failed" | "Timeout" | "Stuck" | "CompletedWithErrors" | "Cancelling" | "Cancelled";
         /**
          * ExecutionsListResponse
          * @description Response model for listing workflow executions with pagination
@@ -10894,7 +10761,7 @@ export interface components {
         };
         /**
          * GitHubConfigRequest
-         * @description Request to configure GitHub integration - will always replace workspace with remote
+         * @description Request to configure GitHub integration - token must already be saved via /validate
          */
         GitHubConfigRequest: {
             /**
@@ -10902,11 +10769,6 @@ export interface components {
              * @description GitHub repository URL (e.g., https://github.com/user/repo)
              */
             repo_url: string;
-            /**
-             * Auth Token
-             * @description GitHub personal access token
-             */
-            auth_token: string;
             /**
              * Branch
              * @description Branch to sync with
@@ -12180,6 +12042,11 @@ export interface components {
             issuer: string;
             /** Account Name */
             account_name: string;
+            /**
+             * Is Existing
+             * @default false
+             */
+            is_existing: boolean;
         };
         /**
          * MFAStatusResponse
@@ -12429,15 +12296,29 @@ export interface components {
         };
         /**
          * OAuthCallbackRequest
-         * @description OAuth callback request (for when frontend handles callback).
+         * @description Request model for OAuth callback endpoint
          */
         OAuthCallbackRequest: {
-            /** Provider */
-            provider: string;
-            /** Code */
+            /**
+             * Code
+             * @description Authorization code from OAuth provider
+             */
             code: string;
-            /** State */
-            state: string;
+            /**
+             * State
+             * @description State parameter for CSRF protection
+             */
+            state?: string | null;
+            /**
+             * Redirect Uri
+             * @description Redirect URI used in authorization request
+             */
+            redirect_uri?: string | null;
+            /**
+             * Organization Id
+             * @description Organization ID for org-specific token storage (optional, for org overrides)
+             */
+            organization_id?: string | null;
         };
         /**
          * OAuthCallbackResponse
@@ -12867,7 +12748,7 @@ export interface components {
         };
         /**
          * OAuthProviderInfo
-         * @description OAuth provider information.
+         * @description OAuth provider information for login page
          */
         OAuthProviderInfo: {
             /** Name */
@@ -12883,7 +12764,7 @@ export interface components {
          */
         OAuthProvidersResponse: {
             /** Providers */
-            providers: components["schemas"]["OAuthProviderInfo"][];
+            providers: components["schemas"]["src__routers__oauth_sso__OAuthProviderInfo"][];
         };
         /**
          * OAuthTokenResponse
@@ -13566,6 +13447,214 @@ export interface components {
             refreshed_at: string;
         };
         /**
+         * PoolConfigUpdateRequest
+         * @description Request to update pool configuration.
+         */
+        PoolConfigUpdateRequest: {
+            /**
+             * Min Workers
+             * @description Minimum worker processes to maintain (must be >= 2)
+             */
+            min_workers: number;
+            /**
+             * Max Workers
+             * @description Maximum worker processes for scaling
+             */
+            max_workers: number;
+        };
+        /**
+         * PoolConfigUpdateResponse
+         * @description Response from pool config update.
+         */
+        PoolConfigUpdateResponse: {
+            /** Success */
+            success: boolean;
+            /** Message */
+            message: string;
+            /** Worker Id */
+            worker_id: string;
+            /** Old Min */
+            old_min: number;
+            /** Old Max */
+            old_max: number;
+            /** New Min */
+            new_min: number;
+            /** New Max */
+            new_max: number;
+            /**
+             * Processes Spawned
+             * @default 0
+             */
+            processes_spawned: number;
+            /**
+             * Processes Marked For Removal
+             * @default 0
+             */
+            processes_marked_for_removal: number;
+        };
+        /**
+         * PoolDetail
+         * @description Detailed pool information including all processes.
+         */
+        PoolDetail: {
+            /** Worker Id */
+            worker_id: string;
+            /** Hostname */
+            hostname?: string | null;
+            /** Status */
+            status?: string | null;
+            /** Started At */
+            started_at?: string | null;
+            /** Last Heartbeat */
+            last_heartbeat?: string | null;
+            /**
+             * Min Workers
+             * @description Minimum pool size
+             * @default 2
+             */
+            min_workers: number;
+            /**
+             * Max Workers
+             * @description Maximum pool size
+             * @default 10
+             */
+            max_workers: number;
+            /** Processes */
+            processes?: components["schemas"]["ProcessInfo"][];
+        };
+        /**
+         * PoolStatsResponse
+         * @description Response for pool statistics endpoint.
+         */
+        PoolStatsResponse: {
+            /**
+             * Total Pools
+             * @description Number of registered pools
+             */
+            total_pools: number;
+            /**
+             * Total Processes
+             * @description Total processes across all pools
+             */
+            total_processes: number;
+            /**
+             * Total Idle
+             * @description Total idle processes across all pools
+             */
+            total_idle: number;
+            /**
+             * Total Busy
+             * @description Total busy processes across all pools
+             */
+            total_busy: number;
+        };
+        /**
+         * PoolSummary
+         * @description Summary of a process pool for list endpoint.
+         */
+        PoolSummary: {
+            /**
+             * Worker Id
+             * @description Pool identifier (container hostname)
+             */
+            worker_id: string;
+            /** Hostname */
+            hostname?: string | null;
+            /**
+             * Status
+             * @description Pool status: online or offline
+             */
+            status?: string | null;
+            /** Started At */
+            started_at?: string | null;
+            /**
+             * Pool Size
+             * @description Total number of processes in pool
+             * @default 0
+             */
+            pool_size: number;
+            /**
+             * Idle Count
+             * @description Number of idle processes
+             * @default 0
+             */
+            idle_count: number;
+            /**
+             * Busy Count
+             * @description Number of busy processes
+             * @default 0
+             */
+            busy_count: number;
+            /** Last Heartbeat */
+            last_heartbeat?: string | null;
+        };
+        /**
+         * PoolsListResponse
+         * @description Response for list pools endpoint.
+         */
+        PoolsListResponse: {
+            /** Pools */
+            pools: components["schemas"]["PoolSummary"][];
+            /** Total */
+            total: number;
+        };
+        /**
+         * ProcessInfo
+         * @description Information about a worker process in the pool.
+         */
+        ProcessInfo: {
+            /**
+             * Process Id
+             * @description Internal process handle ID (e.g., 'process-1')
+             */
+            process_id: string;
+            /**
+             * Pid
+             * @description OS process ID
+             */
+            pid: number;
+            /**
+             * State
+             * @description Current process state: idle, busy, or killed
+             * @enum {string}
+             */
+            state: "idle" | "busy" | "killed";
+            /**
+             * Current Execution Id
+             * @description Execution ID if state is busy
+             */
+            current_execution_id?: string | null;
+            /**
+             * Executions Completed
+             * @description Number of executions this process has completed
+             * @default 0
+             */
+            executions_completed: number;
+            /**
+             * Started At
+             * @description ISO timestamp when process was spawned
+             */
+            started_at?: string | null;
+            /**
+             * Uptime Seconds
+             * @description Seconds since process was spawned
+             * @default 0
+             */
+            uptime_seconds: number;
+            /**
+             * Memory Mb
+             * @description Process memory usage in MB
+             * @default 0
+             */
+            memory_mb: number;
+            /**
+             * Is Alive
+             * @description Whether the OS process is still running
+             * @default true
+             */
+            is_alive: boolean;
+        };
+        /**
          * ProfileResponse
          * @description Response model for user profile.
          */
@@ -13600,88 +13689,26 @@ export interface components {
             name?: string | null;
         };
         /**
-         * PullFromGitHubRequest
-         * @description Request to pull from GitHub
+         * QueueItem
+         * @description An item in the execution queue.
          */
-        PullFromGitHubRequest: {
-            /**
-             * Connection Id
-             * @description WebPubSub connection ID for streaming logs
-             */
-            connection_id?: string | null;
+        QueueItem: {
+            /** Execution Id */
+            execution_id: string;
+            /** Position */
+            position: number;
+            /** Queued At */
+            queued_at?: string | null;
         };
         /**
-         * PullFromGitHubResponse
-         * @description Response after queueing a pull from GitHub
+         * QueueStatusResponse
+         * @description Response for queue status endpoint.
          */
-        PullFromGitHubResponse: {
-            /**
-             * Success
-             * @description Whether job was queued successfully
-             */
-            success: boolean;
-            /**
-             * Job Id
-             * @description Job ID for tracking (when queued)
-             */
-            job_id?: string | null;
-            /**
-             * Status
-             * @description Status: 'queued', 'success', 'error'
-             */
-            status?: string | null;
-            /**
-             * Updated Files
-             * @description List of updated file paths
-             */
-            updated_files?: string[];
-            /**
-             * Conflicts
-             * @description List of conflicts (if any)
-             */
-            conflicts?: components["schemas"]["ConflictInfo"][];
-            /**
-             * Unresolved Refs
-             * @description Workflow refs that couldn't be resolved
-             */
-            unresolved_refs?: components["schemas"]["UnresolvedRefInfo"][];
-            /**
-             * Error
-             * @description Error message if pull failed
-             */
-            error?: string | null;
-        };
-        /**
-         * PushToGitHubRequest
-         * @description Request to push to GitHub
-         */
-        PushToGitHubRequest: {
-            /**
-             * Message
-             * @description Commit message
-             */
-            message?: string | null;
-            /**
-             * Connection Id
-             * @description WebPubSub connection ID for streaming logs
-             */
-            connection_id?: string | null;
-        };
-        /**
-         * PushToGitHubResponse
-         * @description Response after pushing to GitHub
-         */
-        PushToGitHubResponse: {
-            /**
-             * Success
-             * @description Whether push succeeded
-             */
-            success: boolean;
-            /**
-             * Error
-             * @description Error message if push failed
-             */
-            error?: string | null;
+        QueueStatusResponse: {
+            /** Total */
+            total: number;
+            /** Items */
+            items: components["schemas"]["QueueItem"][];
         };
         /**
          * ROIByOrganizationResponse
@@ -13877,30 +13904,56 @@ export interface components {
             path: string;
         };
         /**
-         * RefResolution
-         * @description Resolution for a single unresolved reference
+         * RecycleAllRequest
+         * @description Request to recycle all processes in a pool.
          */
-        RefResolution: {
+        RecycleAllRequest: {
             /**
-             * File
-             * @description File containing the unresolved reference
+             * Reason
+             * @description Reason for the recycle request (for audit logging)
              */
-            file: string;
+            reason?: string | null;
+        };
+        /**
+         * RecycleAllResponse
+         * @description Response from recycle-all request.
+         */
+        RecycleAllResponse: {
+            /** Success */
+            success: boolean;
+            /** Message */
+            message: string;
+            /** Worker Id */
+            worker_id: string;
+            /** Processes Affected */
+            processes_affected: number;
+        };
+        /**
+         * RecycleProcessRequest
+         * @description Request to recycle a specific process in a pool.
+         */
+        RecycleProcessRequest: {
             /**
-             * Field
-             * @description Field path containing the reference
+             * Reason
+             * @description Reason for the recycle request (for audit logging)
              */
-            field: string;
-            /**
-             * Ref
-             * @description The original path::function_name reference
-             */
-            ref: string;
-            /**
-             * Resolved Workflow Id
-             * @description UUID of the workflow to resolve to
-             */
-            resolved_workflow_id: string;
+            reason?: string | null;
+        };
+        /**
+         * RecycleProcessResponse
+         * @description Response from recycle request.
+         */
+        RecycleProcessResponse: {
+            /** Success */
+            success: boolean;
+            /** Message */
+            message: string;
+            /** Worker Id */
+            worker_id: string;
+            /** Process Id */
+            process_id?: string | null;
+            /** Pid */
+            pid?: number | null;
         };
         /**
          * RefreshAllResponse
@@ -14080,39 +14133,6 @@ export interface components {
              * @description New file path for the workflow
              */
             new_path: string;
-        };
-        /**
-         * ResolveRefsRequest
-         * @description Request to resolve unresolved workflow references
-         */
-        ResolveRefsRequest: {
-            /**
-             * Resolutions
-             * @description List of reference resolutions
-             */
-            resolutions: components["schemas"]["RefResolution"][];
-        };
-        /**
-         * ResolveRefsResponse
-         * @description Response after resolving workflow references
-         */
-        ResolveRefsResponse: {
-            /**
-             * Success
-             * @description Whether all resolutions were applied successfully
-             */
-            success: boolean;
-            /**
-             * Files Updated
-             * @description Number of files updated
-             * @default 0
-             */
-            files_updated: number;
-            /**
-             * Errors
-             * @description Any errors encountered
-             */
-            errors?: string[];
         };
         /**
          * ResourceMetricsEntry
@@ -15298,6 +15318,33 @@ export interface components {
             count: number;
         };
         /**
+         * StuckHistoryResponse
+         * @description Response for stuck history endpoint.
+         */
+        StuckHistoryResponse: {
+            /** Hours */
+            hours: number;
+            /** Workflows */
+            workflows: components["schemas"]["StuckWorkflowStats"][];
+        };
+        /**
+         * StuckWorkflowStats
+         * @description Aggregated stuck execution statistics for a workflow.
+         */
+        StuckWorkflowStats: {
+            /** Workflow Id */
+            workflow_id: string;
+            /** Workflow Name */
+            workflow_name: string;
+            /** Stuck Count */
+            stuck_count: number;
+            /**
+             * Last Stuck At
+             * Format: date-time
+             */
+            last_stuck_at: string;
+        };
+        /**
          * SyncAction
          * @description A single sync action (pull or push).
          */
@@ -15355,6 +15402,10 @@ export interface components {
         /**
          * SyncExecuteRequest
          * @description Request to execute sync with conflict resolutions.
+         *
+         *     Note: The API returns a job_id in the response. The client should subscribe
+         *     to WebSocket channel git:{job_id} AFTER receiving the response to receive
+         *     streaming progress and completion messages.
          */
         SyncExecuteRequest: {
             /**
@@ -15373,14 +15424,25 @@ export interface components {
         };
         /**
          * SyncExecuteResponse
-         * @description Result of sync execution.
+         * @description Result of sync execution (queued job).
          */
         SyncExecuteResponse: {
             /**
              * Success
-             * @description Whether sync completed successfully
+             * @description Whether job was queued successfully
              */
             success: boolean;
+            /**
+             * Job Id
+             * @description Job ID for tracking (when queued)
+             */
+            job_id?: string | null;
+            /**
+             * Status
+             * @description Status: 'queued', 'success', 'error'
+             * @default queued
+             */
+            status: string;
             /**
              * Pulled
              * @description Number of files pulled
@@ -15720,27 +15782,6 @@ export interface components {
             devices: components["schemas"]["TrustedDeviceResponse"][];
         };
         /**
-         * UnresolvedRefInfo
-         * @description Information about an unresolved workflow reference
-         */
-        UnresolvedRefInfo: {
-            /**
-             * File
-             * @description File containing the unresolved reference
-             */
-            file: string;
-            /**
-             * Field
-             * @description Field path containing the reference
-             */
-            field: string;
-            /**
-             * Ref
-             * @description The path::function_name reference that couldn't be resolved
-             */
-            ref: string;
-        };
-        /**
          * UpdateOAuthConnectionRequest
          * @description Request model for updating an OAuth connection
          *     PUT /api/oauth/connections/{connection_name}
@@ -15972,7 +16013,7 @@ export interface components {
         };
         /**
          * UserCreate
-         * @description User creation request model.
+         * @description Input for creating a user.
          */
         UserCreate: {
             /**
@@ -15980,10 +16021,24 @@ export interface components {
              * Format: email
              */
             email: string;
-            /** Password */
-            password: string;
             /** Name */
             name?: string | null;
+            /** Password */
+            password?: string | null;
+            /**
+             * Is Active
+             * @default true
+             */
+            is_active: boolean;
+            /**
+             * Is Superuser
+             * @default false
+             */
+            is_superuser: boolean;
+            /** @default ORG */
+            user_type: components["schemas"]["UserType"];
+            /** Organization Id */
+            organization_id?: string | null;
         };
         /**
          * UserFormsResponse
@@ -16330,6 +16385,8 @@ export interface components {
             peak_memory_bytes?: number | null;
             /** Cpu Total Seconds */
             cpu_total_seconds?: number | null;
+            /** Execution Model */
+            execution_model?: string | null;
             /** Ai Usage */
             ai_usage?: components["schemas"]["AIUsagePublicSimple"][] | null;
             ai_totals?: components["schemas"]["AIUsageTotalsSimple"] | null;
@@ -16896,110 +16953,25 @@ export interface components {
             metadata?: components["schemas"]["WorkflowMetadata"] | null;
         };
         /**
-         * WorkspaceAnalysisResponse
-         * @description Response with workspace analysis - simplified for replace-only strategy
-         */
-        WorkspaceAnalysisResponse: {
-            /**
-             * Workspace Status
-             * @description Current state of the workspace directory
-             * @enum {string}
-             */
-            workspace_status: "empty" | "has_files_no_git" | "is_git_repo" | "is_different_git_repo";
-            /**
-             * File Count
-             * @description Number of files in workspace (excluding .git)
-             */
-            file_count: number;
-            /**
-             * Existing Remote
-             * @description URL of existing Git remote (if any)
-             */
-            existing_remote?: string | null;
-            /**
-             * Requires Confirmation
-             * @description Whether user needs to confirm replacing workspace
-             */
-            requires_confirmation: boolean;
-            /**
-             * Backup Will Be Created
-             * @description Indicates a backup will be created before replacing
-             * @default true
-             */
-            backup_will_be_created: boolean;
-        };
-        /**
-         * OAuthProviderInfo
-         * @description OAuth provider information for login page
-         */
-        src__models__contracts__auth__OAuthProviderInfo: {
-            /** Name */
-            name: string;
-            /** Display Name */
-            display_name: string;
-            /** Icon */
-            icon?: string | null;
-        };
-        /**
-         * OAuthCallbackRequest
-         * @description Request model for OAuth callback endpoint
-         */
-        src__models__contracts__oauth__OAuthCallbackRequest: {
-            /**
-             * Code
-             * @description Authorization code from OAuth provider
-             */
-            code: string;
-            /**
-             * State
-             * @description State parameter for CSRF protection
-             */
-            state?: string | null;
-            /**
-             * Redirect Uri
-             * @description Redirect URI used in authorization request
-             */
-            redirect_uri?: string | null;
-            /**
-             * Organization Id
-             * @description Organization ID for org-specific token storage (optional, for org overrides)
-             */
-            organization_id?: string | null;
-        };
-        /**
          * UserCreate
-         * @description Input for creating a user.
+         * @description User creation request model.
          */
-        src__models__contracts__users__UserCreate: {
+        src__routers__auth__UserCreate: {
             /**
              * Email
              * Format: email
              */
             email: string;
+            /** Password */
+            password: string;
             /** Name */
             name?: string | null;
-            /** Password */
-            password?: string | null;
-            /**
-             * Is Active
-             * @default true
-             */
-            is_active: boolean;
-            /**
-             * Is Superuser
-             * @default false
-             */
-            is_superuser: boolean;
-            /** @default ORG */
-            user_type: components["schemas"]["UserType"];
-            /** Organization Id */
-            organization_id?: string | null;
         };
         /**
          * MFASetupResponse
          * @description MFA setup response with secret.
          */
-        src__routers__auth__MFASetupResponse: {
+        src__routers__mfa__MFASetupResponse: {
             /** Secret */
             secret: string;
             /** Qr Code Uri */
@@ -17010,11 +16982,6 @@ export interface components {
             issuer: string;
             /** Account Name */
             account_name: string;
-            /**
-             * Is Existing
-             * @default false
-             */
-            is_existing: boolean;
         };
         /**
          * MFAVerifyRequest
@@ -17023,6 +16990,30 @@ export interface components {
         src__routers__mfa__MFAVerifyRequest: {
             /** Code */
             code: string;
+        };
+        /**
+         * OAuthCallbackRequest
+         * @description OAuth callback request (for when frontend handles callback).
+         */
+        src__routers__oauth_sso__OAuthCallbackRequest: {
+            /** Provider */
+            provider: string;
+            /** Code */
+            code: string;
+            /** State */
+            state: string;
+        };
+        /**
+         * OAuthProviderInfo
+         * @description OAuth provider information.
+         */
+        src__routers__oauth_sso__OAuthProviderInfo: {
+            /** Name */
+            name: string;
+            /** Display Name */
+            display_name: string;
+            /** Icon */
+            icon?: string | null;
         };
     };
     responses: never;
@@ -17125,7 +17116,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["src__routers__auth__MFASetupResponse"];
+                    "application/json": components["schemas"]["MFASetupResponse"];
                 };
             };
             /** @description Validation Error */
@@ -17340,7 +17331,7 @@ export interface operations {
         };
         requestBody: {
             content: {
-                "application/json": components["schemas"]["UserCreate"];
+                "application/json": components["schemas"]["src__routers__auth__UserCreate"];
             };
         };
         responses: {
@@ -17571,7 +17562,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["MFASetupResponse"];
+                    "application/json": components["schemas"]["src__routers__mfa__MFASetupResponse"];
                 };
             };
         };
@@ -17835,7 +17826,7 @@ export interface operations {
         };
         requestBody: {
             content: {
-                "application/json": components["schemas"]["OAuthCallbackRequest"];
+                "application/json": components["schemas"]["src__routers__oauth_sso__OAuthCallbackRequest"];
             };
         };
         responses: {
@@ -18286,7 +18277,7 @@ export interface operations {
         };
         requestBody: {
             content: {
-                "application/json": components["schemas"]["src__models__contracts__users__UserCreate"];
+                "application/json": components["schemas"]["UserCreate"];
             };
         };
         responses: {
@@ -20939,6 +20930,26 @@ export interface operations {
             };
         };
     };
+    get_config_endpoint_api_github_config_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["GitHubConfigResponse"];
+                };
+            };
+        };
+    };
     get_github_status_api_github_status_get: {
         parameters: {
             query?: never;
@@ -20955,364 +20966,6 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["GitRefreshStatusResponse"];
-                };
-            };
-        };
-    };
-    refresh_github_status_api_github_refresh_post: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["GitRefreshStatusResponse"];
-                };
-            };
-        };
-    };
-    pull_from_github_api_github_pull_post: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: {
-            content: {
-                "application/json": components["schemas"]["PullFromGitHubRequest"] | null;
-            };
-        };
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["PullFromGitHubResponse"];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    push_to_github_api_github_push_post: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["PushToGitHubRequest"];
-            };
-        };
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["PushToGitHubResponse"];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    get_changes_api_github_changes_get: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["GitRefreshStatusResponse"];
-                };
-            };
-        };
-    };
-    resolve_refs_api_github_resolve_refs_post: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["ResolveRefsRequest"];
-            };
-        };
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ResolveRefsResponse"];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    init_repo_api_github_init_post: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["GitHubConfigRequest"];
-            };
-        };
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["GitRefreshStatusResponse"];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    commit_changes_api_github_commit_post: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["PushToGitHubRequest"];
-            };
-        };
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": {
-                        [key: string]: unknown;
-                    };
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    get_commits_api_github_commits_get: {
-        parameters: {
-            query?: {
-                /** @description Number of commits to return */
-                limit?: number;
-                /** @description Offset for pagination */
-                offset?: number;
-            };
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["CommitHistoryResponse"];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    get_conflicts_api_github_conflicts_get: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": {
-                        [key: string]: unknown;
-                    };
-                };
-            };
-        };
-    };
-    abort_merge_api_github_abort_merge_post: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": {
-                        [key: string]: unknown;
-                    };
-                };
-            };
-        };
-    };
-    discard_unpushed_commits_api_github_discard_unpushed_post: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["DiscardUnpushedCommitsResponse"];
-                };
-            };
-        };
-    };
-    discard_commit_api_github_discard_commit_post: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["DiscardCommitRequest"];
-            };
-        };
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["DiscardUnpushedCommitsResponse"];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    get_github_config_api_github_config_get: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["GitHubConfigResponse"];
                 };
             };
         };
@@ -21435,39 +21088,6 @@ export interface operations {
             };
         };
     };
-    analyze_workspace_api_github_analyze_workspace_post: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["GitHubConfigRequest"];
-            };
-        };
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["WorkspaceAnalysisResponse"];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
     create_github_repository_api_github_create_repository_post: {
         parameters: {
             query?: never;
@@ -21523,7 +21143,41 @@ export interface operations {
             };
         };
     };
-    preview_sync_api_github_sync_preview_post: {
+    get_commits_api_github_commits_get: {
+        parameters: {
+            query?: {
+                /** @description Number of commits to return */
+                limit?: number;
+                /** @description Offset for pagination */
+                offset?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CommitHistoryResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_sync_preview_api_github_sync_get: {
         parameters: {
             query?: never;
             header?: never;
@@ -21543,7 +21197,7 @@ export interface operations {
             };
         };
     };
-    execute_sync_api_github_sync_execute_post: {
+    execute_sync_api_github_sync_post: {
         parameters: {
             query?: never;
             header?: never;
@@ -21833,7 +21487,7 @@ export interface operations {
         };
         requestBody: {
             content: {
-                "application/json": components["schemas"]["src__models__contracts__oauth__OAuthCallbackRequest"];
+                "application/json": components["schemas"]["OAuthCallbackRequest"];
             };
         };
         responses: {
@@ -27905,6 +27559,249 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["DependencyGraphResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_pools_api_platform_workers_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PoolsListResponse"];
+                };
+            };
+        };
+    };
+    get_pool_api_platform_workers__worker_id__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                worker_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PoolDetail"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    recycle_process_api_platform_workers__worker_id__processes__pid__recycle_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                worker_id: string;
+                pid: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: {
+            content: {
+                "application/json": components["schemas"]["RecycleProcessRequest"] | null;
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RecycleProcessResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    update_pool_config_api_platform_workers__worker_id__config_patch: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                worker_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PoolConfigUpdateRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PoolConfigUpdateResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    recycle_all_processes_api_platform_workers__worker_id__recycle_all_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                worker_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: {
+            content: {
+                "application/json": components["schemas"]["RecycleAllRequest"] | null;
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RecycleAllResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_pool_stats_api_platform_workers_stats_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PoolStatsResponse"];
+                };
+            };
+        };
+    };
+    get_queue_api_platform_queue_get: {
+        parameters: {
+            query?: {
+                /** @description Maximum number of items */
+                limit?: number;
+                /** @description Number of items to skip */
+                offset?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["QueueStatusResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_stuck_history_api_platform_stuck_history_get: {
+        parameters: {
+            query?: {
+                /** @description Time window in hours */
+                hours?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["StuckHistoryResponse"];
                 };
             };
             /** @description Validation Error */

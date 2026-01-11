@@ -65,12 +65,16 @@ class PackageInstallConsumer(BroadcastConsumer):
         Python interpreters that can import newly installed packages.
         """
         try:
+            import asyncio
             from src.services.execution.process_pool import get_process_pool
 
             pool = get_process_pool()
             if pool._started:
-                count = pool.mark_for_recycle()
+                count, idle_handles = pool.mark_for_recycle()
                 logger.info(f"Marked {count} worker processes for recycle")
+                # Recycle idle processes immediately via tasks
+                for handle in idle_handles:
+                    asyncio.create_task(pool._recycle_idle_process(handle))
             else:
                 logger.warning("Pool not started, skipping worker recycle")
         except Exception as e:

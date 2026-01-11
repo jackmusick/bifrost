@@ -846,3 +846,99 @@ async def publish_worker_event(event: dict[str, Any]) -> None:
         event: Dict with type, worker_id, and event-specific data
     """
     await manager.broadcast("platform_workers", event)
+
+
+async def publish_pool_config_changed(
+    worker_id: str,
+    old_min: int,
+    old_max: int,
+    new_min: int,
+    new_max: int,
+) -> None:
+    """
+    Publish pool configuration change event to platform_workers channel.
+
+    Sent when min/max workers are updated via API or command.
+
+    Args:
+        worker_id: Worker/pool ID that was reconfigured
+        old_min: Previous minimum workers
+        old_max: Previous maximum workers
+        new_min: New minimum workers
+        new_max: New maximum workers
+    """
+    from datetime import datetime, timezone
+
+    message = {
+        "type": "pool_config_changed",
+        "worker_id": worker_id,
+        "old_min": old_min,
+        "old_max": old_max,
+        "new_min": new_min,
+        "new_max": new_max,
+        "timestamp": datetime.now(timezone.utc).isoformat(),
+    }
+    await manager.broadcast("platform_workers", message)
+
+
+async def publish_pool_scaling(
+    worker_id: str,
+    action: str,
+    processes_affected: int,
+) -> None:
+    """
+    Publish pool scaling event to platform_workers channel.
+
+    Sent when the pool scales up or down, or when processes are recycled.
+
+    Args:
+        worker_id: Worker/pool ID that is scaling
+        action: Scaling action ('scale_up', 'scale_down', 'recycle_all')
+        processes_affected: Number of processes affected by this action
+    """
+    from datetime import datetime, timezone
+
+    message = {
+        "type": "pool_scaling",
+        "worker_id": worker_id,
+        "action": action,
+        "processes_affected": processes_affected,
+        "timestamp": datetime.now(timezone.utc).isoformat(),
+    }
+    await manager.broadcast("platform_workers", message)
+
+
+async def publish_pool_progress(
+    worker_id: str,
+    action: str,
+    current: int,
+    total: int,
+    message: str,
+) -> None:
+    """
+    Publish real-time pool operation progress to platform_workers channel.
+
+    Provides granular progress updates during pool operations like:
+    - Scaling up: "Spawning process 3 of 4..."
+    - Scaling down: "Terminating process 2 of 3..."
+    - Recycling: "Recycling process 1 of 5..."
+
+    Args:
+        worker_id: Worker/pool ID performing the operation
+        action: Operation type ('scale_up', 'scale_down', 'recycle_all')
+        current: Current process number (1-indexed)
+        total: Total processes to be affected
+        message: Human-readable progress message
+    """
+    from datetime import datetime, timezone
+
+    payload = {
+        "type": "pool_progress",
+        "worker_id": worker_id,
+        "action": action,
+        "current": current,
+        "total": total,
+        "message": message,
+        "timestamp": datetime.now(timezone.utc).isoformat(),
+    }
+    await manager.broadcast("platform_workers", payload)

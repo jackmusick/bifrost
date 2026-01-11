@@ -32,6 +32,7 @@ export interface ProcessInfo {
 	uptime_seconds: number;
 	memory_mb: number;
 	is_alive: boolean;
+	pending_recycle?: boolean;
 }
 
 export interface PoolSummary {
@@ -91,6 +92,34 @@ export interface RecycleResponse {
 	pid: number | null;
 }
 
+export interface PoolConfigUpdateRequest {
+	min_workers: number;
+	max_workers: number;
+}
+
+export interface PoolConfigUpdateResponse {
+	success: boolean;
+	message: string;
+	worker_id: string;
+	old_min: number;
+	old_max: number;
+	new_min: number;
+	new_max: number;
+	processes_spawned: number;
+	processes_marked_for_removal: number;
+}
+
+export interface RecycleAllRequest {
+	reason?: string;
+}
+
+export interface RecycleAllResponse {
+	success: boolean;
+	message: string;
+	worker_id: string;
+	processes_affected: number;
+}
+
 // =============================================================================
 // Pool Hooks
 // =============================================================================
@@ -108,7 +137,7 @@ export function usePools() {
 			}
 			return response.json();
 		},
-		refetchInterval: 10000, // Refresh every 10 seconds
+		// No polling - real-time updates come via WebSocket (useWorkerWebSocket)
 	});
 }
 
@@ -142,7 +171,7 @@ export function usePoolStats() {
 			}
 			return response.json();
 		},
-		refetchInterval: 10000, // Refresh every 10 seconds
+		// No polling - real-time updates come via WebSocket (useWorkerWebSocket)
 	});
 }
 
@@ -199,7 +228,89 @@ export function useQueueStatus(params?: { limit?: number; offset?: number }) {
 			}
 			return response.json();
 		},
-		refetchInterval: 5000, // Refresh every 5 seconds
+		// No polling - real-time updates come via WebSocket (useWorkerWebSocket)
+	});
+}
+
+/**
+ * Hook to get global pool configuration
+ */
+export function usePoolConfig() {
+	return useQuery<PoolConfigUpdateResponse>({
+		queryKey: ["pools", "config"],
+		queryFn: async () => {
+			const response = await authFetch("/api/platform/workers/config");
+			if (!response.ok) {
+				throw new Error(`Failed to fetch config: ${response.statusText}`);
+			}
+			return response.json();
+		},
+	});
+}
+
+/**
+ * Hook to update global pool configuration (min/max workers)
+ */
+export function useUpdatePoolConfig() {
+	const queryClient = useQueryClient();
+
+	return useMutation<
+		PoolConfigUpdateResponse,
+		Error,
+		PoolConfigUpdateRequest
+	>({
+		mutationFn: async (config) => {
+			const response = await authFetch(
+				"/api/platform/workers/config",
+				{
+					method: "PATCH",
+					body: JSON.stringify(config),
+				}
+			);
+			if (!response.ok) {
+				const error = await response.json().catch(() => ({}));
+				throw new Error(
+					error.detail || `Failed to update config: ${response.statusText}`
+				);
+			}
+			return response.json();
+		},
+		onSuccess: () => {
+			queryClient.invalidateQueries({ queryKey: ["pools"] });
+		},
+	});
+}
+
+/**
+ * Hook to recycle all processes in a pool
+ */
+export function useRecycleAllProcesses() {
+	const queryClient = useQueryClient();
+
+	return useMutation<
+		RecycleAllResponse,
+		Error,
+		{ workerId: string; reason?: string }
+	>({
+		mutationFn: async ({ workerId, reason }) => {
+			const response = await authFetch(
+				`/api/platform/workers/${workerId}/recycle-all`,
+				{
+					method: "POST",
+					body: JSON.stringify({ reason }),
+				}
+			);
+			if (!response.ok) {
+				const error = await response.json().catch(() => ({}));
+				throw new Error(
+					error.detail || `Failed to recycle: ${response.statusText}`
+				);
+			}
+			return response.json();
+		},
+		onSuccess: () => {
+			queryClient.invalidateQueries({ queryKey: ["pools"] });
+		},
 	});
 }
 

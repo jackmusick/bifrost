@@ -116,7 +116,6 @@ def _extract_workflows_from_props(obj: Any) -> set[UUID]:
 def extract_app_workflows(
     pages: list[Any],
     components: list[Any],
-    live_only: bool = True,
 ) -> set[UUID]:
     """
     Extract all workflow IDs from app pages and components.
@@ -131,7 +130,6 @@ def extract_app_workflows(
     Args:
         pages: List of AppPage ORM objects (or dicts with same structure)
         components: List of AppComponent ORM objects (or dicts with same structure)
-        live_only: Deprecated, ignored. Pages/components from a specific version are passed directly.
 
     Returns:
         Set of workflow UUIDs
@@ -284,7 +282,7 @@ async def sync_app_workflow_access(
         pages: List of AppPage ORM objects (from active version)
         components: List of AppComponent ORM objects (from active version)
     """
-    workflow_ids = extract_app_workflows(pages, components, live_only=False)
+    workflow_ids = extract_app_workflows(pages, components)
     await sync_workflow_access(
         db=db,
         entity_type="app",

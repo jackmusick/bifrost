@@ -333,7 +333,7 @@ class TestEventSourceCRUD:
         )
         assert response.status_code == 403, f"Expected 403, got {response.status_code}: {response.text}"
 
-    def test_org_user_sees_global_sources(self, e2e_client, platform_admin, org1_user, event_source):
+    def test_org_user_sees_global_sources(self, e2e_client, org1_user, event_source):
         """Org users can see global (non-org-scoped) sources."""
         response = e2e_client.get(
             "/api/events/sources",
@@ -849,8 +849,9 @@ class TestEventDelivery:
         assert "success_count" in event
         assert "failed_count" in event
 
+    @pytest.mark.usefixtures("subscription")
     def test_list_deliveries(
-        self, e2e_client, platform_admin, event_source, subscription
+        self, e2e_client, platform_admin, event_source
     ):
         """List deliveries for an event."""
         source_id = event_source["id"]
@@ -911,8 +912,9 @@ class TestEventDelivery:
 class TestDeliveryRetry:
     """Test delivery retry functionality."""
 
+    @pytest.mark.usefixtures("subscription")
     def test_cannot_retry_pending_delivery(
-        self, e2e_client, platform_admin, event_source, subscription
+        self, e2e_client, platform_admin, event_source
     ):
         """Cannot retry a delivery that's not failed."""
         source_id = event_source["id"]
@@ -951,10 +953,9 @@ class TestDeliveryRetry:
                     return {"event": event, "deliveries": deliveries}
             return None
 
-        result = poll_until(find_event_with_deliveries, max_wait=5.0)
+        result = poll_until(find_event_with_deliveries, max_wait=15.0)
 
-        if result is None:
-            pytest.skip("No deliveries created within timeout")
+        assert result is not None, "No deliveries created within timeout - event delivery may be broken"
 
         deliveries = result["deliveries"]
         delivery = deliveries[0]

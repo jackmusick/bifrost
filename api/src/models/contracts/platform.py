@@ -119,6 +119,60 @@ class RecycleProcessResponse(BaseModel):
     pid: int | None = None
 
 
+class PoolConfigUpdateRequest(BaseModel):
+    """Request to update pool configuration."""
+
+    min_workers: int = Field(
+        ...,
+        ge=2,
+        description="Minimum worker processes to maintain (must be >= 2)"
+    )
+    max_workers: int = Field(
+        ...,
+        ge=2,
+        description="Maximum worker processes for scaling"
+    )
+
+    def model_post_init(self, __context: object) -> None:
+        """Validate min_workers <= max_workers."""
+        if self.min_workers > self.max_workers:
+            raise ValueError(
+                f"min_workers ({self.min_workers}) cannot be greater than max_workers ({self.max_workers})"
+            )
+
+
+class PoolConfigUpdateResponse(BaseModel):
+    """Response from pool config update."""
+
+    success: bool
+    message: str
+    worker_id: str
+    old_min: int
+    old_max: int
+    new_min: int
+    new_max: int
+    processes_spawned: int = 0
+    processes_marked_for_removal: int = 0
+
+
+class RecycleAllRequest(BaseModel):
+    """Request to recycle all processes in a pool."""
+
+    reason: str | None = Field(
+        default=None,
+        description="Reason for the recycle request (for audit logging)"
+    )
+
+
+class RecycleAllResponse(BaseModel):
+    """Response from recycle-all request."""
+
+    success: bool
+    message: str
+    worker_id: str
+    processes_affected: int
+
+
 # =============================================================================
 # Queue Models
 # =============================================================================

@@ -23,6 +23,8 @@ from src.core.auth import CurrentSuperuser, get_current_superuser
 from src.core.database import get_db
 from src.models import Execution, Workflow
 from src.models.contracts.platform import (
+    PoolConfigUpdateRequest,
+    PoolConfigUpdateResponse,
     PoolDetail,
     PoolsListResponse,
     PoolStatsResponse,
@@ -30,6 +32,8 @@ from src.models.contracts.platform import (
     ProcessInfo,
     QueueItem,
     QueueStatusResponse,
+    RecycleAllRequest,
+    RecycleAllResponse,
     RecycleProcessRequest,
     RecycleProcessResponse,
     StuckHistoryResponse,
@@ -60,6 +64,195 @@ async def _get_redis() -> aioredis.Redis:
             socket_timeout=5.0,
         )
     return _redis
+
+
+# =============================================================================
+# Static routes MUST be defined before dynamic routes (/{worker_id})
+# =============================================================================
+
+
+@router.get(
+    "/config",
+    response_model=PoolConfigUpdateResponse,
+    summary="Get global pool configuration",
+    description="Get the current global min/max workers configuration",
+)
+async def get_pool_config(
+    _admin: CurrentSuperuser,
+    db: AsyncSession = Depends(get_db),
+) -> PoolConfigUpdateResponse:
+    """
+    Get global pool configuration.
+
+    Returns the current min/max workers settings that apply to all pools.
+    """
+    from src.services.worker_pool_config_service import get_pool_config as get_config
+
+    config = await get_config(db)
+
+    return PoolConfigUpdateResponse(
+        success=True,
+        message="Current pool configuration",
+        worker_id="global",
+        old_min=config.min_workers,
+        old_max=config.max_workers,
+        new_min=config.min_workers,
+        new_max=config.max_workers,
+    )
+
+
+@router.patch(
+    "/config",
+    response_model=PoolConfigUpdateResponse,
+    summary="Update global pool configuration",
+    description="Update min/max workers for all pools. Changes take effect immediately and are persisted.",
+)
+async def update_pool_config(
+    admin: CurrentSuperuser,
+    request: PoolConfigUpdateRequest,
+    db: AsyncSession = Depends(get_db),
+) -> PoolConfigUpdateResponse:
+    """
+    Update global pool min/max workers configuration.
+
+    Changes are:
+    1. Persisted to the database (survives container restarts)
+    2. Published via Redis pub/sub to ALL workers for immediate effect
+    3. All pools scale up/down as needed based on new config
+
+    Scale up happens immediately if current < new_min.
+    Scale down marks excess idle processes for graceful removal.
+    """
+    from src.services.worker_pool_config_service import get_pool_config as get_config, save_pool_config
+
+    r = await _get_redis()
+
+    # Get current config
+    current_config = await get_config(db)
+    old_min = current_config.min_workers
+    old_max = current_config.max_workers
+
+    # Save to database for persistence
+    await save_pool_config(
+        session=db,
+        min_workers=request.min_workers,
+        max_workers=request.max_workers,
+        updated_by=str(admin.user_id),
+    )
+    await db.commit()
+
+    # Find all registered pools and broadcast resize command to each
+    cursor = 0
+    pool_keys: list[str] = []
+    pools_notified = 0
+
+    while True:
+        cursor, keys = await r.scan(cursor, match="bifrost:pool:*", count=100)
+        for key in keys:
+            if ":heartbeat" not in key and ":commands" not in key:
+                pool_keys.append(key)
+        if cursor == 0:
+            break
+
+    command = {
+        "action": "resize",
+        "min_workers": request.min_workers,
+        "max_workers": request.max_workers,
+        "requested_by": str(admin.user_id),
+        "requested_at": datetime.now(timezone.utc).isoformat(),
+    }
+
+    for key in pool_keys:
+        parts = key.split(":")
+        if len(parts) != 3:
+            continue
+        worker_id = parts[2]
+        command_channel = f"bifrost:pool:{worker_id}:commands"
+        await r.publish(command_channel, json.dumps(command))
+        pools_notified += 1
+
+    logger.info(
+        f"Published resize command to {pools_notified} pools: "
+        f"min {old_min}->{request.min_workers}, max {old_max}->{request.max_workers} "
+        f"by user {admin.user_id}"
+    )
+
+    return PoolConfigUpdateResponse(
+        success=True,
+        message=f"Pool configuration updated for {pools_notified} pools",
+        worker_id="global",
+        old_min=old_min,
+        old_max=old_max,
+        new_min=request.min_workers,
+        new_max=request.max_workers,
+    )
+
+
+@router.get(
+    "/stats",
+    response_model=PoolStatsResponse,
+    summary="Get pool statistics",
+    description="Get aggregated statistics across all process pools",
+)
+async def get_pool_stats(
+    _admin: CurrentSuperuser,
+) -> PoolStatsResponse:
+    """
+    Get aggregated pool statistics.
+
+    Returns counts of total pools, processes, idle, and busy across
+    all registered pools.
+    """
+    r = await _get_redis()
+
+    # Find all pool registration keys
+    cursor = 0
+    pool_keys: list[str] = []
+
+    while True:
+        cursor, keys = await r.scan(cursor, match="bifrost:pool:*", count=100)
+        # Exclude heartbeat keys - only count pool registration keys
+        for key in keys:
+            if ":heartbeat" not in key and ":commands" not in key:
+                pool_keys.append(key)
+        if cursor == 0:
+            break
+
+    total_pools = len(pool_keys)
+    total_processes = 0
+    total_idle = 0
+    total_busy = 0
+
+    for key in pool_keys:
+        parts = key.split(":")
+        if len(parts) != 3:
+            continue
+        worker_id = parts[2]
+
+        # Get heartbeat for process counts
+        heartbeat_key = f"bifrost:pool:{worker_id}:heartbeat"
+        heartbeat_data = await r.get(heartbeat_key)
+
+        if heartbeat_data:
+            try:
+                hb = json.loads(heartbeat_data)
+                total_processes += hb.get("pool_size", 0)
+                total_idle += hb.get("idle_count", 0)
+                total_busy += hb.get("busy_count", 0)
+            except json.JSONDecodeError:
+                pass
+
+    return PoolStatsResponse(
+        total_pools=total_pools,
+        total_processes=total_processes,
+        total_idle=total_idle,
+        total_busy=total_busy,
+    )
+
+
+# =============================================================================
+# Dynamic routes with path parameters
+# =============================================================================
 
 
 @router.get(
@@ -262,65 +455,72 @@ async def recycle_process(
     )
 
 
-@router.get(
-    "/stats",
-    response_model=PoolStatsResponse,
-    summary="Get pool statistics",
-    description="Get aggregated statistics across all process pools",
+@router.post(
+    "/{worker_id}/recycle-all",
+    response_model=RecycleAllResponse,
+    summary="Recycle all processes",
+    description="Mark all processes in a pool for graceful recycling",
 )
-async def get_pool_stats(
-    _admin: CurrentSuperuser,
-) -> PoolStatsResponse:
+async def recycle_all_processes(
+    worker_id: str,
+    admin: CurrentSuperuser,
+    request: RecycleAllRequest | None = None,
+) -> RecycleAllResponse:
     """
-    Get aggregated pool statistics.
+    Trigger recycle of all processes in a pool.
 
-    Returns counts of total pools, processes, idle, and busy across
-    all registered pools.
+    Idle processes are recycled immediately.
+    Busy processes are marked for recycling after their current execution completes.
+
+    This is useful for:
+    - Memory cleanup after long-running operations
+    - Picking up newly installed packages
+    - Refreshing interpreter state
     """
     r = await _get_redis()
 
-    # Find all pool registration keys
-    cursor = 0
-    pool_keys: list[str] = []
+    # Check pool exists
+    pool_key = f"bifrost:pool:{worker_id}"
+    exists = await r.exists(pool_key)
+    if not exists:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Pool {worker_id} not found",
+        )
 
-    while True:
-        cursor, keys = await r.scan(cursor, match="bifrost:pool:*", count=100)
-        # Exclude heartbeat keys - only count pool registration keys
-        for key in keys:
-            if ":heartbeat" not in key and ":commands" not in key:
-                pool_keys.append(key)
-        if cursor == 0:
-            break
+    # Get current pool size from heartbeat
+    heartbeat_key = f"bifrost:pool:{worker_id}:heartbeat"
+    heartbeat_data = await r.get(heartbeat_key)
+    processes_affected = 0
 
-    total_pools = len(pool_keys)
-    total_processes = 0
-    total_idle = 0
-    total_busy = 0
+    if heartbeat_data:
+        try:
+            hb = json.loads(heartbeat_data)
+            processes_affected = hb.get("pool_size", 0)
+        except json.JSONDecodeError:
+            pass
 
-    for key in pool_keys:
-        parts = key.split(":")
-        if len(parts) != 3:
-            continue
-        worker_id = parts[2]
+    # Publish recycle_all command via Redis pub/sub
+    command_channel = f"bifrost:pool:{worker_id}:commands"
+    command = {
+        "action": "recycle_all",
+        "reason": request.reason if request else "Manual recycle from Diagnostics UI",
+        "requested_by": str(admin.user_id),
+        "requested_at": datetime.now(timezone.utc).isoformat(),
+    }
 
-        # Get heartbeat for process counts
-        heartbeat_key = f"bifrost:pool:{worker_id}:heartbeat"
-        heartbeat_data = await r.get(heartbeat_key)
+    await r.publish(command_channel, json.dumps(command))
 
-        if heartbeat_data:
-            try:
-                hb = json.loads(heartbeat_data)
-                total_processes += hb.get("pool_size", 0)
-                total_idle += hb.get("idle_count", 0)
-                total_busy += hb.get("busy_count", 0)
-            except json.JSONDecodeError:
-                pass
+    logger.info(
+        f"Published recycle_all command for pool {worker_id} "
+        f"({processes_affected} processes) by user {admin.user_id}"
+    )
 
-    return PoolStatsResponse(
-        total_pools=total_pools,
-        total_processes=total_processes,
-        total_idle=total_idle,
-        total_busy=total_busy,
+    return RecycleAllResponse(
+        success=True,
+        message=f"Recycle request sent for all {processes_affected} processes",
+        worker_id=worker_id,
+        processes_affected=processes_affected,
     )
 
 

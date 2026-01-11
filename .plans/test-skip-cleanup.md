@@ -151,7 +151,6 @@ These skips are correct and should remain:
 | `knowledge_setup.py` | 1 fixture | Requires `EMBEDDINGS_API_TEST_KEY` |
 | `test_github.py` | `test_create_repository` | Creates real GitHub repos - manual only |
 | `test_sdk_credentials.py` | 2 tests | Unix permissions not applicable on Windows |
-| `test_executions.py` | `test_concurrent_executions_not_blocking` | Timing-sensitive, flaky in CI |
 
 ---
 
@@ -167,6 +166,38 @@ These skips are correct and should remain:
 
 ---
 
+## Redundant/Meaningless Tests Found
+
+During the review, we identified the following issues that don't require code changes but are worth noting:
+
+### Unused Fixture Parameters (Fixed)
+Several tests had fixture parameters that weren't directly accessed but were needed as dependencies:
+- `test_org_user_gets_own_execution_details` - had `async_workflow` parameter but didn't use it (removed)
+- `test_org_user_sees_global_sources` - had `platform_admin` parameter but didn't use it (removed)
+- `test_list_deliveries` - had `subscription` parameter for implicit dependency (converted to `@pytest.mark.usefixtures`)
+- `test_cannot_retry_pending_delivery` - had `subscription` parameter for implicit dependency (converted to `@pytest.mark.usefixtures`)
+
+### No Truly Redundant Tests Found
+All reviewed tests serve a purpose. The skips we removed were defensive programming patterns that masked real failures rather than indicating redundant tests.
+
+---
+
+## Implementation Status
+
+All phases completed:
+
+- [x] **Phase 1**: Removed 33 redundant websocket import checks
+- [x] **Phase 2**: Removed 16 defensive workflow ID checks
+- [x] **Phase 3**: Converted 5 temp directory skips to assertions
+- [x] **Phase 4**: Fixed event delivery timeout (increased to 15s, converted skip to assertion)
+
+Additional fixes:
+- Fixed type errors in websocket tests (`close_code` → `code` attribute)
+- Converted implicit fixture dependencies to `@pytest.mark.usefixtures`
+- Removed unused fixture parameters
+
+---
+
 ## Final Verification
 
 After all phases complete:
@@ -178,6 +209,5 @@ After all phases complete:
 # - 6 LLM config tests (API keys)
 # - 1 GitHub create repo (manual)
 # - 2 permission tests (Windows only)
-# - 1 concurrent test (CI only)
 # - ~10 fixtures for external services
 ```

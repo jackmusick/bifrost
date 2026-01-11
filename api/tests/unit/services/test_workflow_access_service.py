@@ -292,7 +292,7 @@ class TestExtractAppWorkflows:
         page.launch_workflow_id = launch_wf_id
         page.data_sources = []
 
-        result = extract_app_workflows([page], [], live_only=True)
+        result = extract_app_workflows([page], [])
 
         assert launch_wf_id in result
 
@@ -304,7 +304,7 @@ class TestExtractAppWorkflows:
         page.launch_workflow_id = None
         page.data_sources = [{"workflowId": str(wf_id)}]
 
-        result = extract_app_workflows([page], [], live_only=True)
+        result = extract_app_workflows([page], [])
 
         assert wf_id in result
 
@@ -316,7 +316,7 @@ class TestExtractAppWorkflows:
         page.launch_workflow_id = None
         page.data_sources = [{"dataProviderId": str(dp_id)}]
 
-        result = extract_app_workflows([page], [], live_only=True)
+        result = extract_app_workflows([page], [])
 
         assert dp_id in result
 
@@ -333,7 +333,7 @@ class TestExtractAppWorkflows:
         page.launch_workflow_id = None
         page.data_sources = []
 
-        result = extract_app_workflows([page], [comp], live_only=True)
+        result = extract_app_workflows([page], [comp])
 
         assert wf_id in result
 
@@ -350,7 +350,7 @@ class TestExtractAppWorkflows:
         page.launch_workflow_id = None
         page.data_sources = []
 
-        result = extract_app_workflows([page], [comp], live_only=True)
+        result = extract_app_workflows([page], [comp])
 
         assert wf_id in result
 
@@ -363,7 +363,7 @@ class TestExtractAppWorkflows:
             "data_sources": [],
         }
 
-        result = extract_app_workflows([page], [], live_only=True)
+        result = extract_app_workflows([page], [])
 
         assert wf_id in result
 
@@ -377,7 +377,7 @@ class TestExtractAppWorkflows:
             "props": {},
         }
 
-        result = extract_app_workflows([page], [comp], live_only=True)
+        result = extract_app_workflows([page], [comp])
 
         assert wf_id in result
 

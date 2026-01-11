@@ -260,6 +260,10 @@ async def websocket_connect(
                 allowed_channels.append(channel)
         elif channel == "system":
             allowed_channels.append(channel)
+        elif channel == "platform_workers":
+            # Platform workers channel - diagnostics, platform admins only
+            if user.is_superuser:
+                allowed_channels.append(channel)
 
     # Always subscribe to user's own channel
     user_channel = f"user:{user.user_id}"
@@ -365,6 +369,22 @@ async def websocket_connect(
                             "type": "subscribed",
                             "channel": channel
                         })
+                    elif channel == "platform_workers":
+                        # Platform workers channel - diagnostics, platform admins only
+                        if user.is_superuser:
+                            if channel not in manager.connections:
+                                manager.connections[channel] = set()
+                            manager.connections[channel].add(websocket)
+                            await websocket.send_json({
+                                "type": "subscribed",
+                                "channel": channel
+                            })
+                        else:
+                            await websocket.send_json({
+                                "type": "error",
+                                "channel": channel,
+                                "message": "Access denied"
+                            })
 
             elif data.get("type") == "unsubscribe":
                 channel = data.get("channel")

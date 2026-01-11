@@ -11,6 +11,7 @@ import asyncio
 import json
 import logging
 import pytest
+from websockets.asyncio.client import connect
 
 logger = logging.getLogger(__name__)
 
@@ -49,55 +50,41 @@ class TestCodingModeE2E:
         return response.json()
 
     @pytest.mark.asyncio
+    @pytest.mark.usefixtures("llm_anthropic_configured")
     async def test_coding_mode_connection(
         self,
         e2e_ws_url,
         platform_admin,
         coding_conversation,
-        llm_anthropic_configured,
     ):
         """Test that coding mode WebSocket connection works via /ws/connect."""
-        try:
-            from websockets.asyncio.client import connect
-        except ImportError:
-            pytest.skip("websockets library not installed")
-
         conversation_id = coding_conversation["id"]
         # Use unified WebSocket endpoint with chat channel subscription
         ws_url = f"{e2e_ws_url}/ws/connect?channels=chat:{conversation_id}"
 
-        try:
-            async with connect(
-                ws_url,
-                additional_headers={"Authorization": f"Bearer {platform_admin.access_token}"},
-            ) as ws:
-                # Should receive connected message
-                msg = await asyncio.wait_for(ws.recv(), timeout=10)
-                data = json.loads(msg)
+        async with connect(
+            ws_url,
+            additional_headers={"Authorization": f"Bearer {platform_admin.access_token}"},
+        ) as ws:
+            # Should receive connected message
+            msg = await asyncio.wait_for(ws.recv(), timeout=10)
+            data = json.loads(msg)
 
-                assert data["type"] == "connected", f"Expected connected, got: {data}"
-                assert "channels" in data, "Missing channels in connected message"
-                assert f"chat:{conversation_id}" in data["channels"], f"Chat channel not subscribed: {data}"
+            assert data["type"] == "connected", f"Expected connected, got: {data}"
+            assert "channels" in data, "Missing channels in connected message"
+            assert f"chat:{conversation_id}" in data["channels"], f"Chat channel not subscribed: {data}"
 
-                logger.info(f"Connected to WebSocket with channels: {data['channels']}")
-        except Exception as e:
-            pytest.fail(f"Coding mode connection failed: {e}")
+            logger.info(f"Connected to WebSocket with channels: {data['channels']}")
 
     @pytest.mark.asyncio
+    @pytest.mark.usefixtures("llm_anthropic_configured")
     async def test_coding_mode_hello_world(
         self,
         e2e_ws_url,
         platform_admin,
         coding_conversation,
-        llm_anthropic_configured,
     ):
         """Test that coding mode can respond to a simple request."""
-
-        try:
-            from websockets.asyncio.client import connect
-        except ImportError:
-            pytest.skip("websockets library not installed")
-
         conversation_id = coding_conversation["id"]
         # Use unified WebSocket endpoint with chat channel subscription
         ws_url = f"{e2e_ws_url}/ws/connect?channels=chat:{conversation_id}"

@@ -266,6 +266,91 @@ export interface ChatStreamChunk {
 	todos?: TodoItem[] | null;
 }
 
+// Pool/worker message types for real-time diagnostics
+export interface PoolHeartbeatMessage {
+	type: "worker_heartbeat";
+	worker_id: string;
+	hostname?: string;
+	status?: string;
+	started_at?: string;
+	timestamp?: string;
+	pool_size?: number;
+	idle_count?: number;
+	busy_count?: number;
+	min_workers?: number;
+	max_workers?: number;
+	processes?: Array<{
+		process_id: string;
+		pid: number;
+		state: "idle" | "busy" | "killed";
+		memory_mb: number;
+		uptime_seconds: number;
+		executions_completed: number;
+		pending_recycle?: boolean;
+		execution?: {
+			execution_id: string;
+			started_at: string;
+			elapsed_seconds: number;
+		};
+	}>;
+}
+
+export interface PoolOnlineMessage {
+	type: "worker_online";
+	worker_id: string;
+	hostname?: string;
+	started_at?: string;
+}
+
+export interface PoolOfflineMessage {
+	type: "worker_offline";
+	worker_id: string;
+}
+
+export interface ProcessStateChangedMessage {
+	type: "process_state_changed";
+	worker_id: string;
+	process_id: string;
+	pid: number;
+	old_state: "idle" | "busy" | "killed";
+	new_state: "idle" | "busy" | "killed";
+}
+
+export interface PoolConfigChangedMessage {
+	type: "pool_config_changed";
+	worker_id: string;
+	old_min: number;
+	old_max: number;
+	new_min: number;
+	new_max: number;
+}
+
+export interface PoolScalingMessage {
+	type: "pool_scaling";
+	worker_id: string;
+	action: "scale_up" | "scale_down" | "recycle_all";
+	processes_affected: number;
+}
+
+export interface PoolProgressMessage {
+	type: "pool_progress";
+	worker_id: string;
+	action: "scale_up" | "scale_down" | "recycle_all";
+	current: number;
+	total: number;
+	message: string;
+	timestamp: string;
+}
+
+export type PoolMessage =
+	| PoolHeartbeatMessage
+	| PoolOnlineMessage
+	| PoolOfflineMessage
+	| ProcessStateChangedMessage
+	| PoolConfigChangedMessage
+	| PoolScalingMessage
+	| PoolProgressMessage;
+
 // Message types from backend
 type WebSocketMessage =
 	| { type: "connected"; channels: string[]; userId: string }
@@ -304,7 +389,8 @@ type WebSocketMessage =
 	| ChatStreamChunk
 	| (ReindexMessage & { jobId: string })
 	| AppDraftUpdate
-	| AppPublishedUpdate;
+	| AppPublishedUpdate
+	| PoolMessage;
 
 // Notification payload from backend (snake_case)
 interface NotificationPayload {
@@ -346,6 +432,7 @@ type EventSourceUpdateCallback = (update: EventSourceUpdate) => void;
 type ChatStreamCallback = (chunk: ChatStreamChunk) => void;
 type AppDraftUpdateCallback = (update: AppDraftUpdate) => void;
 type AppPublishedUpdateCallback = (update: AppPublishedUpdate) => void;
+type PoolMessageCallback = (message: PoolMessage) => void;
 
 class WebSocketService {
 	private ws: WebSocket | null = null;
@@ -392,6 +479,7 @@ class WebSocketService {
 		string,
 		Set<AppPublishedUpdateCallback>
 	>();
+	private poolMessageCallbacks = new Set<PoolMessageCallback>();
 
 	// Track subscribed channels
 	private subscribedChannels = new Set<string>();
@@ -712,7 +800,22 @@ class WebSocketService {
 			case "app_published":
 				this.dispatchAppPublished(message as AppPublishedUpdate);
 				break;
+
+			// Pool/worker message types for diagnostics
+			case "worker_heartbeat":
+			case "worker_online":
+			case "worker_offline":
+			case "process_state_changed":
+			case "pool_config_changed":
+			case "pool_scaling":
+			case "pool_progress":
+				this.dispatchPoolMessage(message as PoolMessage);
+				break;
 		}
+	}
+
+	private dispatchPoolMessage(message: PoolMessage) {
+		this.poolMessageCallbacks.forEach((cb) => cb(message));
 	}
 
 	private dispatchReindexMessage(
@@ -1353,6 +1456,16 @@ class WebSocketService {
 			if (this.appPublishedUpdateCallbacks.get(appId)?.size === 0) {
 				this.appPublishedUpdateCallbacks.delete(appId);
 			}
+		};
+	}
+
+	/**
+	 * Subscribe to pool/worker updates for diagnostics
+	 */
+	onPoolMessage(callback: PoolMessageCallback): () => void {
+		this.poolMessageCallbacks.add(callback);
+		return () => {
+			this.poolMessageCallbacks.delete(callback);
 		};
 	}
 

@@ -40,30 +40,44 @@ def _get_github_client():
 
 
 @pytest.fixture(scope="session")
-def github_test_config() -> dict[str, Any]:
+def github_test_config() -> dict[str, Any] | None:
     """
     Get GitHub test configuration from environment.
 
-    Skips all GitHub tests if GITHUB_TEST_PAT is not set.
+    Returns None if GITHUB_TEST_PAT is not set, PyGithub is not installed,
+    or the token is invalid/expired.
+    Tests should use require_github_config fixture to skip when None.
 
     Returns:
-        dict with pat, repo, and base_branch
+        dict with pat, repo, and base_branch, or None if not configured
     """
     pat = os.environ.get("GITHUB_TEST_PAT")
     repo = os.environ.get("GITHUB_TEST_REPO", "jackmusick/e2e-test-workspace")
 
     if not pat:
-        pytest.skip(
-            "GitHub E2E tests require GITHUB_TEST_PAT environment variable. "
-            "Set it to a GitHub PAT with repo access to run these tests."
+        logger.info(
+            "GitHub E2E tests skipped: GITHUB_TEST_PAT environment variable not set"
         )
+        return None
 
     Github, Auth = _get_github_client()
-    if Github is None:
-        pytest.skip(
-            "GitHub E2E tests require PyGithub package. "
-            "Install with: pip install PyGithub"
+    if Github is None or Auth is None:
+        logger.info(
+            "GitHub E2E tests skipped: PyGithub package not installed"
         )
+        return None
+
+    # Validate the token actually works before running tests
+    try:
+        g = Github(auth=Auth.Token(pat))
+        # Make a simple API call to validate credentials
+        g.get_user().login
+        logger.info("GitHub token validated successfully")
+    except Exception as e:
+        logger.info(
+            f"GitHub E2E tests skipped: Token validation failed ({e})"
+        )
+        return None
 
     return {
         "pat": pat,
@@ -72,10 +86,29 @@ def github_test_config() -> dict[str, Any]:
     }
 
 
+@pytest.fixture(scope="function")
+def require_github_config(github_test_config: dict[str, Any] | None) -> dict[str, Any]:
+    """
+    Skip test if GitHub is not configured.
+
+    Use this fixture in tests that require GitHub credentials.
+    It converts the None return from github_test_config into a proper skip.
+
+    Returns:
+        The github_test_config dict (guaranteed non-None)
+    """
+    if github_test_config is None:
+        pytest.skip(
+            "GitHub E2E tests require GITHUB_TEST_PAT environment variable. "
+            "Set it to a GitHub PAT with repo access to run these tests."
+        )
+    return github_test_config
+
+
 @pytest.fixture(scope="session")
 def github_test_branch(
-    github_test_config: dict[str, Any],
-) -> Generator[dict[str, Any], None, None]:
+    github_test_config: dict[str, Any] | None,
+) -> Generator[dict[str, Any] | None, None, None]:
     """
     Create a unique branch for this test run.
 
@@ -90,14 +123,24 @@ def github_test_branch(
         github_test_config: Configuration from github_test_config fixture
 
     Yields:
-        dict with pat, repo, branch, base_branch, and repo_obj
+        dict with pat, repo, branch, base_branch, and repo_obj, or None if not configured
     """
-    Github, Auth = _get_github_client()
-    if Github is None:
-        pytest.skip("PyGithub not available")
+    if github_test_config is None:
+        yield None
+        return
 
-    g = Github(auth=Auth.Token(github_test_config["pat"]))
-    repo = g.get_repo(github_test_config["repo"])
+    Github, Auth = _get_github_client()
+    if Github is None or Auth is None:
+        yield None
+        return
+
+    try:
+        g = Github(auth=Auth.Token(github_test_config["pat"]))
+        repo = g.get_repo(github_test_config["repo"])
+    except Exception as e:
+        logger.warning(f"Failed to connect to GitHub (invalid credentials?): {e}")
+        yield None
+        return
 
     # Create unique branch name with timestamp
     branch_name = f"e2e-test-{int(time.time())}"
@@ -112,7 +155,9 @@ def github_test_branch(
         logger.info(f"Created test branch: {branch_name}")
 
     except Exception as e:
-        pytest.skip(f"Failed to create test branch: {e}")
+        logger.warning(f"Failed to create test branch: {e}")
+        yield None
+        return
 
     yield {
         **github_test_config,
@@ -215,6 +260,9 @@ def github_configured(e2e_client, platform_admin, github_test_branch):
     Yields:
         dict with GitHub config including branch name and repo object
     """
+    if github_test_branch is None:
+        pytest.skip("GitHub not configured (GITHUB_TEST_PAT not set)")
+
     config = github_test_branch
 
     # Step 1: Validate and save token
@@ -270,6 +318,9 @@ def github_token_only(e2e_client, platform_admin, github_test_config):
     Yields:
         dict with GitHub config (token only, no repo configured)
     """
+    if github_test_config is None:
+        pytest.skip("GitHub not configured (GITHUB_TEST_PAT not set)")
+
     config = github_test_config
 
     # Validate and save token only
@@ -305,13 +356,18 @@ def create_remote_file(github_test_branch):
             file_info = create_remote_file("test.txt", "content", "commit message")
             # Now pull and verify...
 
+    Skips test if GitHub is not configured.
+
     Returns:
         Factory function that creates files on GitHub
     """
+    if github_test_branch is None:
+        pytest.skip("GitHub not configured (GITHUB_TEST_PAT not set)")
+
     config = github_test_branch
     repo = config["repo_obj"]
     branch = config["branch"]
-    created_files = []
+    created_files: list[str] = []
 
     def _create_file(
         path: str,
@@ -374,9 +430,14 @@ def update_remote_file(github_test_branch):
             update_remote_file("existing.txt", "new content", "Update for conflict")
             # Now try to push local changes and verify conflict...
 
+    Skips test if GitHub is not configured.
+
     Returns:
         Factory function that updates files on GitHub
     """
+    if github_test_branch is None:
+        pytest.skip("GitHub not configured (GITHUB_TEST_PAT not set)")
+
     config = github_test_branch
     repo = config["repo_obj"]
     branch = config["branch"]

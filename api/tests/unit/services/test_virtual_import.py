@@ -2,12 +2,27 @@
 Unit tests for the virtual import hook.
 
 Tests the MetaPathFinder implementation that loads modules from Redis cache.
+
+The implementation uses a direct-fetch approach:
+- Each import attempt calls get_module_sync() to fetch from Redis
+- No index caching - modules are fetched directly by path
+- Thread-local recursion guard prevents infinite loops during Redis calls
 """
 
 import sys
-from unittest.mock import MagicMock, patch
+from types import ModuleType
+from unittest.mock import patch
 
 import pytest
+
+from src.services.execution.virtual_import import (
+    VirtualModuleFinder,
+    VirtualModuleLoader,
+    get_virtual_finder,
+    install_virtual_import_hook,
+    invalidate_module_index,
+    remove_virtual_import_hook,
+)
 
 
 class TestVirtualModuleFinder:
@@ -30,8 +45,6 @@ class TestVirtualModuleFinder:
 
     def test_module_name_to_paths_simple_module(self):
         """Test path conversion for simple module names."""
-        from src.services.execution.virtual_import import VirtualModuleFinder
-
         finder = VirtualModuleFinder()
         paths = finder._module_name_to_paths("shared")
 
@@ -42,8 +55,6 @@ class TestVirtualModuleFinder:
 
     def test_module_name_to_paths_nested_module(self):
         """Test path conversion for nested module names."""
-        from src.services.execution.virtual_import import VirtualModuleFinder
-
         finder = VirtualModuleFinder()
         paths = finder._module_name_to_paths("shared.halopsa")
 
@@ -54,8 +65,6 @@ class TestVirtualModuleFinder:
 
     def test_module_name_to_paths_deeply_nested(self):
         """Test path conversion for deeply nested modules."""
-        from src.services.execution.virtual_import import VirtualModuleFinder
-
         finder = VirtualModuleFinder()
         paths = finder._module_name_to_paths("modules.helpers.utils.string")
 
@@ -66,30 +75,27 @@ class TestVirtualModuleFinder:
 
     def test_find_spec_module_not_in_cache(self):
         """Test find_spec returns None when module is not in cache."""
-        from src.services.execution.virtual_import import VirtualModuleFinder
-
         finder = VirtualModuleFinder()
 
         with patch(
-            "src.services.execution.virtual_import.get_module_index_sync",
-            return_value=set(),
+            "src.services.execution.virtual_import.get_module_sync",
+            return_value=None,
         ):
             spec = finder.find_spec("nonexistent.module")
-
             assert spec is None
 
     def test_find_spec_module_in_cache(self):
         """Test find_spec returns spec when module is in cache."""
-        from src.services.execution.virtual_import import VirtualModuleFinder
-
         finder = VirtualModuleFinder()
 
+        def mock_get_module(path: str):
+            if path == "shared/halopsa.py":
+                return {"content": "x = 1", "path": "shared/halopsa.py", "hash": "abc"}
+            return None
+
         with patch(
-            "src.services.execution.virtual_import.get_module_index_sync",
-            return_value={"shared/halopsa.py"},
-        ), patch(
             "src.services.execution.virtual_import.get_module_sync",
-            return_value={"content": "x = 1", "path": "shared/halopsa.py", "hash": "abc"},
+            side_effect=mock_get_module,
         ):
             spec = finder.find_spec("shared.halopsa")
 
@@ -101,16 +107,16 @@ class TestVirtualModuleFinder:
 
     def test_find_spec_package_in_cache(self):
         """Test find_spec returns package spec for __init__.py."""
-        from src.services.execution.virtual_import import VirtualModuleFinder
-
         finder = VirtualModuleFinder()
 
+        def mock_get_module(path: str):
+            if path == "shared/__init__.py":
+                return {"content": "# package", "path": "shared/__init__.py", "hash": "abc"}
+            return None
+
         with patch(
-            "src.services.execution.virtual_import.get_module_index_sync",
-            return_value={"shared/__init__.py"},
-        ), patch(
             "src.services.execution.virtual_import.get_module_sync",
-            return_value={"content": "# package", "path": "shared/__init__.py", "hash": "abc"},
+            side_effect=mock_get_module,
         ):
             spec = finder.find_spec("shared")
 
@@ -120,81 +126,63 @@ class TestVirtualModuleFinder:
 
     def test_find_spec_prefers_module_over_package(self):
         """Test that .py file is tried before __init__.py."""
-        from src.services.execution.virtual_import import VirtualModuleFinder
-
         finder = VirtualModuleFinder()
 
-        # Both exist, but .py is checked first
+        # Return module for .py path (checked first)
+        def mock_get_module(path: str):
+            if path == "shared.py":
+                return {"content": "x = 1", "path": "shared.py", "hash": "abc"}
+            if path == "shared/__init__.py":
+                return {"content": "# package", "path": "shared/__init__.py", "hash": "def"}
+            return None
+
         with patch(
-            "src.services.execution.virtual_import.get_module_index_sync",
-            return_value={"shared.py", "shared/__init__.py"},
-        ), patch(
             "src.services.execution.virtual_import.get_module_sync",
-            return_value={"content": "x = 1", "path": "shared.py", "hash": "abc"},
+            side_effect=mock_get_module,
         ):
             spec = finder.find_spec("shared")
 
             assert spec is not None
-            assert spec.origin == "shared.py"
+            assert spec.origin == "shared.py"  # Module file, not package
 
-    def test_find_spec_module_in_index_but_not_in_cache(self):
-        """Test find_spec when module is in index but missing from cache."""
-        from src.services.execution.virtual_import import VirtualModuleFinder
-
+    def test_find_spec_skips_stdlib_modules(self):
+        """Test that stdlib modules are not looked up in cache."""
         finder = VirtualModuleFinder()
 
+        mock_get_module = pytest.importorskip("unittest.mock").MagicMock(return_value=None)
         with patch(
-            "src.services.execution.virtual_import.get_module_index_sync",
-            return_value={"shared/test.py"},
-        ), patch(
             "src.services.execution.virtual_import.get_module_sync",
-            return_value=None,  # Cache miss
+            mock_get_module,
         ):
-            spec = finder.find_spec("shared.test")
+            # These should return None without calling get_module_sync
+            assert finder.find_spec("os") is None
+            assert finder.find_spec("sys") is None
+            assert finder.find_spec("json") is None
+            assert finder.find_spec("redis") is None
 
-            # Should return None and let filesystem finder try
+            # get_module_sync should not have been called
+            mock_get_module.assert_not_called()
+
+    def test_find_spec_recursion_guard(self):
+        """Test that recursion guard prevents infinite loops."""
+        from src.services.execution.virtual_import import _thread_local
+
+        finder = VirtualModuleFinder()
+
+        # Simulate being in a recursive call
+        _thread_local.in_find_spec = True
+        try:
+            # Should return None immediately without doing anything
+            spec = finder.find_spec("some.module")
             assert spec is None
+        finally:
+            _thread_local.in_find_spec = False
 
-    def test_invalidate_index(self):
-        """Test that invalidate_index clears the cached index."""
-        from src.services.execution.virtual_import import VirtualModuleFinder
-
+    def test_invalidate_index_is_noop(self):
+        """Test that invalidate_index is a no-op (for API compatibility)."""
         finder = VirtualModuleFinder()
-
-        # Populate index
-        with patch(
-            "src.services.execution.virtual_import.get_module_index_sync",
-            return_value={"shared/a.py"},
-        ):
-            finder._get_module_index()
-
-        assert finder._module_index is not None
-
-        # Invalidate
+        # Should not raise
         finder.invalidate_index()
-
-        assert finder._module_index is None
-
-    def test_lazy_index_loading(self):
-        """Test that index is only loaded on first access."""
-        from src.services.execution.virtual_import import VirtualModuleFinder
-
-        finder = VirtualModuleFinder()
-
-        assert finder._module_index is None
-
-        mock_get_index = MagicMock(return_value={"test.py"})
-        with patch(
-            "src.services.execution.virtual_import.get_module_index_sync",
-            mock_get_index,
-        ):
-            # First access - should call get_module_index_sync
-            finder._get_module_index()
-            assert mock_get_index.call_count == 1
-
-            # Second access - should use cached value
-            finder._get_module_index()
-            assert mock_get_index.call_count == 1
 
 
 class TestVirtualModuleLoader:
@@ -203,8 +191,6 @@ class TestVirtualModuleLoader:
     def test_create_module_returns_none(self):
         """Test create_module returns None for default semantics."""
         from importlib.machinery import ModuleSpec
-
-        from src.services.execution.virtual_import import VirtualModuleLoader
 
         loader = VirtualModuleLoader("test.py", "x = 1", is_package=False)
         spec = ModuleSpec("test", loader)
@@ -215,10 +201,6 @@ class TestVirtualModuleLoader:
 
     def test_exec_module_sets_file_attribute(self):
         """Test exec_module sets __file__ to virtual path."""
-        from types import ModuleType
-
-        from src.services.execution.virtual_import import VirtualModuleLoader
-
         loader = VirtualModuleLoader("shared/test.py", "x = 1", is_package=False)
         module = ModuleType("shared.test")
 
@@ -229,10 +211,6 @@ class TestVirtualModuleLoader:
 
     def test_exec_module_sets_path_for_package(self):
         """Test exec_module sets __path__ for packages."""
-        from types import ModuleType
-
-        from src.services.execution.virtual_import import VirtualModuleLoader
-
         loader = VirtualModuleLoader("shared/__init__.py", "# package", is_package=True)
         module = ModuleType("shared")
 
@@ -243,10 +221,6 @@ class TestVirtualModuleLoader:
 
     def test_exec_module_executes_code(self):
         """Test exec_module executes the Python code."""
-        from types import ModuleType
-
-        from src.services.execution.virtual_import import VirtualModuleLoader
-
         loader = VirtualModuleLoader("test.py", "x = 42\ndef hello(): return 'world'")
         module = ModuleType("test")
 
@@ -257,10 +231,6 @@ class TestVirtualModuleLoader:
 
     def test_exec_module_raises_on_syntax_error(self):
         """Test exec_module raises SyntaxError for invalid code."""
-        from types import ModuleType
-
-        from src.services.execution.virtual_import import VirtualModuleLoader
-
         loader = VirtualModuleLoader("test.py", "def broken(")
         module = ModuleType("test")
 
@@ -269,10 +239,6 @@ class TestVirtualModuleLoader:
 
     def test_exec_module_raises_on_runtime_error(self):
         """Test exec_module propagates runtime errors."""
-        from types import ModuleType
-
-        from src.services.execution.virtual_import import VirtualModuleLoader
-
         loader = VirtualModuleLoader("test.py", "raise ValueError('test error')")
         module = ModuleType("test")
 
@@ -300,11 +266,6 @@ class TestInstallRemoveHook:
 
     def test_install_virtual_import_hook(self):
         """Test installing the virtual import hook."""
-        from src.services.execution.virtual_import import (
-            VirtualModuleFinder,
-            install_virtual_import_hook,
-        )
-
         initial_count = len(sys.meta_path)
 
         finder = install_virtual_import_hook()
@@ -315,8 +276,6 @@ class TestInstallRemoveHook:
 
     def test_install_virtual_import_hook_idempotent(self):
         """Test that installing twice returns same finder."""
-        from src.services.execution.virtual_import import install_virtual_import_hook
-
         finder1 = install_virtual_import_hook()
         initial_count = len(sys.meta_path)
 
@@ -327,11 +286,6 @@ class TestInstallRemoveHook:
 
     def test_remove_virtual_import_hook(self):
         """Test removing the virtual import hook."""
-        from src.services.execution.virtual_import import (
-            install_virtual_import_hook,
-            remove_virtual_import_hook,
-        )
-
         install_virtual_import_hook()
         initial_count = len(sys.meta_path)
 
@@ -344,8 +298,6 @@ class TestInstallRemoveHook:
 
     def test_remove_virtual_import_hook_noop_when_not_installed(self):
         """Test removing when hook is not installed."""
-        from src.services.execution.virtual_import import remove_virtual_import_hook
-
         initial_count = len(sys.meta_path)
 
         # Should not raise
@@ -370,32 +322,15 @@ class TestInvalidateModuleIndex:
 
         module._finder = None
 
-    def test_invalidate_module_index(self):
-        """Test invalidating the module index."""
-        from src.services.execution.virtual_import import (
-            install_virtual_import_hook,
-            invalidate_module_index,
-        )
+    def test_invalidate_module_index_calls_finder(self):
+        """Test invalidate_module_index calls finder.invalidate_index()."""
+        install_virtual_import_hook()
 
-        finder = install_virtual_import_hook()
-
-        # Populate index
-        with patch(
-            "src.services.execution.virtual_import.get_module_index_sync",
-            return_value={"test.py"},
-        ):
-            finder._get_module_index()
-
-        assert finder._module_index is not None
-
+        # Should not raise (it's a no-op but verifies the call path works)
         invalidate_module_index()
-
-        assert finder._module_index is None
 
     def test_invalidate_module_index_noop_when_not_installed(self):
         """Test invalidating when hook is not installed."""
-        from src.services.execution.virtual_import import invalidate_module_index
-
         # Should not raise
         invalidate_module_index()
 
@@ -418,11 +353,6 @@ class TestGetVirtualFinder:
 
     def test_get_virtual_finder_when_installed(self):
         """Test getting finder when installed."""
-        from src.services.execution.virtual_import import (
-            get_virtual_finder,
-            install_virtual_import_hook,
-        )
-
         installed = install_virtual_import_hook()
         result = get_virtual_finder()
 
@@ -430,8 +360,6 @@ class TestGetVirtualFinder:
 
     def test_get_virtual_finder_when_not_installed(self):
         """Test getting finder when not installed."""
-        from src.services.execution.virtual_import import get_virtual_finder
-
         result = get_virtual_finder()
 
         assert result is None
@@ -461,27 +389,21 @@ class TestIntegration:
 
     def test_import_module_from_cache(self):
         """Test actually importing a module from cache."""
-        from src.services.execution.virtual_import import (
-            install_virtual_import_hook,
-            invalidate_module_index,
-        )
-
         install_virtual_import_hook()
 
-        with patch(
-            "src.services.execution.virtual_import.get_module_index_sync",
-            return_value={"virtual_test_module.py"},
-        ), patch(
-            "src.services.execution.virtual_import.get_module_sync",
-            return_value={
-                "content": "MAGIC_VALUE = 12345\ndef get_magic(): return MAGIC_VALUE",
-                "path": "virtual_test_module.py",
-                "hash": "abc",
-            },
-        ):
-            # Invalidate any cached index so the patch takes effect
-            invalidate_module_index()
+        def mock_get_module(path: str):
+            if path == "virtual_test_module.py":
+                return {
+                    "content": "MAGIC_VALUE = 12345\ndef get_magic(): return MAGIC_VALUE",
+                    "path": "virtual_test_module.py",
+                    "hash": "abc",
+                }
+            return None
 
+        with patch(
+            "src.services.execution.virtual_import.get_module_sync",
+            side_effect=mock_get_module,
+        ):
             import virtual_test_module  # type: ignore[import-not-found]
 
             assert virtual_test_module.MAGIC_VALUE == 12345
@@ -490,20 +412,10 @@ class TestIntegration:
 
     def test_import_nested_module_from_cache(self):
         """Test importing a nested module from cache."""
-        from src.services.execution.virtual_import import (
-            install_virtual_import_hook,
-            invalidate_module_index,
-        )
-
         install_virtual_import_hook()
 
-        # First import the package
-        with patch(
-            "src.services.execution.virtual_import.get_module_index_sync",
-            return_value={"virtual_test_pkg/__init__.py", "virtual_test_pkg/submod.py"},
-        ), patch(
-            "src.services.execution.virtual_import.get_module_sync",
-            side_effect=lambda path: {
+        def mock_get_module(path: str):
+            modules = {
                 "virtual_test_pkg/__init__.py": {
                     "content": "PKG_VALUE = 'package'",
                     "path": "virtual_test_pkg/__init__.py",
@@ -514,13 +426,29 @@ class TestIntegration:
                     "path": "virtual_test_pkg/submod.py",
                     "hash": "def",
                 },
-            }.get(path),
-        ):
-            # Invalidate any cached index so the patch takes effect
-            invalidate_module_index()
+            }
+            return modules.get(path)
 
+        with patch(
+            "src.services.execution.virtual_import.get_module_sync",
+            side_effect=mock_get_module,
+        ):
             import virtual_test_pkg  # type: ignore[import-not-found]
             from virtual_test_pkg import submod  # type: ignore[import-not-found]
 
             assert virtual_test_pkg.PKG_VALUE == "package"
             assert submod.SUB_VALUE == "submodule"
+
+    def test_import_falls_back_to_filesystem(self):
+        """Test that import falls back to filesystem when not in cache."""
+        install_virtual_import_hook()
+
+        with patch(
+            "src.services.execution.virtual_import.get_module_sync",
+            return_value=None,
+        ):
+            # Should fall back to normal import
+            import json
+
+            assert json is not None
+            assert hasattr(json, "loads")

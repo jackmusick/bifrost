@@ -34,12 +34,12 @@ class TestGitHubConfiguration:
         self,
         e2e_client,
         platform_admin,
-        github_test_config,
+        require_github_config,
     ):
         """Test that a valid GitHub token can be validated and saved."""
         response = e2e_client.post(
             "/api/github/validate",
-            json={"token": github_test_config["pat"]},
+            json={"token": require_github_config["pat"]},
             headers=platform_admin.headers,
         )
         assert response.status_code == 200, f"Token validation failed: {response.text}"
@@ -145,12 +145,11 @@ class TestGitHubConfiguration:
         e2e_client,
         platform_admin,
         github_token_only,
-        github_test_config,
     ):
         """Test listing branches for a repository."""
         response = e2e_client.get(
             "/api/github/branches",
-            params={"repo": github_test_config["repo"]},
+            params={"repo": github_token_only["repo"]},
             headers=platform_admin.headers,
         )
         assert response.status_code == 200

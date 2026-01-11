@@ -4,7 +4,6 @@ E2E tests for workflow execution.
 Tests sync/async execution, polling, cancellation, and execution history.
 """
 
-import os
 import pytest
 
 from tests.e2e.conftest import poll_until
@@ -106,9 +105,6 @@ class TestSyncExecution:
 
     def test_execute_sync_workflow(self, e2e_client, platform_admin, sync_workflow):
         """Platform admin executes sync workflow."""
-        if not sync_workflow["id"]:
-            pytest.skip("Sync workflow not discovered")
-
         response = e2e_client.post(
             "/api/workflows/execute",
             headers=platform_admin.headers,
@@ -128,9 +124,6 @@ class TestSyncExecution:
 
     def test_sync_execution_returns_result(self, e2e_client, platform_admin, sync_workflow):
         """Sync execution returns expected result."""
-        if not sync_workflow["id"]:
-            pytest.skip("Sync workflow not discovered")
-
         response = e2e_client.post(
             "/api/workflows/execute",
             headers=platform_admin.headers,
@@ -154,9 +147,6 @@ class TestAsyncExecution:
 
     def test_execute_async_workflow(self, e2e_client, platform_admin, async_workflow):
         """Platform admin executes async workflow."""
-        if not async_workflow["id"]:
-            pytest.skip("Async workflow not discovered")
-
         response = e2e_client.post(
             "/api/workflows/execute",
             headers=platform_admin.headers,
@@ -172,9 +162,6 @@ class TestAsyncExecution:
 
     def test_async_execution_eventually_completes(self, e2e_client, platform_admin, async_workflow):
         """Poll until async execution completes."""
-        if not async_workflow["id"]:
-            pytest.skip("Async workflow not discovered")
-
         # Start execution
         response = e2e_client.post(
             "/api/workflows/execute",
@@ -300,9 +287,6 @@ async def e2e_cancellation_workflow(sleep_seconds: int = 30):
 
     def test_cancel_running_workflow(self, e2e_client, platform_admin, cancellable_workflow):
         """Platform admin can cancel a running execution."""
-        if not cancellable_workflow["id"]:
-            pytest.skip("Cancellable workflow not discovered")
-
         # Start execution
         response = e2e_client.post(
             "/api/workflows/execute",
@@ -352,9 +336,6 @@ async def e2e_cancellation_workflow(sleep_seconds: int = 30):
         self, e2e_client, platform_admin, cancellable_workflow
     ):
         """Cancelling an already-cancelled execution is idempotent (returns 200)."""
-        if not cancellable_workflow["id"]:
-            pytest.skip("Cancellable workflow not discovered")
-
         # Start execution
         response = e2e_client.post(
             "/api/workflows/execute",
@@ -429,9 +410,6 @@ async def e2e_cancellation_workflow(sleep_seconds: int = 30):
         Note: The API currently returns 200 for cancel requests regardless of
         execution ownership. This test documents the current behavior.
         """
-        if not async_workflow["id"]:
-            pytest.skip("Async workflow not discovered")
-
         # Platform admin executes workflow
         response = e2e_client.post(
             "/api/workflows/execute",
@@ -460,15 +438,11 @@ class TestExecutionDetails:
     """Test execution details retrieval with access control."""
 
     def test_org_user_gets_own_execution_details(
-        self, e2e_client, org1_user, async_workflow
+        self, e2e_client, org1_user
     ):
         """Org user can retrieve details of their own execution."""
-        if not async_workflow["id"]:
-            pytest.skip("Async workflow not discovered")
-
-        # Org user executes workflow via form (simulating form submission)
-        # For this test, we'll use the execution API directly if available
-        # or verify via the executions list
+        # This test verifies org users can see their own executions
+        # It checks existing executions rather than creating new ones
         response = e2e_client.get(
             "/api/executions",
             headers=org1_user.headers,
@@ -493,9 +467,6 @@ class TestExecutionDetails:
         self, e2e_client, platform_admin, org1_user, sync_workflow
     ):
         """Org user cannot access another user's execution details."""
-        if not sync_workflow["id"]:
-            pytest.skip("Sync workflow not discovered")
-
         # Platform admin executes workflow
         response = e2e_client.post(
             "/api/workflows/execute",
@@ -520,9 +491,6 @@ class TestExecutionDetails:
         self, e2e_client, platform_admin, org1_user, sync_workflow
     ):
         """Org users cannot access execution variables endpoint."""
-        if not sync_workflow["id"]:
-            pytest.skip("Sync workflow not discovered")
-
         # Platform admin executes workflow
         response = e2e_client.post(
             "/api/workflows/execute",
@@ -547,9 +515,6 @@ class TestExecutionDetails:
         self, e2e_client, platform_admin, sync_workflow
     ):
         """Platform admin can access execution variables."""
-        if not sync_workflow["id"]:
-            pytest.skip("Sync workflow not discovered")
-
         # Platform admin executes workflow
         response = e2e_client.post(
             "/api/workflows/execute",
@@ -576,9 +541,6 @@ class TestExecutionDetails:
         self, e2e_client, platform_admin, sync_workflow
     ):
         """Progressive result loading endpoint works correctly."""
-        if not sync_workflow["id"]:
-            pytest.skip("Sync workflow not discovered")
-
         response = e2e_client.post(
             "/api/workflows/execute",
             headers=platform_admin.headers,
@@ -607,9 +569,6 @@ class TestExecutionDetails:
         self, e2e_client, platform_admin, sync_workflow
     ):
         """Progressive logs loading endpoint works correctly."""
-        if not sync_workflow["id"]:
-            pytest.skip("Sync workflow not discovered")
-
         response = e2e_client.post(
             "/api/workflows/execute",
             headers=platform_admin.headers,
@@ -646,9 +605,6 @@ class TestExecutionLogAccess:
         self, e2e_client, platform_admin, org1_user, sync_workflow
     ):
         """Org user cannot access debug log level for others' executions."""
-        if not sync_workflow["id"]:
-            pytest.skip("Sync workflow not discovered")
-
         # Platform admin executes workflow
         response = e2e_client.post(
             "/api/workflows/execute",
@@ -680,9 +636,6 @@ class TestExecutionLogAccess:
         self, e2e_client, platform_admin, sync_workflow
     ):
         """Platform admin can access all log levels including debug."""
-        if not sync_workflow["id"]:
-            pytest.skip("Sync workflow not discovered")
-
         # Execute workflow
         response = e2e_client.post(
             "/api/workflows/execute",
@@ -711,10 +664,6 @@ class TestExecutionLogAccess:
 class TestExecutionConcurrency:
     """Test concurrent execution behavior."""
 
-    @pytest.mark.skipif(
-        os.environ.get("CI") == "true" or os.environ.get("GITHUB_ACTIONS") == "true",
-        reason="Timing-sensitive test is flaky in CI environments"
-    )
     def test_concurrent_executions_not_blocking(
         self, e2e_client, platform_admin, async_workflow
     ):
@@ -723,9 +672,6 @@ class TestExecutionConcurrency:
         Validates using database timestamps rather than wall-clock time to avoid
         flakiness from CI container/network overhead.
         """
-        if not async_workflow["id"]:
-            pytest.skip("Async workflow not discovered")
-
         from datetime import datetime
 
         # Submit 3 executions with 2-second delays each
@@ -958,7 +904,7 @@ async def {workflow_name}():
         workflow_path = f"{workflow_name}.py"
 
         # Step 1: Create module v1
-        module_v1_content = f'''"""Hot Reload Module v1"""
+        module_v1_content = '''"""Hot Reload Module v1"""
 
 def get_value():
     return "original"
@@ -1021,7 +967,7 @@ async def {workflow_name}():
                 f"Expected 'original', got: {result}"
 
             # Step 4: Update module to v2
-            module_v2_content = f'''"""Hot Reload Module v2"""
+            module_v2_content = '''"""Hot Reload Module v2"""
 
 def get_value():
     return "updated"

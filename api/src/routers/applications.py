@@ -254,7 +254,10 @@ class ApplicationRepository(OrgScopedRepository[Application]):
         await self.session.flush()
         await self.session.refresh(application)
 
-        logger.info(f"Published application {app_id} with version {new_version.id}")
+        logger.info(
+            f"Published application {app_id} with version {new_version.id} "
+            f"by user {published_by}"
+        )
         return application
 
 

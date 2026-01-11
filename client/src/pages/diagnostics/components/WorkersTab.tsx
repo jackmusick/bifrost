@@ -1,12 +1,13 @@
-import { useState } from "react";
-import { RefreshCw, Loader2, WifiOff, Server, Activity } from "lucide-react";
+import { useState, useMemo } from "react";
+import { RefreshCw, Loader2, WifiOff, Server, Activity, Settings } from "lucide-react";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
-import { usePools, useQueueStatus, usePoolStats } from "@/services/workers";
+import { usePools, useQueueStatus, usePoolConfig } from "@/services/workers";
 import { getErrorMessage } from "@/lib/api-error";
-import { QueueSection } from "./QueueSection";
+import { QueueBadge } from "./QueueBadge";
 import { PoolCard } from "./WorkerCard";
+import { PoolConfigForm } from "./PoolConfigForm";
 import { useWorkerWebSocket } from "../hooks/useWorkerWebSocket";
 
 export function WorkersTab() {
@@ -24,10 +25,12 @@ export function WorkersTab() {
 		refetch: refetchQueue,
 	} = useQueueStatus({ limit: 50 });
 
-	const { data: statsData } = usePoolStats();
+	// Global pool configuration
+	const { data: configData } = usePoolConfig();
+	const [configDialogOpen, setConfigDialogOpen] = useState(false);
 
 	// Real-time updates via WebSocket
-	const { isConnected } = useWorkerWebSocket();
+	const { pools: wsPools, isConnected, scalingStates, progressStates } = useWorkerWebSocket();
 
 	const [isRefreshing, setIsRefreshing] = useState(false);
 
@@ -40,8 +43,43 @@ export function WorkersTab() {
 		}
 	};
 
-	const pools = poolsData?.pools || [];
+	// Use WebSocket pools if available (real-time), fall back to REST API
+	const restPools = poolsData?.pools || [];
+	const pools = wsPools.length > 0 ? wsPools : restPools;
 	const queueItems = queueData?.items || [];
+	const currentMin = configData?.new_min ?? 2;
+	const currentMax = configData?.new_max ?? 10;
+
+	// Compute stats from pools data (real-time from WebSocket)
+	const statsData = useMemo(() => {
+		if (pools.length === 0) return null;
+
+		let totalProcesses = 0;
+		let totalIdle = 0;
+		let totalBusy = 0;
+
+		for (const pool of pools) {
+			// PoolDetail has processes array
+			if ("processes" in pool && Array.isArray(pool.processes)) {
+				totalProcesses += pool.processes.length;
+				totalIdle += pool.processes.filter((p) => p.state === "idle").length;
+				totalBusy += pool.processes.filter((p) => p.state === "busy").length;
+			} else {
+				// PoolSummary has counts directly
+				const summary = pool as { pool_size?: number; idle_count?: number; busy_count?: number };
+				totalProcesses += summary.pool_size ?? 0;
+				totalIdle += summary.idle_count ?? 0;
+				totalBusy += summary.busy_count ?? 0;
+			}
+		}
+
+		return {
+			total_pools: pools.length,
+			total_processes: totalProcesses,
+			total_idle: totalIdle,
+			total_busy: totalBusy,
+		};
+	}, [pools]);
 
 	return (
 		<div className="space-y-6">
@@ -66,9 +104,9 @@ export function WorkersTab() {
 				</Alert>
 			)}
 
-			{/* Header with Refresh */}
+			{/* Header with Refresh, Queue Badge, and Global Config */}
 			<div className="flex items-center justify-between">
-				<div className="flex items-center gap-2">
+				<div className="flex items-center gap-3">
 					<h2 className="text-lg font-semibold">Process Pools</h2>
 					{isConnected && (
 						<span className="flex items-center gap-1 text-xs text-green-600">
@@ -76,18 +114,32 @@ export function WorkersTab() {
 							Live
 						</span>
 					)}
+					<QueueBadge items={queueItems} isLoading={queueLoading} />
 				</div>
-				<Button
-					variant="outline"
-					size="sm"
-					onClick={handleRefresh}
-					disabled={isRefreshing || poolsLoading}
-				>
-					<RefreshCw
-						className={`h-4 w-4 mr-2 ${isRefreshing ? "animate-spin" : ""}`}
-					/>
-					Refresh
-				</Button>
+				<div className="flex items-center gap-2">
+					<span className="text-sm text-muted-foreground">
+						Workers: {currentMin}-{currentMax}
+					</span>
+					<Button
+						variant="outline"
+						size="sm"
+						onClick={() => setConfigDialogOpen(true)}
+					>
+						<Settings className="h-4 w-4 mr-2" />
+						Configure
+					</Button>
+					<Button
+						variant="outline"
+						size="sm"
+						onClick={handleRefresh}
+						disabled={isRefreshing || poolsLoading}
+					>
+						<RefreshCw
+							className={`h-4 w-4 mr-2 ${isRefreshing ? "animate-spin" : ""}`}
+						/>
+						Refresh
+					</Button>
+				</div>
 			</div>
 
 			{/* Pool Stats Summary */}
@@ -132,13 +184,6 @@ export function WorkersTab() {
 				</div>
 			)}
 
-			{/* Queue Section */}
-			<QueueSection
-				items={queueItems}
-				isLoading={queueLoading}
-				onRefresh={refetchQueue}
-			/>
-
 			{/* Pools List */}
 			{poolsLoading && pools.length === 0 ? (
 				<div className="flex items-center justify-center py-12">
@@ -159,10 +204,23 @@ export function WorkersTab() {
 			) : (
 				<div className="space-y-4">
 					{pools.map((pool) => (
-						<PoolCard key={pool.worker_id} pool={pool} />
+						<PoolCard
+							key={pool.worker_id}
+							pool={pool}
+							scalingState={scalingStates.get(pool.worker_id)}
+							progressState={progressStates.get(pool.worker_id)}
+						/>
 					))}
 				</div>
 			)}
+
+			{/* Global Pool Config Dialog */}
+			<PoolConfigForm
+				currentMin={currentMin}
+				currentMax={currentMax}
+				open={configDialogOpen}
+				onOpenChange={setConfigDialogOpen}
+			/>
 		</div>
 	);
 }
