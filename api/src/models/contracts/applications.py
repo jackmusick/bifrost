@@ -15,6 +15,8 @@ from uuid import UUID
 from pydantic import BaseModel, ConfigDict, Field, field_serializer, field_validator, model_validator
 import re
 
+from src.models.contracts.app_components import PageDefinition
+
 # ==================== APPLICATION MODELS ====================
 
 
@@ -486,35 +488,7 @@ class AppPageWithComponents(AppPageResponse):
     )
 
 
-# ==================== EXPORT/IMPORT MODELS ====================
-
-
-class ApplicationExport(BaseModel):
-    """Full application export for GitHub sync/portability."""
-
-    # App metadata
-    name: str
-    slug: str
-    description: str | None
-    icon: str | None
-    navigation: dict[str, Any]
-    global_data_sources: list[dict[str, Any]]
-    global_variables: dict[str, Any]
-    permissions: dict[str, Any]
-    styles: str | None = None  # App-level CSS styles (global for entire application)
-
-    # Pages with their component trees
-    pages: list[dict[str, Any]] = Field(
-        description="Array of page definitions with nested layout/components"
-    )
-
-    # Export metadata
-    export_version: str = Field(default="1.0", description="Export format version")
-    exported_at: datetime | None = None
-
-    @field_serializer("exported_at")
-    def serialize_dt(self, dt: datetime | None) -> str | None:
-        return dt.isoformat() if dt else None
+# ==================== IMPORT MODELS ====================
 
 
 class ApplicationImport(BaseModel):
@@ -532,4 +506,4 @@ class ApplicationImport(BaseModel):
     global_data_sources: list[dict[str, Any]] = Field(default_factory=list)
     global_variables: dict[str, Any] = Field(default_factory=dict)
     permissions: dict[str, Any] = Field(default_factory=dict)
-    pages: list[dict[str, Any]] = Field(description="Array of page definitions with nested layout/components")
+    pages: list[PageDefinition] = Field(description="Array of page definitions with nested layout/components")

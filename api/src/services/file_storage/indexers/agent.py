@@ -16,36 +16,42 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.models import Workflow
 from src.models.orm import Agent, AgentTool, AgentDelegation
+from src.models.contracts.agents import AgentPublic
 
 logger = logging.getLogger(__name__)
 
 
-def _serialize_agent_to_json(agent: Agent) -> bytes:
+def _serialize_agent_to_json(
+    agent: Agent,
+    workflow_map: dict[str, str] | None = None
+) -> bytes:
     """
-    Serialize an Agent to JSON bytes.
+    Serialize an Agent to JSON bytes using Pydantic model_dump.
+
+    Uses AgentPublic.model_dump() with serialization context to support
+    portable workflow refs (UUID → path::function_name transformation).
 
     Args:
-        agent: Agent ORM instance
+        agent: Agent ORM instance with tools relationship loaded
+        workflow_map: Optional mapping of workflow UUID → portable ref.
+                      If provided, tool_ids are transformed.
 
     Returns:
         JSON serialized as UTF-8 bytes
     """
-    agent_data = {
-        "id": str(agent.id),
-        "name": agent.name,
-        "description": agent.description,
-        "system_prompt": agent.system_prompt,
-        "channels": agent.channels,
-        "access_level": agent.access_level.value if agent.access_level else None,
-        "is_active": agent.is_active,
-        "is_coding_mode": agent.is_coding_mode,
-        "is_system": agent.is_system,
-        "knowledge_sources": agent.knowledge_sources,
-        "system_tools": agent.system_tools,
-        "created_by": agent.created_by,
-        "created_at": agent.created_at.isoformat() + "Z",
-        "updated_at": agent.updated_at.isoformat() + "Z",
-    }
+    # Convert ORM to Pydantic model (uses from_attributes=True and ORM properties)
+    agent_public = AgentPublic.model_validate(agent)
+
+    # Serialize with context for portable refs
+    context = {"workflow_map": workflow_map} if workflow_map else None
+    agent_data = agent_public.model_dump(mode="json", context=context, exclude_none=True)
+
+    # Add export metadata if we transformed refs
+    if workflow_map:
+        agent_data["_export"] = {
+            "workflow_refs": ["tool_ids.*"],
+            "version": "1.0"
+        }
 
     return json.dumps(agent_data, indent=2).encode("utf-8")
 
@@ -98,6 +104,20 @@ class AgentIndexer:
         except json.JSONDecodeError:
             logger.warning(f"Invalid JSON in agent file: {path}")
             return False
+
+        # Check for portable refs from export and resolve them to UUIDs
+        export_meta = agent_data.pop("_export", None)
+        if export_meta and "workflow_refs" in export_meta:
+            from src.services.file_storage.ref_translation import (
+                build_ref_to_uuid_map,
+                transform_path_refs_to_uuids,
+            )
+            ref_to_uuid = await build_ref_to_uuid_map(self.db)
+            unresolved = transform_path_refs_to_uuids(
+                agent_data, export_meta["workflow_refs"], ref_to_uuid
+            )
+            if unresolved:
+                logger.warning(f"Unresolved portable refs in {path}: {unresolved}")
 
         name = agent_data.get("name")
         if not name:

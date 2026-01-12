@@ -244,6 +244,54 @@ services:
     profiles:
       - e2e  # Only start in E2E mode
 
+  # Scheduler (Test) - Only started for E2E tests
+  # Handles background jobs like GitHub sync via Redis pubsub
+  scheduler:
+    build:
+      context: .
+      dockerfile: api/Dockerfile.dev
+    container_name: bifrost-test-scheduler
+    environment:
+      # Database via PgBouncer (matches production architecture)
+      BIFROST_DATABASE_URL: postgresql+asyncpg://bifrost:bifrost_test@pgbouncer:5432/bifrost_test
+      BIFROST_DATABASE_URL_SYNC: postgresql://bifrost:bifrost_test@pgbouncer:5432/bifrost_test
+      BIFROST_RABBITMQ_URL: amqp://bifrost:bifrost_test@rabbitmq:5672/
+      BIFROST_REDIS_URL: redis://redis:6379/0
+      BIFROST_SECRET_KEY: test-secret-key-for-e2e-testing-must-be-32-chars
+      BIFROST_ENVIRONMENT: testing
+      # S3 configuration for MinIO
+      BIFROST_S3_BUCKET: bifrost-test
+      BIFROST_S3_ENDPOINT_URL: http://minio:9000
+      BIFROST_S3_ACCESS_KEY: bifrost
+      BIFROST_S3_SECRET_KEY: bifrost_test_key
+      BIFROST_S3_REGION: us-east-1
+      # GitHub E2E test configuration
+      GITHUB_TEST_PAT: ${GITHUB_TEST_PAT:-}
+      GITHUB_TEST_REPO: ${GITHUB_TEST_REPO:-jackmusick/e2e-test-workspace}
+    volumes:
+      - ./api/src:/app/src:ro
+      - ./api/shared:/app/shared:ro
+      - ./api/bifrost:/app/bifrost:ro
+      - ./api/bifrost_sdk:/app/bifrost_sdk:ro
+      - ./api/platform:/app/platform:ro
+      - test-mounts:/mounts
+    depends_on:
+      pgbouncer:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      minio-init:
+        condition: service_completed_successfully
+      api:
+        condition: service_healthy
+    # Entrypoint handles permissions; run as root so it can fix volume ownership
+    user: root
+    command: ["python", "-m", "src.scheduler.main"]
+    profiles:
+      - e2e  # Only start in E2E mode
+
   # Coding Agent (Test) - Only started for E2E tests
   # Dedicated container for Claude Agent SDK - SDK blocks the event loop for 20-30s
   # during initialization, which would cause liveness probe failures in the API

@@ -101,6 +101,22 @@ class Agent(Base):
         Index("ix_agents_is_active", "is_active"),
     )
 
+    # Computed properties for Pydantic from_attributes compatibility
+    @property
+    def tool_ids(self) -> list[str]:
+        """List of workflow IDs used as tools."""
+        return [str(t.id) for t in self.tools]
+
+    @property
+    def delegated_agent_ids(self) -> list[str]:
+        """List of agent IDs this agent can delegate to."""
+        return [str(a.id) for a in self.delegated_agents]
+
+    @property
+    def role_ids(self) -> list[str]:
+        """List of role IDs that can access this agent."""
+        return [str(r.id) for r in self.roles]
+
 
 class AgentTool(Base):
     """Agent-Tool (Workflow) association table."""

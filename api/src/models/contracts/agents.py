@@ -137,6 +137,14 @@ class AgentPublic(BaseModel):
     def serialize_dt(self, dt: datetime) -> str:
         return dt.isoformat()
 
+    @field_serializer("tool_ids")
+    def serialize_tool_refs(self, value: list[str], info: Any) -> list[str]:
+        """Transform tool UUIDs to portable refs using serialization context."""
+        if not value or not info.context:
+            return value
+        workflow_map = info.context.get("workflow_map", {})
+        return [workflow_map.get(v, v) for v in value]
+
 
 class AgentSummary(BaseModel):
     """Lightweight agent summary for listings."""

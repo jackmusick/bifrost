@@ -19,6 +19,66 @@ from src.models.orm.applications import Application
 logger = logging.getLogger(__name__)
 
 
+def _serialize_app_to_json(
+    app: Application,
+    pages_data: list[dict[str, Any]],
+    workflow_map: dict[str, str] | None = None,
+) -> bytes:
+    """
+    Serialize an Application to JSON bytes with portable workflow refs.
+
+    Uses PageDefinition.model_dump() with serialization context to transform
+    workflow UUIDs to portable refs (path::function_name format).
+
+    Args:
+        app: Application ORM instance
+        pages_data: Already converted page data as list of dicts
+        workflow_map: Optional mapping of workflow UUID -> portable ref.
+                      If provided, workflow references are transformed.
+
+    Returns:
+        JSON serialized as UTF-8 bytes
+    """
+    from src.models.contracts.app_components import PageDefinition
+
+    # Convert pages to typed PageDefinition models for proper serialization
+    context = {"workflow_map": workflow_map} if workflow_map else None
+
+    serialized_pages = []
+    for page_dict in pages_data:
+        # Validate and serialize through typed model
+        page_def = PageDefinition.model_validate(page_dict)
+        serialized_pages.append(
+            page_def.model_dump(mode="json", context=context, exclude_none=True)
+        )
+
+    app_data: dict[str, Any] = {
+        "name": app.name,
+        "slug": app.slug,
+        "description": app.description,
+        "icon": app.icon,
+        "navigation": app.navigation or {},
+        "global_data_sources": app.global_data_sources or [],
+        "global_variables": app.global_variables or {},
+        "permissions": app.permissions or {},
+        "pages": serialized_pages,
+        "export_version": "1.0",
+    }
+
+    # Add export metadata if we transformed refs
+    if workflow_map:
+        app_data["_export"] = {
+            "workflow_refs": [
+                "pages.*.layout..*.props.workflow_id",
+                "pages.*.data_sources.*.workflow_id",
+                "pages.*.launch_workflow_id",
+            ],
+            "version": "1.0",
+        }
+
+    return json.dumps(app_data, indent=2).encode("utf-8")
+
+
 class AppIndexer:
     """
     Indexes .app.json files and synchronizes with the database.
@@ -64,6 +124,21 @@ class AppIndexer:
         except json.JSONDecodeError:
             logger.warning(f"Invalid JSON in app file: {path}")
             return False
+
+        # Check for portable refs from export and resolve them to UUIDs
+        export_meta = app_data.pop("_export", None)
+        if export_meta and "workflow_refs" in export_meta:
+            from src.services.file_storage.ref_translation import (
+                build_ref_to_uuid_map,
+                transform_path_refs_to_uuids,
+            )
+
+            ref_to_uuid = await build_ref_to_uuid_map(self.db)
+            unresolved = transform_path_refs_to_uuids(
+                app_data, export_meta["workflow_refs"], ref_to_uuid
+            )
+            if unresolved:
+                logger.warning(f"Unresolved portable refs in {path}: {unresolved}")
 
         name = app_data.get("name")
         if not name:

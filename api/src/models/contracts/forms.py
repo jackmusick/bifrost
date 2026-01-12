@@ -104,6 +104,17 @@ class FormField(BaseModel):
 
         return self
 
+    @field_serializer("data_provider_id")
+    def serialize_data_provider_ref(self, value: UUID | None, info: Any) -> str | None:
+        """Transform UUID to portable ref using serialization context."""
+        if not value:
+            return None
+        value_str = str(value)
+        if not info.context:
+            return value_str
+        workflow_map = info.context.get("workflow_map", {})
+        return workflow_map.get(value_str, value_str)
+
 
 class FormSchema(BaseModel):
     """Form schema with field definitions"""
@@ -266,45 +277,32 @@ class FormPublic(BaseModel):
 
         # It's an ORM object
         if hasattr(data, 'fields') and data.fields:
-            # Build form_schema from fields relationship
-            fields_data = []
+            # Build FormField objects from ORM fields relationship
+            # This ensures @field_serializer decorators are used during model_dump()
+            form_fields = []
             for field in sorted(data.fields, key=lambda f: f.position):
-                field_dict = {
-                    "name": field.name,
-                    "type": field.type,
-                    "required": field.required,
-                }
-                # Add optional fields
-                if field.label:
-                    field_dict["label"] = field.label
-                if field.placeholder:
-                    field_dict["placeholder"] = field.placeholder
-                if field.help_text:
-                    field_dict["help_text"] = field.help_text
-                if field.default_value is not None:
-                    field_dict["default_value"] = field.default_value
-                if field.options:
-                    field_dict["options"] = field.options
-                if field.data_provider_id:
-                    field_dict["data_provider_id"] = str(field.data_provider_id)
-                    # Only include data_provider_inputs if data_provider_id is set
-                    # (validation requires both to be set together)
-                    if field.data_provider_inputs:
-                        field_dict["data_provider_inputs"] = field.data_provider_inputs
-                if field.visibility_expression:
-                    field_dict["visibility_expression"] = field.visibility_expression
-                if field.validation:
-                    field_dict["validation"] = field.validation
-                if field.allowed_types:
-                    field_dict["allowed_types"] = field.allowed_types
-                if field.multiple is not None:
-                    field_dict["multiple"] = field.multiple
-                if field.max_size_mb:
-                    field_dict["max_size_mb"] = field.max_size_mb
-                if field.content:
-                    field_dict["content"] = field.content
+                form_field = FormField(
+                    name=field.name,
+                    type=field.type,
+                    required=field.required,
+                    label=field.label,
+                    placeholder=field.placeholder,
+                    help_text=field.help_text,
+                    default_value=field.default_value,
+                    options=field.options,
+                    data_provider_id=field.data_provider_id,
+                    data_provider_inputs=field.data_provider_inputs,
+                    visibility_expression=field.visibility_expression,
+                    validation=field.validation,
+                    allowed_types=field.allowed_types,
+                    multiple=field.multiple,
+                    max_size_mb=field.max_size_mb,
+                    content=field.content,
+                )
+                form_fields.append(form_field)
 
-                fields_data.append(field_dict)
+            # Create FormSchema with FormField objects
+            form_schema = FormSchema(fields=form_fields)
 
             # Create a new dict with form_schema computed
             data_dict = {
@@ -315,7 +313,7 @@ class FormPublic(BaseModel):
                 "launch_workflow_id": data.launch_workflow_id,
                 "default_launch_params": data.default_launch_params,
                 "allowed_query_params": data.allowed_query_params,
-                "form_schema": {"fields": fields_data},
+                "form_schema": form_schema,
                 "access_level": data.access_level,
                 "organization_id": data.organization_id,
                 "is_active": data.is_active,
@@ -341,3 +339,11 @@ class FormPublic(BaseModel):
     @field_serializer("created_at", "updated_at")
     def serialize_dt(self, dt: datetime | None) -> str | None:
         return dt.isoformat() if dt else None
+
+    @field_serializer("workflow_id", "launch_workflow_id")
+    def serialize_workflow_ref(self, value: str | None, info: Any) -> str | None:
+        """Transform UUID to portable ref using serialization context."""
+        if not value or not info.context:
+            return value
+        workflow_map = info.context.get("workflow_map", {})
+        return workflow_map.get(value, value)

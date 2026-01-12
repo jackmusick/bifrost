@@ -15,81 +15,46 @@ from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.models import Form, FormField as FormFieldORM, Workflow
+from src.models.contracts.forms import FormPublic
 
 logger = logging.getLogger(__name__)
 
 
-def _serialize_form_to_json(form: Form) -> bytes:
+def _serialize_form_to_json(
+    form: Form,
+    workflow_map: dict[str, str] | None = None
+) -> bytes:
     """
-    Serialize a Form (with fields) to JSON bytes.
+    Serialize a Form (with fields) to JSON bytes using Pydantic model_dump.
 
-    Uses the same format as _write_form_to_file in routers/forms.py
-    for consistency with file-based storage.
+    Uses FormPublic.model_dump() with serialization context to support
+    portable workflow refs (UUID → path::function_name transformation).
 
     Args:
         form: Form ORM instance with fields relationship loaded
+        workflow_map: Optional mapping of workflow UUID → portable ref.
+                      If provided, workflow references are transformed.
 
     Returns:
         JSON serialized as UTF-8 bytes
     """
-    # Convert fields to form_schema format (matches _fields_to_form_schema in forms.py)
-    fields_data = []
-    for field in form.fields:
-        field_data: dict[str, Any] = {
-            "name": field.name,
-            "type": field.type,
-            "required": field.required,
+    # Convert ORM to Pydantic model (triggers @model_validator to build form_schema)
+    form_public = FormPublic.model_validate(form)
+
+    # Serialize with context for portable refs
+    context = {"workflow_map": workflow_map} if workflow_map else None
+    form_data = form_public.model_dump(mode="json", context=context, exclude_none=True)
+
+    # Add export metadata if we transformed refs
+    if workflow_map:
+        form_data["_export"] = {
+            "workflow_refs": [
+                "workflow_id",
+                "launch_workflow_id",
+                "form_schema.fields.*.data_provider_id"
+            ],
+            "version": "1.0"
         }
-
-        # Add optional fields if they're set
-        if field.label:
-            field_data["label"] = field.label
-        if field.placeholder:
-            field_data["placeholder"] = field.placeholder
-        if field.help_text:
-            field_data["help_text"] = field.help_text
-        if field.default_value is not None:
-            field_data["default_value"] = field.default_value
-        if field.options:
-            field_data["options"] = field.options
-        if field.data_provider_id:
-            field_data["data_provider_id"] = str(field.data_provider_id)
-        if field.data_provider_inputs:
-            field_data["data_provider_inputs"] = field.data_provider_inputs
-        if field.visibility_expression:
-            field_data["visibility_expression"] = field.visibility_expression
-        if field.validation:
-            field_data["validation"] = field.validation
-        if field.allowed_types:
-            field_data["allowed_types"] = field.allowed_types
-        if field.multiple is not None:
-            field_data["multiple"] = field.multiple
-        if field.max_size_mb:
-            field_data["max_size_mb"] = field.max_size_mb
-        if field.content:
-            field_data["content"] = field.content
-
-        fields_data.append(field_data)
-
-    form_schema = {"fields": fields_data}
-
-    # Build form JSON (matches _write_form_to_file format)
-    # Note: org_id, is_global, access_level are NOT written to JSON
-    # These are environment-specific and should only be set in the database
-    form_data = {
-        "id": str(form.id),
-        "name": form.name,
-        "description": form.description,
-        "workflow_id": form.workflow_id,
-        "launch_workflow_id": form.launch_workflow_id,
-        "form_schema": form_schema,
-        "is_active": form.is_active,
-        "created_by": form.created_by,
-        "created_at": form.created_at.isoformat() + "Z",
-        "updated_at": form.updated_at.isoformat() + "Z",
-        "allowed_query_params": form.allowed_query_params,
-        "default_launch_params": form.default_launch_params,
-    }
 
     return json.dumps(form_data, indent=2).encode("utf-8")
 
@@ -163,6 +128,20 @@ class FormIndexer:
         except json.JSONDecodeError:
             logger.warning(f"Invalid JSON in form file: {path}")
             return False
+
+        # Check for portable refs from export and resolve them to UUIDs
+        export_meta = form_data.pop("_export", None)
+        if export_meta and "workflow_refs" in export_meta:
+            from src.services.file_storage.ref_translation import (
+                build_ref_to_uuid_map,
+                transform_path_refs_to_uuids,
+            )
+            ref_to_uuid = await build_ref_to_uuid_map(self.db)
+            unresolved = transform_path_refs_to_uuids(
+                form_data, export_meta["workflow_refs"], ref_to_uuid
+            )
+            if unresolved:
+                logger.warning(f"Unresolved portable refs in {path}: {unresolved}")
 
         name = form_data.get("name")
         if not name:

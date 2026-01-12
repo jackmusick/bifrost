@@ -16,6 +16,7 @@ class ToolCategory(str, Enum):
     WORKFLOW = "workflow"
     FILE = "file"
     FORM = "form"
+    AGENT = "agent"
     APP_BUILDER = "app_builder"
     DATA_PROVIDER = "data_provider"
     KNOWLEDGE = "knowledge"

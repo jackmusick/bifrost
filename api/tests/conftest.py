@@ -31,6 +31,7 @@ pytest_plugins = [
     "tests.e2e.fixtures.github_setup",  # GitHub E2E fixtures
     "tests.e2e.fixtures.llm_setup",  # LLM E2E fixtures
     "tests.e2e.fixtures.knowledge_setup",  # Knowledge store E2E fixtures
+    "tests.e2e.fixtures.entity_setup",  # Entity creation fixtures for portable refs tests
 ]
 
 

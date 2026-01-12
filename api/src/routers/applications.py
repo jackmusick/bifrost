@@ -13,6 +13,7 @@ are in separate routers (app_pages.py, app_components.py).
 """
 
 import logging
+from typing import Any
 from uuid import UUID
 
 from fastapi import APIRouter, HTTPException, Query, status
@@ -25,7 +26,6 @@ from src.models.contracts.applications import (
     ApplicationCreate,
     ApplicationDefinition,
     ApplicationDraftSave,
-    ApplicationExport,
     ApplicationImport,
     ApplicationListResponse,
     ApplicationPublic,
@@ -642,7 +642,6 @@ async def publish_application(
 
 @router.get(
     "/{app_id}/export",
-    response_model=ApplicationExport,
     summary="Export application to JSON",
 )
 async def export_application(
@@ -651,19 +650,22 @@ async def export_application(
     user: CurrentUser,
     version_id: UUID | None = Query(default=None, description="Version UUID to export (defaults to draft)"),
     scope: str | None = Query(default=None),
-) -> ApplicationExport:
+) -> dict[str, Any]:
     """
     Export full application to JSON for GitHub sync/portability.
 
     Returns the complete application structure including all pages and components.
     Pass version_id to export a specific version, or omit to export draft.
+
+    The export format uses typed PageDefinition models and includes `_export`
+    metadata for portable workflow refs resolution during import.
     """
     application = await get_application_by_id_or_404(ctx, app_id, scope)
 
     service = AppBuilderService(ctx.db)
     export_data = await service.export_application(application, version_id)
 
-    return ApplicationExport(**export_data)
+    return export_data
 
 
 @router.post(
@@ -685,7 +687,14 @@ async def import_application(
     Import application from JSON.
 
     Creates a new application with all pages and components from the exported data.
+    Handles `_export` metadata for portable workflow ref resolution.
     """
+    from src.services.file_storage.ref_translation import (
+        build_ref_to_uuid_map,
+        extract_export_metadata,
+        transform_path_refs_to_uuids,
+    )
+
     target_org_id = _resolve_target_org_safe(ctx, scope)
 
     # Check if application already exists
@@ -697,9 +706,29 @@ async def import_application(
             detail=f"Application with slug '{data.slug}' already exists",
         )
 
+    # Convert to dict for processing
+    import_data = data.model_dump(mode="json")
+
+    # Handle _export metadata for portable ref resolution
+    workflow_ref_fields = extract_export_metadata(import_data)
+    if workflow_ref_fields:
+        ref_to_uuid = await build_ref_to_uuid_map(ctx.db)
+        unresolved = transform_path_refs_to_uuids(
+            import_data,
+            workflow_ref_fields,
+            ref_to_uuid,
+            file_path=f"{data.slug}.app.json",
+        )
+        if unresolved:
+            # Log warning but don't fail - graceful degradation
+            unresolved_refs = [f"{u.field}: {u.ref}" for u in unresolved]
+            logger.warning(
+                f"Unresolved workflow refs in import of '{data.slug}': {unresolved_refs}"
+            )
+
     service = AppBuilderService(ctx.db)
     application = await service.import_application(
-        data.model_dump(),
+        import_data,
         organization_id=target_org_id,
         created_by=user.email,
     )

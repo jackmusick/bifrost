@@ -1,6 +1,6 @@
 # Forms & Agents Type Unification Plan
 
-## Status: MOSTLY COMPLETE - Minor Gaps Remain
+## Status: COMPLETE ✅
 
 ---
 
@@ -50,13 +50,11 @@ Note: Models work correctly for API serialization but don't inherit from a share
   - Re-exports FormFieldType, DataProviderInputMode, DataProviderInputConfig from v1.d.ts
   - Manual types kept where OpenAPI generator produces generic dict types
 
-### Phase 6: Add Agent MCP Tools ⚠️ MOSTLY COMPLETE
+### Phase 6: Add Agent MCP Tools ✅ COMPLETE
 
 - [x] **Task 6.1**: Agent MCP tools exist in `api/src/services/mcp_server/tools/agents.py`
   - `get_agent_schema`, `list_agents`, `get_agent`, `create_agent`, `update_agent`, `delete_agent`
-- [ ] **Task 6.2**: `ToolCategory.AGENT` missing from enum
-  - agents.py uses `ToolCategory.AGENT` but it's not defined in `tool_registry.py`
-  - Current enum only has: WORKFLOW, FILE, FORM, APP_BUILDER, DATA_PROVIDER, KNOWLEDGE, INTEGRATION, ORGANIZATION
+- [x] **Task 6.2**: `ToolCategory.AGENT` added to enum in `tool_registry.py`
 
 ### Phase 7: Verification ✅ COMPLETE
 
@@ -71,13 +69,7 @@ Note: Models work correctly for API serialization but don't inherit from a share
 
 ---
 
-## Remaining Work
-
-### Fix AGENT Tool Category
-
-- [ ] Add `AGENT = "agent"` to `ToolCategory` enum in `tool_registry.py`
-  - File: `api/src/services/mcp_server/tool_registry.py`
-  - Currently causes AttributeError when agent tools are registered
+## Remaining Work (Optional)
 
 ### Optional: Shared CamelModel Base
 
@@ -97,5 +89,5 @@ Note: This is low priority - current BaseModel with ConfigDict works correctly.
 - [x] `client-types.ts` cleaned up
 - [x] Agent MCP tools exist with full CRUD operations
 - [x] All verification passes (pyright, tsc, lint)
-- [ ] `ToolCategory.AGENT` added to enum
+- [x] `ToolCategory.AGENT` added to enum
 - [ ] (Optional) Forms and agents use shared CamelModel
