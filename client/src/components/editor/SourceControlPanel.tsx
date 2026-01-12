@@ -17,32 +17,17 @@ import {
 	ChevronDown,
 	ChevronRight,
 	History,
-	Trash2,
 	Circle,
 	CheckCircle2,
-	X,
 } from "lucide-react";
 import { formatDistanceToNow } from "date-fns";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
-import {
-	AlertDialog,
-	AlertDialogAction,
-	AlertDialogCancel,
-	AlertDialogContent,
-	AlertDialogDescription,
-	AlertDialogFooter,
-	AlertDialogHeader,
-	AlertDialogTitle,
-} from "@/components/ui/alert-dialog";
 import { cn } from "@/lib/utils";
 import { toast } from "sonner";
 import {
 	useGitStatus,
-	useRefreshGitStatus,
 	useGitCommits,
-	useDiscardUnpushedCommits,
-	useDiscardCommit,
 	useSyncPreview,
 	useSyncExecute,
 	type SyncPreviewResponse,
@@ -93,16 +78,7 @@ export function SourceControlPanel() {
 		0,
 	);
 
-	// Mutation hooks
-	const refreshStatus = useRefreshGitStatus();
-
-	// Use ref to hold the mutation to avoid callback dependency on mutation object
-	const refreshStatusRef = useRef(refreshStatus);
-	refreshStatusRef.current = refreshStatus;
-	const discardAllMutation = useDiscardUnpushedCommits();
-	const discardCommitMutation = useDiscardCommit();
-
-	// New API-only sync hooks
+	// Sync hooks
 	const syncPreviewMutation = useSyncPreview();
 	const syncExecuteMutation = useSyncExecute();
 	const queryClient = useQueryClient();
@@ -116,43 +92,37 @@ export function SourceControlPanel() {
 		}
 	}, [commitsData]);
 
-	const handleRefreshStatus = useCallback(async () => {
+	// Refresh status by invalidating queries and optionally refreshing sync preview
+	const handleRefreshWithPreview = useCallback(async () => {
 		// Prevent duplicate fetches using ref (synchronous check)
-		// This prevents React 18 strict mode double-calls from making duplicate HTTP requests
 		if (isLoadingRef.current) {
 			return;
 		}
 
 		isLoadingRef.current = true;
 		try {
-			// Use ref to avoid dependency on mutation object (which changes on every render)
-			await refreshStatusRef.current.mutateAsync({});
+			// Invalidate status query to refresh from server
+			await queryClient.invalidateQueries({
+				queryKey: ["get", "/api/github/status"],
+			});
+
+			// If we have a sync preview loaded, re-fetch it to get updated state
+			if (syncPreview && !syncPreview.is_empty) {
+				const preview = await syncPreviewMutation.mutateAsync();
+				setSyncPreview(preview);
+				setConflictResolutions({});
+				setOrphansConfirmed(false);
+			}
 		} catch (error) {
 			console.error("Failed to refresh Git status:", error);
 			toast.error("Failed to refresh Git status");
 		} finally {
 			isLoadingRef.current = false;
 		}
-	}, []); // Empty deps - uses ref instead
-
-	// Refresh that also re-fetches sync preview if one exists
-	const handleRefreshWithPreview = useCallback(async () => {
-		await handleRefreshStatus();
-		// If we have a sync preview loaded, re-fetch it to get updated state
-		if (syncPreview && !syncPreview.is_empty) {
-			try {
-				const preview = await syncPreviewMutation.mutateAsync();
-				setSyncPreview(preview);
-				setConflictResolutions({});
-				setOrphansConfirmed(false);
-			} catch (error) {
-				console.error("Failed to refresh sync preview:", error);
-			}
-		}
-	}, [handleRefreshStatus, syncPreview, syncPreviewMutation]);
+	}, [queryClient, syncPreview, syncPreviewMutation]);
 
 	// Set up event listeners for visibility changes and git status events
-	// Note: useGitStatus() already fetches data on mount, so we don't call handleRefreshStatus() here
+	// Note: useGitStatus() already fetches data on mount, so we don't call refresh here
 	useEffect(() => {
 		// Only set up listeners if source control panel is active
 		if (sidebarPanel !== "sourceControl") {
@@ -162,13 +132,13 @@ export function SourceControlPanel() {
 		// Set up event listeners for visibility and git status changes
 		const handleVisibilityChange = () => {
 			if (!document.hidden && sidebarPanel === "sourceControl") {
-				handleRefreshStatus();
+				handleRefreshWithPreview();
 			}
 		};
 
 		const handleGitStatusChanged = () => {
 			if (sidebarPanel === "sourceControl") {
-				handleRefreshStatus();
+				handleRefreshWithPreview();
 			}
 		};
 
@@ -185,7 +155,7 @@ export function SourceControlPanel() {
 				handleGitStatusChanged,
 			);
 		};
-	}, [sidebarPanel, handleRefreshStatus]);
+	}, [sidebarPanel, handleRefreshWithPreview]);
 
 	// Fetch sync preview (shows what will be pulled/pushed)
 	const handleFetchSyncPreview = async () => {
@@ -226,10 +196,10 @@ export function SourceControlPanel() {
 				});
 				toast.success("Already up to date");
 			} else {
-				const pullCount = preview.to_pull.length;
-				const pushCount = preview.to_push.length;
-				const conflictCount = preview.conflicts.length;
-				const orphanCount = preview.will_orphan.length;
+				const pullCount = preview.to_pull?.length ?? 0;
+				const pushCount = preview.to_push?.length ?? 0;
+				const conflictCount = preview.conflicts?.length ?? 0;
+				const orphanCount = preview.will_orphan?.length ?? 0;
 
 				let message = "";
 				if (pullCount > 0) message += `${pullCount} to pull`;
@@ -280,7 +250,8 @@ export function SourceControlPanel() {
 		if (!syncPreview) return;
 
 		// Check that all conflicts are resolved
-		const unresolvedConflicts = syncPreview.conflicts.filter(
+		const conflicts = syncPreview.conflicts ?? [];
+		const unresolvedConflicts = conflicts.filter(
 			(c) => !conflictResolutions[c.path]
 		);
 		if (unresolvedConflicts.length > 0) {
@@ -289,7 +260,8 @@ export function SourceControlPanel() {
 		}
 
 		// Check that orphans are confirmed if any
-		if (syncPreview.will_orphan.length > 0 && !orphansConfirmed) {
+		const willOrphan = syncPreview.will_orphan ?? [];
+		if (willOrphan.length > 0 && !orphansConfirmed) {
 			toast.error("Please confirm orphaned workflows before syncing");
 			return;
 		}
@@ -408,104 +380,6 @@ export function SourceControlPanel() {
 		}));
 	};
 
-	const handleDiscardAll = async () => {
-		try {
-			const result = await discardAllMutation.mutateAsync({});
-			if (result.success) {
-				appendTerminalOutput({
-					loggerOutput: [
-						{
-							level: "SUCCESS",
-							message: `Discarded ${result.discarded_commits?.length || 0} unpushed commit(s)`,
-							source: "git",
-						},
-					],
-					variables: {},
-					status: "success",
-					error: undefined,
-				});
-				await handleRefreshStatus();
-			} else {
-				appendTerminalOutput({
-					loggerOutput: [
-						{
-							level: "ERROR",
-							message: `Failed to discard commits: ${result.error || "Unknown error"}`,
-							source: "git",
-						},
-					],
-					variables: {},
-					status: "error",
-					error: result.error || undefined,
-				});
-			}
-		} catch (error) {
-			console.error("Failed to discard commits:", error);
-			appendTerminalOutput({
-				loggerOutput: [
-					{
-						level: "ERROR",
-						message: `Failed to discard commits: ${error instanceof Error ? error.message : String(error)}`,
-						source: "git",
-					},
-				],
-				variables: {},
-				status: "error",
-				error: error instanceof Error ? error.message : String(error),
-			});
-		}
-	};
-
-	const handleDiscardCommit = async (commitSha: string) => {
-		try {
-			const result = await discardCommitMutation.mutateAsync({
-				body: { commit_sha: commitSha },
-			});
-			if (result.success) {
-				appendTerminalOutput({
-					loggerOutput: [
-						{
-							level: "SUCCESS",
-							message: `Discarded ${result.discarded_commits?.length || 0} commit(s)`,
-							source: "git",
-						},
-					],
-					variables: {},
-					status: "success",
-					error: undefined,
-				});
-				await handleRefreshStatus();
-			} else {
-				appendTerminalOutput({
-					loggerOutput: [
-						{
-							level: "ERROR",
-							message: `Failed to discard commit: ${result.error || "Unknown error"}`,
-							source: "git",
-						},
-					],
-					variables: {},
-					status: "error",
-					error: result.error || undefined,
-				});
-			}
-		} catch (error) {
-			console.error("Failed to discard commit:", error);
-			appendTerminalOutput({
-				loggerOutput: [
-					{
-						level: "ERROR",
-						message: `Failed to discard commit: ${error instanceof Error ? error.message : String(error)}`,
-						source: "git",
-					},
-				],
-				variables: {},
-				status: "error",
-				error: error instanceof Error ? error.message : String(error),
-			});
-		}
-	};
-
 	// Show loading state while fetching initial status
 	if (isLoading || !status) {
 		return (
@@ -605,11 +479,11 @@ export function SourceControlPanel() {
 				</div>
 				<button
 					onClick={handleRefreshWithPreview}
-					disabled={refreshStatus.isPending || isSyncLoading}
+					disabled={isSyncLoading}
 					className="p-1.5 rounded hover:bg-muted/50 transition-colors disabled:opacity-50"
 					title="Refresh status"
 				>
-					{refreshStatus.isPending || isSyncLoading ? (
+					{isSyncLoading ? (
 						<Loader2 className="h-4 w-4 animate-spin" />
 					) : (
 						<RefreshCw className="h-4 w-4" />
@@ -623,11 +497,13 @@ export function SourceControlPanel() {
 					{(() => {
 						// Determine button state
 						const hasPreview = syncPreview && !syncPreview.is_empty;
+						const conflictsLength = syncPreview?.conflicts?.length ?? 0;
+						const willOrphanLength = syncPreview?.will_orphan?.length ?? 0;
 						const hasUnresolvedConflicts = hasPreview &&
-							syncPreview.conflicts.length > 0 &&
-							Object.keys(conflictResolutions).length < syncPreview.conflicts.length;
+							conflictsLength > 0 &&
+							Object.keys(conflictResolutions).length < conflictsLength;
 						const hasUnconfirmedOrphans = hasPreview &&
-							syncPreview.will_orphan.length > 0 && !orphansConfirmed;
+							willOrphanLength > 0 && !orphansConfirmed;
 						const canApply = hasPreview && !hasUnresolvedConflicts && !hasUnconfirmedOrphans;
 
 						// Format progress display
@@ -661,16 +537,16 @@ export function SourceControlPanel() {
 									{/* Show counts from preview or status */}
 									{hasPreview ? (
 										<div className="flex items-center gap-1.5 px-2 py-1 rounded-full bg-muted text-xs">
-											{syncPreview.to_pull.length > 0 && (
+											{(syncPreview.to_pull?.length ?? 0) > 0 && (
 												<>
 													<Download className="h-3 w-3" />
-													<span>{syncPreview.to_pull.length}</span>
+													<span>{syncPreview.to_pull?.length ?? 0}</span>
 												</>
 											)}
-											{syncPreview.to_push.length > 0 && (
+											{(syncPreview.to_push?.length ?? 0) > 0 && (
 												<>
 													<Upload className="h-3 w-3" />
-													<span>{syncPreview.to_push.length}</span>
+													<span>{syncPreview.to_push?.length ?? 0}</span>
 												</>
 											)}
 										</div>
@@ -727,36 +603,36 @@ export function SourceControlPanel() {
 				{syncPreview && !syncPreview.is_empty && (
 					<>
 						{/* Incoming changes (to pull) */}
-						{syncPreview.to_pull.length > 0 && (
+						{(syncPreview.to_pull?.length ?? 0) > 0 && (
 							<SyncActionList
 								title="Incoming"
 								icon={<Download className="h-4 w-4 text-blue-500 flex-shrink-0" />}
-								actions={syncPreview.to_pull}
+								actions={syncPreview.to_pull ?? []}
 							/>
 						)}
 
 						{/* Outgoing changes (to push) */}
-						{syncPreview.to_push.length > 0 && (
+						{(syncPreview.to_push?.length ?? 0) > 0 && (
 							<SyncActionList
 								title="Outgoing"
 								icon={<Upload className="h-4 w-4 text-green-500 flex-shrink-0" />}
-								actions={syncPreview.to_push}
+								actions={syncPreview.to_push ?? []}
 							/>
 						)}
 
 						{/* Conflicts */}
-						{syncPreview.conflicts.length > 0 && (
+						{(syncPreview.conflicts?.length ?? 0) > 0 && (
 							<ConflictList
-								conflicts={syncPreview.conflicts}
+								conflicts={syncPreview.conflicts ?? []}
 								resolutions={conflictResolutions}
 								onResolve={handleResolveConflict}
 							/>
 						)}
 
 						{/* Orphaned workflows warning */}
-						{syncPreview.will_orphan.length > 0 && (
+						{(syncPreview.will_orphan?.length ?? 0) > 0 && (
 							<OrphanWarning
-								orphans={syncPreview.will_orphan}
+								orphans={syncPreview.will_orphan ?? []}
 								confirmed={orphansConfirmed}
 								onConfirmChange={setOrphansConfirmed}
 							/>
@@ -769,13 +645,7 @@ export function SourceControlPanel() {
 					commits={commits}
 					totalCommits={totalCommits}
 					hasMore={hasMoreCommits}
-					isLoading={
-						isLoadingCommits ||
-						discardAllMutation.isPending ||
-						discardCommitMutation.isPending
-					}
-					onDiscardAll={handleDiscardAll}
-					onDiscardCommit={handleDiscardCommit}
+					isLoading={isLoadingCommits}
 				/>
 			</div>
 		</div>
@@ -1011,15 +881,13 @@ function OrphanWarning({
 }
 
 /**
- * Commits section with flex-sharing
+ * Commits section showing commit history
  */
 function CommitsSection({
 	commits,
 	totalCommits,
 	hasMore,
 	isLoading,
-	onDiscardAll,
-	onDiscardCommit,
 	onLoadMore,
 }: {
 	commits: Array<{
@@ -1032,43 +900,9 @@ function CommitsSection({
 	totalCommits?: number;
 	hasMore?: boolean;
 	isLoading?: boolean;
-	onDiscardAll?: () => Promise<void>;
-	onDiscardCommit?: (commitSha: string) => Promise<void>;
 	onLoadMore?: () => void;
 }) {
 	const [expanded, setExpanded] = useState(true);
-	const [hoveredCommit, setHoveredCommit] = useState<string | null>(null);
-	const [isDiscarding, setIsDiscarding] = useState(false);
-	const [showDiscardAllDialog, setShowDiscardAllDialog] = useState(false);
-	const [commitToDiscard, setCommitToDiscard] = useState<{
-		sha: string;
-		message: string;
-	} | null>(null);
-
-	const unpushedCommits = commits.filter((c) => !c.is_pushed);
-	const hasUnpushedCommits = unpushedCommits.length > 0;
-
-	const handleDiscardAll = async () => {
-		if (!onDiscardAll) return;
-		setIsDiscarding(true);
-		setShowDiscardAllDialog(false);
-		try {
-			await onDiscardAll();
-		} finally {
-			setIsDiscarding(false);
-		}
-	};
-
-	const handleDiscardCommit = async (commitSha: string) => {
-		if (!onDiscardCommit) return;
-		setIsDiscarding(true);
-		setCommitToDiscard(null);
-		try {
-			await onDiscardCommit(commitSha);
-		} finally {
-			setIsDiscarding(false);
-		}
-	};
 
 	return (
 		<div className={cn("border-t flex flex-col min-h-0", expanded && "flex-1")}>
@@ -1089,26 +923,6 @@ function CommitsSection({
 			</button>
 			{expanded && (
 				<div className="flex-1 flex flex-col overflow-hidden min-h-0">
-					{/* Discard All button */}
-					{hasUnpushedCommits && onDiscardAll && (
-						<div className="px-4 pt-2 pb-1 flex-shrink-0">
-							<Button
-								variant="outline"
-								size="sm"
-								className="w-full text-xs"
-								onClick={() => setShowDiscardAllDialog(true)}
-								disabled={isDiscarding || isLoading}
-							>
-								{isDiscarding ? (
-									<Loader2 className="h-3 w-3 mr-1.5 animate-spin" />
-								) : (
-									<Trash2 className="h-3 w-3 mr-1.5" />
-								)}
-								Discard All Unpushed ({unpushedCommits.length})
-							</Button>
-						</div>
-					)}
-
 					<div className="flex-1 overflow-y-auto px-4 py-2 min-h-0">
 						{/* Loading state on initial load */}
 						{isLoading && commits.length === 0 ? (
@@ -1131,8 +945,6 @@ function CommitsSection({
 									<div
 										key={commit.sha}
 										className="group flex items-start gap-2 px-2 py-2 rounded hover:bg-muted/30 transition-colors relative"
-										onMouseEnter={() => setHoveredCommit(commit.sha)}
-										onMouseLeave={() => setHoveredCommit(null)}
 									>
 										{commit.is_pushed ? (
 											<CheckCircle2 className="h-3.5 w-3.5 text-green-500 flex-shrink-0 mt-0.5" />
@@ -1148,25 +960,6 @@ function CommitsSection({
 												{new Date(commit.timestamp).toLocaleDateString()}
 											</p>
 										</div>
-										{/* Individual discard button - only for unpushed commits */}
-										{!commit.is_pushed &&
-											onDiscardCommit &&
-											hoveredCommit === commit.sha && (
-												<button
-													onClick={(e) => {
-														e.stopPropagation();
-														setCommitToDiscard({
-															sha: commit.sha,
-															message: commit.message,
-														});
-													}}
-													disabled={isDiscarding}
-													className="p-1 rounded hover:bg-destructive/10 transition-colors disabled:opacity-50"
-													title="Discard this commit and all newer commits"
-												>
-													<X className="h-3.5 w-3.5 text-destructive" />
-												</button>
-											)}
 									</div>
 								))}
 
@@ -1188,62 +981,6 @@ function CommitsSection({
 					</div>
 				</div>
 			)}
-
-			{/* Discard All Confirmation Dialog */}
-			<AlertDialog
-				open={showDiscardAllDialog}
-				onOpenChange={setShowDiscardAllDialog}
-			>
-				<AlertDialogContent>
-					<AlertDialogHeader>
-						<AlertDialogTitle>
-							Discard all unpushed commits?
-						</AlertDialogTitle>
-						<AlertDialogDescription>
-							This will permanently discard {unpushedCommits.length} unpushed
-							commit{unpushedCommits.length !== 1 ? "s" : ""} and reset your
-							local branch to match the remote. This action cannot be undone.
-						</AlertDialogDescription>
-					</AlertDialogHeader>
-					<AlertDialogFooter>
-						<AlertDialogCancel>Cancel</AlertDialogCancel>
-						<AlertDialogAction
-							onClick={handleDiscardAll}
-							className="bg-destructive hover:bg-destructive/90"
-						>
-							Discard All
-						</AlertDialogAction>
-					</AlertDialogFooter>
-				</AlertDialogContent>
-			</AlertDialog>
-
-			{/* Discard Commit Confirmation Dialog */}
-			<AlertDialog
-				open={commitToDiscard !== null}
-				onOpenChange={(open) => !open && setCommitToDiscard(null)}
-			>
-				<AlertDialogContent>
-					<AlertDialogHeader>
-						<AlertDialogTitle>Discard this commit?</AlertDialogTitle>
-						<AlertDialogDescription>
-							This will permanently discard "{commitToDiscard?.message}" and
-							all newer commits by resetting to its parent. This action cannot
-							be undone.
-						</AlertDialogDescription>
-					</AlertDialogHeader>
-					<AlertDialogFooter>
-						<AlertDialogCancel>Cancel</AlertDialogCancel>
-						<AlertDialogAction
-							onClick={() =>
-								commitToDiscard && handleDiscardCommit(commitToDiscard.sha)
-							}
-							className="bg-destructive hover:bg-destructive/90"
-						>
-							Discard Commit
-						</AlertDialogAction>
-					</AlertDialogFooter>
-				</AlertDialogContent>
-			</AlertDialog>
 		</div>
 	);
 }

@@ -21,8 +21,8 @@ from src.models.contracts.applications import (
     AppPageResponse,
     AppPageSummary,
     AppPageUpdate,
-    PageDefinition,
 )
+from src.models.contracts.app_components import PageDefinition
 from src.core.pubsub import publish_app_draft_update
 from src.models.orm.applications import AppPage, Application
 from src.services.app_builder_service import AppBuilderService

@@ -14,14 +14,14 @@ from uuid import UUID, uuid4
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from src.models.contracts.applications import (
+from src.models.contracts.applications import ComponentTreeNode
+from src.models.contracts.app_components import (
     AppComponentNode,
-    ComponentTreeNode,
+    DataSourceConfig,
     LayoutContainer,
     LayoutElement,
     PageDefinition,
-    DataSourceConfig,
-    PagePermissionConfig,
+    PagePermission,
 )
 from src.models.orm.applications import AppComponent, AppPage, Application, AppVersion
 
@@ -437,9 +437,9 @@ def build_page_definition(page: AppPage, components: list[AppComponent]) -> Page
             data_sources.append(DataSourceConfig.model_validate(ds))
 
     # Convert permission to typed model
-    permission: PagePermissionConfig | None = None
+    permission: PagePermission | None = None
     if page.permission:
-        permission = PagePermissionConfig.model_validate(page.permission)
+        permission = PagePermission.model_validate(page.permission)
 
     return PageDefinition(
         id=page.page_id,

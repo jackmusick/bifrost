@@ -10,19 +10,6 @@ import logging
 from datetime import datetime
 from typing import TYPE_CHECKING, Callable
 
-
-def compute_git_blob_sha(content: bytes) -> str:
-    """
-    Compute Git blob SHA (how Git identifies file content).
-
-    Git blob SHA = SHA1("blob <size>\\0<content>")
-
-    This is stored in github_sha to enable fast sync comparison
-    without reading file content from S3.
-    """
-    header = f"blob {len(content)}\0".encode()
-    return hashlib.sha1(header + content).hexdigest()
-
 from sqlalchemy import select, update
 from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -41,6 +28,19 @@ if TYPE_CHECKING:
     from .deactivation import DeactivationProtectionService
 
 logger = logging.getLogger(__name__)
+
+
+def compute_git_blob_sha(content: bytes) -> str:
+    """
+    Compute Git blob SHA (how Git identifies file content).
+
+    Git blob SHA = SHA1("blob <size>\\0<content>")
+
+    This is stored in github_sha to enable fast sync comparison
+    without reading file content from S3.
+    """
+    header = f"blob {len(content)}\0".encode()
+    return hashlib.sha1(header + content).hexdigest()
 
 
 class FileOperationsService:

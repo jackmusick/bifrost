@@ -4,9 +4,7 @@ Unit tests for GitHub Sync Service.
 Tests the GitHubSyncService data models and exceptions.
 """
 
-from unittest.mock import MagicMock
 
-import pytest
 
 from src.services.github_sync import (
     SyncAction,

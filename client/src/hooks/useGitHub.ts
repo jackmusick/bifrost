@@ -5,7 +5,7 @@
  * for imperative usage outside of React hooks
  */
 
-import { $api, apiClient, authFetch } from "@/lib/api-client";
+import { $api, apiClient } from "@/lib/api-client";
 import { useQueryClient } from "@tanstack/react-query";
 import type { components } from "@/lib/v1";
 
@@ -18,81 +18,25 @@ export type GitHubConfigResponse =
 	components["schemas"]["GitHubConfigResponse"];
 export type GitHubRepoInfo = components["schemas"]["GitHubRepoInfo"];
 export type GitHubBranchInfo = components["schemas"]["GitHubBranchInfo"];
-export type WorkspaceAnalysisResponse =
-	components["schemas"]["WorkspaceAnalysisResponse"];
 export type CreateRepoRequest = components["schemas"]["CreateRepoRequest"];
 export type CreateRepoResponse = components["schemas"]["CreateRepoResponse"];
 export type GitStatusResponse =
 	components["schemas"]["GitRefreshStatusResponse"];
-export type PullRequest = components["schemas"]["PullFromGitHubRequest"];
-export type PushRequest = components["schemas"]["PushToGitHubRequest"];
 export type FileChange = components["schemas"]["FileChange"];
 export type CommitInfo = components["schemas"]["CommitInfo"];
 export type ConflictInfo = components["schemas"]["ConflictInfo"];
 export type CommitHistoryResponse =
 	components["schemas"]["CommitHistoryResponse"];
-export type DiscardCommitsResponse =
-	components["schemas"]["DiscardUnpushedCommitsResponse"];
-export type UnresolvedRefInfo = components["schemas"]["UnresolvedRefInfo"];
-export type RefResolution = components["schemas"]["RefResolution"];
-export type ResolveRefsRequest = components["schemas"]["ResolveRefsRequest"];
-export type ResolveRefsResponse = components["schemas"]["ResolveRefsResponse"];
 
-// Sync Preview/Execute Types - defined locally until types are regenerated
-export type SyncActionType = "add" | "modify" | "delete";
-
-export interface SyncAction {
-	path: string;
-	action: SyncActionType;
-	sha?: string | null;
-}
-
-export interface SyncConflictInfo {
-	path: string;
-	local_content?: string | null;
-	remote_content?: string | null;
-	local_sha: string;
-	remote_sha: string;
-}
-
-export interface WorkflowReference {
-	type: string;
-	id: string;
-	name: string;
-}
-
-export interface OrphanInfo {
-	workflow_id: string;
-	workflow_name: string;
-	function_name: string;
-	last_path: string;
-	used_by: WorkflowReference[];
-}
-
-export interface SyncPreviewResponse {
-	to_pull: SyncAction[];
-	to_push: SyncAction[];
-	conflicts: SyncConflictInfo[];
-	will_orphan: OrphanInfo[];
-	is_empty: boolean;
-}
-
-export interface SyncExecuteRequest {
-	conflict_resolutions: Record<string, "keep_local" | "keep_remote">;
-	confirm_orphans: boolean;
-}
-
-export interface SyncExecuteResponse {
-	success: boolean;
-	job_id?: string | null;
-	status: string;
-	// These fields are populated via WebSocket completion, not initial response
-	pulled: number;
-	pushed: number;
-	orphaned_workflows: string[];
-	commit_sha?: string | null;
-	error?: string | null;
-}
+// Sync types
+export type SyncActionType = components["schemas"]["SyncActionType"];
+export type SyncAction = components["schemas"]["SyncAction"];
+export type SyncConflictInfo = components["schemas"]["SyncConflictInfo"];
+export type WorkflowReference = components["schemas"]["WorkflowReference"];
+export type OrphanInfo = components["schemas"]["OrphanInfo"];
+export type SyncPreviewResponse = components["schemas"]["SyncPreviewResponse"];
+export type SyncExecuteRequest = components["schemas"]["SyncExecuteRequest"];
+export type SyncExecuteResponse = components["schemas"]["SyncExecuteResponse"];
 
 // =============================================================================
 // Query Hooks
@@ -118,20 +62,6 @@ export function useGitHubConfig() {
  */
 export function useGitHubRepositories(enabled: boolean = true) {
 	return $api.useQuery("get", "/api/github/repositories", {}, { enabled });
-}
-
-/**
- * Get list of local changes
- */
-export function useGitChanges() {
-	return $api.useQuery("get", "/api/github/changes", {}, {});
-}
-
-/**
- * Get merge conflicts
- */
-export function useGitConflicts() {
-	return $api.useQuery("get", "/api/github/conflicts", {}, {});
 }
 
 /**
@@ -174,21 +104,6 @@ export function useGitHubBranches(repoFullName?: string) {
 // =============================================================================
 
 /**
- * Refresh Git status - uses GitHub API to get complete Git status
- */
-export function useRefreshGitStatus() {
-	const queryClient = useQueryClient();
-	return $api.useMutation("post", "/api/github/refresh", {
-		onSuccess: () => {
-			// Invalidate status cache after refresh
-			queryClient.invalidateQueries({
-				queryKey: ["get", "/api/github/status"],
-			});
-		},
-	});
-}
-
-/**
  * Validate GitHub token and list repositories
  */
 export function useValidateGitHubToken() {
@@ -219,13 +134,6 @@ export function useConfigureGitHub() {
 			});
 		},
 	});
-}
-
-/**
- * Analyze workspace before configuration
- */
-export function useAnalyzeWorkspace() {
-	return $api.useMutation("post", "/api/github/analyze-workspace", {});
 }
 
 /**
@@ -260,130 +168,26 @@ export function useDisconnectGitHub() {
 			queryClient.invalidateQueries({
 				queryKey: ["get", "/api/github/repositories"],
 			});
-			queryClient.invalidateQueries({
-				queryKey: ["get", "/api/github/changes"],
-			});
-		},
-	});
-}
-
-/**
- * Initialize Git repository with remote
- */
-export function useInitRepo() {
-	const queryClient = useQueryClient();
-	return $api.useMutation("post", "/api/github/init", {
-		onSuccess: () => {
-			queryClient.invalidateQueries({
-				queryKey: ["get", "/api/github/status"],
-			});
-		},
-	});
-}
-
-/**
- * Commit local changes
- */
-export function useCommitChanges() {
-	const queryClient = useQueryClient();
-	return $api.useMutation("post", "/api/github/commit", {
-		onSuccess: () => {
-			queryClient.invalidateQueries({
-				queryKey: ["get", "/api/github/status"],
-			});
-			queryClient.invalidateQueries({
-				queryKey: ["get", "/api/github/changes"],
-			});
-			queryClient.invalidateQueries({
-				queryKey: ["get", "/api/github/commits"],
-			});
-		},
-	});
-}
-
-/**
- * Discard all unpushed commits
- */
-export function useDiscardUnpushedCommits() {
-	const queryClient = useQueryClient();
-	return $api.useMutation("post", "/api/github/discard-unpushed", {
-		onSuccess: () => {
-			queryClient.invalidateQueries({
-				queryKey: ["get", "/api/github/status"],
-			});
-			queryClient.invalidateQueries({
-				queryKey: ["get", "/api/github/commits"],
-			});
-		},
-	});
-}
-
-/**
- * Discard a specific commit and all newer commits
- */
-export function useDiscardCommit() {
-	const queryClient = useQueryClient();
-	return $api.useMutation("post", "/api/github/discard-commit", {
-		onSuccess: () => {
-			queryClient.invalidateQueries({
-				queryKey: ["get", "/api/github/status"],
-			});
-			queryClient.invalidateQueries({
-				queryKey: ["get", "/api/github/commits"],
-			});
-		},
-	});
-}
-
-/**
- * Abort current merge operation
- */
-export function useAbortMerge() {
-	const queryClient = useQueryClient();
-	return $api.useMutation("post", "/api/github/abort-merge", {
-		onSuccess: () => {
-			queryClient.invalidateQueries({
-				queryKey: ["get", "/api/github/status"],
-			});
-			queryClient.invalidateQueries({
-				queryKey: ["get", "/api/github/conflicts"],
-			});
-		},
-	});
-}
-
-/**
- * Resolve unresolved workflow references after pull
- */
-export function useResolveWorkflowRefs() {
-	const queryClient = useQueryClient();
-	return $api.useMutation("post", "/api/github/resolve-refs", {
-		onSuccess: () => {
-			queryClient.invalidateQueries({
-				queryKey: ["get", "/api/github/status"],
-			});
-			queryClient.invalidateQueries({
-				queryKey: ["get", "/api/github/changes"],
-			});
 		},
 	});
 }
 
 /**
  * Get sync preview - shows what will be pulled/pushed and any conflicts
- * Uses authFetch for CSRF protection since endpoint isn't in OpenAPI spec yet
+ *
+ * Returns a mutation-like interface for imperative usage (mutateAsync pattern).
  */
 export function useSyncPreview() {
 	return {
 		mutateAsync: async (): Promise<SyncPreviewResponse> => {
-			const response = await authFetch("/api/github/sync", {
-				method: "GET",
-			});
-			if (!response.ok) {
-				const error = await response.json().catch(() => ({}));
-				throw new Error(error.detail || "Failed to get sync preview");
+			const response = await apiClient.GET("/api/github/sync");
+			if (!response.data) {
+				const errorDetail =
+					(response.error as { detail?: string } | undefined)?.detail ||
+					"Failed to get sync preview";
+				throw new Error(errorDetail);
 			}
-			return response.json();
+			return response.data as SyncPreviewResponse;
 		},
 		isPending: false,
 	};
@@ -391,28 +195,30 @@ export function useSyncPreview() {
 
 /**
  * Execute sync with conflict resolutions and orphan confirmation
- * Uses authFetch for CSRF protection since endpoint isn't in OpenAPI spec yet
  *
  * NOTE: This queues a background job and returns immediately with job_id.
  * The client should subscribe to WebSocket channel git:{job_id} AFTER
  * receiving the response to get progress/completion messages.
  * Query invalidation should happen in the UI when WebSocket completion is received.
+ *
+ * Returns a mutation-like interface for imperative usage (mutateAsync pattern).
  */
 export function useSyncExecute() {
 	return {
 		mutateAsync: async (params: {
 			body: SyncExecuteRequest;
 		}): Promise<SyncExecuteResponse> => {
-			const response = await authFetch("/api/github/sync", {
-				method: "POST",
-				body: JSON.stringify(params.body),
+			const response = await apiClient.POST("/api/github/sync", {
+				body: params.body,
 			});
-			if (!response.ok) {
-				const error = await response.json().catch(() => ({}));
-				throw new Error(error.detail || "Failed to queue sync");
+			if (!response.data) {
+				const errorDetail =
+					(response.error as { detail?: string } | undefined)?.detail ||
+					"Failed to queue sync";
+				throw new Error(errorDetail);
 			}
 			// Returns job_id and status="queued", actual results come via WebSocket
-			return response.json();
+			return response.data as SyncExecuteResponse;
 		},
 		isPending: false,
 	};

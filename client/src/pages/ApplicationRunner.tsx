@@ -57,22 +57,22 @@ type WorkflowMetadata = components["schemas"]["WorkflowMetadata"];
  * but we cast to ensure type safety.
  */
 function convertApiPageToFrontend(apiPage: PageDefinitionAPI): PageDefinition {
-	// API already returns camelCase - just cast with proper type coercion
+	// API returns snake_case - convert to frontend camelCase
 	return {
 		id: apiPage.id,
 		title: apiPage.title,
 		path: apiPage.path,
 		layout: apiPage.layout as unknown as LayoutContainer,
 		variables: (apiPage.variables ?? {}) as Record<string, unknown>,
-		launchWorkflowId: apiPage.launchWorkflowId ?? undefined,
-		launchWorkflowParams: apiPage.launchWorkflowParams ?? undefined,
-		launchWorkflowDataSourceId: apiPage.launchWorkflowDataSourceId ?? undefined,
+		launchWorkflowId: apiPage.launch_workflow_id ?? undefined,
+		launchWorkflowParams: apiPage.launch_workflow_params ?? undefined,
+		launchWorkflowDataSourceId: apiPage.launch_workflow_data_source_id ?? undefined,
 		permission: apiPage.permission
 			? {
-					allowedRoles: apiPage.permission.allowedRoles ?? undefined,
+					allowedRoles: apiPage.permission.allowed_roles ?? undefined,
 					accessExpression:
-						apiPage.permission.accessExpression ?? undefined,
-					redirectTo: apiPage.permission.redirectTo ?? undefined,
+						apiPage.permission.access_expression ?? undefined,
+					redirectTo: apiPage.permission.redirect_to ?? undefined,
 				}
 			: undefined,
 	};

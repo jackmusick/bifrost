@@ -98,7 +98,7 @@ function convertApiLayout(apiLayout: ApiLayoutContainer): LayoutContainer {
 		justify: apiLayout.justify ?? undefined,
 		columns: apiLayout.columns ?? undefined,
 		visible: apiLayout.visible ?? undefined,
-		className: apiLayout.className ?? undefined,
+		className: apiLayout.class_name ?? undefined,
 		children: (apiLayout.children ?? []).map(
 			(child): LayoutContainer | AppComponent => {
 				// Check if it's a layout container (has type: row/column/grid and children)
@@ -118,7 +118,7 @@ function convertApiLayout(apiLayout: ApiLayoutContainer): LayoutContainer {
 					props: component.props ?? {},
 					visible: component.visible ?? undefined,
 					width: component.width ?? undefined,
-					loadingWorkflows: component.loadingWorkflows ?? undefined,
+					loadingWorkflows: component.loading_workflows ?? undefined,
 				} as AppComponent;
 			},
 		),
@@ -409,21 +409,21 @@ export function ApplicationEditor() {
 						path: page.path,
 						layout: convertApiLayout(page.layout),
 						variables: page.variables ?? {},
-						launchWorkflowId: page.launchWorkflowId ?? undefined,
+						launchWorkflowId: page.launch_workflow_id ?? undefined,
 						launchWorkflowParams:
-							page.launchWorkflowParams ?? undefined,
+							page.launch_workflow_params ?? undefined,
 						launchWorkflowDataSourceId:
-							page.launchWorkflowDataSourceId ?? undefined,
+							page.launch_workflow_data_source_id ?? undefined,
 						permission: page.permission
 							? {
 									allowedRoles:
-										page.permission.allowedRoles ??
+										page.permission.allowed_roles ??
 										undefined,
 									accessExpression:
-										page.permission.accessExpression ??
+										page.permission.access_expression ??
 										undefined,
 									redirectTo:
-										page.permission.redirectTo ?? undefined,
+										page.permission.redirect_to ?? undefined,
 								}
 							: undefined,
 					}));

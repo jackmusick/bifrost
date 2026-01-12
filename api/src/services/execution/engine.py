@@ -20,7 +20,7 @@ from src.sdk.context import Caller, ExecutionContext, Organization
 from src.sdk.error_handling import WorkflowError
 from src.sdk.errors import UserError, WorkflowExecutionException
 from src.models.enums import ExecutionStatus
-from src.core.cache import cleanup_execution_cache, get_cached_data_provider, cache_data_provider_result
+from src.core.cache import get_cached_data_provider, cache_data_provider_result
 
 logger = logging.getLogger(__name__)
 

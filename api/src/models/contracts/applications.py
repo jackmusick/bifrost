@@ -6,17 +6,14 @@ Supports the 3-table schema: applications -> app_pages -> app_components
 
 Type Alignment:
 These models are designed to match the frontend TypeScript types exactly.
-Uses camelCase aliases for JSON serialization to match frontend conventions.
 """
 
 from datetime import datetime
-from typing import Any, ForwardRef, Literal, Union
+from typing import Any
 from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field, field_serializer, field_validator, model_validator
-from pydantic.alias_generators import to_camel
 import re
-
 
 # ==================== APPLICATION MODELS ====================
 
@@ -444,137 +441,7 @@ class AppComponentListResponse(BaseModel):
     total: int
 
 
-# ==================== TYPED LAYOUT MODELS (matches frontend TypeScript types) ====================
-#
-# These models are the single source of truth for the layout system.
-# They serialize to camelCase JSON that the frontend can use directly.
-# TypeScript types are auto-generated from these via OpenAPI.
-
-
-class CamelCaseModel(BaseModel):
-    """Base model with camelCase serialization for frontend compatibility."""
-
-    model_config = ConfigDict(
-        alias_generator=to_camel,
-        populate_by_name=True,
-        from_attributes=True,
-    )
-
-
-class DataSourceConfig(CamelCaseModel):
-    """Data source configuration for dynamic data binding."""
-
-    id: str
-    type: Literal["api", "static", "computed", "data-provider", "workflow"]
-    endpoint: str | None = None
-    data: Any | None = None
-    expression: str | None = None
-    data_provider_id: str | None = None
-    workflow_id: str | None = None
-    input_params: dict[str, Any] | None = None
-    auto_refresh: bool | None = None
-    refresh_interval: int | None = None
-
-
-class PagePermissionConfig(CamelCaseModel):
-    """Page-level permission configuration."""
-
-    allowed_roles: list[str] | None = None
-    access_expression: str | None = None
-    redirect_to: str | None = None
-
-
-class RepeatFor(CamelCaseModel):
-    """Repeat component for each item in an array."""
-
-    items: str  # Expression that evaluates to an array (e.g., "{{ workflow.clients }}")
-    item_key: str  # Property name to use for React key (must be unique, e.g., "id")
-    as_: str = Field(alias="as")  # Variable name to access current item (e.g., "client")
-
-
-class AppComponentNode(CamelCaseModel):
-    """
-    Leaf component in the layout tree.
-
-    Matches frontend TypeScript AppComponent interface.
-    Examples: button, text, data-table, etc.
-    """
-
-    id: str
-    type: str  # Component type: button, text, heading, data-table, etc.
-    props: dict[str, Any] = Field(default_factory=dict)
-    visible: str | None = None
-    width: str | None = None
-    loading_workflows: list[str] | None = None
-    grid_span: int | None = None  # For grid layout children - how many columns to span
-    repeat_for: RepeatFor | None = None  # Repeat component for each item in array
-    class_name: str | None = None  # Additional CSS classes
-    style: dict[str, Any] | None = None  # Inline CSS styles (camelCase properties)
-
-
-# Forward reference for recursive type
-LayoutContainerRef = ForwardRef("LayoutContainer")
-
-
-class LayoutContainer(CamelCaseModel):
-    """
-    Layout container for organizing components.
-
-    Matches frontend TypeScript LayoutContainer interface.
-    Supports recursive nesting with children being either:
-    - LayoutContainer (row, column, grid)
-    - AppComponentNode (leaf components)
-    """
-
-    id: str  # Component ID for API operations (e.g., "layout_abc123")
-    type: Literal["row", "column", "grid"]
-    gap: int | None = None
-    padding: int | None = None
-    align: Literal["start", "center", "end", "stretch"] | None = None
-    justify: Literal["start", "center", "end", "between", "around"] | None = None
-    columns: int | None = None
-    distribute: Literal["natural", "equal", "fit"] | None = None  # How children fill space
-    max_width: Literal["sm", "md", "lg", "xl", "2xl", "full", "none"] | None = None
-    max_height: int | None = None  # Maximum height in pixels (for scrollable containers)
-    overflow: Literal["auto", "scroll", "hidden", "visible"] | None = None  # Overflow behavior
-    sticky: Literal["top", "bottom"] | None = None  # Sticky positioning
-    sticky_offset: int | None = None  # Offset from edge when sticky (pixels)
-    visible: str | None = None
-    class_name: str | None = None  # Additional CSS classes
-    style: dict[str, Any] | None = None  # Inline CSS styles (camelCase properties)
-    children: list[Union["LayoutContainer", AppComponentNode]] = Field(default_factory=list)
-
-
-# Resolve forward reference
-LayoutContainer.model_rebuild()
-
-
-# Type alias for layout tree elements
-LayoutElement = Union[LayoutContainer, AppComponentNode]
-
-
-class PageDefinition(CamelCaseModel):
-    """
-    Full page definition with layout tree.
-
-    Matches frontend TypeScript PageDefinition interface.
-    This is the response format for GET /api/applications/{app_id}/pages/{page_id}.
-    """
-
-    id: str  # Page ID (e.g., "home", "settings")
-    title: str
-    path: str
-    layout: LayoutContainer
-    data_sources: list[DataSourceConfig] = Field(default_factory=list)
-    variables: dict[str, Any] = Field(default_factory=dict)
-    launch_workflow_id: str | None = None
-    launch_workflow_params: dict[str, Any] | None = None
-    launch_workflow_data_source_id: str | None = None
-    styles: str | None = None  # Page-level CSS styles (scoped to this page)
-    permission: PagePermissionConfig | None = None
-
-
-class PageListItem(CamelCaseModel):
+class PageListItem(BaseModel):
     """Summary of a page for list endpoints (without full layout)."""
 
     id: str

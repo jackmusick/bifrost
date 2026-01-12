@@ -6,7 +6,6 @@ Tests the WorkflowOrphanService data models and basic service initialization.
 
 from unittest.mock import MagicMock
 
-import pytest
 
 from src.services.workflow_orphan import (
     WorkflowOrphanService,

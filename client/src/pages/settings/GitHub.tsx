@@ -43,7 +43,6 @@ import {
 	useGitHubConfig,
 	useGitHubRepositories,
 	useConfigureGitHub,
-	useAnalyzeWorkspace,
 	useCreateGitHubRepository,
 	useDisconnectGitHub,
 	useSyncPreview,
@@ -53,7 +52,6 @@ import {
 	type GitHubRepoInfo,
 	type GitHubBranchInfo,
 	type GitHubConfigResponse,
-	type WorkspaceAnalysisResponse,
 	type SyncPreviewResponse,
 	type SyncAction,
 } from "@/hooks/useGitHub";
@@ -62,7 +60,6 @@ export function GitHub() {
 	const [config, setConfig] = useState<GitHubConfigResponse | null>(null);
 	const [saving, setSaving] = useState(false);
 	const [testingToken, setTestingToken] = useState(false);
-	const [analyzing, setAnalyzing] = useState(false);
 	const [loadingBranches, setLoadingBranches] = useState(false);
 
 	// Form state
@@ -72,11 +69,6 @@ export function GitHub() {
 	const [branches, setBranches] = useState<GitHubBranchInfo[]>([]);
 	const [selectedRepo, setSelectedRepo] = useState<string>("");
 	const [selectedBranch, setSelectedBranch] = useState<string>("main");
-
-	// Warning dialog state
-	const [showConflictModal, setShowConflictModal] = useState(false);
-	const [analysisResult, setAnalysisResult] =
-		useState<WorkspaceAnalysisResponse | null>(null);
 
 	// Create repo state
 	const [showCreateRepo, setShowCreateRepo] = useState(false);
@@ -104,7 +96,6 @@ export function GitHub() {
 
 	// Mutations
 	const configureMutation = useConfigureGitHub();
-	const analyzeMutation = useAnalyzeWorkspace();
 	const createRepoMutation = useCreateGitHubRepository();
 	const disconnectMutation = useDisconnectGitHub();
 	const syncPreviewMutation = useSyncPreview();
@@ -262,8 +253,8 @@ export function GitHub() {
 		}
 	};
 
-	// Analyze workspace before saving
-	const handleAnalyzeAndConfigure = async () => {
+	// Configure GitHub integration
+	const handleConfigure = async () => {
 		// Token must be saved to configure
 		if (!config?.token_saved && !savedToken) {
 			toast.error("Please validate your token first");
@@ -275,46 +266,19 @@ export function GitHub() {
 			return;
 		}
 
-		setAnalyzing(true);
-		try {
-			const analysis = await analyzeMutation.mutateAsync({
-				body: {
-					repo_url: selectedRepo,
-					branch: selectedBranch,
-					auth_token: savedToken || "",
-				},
-			});
-
-			setAnalysisResult(analysis);
-
-			if (analysis.requires_confirmation) {
-				// Show warning dialog
-				setShowConflictModal(true);
-			} else {
-				// No confirmation needed, proceed directly
-				await handleSaveConfig();
-			}
-		} catch (error) {
-			toast.error("Failed to analyze workspace", {
-				description:
-					error instanceof Error ? error.message : "Unknown error",
-			});
-		} finally {
-			setAnalyzing(false);
-		}
+		// Proceed directly to configuration
+		await handleSaveConfig();
 	};
 
 	// Save configuration (always replaces workspace with remote)
 	const handleSaveConfig = async () => {
 		setSaving(true);
-		setShowConflictModal(false);
 
 		try {
 			const setupResponse = await configureMutation.mutateAsync({
 				body: {
 					repo_url: selectedRepo,
 					branch: selectedBranch,
-					auth_token: savedToken || "",
 				},
 			});
 
@@ -685,10 +649,9 @@ export function GitHub() {
 							{/* Save Button */}
 							<div className="flex justify-end">
 								<Button
-									onClick={handleAnalyzeAndConfigure}
+									onClick={handleConfigure}
 									disabled={
 										saving ||
-										analyzing ||
 										!selectedRepo ||
 										(!config?.token_saved &&
 											!token.trim()) ||
@@ -696,12 +659,10 @@ export function GitHub() {
 											tokenValid !== true)
 									}
 								>
-									{saving || analyzing ? (
+									{saving ? (
 										<>
 											<Loader2 className="h-4 w-4 mr-2 animate-spin" />
-											{analyzing
-												? "Analyzing..."
-												: "Configuring..."}
+											Configuring...
 										</>
 									) : (
 										<>
@@ -742,84 +703,6 @@ export function GitHub() {
 					</ul>
 				</CardContent>
 			</Card>
-
-			{/* Warning Dialog - Workspace will be replaced */}
-			<Dialog
-				open={showConflictModal}
-				onOpenChange={setShowConflictModal}
-			>
-				<DialogContent className="max-w-md">
-					<DialogHeader>
-						<DialogTitle className="flex items-center gap-2 text-amber-600">
-							<AlertCircle className="h-5 w-5" />
-							Replace Workspace Contents
-						</DialogTitle>
-						<DialogDescription className="space-y-3">
-							<p>
-								Your workspace contains{" "}
-								<strong>
-									{analysisResult?.file_count || 0} files
-								</strong>
-								. These will be replaced with the contents of
-								the GitHub repository.
-							</p>
-							<div className="rounded-lg bg-muted p-3 space-y-2 text-sm">
-								<p className="font-medium text-foreground">
-									What will happen:
-								</p>
-								<ul className="list-disc list-inside space-y-1 ml-2">
-									<li>
-										A backup will be created automatically
-									</li>
-									<li>
-										Your workspace files will be removed
-									</li>
-									<li>Repository contents will be cloned</li>
-									<li>
-										Requirements will be installed
-										automatically
-									</li>
-								</ul>
-							</div>
-							<p className="text-xs">
-								<strong>Tip:</strong> If you want to keep your
-								current files in GitHub, push them to the
-								repository first before configuring this
-								integration.
-							</p>
-						</DialogDescription>
-					</DialogHeader>
-
-					<DialogFooter className="flex-col sm:flex-row gap-2">
-						<Button
-							variant="outline"
-							onClick={() => setShowConflictModal(false)}
-							disabled={saving}
-							className="w-full sm:w-auto"
-						>
-							Cancel
-						</Button>
-						<Button
-							variant="destructive"
-							onClick={handleSaveConfig}
-							disabled={saving}
-							className="w-full sm:w-auto"
-						>
-							{saving ? (
-								<>
-									<Loader2 className="h-4 w-4 mr-2 animate-spin" />
-									Replacing...
-								</>
-							) : (
-								<>
-									<AlertCircle className="h-4 w-4 mr-2" />
-									Replace Workspace
-								</>
-							)}
-						</Button>
-					</DialogFooter>
-				</DialogContent>
-			</Dialog>
 
 			{/* Create Repository Modal */}
 			<Dialog open={showCreateRepo} onOpenChange={setShowCreateRepo}>
@@ -1013,11 +896,13 @@ function SyncPreviewDialog({
 	};
 
 	// Check if all conflicts are resolved and orphans confirmed (if needed)
+	const conflicts = preview?.conflicts ?? [];
+	const willOrphan = preview?.will_orphan ?? [];
 	const canSync =
 		preview &&
 		!preview.is_empty &&
-		preview.conflicts.every((c) => resolutions[c.path]) &&
-		(preview.will_orphan.length === 0 || orphansConfirmed);
+		conflicts.every((c) => resolutions[c.path]) &&
+		(willOrphan.length === 0 || orphansConfirmed);
 
 	// Check if sync is empty (nothing to do)
 	const isEmpty = preview?.is_empty;
@@ -1052,17 +937,17 @@ function SyncPreviewDialog({
 				) : preview ? (
 					<div className="flex-1 overflow-y-auto space-y-6 pr-2">
 						{/* Files to Pull */}
-						{preview.to_pull.length > 0 && (
+						{(preview.to_pull?.length ?? 0) > 0 && (
 							<div>
 								<h3 className="flex items-center gap-2 font-medium mb-3">
 									<ArrowDownToLine className="h-4 w-4 text-blue-500" />
 									<span>Pull from GitHub</span>
 									<Badge variant="outline" className="ml-2">
-										{preview.to_pull.length}
+										{preview.to_pull?.length ?? 0}
 									</Badge>
 								</h3>
 								<ul className="text-sm space-y-1.5 max-h-40 overflow-y-auto rounded-md border p-3 bg-muted/30">
-									{preview.to_pull.map((item) => (
+									{(preview.to_pull ?? []).map((item) => (
 										<li
 											key={item.path}
 											className="flex items-center gap-2"
@@ -1078,17 +963,17 @@ function SyncPreviewDialog({
 						)}
 
 						{/* Files to Push */}
-						{preview.to_push.length > 0 && (
+						{(preview.to_push?.length ?? 0) > 0 && (
 							<div>
 								<h3 className="flex items-center gap-2 font-medium mb-3">
 									<ArrowUpFromLine className="h-4 w-4 text-green-500" />
 									<span>Push to GitHub</span>
 									<Badge variant="outline" className="ml-2">
-										{preview.to_push.length}
+										{preview.to_push?.length ?? 0}
 									</Badge>
 								</h3>
 								<ul className="text-sm space-y-1.5 max-h-40 overflow-y-auto rounded-md border p-3 bg-muted/30">
-									{preview.to_push.map((item) => (
+									{(preview.to_push ?? []).map((item) => (
 										<li
 											key={item.path}
 											className="flex items-center gap-2"
@@ -1104,13 +989,13 @@ function SyncPreviewDialog({
 						)}
 
 						{/* Conflicts Section */}
-						{preview.conflicts.length > 0 && (
+						{conflicts.length > 0 && (
 							<div>
 								<h3 className="flex items-center gap-2 font-medium mb-3 text-yellow-600">
 									<AlertCircle className="h-4 w-4" />
 									<span>Conflicts</span>
 									<Badge variant="warning" className="ml-2">
-										{preview.conflicts.length}
+										{conflicts.length}
 									</Badge>
 								</h3>
 								<p className="text-sm text-muted-foreground mb-3">
@@ -1118,7 +1003,7 @@ function SyncPreviewDialog({
 									and remotely. Choose which version to keep:
 								</p>
 								<div className="space-y-4">
-									{preview.conflicts.map((conflict) => (
+									{conflicts.map((conflict) => (
 										<div
 											key={conflict.path}
 											className="rounded-md border p-4 bg-yellow-50/50 dark:bg-yellow-950/20"
@@ -1176,7 +1061,7 @@ function SyncPreviewDialog({
 						)}
 
 						{/* Orphaned Workflows Warning */}
-						{preview.will_orphan.length > 0 && (
+						{willOrphan.length > 0 && (
 							<div className="rounded-md border border-yellow-300 bg-yellow-50 dark:bg-yellow-950/30 p-4">
 								<h3 className="flex items-center gap-2 font-medium mb-3 text-yellow-800 dark:text-yellow-200">
 									<AlertTriangle className="h-4 w-4" />
@@ -1189,7 +1074,7 @@ function SyncPreviewDialog({
 									files:
 								</p>
 								<ul className="text-sm space-y-2 mb-4">
-									{preview.will_orphan.map((orphan) => (
+									{willOrphan.map((orphan) => (
 										<li
 											key={orphan.workflow_id}
 											className="rounded bg-white/50 dark:bg-black/20 p-2"
@@ -1206,10 +1091,10 @@ function SyncPreviewDialog({
 													{orphan.last_path}
 												</span>
 											</div>
-											{orphan.used_by.length > 0 && (
+											{(orphan.used_by?.length ?? 0) > 0 && (
 												<div className="text-xs text-yellow-700 dark:text-yellow-300 mt-1">
 													Used by:{" "}
-													{orphan.used_by
+													{(orphan.used_by ?? [])
 														.map((ref) => ref.name)
 														.join(", ")}
 												</div>
