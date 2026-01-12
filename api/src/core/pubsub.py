@@ -811,6 +811,9 @@ async def publish_git_sync_completed(
                 300,  # 5 minutes TTL
                 json.dumps(completion_message),
             )
+            logger.info(f"Stored job result in Redis: {result_key} status={status}")
+        else:
+            logger.warning(f"Redis client is None, cannot store job result for {job_id}")
     except Exception as e:
         logger.warning(f"Failed to store job result in Redis: {e}")
 

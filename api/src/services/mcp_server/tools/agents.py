@@ -25,67 +25,26 @@ logger = logging.getLogger(__name__)
 @system_tool(
     id="get_agent_schema",
     name="Get Agent Schema",
-    description="Get JSON schemas and documentation for AI agent structure, channels, and configuration.",
+    description="Get documentation for AI agent structure, channels, and configuration.",
     category=ToolCategory.AGENT,
     default_enabled_for_coding_agent=True,
     is_restricted=True,
     input_schema={"type": "object", "properties": {}, "required": []},
 )
-async def get_agent_schema(context: Any) -> str:
-    """Get agent schema documentation with Pydantic-generated JSON schemas."""
-    from src.models.contracts.agents import AgentCreate, AgentPublic
+async def get_agent_schema(context: Any) -> str:  # noqa: ARG001
+    """Get agent schema documentation generated from Pydantic models."""
+    from src.models.contracts.agents import AgentCreate, AgentUpdate
+    from src.services.mcp_server.schema_utils import models_to_markdown
 
-    # Generate JSON schemas from Pydantic models
-    schemas = {
-        "AgentCreate": AgentCreate.model_json_schema(),
-        "AgentPublic": AgentPublic.model_json_schema(),
-    }
+    # Generate markdown from Pydantic models
+    model_docs = models_to_markdown([
+        (AgentCreate, "AgentCreate (for creating agents)"),
+        (AgentUpdate, "AgentUpdate (for updating agents)"),
+    ], "Agent Schema Documentation")
 
-    return json.dumps(
-        {
-            "documentation": _AGENT_SCHEMA_DOCUMENTATION,
-            "schemas": schemas,
-        },
-        indent=2,
-    )
-
-
-_AGENT_SCHEMA_DOCUMENTATION = """# Agent Schema Documentation
-
-Agents in Bifrost are AI assistants configured with system prompts, tools, and communication channels.
-
-## Agent Structure
-
-```json
-{
-  "name": "Support Agent",
-  "description": "Handles customer support inquiries",
-  "system_prompt": "You are a helpful support assistant...",
-  "channels": ["chat", "teams"],
-  "is_coding_mode": false,
-  "tool_ids": ["workflow-uuid-1", "workflow-uuid-2"],
-  "delegated_agent_ids": ["agent-uuid-1"],
-  "knowledge_sources": ["company-docs"],
-  "system_tools": ["list_tables", "query_table"]
-}
-```
-
-## Required Fields
-
-- **name** (string, 1-255 chars): Display name for the agent
-- **system_prompt** (string, max 50000 chars): Instructions that define agent behavior
-
-## Optional Fields
-
-- **description** (string): What the agent does
-- **channels** (array): Communication channels - "chat", "voice", "teams", "slack" (default: ["chat"])
-- **is_coding_mode** (boolean): Enable Claude Agent SDK coding mode (default: false)
-- **tool_ids** (array): UUIDs of workflows to assign as callable tools
-- **delegated_agent_ids** (array): UUIDs of agents this agent can delegate to
-- **knowledge_sources** (array): Knowledge namespaces for RAG search
-- **system_tools** (array): Built-in MCP tool names to enable
-
-## Channels
+    # Add channel enum documentation
+    channels_doc = """
+## Available Channels
 
 | Channel | Description |
 |---------|-------------|
@@ -94,33 +53,13 @@ Agents in Bifrost are AI assistants configured with system prompts, tools, and c
 | teams | Microsoft Teams bot |
 | slack | Slack bot integration |
 
-## Access Control
+## Usage Notes
 
-- **scope** (string): "global" (visible to all orgs) or "organization" (default)
-- **organization_id** (string): Override context org when scope="organization"
-
-## Tool Assignment
-
-Tools are workflows with type="tool". Use `list_workflows` to find available tools:
-```
-list_workflows type=tool
-```
-
-Then assign by UUID:
-```json
-{
-  "tool_ids": ["uuid-1", "uuid-2"]
-}
-```
-
-## Agent Delegation
-
-Agents can delegate to other agents for specialized tasks:
-```json
-{
-  "delegated_agent_ids": ["specialist-agent-uuid"]
-}
-```
+- **tool_ids**: UUIDs of workflows to assign as callable tools. Use `list_workflows` to find available tools.
+- **delegated_agent_ids**: UUIDs of agents this agent can delegate to for specialized tasks.
+- **knowledge_sources**: Knowledge namespaces for RAG search.
+- **system_tools**: Built-in MCP tool names to enable (e.g., "list_tables", "query_table").
+- **scope**: Use "global" for visibility to all orgs, or "organization" (default).
 
 ## MCP Tools for Agents
 
@@ -129,22 +68,9 @@ Agents can delegate to other agents for specialized tasks:
 - `create_agent` - Create a new agent
 - `update_agent` - Update agent properties
 - `delete_agent` - Soft-delete an agent (deactivate)
-
-## Complete Create Example
-
-```json
-{
-  "name": "IT Support Agent",
-  "description": "Handles IT helpdesk tickets and troubleshooting",
-  "system_prompt": "You are an IT support specialist. Help users with technical issues, password resets, and software problems. Be patient and ask clarifying questions when needed.",
-  "channels": ["chat", "teams"],
-  "is_coding_mode": false,
-  "tool_ids": ["reset-password-workflow-uuid", "create-ticket-workflow-uuid"],
-  "knowledge_sources": ["it-knowledge-base"],
-  "system_tools": ["query_table"]
-}
-```
 """
+
+    return model_docs + channels_doc
 
 
 # ==================== LIST/GET TOOLS ====================

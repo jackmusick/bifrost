@@ -340,126 +340,34 @@ async def create_workflow(context: Any, file_path: str, code: str) -> str:
     is_restricted=True,
     input_schema={"type": "object", "properties": {}, "required": []},
 )
-async def get_workflow_schema(context: Any) -> str:
-    """Get workflow schema documentation."""
-    return '''# Bifrost Workflow Schema
+async def get_workflow_schema(context: Any) -> str:  # noqa: ARG001
+    """Get workflow schema documentation generated from Pydantic models."""
+    from src.models.contracts.workflows import WorkflowMetadata, WorkflowParameter
+    from src.services.mcp_server.schema_utils import models_to_markdown
 
-## File Structure
+    # Generate model documentation
+    model_docs = models_to_markdown([
+        (WorkflowMetadata, "WorkflowMetadata (API response)"),
+        (WorkflowParameter, "WorkflowParameter (parameter definition)"),
+    ], "Workflow Schema Documentation")
 
-Workflows are Python files discovered by their `@workflow` decorator:
-```
-workflows/
-├── my_task.py
-├── data_sync.py
-└── reports/
-    └── daily_report.py
-```
+    # Reference to SDK documentation
+    sdk_reference = """
+## SDK Documentation
 
-## Basic Workflow
+For complete SDK documentation including decorators, modules, and examples, use `get_sdk_schema`.
 
-```python
-from bifrost import workflow
+## MCP Tools for Workflows
 
-@workflow
-async def my_workflow(param1: str, param2: int = 10):
-    """Workflow description shown in UI."""
-    # Your logic here
-    return {"result": "success", "count": param2}
-```
+- `list_workflows` - List all accessible workflows
+- `get_workflow` - Get workflow details by ID or name
+- `execute_workflow` - Execute a workflow with parameters
+- `validate_workflow` - Validate Python file syntax
+- `create_workflow` - Create a new workflow file
+- `get_sdk_schema` - Get full SDK documentation
+"""
 
-## Decorator Options
-
-```python
-@workflow(
-    name="Human Readable Name",      # Display name (default: function name)
-    description="What it does",       # Shown in workflow list
-    category="automation",            # For organizing workflows
-    schedule="0 9 * * *",            # Cron schedule (optional)
-    endpoint_enabled=True,            # Expose as HTTP endpoint
-    is_tool=True,                     # Make available as MCP tool
-    tool_description="For LLMs",      # Description for AI tools
-)
-async def my_workflow():
-    ...
-```
-
-## Using Integrations
-
-```python
-from bifrost import workflow, integrations
-
-@workflow
-async def sync_data():
-    # Get configured integration
-    ms365 = await integrations.get("Microsoft 365")
-
-    if ms365 and ms365.oauth:
-        # Use OAuth token
-        token = ms365.oauth.access_token
-        # Make API calls...
-
-    return {"synced": True}
-```
-
-## Data Providers
-
-```python
-from bifrost import data_provider
-
-@data_provider(
-    name="Get Users",
-    description="Fetch users from database",
-)
-async def get_users(search: str = "", limit: int = 100):
-    # Query your data source
-    return [{"id": 1, "name": "Alice"}, {"id": 2, "name": "Bob"}]
-```
-
-## Logging
-
-```python
-from bifrost import workflow, log
-
-@workflow
-async def my_workflow():
-    log.info("Starting workflow")
-    log.debug("Debug details", extra={"key": "value"})
-    log.warning("Something to note")
-    log.error("Something went wrong")
-    return {"done": True}
-```
-
-## Error Handling
-
-```python
-from bifrost import workflow, BifrostError
-
-@workflow
-async def my_workflow():
-    try:
-        # risky operation
-        pass
-    except SomeError as e:
-        raise BifrostError(f"Failed: {e}", error_type="VALIDATION_ERROR")
-```
-
-## Return Values
-
-Workflows should return JSON-serializable data:
-- `dict` - Most common, shown as JSON
-- `list` - Arrays of results
-- `str` - Plain text
-- `None` - No output
-
-## Best Practices
-
-1. **Use async/await** - All workflows should be async
-2. **Type hints** - Add type hints for parameters
-3. **Descriptions** - Add docstrings for UI display
-4. **Error handling** - Catch and handle exceptions gracefully
-5. **Logging** - Use bifrost.log for visibility
-6. **Idempotency** - Design workflows to be safely re-runnable
-'''
+    return model_docs + sdk_reference
 
 
 @system_tool(

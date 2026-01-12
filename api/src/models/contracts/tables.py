@@ -19,8 +19,8 @@ class TableBase(BaseModel):
 
     name: str = Field(
         max_length=255,
-        pattern=r"^[a-z][a-z0-9_]*$",
-        description="Table name (lowercase, underscores allowed)",
+        pattern=r"^[a-z][a-z0-9_-]*$",
+        description="Table name (lowercase, underscores and hyphens allowed)",
     )
     description: str | None = Field(default=None, description="Optional table description")
     schema: dict[str, Any] | None = Field(

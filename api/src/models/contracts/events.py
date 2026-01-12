@@ -376,11 +376,17 @@ class EventDeliveryResponse(BaseModel):
     """
     Response model for a single event delivery.
     GET /api/events/{event_id}/deliveries/{delivery_id}
+
+    Note: id and created_at are nullable to support "not_delivered" entries
+    for subscriptions that didn't exist when the event arrived.
     """
 
     model_config = ConfigDict(from_attributes=True)
 
-    id: UUID = Field(..., description="Delivery ID")
+    id: UUID | None = Field(
+        default=None,
+        description="Delivery ID (null for not_delivered entries)",
+    )
     event_id: UUID = Field(..., description="Event ID")
     event_subscription_id: UUID = Field(..., description="Subscription ID")
     workflow_id: UUID = Field(..., description="Workflow ID")
@@ -392,7 +398,7 @@ class EventDeliveryResponse(BaseModel):
         default=None,
         description="Execution ID (set when execution starts)",
     )
-    status: EventDeliveryStatus = Field(..., description="Delivery status")
+    status: str = Field(..., description="Delivery status")
     error_message: str | None = Field(
         default=None,
         description="Error message if failed",
@@ -409,7 +415,10 @@ class EventDeliveryResponse(BaseModel):
         default=None,
         description="When delivery completed",
     )
-    created_at: datetime = Field(..., description="Creation timestamp")
+    created_at: datetime | None = Field(
+        default=None,
+        description="Creation timestamp (null for not_delivered entries)",
+    )
 
 
 class EventDeliveryListResponse(BaseModel):
@@ -451,6 +460,21 @@ class RetryDeliveryRequest(BaseModel):
     """
 
     pass  # No parameters needed for now
+
+
+class CreateDeliveryRequest(BaseModel):
+    """
+    Request model for creating a delivery for an existing event.
+    POST /api/events/{event_id}/deliveries
+
+    This is used to retroactively send an event to a subscription
+    that was added after the event arrived.
+    """
+
+    subscription_id: UUID = Field(
+        ...,
+        description="Subscription ID to create delivery for",
+    )
 
 
 class RetryDeliveryResponse(BaseModel):

@@ -26,7 +26,8 @@ export type Event = components["schemas"]["EventResponse"];
 export type EventStatus = components["schemas"]["EventStatus"];
 
 export type EventDelivery = components["schemas"]["EventDeliveryResponse"];
-export type EventDeliveryStatus = components["schemas"]["EventDeliveryStatus"];
+// EventDeliveryStatus is now a string to support "not_delivered" for subscriptions without deliveries
+export type EventDeliveryStatus = EventDelivery["status"];
 
 export type WebhookAdapter = components["schemas"]["WebhookAdapterInfo"];
 export type WebhookSourceConfig = components["schemas"]["WebhookSourceConfig"];
@@ -397,4 +398,29 @@ export function useRetryDelivery() {
 			},
 		},
 	);
+}
+
+/**
+ * Hook to create a delivery for an existing event.
+ * Used to retroactively send an event to a subscription added after the event arrived.
+ */
+export function useCreateDelivery() {
+	const queryClient = useQueryClient();
+
+	return $api.useMutation("post", "/api/events/{event_id}/deliveries", {
+		onSuccess: () => {
+			// Invalidate all delivery-related queries
+			queryClient.invalidateQueries({
+				predicate: (query) =>
+					query.queryKey[0] === "get" &&
+					(query.queryKey[1] as string)?.includes("/deliveries"),
+			});
+			// Also invalidate events to refresh status
+			queryClient.invalidateQueries({
+				predicate: (query) =>
+					query.queryKey[0] === "get" &&
+					(query.queryKey[1] as string)?.includes("/events"),
+			});
+		},
+	});
 }

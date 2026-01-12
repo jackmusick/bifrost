@@ -51,6 +51,7 @@ This distinction matters because end users can't fix system bugs, but they WILL 
 - `list_workflows` - List all registered workflows (filter by query, category, or type)
 - `get_workflow` - Get detailed metadata for a specific workflow
 - `get_workflow_schema` - Documentation about workflow decorators and structure
+- `get_sdk_schema` - Full SDK documentation (modules, decorators, error classes) - generated from source
 - `list_integrations` - Show available integrations and auth status
 - `list_forms` - List all forms with URLs
 - `get_form_schema` - Documentation about form structure and field types
@@ -61,6 +62,14 @@ This distinction matters because end users can't fix system bugs, but they WILL 
 - `search_knowledge` - Search the Bifrost knowledge base
 
 **Note:** Data providers are workflows with `type='data_provider'`. Use `list_workflows` to find them.
+
+### Agent Tools
+- `list_agents` - List all accessible agents
+- `get_agent` - Get agent details by ID or name
+- `create_agent` - Create a new AI agent with system prompt
+- `update_agent` - Update agent properties
+- `delete_agent` - Soft-delete an agent (deactivate)
+- `get_agent_schema` - Documentation about agent structure and channels
 
 ### Organization Tools (Platform Admin Only)
 - `list_organizations` - List all organizations in the platform
@@ -104,6 +113,7 @@ See **App Builder Tool Hierarchy** section below for granular app management too
 | Data Provider | `create_workflow` | `get_data_provider_schema` | Auto-validates |
 | Form | `create_form` | `get_form_schema` | Auto-validates |
 | App | App-level tools | `get_app_schema` | See tool hierarchy |
+| Agent | `create_agent` | `get_agent_schema` | Configure AI agents |
 
 ## Development Process
 
@@ -352,22 +362,23 @@ Note: `@tool` is an alias for `@workflow(is_tool=True)`. Use `@tool` for cleaner
 
 ## Workspace Structure
 
+Files are organized in the root of the workspace (no `workspace/` prefix):
+
 ```
-workspace/
-├── apps/                   # App Builder applications (by company/org)
-│   ├── global/             # Global apps (available to all orgs)
-│   └── <company>/          # Company-specific apps
-├── features/               # Feature-based organization (primary work area)
-│   └── <feature-name>/
-│       ├── workflows/
-│       ├── services/
-│       ├── forms/
-│       └── models.py
-├── shared/                 # Cross-feature resources
-│   ├── data_providers/
-│   ├── utilities/
-│   └── services/
-└── modules/                # Auto-generated SDKs (DO NOT EDIT)
+apps/                       # App Builder applications (by company/org)
+├── global/                 # Global apps (available to all orgs)
+└── <company>/              # Company-specific apps
+features/                   # Feature-based organization (primary work area)
+└── <feature-name>/
+    ├── workflows/
+    ├── services/
+    ├── forms/
+    └── models.py
+shared/                     # Cross-feature resources
+├── data_providers/
+├── utilities/
+└── services/
+modules/                    # Auto-generated SDKs (DO NOT EDIT)
 ```
 
 ## Multi-tenancy Awareness

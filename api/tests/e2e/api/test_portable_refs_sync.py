@@ -90,9 +90,16 @@ def execute_sync_with_auto_resolution(e2e_client, headers, max_wait: float = 60.
             return {"status": "completed", "message": "Nothing to sync"}, None
 
         # Execute sync
+        # We pass confirm_orphans=True and confirm_unresolved_refs=True since E2E tests
+        # may have refs that don't exist in the test environment. We still verify
+        # ref translation is working correctly by checking the file content.
         sync_response = e2e_client.post(
             "/api/github/sync",
-            json={"conflict_resolutions": conflict_resolutions, "confirm_orphans": True},
+            json={
+                "conflict_resolutions": conflict_resolutions,
+                "confirm_orphans": True,
+                "confirm_unresolved_refs": True,
+            },
             headers=headers,
         )
         if sync_response.status_code != 200:
@@ -103,12 +110,15 @@ def execute_sync_with_auto_resolution(e2e_client, headers, max_wait: float = 60.
         logger.info(f"Sync job started: {job_id}")
 
         # Poll for completion
+        # Note: Scheduler uses "success" for successful completion, "failed" for errors
+        terminal_statuses = ["success", "completed", "failed", "conflict", "orphans_detected", "unresolved_refs"]
+
         def check_complete():
             resp = e2e_client.get(f"/api/jobs/{job_id}", headers=headers)
             if resp.status_code == 200:
                 data = resp.json()
                 status = data.get("status")
-                if status in ["completed", "failed", "conflict", "orphans_detected"]:
+                if status in terminal_statuses:
                     logger.info(f"Job {job_id} finished with status: {status}")
                     return data
             return None
@@ -119,11 +129,12 @@ def execute_sync_with_auto_resolution(e2e_client, headers, max_wait: float = 60.
             logger.error(f"Job {job_id} timed out after {max_wait}s")
             return None, job_id
 
-        # If completed or failed, we're done
-        if job_result.get("status") in ["completed", "failed"]:
+        # "success" or "completed" means sync finished successfully
+        # "failed" means sync failed
+        if job_result.get("status") in ["success", "completed", "failed"]:
             return job_result, job_id
 
-        # If conflict or orphans_detected, retry
+        # If conflict, orphans_detected, or unresolved_refs, retry with confirmations
         logger.warning(f"Job {job_id} status: {job_result.get('status')}, retrying...")
 
     logger.error(f"Sync failed after {max_retries} attempts")
@@ -162,7 +173,7 @@ class TestPortableRefsPush:
             e2e_client, platform_admin.headers
         )
         assert job_result, "Sync job did not complete within 60s"
-        assert job_result.get("status") == "completed", f"Sync failed: {job_result}"
+        assert job_result.get("status") == "success", f"Sync failed: {job_result}"
         logger.info(f"Sync job {job_id} completed")
 
         # Now fetch the app file from GitHub to verify portable refs
@@ -217,7 +228,7 @@ class TestPortableRefsPush:
         job_result, _ = execute_sync_with_auto_resolution(
             e2e_client, platform_admin.headers
         )
-        assert job_result and job_result.get("status") == "completed"
+        assert job_result and job_result.get("status") == "success"
 
         # Check form file content
         form_file_path = f"forms/{form_info['form']['name'].lower().replace(' ', '-')}.form.json"
@@ -255,7 +266,7 @@ class TestPortableRefsPush:
         job_result, _ = execute_sync_with_auto_resolution(
             e2e_client, platform_admin.headers
         )
-        assert job_result and job_result.get("status") == "completed"
+        assert job_result and job_result.get("status") == "success"
 
         logger.info("Agent sync completed - portable refs should be in GitHub")
 
@@ -304,14 +315,14 @@ class TestPortableRefsPull:
         job_result, _ = execute_sync_with_auto_resolution(
             e2e_client, platform_admin.headers
         )
-        assert job_result and job_result.get("status") == "completed"
+        assert job_result and job_result.get("status") == "success"
 
         # Fetch the imported app from API
         def find_app():
             resp = e2e_client.get("/api/applications", headers=platform_admin.headers)
             if resp.status_code != 200:
                 return None
-            apps = resp.json()
+            apps = resp.json().get("applications", [])
             for app in apps:
                 if app.get("slug") == app_slug:
                     return app
@@ -374,7 +385,7 @@ class TestPortableRefsPull:
         job_result, _ = execute_sync_with_auto_resolution(
             e2e_client, platform_admin.headers
         )
-        assert job_result and job_result.get("status") == "completed"
+        assert job_result and job_result.get("status") == "success"
 
         # Find imported form
         def find_form():
@@ -431,7 +442,7 @@ class TestPortableRefsPull:
         job_result, _ = execute_sync_with_auto_resolution(
             e2e_client, platform_admin.headers
         )
-        assert job_result and job_result.get("status") == "completed"
+        assert job_result and job_result.get("status") == "success"
 
         # Find imported agent
         def find_agent():
@@ -507,7 +518,7 @@ class TestMissingRefsGracefulDegradation:
             resp = e2e_client.get("/api/applications", headers=platform_admin.headers)
             if resp.status_code != 200:
                 return None
-            apps = resp.json()
+            apps = resp.json().get("applications", [])
             for app in apps:
                 if app.get("slug") == app_slug:
                     return app

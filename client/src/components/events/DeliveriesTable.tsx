@@ -9,6 +9,8 @@ import {
 	ExternalLink,
 	AlertTriangle,
 	Workflow as WorkflowIcon,
+	Send,
+	CircleDashed,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -23,16 +25,19 @@ import { toast } from "sonner";
 import { useAuth } from "@/contexts/AuthContext";
 import {
 	useRetryDelivery,
+	useCreateDelivery,
 	type EventDelivery,
-	type EventDeliveryStatus,
 } from "@/services/events";
+
+// Extended status type to include "not_delivered"
+type DeliveryStatus = EventDelivery["status"] | "not_delivered";
 
 interface DeliveriesTableProps {
 	deliveries: EventDelivery[];
 	eventId?: string;
 }
 
-function getStatusIcon(status: EventDeliveryStatus) {
+function getStatusIcon(status: DeliveryStatus) {
 	switch (status) {
 		case "pending":
 			return <Clock className="h-4 w-4 text-muted-foreground" />;
@@ -44,10 +49,14 @@ function getStatusIcon(status: EventDeliveryStatus) {
 			return <XCircle className="h-4 w-4 text-destructive" />;
 		case "skipped":
 			return <AlertTriangle className="h-4 w-4 text-amber-500" />;
+		case "not_delivered":
+			return <CircleDashed className="h-4 w-4 text-muted-foreground" />;
+		default:
+			return <Clock className="h-4 w-4 text-muted-foreground" />;
 	}
 }
 
-function getStatusLabel(status: EventDeliveryStatus) {
+function getStatusLabel(status: DeliveryStatus) {
 	switch (status) {
 		case "pending":
 			return "Pending";
@@ -59,11 +68,15 @@ function getStatusLabel(status: EventDeliveryStatus) {
 			return "Failed";
 		case "skipped":
 			return "Skipped";
+		case "not_delivered":
+			return "Not Delivered";
+		default:
+			return "Unknown";
 	}
 }
 
 function getStatusVariant(
-	status: EventDeliveryStatus,
+	status: DeliveryStatus,
 ): "default" | "secondary" | "destructive" | "outline" {
 	switch (status) {
 		case "success":
@@ -73,16 +86,20 @@ function getStatusVariant(
 		case "queued":
 		case "pending":
 			return "outline";
+		case "not_delivered":
+			return "secondary";
 		default:
 			return "secondary";
 	}
 }
 
-export function DeliveriesTable({ deliveries }: DeliveriesTableProps) {
+export function DeliveriesTable({ deliveries, eventId }: DeliveriesTableProps) {
 	const { isPlatformAdmin } = useAuth();
 	const queryClient = useQueryClient();
 	const retryMutation = useRetryDelivery();
+	const createDeliveryMutation = useCreateDelivery();
 	const [retryingId, setRetryingId] = useState<string | null>(null);
+	const [sendingId, setSendingId] = useState<string | null>(null);
 
 	const handleRetry = async (deliveryId: string) => {
 		setRetryingId(deliveryId);
@@ -106,6 +123,32 @@ export function DeliveriesTable({ deliveries }: DeliveriesTableProps) {
 		}
 	};
 
+	const handleSend = async (subscriptionId: string) => {
+		if (!eventId) return;
+		setSendingId(subscriptionId);
+		try {
+			await createDeliveryMutation.mutateAsync({
+				params: {
+					path: { event_id: eventId },
+				},
+				body: {
+					subscription_id: subscriptionId,
+				},
+			});
+			toast.success("Event sent to workflow");
+			// Refresh deliveries
+			queryClient.invalidateQueries({
+				predicate: (query) =>
+					query.queryKey[0] === "get" &&
+					(query.queryKey[1] as string)?.includes("/deliveries"),
+			});
+		} catch {
+			toast.error("Failed to send event");
+		} finally {
+			setSendingId(null);
+		}
+	};
+
 	if (deliveries.length === 0) {
 		return (
 			<div className="text-center py-6 text-muted-foreground">
@@ -114,7 +157,7 @@ export function DeliveriesTable({ deliveries }: DeliveriesTableProps) {
 		);
 	}
 
-	const getBorderColor = (status: EventDeliveryStatus) => {
+	const getBorderColor = (status: DeliveryStatus) => {
 		switch (status) {
 			case "success":
 				return "border-l-green-500";
@@ -125,6 +168,8 @@ export function DeliveriesTable({ deliveries }: DeliveriesTableProps) {
 				return "border-l-blue-500";
 			case "skipped":
 				return "border-l-amber-500";
+			case "not_delivered":
+				return "border-l-muted-foreground/50";
 			default:
 				return "border-l-primary/60";
 		}
@@ -134,8 +179,8 @@ export function DeliveriesTable({ deliveries }: DeliveriesTableProps) {
 		<div className="space-y-2">
 			{deliveries.map((delivery) => (
 				<div
-					key={delivery.id}
-					className={`border rounded-lg p-3 border-l-4 bg-muted/40 ${getBorderColor(delivery.status)}`}
+					key={delivery.id || `sub-${delivery.event_subscription_id}`}
+					className={`border rounded-lg p-3 border-l-4 bg-muted/40 ${getBorderColor(delivery.status as DeliveryStatus)}`}
 				>
 					{/* Top row: Workflow + Status + Actions */}
 					<div className="flex items-center justify-between gap-3">
@@ -174,7 +219,7 @@ export function DeliveriesTable({ deliveries }: DeliveriesTableProps) {
 						</div>
 						<div className="flex items-center gap-2">
 							<div className="flex items-center gap-1.5">
-								{getStatusIcon(delivery.status)}
+								{getStatusIcon(delivery.status as DeliveryStatus)}
 								{delivery.status === "failed" &&
 								delivery.error_message ? (
 									<TooltipProvider>
@@ -211,19 +256,21 @@ export function DeliveriesTable({ deliveries }: DeliveriesTableProps) {
 								) : (
 									<Badge
 										variant={getStatusVariant(
-											delivery.status,
+											delivery.status as DeliveryStatus,
 										)}
 									>
-										{getStatusLabel(delivery.status)}
+										{getStatusLabel(delivery.status as DeliveryStatus)}
 									</Badge>
 								)}
 							</div>
+							{/* Retry button for failed deliveries */}
 							{isPlatformAdmin &&
-								delivery.status === "failed" && (
+								delivery.status === "failed" &&
+								delivery.id && (
 									<Button
 										variant="outline"
 										size="sm"
-										onClick={() => handleRetry(delivery.id)}
+										onClick={() => handleRetry(delivery.id!)}
 										disabled={retryingId === delivery.id}
 									>
 										{retryingId === delivery.id ? (
@@ -234,25 +281,56 @@ export function DeliveriesTable({ deliveries }: DeliveriesTableProps) {
 										Retry
 									</Button>
 								)}
+							{/* Send button for not_delivered subscriptions */}
+							{isPlatformAdmin &&
+								delivery.status === "not_delivered" && (
+									<Button
+										variant="outline"
+										size="sm"
+										onClick={() =>
+											handleSend(delivery.event_subscription_id)
+										}
+										disabled={
+											sendingId === delivery.event_subscription_id
+										}
+									>
+										{sendingId ===
+										delivery.event_subscription_id ? (
+											<Loader2 className="h-3.5 w-3.5 animate-spin mr-1" />
+										) : (
+											<Send className="h-3.5 w-3.5 mr-1" />
+										)}
+										Send
+									</Button>
+								)}
 						</div>
 					</div>
 
 					{/* Bottom row: Metadata */}
-					<div className="flex items-center gap-4 mt-2 pt-2 border-t border-border/50 text-xs text-muted-foreground">
-						<span>
-							{delivery.attempt_count} attempt
-							{delivery.attempt_count !== 1 ? "s" : ""}
-						</span>
-						{delivery.completed_at && (
+					{delivery.status !== "not_delivered" && (
+						<div className="flex items-center gap-4 mt-2 pt-2 border-t border-border/50 text-xs text-muted-foreground">
 							<span>
-								Completed{" "}
-								{format(
-									new Date(delivery.completed_at),
-									"MMM d, HH:mm:ss",
-								)}
+								{delivery.attempt_count} attempt
+								{delivery.attempt_count !== 1 ? "s" : ""}
 							</span>
-						)}
-					</div>
+							{delivery.completed_at && (
+								<span>
+									Completed{" "}
+									{format(
+										new Date(delivery.completed_at),
+										"MMM d, HH:mm:ss",
+									)}
+								</span>
+							)}
+						</div>
+					)}
+					{delivery.status === "not_delivered" && (
+						<div className="flex items-center gap-4 mt-2 pt-2 border-t border-border/50 text-xs text-muted-foreground">
+							<span>
+								Subscription added after this event arrived
+							</span>
+						</div>
+					)}
 				</div>
 			))}
 		</div>

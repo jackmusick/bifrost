@@ -82,144 +82,16 @@ async def list_forms(context: Any) -> str:
     input_schema={"type": "object", "properties": {}, "required": []},
 )
 async def get_form_schema(context: Any) -> str:
-    """Get form schema documentation."""
-    return """# Form Schema Documentation
+    """Get form schema documentation generated from Pydantic models."""
+    from src.models.contracts.forms import FormCreate, FormUpdate, FormField, FormSchema
+    from src.services.mcp_server.schema_utils import models_to_markdown
 
-Forms in Bifrost are defined using a JSON schema with the following structure:
-
-## Form Definition
-
-```json
-{
-  "name": "Example Form",
-  "description": "Form description",
-  "workflow_id": "optional-workflow-uuid",
-  "form_schema": {
-    "fields": [
-      {
-        "name": "field_name",
-        "type": "text",
-        "label": "Field Label",
-        "required": true
-      }
-    ]
-  }
-}
-```
-
-**Important:** Fields must be nested inside `form_schema.fields`, not at the top level.
-
-## Field Types
-
-### Text Field
-```json
-{
-  "name": "username",
-  "type": "text",
-  "label": "Username",
-  "required": true,
-  "placeholder": "Enter username"
-}
-```
-
-### Textarea Field
-```json
-{
-  "name": "description",
-  "type": "textarea",
-  "label": "Description",
-  "placeholder": "Enter details...",
-  "help_text": "Provide a detailed description"
-}
-```
-
-### Select Field
-```json
-{
-  "name": "country",
-  "type": "select",
-  "label": "Country",
-  "options": [
-    {"value": "us", "label": "United States"},
-    {"value": "uk", "label": "United Kingdom"}
-  ]
-}
-```
-
-### Number Field
-```json
-{
-  "name": "age",
-  "type": "number",
-  "label": "Age",
-  "min": 0,
-  "max": 150
-}
-```
-
-### Boolean Field
-```json
-{
-  "name": "subscribe",
-  "type": "boolean",
-  "label": "Subscribe to newsletter",
-  "default": false
-}
-```
-
-### Date Field
-```json
-{
-  "name": "birthday",
-  "type": "date",
-  "label": "Birthday"
-}
-```
-
-## Common Field Properties
-
-- `name`: Field identifier (required)
-- `type`: Field type (required) - text, textarea, number, select, boolean, date, email, password
-- `label`: Display label
-- `required`: Whether field is required (default: false)
-- `default`: Default value
-- `placeholder`: Placeholder text
-- `help_text`: Help text shown below the field
-
-## Complete Example
-
-```json
-{
-  "name": "User Registration",
-  "description": "Register a new user account",
-  "workflow_id": "abc123-workflow-uuid",
-  "form_schema": {
-    "fields": [
-      {
-        "name": "email",
-        "type": "email",
-        "label": "Email Address",
-        "required": true,
-        "placeholder": "user@example.com"
-      },
-      {
-        "name": "full_name",
-        "type": "text",
-        "label": "Full Name",
-        "required": true
-      },
-      {
-        "name": "notes",
-        "type": "textarea",
-        "label": "Additional Notes",
-        "required": false,
-        "help_text": "Any additional information"
-      }
-    ]
-  }
-}
-```
-"""
+    return models_to_markdown([
+        (FormCreate, "FormCreate (for creating forms)"),
+        (FormUpdate, "FormUpdate (for updating forms)"),
+        (FormSchema, "FormSchema (fields container)"),
+        (FormField, "FormField (field definition)"),
+    ], "Form Schema Documentation")
 
 
 @system_tool(
@@ -365,14 +237,20 @@ async def create_form(
                 if not launch_workflow:
                     return json.dumps({"error": f"Launch workflow '{launch_workflow_id}' not found."})
 
-            # Validate form schema
+            # Validate form schema using Pydantic model
+            from pydantic import ValidationError
+            from src.services.mcp_server.tools.validation import format_validation_errors
+
             try:
                 FormSchema.model_validate({"fields": fields})
+            except ValidationError as e:
+                return json.dumps({"error": f"Invalid form schema: {format_validation_errors(e.errors())}"})
             except Exception as e:
                 return json.dumps({"error": f"Error validating form schema: {str(e)}"})
 
             # Create form record
-            now = datetime.utcnow()
+            from datetime import timezone
+            now = datetime.now(timezone.utc)
 
             form = FormORM(
                 name=name,
@@ -709,9 +587,14 @@ async def update_form(
                 updates_made.append("is_active")
 
             if fields is not None:
-                # Validate new fields
+                # Validate new fields using Pydantic model
+                from pydantic import ValidationError
+                from src.services.mcp_server.tools.validation import format_validation_errors
+
                 try:
                     FormSchema.model_validate({"fields": fields})
+                except ValidationError as e:
+                    return json.dumps({"error": f"Invalid form schema: {format_validation_errors(e.errors())}"})
                 except Exception as e:
                     return json.dumps({"error": f"Error validating form schema: {str(e)}"})
 
@@ -730,7 +613,8 @@ async def update_form(
             if not updates_made:
                 return json.dumps({"error": "No updates provided. Specify at least one field to update."})
 
-            form.updated_at = datetime.utcnow()
+            from datetime import timezone
+            form.updated_at = datetime.now(timezone.utc)
             await db.flush()
 
             # Reload form with fields

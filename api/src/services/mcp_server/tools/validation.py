@@ -61,8 +61,16 @@ COMPONENT_PROPS_MAP: dict[str, type] = {
 }
 
 
-def _format_validation_errors(errors: list[ErrorDetails]) -> str:
-    """Format Pydantic validation errors into a readable message."""
+def format_validation_errors(errors: list[ErrorDetails]) -> str:
+    """
+    Format Pydantic validation errors into a readable message.
+
+    Args:
+        errors: List of error details from ValidationError.errors()
+
+    Returns:
+        Human-readable error message string
+    """
     messages = []
     for error in errors:
         loc = ".".join(str(part) for part in error.get("loc", []))
@@ -72,6 +80,10 @@ def _format_validation_errors(errors: list[ErrorDetails]) -> str:
         else:
             messages.append(msg)
     return "; ".join(messages)
+
+
+# Alias for backwards compatibility
+_format_validation_errors = format_validation_errors
 
 
 def validate_layout(layout: dict[str, Any]) -> tuple[bool, str | None]:

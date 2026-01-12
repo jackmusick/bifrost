@@ -24,72 +24,28 @@ logger = logging.getLogger(__name__)
     is_restricted=True,
     input_schema={"type": "object", "properties": {}, "required": []},
 )
-async def get_data_provider_schema(context: Any) -> str:
-    """Get documentation about data provider structure and decorators."""
-    return """# Data Provider Schema Documentation
+async def get_data_provider_schema(context: Any) -> str:  # noqa: ARG001
+    """Get documentation about data provider structure and decorators generated from Pydantic models."""
+    from src.models.contracts.workflows import DataProviderMetadata, WorkflowParameter
+    from src.services.mcp_server.schema_utils import models_to_markdown
 
-Data providers are Python functions that supply dynamic options for form select fields.
-They are stored as workflows with type='data_provider'. Use list_workflows to see available data providers.
+    # Generate model documentation
+    model_docs = models_to_markdown([
+        (DataProviderMetadata, "DataProviderMetadata"),
+        (WorkflowParameter, "WorkflowParameter (input parameters)"),
+    ], "Data Provider Schema Documentation")
 
-## Basic Structure
-
-```python
-from bifrost import data_provider
-
-@data_provider(
-    name="Customer List",
-    description="Returns list of customers",
-    cache_ttl_seconds=300,  # Cache for 5 minutes
-)
-async def get_customers() -> list[dict]:
-    '''Return list of customers for dropdown.'''
-    return [
-        {"label": "Acme Corp", "value": "acme-123"},
-        {"label": "TechCo", "value": "tech-456"},
-    ]
-```
-
-## Decorator Properties
-
-- `name`: Display name for the data provider (defaults to function name)
-- `description`: Human-readable description (defaults to docstring)
-- `cache_ttl_seconds`: How long to cache results (default: 300, 0 = no caching)
-- `category`: Group related providers (default: "General")
-
-## With Parameters
-
-Parameters are automatically derived from the function signature:
-
-```python
-from bifrost import data_provider
-
-@data_provider
-async def get_users_by_dept(
-    department_id: str,
-    include_inactive: bool = False
-) -> list[dict]:
-    '''Get users filtered by department.'''
-    users = await fetch_users(department_id, include_inactive)
-    return [
-        {"label": user.name, "value": str(user.id)}
-        for user in users
-    ]
-```
-
+    # Data provider-specific documentation
+    usage_docs = """
 ## Return Format
 
-Data providers must return a list of objects with `label` and `value`:
+Data providers must return a list of objects with label/value pairs:
 
-```python
-[
-    {"label": "Display Text", "value": "unique_value"},
-    {"label": "Another Option", "value": "another_value", "metadata": {"extra": "info"}},
-]
-```
-
-- `label`: Text shown to the user in the dropdown
-- `value`: The actual value stored when selected
-- `metadata`: Optional extra data (not displayed, but available to workflows)
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| label | string | Yes | Text shown to user in dropdown |
+| value | string | Yes | Value stored when selected |
+| metadata | object | No | Optional extra data for workflows |
 
 ## Using in Forms
 
@@ -107,18 +63,14 @@ Reference a data provider in form field definitions:
 }
 ```
 
-## Parameter Types
-
-Supported parameter types (derived from function signature):
-- `str` - Text input
-- `int` - Integer value
-- `float` - Decimal value
-- `bool` - True/false
-- `dict` - Complex object (as JSON)
-- `Optional[T]` - Optional parameter with None default
-
 ## Viewing Data Providers
 
 Data providers are stored as workflows with type='data_provider'.
-Use the list_workflows tool to see all available data providers.
+Use `list_workflows` with type filter to see all available data providers.
+
+## SDK Documentation
+
+For `@data_provider` decorator documentation and examples, use `get_sdk_schema`.
 """
+
+    return model_docs + usage_docs

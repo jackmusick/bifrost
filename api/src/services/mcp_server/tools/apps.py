@@ -570,15 +570,72 @@ async def publish_app(context: Any, app_id: str) -> str:
     is_restricted=True,
     input_schema={"type": "object", "properties": {}, "required": []},
 )
-async def get_app_schema(context: Any) -> str:
-    """Get application schema documentation."""
-    return """# App Builder Schema Documentation
+async def get_app_schema(context: Any) -> str:  # noqa: ARG001
+    """Get application schema documentation generated from Pydantic models."""
+    from src.models.contracts.applications import (
+        ApplicationCreate,
+        ApplicationUpdate,
+        AppPageCreate,
+        AppPageUpdate,
+        AppComponentCreate,
+        AppComponentUpdate,
+        AppComponentMove,
+    )
+    from src.models.contracts.app_components import (
+        ButtonProps,
+        CardProps,
+        DataTableProps,
+        HeadingProps,
+        TextProps,
+        TextInputProps,
+        SelectProps,
+        FormEmbedProps,
+        ModalProps,
+        StatCardProps,
+        TabsProps,
+    )
+    from src.services.mcp_server.schema_utils import models_to_markdown
+
+    # Generate model documentation
+    app_models = models_to_markdown([
+        (ApplicationCreate, "ApplicationCreate (for creating apps)"),
+        (ApplicationUpdate, "ApplicationUpdate (for updating apps)"),
+    ], "Application Models")
+
+    page_models = models_to_markdown([
+        (AppPageCreate, "AppPageCreate (for creating pages)"),
+        (AppPageUpdate, "AppPageUpdate (for updating pages)"),
+    ], "Page Models")
+
+    component_models = models_to_markdown([
+        (AppComponentCreate, "AppComponentCreate (for creating components)"),
+        (AppComponentUpdate, "AppComponentUpdate (for updating components)"),
+        (AppComponentMove, "AppComponentMove (for moving components)"),
+    ], "Component Models")
+
+    # Component props for common types
+    props_models = models_to_markdown([
+        (HeadingProps, "HeadingProps"),
+        (TextProps, "TextProps"),
+        (CardProps, "CardProps"),
+        (ButtonProps, "ButtonProps"),
+        (StatCardProps, "StatCardProps"),
+        (DataTableProps, "DataTableProps"),
+        (TextInputProps, "TextInputProps"),
+        (SelectProps, "SelectProps"),
+        (FormEmbedProps, "FormEmbedProps"),
+        (ModalProps, "ModalProps"),
+        (TabsProps, "TabsProps"),
+    ], "Component Props (Common Types)")
+
+    # Conceptual documentation
+    overview = """# App Builder Schema Documentation
 
 Applications in Bifrost are defined using a JSON schema with pages, layouts, and components.
 
 ## App Builder Tool Hierarchy
 
-Apps are managed at three levels with granular MCP tools for 99% token savings on single-component edits:
+Apps are managed at three levels:
 
 ### App Level
 - `list_apps` - List all applications with page summaries
@@ -601,590 +658,61 @@ Apps are managed at three levels with granular MCP tools for 99% token savings o
 - `move_component` - Reposition a component to new parent/order
 
 **Workflow**: Use `get_app` to see pages, then `get_page` for the page you need,
-then component tools for granular edits. Avoid fetching full app definitions.
-
-**Note:** Each create/update operation validates automatically. There is no separate validate tool.
+then component tools for granular edits.
 
 ---
 
-## Page Structure
-
-Each page has a path, title, layout, and optional launch workflow for data loading:
-
-```json
-{
-  "id": "dashboard",
-  "title": "Dashboard",
-  "path": "/",
-  "launchWorkflowId": "get_dashboard_stats",
-  "launchWorkflowDataSourceId": "stats",
-  "layout": {
-    "type": "column",
-    "gap": 16,
-    "children": [...]
-  }
-}
-```
-
-## Data Loading with Launch Workflows
-
-Pages load data through launch workflows, not data sources. This is the standard pattern:
-
-1. Set `launchWorkflowId` to a workflow UUID - executes when the page mounts
-2. Set `launchWorkflowDataSourceId` to a key name (e.g., "stats", "customers")
-3. Access results via `{{ workflow.<dataSourceId> }}`
-
-**Example:**
-```json
-{
-  "launchWorkflowId": "abc-123-workflow-uuid",
-  "launchWorkflowDataSourceId": "customers"
-}
-```
-Then use `{{ workflow.customers }}` to access the data directly.
-
-**Important:** All data loading now goes through workflows, accessed via `{{ workflow.<key> }}`
-
-## Layout Types
-
-- **column**: Vertical flex container (children stack vertically)
-- **row**: Horizontal flex container (children side by side)
-- **grid**: CSS grid with configurable columns
-
-Layout properties:
-- `gap`: INTEGER - Space between children in pixels (e.g., 16, not "16px"). Defaults: column=16, row=8, grid=16. Set to 0 for no gap.
-- `padding`: INTEGER - Internal padding in pixels (e.g., 24, not "24px"). Default: 0. Single value only (not CSS multi-value).
-- `align`: ENUM - Cross-axis alignment: "start", "center", "end", "stretch"
-- `justify`: ENUM - Main-axis alignment: "start", "center", "end", "between", "around"
-- `columns`: INTEGER - Number of grid columns (grid type only)
-- `distribute`: ENUM - How children fill available space: "natural" (default), "equal", "fit"
-- `maxWidth`: ENUM - Constrains layout width: "sm" (384px), "md" (448px), "lg" (512px), "xl" (576px), "2xl" (672px), "full"/"none" (no limit)
-- `maxHeight`: INTEGER - Container height limit in pixels (enables scrolling when content overflows)
-- `overflow`: ENUM - Behavior when content exceeds bounds: "visible", "auto", "scroll", "hidden"
-- `sticky`: ENUM - Pin container to edge when scrolling: "top", "bottom"
-- `stickyOffset`: INTEGER - Distance from edge in pixels when sticky is set
-- `className`: STRING - Custom Tailwind or CSS classes
-- `style`: OBJECT - Inline CSS styles as object (use camelCase: backgroundColor, maxHeight)
-
-**IMPORTANT**: Integer properties (gap, padding, columns, maxHeight, stickyOffset) must be numbers, NOT strings with "px" suffix.
-
-## Layout Distribution
-
-Control how children fill available space with the `distribute` property:
-
-- `"natural"` (default): Children keep their natural size
-- `"equal"`: Children expand equally (flex-1 behavior)
-- `"fit"`: Children fit their content
-
-**Example: Page header with action button (natural)**
-```json
-{
-  "type": "row",
-  "justify": "between",
-  "align": "center",
-  "children": [
-    {"id": "title", "type": "heading", "props": {"text": "Customers", "level": 1}},
-    {"id": "add-btn", "type": "button", "props": {"label": "Add Customer"}}
-  ]
-}
-```
-
-**Example: Right-aligned button group**
-```json
-{
-  "type": "row",
-  "justify": "end",
-  "children": [
-    {"id": "cancel", "type": "button", "props": {"label": "Cancel", "variant": "outline"}},
-    {"id": "save", "type": "button", "props": {"label": "Save"}}
-  ]
-}
-```
-
-**Example: Equal-width columns (use distribute: "equal")**
-```json
-{
-  "type": "row",
-  "distribute": "equal",
-  "children": [
-    {"id": "firstName", "type": "text-input", "props": {"fieldId": "firstName", "label": "First Name"}},
-    {"id": "lastName", "type": "text-input", "props": {"fieldId": "lastName", "label": "Last Name"}}
-  ]
-}
-```
-
-## Scrollable Containers
-
-Create scrollable areas by setting `maxHeight` and `overflow`:
-
-**Example: Scrollable sidebar**
-```json
-{
-  "type": "column",
-  "maxHeight": 400,
-  "overflow": "auto",
-  "gap": 16,
-  "children": [...]
-}
-```
-
-## Custom Styling
-
-Apply custom classes and inline styles to layouts:
-
-**Example: Custom styled container**
-```json
-{
-  "type": "column",
-  "className": "bg-blue-50 rounded-lg shadow-lg",
-  "style": {"maxHeight": "500px", "overflowY": "auto"},
-  "children": [...]
-}
-```
-
-## Form Page Layouts (IMPORTANT)
-
-For pages containing forms (create/edit pages), ALWAYS use `maxWidth: "lg"` on the root column layout.
-This prevents forms from stretching uncomfortably wide on large screens.
-
-**Example: Create/Edit page layout**
-```json
-{
-  "id": "create",
-  "title": "New Customer",
-  "path": "/new",
-  "layout": {
-    "type": "column",
-    "maxWidth": "lg",
-    "gap": 16,
-    "padding": 24,
-    "children": [
-      {"id": "h1", "type": "heading", "props": {"text": "New Customer", "level": 1}},
-      {"id": "form-card", "type": "card", "props": {
-        "children": [
-          {"id": "name", "type": "text-input", "props": {"fieldId": "name", "label": "Company Name", "required": true}},
-          {"id": "email", "type": "text-input", "props": {"fieldId": "email", "label": "Email"}},
-          {"id": "actions", "type": "row", "props": {"justify": "end", "gap": 8, "children": [
-            {"id": "cancel", "type": "button", "props": {"label": "Cancel", "variant": "outline", "actionType": "navigate", "navigateTo": "/"}},
-            {"id": "save", "type": "button", "props": {"label": "Save", "actionType": "submit", "workflowId": "create_customer"}}
-          ]}}
-        ]
-      }}
-    ]
-  }
-}
-```
-
-## Component Width Property
-
-All components support a `width` property for responsive layouts:
-
-| Value | Description |
-|-------|-------------|
-| `"auto"` | Natural size (default) |
-| `"full"` | Full width of container |
-| `"1/2"` | 50% width |
-| `"1/3"` | 33.33% width |
-| `"1/4"` | 25% width |
-| `"2/3"` | 66.67% width |
-| `"3/4"` | 75% width |
-
-**Example: Two-column form layout**
-```json
-{
-  "type": "row",
-  "gap": 16,
-  "children": [
-    {"id": "firstName", "type": "text-input", "width": "1/2", "props": {"fieldId": "firstName", "label": "First Name"}},
-    {"id": "lastName", "type": "text-input", "width": "1/2", "props": {"fieldId": "lastName", "label": "Last Name"}}
-  ]
-}
-```
-
-**Example: Sidebar layout**
-```json
-{
-  "type": "row",
-  "gap": 24,
-  "children": [
-    {"id": "main", "type": "card", "width": "2/3", "props": {"title": "Main Content", "children": [...]}},
-    {"id": "sidebar", "type": "card", "width": "1/3", "props": {"title": "Sidebar", "children": [...]}}
-  ]
-}
-```
-
-## Repeating Components
-
-Render a component multiple times by iterating over an array using the `repeatFor` property:
-
-**Example: Render a card for each client**
-```json
-{
-  "id": "client-cards",
-  "type": "card",
-  "repeatFor": {
-    "items": "{{ workflow.clients }}",
-    "itemKey": "id",
-    "as": "client"
-  },
-  "props": {
-    "title": "{{ client.name }}",
-    "children": [
-      {"id": "email", "type": "text", "props": {"text": "{{ client.email }}", "label": "Email"}},
-      {"id": "status", "type": "badge", "props": {"text": "{{ client.status }}"}}
-    ]
-  }
-}
-```
-
-Properties:
-- `items`: Expression that evaluates to an array
-- `itemKey`: Property name used for React keys (must be unique per item)
-- `as`: Variable name to access each item in child expressions
-
-## Component Grid Spanning
-
-Components can span multiple columns in grid layouts using the `gridSpan` property:
-
-**Example: Component spanning 2 columns**
-```json
-{
-  "type": "grid",
-  "columns": 3,
-  "gap": 16,
-  "children": [
-    {"id": "item1", "type": "card", "props": {"title": "Item 1"}},
-    {"id": "item2", "type": "card", "props": {"title": "Item 2"}},
-    {"id": "item3", "type": "card", "gridSpan": 2, "props": {"title": "Wide Item - Spans 2 Columns"}},
-    {"id": "item4", "type": "card", "props": {"title": "Item 4"}}
-  ]
-}
-```
-
-## Component Styling
-
-All components support custom styling through `className` and `style` properties:
-
-**Example: Styled component**
-```json
-{
-  "id": "custom-text",
-  "type": "text",
-  "className": "text-blue-500 font-bold",
-  "style": {"padding": "20px", "backgroundColor": "#f0f0f0"},
-  "props": {"text": "Custom styled text"}
-}
-```
-
-## Page-Level CSS
-
-Add custom CSS to pages using the `styles` property:
-
-**Example: Page with custom styles**
-```json
-{
-  "page_id": "dashboard",
-  "title": "Dashboard",
-  "path": "/",
-  "styles": ".custom-sidebar { position: sticky; top: 0; height: 100vh; overflow-y: auto; }",
-  "layout": {...}
-}
-```
-
-## Component Types
-
-### Display Components
-
-**heading** - Page/section headings
-```json
-{"id": "h1", "type": "heading", "props": {"text": "Welcome", "level": 1}}
-```
-
-**text** - Text content with optional label
-```json
-{"id": "t1", "type": "text", "props": {"text": "Description here", "label": "Details"}}
-```
-
-**badge** - Status badges
-```json
-{"id": "b1", "type": "badge", "props": {"text": "Active", "variant": "default"}}
-```
-Variants: default, secondary, destructive, outline
-
-**stat-card** - Dashboard statistics
-```json
-{
-  "id": "sc1",
-  "type": "stat-card",
-  "loadingWorkflows": ["workflow-uuid"],
-  "props": {
-    "title": "Total Users",
-    "value": "{{ workflow.stats.result.userCount }}",
-    "icon": "users",
-    "trend": {"value": "+12%", "direction": "up"}
-  }
-}
-```
-- `loadingWorkflows`: Array of workflow IDs - shows skeleton while any are executing
-
-**image** - Images with sizing
-```json
-{"id": "img1", "type": "image", "props": {"src": "{{ workflow.profile.result.avatar }}", "alt": "Avatar", "maxWidth": 100}}
-```
-
-**card** - Container with optional header
-```json
-{"id": "c1", "type": "card", "props": {"title": "Section", "children": [...]}}
-```
-
-**divider** - Horizontal/vertical line separator
-**spacer** - Empty space with configurable size
-
-### Data Components
-
-**data-table** - Full-featured data table
-```json
-{
-  "id": "table1",
-  "type": "data-table",
-  "props": {
-    "dataSource": "customers",
-    "cacheKey": "customers-table",
-    "columns": [
-      {"key": "name", "header": "Name", "sortable": true},
-      {"key": "status", "header": "Status", "type": "badge"}
-    ],
-    "searchable": true,
-    "paginated": true,
-    "rowActions": [
-      {
-        "label": "",
-        "icon": "Eye",
-        "onClick": {"type": "navigate", "navigateTo": "/customers/{{ row.id }}"}
-      },
-      {
-        "label": "Edit",
-        "icon": "Pencil",
-        "onClick": {"type": "navigate", "navigateTo": "/customers/{{ row.id }}/edit"}
-      }
-    ]
-  }
-}
-```
-- `cacheKey`: Persist table data across page navigations (shows refresh button)
-- Row actions: Use empty `label` + `icon` for icon-only buttons with tooltip
-
-**tabs** - Tabbed content sections
-```json
-{
-  "id": "tabs1",
-  "type": "tabs",
-  "props": {
-    "defaultTab": "overview",
-    "items": [
-      {"id": "overview", "label": "Overview", "content": {"type": "column", "children": [...]}},
-      {"id": "settings", "label": "Settings", "content": {"type": "column", "children": [...]}}
-    ]
-  }
-}
-```
-
-### Form Input Components
-
-**text-input** - Text field
-```json
-{"id": "ti1", "type": "text-input", "props": {"fieldId": "name", "label": "Name", "required": true}}
-```
-
-**number-input** - Number field with min/max
-```json
-{"id": "ni1", "type": "number-input", "props": {"fieldId": "quantity", "label": "Qty", "min": 1, "max": 100}}
-```
-
-**select** - Dropdown (static or data-driven)
-```json
-{
-  "id": "sel1",
-  "type": "select",
-  "props": {
-    "fieldId": "status",
-    "label": "Status",
-    "options": [
-      {"value": "active", "label": "Active"},
-      {"value": "inactive", "label": "Inactive"}
-    ]
-  }
-}
-```
-
-**checkbox** - Boolean checkbox
-```json
-{"id": "cb1", "type": "checkbox", "props": {"fieldId": "agree", "label": "I agree to terms"}}
-```
-
-### Interactive Components
-
-**button** - Action trigger
-```json
-{
-  "id": "btn1",
-  "type": "button",
-  "props": {
-    "label": "Save",
-    "actionType": "submit",
-    "workflowId": "save_data",
-    "variant": "default"
-  }
-}
-```
-Action types: navigate, workflow, submit, custom
-Variants: default, destructive, outline, secondary, ghost, link
-
-**modal** - Dialog with content
-```json
-{
-  "id": "m1",
-  "type": "modal",
-  "props": {
-    "title": "Add Item",
-    "triggerLabel": "Add New",
-    "content": {"type": "column", "children": [...]},
-    "footerActions": [{"label": "Save", "actionType": "submit", "workflowId": "create_item"}]
-  }
-}
-```
-
-## Expressions
-
-Use `{{ }}` syntax for dynamic values:
-
-- `{{ user.name }}` - Current user's name
-- `{{ user.email }}` - Current user's email
-- `{{ user.role }}` - Current user's role
-- `{{ variables.selectedId }}` - Page variable
-- `{{ field.customerName }}` - Form field value
-- `{{ workflow.<dataSourceId>.result }}` - Workflow result data (primary data access pattern)
-- `{{ workflow.<dataSourceId>.result.id }}` - Access nested properties from workflow result
-- `{{ workflow.lastResult }}` - Result from most recently executed workflow
-- `{{ row.id }}` - Current row in table actions
-
-Comparisons: `{{ user.role == 'admin' }}`
-Logic: `{{ isActive && hasPermission }}`
-
-## Data Sources (Legacy)
-
-**Note:** The `dataSources` array is deprecated. Use launch workflows instead:
-
-```json
-{
-  "launchWorkflowId": "workflow-uuid",
-  "launchWorkflowDataSourceId": "customers"
-}
-```
-
-Access data via `{{ workflow.customers.result }}` instead of `{{ data.customers }}`.
-
-For backwards compatibility, the old pattern still works but should not be used for new pages.
-
-## Navigation
-
-```json
-{
-  "navigation": {
-    "showSidebar": true,
-    "sidebar": [
-      {"id": "home", "label": "Dashboard", "icon": "home", "path": "/"},
-      {"id": "users", "label": "Users", "icon": "users", "path": "/users"}
-    ]
-  }
-}
-```
-
-## Actions
-
-Button/table action types:
-- **navigate**: Go to path `{"type": "navigate", "navigateTo": "/path"}`
-- **workflow**: Execute workflow `{"type": "workflow", "workflowId": "...", "actionParams": {...}}`
-- **submit**: Collect form fields and execute workflow
-- **set-variable**: Update page variable
-
-OnComplete actions (after workflow):
-```json
-{
-  "onComplete": [
-    {"type": "refresh-table", "dataSourceKey": "customers"},
-    {"type": "navigate", "navigateTo": "/success"}
-  ]
-}
-```
-
-## Visibility & Disabled
-
-Any component can have:
-- `visible`: Expression to control visibility `"{{ user.role == 'admin' }}"`
-- `disabled`: Expression for buttons `"{{ !field.name }}"`
-
-## Loading States
-
-Any component can specify `loadingWorkflows` to show a skeleton while workflows execute:
-```json
-{
-  "id": "stats-card",
-  "type": "stat-card",
-  "loadingWorkflows": ["workflow-uuid-1", "workflow-uuid-2"],
-  "props": {...}
-}
-```
-The component shows a type-specific skeleton when any of the specified workflows are running.
-
-## Complete Example
-
-```json
-{
-  "name": "Customer Manager",
-  "version": "1.0.0",
-  "pages": [
-    {
-      "id": "list",
-      "title": "Customers",
-      "path": "/",
-      "launchWorkflowId": "list_customers_workflow_uuid",
-      "launchWorkflowDataSourceId": "customers",
-      "layout": {
-        "type": "column",
-        "gap": 16,
-        "padding": 24,
-        "children": [
-          {"id": "h1", "type": "heading", "props": {"text": "Customers", "level": 1}},
-          {
-            "id": "table",
-            "type": "data-table",
-            "props": {
-              "dataSource": "customers",
-              "columns": [
-                {"key": "name", "header": "Name"},
-                {"key": "email", "header": "Email"},
-                {"key": "status", "header": "Status", "type": "badge"}
-              ],
-              "searchable": true,
-              "onRowClick": {"type": "navigate", "navigateTo": "/customers/{{ row.id }}"}
-            }
-          }
-        ]
-      }
-    }
-  ],
-  "navigation": {
-    "showSidebar": true,
-    "sidebar": [
-      {"id": "list", "label": "Customers", "icon": "users", "path": "/"}
-    ]
-  }
-}
-```
-
-**Key points:**
-- Use `launchWorkflowId` + `launchWorkflowDataSourceId` instead of `dataSources`
-- Access workflow results via `{{ workflow.customers.result }}`
-- The `dataSource` prop in data-table references the `launchWorkflowDataSourceId`
 """
+
+    component_types_doc = """
+## Available Component Types
+
+| Type | Description |
+|------|-------------|
+| heading | Display heading text (h1-h6) |
+| text | Display text with optional markdown |
+| html | Render raw HTML content |
+| card | Container with header, content, footer |
+| divider | Horizontal dividing line |
+| spacer | Vertical spacing |
+| button | Clickable button with actions |
+| stat-card | Metric display with label and value |
+| image | Display images |
+| badge | Status indicator |
+| progress | Progress bar |
+| data-table | Data table with sorting/filtering |
+| tabs | Tabbed container |
+| file-viewer | Document/image viewer |
+| modal | Dialog/modal container |
+| text-input | Text input field |
+| number-input | Number input field |
+| select | Dropdown selection |
+| checkbox | Boolean toggle |
+| form-embed | Embed a Bifrost form |
+| form-group | Group form fields |
+
+## Expression Syntax
+
+Use `{{ expression }}` for dynamic content:
+- `{{ page.variable }}` - Page variables
+- `{{ component.id.value }}` - Component values
+- `{{ workflow.dataSourceId.result }}` - Workflow results
+- `{{ $user.name }}` - Current user info
+
+## Action Types
+
+| Action | Description |
+|--------|-------------|
+| navigate | Navigate to another page |
+| openModal | Open a modal component |
+| closeModal | Close current modal |
+| runWorkflow | Execute a workflow |
+| setValue | Set a component or page variable |
+| openUrl | Open external URL |
+
+"""
+
+    return overview + app_models + "\n\n" + page_models + "\n\n" + component_models + "\n\n" + props_models + "\n\n" + component_types_doc
+
+
+# End of apps.py

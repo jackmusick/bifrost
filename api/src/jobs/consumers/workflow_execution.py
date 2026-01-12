@@ -168,6 +168,14 @@ class WorkflowExecutionConsumer(BaseConsumer):
             value=roi_value,
         )
 
+        # Update event delivery status if this execution was triggered by an event
+        try:
+            from src.services.events.processor import update_delivery_from_execution
+            await update_delivery_from_execution(execution_id, status.value)
+        except Exception as e:
+            # Don't fail the execution result if delivery update fails
+            logger.warning(f"Failed to update event delivery for {execution_id[:8]}...: {e}")
+
         # Flush pending changes (SDK writes) from Redis to Postgres BEFORE publishing
         # This ensures data is in PostgreSQL when client refetches after receiving update
         try:
@@ -305,6 +313,14 @@ class WorkflowExecutionConsumer(BaseConsumer):
             error_type=error_type,
             duration_ms=duration_ms,
         )
+
+        # Update event delivery status if this execution was triggered by an event
+        try:
+            from src.services.events.processor import update_delivery_from_execution
+            await update_delivery_from_execution(execution_id, status.value, error_message=error)
+        except Exception as e:
+            # Don't fail the execution result if delivery update fails
+            logger.warning(f"Failed to update event delivery for {execution_id[:8]}...: {e}")
 
         # Flush pending changes (SDK writes) from Redis to Postgres BEFORE publishing
         # Even failed executions may have buffered writes

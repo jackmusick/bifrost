@@ -16,6 +16,7 @@ from sqlalchemy.orm import joinedload
 from src.core.auth import Context, CurrentSuperuser
 from src.core.database import DbSession
 from src.models.contracts.events import (
+    CreateDeliveryRequest,
     DynamicValuesRequest,
     DynamicValuesResponse,
     EventDeliveryListResponse,
@@ -902,7 +903,7 @@ async def get_event(
     "/{event_id}/deliveries",
     response_model=EventDeliveryListResponse,
     summary="List deliveries",
-    description="List deliveries for an event (Platform admin only).",
+    description="List deliveries for an event, including undelivered subscriptions (Platform admin only).",
 )
 async def list_deliveries(
     event_id: UUID,
@@ -910,7 +911,107 @@ async def list_deliveries(
     user: CurrentSuperuser,
     db: DbSession,
 ) -> EventDeliveryListResponse:
-    """List deliveries for an event (Platform admin only)."""
+    """
+    List deliveries for an event (Platform admin only).
+
+    Includes both existing deliveries AND subscriptions that were added after
+    the event arrived (shown as "not_delivered" status with null id).
+    """
+    # Get event with event source
+    result = await db.execute(
+        select(Event)
+        .options(joinedload(Event.event_source))
+        .where(Event.id == event_id)
+    )
+    event = result.unique().scalar_one_or_none()
+
+    if not event:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Event not found",
+        )
+
+    # Get existing deliveries
+    delivery_repo = EventDeliveryRepository(db)
+    deliveries = await delivery_repo.get_by_event(event_id)
+
+    # Build set of subscription IDs that already have deliveries
+    delivered_subscription_ids = {d.event_subscription_id for d in deliveries}
+
+    items = []
+
+    # Add existing deliveries
+    for delivery in deliveries:
+        items.append(
+            EventDeliveryResponse(
+                id=delivery.id,
+                event_id=delivery.event_id,
+                event_subscription_id=delivery.event_subscription_id,
+                workflow_id=delivery.workflow_id,
+                workflow_name=delivery.workflow.name if delivery.workflow else None,
+                execution_id=delivery.execution_id,
+                status=delivery.status.value if hasattr(delivery.status, 'value') else delivery.status,
+                error_message=delivery.error_message,
+                attempt_count=delivery.attempt_count,
+                next_retry_at=delivery.next_retry_at,
+                completed_at=delivery.completed_at,
+                created_at=delivery.created_at,
+            )
+        )
+
+    # Get all active subscriptions for this event source that match the event type
+    subscription_repo = EventSubscriptionRepository(db)
+    all_subscriptions = await subscription_repo.get_active_for_event(
+        source_id=event.event_source_id,
+        event_type=event.event_type,
+    )
+
+    # Add "not_delivered" entries for subscriptions without deliveries
+    for subscription in all_subscriptions:
+        if subscription.id not in delivered_subscription_ids:
+            items.append(
+                EventDeliveryResponse(
+                    id=None,  # No delivery exists
+                    event_id=event_id,
+                    event_subscription_id=subscription.id,
+                    workflow_id=subscription.workflow_id,
+                    workflow_name=subscription.workflow.name if subscription.workflow else None,
+                    execution_id=None,
+                    status="not_delivered",
+                    error_message=None,
+                    attempt_count=0,
+                    next_retry_at=None,
+                    completed_at=None,
+                    created_at=None,  # No delivery exists
+                )
+            )
+
+    return EventDeliveryListResponse(items=items, total=len(items))
+
+
+@router.post(
+    "/{event_id}/deliveries",
+    response_model=EventDeliveryResponse,
+    summary="Create delivery",
+    description="Create a delivery to send an existing event to a subscription (Platform admin only).",
+    status_code=status.HTTP_201_CREATED,
+)
+async def create_delivery(
+    event_id: UUID,
+    request: CreateDeliveryRequest,
+    ctx: Context,
+    user: CurrentSuperuser,
+    db: DbSession,
+) -> EventDeliveryResponse:
+    """
+    Create a delivery for an existing event and subscription.
+
+    This allows retroactively sending an event to a subscription that was
+    added after the event originally arrived.
+    """
+    import uuid
+    from src.services.events.processor import EventProcessor
+
     # Get event
     result = await db.execute(
         select(Event)
@@ -925,30 +1026,77 @@ async def list_deliveries(
             detail="Event not found",
         )
 
-    # Get deliveries
-    delivery_repo = EventDeliveryRepository(db)
-    deliveries = await delivery_repo.get_by_event(event_id)
+    # Get subscription and verify it belongs to the same event source
+    result = await db.execute(
+        select(EventSubscription)
+        .options(joinedload(EventSubscription.workflow))
+        .where(EventSubscription.id == request.subscription_id)
+    )
+    subscription = result.unique().scalar_one_or_none()
 
-    items = []
-    for delivery in deliveries:
-        items.append(
-            EventDeliveryResponse(
-                id=delivery.id,
-                event_id=delivery.event_id,
-                event_subscription_id=delivery.event_subscription_id,
-                workflow_id=delivery.workflow_id,
-                workflow_name=delivery.workflow.name if delivery.workflow else None,
-                execution_id=delivery.execution_id,
-                status=delivery.status,
-                error_message=delivery.error_message,
-                attempt_count=delivery.attempt_count,
-                next_retry_at=delivery.next_retry_at,
-                completed_at=delivery.completed_at,
-                created_at=delivery.created_at,
-            )
+    if not subscription:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Subscription not found",
         )
 
-    return EventDeliveryListResponse(items=items, total=len(items))
+    if subscription.event_source_id != event.event_source_id:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Subscription does not belong to this event's source",
+        )
+
+    # Check if delivery already exists
+    delivery_repo = EventDeliveryRepository(db)
+    existing = await db.execute(
+        select(EventDelivery).where(
+            EventDelivery.event_id == event_id,
+            EventDelivery.event_subscription_id == request.subscription_id,
+        )
+    )
+    if existing.scalar_one_or_none():
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="Delivery already exists for this event and subscription",
+        )
+
+    # Create delivery record
+    delivery = EventDelivery(
+        id=uuid.uuid4(),
+        event_id=event_id,
+        event_subscription_id=subscription.id,
+        workflow_id=subscription.workflow_id,
+        status=EventDeliveryStatus.PENDING,
+    )
+    db.add(delivery)
+    await db.flush()
+
+    # Queue the execution
+    processor = EventProcessor(db)
+    try:
+        await processor.queue_event_deliveries(event_id)
+    except Exception as e:
+        logger.error(f"Failed to queue delivery: {e}", exc_info=True)
+        delivery.status = EventDeliveryStatus.FAILED
+        delivery.error_message = str(e)
+        await db.flush()
+
+    logger.info(f"Created delivery {delivery.id} for event {event_id} subscription {subscription.id}")
+
+    return EventDeliveryResponse(
+        id=delivery.id,
+        event_id=delivery.event_id,
+        event_subscription_id=delivery.event_subscription_id,
+        workflow_id=delivery.workflow_id,
+        workflow_name=subscription.workflow.name if subscription.workflow else None,
+        execution_id=delivery.execution_id,
+        status=delivery.status.value if hasattr(delivery.status, 'value') else delivery.status,
+        error_message=delivery.error_message,
+        attempt_count=delivery.attempt_count,
+        next_retry_at=delivery.next_retry_at,
+        completed_at=delivery.completed_at,
+        created_at=delivery.created_at,
+    )
 
 
 @router.post(

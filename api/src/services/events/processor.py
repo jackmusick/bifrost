@@ -281,7 +281,7 @@ class EventProcessor:
         """
         from src.core.pubsub import manager
 
-        channel = f"event_source:{event_source_id}"
+        channel = f"event-source:{event_source_id}"
 
         # Build event payload
         message = {

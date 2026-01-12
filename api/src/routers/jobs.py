@@ -54,8 +54,10 @@ async def get_job_status(job_id: str) -> JobStatusResponse:
         if redis_client:
             result_key = f"bifrost:job:{job_id}"
             data = await redis_client.get(result_key)
+            logger.debug(f"Job {job_id} Redis data: {data[:100] if data else 'None'}...")
             if data:
                 result = json.loads(data)
+                logger.info(f"Job {job_id} found with status: {result.get('status')}")
                 return JobStatusResponse(
                     status=result.get("status", "unknown"),
                     message=result.get("message"),
@@ -64,6 +66,8 @@ async def get_job_status(job_id: str) -> JobStatusResponse:
                     commit_sha=result.get("commit_sha"),
                     error=result.get("error"),
                 )
+        else:
+            logger.warning(f"Redis client is None for job {job_id}")
     except Exception as e:
         logger.warning(f"Error fetching job status from Redis: {e}")
 

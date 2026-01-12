@@ -201,13 +201,19 @@ async def get_table(
     is_restricted=True,
     input_schema={"type": "object", "properties": {}, "required": []},
 )
-async def get_table_schema(context: Any) -> str:
-    """Return markdown documentation about table structure."""
-    return """# Table Schema Documentation
+async def get_table_schema(context: Any) -> str:  # noqa: ARG001
+    """Return markdown documentation about table structure generated from Pydantic models."""
+    from src.models.contracts.tables import TableCreate, TableUpdate
+    from src.services.mcp_server.schema_utils import models_to_markdown
 
-Tables in Bifrost are flexible document stores, similar to Dataverse or Airtable.
-They store JSON documents with optional schema hints for validation and UI.
+    # Generate model documentation
+    model_docs = models_to_markdown([
+        (TableCreate, "TableCreate (for creating tables)"),
+        (TableUpdate, "TableUpdate (for updating tables)"),
+    ], "Table Schema Documentation")
 
+    # Additional conceptual documentation
+    context_docs = """
 ## Table Scope
 
 Tables can be scoped at three levels:
@@ -217,23 +223,6 @@ Tables can be scoped at three levels:
 | **global** | NULL | NULL | All organizations |
 | **organization** | UUID | NULL | Single organization |
 | **application** | UUID | UUID | Single application |
-
-## Creating Tables
-
-Use `create_table` to create a new table:
-
-```json
-{
-  "name": "Customers",
-  "scope": "organization",
-  "organization_id": "org-uuid",
-  "columns": [
-    {"name": "name", "type": "string", "required": true},
-    {"name": "email", "type": "string"},
-    {"name": "status", "type": "string", "enum": ["active", "inactive"]}
-  ]
-}
-```
 
 ## Column Types
 
@@ -253,67 +242,29 @@ Supported column types for schema hints:
 ## Column Properties
 
 Each column can have these properties:
+- `name` (required): Column identifier
+- `type` (required): One of the types above
+- `required`: Whether the field is required
+- `description`: Human-readable description
+- `default`: Default value
+- `enum`: Array of allowed values (for string type)
 
-```json
-{
-  "name": "status",
-  "type": "string",
-  "required": true,
-  "description": "Customer status",
-  "default": "active",
-  "enum": ["active", "inactive", "pending"]
-}
-```
+## MCP Tools for Tables
 
-## Documents
-
-Documents are JSON records stored in tables. Each document has:
-- `id`: Unique identifier (auto-generated UUID or custom string)
-- `data`: The actual document data (JSONB)
-- `created_at`, `updated_at`: Timestamps
-- `created_by`, `updated_by`: User tracking
-
-## Schema Enforcement
-
-The schema field is optional and provides hints for:
-- Form field generation
-- UI validation
-- API validation (when enabled)
-
-Documents can contain any JSON data regardless of schema.
-The schema is not strictly enforced at the database level.
+- `list_tables` - List all accessible tables
+- `get_table` - Get table details by ID
+- `create_table` - Create a new table
+- `update_table` - Update table properties
 
 ## Multi-tenancy
 
-When listing or getting tables:
 - **Platform admins**: See all tables
 - **Regular users**: See global tables + their organization's tables
 
-When creating tables:
-- Set `scope` to 'global', 'organization', or 'application'
-- Provide `organization_id` for org-scoped tables
-- Provide `application_id` (and `organization_id`) for app-scoped tables
-
-## Example: Full Table Definition
-
-```json
-{
-  "name": "Support Tickets",
-  "description": "Customer support tickets",
-  "scope": "organization",
-  "organization_id": "abc-123",
-  "columns": [
-    {"name": "title", "type": "string", "required": true, "maxLength": 200},
-    {"name": "description", "type": "string"},
-    {"name": "priority", "type": "string", "enum": ["low", "medium", "high"], "default": "medium"},
-    {"name": "status", "type": "string", "enum": ["open", "in_progress", "resolved", "closed"], "default": "open"},
-    {"name": "assignee_id", "type": "string"},
-    {"name": "tags", "type": "array", "items": {"type": "string"}},
-    {"name": "metadata", "type": "json"}
-  ]
-}
-```
+When creating: Set `scope` to 'global', 'organization', or 'application'
 """
+
+    return model_docs + context_docs
 
 
 @system_tool(

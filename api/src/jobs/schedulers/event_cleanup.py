@@ -165,7 +165,7 @@ async def cleanup_stuck_events() -> dict[str, Any]:
                         )
 
                         await manager.publish(
-                            channel=f"event_source:{delivery.event.event_source_id}",
+                            channel=f"event-source:{delivery.event.event_source_id}",
                             message={
                                 "type": "event_update",
                                 "event": {

@@ -18,11 +18,13 @@ Structure:
 - integrations.py - list integrations
 - execution.py    - execution history
 - data_providers.py - data provider tools
+- sdk.py          - SDK documentation (generated from source)
 - apps.py         - application CRUD
 - pages.py        - page CRUD
 - components.py   - component CRUD
 - tables.py       - table CRUD and schema
 - organizations.py - organization CRUD (restricted)
+- agents.py       - agent CRUD and schema
 """
 
 # Import all tool modules to trigger registration
@@ -39,3 +41,5 @@ from src.services.mcp_server.tools import pages  # noqa: F401
 from src.services.mcp_server.tools import components  # noqa: F401
 from src.services.mcp_server.tools import tables  # noqa: F401
 from src.services.mcp_server.tools import organizations  # noqa: F401
+from src.services.mcp_server.tools import sdk  # noqa: F401
+from src.services.mcp_server.tools import agents  # noqa: F401

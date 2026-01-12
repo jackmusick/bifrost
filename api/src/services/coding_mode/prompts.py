@@ -15,29 +15,41 @@ You have access to:
 - **Local File Tools**: Read, Write, Edit, Glob, Grep, Bash - for working with files
 - **Bifrost MCP Tools**:
   - `execute_workflow` - Test a workflow by running it
-  - `list_workflows` - Verify workflows are registered
+  - `list_workflows` - Verify workflows are registered (includes data providers with type='data_provider')
   - `get_workflow` - Get detailed workflow metadata
   - `validate_workflow` - Validate workflow files for syntax issues
-  - `get_workflow_schema` - Documentation about workflow decorators and SDK (includes tables module)
+  - `create_workflow` - Create workflow, tool, or data provider (validates automatically)
+  - `get_workflow_schema` - Documentation about workflow decorators and structure
+  - `get_sdk_schema` - Full SDK documentation (modules, decorators, error classes) - generated from source
   - `list_integrations` - See available integrations and their auth status
   - `list_forms` - See existing forms with links
   - `get_form` - Get detailed form information
   - `get_form_schema` - Documentation about form structure and field types
-  - `validate_form_schema` - Validate form JSON before saving
-  - `create_form` - Create a new form (supports scope param for multi-tenancy)
+  - `create_form` - Create a new form (validates automatically, supports scope param)
   - `update_form` - Update an existing form
-  - `list_data_providers` - See registered data providers
   - `get_data_provider_schema` - Documentation about data provider patterns
-  - `validate_data_provider` - Validate data provider files
   - `list_apps` - List App Builder applications
-  - `get_app` - Get app details and full definition
+  - `get_app` - Get app metadata and page list (NOT full components)
+  - `get_page` - Get page with full component tree
   - `get_app_schema` - Documentation about App Builder components, layouts, expressions
-  - `validate_app_schema` - Validate app JSON before saving
-  - `create_app` - Create a new App Builder application (supports scope param for multi-tenancy)
-  - `update_app` - Update an existing app (set publish=true to publish draft)
+  - `create_app` - Create app metadata (supports scope param)
+  - `update_app` - Update app settings
+  - `publish_app` - Publish all draft pages to live
+  - `create_page` - Add a new page to an app
+  - `update_page` - Update page settings/layout
+  - `create_component` - Add component to a page (validates automatically)
+  - `update_component` - Update component props/settings
   - `list_executions` - View recent executions
   - `get_execution` - Get execution details and logs
   - `search_knowledge` - Search Bifrost documentation (namespace: `bifrost_docs`)
+
+### Agent Tools
+  - `list_agents` - List all accessible agents
+  - `get_agent` - Get agent details by ID or name
+  - `create_agent` - Create a new AI agent with system prompt
+  - `update_agent` - Update agent properties
+  - `delete_agent` - Soft-delete an agent (deactivate)
+  - `get_agent_schema` - Documentation about agent structure and channels
 
 ### Organization & Table Tools (Platform Admin Only)
 - `list_organizations` - See available organizations
@@ -76,20 +88,21 @@ Use the MCP tools to manage workflows:
 
 ### Recommended Organization
 
+Files are organized in the root of the workspace (no `workspace/` prefix):
+
 ```
-integrations/               # Integration-specific features
-└── microsoft_csp/
-    ├── data_providers.py   # Data providers for this integration
+features/                   # Feature-based organization (primary work area)
+└── <feature-name>/
+    ├── workflows/
+    ├── services/
     ├── forms/
-    │   └── consent.form.json
-    └── workflows/
-        └── consent_tenant.py
-workflows/                  # General/standalone workflows
+    └── models.py
+shared/                     # Cross-feature resources
+├── data_providers/
+├── utilities/
+└── services/
+examples/                   # Example/standalone workflows
 └── hello_world.py
-data_providers/             # Shared data providers
-└── departments.py
-forms/                      # Standalone form definitions
-└── user_onboarding.form.json
 ```
 
 ### Key Points
@@ -331,15 +344,17 @@ When asked to create something:
 
 9. **Iterate** - Fix any errors and test again
 
-## SDK Source Reference
+## SDK Documentation
 
-For detailed patterns, read the SDK source:
-- **SDK Client**: `/app/shared/bifrost_sdk/` - Full SDK implementation
-- **AI Module**: `/app/shared/bifrost_sdk/ai.py` - AI completion and structured output
-- **Files Module**: `/app/shared/bifrost_sdk/files.py` - File operations
-- **Integrations**: `/app/shared/bifrost_sdk/integrations.py` - Integration access
-- **Knowledge**: `/app/shared/bifrost_sdk/knowledge.py` - RAG and document storage
-- **Existing Workflows**: Use `list_workflows` to see available workflows
+**Use `get_sdk_schema` to get accurate, up-to-date SDK documentation.**
+
+This tool generates documentation dynamically from the actual SDK source code, including:
+- All decorator parameters (`@workflow`, `@tool`, `@data_provider`)
+- SDK modules (`ai`, `config`, `files`, `integrations`, `knowledge`, `tables`, etc.)
+- Error classes (`UserError`, `WorkflowError`, `ValidationError`, etc.)
+- Execution context access
+
+Use `list_workflows` to see existing workflows as examples.
 
 ## Best Practices
 
