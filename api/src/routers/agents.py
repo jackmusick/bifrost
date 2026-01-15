@@ -397,24 +397,26 @@ async def get_agent(
     user: CurrentActiveUser,
 ) -> AgentPublic:
     """Get agent by ID."""
-    result = await db.execute(
-        select(Agent)
-        .options(
-            selectinload(Agent.tools),
-            selectinload(Agent.delegated_agents),
-            selectinload(Agent.roles),
-        )
-        .where(Agent.id == agent_id)
+    # Check if user is platform admin
+    is_admin = user.is_superuser or any(
+        role in ["Platform Admin", "Platform Owner"]
+        for role in user.roles
     )
-    agent = result.scalar_one_or_none()
+
+    repo = AgentRepository(
+        session=db,
+        org_id=user.organization_id,
+        user_id=user.user_id,
+        is_superuser=is_admin,
+    )
+
+    agent = await repo.get_agent_with_access_check(agent_id)
 
     if not agent:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail=f"Agent {agent_id} not found",
         )
-
-    # TODO: Add access control check based on user roles
 
     return _agent_to_public(agent)
 
@@ -615,12 +617,20 @@ async def get_agent_tools(
     user: CurrentActiveUser,
 ) -> list[dict]:
     """Get tools assigned to an agent."""
-    result = await db.execute(
-        select(Agent)
-        .options(selectinload(Agent.tools))
-        .where(Agent.id == agent_id)
+    # Check if user is platform admin
+    is_admin = user.is_superuser or any(
+        role in ["Platform Admin", "Platform Owner"]
+        for role in user.roles
     )
-    agent = result.scalar_one_or_none()
+
+    repo = AgentRepository(
+        session=db,
+        org_id=user.organization_id,
+        user_id=user.user_id,
+        is_superuser=is_admin,
+    )
+
+    agent = await repo.get_agent_with_access_check(agent_id)
 
     if not agent:
         raise HTTPException(
@@ -725,12 +735,20 @@ async def get_agent_delegations(
     user: CurrentActiveUser,
 ) -> list[AgentSummary]:
     """Get agents this agent can delegate to."""
-    result = await db.execute(
-        select(Agent)
-        .options(selectinload(Agent.delegated_agents))
-        .where(Agent.id == agent_id)
+    # Check if user is platform admin
+    is_admin = user.is_superuser or any(
+        role in ["Platform Admin", "Platform Owner"]
+        for role in user.roles
     )
-    agent = result.scalar_one_or_none()
+
+    repo = AgentRepository(
+        session=db,
+        org_id=user.organization_id,
+        user_id=user.user_id,
+        is_superuser=is_admin,
+    )
+
+    agent = await repo.get_agent_with_access_check(agent_id)
 
     if not agent:
         raise HTTPException(
