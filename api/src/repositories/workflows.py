@@ -137,6 +137,9 @@ class WorkflowRepository(OrgScopedRepository[Workflow]):
     ) -> Workflow | None:
         """Get workflow by name and type.
 
+        Note: Does not apply cascade scoping - searches all workflows.
+        Used for system-level lookups where org context is not relevant.
+
         Args:
             name: Workflow name to look up
             type: Type filter ('workflow', 'tool', 'data_provider')
@@ -169,7 +172,11 @@ class WorkflowRepository(OrgScopedRepository[Workflow]):
         return list(result.scalars().all())
 
     async def get_scheduled(self) -> Sequence[Workflow]:
-        """Get all active workflows with schedules (for CRON processing)."""
+        """Get all active workflows with schedules (for CRON processing).
+
+        Note: Returns workflows across all organizations (system-level access).
+        CRON scheduler needs visibility of all scheduled workflows.
+        """
         result = await self.session.execute(
             select(Workflow)
             .where(Workflow.is_active.is_(True))
@@ -179,7 +186,11 @@ class WorkflowRepository(OrgScopedRepository[Workflow]):
         return result.scalars().all()
 
     async def get_endpoint_enabled(self) -> Sequence[Workflow]:
-        """Get all active workflows with endpoint enabled."""
+        """Get all active workflows with endpoint enabled.
+
+        Note: Returns workflows across all organizations (system-level access).
+        Endpoint routing needs visibility of all endpoint-enabled workflows.
+        """
         result = await self.session.execute(
             select(Workflow)
             .where(Workflow.is_active.is_(True))
@@ -189,7 +200,10 @@ class WorkflowRepository(OrgScopedRepository[Workflow]):
         return result.scalars().all()
 
     async def get_by_category(self, category: str) -> Sequence[Workflow]:
-        """Get all active workflows in a category."""
+        """Get all active workflows in a category.
+
+        Note: Returns workflows across all organizations (system-level access).
+        """
         result = await self.session.execute(
             select(Workflow)
             .where(Workflow.is_active.is_(True))
@@ -267,7 +281,11 @@ class WorkflowRepository(OrgScopedRepository[Workflow]):
     # ==========================================================================
 
     async def get_by_api_key_hash(self, key_hash: str) -> Workflow | None:
-        """Get workflow by API key hash."""
+        """Get workflow by API key hash.
+
+        Note: Returns workflow regardless of organization (system-level access).
+        API key authentication bypasses org scoping by design.
+        """
         result = await self.session.execute(
             select(Workflow)
             .where(Workflow.api_key_hash == key_hash)

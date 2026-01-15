@@ -2,16 +2,20 @@
 
 **Design:** [2026-01-15-org-scoped-repository-design.md](./2026-01-15-org-scoped-repository-design.md)
 
+**Status:** Phases 1-2 complete, Phase 3+ pending
+
 ---
 
-## Phase 1: Schema & Core Infrastructure
+## Phase 1: Schema & Core Infrastructure ✅
 
-- [ ] **1.1** Make `IntegrationMapping.organization_id` nullable
+- [x] **1.1** Make `IntegrationMapping.organization_id` nullable
   - File: `api/src/models/orm/integrations.py:139-141`
   - Change: `nullable=False` → `nullable=True`, update type hint to `UUID | None`
   - Create alembic migration
+  - **Done:** Commit `6383304e` - Also added partial unique index `ix_integration_mappings_unique_global` to enforce one global mapping per integration
+  - **Done:** Updated Pydantic models (`IntegrationMappingResponse`) to make `organization_id` optional
 
-- [ ] **1.2** Update `OrgScopedRepository` base class
+- [x] **1.2** Update `OrgScopedRepository` base class
   - File: `api/src/repositories/org_scoped.py`
   - Add `user_id: UUID | None` parameter to `__init__`
   - Add `is_superuser: bool = False` parameter to `__init__`
@@ -19,39 +23,51 @@
   - Implement new `get(**filters)` method with cascade + role check
   - Implement `can_access(**filters)` method (calls get, raises `AccessDeniedError`)
   - Implement new `list(**filters)` method with cascade + role check
-  - Keep old methods (`filter_cascade`, etc.) temporarily for backwards compat during migration
+  - **Decision:** Removed old methods immediately (no backwards compat) - cleaner break
+  - **Done:** Commit `7a5d8bab` - Complete rewrite, 278 lines added
+  - **Note:** N+1 query potential in `list()` for role-based entities - documented as known limitation for future optimization
 
-- [ ] **1.3** Create `AccessDeniedError` exception
-  - File: `api/src/core/exceptions.py` (create if doesn't exist)
+- [x] **1.3** Create `AccessDeniedError` exception
+  - File: `api/src/core/exceptions.py` (created)
   - Simple exception class for access control failures
+  - **Done:** Part of commit `7a5d8bab`
+  - **Done:** Exported from `api/src/repositories/__init__.py`
 
 ---
 
-## Phase 2: Update Existing Repositories
+## Phase 2: Update Existing Repositories ✅
 
-- [ ] **2.1** Update `FormRepository`
+- [x] **2.1** Update `FormRepository`
   - File: `api/src/repositories/forms.py`
   - Add `role_table = FormRole`, `role_entity_id_column = "form_id"`
-  - Update `__init__` to accept new params
-  - Refactor methods to use new `get()`/`list()` pattern
+  - Refactor methods to use new pattern
+  - **Done:** Commit `80d9a79a`
+  - **Pattern:** Added `list_forms()` for regular users (cascade + role check), `list_all_in_scope()` for admins (filter type support)
+  - **Also updated:** `api/src/routers/forms.py`, `api/src/services/mcp_server/tools/forms.py`
 
-- [ ] **2.2** Update `AgentRepository`
+- [x] **2.2** Update `AgentRepository`
   - File: `api/src/repositories/agents.py`
   - Add `role_table = AgentRole`, `role_entity_id_column = "agent_id"`
-  - Update `__init__` to accept new params
-  - Refactor methods to use new `get()`/`list()` pattern
+  - Refactor methods to use new pattern
+  - **Done:** Commits `0ffa2c2b`, `71a72835` (fix)
+  - **Pattern:** Same as FormRepository - `list_agents()` + `list_all_in_scope()`
+  - **Also updated:** `api/src/routers/agents.py`, `api/src/services/mcp_server/tools/agents.py`
 
-- [ ] **2.3** Update `ApplicationRepository`
+- [x] **2.3** Update `ApplicationRepository`
   - File: `api/src/routers/applications.py` (inline repo)
   - Add `role_table = AppRole`, `role_entity_id_column = "app_id"`
-  - Update `__init__` to accept new params
-  - Refactor methods to use new `get()`/`list()` pattern
+  - Refactor methods to use new pattern
+  - **Done:** Commit `5724c889`
+  - **Pattern:** Same as FormRepository - `list_applications()` + `list_all_in_scope()`
+  - **Note:** All 7 endpoints updated to pass `user_id` and `is_superuser`
 
-- [ ] **2.4** Update `TableRepository`
+- [x] **2.4** Update `TableRepository`
   - File: `api/src/routers/tables.py` (inline repo)
-  - Add `role_table = None` (explicit)
-  - Update `__init__` to accept new params
-  - Refactor methods to use new `get()`/`list()` pattern
+  - Add `role_table = None` (explicit - no RBAC, SDK/superuser only)
+  - Refactor methods to use new pattern
+  - **Done:** Commit `4d856e28`
+  - **Pattern:** All endpoints use `is_superuser=True` since Tables are CurrentSuperuser-only
+  - **Note:** `get_by_name()` now delegates to base `get(name=name)`
 
 ---
 
@@ -62,18 +78,21 @@
   - Change base class: `BaseRepository` → `OrgScopedRepository`
   - Add `role_table = WorkflowRole`, `role_entity_id_column = "workflow_id"`
   - Update all methods to use new pattern
+  - **Context:** Workflows have RBAC via `WorkflowRole` table and `access_level` field
 
 - [ ] **3.2** Migrate `DataProviderRepository`
   - File: `api/src/repositories/data_providers.py`
   - Change base class: `BaseRepository` → `OrgScopedRepository`
   - Add `role_table = None`
   - Update all methods to use new pattern
+  - **Context:** Data providers are SDK-only, no RBAC needed
 
 - [ ] **3.3** Migrate `KnowledgeRepository`
   - File: `api/src/repositories/knowledge.py`
   - Change base class: `BaseRepository` → `OrgScopedRepository`
   - Add `role_table = None`
   - Update all methods to use new pattern
+  - **Context:** Knowledge is SDK-only, no RBAC needed
 
 ---
 
@@ -84,12 +103,14 @@
   - Extend `OrgScopedRepository[Config]`
   - Add `role_table = None`
   - Implement `get(key=...)` with cascade
+  - **Context:** Configs are SDK-only, no RBAC needed
 
 - [ ] **4.2** Create `IntegrationMappingRepository`
   - New file: `api/src/repositories/integration_mappings.py`
   - Extend `OrgScopedRepository[IntegrationMapping]`
   - Add `role_table = None`
   - Implement `get(integration_name=...)` with cascade
+  - **Context:** Integration mappings are SDK-only, no RBAC needed
 
 ---
 
@@ -100,9 +121,10 @@
   - `api/src/routers/forms.py` - list and get endpoints (if exists)
   - `api/src/routers/agents.py` - list and get endpoints (if exists)
   - Pass `org_id`, `user_id`, `is_superuser` from context
+  - **Note:** Phase 2 already updated many of these - verify completeness
 
 - [ ] **5.2** Update SDK endpoints (CurrentSuperuser)
-  - `api/src/routers/tables.py` - use new repo pattern
+  - `api/src/routers/tables.py` - use new repo pattern ✅ (done in 2.4)
   - `api/src/routers/config.py` - use new `ConfigRepository`
   - `api/src/routers/cli.py` - update SDK methods to use new repos
 
@@ -118,15 +140,17 @@
 - [ ] **6.1** Delete `AuthorizationService`
   - File: `api/src/services/authorization.py`
   - Remove all imports/usages first (should be none after Phase 5)
+  - **Grep first:** Check for any remaining usages
 
 - [ ] **6.2** Delete `ExecutionAuthService`
   - File: `api/src/services/execution_auth.py`
   - Remove all imports/usages first (should be none after Phase 5)
+  - **Grep first:** Check for any remaining usages
 
 - [ ] **6.3** Remove deprecated methods from `OrgScopedRepository`
-  - Remove `filter_cascade()`, `filter_strict()`, `filter_org_only()`, `filter_global_only()`
-  - Remove `apply_filter()`, `get_one_cascade()`
-  - These should all be replaced by new `get()`/`list()` methods
+  - ~~Remove `filter_cascade()`, `filter_strict()`, `filter_org_only()`, `filter_global_only()`~~
+  - ~~Remove `apply_filter()`, `get_one_cascade()`~~
+  - **Already done:** These were removed in Phase 1.2 (no backwards compat approach)
 
 ---
 
@@ -155,7 +179,48 @@
 
 ## Verification Checkpoints
 
-After each phase, verify:
-- [ ] `pyright` passes
-- [ ] `ruff check` passes
-- [ ] `./test.sh` passes (or document expected failures for incomplete phases)
+After Phase 1-2:
+- [x] `pyright` passes (0 errors)
+- [x] `ruff check` passes
+- [ ] `./test.sh` passes - **NOT YET RUN** (may have failures until Phase 3+ complete)
+
+---
+
+## Implementation Notes
+
+### Pattern Used for Repositories with RBAC
+
+```python
+class FormRepository(OrgScopedRepository[Form]):
+    model = Form
+    role_table = FormRole
+    role_entity_id_column = "form_id"
+
+    async def list_forms(self, active_only: bool = True) -> list[Form]:
+        """For regular users - cascade scoping + role check."""
+        # Uses _apply_cascade_scope() and _can_access_entity()
+
+    async def list_all_in_scope(self, filter_type: OrgFilterType, ...) -> list[Form]:
+        """For admins - flexible filter types, no role check."""
+```
+
+### Pattern Used for Repositories without RBAC (SDK-only)
+
+```python
+class TableRepository(OrgScopedRepository[Table]):
+    model = Table
+    role_table = None  # Explicit: no RBAC
+
+    # All endpoints use is_superuser=True
+```
+
+### Instantiation Pattern
+
+```python
+repo = FormRepository(
+    session=ctx.db,
+    org_id=target_org_id,
+    user_id=user.user_id,
+    is_superuser=user.is_platform_admin,
+)
+```
