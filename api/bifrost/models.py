@@ -148,7 +148,7 @@ class IntegrationMappingResponse(BaseModel):
 
     id: str
     integration_id: str
-    organization_id: str
+    organization_id: str | None = None  # NULL for global mappings
     entity_id: str
     entity_name: str | None
     oauth_token_id: str | None

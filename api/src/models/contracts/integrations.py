@@ -136,6 +136,10 @@ class IntegrationMappingCreate(BaseModel):
     """
     Request model for creating an integration mapping.
     POST /api/integrations/{integration_id}/mappings
+
+    Note: This model requires organization_id because the API only creates
+    org-scoped mappings. Global mappings (organization_id=NULL) are created
+    programmatically via migrations or admin scripts, not through the API.
     """
 
     organization_id: UUID = Field(
@@ -245,7 +249,10 @@ class IntegrationMappingResponse(BaseModel):
 
     id: UUID = Field(..., description="Mapping ID")
     integration_id: UUID = Field(..., description="Associated integration ID")
-    organization_id: UUID = Field(..., description="Associated organization ID")
+    organization_id: UUID | None = Field(
+        default=None,
+        description="Associated organization ID (NULL for global mappings)",
+    )
     entity_id: str = Field(..., description="External entity ID")
     entity_name: str | None = Field(
         default=None,

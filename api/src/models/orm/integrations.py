@@ -128,6 +128,9 @@ class IntegrationMapping(Base):
 
     Maps an integration to an organization with a specific external entity
     (e.g., tenant ID, company ID) and optional per-org OAuth token override.
+
+    organization_id can be NULL for global/default mappings that apply when
+    no org-specific mapping exists (cascade fallback pattern).
     """
 
     __tablename__ = "integration_mappings"
@@ -136,8 +139,8 @@ class IntegrationMapping(Base):
     integration_id: Mapped[UUID] = mapped_column(
         ForeignKey("integrations.id"), nullable=False
     )
-    organization_id: Mapped[UUID] = mapped_column(
-        ForeignKey("organizations.id"), nullable=False
+    organization_id: Mapped[UUID | None] = mapped_column(
+        ForeignKey("organizations.id"), nullable=True, default=None
     )
     entity_id: Mapped[str] = mapped_column(String(255), nullable=False)
     entity_name: Mapped[str | None] = mapped_column(String(255), default=None, nullable=True)
@@ -159,7 +162,7 @@ class IntegrationMapping(Base):
         back_populates="mappings",
         lazy="joined",
     )
-    organization: Mapped["Organization"] = relationship(
+    organization: Mapped["Organization | None"] = relationship(
         lazy="joined",
     )
     oauth_token: Mapped["OAuthToken | None"] = relationship(
@@ -177,5 +180,14 @@ class IntegrationMapping(Base):
             "integration_id",
             "organization_id",
             unique=True,
+        ),
+        # Partial unique index to enforce only ONE global mapping per integration.
+        # The above index allows multiple NULL organization_id rows (NULL != NULL in SQL).
+        # This ensures only one global mapping can exist per integration.
+        Index(
+            "ix_integration_mappings_unique_global",
+            "integration_id",
+            unique=True,
+            postgresql_where=text("organization_id IS NULL"),
         ),
     )
