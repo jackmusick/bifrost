@@ -646,7 +646,7 @@ async def execute_workflow(
         WorkflowNotFoundError,
         WorkflowLoadError,
     )
-    from src.services.execution_auth import ExecutionAuthService
+    from src.repositories import AccessDeniedError, WorkflowRepository
 
     # Look up workflow metadata for type checking (needed for data provider handling)
     workflow = None
@@ -673,16 +673,16 @@ async def execute_workflow(
                 detail="Inline code execution requires platform admin access",
             )
     elif request.workflow_id:
-        # Workflow execution - check unified permissions
-        auth_service = ExecutionAuthService(db)
-        can_execute = await auth_service.can_execute_workflow(
-            workflow_id=request.workflow_id,
+        # Workflow execution - check access via repository cascade scoping
+        workflow_repo = WorkflowRepository(
+            session=db,
+            org_id=ctx.org_id,
             user_id=ctx.user.user_id,
-            user_org_id=ctx.org_id,
             is_superuser=ctx.user.is_superuser,
-            is_api_key=False,
         )
-        if not can_execute:
+        try:
+            await workflow_repo.can_access(id=UUID(request.workflow_id))
+        except AccessDeniedError:
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
                 detail="Access denied to execute this workflow",
