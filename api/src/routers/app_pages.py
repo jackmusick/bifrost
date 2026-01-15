@@ -23,10 +23,11 @@ from src.models.contracts.applications import (
     AppPageUpdate,
 )
 from src.models.contracts.app_components import PageDefinition
+from src.core.exceptions import AccessDeniedError
 from src.core.pubsub import publish_app_draft_update
 from src.models.orm.applications import AppPage, Application
+from src.routers.applications import ApplicationRepository
 from src.services.app_builder_service import AppBuilderService
-from src.services.authorization import AuthorizationService
 
 logger = logging.getLogger(__name__)
 
@@ -39,26 +40,31 @@ router = APIRouter(prefix="/api/applications/{app_id}/pages", tags=["App Pages"]
 
 
 async def get_application_or_404(ctx: Context, app_id: UUID) -> Application:
-    """Get application by UUID or raise 404."""
-    query = select(Application).where(Application.id == app_id)
-    result = await ctx.db.execute(query)
-    application = result.scalar_one_or_none()
+    """Get application by UUID with access control.
 
-    if not application:
+    Uses ApplicationRepository for cascade scoping and role-based access.
+    Returns 404 for both not found and access denied to avoid leaking
+    existence information.
+
+    Returns:
+        Application if found and accessible
+
+    Raises:
+        HTTPException 404 if not found or access denied
+    """
+    repo = ApplicationRepository(
+        session=ctx.db,
+        org_id=ctx.org_id,
+        user_id=ctx.user.user_id,
+        is_superuser=ctx.user.is_platform_admin,
+    )
+    try:
+        return await repo.can_access(id=app_id)
+    except AccessDeniedError:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail=f"Application '{app_id}' not found",
         )
-
-    # Use AuthorizationService for access check (handles platform admin, org scoping, access_level)
-    auth = AuthorizationService(ctx.db, ctx)
-    if not await auth.can_access_app(application):
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="Access denied to this application",
-        )
-
-    return application
 
 
 async def get_draft_page_or_404(

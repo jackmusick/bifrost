@@ -33,9 +33,9 @@ from src.models.contracts.applications import (
 )
 from src.models.orm.app_roles import AppRole
 from src.models.orm.applications import AppComponent, AppPage, AppVersion, Application
+from src.core.exceptions import AccessDeniedError
 from src.repositories.org_scoped import OrgScopedRepository
 from src.services.app_builder_service import AppBuilderService
-from src.services.authorization import AuthorizationService
 from src.services.workflow_role_service import sync_app_roles_to_workflows
 
 logger = logging.getLogger(__name__)
@@ -435,37 +435,29 @@ async def get_application_or_404(
 ) -> Application:
     """Get application by slug with access control.
 
-    Fetches the application without org filtering, then uses AuthorizationService
-    to check access. This allows platform admins to access any app regardless
-    of their current org context.
+    Uses ApplicationRepository for cascade scoping and role-based access.
+    Returns 404 for both not found and access denied to avoid leaking
+    existence information.
 
     Returns:
         Application if found and accessible
 
     Raises:
-        HTTPException 404 if not found
-        HTTPException 403 if access denied
+        HTTPException 404 if not found or access denied
     """
-    # Fetch app directly by slug without org filter
-    query = select(Application).where(Application.slug == slug)
-    result = await ctx.db.execute(query)
-    application = result.scalar_one_or_none()
-
-    if not application:
+    repo = ApplicationRepository(
+        session=ctx.db,
+        org_id=ctx.org_id,
+        user_id=ctx.user.user_id,
+        is_superuser=ctx.user.is_platform_admin,
+    )
+    try:
+        return await repo.can_access(slug=slug)
+    except AccessDeniedError:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail=f"Application '{slug}' not found",
         )
-
-    # Check access using AuthorizationService
-    auth = AuthorizationService(ctx.db, ctx)
-    if not await auth.can_access_app(application):
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="Access denied to this application",
-        )
-
-    return application
 
 
 async def get_application_by_id_or_404(
@@ -475,37 +467,29 @@ async def get_application_by_id_or_404(
 ) -> Application:
     """Get application by UUID with access control.
 
-    Fetches the application without org filtering, then uses AuthorizationService
-    to check access. This allows platform admins to access any app regardless
-    of their current org context.
+    Uses ApplicationRepository for cascade scoping and role-based access.
+    Returns 404 for both not found and access denied to avoid leaking
+    existence information.
 
     Returns:
         Application if found and accessible
 
     Raises:
-        HTTPException 404 if not found
-        HTTPException 403 if access denied
+        HTTPException 404 if not found or access denied
     """
-    # Fetch app directly by ID without org filter
-    query = select(Application).where(Application.id == app_id)
-    result = await ctx.db.execute(query)
-    application = result.scalar_one_or_none()
-
-    if not application:
+    repo = ApplicationRepository(
+        session=ctx.db,
+        org_id=ctx.org_id,
+        user_id=ctx.user.user_id,
+        is_superuser=ctx.user.is_platform_admin,
+    )
+    try:
+        return await repo.can_access(id=app_id)
+    except AccessDeniedError:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail=f"Application '{app_id}' not found",
         )
-
-    # Check access using AuthorizationService
-    auth = AuthorizationService(ctx.db, ctx)
-    if not await auth.can_access_app(application):
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="Access denied to this application",
-        )
-
-    return application
 
 
 # =============================================================================
