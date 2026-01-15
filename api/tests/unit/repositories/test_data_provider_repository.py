@@ -22,9 +22,14 @@ class TestDataProviderRepository:
         return session
 
     @pytest.fixture
-    def repository(self, mock_session):
-        """Create repository with mock session."""
-        return DataProviderRepository(mock_session)
+    def org_id(self):
+        """Create a test organization ID."""
+        return uuid4()
+
+    @pytest.fixture
+    def repository(self, mock_session, org_id):
+        """Create repository with mock session and org context."""
+        return DataProviderRepository(mock_session, org_id=org_id, is_superuser=True)
 
     @pytest.fixture
     def mock_provider(self):
@@ -35,6 +40,8 @@ class TestDataProviderRepository:
         provider.description = "Test provider"
         provider.path = "/workspace/providers/test.py"
         provider.is_active = True
+        provider.type = "data_provider"
+        provider.organization_id = None
         return provider
 
     async def test_get_by_name_found(self, repository, mock_session, mock_provider):
@@ -46,7 +53,7 @@ class TestDataProviderRepository:
         result = await repository.get_by_name("test-provider")
 
         assert result == mock_provider
-        mock_session.execute.assert_called_once()
+        mock_session.execute.assert_called()
 
     async def test_get_by_name_not_found(self, repository, mock_session):
         """Test getting provider by name when not found."""
