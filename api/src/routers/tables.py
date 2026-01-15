@@ -45,17 +45,42 @@ router = APIRouter(prefix="/api/tables", tags=["Tables"])
 
 
 class TableRepository(OrgScopedRepository[Table]):
-    """Repository for table operations."""
+    """Repository for table operations.
+
+    Tables do NOT have role-based access control - they are SDK/superuser-only
+    resources. All endpoints use CurrentSuperuser dependency.
+    """
 
     model = Table
+    role_table = None  # Explicit: Tables have NO role-based access control
 
     async def list_tables(
         self,
         filter_type: OrgFilterType = OrgFilterType.ORG_PLUS_GLOBAL,
     ) -> list[Table]:
-        """List tables with specified filter type."""
+        """List tables with specified filter type.
+
+        Supports all OrgFilterType values for superuser flexibility:
+        - ALL: No org filter (show everything)
+        - GLOBAL_ONLY: Only global records (org_id IS NULL)
+        - ORG_ONLY: Only specific org's records (no global)
+        - ORG_PLUS_GLOBAL: Cascade scoping (org + global)
+        """
         query = select(self.model)
-        query = self.apply_filter(query, filter_type, self.org_id)
+
+        if filter_type == OrgFilterType.ALL:
+            # No organization filter - show all tables
+            pass
+        elif filter_type == OrgFilterType.GLOBAL_ONLY:
+            # Only global records
+            query = query.where(self.model.organization_id.is_(None))
+        elif filter_type == OrgFilterType.ORG_ONLY:
+            # Only specific org, no global fallback
+            query = query.where(self.model.organization_id == self.org_id)
+        else:
+            # ORG_PLUS_GLOBAL: Use cascade scoping
+            query = self._apply_cascade_scope(query)
+
         query = query.order_by(self.model.name)
 
         result = await self.session.execute(query)
@@ -64,11 +89,10 @@ class TableRepository(OrgScopedRepository[Table]):
     async def get_by_name(self, name: str) -> Table | None:
         """Get by name with cascade scoping: org-specific > global.
 
-        Uses get_one_cascade() to avoid MultipleResultsFound when
+        Uses cascade lookup to avoid MultipleResultsFound when
         the same name exists in both org scope and global scope.
         """
-        query = select(self.model).where(self.model.name == name)
-        return await self.get_one_cascade(query)
+        return await self.get(name=name)
 
     async def get_by_name_strict(self, name: str) -> Table | None:
         """Get table by name strictly in current org scope (no fallback)."""
@@ -333,7 +357,7 @@ async def get_table_or_404(
 ) -> Table:
     """Get table by name or raise 404."""
     target_org_id = _resolve_target_org_safe(ctx, scope)
-    repo = TableRepository(ctx.db, target_org_id)
+    repo = TableRepository(ctx.db, target_org_id, is_superuser=True)
     table = await repo.get_by_name(name)
 
     if not table:
@@ -357,7 +381,7 @@ async def get_or_create_table(
     schema-less table usage without explicit table creation.
     """
     target_org_id = _resolve_target_org_safe(ctx, scope)
-    repo = TableRepository(ctx.db, target_org_id)
+    repo = TableRepository(ctx.db, target_org_id, is_superuser=True)
     table = await repo.get_by_name(name)
 
     if not table:
@@ -393,7 +417,7 @@ async def create_table(
 ) -> TablePublic:
     """Create a new table for storing documents (platform admin only)."""
     target_org_id = _resolve_target_org_safe(ctx, scope)
-    repo = TableRepository(ctx.db, target_org_id)
+    repo = TableRepository(ctx.db, target_org_id, is_superuser=True)
 
     try:
         table = await repo.create_table(data, created_by=user.email)
@@ -427,7 +451,7 @@ async def list_tables(
             detail=str(e),
         )
 
-    repo = TableRepository(ctx.db, filter_org)
+    repo = TableRepository(ctx.db, filter_org, is_superuser=True)
     tables = await repo.list_tables(filter_type)
 
     return TableListResponse(
@@ -466,7 +490,7 @@ async def update_table(
 ) -> TablePublic:
     """Update table metadata (platform admin only)."""
     target_org_id = _resolve_target_org_safe(ctx, scope)
-    repo = TableRepository(ctx.db, target_org_id)
+    repo = TableRepository(ctx.db, target_org_id, is_superuser=True)
     table = await repo.update_table(name, data)
 
     if not table:
@@ -491,7 +515,7 @@ async def delete_table(
 ) -> None:
     """Delete a table and all its documents (platform admin only)."""
     target_org_id = _resolve_target_org_safe(ctx, scope)
-    repo = TableRepository(ctx.db, target_org_id)
+    repo = TableRepository(ctx.db, target_org_id, is_superuser=True)
     success = await repo.delete_table(name)
 
     if not success:
