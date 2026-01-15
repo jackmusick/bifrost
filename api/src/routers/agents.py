@@ -30,7 +30,6 @@ from src.models.contracts.agents import (
     AssignDelegationsToAgentRequest,
     AssignToolsToAgentRequest,
 )
-from src.models.enums import AgentAccessLevel
 from src.models.orm import Agent, AgentDelegation, AgentRole, AgentTool, Role, Workflow
 from src.repositories.agents import AgentRepository
 from src.services.workflow_role_service import sync_agent_roles_to_workflows
@@ -231,42 +230,26 @@ async def list_agents(
             detail=str(e),
         )
 
-    repo = AgentRepository(db, filter_org_id)
-    agents = await repo.list_agents(filter_type, active_only=active_only)
-
-    # Access control: Check if user is platform admin
-    # user.roles is list[str] from JWT claims
+    # Check if user is platform admin
     is_admin = user.is_superuser or any(
         role in ["Platform Admin", "Platform Owner"]
         for role in user.roles
     )
 
-    if not is_admin:
-        # Non-admins see:
-        # 1. All AUTHENTICATED agents (available to any logged-in user)
-        # 2. ROLE_BASED agents assigned to their roles
-        if user.roles:
-            # Get role-based agent IDs the user has access to
-            role_based_agents = (
-                select(AgentRole.agent_id)
-                .join(Role, AgentRole.role_id == Role.id)
-                .where(Role.name.in_(user.roles))
-            )
-            result = await db.execute(role_based_agents)
-            accessible_agent_ids = set(result.scalars().all())
+    # Create repository with appropriate access context
+    repo = AgentRepository(
+        session=db,
+        org_id=filter_org_id,
+        user_id=user.id,
+        is_superuser=is_admin,
+    )
 
-            # Filter agents to AUTHENTICATED or role-assigned
-            agents = [
-                a for a in agents
-                if a.access_level == AgentAccessLevel.AUTHENTICATED
-                or a.id in accessible_agent_ids
-            ]
-        else:
-            # User has no roles - only show AUTHENTICATED agents
-            agents = [
-                a for a in agents
-                if a.access_level == AgentAccessLevel.AUTHENTICATED
-            ]
+    if is_admin:
+        # Admins use list_all_in_scope with filter_type for flexibility
+        agents = await repo.list_all_in_scope(filter_type, active_only=active_only)
+    else:
+        # Regular users use list_agents with built-in cascade + role-based access
+        agents = await repo.list_agents(active_only=active_only)
 
     return [
         AgentSummary(

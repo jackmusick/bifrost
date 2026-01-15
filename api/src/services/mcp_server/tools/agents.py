@@ -94,22 +94,31 @@ async def list_agents(context: Any) -> str:
 
     try:
         async with get_db_context() as db:
-            # Determine filter type and org_id based on context
-            if context.is_platform_admin:
-                # Platform admins see all agents
-                filter_type = OrgFilterType.ALL
-                org_id = None
-            elif context.org_id:
-                # Org users see their org's agents + global agents
-                filter_type = OrgFilterType.ORG_PLUS_GLOBAL
+            # Determine org_id and admin status based on context
+            is_admin = context.is_platform_admin
+            if context.org_id:
                 org_id = UUID(str(context.org_id)) if isinstance(context.org_id, str) else context.org_id
             else:
-                # No org context - only global agents
-                filter_type = OrgFilterType.GLOBAL_ONLY
                 org_id = None
 
-            repo = AgentRepository(db, org_id)
-            agents = await repo.list_agents(filter_type, active_only=True)
+            # Get user_id from context if available
+            user_id = None
+            if hasattr(context, "user_id") and context.user_id:
+                user_id = UUID(str(context.user_id)) if isinstance(context.user_id, str) else context.user_id
+
+            repo = AgentRepository(
+                session=db,
+                org_id=org_id,
+                user_id=user_id,
+                is_superuser=is_admin,
+            )
+
+            if is_admin:
+                # Platform admins see all agents using list_all_in_scope
+                agents = await repo.list_all_in_scope(OrgFilterType.ALL, active_only=True)
+            else:
+                # Regular users use list_agents with built-in cascade + role-based access
+                agents = await repo.list_agents(active_only=True)
 
             return json.dumps({
                 "agents": [
