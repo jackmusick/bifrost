@@ -240,7 +240,7 @@ async def list_agents(
     repo = AgentRepository(
         session=db,
         org_id=filter_org_id,
-        user_id=user.id,
+        user_id=user.user_id,
         is_superuser=is_admin,
     )
 
