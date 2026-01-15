@@ -1,26 +1,27 @@
 """
 Organization-Scoped Repository
 
-Provides base repository with standardized organization scoping patterns.
-All org-scoped repositories should extend this class for consistent
-tenant isolation and access control.
+Provides base repository with standardized organization scoping and role-based
+access control patterns. All org-scoped repositories should extend this class
+for consistent tenant isolation and access control.
+
+Access Control Model:
+    - Superusers: Cascade scoping (org + global), no role checks
+    - Regular users: Cascade scoping + role checks (if entity has roles)
 
 Scoping Patterns:
-    - ALL: No filter, superuser sees everything
-    - GLOBAL_ONLY: Only global resources (NULL org_id)
-    - ORG_ONLY: Only specific org resources (no global fallback)
-    - ORG_PLUS_GLOBAL: Org resources + global (NULL) resources (cascade pattern)
+    - org_id set: WHERE (organization_id = org_id OR organization_id IS NULL)
+    - org_id None: WHERE organization_id IS NULL
 """
 
 from typing import Any, Generic, TypeVar
 from uuid import UUID
 
-from sqlalchemy import Select, or_
+from sqlalchemy import Select, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from src.core.org_filter import OrgFilterType
-from src.models import Base
-from src.repositories.base import BaseRepository
+from src.core.exceptions import AccessDeniedError
+from src.models import Base, UserRole
 
 ModelT = TypeVar("ModelT", bound=Base)
 
@@ -35,175 +36,305 @@ def _org_is_null(model: Any) -> Any:
     return model.organization_id.is_(None)
 
 
-class OrgScopedRepository(BaseRepository[ModelT], Generic[ModelT]):
+class OrgScopedRepository(Generic[ModelT]):
     """
-    Repository with standardized organization scoping patterns.
+    Repository with standardized organization scoping and role-based access control.
 
-    Extends BaseRepository with org-aware query filtering methods.
-    Use filter_strict() for resources that should only belong to one org.
-    Use filter_cascade() for resources that can fall back to global (NULL org).
+    This repository combines:
+    1. Organization cascade scoping (org-specific + global entities)
+    2. Role-based access control (for entities with role tables)
+
+    Subclasses should set:
+    - model: The SQLAlchemy model class
+    - role_table: (Optional) The role junction table (e.g., FormRole, AppRole)
+    - role_entity_id_column: (Optional) The column name for entity ID in role table
 
     Example usage:
-        class SecretRepository(OrgScopedRepository[Secret]):
-            model = Secret
+        class FormRepository(OrgScopedRepository[Form]):
+            model = Form
+            role_table = FormRole
+            role_entity_id_column = "form_id"
 
-            async def list_secrets(self) -> list[Secret]:
-                query = select(self.model)
-                query = self.filter_cascade(query)  # Include global secrets
-                result = await self.session.execute(query)
-                return list(result.scalars().all())
+        class TableRepository(OrgScopedRepository[Table]):
+            model = Table
+            # No role_table - cascade scoping only
 
-        class ExecutionRepository(OrgScopedRepository[Execution]):
-            model = Execution
-
-            async def list_executions(self) -> list[Execution]:
-                query = select(self.model)
-                query = self.filter_strict(query)  # Only this org's executions
-                result = await self.session.execute(query)
-                return list(result.scalars().all())
+    Access control logic:
+        - Superusers: Trust the scope, no role check
+        - Regular users: Cascade scoping + role check (if entity has roles)
     """
 
-    def __init__(self, session: AsyncSession, org_id: UUID | None):
+    model: type[ModelT]
+    role_table: type[Base] | None = None
+    role_entity_id_column: str = ""
+
+    def __init__(
+        self,
+        session: AsyncSession,
+        org_id: UUID | None,
+        user_id: UUID | None = None,
+        is_superuser: bool = False,
+    ):
         """
-        Initialize repository with database session and organization scope.
+        Initialize repository with database session and access context.
 
         Args:
             session: SQLAlchemy async session
-            org_id: Organization UUID for scoping (None for global/platform admin scope)
+            org_id: Organization UUID for scoping (None for global-only scope)
+            user_id: User UUID for role checks (None for system/superuser)
+            is_superuser: If True, bypasses role checks (trusts scope)
         """
-        super().__init__(session)
+        self.session = session
         self.org_id = org_id
+        self.user_id = user_id
+        self.is_superuser = is_superuser
 
-    def filter_strict(self, query: Select[tuple[ModelT]]) -> Select[tuple[ModelT]]:
+    # =========================================================================
+    # Public API
+    # =========================================================================
+
+    async def get(self, **filters: Any) -> ModelT | None:
         """
-        Apply strict organization filtering.
+        Get a single entity with cascade scoping and role check.
 
-        Pattern 1: Only resources belonging to this specific organization.
-        Use for: executions, audit_logs, user data
-
-        The resulting query: WHERE organization_id = :org_id
+        For cascade scoping, prioritizes org-specific over global to avoid
+        MultipleResultsFound when both exist.
 
         Args:
-            query: SQLAlchemy select query
+            **filters: Filter conditions (e.g., id=uuid, name="foo")
 
         Returns:
-            Query with org filter applied
+            Entity if found and accessible, None otherwise
+
+        Example:
+            # Get by ID
+            entity = await repo.get(id=entity_id)
+
+            # Get by name (cascade: org-specific first, then global)
+            entity = await repo.get(name="my-entity")
         """
-        return query.where(_org_filter(self.model, self.org_id))
+        # Build base query with filters
+        query = select(self.model)
+        for key, value in filters.items():
+            column = getattr(self.model, key, None)
+            if column is not None:
+                query = query.where(column == value)
 
-    def filter_cascade(self, query: Select[tuple[ModelT]]) -> Select[tuple[ModelT]]:
+        # Step 1: Try org-specific lookup (if we have an org)
+        if self.org_id is not None:
+            org_query = query.where(_org_filter(self.model, self.org_id))
+            result = await self.session.execute(org_query)
+            entity = result.scalar_one_or_none()
+            if entity:
+                if await self._can_access_entity(entity):
+                    return entity
+                return None
+
+        # Step 2: Fall back to global
+        global_query = query.where(_org_is_null(self.model))
+        result = await self.session.execute(global_query)
+        entity = result.scalar_one_or_none()
+
+        if entity and await self._can_access_entity(entity):
+            return entity
+        return None
+
+    async def can_access(self, **filters: Any) -> ModelT:
         """
-        Apply cascading organization filtering with global fallback.
+        Get entity or raise AccessDeniedError.
 
-        Pattern 2: Org-specific resources + global (NULL) resources.
-        Use for: forms, secrets, roles, config
-
-        When org_id is set: WHERE organization_id = :org_id OR organization_id IS NULL
-        When org_id is None (global scope): WHERE organization_id IS NULL
+        Convenience wrapper around get() that raises an exception if the
+        entity is not found or not accessible.
 
         Args:
-            query: SQLAlchemy select query
+            **filters: Filter conditions (e.g., id=uuid, name="foo")
 
         Returns:
-            Query with org + global filter applied
+            Entity if found and accessible
+
+        Raises:
+            AccessDeniedError: If entity not found or not accessible
+
+        Example:
+            try:
+                entity = await repo.can_access(id=entity_id)
+            except AccessDeniedError:
+                raise HTTPException(status_code=403, detail="Access denied")
         """
-        if self.org_id:
+        entity = await self.get(**filters)
+        if not entity:
+            raise AccessDeniedError()
+        return entity
+
+    async def list(self, **filters: Any) -> list[ModelT]:
+        """
+        List entities with cascade scoping and role check.
+
+        Returns entities that:
+        1. Match the cascade scope (org + global, or global-only)
+        2. Pass role-based access check (for entities with role tables)
+
+        Args:
+            **filters: Additional filter conditions
+
+        Returns:
+            List of accessible entities
+
+        Example:
+            # List all accessible entities
+            entities = await repo.list()
+
+            # List with additional filters
+            entities = await repo.list(is_active=True)
+        """
+        # Build base query with cascade scoping
+        query = select(self.model)
+        query = self._apply_cascade_scope(query)
+
+        # Apply additional filters
+        for key, value in filters.items():
+            column = getattr(self.model, key, None)
+            if column is not None:
+                query = query.where(column == value)
+
+        result = await self.session.execute(query)
+        entities = list(result.scalars().all())
+
+        # Filter by role access (for regular users with role-based entities)
+        # NOTE: This does per-entity role checking which may cause N+1 queries
+        # for large result sets. Consider batch optimization if performance is an issue.
+        if not self.is_superuser and self._has_role_table():
+            accessible = []
+            for entity in entities:
+                if await self._can_access_entity(entity):
+                    accessible.append(entity)
+            return accessible
+
+        return entities
+
+    # =========================================================================
+    # Internal Helpers
+    # =========================================================================
+
+    def _apply_cascade_scope(
+        self, query: Select[tuple[ModelT]]
+    ) -> Select[tuple[ModelT]]:
+        """
+        Apply cascade scoping to a query.
+
+        - org_id set: WHERE (organization_id = org_id OR organization_id IS NULL)
+        - org_id None: WHERE organization_id IS NULL
+        """
+        if self.org_id is not None:
             return query.where(
                 or_(
                     _org_filter(self.model, self.org_id),
                     _org_is_null(self.model),
                 )
             )
-        # Global scope (platform admin with no org selected) - only global resources
         return query.where(_org_is_null(self.model))
 
-    def filter_org_only(self, query: Select[tuple[ModelT]]) -> Select[tuple[ModelT]]:
+    def _has_role_table(self) -> bool:
+        """Check if this repository has role-based access control configured."""
+        return self.role_table is not None and self.role_entity_id_column != ""
+
+    def _has_access_level(self, entity: ModelT) -> bool:
+        """Check if entity has an access_level attribute."""
+        return hasattr(entity, "access_level")
+
+    async def _can_access_entity(self, entity: ModelT) -> bool:
         """
-        Filter for resources belonging only to the current org (no global).
+        Check if the current user can access an entity.
 
-        Use when you need org-specific resources without global fallback.
-        For example, when creating a resource that should be org-specific.
-
-        Args:
-            query: SQLAlchemy select query
-
-        Returns:
-            Query filtered to current org only (excludes global)
+        Access rules:
+        1. Superusers can access anything (scope already filtered)
+        2. Entities without access_level: accessible (cascade scoping only)
+        3. access_level="authenticated": any user in scope
+        4. access_level="role_based": check role membership
         """
-        if self.org_id:
-            return query.where(_org_filter(self.model, self.org_id))
-        # Global scope - only global resources
-        return query.where(_org_is_null(self.model))
+        # Superusers bypass role checks
+        if self.is_superuser:
+            return True
 
-    def filter_global_only(self, query: Select[tuple[ModelT]]) -> Select[tuple[ModelT]]:
+        # No role table configured - cascade scoping only
+        if not self._has_role_table():
+            return True
+
+        # No access_level attribute - cascade scoping only
+        if not self._has_access_level(entity):
+            return True
+
+        # Get access level (handle enum or string)
+        raw_access_level = getattr(entity, "access_level", None)
+        if raw_access_level is None:
+            # No access_level set defaults to authenticated
+            return True
+
+        # Convert enum to string if needed
+        if hasattr(raw_access_level, "value"):
+            access_level = raw_access_level.value
+        else:
+            access_level = str(raw_access_level)
+
+        if access_level == "authenticated":
+            return True
+
+        if access_level == "role_based":
+            return await self._check_role_access(entity)
+
+        # Unknown access level - deny
+        return False
+
+    async def _check_role_access(self, entity: ModelT) -> bool:
         """
-        Filter for global resources only (NULL organization_id).
+        Check if the current user has a role granting access to this entity.
 
-        Use when you specifically need platform-wide resources.
-
-        Args:
-            query: SQLAlchemy select query
-
-        Returns:
-            Query filtered to global resources only
+        Returns True if:
+        - User has at least one role that is assigned to the entity
         """
-        return query.where(_org_is_null(self.model))
+        if self.user_id is None:
+            return False
+
+        if not self._has_role_table():
+            return True
+
+        # Get user's role IDs
+        user_roles_query = select(UserRole.role_id).where(
+            UserRole.user_id == self.user_id
+        )
+        result = await self.session.execute(user_roles_query)
+        user_role_ids = list(result.scalars().all())
+
+        if not user_role_ids:
+            return False
+
+        # Get entity's role IDs from the role junction table
+        role_table = self.role_table
+        entity_id_column = getattr(role_table, self.role_entity_id_column, None)
+        role_id_column = getattr(role_table, "role_id", None)
+
+        if entity_id_column is None or role_id_column is None:
+            return False
+
+        # Access entity.id via getattr (all org-scoped models have an id column)
+        entity_id = getattr(entity, "id", None)
+        if entity_id is None:
+            return False
+
+        entity_roles_query = select(role_id_column).where(
+            entity_id_column == entity_id
+        )
+        result = await self.session.execute(entity_roles_query)
+        entity_role_ids = list(result.scalars().all())
+
+        # Check intersection
+        return any(role_id in entity_role_ids for role_id in user_role_ids)
+
+    # =========================================================================
+    # Utility Properties
+    # =========================================================================
 
     @property
     def is_global_scope(self) -> bool:
         """Check if repository is operating in global scope."""
         return self.org_id is None
-
-    def apply_filter(
-        self,
-        query: Select[tuple[ModelT]],
-        filter_type: OrgFilterType,
-        filter_org: UUID | None = None,
-    ) -> Select[tuple[ModelT]]:
-        """
-        Apply organization filter based on filter type.
-
-        This is the unified filtering method that handles all OrgFilterType cases.
-        Use this in list endpoints that support the `scope` query parameter.
-
-        Args:
-            query: SQLAlchemy select query
-            filter_type: The type of filter to apply (from resolve_org_filter)
-            filter_org: Organization UUID for ORG_ONLY and ORG_PLUS_GLOBAL
-                        (defaults to self.org_id if not provided)
-
-        Returns:
-            Query with organization filter applied
-
-        Example:
-            filter_type, filter_org = resolve_org_filter(ctx.user, scope)
-            repo = MyRepository(ctx.db, filter_org)
-            query = select(Model)
-            query = repo.apply_filter(query, filter_type, filter_org)
-        """
-        # Use provided filter_org or fall back to instance org_id
-        org_id = filter_org if filter_org is not None else self.org_id
-
-        if filter_type == OrgFilterType.ALL:
-            # No filter - superuser sees everything
-            return query
-        elif filter_type == OrgFilterType.GLOBAL_ONLY:
-            # Only global resources (NULL org_id)
-            return query.where(_org_is_null(self.model))
-        elif filter_type == OrgFilterType.ORG_ONLY:
-            # Only specific org resources (no global fallback)
-            return query.where(_org_filter(self.model, org_id))
-        elif filter_type == OrgFilterType.ORG_PLUS_GLOBAL:
-            # Org resources + global (cascade pattern)
-            if org_id:
-                return query.where(
-                    or_(
-                        _org_filter(self.model, org_id),
-                        _org_is_null(self.model),
-                    )
-                )
-            # If no org_id, fall back to global only
-            return query.where(_org_is_null(self.model))
-        else:
-            # Unknown filter type - default to global only (safest)
-            return query.where(_org_is_null(self.model))

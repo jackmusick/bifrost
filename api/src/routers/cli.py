@@ -2246,7 +2246,12 @@ async def _find_table_for_sdk(
     org_uuid: UUID | None,
     app_uuid: UUID | None,
 ) -> Any:
-    """Find a table by name with cascade scoping (org + global) and optional app filter.
+    """Find a table by name with cascade scoping: org-specific first, then global fallback.
+
+    Resolution order:
+    1. Exact org match (organization_id = org_uuid)
+    2. Global fallback (organization_id IS NULL)
+    3. None (not found)
 
     Args:
         db: Database session
@@ -2258,24 +2263,27 @@ async def _find_table_for_sdk(
         Table ORM object or None
     """
     from src.models.orm.tables import Table
-    from sqlalchemy import select, or_
+    from sqlalchemy import select
 
-    stmt = select(Table).where(Table.name == table_name)
+    def build_query(org_filter: UUID | None) -> Any:
+        stmt = select(Table).where(Table.name == table_name)
+        if org_filter is not None:
+            stmt = stmt.where(Table.organization_id == org_filter)
+        else:
+            stmt = stmt.where(Table.organization_id.is_(None))
+        if app_uuid:
+            stmt = stmt.where(Table.application_id == app_uuid)
+        return stmt
+
+    # Step 1: Try org-specific lookup
     if org_uuid:
-        stmt = stmt.where(
-            or_(
-                Table.organization_id == org_uuid,
-                Table.organization_id.is_(None),
-            )
-        )
-    else:
-        stmt = stmt.where(Table.organization_id.is_(None))
+        result = await db.execute(build_query(org_uuid))
+        table = result.scalar_one_or_none()
+        if table:
+            return table
 
-    # Filter by application if specified
-    if app_uuid:
-        stmt = stmt.where(Table.application_id == app_uuid)
-
-    result = await db.execute(stmt)
+    # Step 2: Fall back to global
+    result = await db.execute(build_query(None))
     return result.scalar_one_or_none()
 
 

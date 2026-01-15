@@ -62,31 +62,13 @@ class TableRepository(OrgScopedRepository[Table]):
         return list(result.scalars().all())
 
     async def get_by_name(self, name: str) -> Table | None:
-        """Get by name with priority: org-specific > global.
+        """Get by name with cascade scoping: org-specific > global.
 
-        This uses prioritized lookup to avoid MultipleResultsFound when
+        Uses get_one_cascade() to avoid MultipleResultsFound when
         the same name exists in both org scope and global scope.
         """
-        # First try org-specific (if we have an org)
-        if self.org_id:
-            result = await self.session.execute(
-                select(self.model).where(
-                    self.model.name == name,
-                    self.model.organization_id == self.org_id,
-                )
-            )
-            entity = result.scalar_one_or_none()
-            if entity:
-                return entity
-
-        # Fall back to global (or global-only if no org_id)
-        result = await self.session.execute(
-            select(self.model).where(
-                self.model.name == name,
-                self.model.organization_id.is_(None),
-            )
-        )
-        return result.scalar_one_or_none()
+        query = select(self.model).where(self.model.name == name)
+        return await self.get_one_cascade(query)
 
     async def get_by_name_strict(self, name: str) -> Table | None:
         """Get table by name strictly in current org scope (no fallback)."""

@@ -66,20 +66,22 @@ class ApplicationRepository(OrgScopedRepository[Application]):
         return list(result.scalars().all())
 
     async def get_by_slug(self, slug: str) -> Application | None:
-        """Get application by slug with cascade scoping."""
-        query = select(self.model).where(self.model.slug == slug)
-        query = self.filter_cascade(query)
+        """Get application by slug with cascade scoping: org-specific > global.
 
-        result = await self.session.execute(query)
-        return result.scalar_one_or_none()
+        Uses get_one_cascade() to avoid MultipleResultsFound when the same
+        slug exists in both org scope and global scope.
+        """
+        query = select(self.model).where(self.model.slug == slug)
+        return await self.get_one_cascade(query)
 
     async def get_by_id(self, id: UUID) -> Application | None:
-        """Get application by UUID with cascade scoping."""
-        query = select(self.model).where(self.model.id == id)
-        query = self.filter_cascade(query)
+        """Get application by UUID with cascade scoping: org-specific > global.
 
-        result = await self.session.execute(query)
-        return result.scalar_one_or_none()
+        Uses get_one_cascade() to avoid MultipleResultsFound when the same
+        ID exists in both org scope and global scope.
+        """
+        query = select(self.model).where(self.model.id == id)
+        return await self.get_one_cascade(query)
 
     async def get_by_slug_strict(self, slug: str) -> Application | None:
         """Get application by slug strictly in current org scope (no fallback)."""

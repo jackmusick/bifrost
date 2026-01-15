@@ -94,31 +94,13 @@ class ConfigRepository(OrgScopedRepository[ConfigModel]):  # type: ignore[type-v
         return schemas
 
     async def get_config(self, key: str) -> ConfigModel | None:
-        """Get config by key with priority: org-specific > global.
+        """Get config by key with cascade scoping: org-specific > global.
 
-        This uses prioritized lookup to avoid MultipleResultsFound when
+        Uses get_one_cascade() to avoid MultipleResultsFound when
         the same key exists in both org scope and global scope.
         """
-        # First try org-specific (if we have an org)
-        if self.org_id:
-            result = await self.session.execute(
-                select(self.model).where(
-                    self.model.key == key,
-                    self.model.organization_id == self.org_id,
-                )
-            )
-            entity = result.scalar_one_or_none()
-            if entity:
-                return entity
-
-        # Fall back to global (or global-only if no org_id)
-        result = await self.session.execute(
-            select(self.model).where(
-                self.model.key == key,
-                self.model.organization_id.is_(None),
-            )
-        )
-        return result.scalar_one_or_none()
+        query = select(self.model).where(self.model.key == key)
+        return await self.get_one_cascade(query)
 
     async def get_config_strict(self, key: str) -> ConfigModel | None:
         """Get config strictly in current org scope (no fallback)."""

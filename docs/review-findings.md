@@ -12,6 +12,7 @@ Issues discovered during the high-level codebase review session. Staged for foll
 | Dead code `_internal.py` | `bifrost/_internal.py` | Deleted file |
 | `tables.count()` fake `where` parameter | `bifrost/tables.py` | Removed parameter |
 | Non-atomic upsert | `cli.py:2484-2545` | Implemented `INSERT ... ON CONFLICT DO UPDATE` |
+| Table lookup MultipleResultsFound | `cli.py:2243` | Two-step lookup: org-specific first, then global fallback |
 
 ---
 
@@ -53,9 +54,27 @@ Issues discovered during the high-level codebase review session. Staged for foll
 
 ---
 
+#### 3. Cascade Scoping Uses OR Instead of Two-Step Lookup
+**Location**: `repositories/org_scoped.py`, `routers/cli.py`, various repositories
+
+**Problem**: `filter_cascade()` uses `WHERE org_id = X OR org_id IS NULL` which returns multiple rows when both org-specific and global entities exist with the same name. This causes `MultipleResultsFound` errors.
+
+**Root Cause**: The pattern is correct for **listing** (return both), but wrong for **get by name** (should prioritize org, fallback to global).
+
+**Fix Applied**:
+- Added `get_one_cascade()` method to `OrgScopedRepository` for proper two-step lookup
+- Fixed `_find_table_for_sdk()` in `cli.py`
+
+**Remaining Work**: Audit all usages of `filter_cascade() + scalar_one_or_none()` and migrate to `get_one_cascade()`:
+- `routers/applications.py` - `get_by_slug()`
+- MCP tools (agents, forms) - already use ORDER BY hack
+- Any other single-entity lookups with cascade scoping
+
+---
+
 ### MEDIUM Priority
 
-#### 3. CSRF Middleware Returns 500 for Anonymous Requests
+#### 4. CSRF Middleware Returns 500 for Anonymous Requests
 **Location**: `src/core/csrf.py:115`
 
 **Problem**: Anonymous POST requests get `403: CSRF token missing` but it's thrown as HTTPException that becomes 500 due to middleware exception handling.

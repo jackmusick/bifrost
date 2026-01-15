@@ -9,12 +9,14 @@ from src.repositories.executions import (
     update_execution,
 )
 from src.repositories.knowledge import KnowledgeDocument, KnowledgeRepository, NamespaceInfo
+from src.core.exceptions import AccessDeniedError
 from src.repositories.org_scoped import OrgScopedRepository
 from src.repositories.organizations import OrganizationRepository
 from src.repositories.users import UserRepository
 from src.repositories.workflows import WorkflowRepository
 
 __all__ = [
+    "AccessDeniedError",
     "BaseRepository",
     "CLISessionRepository",
     "DataProviderRepository",
