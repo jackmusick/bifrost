@@ -15,7 +15,7 @@ from uuid import UUID
 from pydantic import BaseModel, ConfigDict, Field, field_serializer, field_validator, model_validator
 import re
 
-from src.models.contracts.app_components import PageDefinition
+from src.models.contracts.app_components import NavigationConfig, PageDefinition
 
 # ==================== APPLICATION MODELS ====================
 
@@ -91,6 +91,10 @@ class ApplicationUpdate(BaseModel):
     role_ids: list[UUID] | None = Field(
         default=None,
         description="Role IDs for role_based access (replaces existing roles)",
+    )
+    navigation: NavigationConfig | None = Field(
+        default=None,
+        description="Navigation configuration (sidebar items, header settings)",
     )
 
     @field_validator("access_level")
