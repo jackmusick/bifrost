@@ -1,6 +1,6 @@
 """Make IntegrationMapping.organization_id nullable for global mappings.
 
-Revision ID: 20260115_make_integration_mapping_org_nullable
+Revision ID: 20260115_int_mapping_nullable
 Revises: 20260113_drop_app_global_fields
 Create Date: 2026-01-15
 
@@ -14,7 +14,7 @@ import sqlalchemy as sa
 
 
 # revision identifiers, used by Alembic.
-revision = "20260115_make_integration_mapping_org_nullable"
+revision = "20260115_int_mapping_nullable"
 down_revision = "20260113_drop_app_global_fields"
 branch_labels = None
 depends_on = None

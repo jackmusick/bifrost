@@ -100,6 +100,8 @@ class OrgScopedRepository(Generic[ModelT]):
         For cascade scoping, prioritizes org-specific over global to avoid
         MultipleResultsFound when both exist.
 
+        Superusers bypass org scoping entirely - they can access any entity by ID.
+
         Args:
             **filters: Filter conditions (e.g., id=uuid, name="foo")
 
@@ -119,6 +121,14 @@ class OrgScopedRepository(Generic[ModelT]):
             column = getattr(self.model, key, None)
             if column is not None:
                 query = query.where(column == value)
+
+        # Superusers bypass org scoping - can access any entity directly
+        if self.is_superuser:
+            result = await self.session.execute(query)
+            entity = result.scalar_one_or_none()
+            if entity:
+                return entity
+            return None
 
         # Step 1: Try org-specific lookup (if we have an org)
         if self.org_id is not None:
