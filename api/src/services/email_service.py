@@ -283,7 +283,7 @@ async def send_email(
         # Build execution context for system-level email sending
         context = ExecutionContext(
             user_id="system",
-            email="system@bifrost.local",
+            email="system@internal.gobifrost.com",
             name="Bifrost System",
             scope="GLOBAL",
             organization=None,

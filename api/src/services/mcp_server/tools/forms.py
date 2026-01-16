@@ -283,7 +283,7 @@ async def create_form(
                 access_level="role_based",
                 organization_id=effective_org_id,
                 is_active=True,
-                created_by=context.user_email or "mcp@bifrost.local",
+                created_by=context.user_email,
                 created_at=now,
                 updated_at=now,
             )

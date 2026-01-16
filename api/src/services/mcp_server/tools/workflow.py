@@ -79,7 +79,7 @@ async def execute_workflow(
                 workflow_name=workflow.name,
                 parameters=params,
                 user_id=str(context.user_id),
-                user_email=context.user_email or "mcp@bifrost.local",
+                user_email=context.user_email,
                 user_name=context.user_name or "MCP User",
                 org_id=str(context.org_id) if context.org_id else None,
                 is_platform_admin=context.is_platform_admin,

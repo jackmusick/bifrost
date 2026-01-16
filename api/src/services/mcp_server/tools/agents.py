@@ -409,7 +409,7 @@ async def create_agent(
                 is_coding_mode=is_coding_mode,
                 knowledge_sources=knowledge_sources or [],
                 system_tools=system_tools or [],
-                created_by=context.user_email or "mcp@bifrost.local",
+                created_by=context.user_email,
                 created_at=now,
                 updated_at=now,
             )

@@ -205,7 +205,7 @@ async def create_organization(
                 domain=domain,
                 is_active=True,
                 settings={},
-                created_by=context.user_email or "mcp@bifrost.local",
+                created_by=context.user_email,
             )
 
             db.add(org)

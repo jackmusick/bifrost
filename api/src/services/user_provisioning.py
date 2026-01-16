@@ -16,6 +16,7 @@ from uuid import UUID
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from src.core.constants import PROVIDER_ORG_ID
 from src.models import User
 from src.repositories.organizations import OrganizationRepository
 from src.repositories.users import UserRepository
@@ -110,7 +111,7 @@ async def ensure_user_provisioned(
             email=email,
             name=name or email.split("@")[0],
             is_superuser=True,
-            organization_id=None,
+            organization_id=PROVIDER_ORG_ID,
         )
         await db.commit()
         await db.refresh(user)
@@ -120,7 +121,7 @@ async def ensure_user_provisioned(
         return ProvisioningResult(
             user=user,
             is_platform_admin=True,
-            organization_id=user.organization_id,  # PROVIDER_ORG_ID assigned by create_user
+            organization_id=user.organization_id,
             was_created=True,
         )
 

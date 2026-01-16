@@ -34,7 +34,7 @@ def upgrade() -> None:
         INSERT INTO users (id, email, name, is_active, is_superuser, is_verified, is_registered, user_type)
         VALUES (
             '{SYSTEM_USER_ID}',
-            'system@bifrost.local',
+            'system@internal.gobifrost.com',
             'System',
             true,
             false,

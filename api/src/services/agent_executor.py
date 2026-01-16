@@ -835,7 +835,7 @@ IMPORTANT: When the user's request can be fulfilled using one of your tools, you
                 workflow_name=workflow.name,
                 parameters=tool_call.arguments or {},
                 user_id=str(user.id) if user else "system",
-                user_email=user.email if user else "system@bifrost.local",
+                user_email=user.email if user else "system@internal.gobifrost.com",
                 user_name=user.name if user else "System",
                 org_id=org_id,
                 is_platform_admin=user.is_superuser if user else False,
