@@ -20,7 +20,7 @@ class TestUserCreation:
 
     def test_org2_user_created(self, org2_user, org2):
         """Org2 user should be created via fixture."""
-        assert org2_user.email == "bob@example.com"
+        assert org2_user.email == "bob@org2.gobifrost.com"
         assert org2_user.organization_id == org2["id"] or str(org2_user.organization_id) == org2["id"]
         assert org2_user.is_superuser is False
         assert org2_user.access_token is not None

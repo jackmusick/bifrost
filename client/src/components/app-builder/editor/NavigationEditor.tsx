@@ -117,7 +117,7 @@ function NavIcon({
 	iconName,
 	className,
 }: {
-	iconName?: string;
+	iconName?: string | null;
 	className?: string;
 }) {
 	const IconComponent = ICON_MAP[iconName || "home"] || Home;
@@ -362,7 +362,7 @@ function NavItemEditor({
 						</div>
 
 						{/* Link to Page */}
-						{!item.isSection && (
+						{!item.is_section && (
 							<div className="space-y-2">
 								<Label>Linked Page</Label>
 								<Select
@@ -438,11 +438,11 @@ function NavItemEditor({
 								</p>
 							</div>
 							<Switch
-								checked={item.isSection || false}
+								checked={item.is_section || false}
 								onCheckedChange={(checked) =>
 									onUpdate(index, {
 										...item,
-										isSection: checked,
+										is_section: checked,
 									})
 								}
 							/>
@@ -471,8 +471,8 @@ export function NavigationEditor({
 		}
 		// Generate default navigation from pages
 		return {
-			showSidebar: true,
-			showHeader: true,
+			show_sidebar: true,
+			show_header: true,
 			sidebar: app.pages.map((page, index) => ({
 				id: page.id,
 				label: page.title,
@@ -548,7 +548,7 @@ export function NavigationEditor({
 						id: generateSectionId(),
 						label: "New Section",
 						icon: "folder",
-						isSection: true,
+						is_section: true,
 						order: items.length,
 					},
 				],
@@ -565,7 +565,7 @@ export function NavigationEditor({
 					id: generateSectionId(),
 					label: "New Section",
 					icon: "folder",
-					isSection: true,
+					is_section: true,
 					order: items.length,
 				},
 			],
@@ -583,11 +583,11 @@ export function NavigationEditor({
 				<div className="flex items-center justify-between">
 					<Label className="text-xs">Show Sidebar</Label>
 					<Switch
-						checked={navigation.showSidebar !== false}
+						checked={navigation.show_sidebar !== false}
 						onCheckedChange={(checked) =>
 							onNavigationChange({
 								...navigation,
-								showSidebar: checked,
+								show_sidebar: checked,
 							})
 						}
 					/>
@@ -595,11 +595,11 @@ export function NavigationEditor({
 				<div className="flex items-center justify-between">
 					<Label className="text-xs">Show Header</Label>
 					<Switch
-						checked={navigation.showHeader !== false}
+						checked={navigation.show_header !== false}
 						onCheckedChange={(checked) =>
 							onNavigationChange({
 								...navigation,
-								showHeader: checked,
+								show_header: checked,
 							})
 						}
 					/>

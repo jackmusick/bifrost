@@ -53,7 +53,7 @@ export function hasAppAccess(
 	}
 
 	// No rules defined, use default level
-	const defaultLevel = permissions.defaultLevel || "view";
+	const defaultLevel = permissions.default_level || "view";
 	return defaultLevel !== "none";
 }
 
@@ -73,7 +73,7 @@ export function getAppPermissionLevel(
 
 	// Check rules for highest permission level
 	let highestLevel: "none" | "view" | "edit" | "admin" =
-		permissions.defaultLevel || "none";
+		permissions.default_level || "none";
 
 	if (permissions.rules) {
 		for (const rule of permissions.rules) {

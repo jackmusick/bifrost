@@ -326,7 +326,14 @@ class ai:
                 "execution_id": execution_id,
             }
         )
-        response.raise_for_status()
+        if not response.is_success:
+            # Extract error detail from response if available
+            try:
+                error_data = response.json()
+                error_msg = error_data.get("detail", response.text)
+            except Exception:
+                error_msg = response.text or f"HTTP {response.status_code}"
+            raise RuntimeError(f"AI completion failed: {error_msg}")
         data = response.json()
 
         # Parse structured response if requested
@@ -451,5 +458,12 @@ class ai:
         """
         client = get_client()
         response = await client.get("/api/cli/ai/info")
-        response.raise_for_status()
+        if not response.is_success:
+            # Extract error detail from response if available
+            try:
+                error_data = response.json()
+                error_msg = error_data.get("detail", response.text)
+            except Exception:
+                error_msg = response.text or f"HTTP {response.status_code}"
+            raise RuntimeError(f"Failed to get AI model info: {error_msg}")
         return response.json()

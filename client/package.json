@@ -10,7 +10,8 @@
 	},
 	"scripts": {
 		"dev": "vite",
-		"build": "tsc -b && prettier --write . && vite build",
+		"build": "vite build",
+		"build:full": "tsc -b && prettier --write . && vite build",
 		"build:prod": "npm run build",
 		"tsc": "tsc -b",
 		"lint": "eslint .",

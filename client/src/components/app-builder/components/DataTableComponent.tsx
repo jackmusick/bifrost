@@ -617,7 +617,7 @@ export function DataTableComponent({
 										/>
 									</TableHead>
 								)}
-								{props.columns.map((column) => (
+								{(props.columns ?? []).map((column) => (
 									<TableHead
 										key={column.key}
 										className={cn(
@@ -659,7 +659,7 @@ export function DataTableComponent({
 												<Skeleton className="h-4 w-4" />
 											</TableCell>
 										)}
-										{props.columns.map((column) => (
+										{(props.columns ?? []).map((column) => (
 											<TableCell key={column.key}>
 												<Skeleton className="h-4 w-full" />
 											</TableCell>
@@ -728,7 +728,7 @@ export function DataTableComponent({
 													/>
 												</TableCell>
 											)}
-											{props.columns.map((column) => (
+											{(props.columns ?? []).map((column) => (
 												<TableCell key={column.key}>
 													{formatCellValue(
 														getNestedValue(

@@ -287,7 +287,8 @@ async def create_component(
             try:
                 # Validate props through the discriminated union (AppComponent)
                 # This routes to the correct component model based on 'type' field
-                from pydantic import ValidationError
+                # Note: AppComponent is a type alias, so we use TypeAdapter instead of .model_validate()
+                from pydantic import TypeAdapter, ValidationError
                 from src.models.contracts.app_components import AppComponent
 
                 component_data = {
@@ -296,7 +297,8 @@ async def create_component(
                     "props": props or {},
                 }
                 try:
-                    validated_component = AppComponent.model_validate(component_data)
+                    adapter = TypeAdapter(AppComponent)
+                    validated_component = adapter.validate_python(component_data)
                     validated_props = validated_component.props.model_dump(exclude_none=True)
                 except ValidationError as e:
                     return json.dumps({
@@ -419,8 +421,9 @@ async def update_component(
             data = AppComponentUpdate()
 
             # If props are being updated, validate through the component model
+            # Note: AppComponent is a type alias, so we use TypeAdapter instead of .model_validate()
             if props is not None:
-                from pydantic import ValidationError
+                from pydantic import TypeAdapter, ValidationError
                 from src.models.contracts.app_components import AppComponent
 
                 # Use new type if provided, otherwise use existing component type
@@ -432,7 +435,8 @@ async def update_component(
                     "props": props,
                 }
                 try:
-                    validated_component = AppComponent.model_validate(component_data)
+                    adapter = TypeAdapter(AppComponent)
+                    validated_component = adapter.validate_python(component_data)
                     data.props = validated_component.props.model_dump(exclude_none=True)
                     updates_made.append("props")
                 except ValidationError as e:

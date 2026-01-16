@@ -37,23 +37,25 @@ def _get_fernet() -> Fernet:
     return Fernet(base64.urlsafe_b64encode(key_bytes))
 
 
-def _parse_org_id(org_id: str | None) -> UUID | None:
-    """Parse org_id string to UUID, handling GLOBAL case."""
+def _parse_org_id(org_id: str | UUID | None) -> UUID | None:
+    """Parse org_id to UUID, handling GLOBAL case and UUID passthrough."""
     if not org_id or org_id == "GLOBAL":
         return None
+    if isinstance(org_id, UUID):
+        return org_id
     try:
         return UUID(org_id)
     except ValueError:
         return None
 
 
-async def get_github_config(db: AsyncSession, org_id: str | None) -> GitHubConfig | None:
+async def get_github_config(db: AsyncSession, org_id: str | UUID | None) -> GitHubConfig | None:
     """
     Get GitHub configuration from database.
 
     Args:
         db: Database session
-        org_id: Organization ID (or None/GLOBAL for global config)
+        org_id: Organization ID (str, UUID, or None/GLOBAL for global config)
 
     Returns:
         GitHubConfig with decrypted token, or None if not configured
@@ -104,7 +106,7 @@ async def get_github_config(db: AsyncSession, org_id: str | None) -> GitHubConfi
 
 async def save_github_config(
     db: AsyncSession,
-    org_id: str | None,
+    org_id: str | UUID | None,
     token: str,
     repo_url: str | None,
     branch: str,
@@ -115,7 +117,7 @@ async def save_github_config(
 
     Args:
         db: Database session
-        org_id: Organization ID
+        org_id: Organization ID (str, UUID, or None for global)
         token: GitHub personal access token (will be encrypted)
         repo_url: GitHub repository URL (can be None if just saving token)
         branch: Branch name
@@ -166,13 +168,13 @@ async def save_github_config(
     logger.info(f"Saved GitHub config for org {org_uuid or 'GLOBAL'}")
 
 
-async def delete_github_config(db: AsyncSession, org_id: str | None) -> None:
+async def delete_github_config(db: AsyncSession, org_id: str | UUID | None) -> None:
     """
     Delete GitHub configuration from database.
 
     Args:
         db: Database session
-        org_id: Organization ID
+        org_id: Organization ID (str, UUID, or None for global)
     """
     org_uuid = _parse_org_id(org_id)
 

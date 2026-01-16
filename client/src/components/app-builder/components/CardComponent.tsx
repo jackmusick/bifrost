@@ -7,6 +7,7 @@
 
 import { cn } from "@/lib/utils";
 import type { components } from "@/lib/v1";
+import type { LayoutElement } from "@/lib/app-builder-helpers";
 
 type CardComponent = components["schemas"]["CardComponent"];
 import type { RegisteredComponentProps } from "../ComponentRegistry";
@@ -72,7 +73,7 @@ export function CardComponent({
 								key={
 									"id" in child ? child.id : `child-${index}`
 								}
-								layout={child as any}
+								layout={child as LayoutElement}
 								context={context}
 							/>
 						))}

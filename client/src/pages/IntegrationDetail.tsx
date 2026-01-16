@@ -242,10 +242,12 @@ export function IntegrationDetail() {
 			}),
 		),
 		entities: entities.map((e) => ({ value: e.value, label: e.label })),
-		existingMappings: mappings.map((m) => ({
-			organization_id: m.organization_id,
-			entity_id: m.entity_id,
-		})),
+		existingMappings: mappings
+			.filter((m) => m.organization_id != null)
+			.map((m) => ({
+				organization_id: m.organization_id!,
+				entity_id: m.entity_id,
+			})),
 	});
 
 	// OAuth config from integration (now returned directly from GET /api/integrations/{id})
@@ -282,7 +284,7 @@ export function IntegrationDetail() {
 
 			const baseFormData: MappingFormData = existingMapping
 				? {
-						organization_id: existingMapping.organization_id,
+						organization_id: existingMapping.organization_id ?? org.id,
 						entity_id: existingMapping.entity_id,
 						entity_name: existingMapping.entity_name || "",
 						oauth_token_id:

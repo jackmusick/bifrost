@@ -1,27 +1,50 @@
 /**
- * Frontend-specific types for the App Builder.
+ * App Builder Types
  *
- * These types are NOT generated from the API - they exist only in the frontend
- * for runtime expression evaluation, navigation, and UI state management.
+ * This file re-exports API types from the generated OpenAPI types and defines
+ * frontend-only runtime types that don't exist in the backend.
  *
- * For API types (PageDefinition, LayoutContainer, components, etc.),
- * import from "@/lib/v1" directly.
+ * IMPORTANT: Do NOT define types here that exist in the backend. Use the
+ * generated types from "@/lib/v1" instead.
+ *
+ * Frontend-only types (runtime constructs, not serialized):
+ * - ExpressionUser: User info for {{ user.* }} expressions
+ * - WorkflowResult: Workflow state for {{ workflow.* }} expressions
+ * - ExpressionContext: Full context for expression evaluation
  */
 
 import type { components } from "@/lib/v1";
 
-// Re-export commonly used API types for convenience
+// =============================================================================
+// Re-exported API Types
+// =============================================================================
+
+// Core layout and page types
 export type PageDefinition = components["schemas"]["PageDefinition"];
 export type LayoutContainer = components["schemas"]["LayoutContainer"];
 export type RepeatFor = components["schemas"]["RepeatFor"];
 export type OnCompleteAction = components["schemas"]["OnCompleteAction"];
 
+// Navigation types (use -Output for reading from API)
+export type NavItem = components["schemas"]["NavItem-Output"];
+export type NavigationConfig = components["schemas"]["NavigationConfig-Output"];
+
+// Permission types
+export type PermissionRule = components["schemas"]["PermissionRule"];
+export type PermissionConfig = components["schemas"]["PermissionConfig"];
+
+// Application type
+export type ApplicationPublic = components["schemas"]["ApplicationPublic"];
+
 // =============================================================================
-// Expression Context Types
+// Frontend-Only Runtime Types
 // =============================================================================
 
 /**
- * User information available in expression context
+ * User information available in expression context.
+ *
+ * This is a frontend-only runtime type - it's populated from the auth context
+ * and used for evaluating {{ user.* }} expressions. It is NOT sent to/from the API.
  */
 export interface ExpressionUser {
 	id: string;
@@ -31,7 +54,10 @@ export interface ExpressionUser {
 }
 
 /**
- * Workflow execution result stored in context
+ * Workflow execution result stored in context.
+ *
+ * This is a frontend-only runtime type - it tracks the state of workflow
+ * executions for the current page. Used for {{ workflow.* }} expressions.
  */
 export interface WorkflowResult {
 	/** The execution ID */
@@ -50,6 +76,9 @@ export interface WorkflowResult {
 
 /**
  * Context for expression evaluation (e.g., {{ user.name }}, {{ workflow.result }})
+ *
+ * This is a frontend-only runtime type that provides the namespace for
+ * evaluating template expressions in the app builder. It is NOT serialized.
  */
 export interface ExpressionContext {
 	/** Current user information */
@@ -98,81 +127,11 @@ export interface ExpressionContext {
 	closeModal?: (modalId: string) => void;
 }
 
-// =============================================================================
-// Navigation Types
-// =============================================================================
-
-/**
- * Navigation item for sidebar/navbar
- */
-export interface NavItem {
-	/** Item identifier (usually page ID) */
-	id: string;
-	/** Display label */
-	label: string;
-	/** Icon name (lucide icon) */
-	icon?: string;
-	/** Navigation path */
-	path?: string;
-	/** Visibility expression */
-	visible?: string;
-	/** Order in navigation */
-	order?: number;
-	/** Whether this is a section header (group) */
-	isSection?: boolean;
-	/** Child items for section groups */
-	children?: NavItem[];
-}
-
-/**
- * Navigation configuration for the application
- */
-export interface NavigationConfig {
-	/** Sidebar navigation items */
-	sidebar?: NavItem[];
-	/** Whether to show the sidebar */
-	showSidebar?: boolean;
-	/** Whether to show the header */
-	showHeader?: boolean;
-	/** Custom logo URL */
-	logoUrl?: string;
-	/** Brand color (hex) */
-	brandColor?: string;
-}
-
-// =============================================================================
-// Permission Types
-// =============================================================================
-
-/**
- * Permission rule for app access control
- */
-export interface PermissionRule {
-	/** Role that has this permission */
-	role: string;
-	/** Permission level */
-	level: "view" | "edit" | "admin";
-}
-
-/**
- * Permission configuration for an application
- */
-export interface PermissionConfig {
-	/** Whether the app is public (no auth required) */
-	public?: boolean;
-	/** Default permission level for authenticated users */
-	defaultLevel?: "none" | "view" | "edit" | "admin";
-	/** Role-based permission rules */
-	rules?: PermissionRule[];
-}
-
-// =============================================================================
-// Application Definition (Frontend)
-// =============================================================================
-
 /**
  * Full application definition for the frontend runtime.
- * Extends API types with frontend-specific navigation and permissions.
+ *
+ * This combines ApplicationPublic with resolved pages for rendering.
+ * The API returns ApplicationPublic; this type adds the resolved page data.
  */
 export interface ApplicationDefinition {
 	id: string;

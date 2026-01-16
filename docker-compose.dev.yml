@@ -76,7 +76,6 @@ services:
       - ./api/src:/app/src:ro
       - ./api/shared:/app/shared:ro
       - ./api/bifrost:/app/bifrost:ro
-      - ./api/platform:/app/platform:ro
       - ./api/alembic:/app/alembic:ro
       - ./api/alembic.ini:/app/alembic.ini:ro
     command: >
@@ -100,7 +99,6 @@ services:
       - ./api/src:/app/src:ro
       - ./api/shared:/app/shared:ro
       - ./api/bifrost:/app/bifrost:ro
-      - ./api/platform:/app/platform:ro
     command: >
       watchmedo auto-restart --directory=/app/src --directory=/app/shared --pattern="*.py" --recursive -- python -m src.scheduler.main
 
@@ -119,7 +117,6 @@ services:
       - ./api/src:/app/src:ro
       - ./api/shared:/app/shared:ro
       - ./api/bifrost:/app/bifrost:ro
-      - ./api/platform:/app/platform:ro
     command: >
       watchmedo auto-restart --directory=/app/src --directory=/app/shared --pattern="*.py" --recursive -- python -m src.worker.main
 
@@ -137,7 +134,6 @@ services:
       - ./api/src:/app/src:ro
       - ./api/shared:/app/shared:ro
       - ./api/bifrost:/app/bifrost:ro
-      - ./api/platform:/app/platform:ro
     command: >
       watchmedo auto-restart --directory=/app/src --directory=/app/shared --pattern="*.py" --recursive -- python -m src.coding_agent.main
 

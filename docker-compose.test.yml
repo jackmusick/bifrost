@@ -174,8 +174,6 @@ services:
       - ./api/src:/app/src:ro
       - ./api/shared:/app/shared:ro
       - ./api/bifrost:/app/bifrost:ro
-      - ./api/bifrost_sdk:/app/bifrost_sdk:ro
-      - ./api/platform:/app/platform:ro  # Built-in platform workflows (read-only)
       - ./api/alembic:/app/alembic:ro
       - ./api/alembic.ini:/app/alembic.ini:ro
       - test-mounts:/mounts  # File storage for uploads, branding, etc.
@@ -227,8 +225,6 @@ services:
       - ./api/src:/app/src:ro
       - ./api/shared:/app/shared:ro
       - ./api/bifrost:/app/bifrost:ro
-      - ./api/bifrost_sdk:/app/bifrost_sdk:ro
-      - ./api/platform:/app/platform:ro
     depends_on:
       pgbouncer:
         condition: service_healthy
@@ -272,8 +268,6 @@ services:
       - ./api/src:/app/src:ro
       - ./api/shared:/app/shared:ro
       - ./api/bifrost:/app/bifrost:ro
-      - ./api/bifrost_sdk:/app/bifrost_sdk:ro
-      - ./api/platform:/app/platform:ro
       - test-mounts:/mounts
     depends_on:
       pgbouncer:
@@ -320,8 +314,6 @@ services:
       - ./api/src:/app/src:ro
       - ./api/shared:/app/shared:ro
       - ./api/bifrost:/app/bifrost:ro
-      - ./api/bifrost_sdk:/app/bifrost_sdk:ro
-      - ./api/platform:/app/platform:ro
     depends_on:
       pgbouncer:
         condition: service_healthy
@@ -378,10 +370,7 @@ services:
       - ./api/src:/app/src:ro
       - ./api/shared:/app/shared:ro
       - ./api/bifrost:/app/bifrost:ro
-      - ./api/bifrost_sdk:/app/bifrost_sdk:ro
-      - ./api/platform:/app/platform:ro
       - ./api/scripts:/app/scripts:ro  # Scripts for migration utilities
-      - ./api/stubs:/app/stubs:ro
       - ./api/tests:/app/tests:ro
       - ./api/alembic:/app/alembic:ro
       - ./api/alembic.ini:/app/alembic.ini:ro

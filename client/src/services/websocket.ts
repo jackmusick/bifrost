@@ -11,6 +11,7 @@
  */
 
 import type { components } from "@/lib/v1";
+import { refreshAccessToken } from "@/lib/api-client";
 import { useNotificationStore } from "@/stores/notificationStore";
 import type { Notification } from "@/stores/notificationStore";
 
@@ -573,7 +574,15 @@ class WebSocketService {
 						1000 * Math.pow(2, this.retryCount),
 						30000,
 					);
-					this.reconnectTimeout = setTimeout(() => {
+					this.reconnectTimeout = setTimeout(async () => {
+						// If unauthorized (4001), refresh token before reconnecting
+						// Browser will send fresh cookie on next WebSocket handshake
+						if (event.code === 4001) {
+							console.warn(
+								"[WebSocket] Token expired, refreshing before reconnect",
+							);
+							await refreshAccessToken();
+						}
 						this.connect(Array.from(this.subscribedChannels));
 					}, delay);
 				}

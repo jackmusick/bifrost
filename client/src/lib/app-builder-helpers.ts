@@ -175,71 +175,23 @@ export type FormEmbedComponentProps = components["schemas"]["FormEmbedComponent"
 export type FormGroupComponentProps = components["schemas"]["FormGroupComponent"];
 
 // =============================================================================
-// Navigation and Permission Types (frontend-only, not in API)
+// Navigation and Permission Types (re-exported from generated API types)
 // =============================================================================
 
-/**
- * Permission rule for app access control
- */
-export interface PermissionRule {
-	/** Role that has this permission (e.g., "admin", "user", "*" for all) */
-	role: string;
-	/** Permission level: view, edit, admin */
-	level: "view" | "edit" | "admin";
-}
+// Navigation types (use -Output suffix for reading from API)
+export type NavItem = components["schemas"]["NavItem-Output"];
+export type NavigationConfig = components["schemas"]["NavigationConfig-Output"];
+
+// Permission types
+export type PermissionRule = components["schemas"]["PermissionRule"];
+export type PermissionConfig = components["schemas"]["PermissionConfig"];
+
+// Application type
+export type ApplicationPublic = components["schemas"]["ApplicationPublic"];
 
 /**
- * Permission configuration for an application
- */
-export interface PermissionConfig {
-	/** Whether the app is public (no auth required) */
-	public?: boolean;
-	/** Default permission level for authenticated users */
-	defaultLevel?: "none" | "view" | "edit" | "admin";
-	/** Role-based permission rules */
-	rules?: PermissionRule[];
-}
-
-/**
- * Navigation item for sidebar/navbar
- */
-export interface NavItem {
-	/** Item identifier (usually page ID) */
-	id: string;
-	/** Display label */
-	label: string;
-	/** Icon name (lucide icon) */
-	icon?: string;
-	/** Navigation path */
-	path?: string;
-	/** Visibility expression */
-	visible?: string;
-	/** Order in navigation */
-	order?: number;
-	/** Whether this is a section header (group) */
-	isSection?: boolean;
-	/** Child items for section groups */
-	children?: NavItem[];
-}
-
-/**
- * Navigation configuration for the application
- */
-export interface NavigationConfig {
-	/** Sidebar navigation items */
-	sidebar?: NavItem[];
-	/** Whether to show the sidebar */
-	showSidebar?: boolean;
-	/** Whether to show the header */
-	showHeader?: boolean;
-	/** Custom logo URL */
-	logoUrl?: string;
-	/** Brand color (hex) */
-	brandColor?: string;
-}
-
-/**
- * Full application definition
+ * Full application definition for frontend runtime.
+ * Combines API types with resolved pages for rendering.
  */
 export interface ApplicationDefinition {
 	/** Application identifier */
@@ -252,9 +204,9 @@ export interface ApplicationDefinition {
 	version: string;
 	/** Pages in the application */
 	pages: PageDefinition[];
-	/** Navigation configuration */
+	/** Navigation configuration (uses snake_case fields from API) */
 	navigation?: NavigationConfig;
-	/** Permission configuration */
+	/** Permission configuration (uses snake_case fields from API) */
 	permissions?: PermissionConfig;
 	/** Global variables available to all pages */
 	globalVariables?: Record<string, unknown>;

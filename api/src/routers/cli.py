@@ -1564,6 +1564,16 @@ async def cli_ai_complete(
             detail=str(e),
         )
     except Exception as e:
+        # Check for authentication errors from LLM providers
+        error_type = type(e).__name__
+        error_module = type(e).__module__
+        if error_type == "AuthenticationError" and error_module in ("anthropic", "openai"):
+            provider = "Anthropic" if error_module == "anthropic" else "OpenAI"
+            logger.error(f"CLI AI complete failed: {provider} authentication error - invalid API key")
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail=f"{provider} API key is invalid or expired. Please update the API key in System Settings > AI Configuration.",
+            )
         logger.error(f"CLI AI complete failed: {e}")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
@@ -1636,8 +1646,16 @@ async def cli_ai_stream(
         except ValueError as e:
             yield f"data: {json.dumps({'error': str(e)})}\n\n"
         except Exception as e:
-            logger.error(f"CLI AI stream failed: {e}")
-            yield f"data: {json.dumps({'error': str(e)})}\n\n"
+            # Check for authentication errors from LLM providers
+            error_type = type(e).__name__
+            error_module = type(e).__module__
+            if error_type == "AuthenticationError" and error_module in ("anthropic", "openai"):
+                provider = "Anthropic" if error_module == "anthropic" else "OpenAI"
+                logger.error(f"CLI AI stream failed: {provider} authentication error - invalid API key")
+                yield f"data: {json.dumps({'error': f'{provider} API key is invalid or expired. Please update the API key in System Settings > AI Configuration.'})}\n\n"
+            else:
+                logger.error(f"CLI AI stream failed: {e}")
+                yield f"data: {json.dumps({'error': str(e)})}\n\n"
 
     return StreamingResponse(
         generate(),

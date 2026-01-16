@@ -15,7 +15,7 @@ from uuid import UUID
 from pydantic import BaseModel, ConfigDict, Field, field_serializer, field_validator, model_validator
 import re
 
-from src.models.contracts.app_components import NavigationConfig, PageDefinition
+from src.models.contracts.app_components import NavigationConfig, PageDefinition, PermissionConfig
 
 # ==================== APPLICATION MODELS ====================
 
@@ -134,12 +134,12 @@ class ApplicationPublic(ApplicationBase):
     has_unpublished_changes: bool
     access_level: str = Field(default="authenticated")
     role_ids: list[UUID] = Field(default_factory=list)
-    navigation: dict[str, Any] | None = Field(
+    navigation: NavigationConfig | None = Field(
         default=None,
         description="Navigation configuration (sidebar items, etc.)",
     )
     # Export fields - optional, only included when exporting full app
-    permissions: dict[str, Any] | None = Field(
+    permissions: PermissionConfig | None = Field(
         default=None,
         description="Permission configuration (included in export)",
     )

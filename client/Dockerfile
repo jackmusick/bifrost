@@ -24,6 +24,8 @@ FROM base AS builder
 COPY . .
 
 # Build the application
+# Increase Node memory limit to prevent OOM during build
+ENV NODE_OPTIONS="--max-old-space-size=4096"
 RUN npm run build
 
 # =============================================================================

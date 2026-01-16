@@ -20,7 +20,7 @@ class TestOrganizationCRUD:
     def test_second_organization_created(self, org2):
         """Second organization for isolation tests."""
         assert org2["name"] == "Second Test Org"
-        assert org2["domain"] == "example.com"
+        assert org2["domain"] == "org2.gobifrost.com"
         assert "id" in org2
 
     def test_list_organizations(self, e2e_client, platform_admin, org1, org2):

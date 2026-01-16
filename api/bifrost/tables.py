@@ -319,7 +319,7 @@ class tables:
             "/api/cli/tables/documents/get",
             json={
                 "table": table,
-                "id": doc_id,
+                "doc_id": doc_id,
                 "scope": effective_scope,
                 "app": app,
             }
@@ -366,7 +366,7 @@ class tables:
             "/api/cli/tables/documents/update",
             json={
                 "table": table,
-                "id": doc_id,
+                "doc_id": doc_id,
                 "data": data,
                 "scope": effective_scope,
                 "app": app,
@@ -412,7 +412,7 @@ class tables:
             "/api/cli/tables/documents/delete",
             json={
                 "table": table,
-                "id": doc_id,
+                "doc_id": doc_id,
                 "scope": effective_scope,
                 "app": app,
             }
@@ -501,19 +501,28 @@ class tables:
     @staticmethod
     async def count(
         table: str,
+        where: dict[str, Any] | None = None,
         scope: str | None = None,
         app: str | None = None,
     ) -> int:
         """
-        Count all documents in a table.
+        Count documents in a table, optionally with filtering.
+
+        Supports the same filter operators as query():
+        - Simple equality: {"status": "active"}
+        - Comparison: {"amount": {"gt": 100, "lte": 1000}}
+        - LIKE patterns: {"name": {"like": "%acme%"}} or {"name": {"ilike": "%ACME%"}}
+        - IN lists: {"category": {"in": ["a", "b"]}}
+        - NULL checks: {"deleted_at": {"is_null": True}}
 
         Args:
             table: Table name
+            where: Filter conditions with optional operators
             scope: Organization scope
             app: Application UUID
 
         Returns:
-            int: Number of documents in the table. Returns 0 if table doesn't exist.
+            int: Number of matching documents. Returns 0 if table doesn't exist.
 
         Raises:
             RuntimeError: If not authenticated
@@ -521,6 +530,7 @@ class tables:
         Example:
             >>> from bifrost import tables
             >>> total = await tables.count("customers")
+            >>> active = await tables.count("customers", where={"status": "active"})
         """
         client = get_client()
         effective_scope = _resolve_scope(scope)
@@ -528,6 +538,7 @@ class tables:
             "/api/cli/tables/documents/count",
             json={
                 "table": table,
+                "where": where,
                 "scope": effective_scope,
                 "app": app,
             }
@@ -536,5 +547,4 @@ class tables:
         if response.status_code == 404:
             return 0
         response.raise_for_status()
-        data = response.json()
-        return data.get("count", 0)
+        return response.json()

@@ -171,7 +171,7 @@ export function AppShell({
 		});
 	}, [navItems, expressionContext, app.pages, userRoles]);
 
-	const showSidebar = app.navigation?.showSidebar !== false;
+	const showSidebar = app.navigation?.show_sidebar !== false;
 	// showHeader is defined in navigation config but header is always shown currently
 	// Can be used in the future to hide the header for embedded apps
 
@@ -242,7 +242,7 @@ export function AppShell({
 							).replace(/^\//, "");
 
 							// Section headers
-							if (item.isSection) {
+							if (item.is_section) {
 								if (isCollapsed) return null;
 								return (
 									<div
@@ -351,7 +351,7 @@ export function AppShell({
 								).replace(/^\//, "");
 
 								// Section headers
-								if (item.isSection) {
+								if (item.is_section) {
 									return (
 										<div
 											key={item.id}

@@ -19,8 +19,7 @@ export function TabsComponent({
 	const { props } = component as TabsComponent;
 
 	// Guard against undefined props or items
-	// Support both 'items' and 'tabs' for backward compatibility
-	const items = props?.items ?? (props as any)?.tabs ?? [];
+	const items = props?.items ?? [];
 	if (items.length === 0) {
 		return null;
 	}

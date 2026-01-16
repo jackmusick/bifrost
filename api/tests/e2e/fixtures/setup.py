@@ -200,7 +200,7 @@ def org2(e2e_client: httpx.Client, platform_admin: E2EUser) -> dict:
         headers=platform_admin.headers,
         json={
             "name": "Second Test Org",
-            "domain": "example.com",
+            "domain": "org2.gobifrost.com",
         },
     )
     assert response.status_code == 201, f"Create org failed: {response.text}"
@@ -269,7 +269,7 @@ def org2_user(
     Used for isolation tests to verify org boundaries.
     """
     user = E2EUser(
-        email="bob@example.com",
+        email="bob@org2.gobifrost.com",
         password="BobPass123!",
         name="Bob Jones",
         organization_id=UUID(org2["id"]),

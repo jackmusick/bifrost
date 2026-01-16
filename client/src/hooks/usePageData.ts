@@ -166,21 +166,12 @@ export function usePageData({
 	// Execute on mount and when route params change
 	useEffect(() => {
 		if (!launchWorkflowId) {
-			console.log("[usePageData] No launchWorkflowId, skipping execution");
 			return;
 		}
 
 		let cancelled = false;
 
 		const run = async () => {
-			console.log("[usePageData] Executing launch workflow:", {
-				launchWorkflowId,
-				launchWorkflowParams,
-				launchWorkflowDataSourceId,
-				pageId,
-				routeParams: baseContext.params,
-			});
-
 			setState((prev) => ({ ...prev, isLoading: true }));
 
 			try {
@@ -188,13 +179,11 @@ export function usePageData({
 					launchWorkflowParams,
 					baseContext,
 				);
-				console.log("[usePageData] Evaluated params:", params);
 
 				const result = await executeWorkflowRef.current(
 					launchWorkflowId,
 					params,
 				);
-				console.log("[usePageData] Workflow result:", result);
 
 				if (!cancelled && result) {
 					const dataSourceKey =

@@ -367,7 +367,7 @@ function normalizeLayoutObject<T>(obj: T): T {
 		return obj.map(item => normalizeLayoutObject(item)) as T;
 	}
 
-	const normalized = { ...obj } as any;
+	const normalized = { ...obj } as Record<string, unknown>;
 
 	// Convert null to undefined for common nullable fields
 	const nullableFields = [
@@ -398,8 +398,8 @@ function normalizeLayoutObject<T>(obj: T): T {
 
 	// Recursively normalize children
 	if (normalized.children && Array.isArray(normalized.children)) {
-		normalized.children = normalized.children.map((child: any) =>
-			normalizeLayoutObject(child),
+		normalized.children = (normalized.children as unknown[]).map((child) =>
+			normalizeLayoutObject(child as Record<string, unknown>),
 		);
 	}
 
@@ -573,8 +573,8 @@ function renderLayoutContainer(
 					className={cn("flex flex-row flex-wrap", baseClasses, normalizedLayout.class_name)}
 					style={layoutStyles}
 				>
-					{(normalizedLayout.children as (LayoutContainer | AppComponent)[]).map((child, index) =>
-						renderChild(child, index, "row", normalizedLayout.distribute ?? undefined),
+					{(normalizedLayout.children ?? []).map((child, index) =>
+						renderChild(child as LayoutContainer | AppComponent, index, "row", normalizedLayout.distribute ?? undefined),
 					)}
 				</div>,
 			);
@@ -585,8 +585,8 @@ function renderLayoutContainer(
 					className={cn("flex flex-col", baseClasses, normalizedLayout.class_name)}
 					style={layoutStyles}
 				>
-					{(normalizedLayout.children as (LayoutContainer | AppComponent)[]).map((child, index) =>
-						renderChild(child, index, "column", normalizedLayout.distribute ?? undefined),
+					{(normalizedLayout.children ?? []).map((child, index) =>
+						renderChild(child as LayoutContainer | AppComponent, index, "column", normalizedLayout.distribute ?? undefined),
 					)}
 				</div>,
 			);
@@ -602,8 +602,8 @@ function renderLayoutContainer(
 					)}
 					style={layoutStyles}
 				>
-					{(normalizedLayout.children as (LayoutContainer | AppComponent)[]).map((child, index) =>
-						renderChild(child, index, "grid", normalizedLayout.distribute ?? undefined),
+					{(normalizedLayout.children ?? []).map((child, index) =>
+						renderChild(child as LayoutContainer | AppComponent, index, "grid", normalizedLayout.distribute ?? undefined),
 					)}
 				</div>,
 			);

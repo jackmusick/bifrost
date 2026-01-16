@@ -18,7 +18,7 @@ import * as LucideIcons from "lucide-react";
  * return <Icon className="h-4 w-4" />;
  */
 export function getIcon(
-	iconName?: string,
+	iconName?: string | null,
 	fallback: LucideIcons.LucideIcon = LucideIcons.Home,
 ): LucideIcons.LucideIcon {
 	if (!iconName) return fallback;

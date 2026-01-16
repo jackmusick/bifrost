@@ -711,13 +711,18 @@ function deepCloneWithNewIds(
 	if (isLayoutContainer(element)) {
 		return {
 			...element,
-			children: element.children.map((child) =>
-				// API returns AppComponentNode with type: string, but at runtime
-				// these have the correct structure for our frontend types
-				deepCloneWithNewIds(
-					child as unknown as LayoutContainer | AppComponent,
-				),
-			),
+			children: (element.children ?? []).map((child) => {
+				// Validate child has required structure before recursing
+				if (!child || typeof child !== "object" || !("type" in child)) {
+					console.error("Invalid child in tree during clone:", child);
+					return child;
+				}
+				// Use type guard to determine element type
+				if (isLayoutContainer(child as LayoutContainer | AppComponent)) {
+					return deepCloneWithNewIds(child as LayoutContainer);
+				}
+				return deepCloneWithNewIds(child as AppComponent);
+			}),
 		};
 	}
 
@@ -802,36 +807,42 @@ export function getComponentLabel(type: ComponentType | LayoutType): string {
 }
 
 /**
+ * Safely extract a string property from component props
+ */
+function getStringProp(props: unknown, key: string): string {
+	if (props && typeof props === "object" && key in props) {
+		const value = (props as Record<string, unknown>)[key];
+		if (typeof value === "string") {
+			return value;
+		}
+	}
+	return "";
+}
+
+/**
  * Get additional info text for a component (title, text, etc.)
  */
 export function getComponentInfo(
 	element: LayoutContainer | AppComponent,
 ): string {
 	if (isLayoutContainer(element)) {
-		const childCount = element.children.length;
+		const childCount = (element.children ?? []).length;
 		return `${childCount} ${childCount === 1 ? "child" : "children"}`;
 	}
 
-	const component = element as AppComponent;
-	switch (component.type) {
+	// TypeScript knows element is AppComponent here due to the type guard above
+	const props = element.props;
+	switch (element.type) {
 		case "heading":
-			return (
-				(component.props as { text?: string }).text?.slice(0, 30) || ""
-			);
 		case "text":
-			return (
-				(component.props as { text?: string }).text?.slice(0, 30) || ""
-			);
+			return getStringProp(props, "text").slice(0, 30);
 		case "button":
-			return (component.props as { label?: string }).label || "";
+			return getStringProp(props, "label");
 		case "card":
-			return (component.props as { title?: string }).title || "";
 		case "stat-card":
-			return (component.props as { title?: string }).title || "";
+			return getStringProp(props, "title");
 		case "data-table":
-			return (
-				(component.props as { dataSource?: string }).dataSource || ""
-			);
+			return getStringProp(props, "data_source");
 		default:
 			return "";
 	}

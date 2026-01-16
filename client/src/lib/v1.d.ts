@@ -3789,6 +3789,8 @@ export interface paths {
          *     Auto-creates the table if it doesn't exist.
          *     If a document with the given id exists, it is replaced with the new data.
          *     If not, a new document is created.
+         *
+         *     Uses atomic INSERT ... ON CONFLICT DO UPDATE to prevent race conditions.
          */
         post: operations["cli_upsert_document_api_cli_tables_documents_upsert_post"];
         delete?: never;
@@ -7300,20 +7302,10 @@ export interface components {
             access_level: string;
             /** Role Ids */
             role_ids?: string[];
-            /**
-             * Navigation
-             * @description Navigation configuration (sidebar items, etc.)
-             */
-            navigation?: {
-                [key: string]: unknown;
-            } | null;
-            /**
-             * Permissions
-             * @description Permission configuration (included in export)
-             */
-            permissions?: {
-                [key: string]: unknown;
-            } | null;
+            /** @description Navigation configuration (sidebar items, etc.) */
+            navigation?: components["schemas"]["NavigationConfig-Output"] | null;
+            /** @description Permission configuration (included in export) */
+            permissions?: components["schemas"]["PermissionConfig"] | null;
             /**
              * Pages
              * @description Page definitions with nested layout/components (included in export)
@@ -7369,6 +7361,8 @@ export interface components {
              * @description Role IDs for role_based access (replaces existing roles)
              */
             role_ids?: string[] | null;
+            /** @description Navigation configuration (sidebar items, header settings) */
+            navigation?: components["schemas"]["NavigationConfig-Input"] | null;
         };
         /**
          * AssignAgentsToRoleRequest
@@ -7445,7 +7439,7 @@ export interface components {
             /** Mfa Required For Password */
             mfa_required_for_password: boolean;
             /** Oauth Providers */
-            oauth_providers: components["schemas"]["OAuthProviderInfo"][];
+            oauth_providers: components["schemas"]["src__models__contracts__auth__OAuthProviderInfo"][];
         };
         /**
          * AuthorizeResponse
@@ -10900,6 +10894,11 @@ export interface components {
              * @description File size in bytes
              */
             file_size: number;
+            /**
+             * Field Name
+             * @description Form field name for server-side validation of allowed types and max size
+             */
+            field_name?: string | null;
         };
         /**
          * FileUploadResponse
@@ -12376,6 +12375,10 @@ export interface components {
          * IntegrationMappingCreate
          * @description Request model for creating an integration mapping.
          *     POST /api/integrations/{integration_id}/mappings
+         *
+         *     Note: This model requires organization_id because the API only creates
+         *     org-scoped mappings. Global mappings (organization_id=NULL) are created
+         *     programmatically via migrations or admin scripts, not through the API.
          */
         IntegrationMappingCreate: {
             /**
@@ -12444,10 +12447,9 @@ export interface components {
             integration_id: string;
             /**
              * Organization Id
-             * Format: uuid
-             * @description Associated organization ID
+             * @description Associated organization ID (NULL for global mappings)
              */
-            organization_id: string;
+            organization_id?: string | null;
             /**
              * Entity Id
              * @description External entity ID
@@ -13291,6 +13293,11 @@ export interface components {
             issuer: string;
             /** Account Name */
             account_name: string;
+            /**
+             * Is Existing
+             * @default false
+             */
+            is_existing: boolean;
         };
         /**
          * MFAStatusResponse
@@ -13310,11 +13317,20 @@ export interface components {
         };
         /**
          * MFAVerifyRequest
-         * @description Request to verify MFA code.
+         * @description Request to verify MFA code during login.
          */
         MFAVerifyRequest: {
+            /** Mfa Token */
+            mfa_token: string;
             /** Code */
             code: string;
+            /**
+             * Trust Device
+             * @default false
+             */
+            trust_device: boolean;
+            /** Device Name */
+            device_name?: string | null;
         };
         /**
          * MFAVerifyResponse
@@ -13579,6 +13595,160 @@ export interface components {
             class_name?: string | null;
         };
         /**
+         * NavItem
+         * @description Navigation item for sidebar/navbar.
+         */
+        "NavItem-Input": {
+            /**
+             * Id
+             * @description Item identifier (usually page ID)
+             */
+            id: string;
+            /**
+             * Label
+             * @description Display label
+             */
+            label: string;
+            /**
+             * Icon
+             * @description Icon name (lucide icon)
+             */
+            icon?: string | null;
+            /**
+             * Path
+             * @description Navigation path
+             */
+            path?: string | null;
+            /**
+             * Visible
+             * @description Visibility expression
+             */
+            visible?: string | null;
+            /**
+             * Order
+             * @description Order in navigation
+             */
+            order?: number | null;
+            /**
+             * Is Section
+             * @description Whether this is a section header (group)
+             */
+            is_section?: boolean | null;
+            /**
+             * Children
+             * @description Child items for section groups
+             */
+            children?: components["schemas"]["NavItem-Input"][] | null;
+        };
+        /**
+         * NavItem
+         * @description Navigation item for sidebar/navbar.
+         */
+        "NavItem-Output": {
+            /**
+             * Id
+             * @description Item identifier (usually page ID)
+             */
+            id: string;
+            /**
+             * Label
+             * @description Display label
+             */
+            label: string;
+            /**
+             * Icon
+             * @description Icon name (lucide icon)
+             */
+            icon?: string | null;
+            /**
+             * Path
+             * @description Navigation path
+             */
+            path?: string | null;
+            /**
+             * Visible
+             * @description Visibility expression
+             */
+            visible?: string | null;
+            /**
+             * Order
+             * @description Order in navigation
+             */
+            order?: number | null;
+            /**
+             * Is Section
+             * @description Whether this is a section header (group)
+             */
+            is_section?: boolean | null;
+            /**
+             * Children
+             * @description Child items for section groups
+             */
+            children?: components["schemas"]["NavItem-Output"][] | null;
+        };
+        /**
+         * NavigationConfig
+         * @description Navigation configuration for the application.
+         */
+        "NavigationConfig-Input": {
+            /**
+             * Sidebar
+             * @description Sidebar navigation items
+             */
+            sidebar?: components["schemas"]["NavItem-Input"][] | null;
+            /**
+             * Show Sidebar
+             * @description Whether to show the sidebar
+             */
+            show_sidebar?: boolean | null;
+            /**
+             * Show Header
+             * @description Whether to show the header
+             */
+            show_header?: boolean | null;
+            /**
+             * Logo Url
+             * @description Custom logo URL
+             */
+            logo_url?: string | null;
+            /**
+             * Brand Color
+             * @description Brand color (hex)
+             */
+            brand_color?: string | null;
+        };
+        /**
+         * NavigationConfig
+         * @description Navigation configuration for the application.
+         */
+        "NavigationConfig-Output": {
+            /**
+             * Sidebar
+             * @description Sidebar navigation items
+             */
+            sidebar?: components["schemas"]["NavItem-Output"][] | null;
+            /**
+             * Show Sidebar
+             * @description Whether to show the sidebar
+             */
+            show_sidebar?: boolean | null;
+            /**
+             * Show Header
+             * @description Whether to show the header
+             */
+            show_header?: boolean | null;
+            /**
+             * Logo Url
+             * @description Custom logo URL
+             */
+            logo_url?: string | null;
+            /**
+             * Brand Color
+             * @description Brand color (hex)
+             */
+            brand_color?: string | null;
+        };
+        /**
          * NotificationCategory
          * @description Categories for grouping notifications.
          * @enum {string}
@@ -13798,15 +13968,29 @@ export interface components {
         };
         /**
          * OAuthCallbackRequest
-         * @description OAuth callback request (for when frontend handles callback).
+         * @description Request model for OAuth callback endpoint
          */
         OAuthCallbackRequest: {
-            /** Provider */
-            provider: string;
-            /** Code */
+            /**
+             * Code
+             * @description Authorization code from OAuth provider
+             */
             code: string;
-            /** State */
-            state: string;
+            /**
+             * State
+             * @description State parameter for CSRF protection
+             */
+            state?: string | null;
+            /**
+             * Redirect Uri
+             * @description Redirect URI used in authorization request
+             */
+            redirect_uri?: string | null;
+            /**
+             * Organization Id
+             * @description Organization ID for org-specific token storage (optional, for org overrides)
+             */
+            organization_id?: string | null;
         };
         /**
          * OAuthCallbackResponse
@@ -14236,7 +14420,7 @@ export interface components {
         };
         /**
          * OAuthProviderInfo
-         * @description OAuth provider information for login page
+         * @description OAuth provider information.
          */
         OAuthProviderInfo: {
             /** Name */
@@ -14252,7 +14436,7 @@ export interface components {
          */
         OAuthProvidersResponse: {
             /** Providers */
-            providers: components["schemas"]["src__routers__oauth_sso__OAuthProviderInfo"][];
+            providers: components["schemas"]["OAuthProviderInfo"][];
         };
         /**
          * OAuthTokenResponse
@@ -14955,6 +15139,44 @@ export interface components {
              * @description Forms, agents, and apps that depend on this workflow
              */
             affected_entities?: components["schemas"]["AffectedEntity"][];
+        };
+        /**
+         * PermissionConfig
+         * @description Permission configuration for an application.
+         */
+        PermissionConfig: {
+            /**
+             * Public
+             * @description Whether the app is public (no auth required)
+             */
+            public?: boolean | null;
+            /**
+             * Default Level
+             * @description Default permission level for authenticated users
+             */
+            default_level?: ("none" | "view" | "edit" | "admin") | null;
+            /**
+             * Rules
+             * @description Role-based permission rules
+             */
+            rules?: components["schemas"]["PermissionRule"][] | null;
+        };
+        /**
+         * PermissionRule
+         * @description Permission rule for app access control.
+         */
+        PermissionRule: {
+            /**
+             * Role
+             * @description Role that has this permission (e.g., "admin", "user", "*" for all)
+             */
+            role: string;
+            /**
+             * Level
+             * @description Permission level: view, edit, admin
+             * @enum {string}
+             */
+            level: "view" | "edit" | "admin";
         };
         /**
          * PlatformMetricsResponse
@@ -19453,68 +19675,16 @@ export interface components {
             metadata?: components["schemas"]["WorkflowMetadata"] | null;
         };
         /**
-         * OAuthCallbackRequest
-         * @description Request model for OAuth callback endpoint
+         * OAuthProviderInfo
+         * @description OAuth provider information for login page
          */
-        src__models__contracts__oauth__OAuthCallbackRequest: {
-            /**
-             * Code
-             * @description Authorization code from OAuth provider
-             */
-            code: string;
-            /**
-             * State
-             * @description State parameter for CSRF protection
-             */
-            state?: string | null;
-            /**
-             * Redirect Uri
-             * @description Redirect URI used in authorization request
-             */
-            redirect_uri?: string | null;
-            /**
-             * Organization Id
-             * @description Organization ID for org-specific token storage (optional, for org overrides)
-             */
-            organization_id?: string | null;
-        };
-        /**
-         * MFASetupResponse
-         * @description MFA setup response with secret.
-         */
-        src__routers__auth__MFASetupResponse: {
-            /** Secret */
-            secret: string;
-            /** Qr Code Uri */
-            qr_code_uri: string;
-            /** Provisioning Uri */
-            provisioning_uri: string;
-            /** Issuer */
-            issuer: string;
-            /** Account Name */
-            account_name: string;
-            /**
-             * Is Existing
-             * @default false
-             */
-            is_existing: boolean;
-        };
-        /**
-         * MFAVerifyRequest
-         * @description Request to verify MFA code during login.
-         */
-        src__routers__auth__MFAVerifyRequest: {
-            /** Mfa Token */
-            mfa_token: string;
-            /** Code */
-            code: string;
-            /**
-             * Trust Device
-             * @default false
-             */
-            trust_device: boolean;
-            /** Device Name */
-            device_name?: string | null;
+        src__models__contracts__auth__OAuthProviderInfo: {
+            /** Name */
+            name: string;
+            /** Display Name */
+            display_name: string;
+            /** Icon */
+            icon?: string | null;
         };
         /**
          * UserCreate
@@ -19532,16 +19702,40 @@ export interface components {
             name?: string | null;
         };
         /**
-         * OAuthProviderInfo
-         * @description OAuth provider information.
+         * MFASetupResponse
+         * @description MFA setup response with secret.
          */
-        src__routers__oauth_sso__OAuthProviderInfo: {
-            /** Name */
-            name: string;
-            /** Display Name */
-            display_name: string;
-            /** Icon */
-            icon?: string | null;
+        src__routers__mfa__MFASetupResponse: {
+            /** Secret */
+            secret: string;
+            /** Qr Code Uri */
+            qr_code_uri: string;
+            /** Provisioning Uri */
+            provisioning_uri: string;
+            /** Issuer */
+            issuer: string;
+            /** Account Name */
+            account_name: string;
+        };
+        /**
+         * MFAVerifyRequest
+         * @description Request to verify MFA code.
+         */
+        src__routers__mfa__MFAVerifyRequest: {
+            /** Code */
+            code: string;
+        };
+        /**
+         * OAuthCallbackRequest
+         * @description OAuth callback request (for when frontend handles callback).
+         */
+        src__routers__oauth_sso__OAuthCallbackRequest: {
+            /** Provider */
+            provider: string;
+            /** Code */
+            code: string;
+            /** State */
+            state: string;
         };
     };
     responses: never;
@@ -19644,7 +19838,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["src__routers__auth__MFASetupResponse"];
+                    "application/json": components["schemas"]["MFASetupResponse"];
                 };
             };
             /** @description Validation Error */
@@ -19687,7 +19881,7 @@ export interface operations {
         };
         requestBody: {
             content: {
-                "application/json": components["schemas"]["src__routers__auth__MFAVerifyRequest"];
+                "application/json": components["schemas"]["MFAVerifyRequest"];
             };
         };
         responses: {
@@ -20090,7 +20284,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["MFASetupResponse"];
+                    "application/json": components["schemas"]["src__routers__mfa__MFASetupResponse"];
                 };
             };
         };
@@ -20104,7 +20298,7 @@ export interface operations {
         };
         requestBody: {
             content: {
-                "application/json": components["schemas"]["MFAVerifyRequest"];
+                "application/json": components["schemas"]["src__routers__mfa__MFAVerifyRequest"];
             };
         };
         responses: {
@@ -20354,7 +20548,7 @@ export interface operations {
         };
         requestBody: {
             content: {
-                "application/json": components["schemas"]["OAuthCallbackRequest"];
+                "application/json": components["schemas"]["src__routers__oauth_sso__OAuthCallbackRequest"];
             };
         };
         responses: {
@@ -24140,7 +24334,7 @@ export interface operations {
         };
         requestBody: {
             content: {
-                "application/json": components["schemas"]["src__models__contracts__oauth__OAuthCallbackRequest"];
+                "application/json": components["schemas"]["OAuthCallbackRequest"];
             };
         };
         responses: {

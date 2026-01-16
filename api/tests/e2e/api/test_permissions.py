@@ -628,7 +628,7 @@ class TestPlatformAdminCapabilities:
             params={"scope": "global"},
             headers=platform_admin.headers,
         )
-        assert response.status_code == 200
+        assert response.status_code == 200, f"Expected 200, got {response.status_code}: {response.text}"
         forms = response.json()
         for form in forms:
             assert form.get("organization_id") is None, \

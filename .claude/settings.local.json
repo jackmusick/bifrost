@@ -169,7 +169,14 @@
       "mcp__bifrost__create_app",
       "mcp__bifrost__create_form",
       "Skill(superpowers:systematic-debugging)",
-      "Skill(superpowers:brainstorming)"
+      "Skill(superpowers:brainstorming)",
+      "Skill(superpowers:executing-plans)",
+      "Bash(do echo \"\")",
+      "mcp__bifrost__list_tables",
+      "WebFetch(domain:supertokens.com)",
+      "WebFetch(domain:ably.com)",
+      "WebFetch(domain:websockets.readthedocs.io)",
+      "WebFetch(domain:socket.io)"
     ],
     "deny": [],
     "ask": [],

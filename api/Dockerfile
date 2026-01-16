@@ -46,6 +46,7 @@ COPY api/alembic/ /app/alembic/
 COPY api/alembic.ini /app/
 COPY api/bifrost/ /app/bifrost/
 COPY api/bifrost.py /app/
+COPY api/scripts/ /app/scripts/
 
 # Create non-root user
 RUN useradd -m -u 1000 bifrost && \

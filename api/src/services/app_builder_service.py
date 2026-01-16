@@ -35,7 +35,7 @@ logger = logging.getLogger(__name__)
 
 
 def flatten_layout_tree(
-    layout: dict[str, Any],
+    layout: LayoutContainer | dict[str, Any],
     page_id: UUID,
     parent_id: UUID | None = None,
     order: int = 0,
@@ -57,7 +57,15 @@ def flatten_layout_tree(
 
     Raises:
         ValidationError: If component props fail Pydantic validation.
+
+    Note:
+        Accepts both LayoutContainer (for validated inputs) and dict (for
+        recursive calls with child elements which may be components).
     """
+    # Convert LayoutContainer to dict for uniform processing
+    if isinstance(layout, LayoutContainer):
+        layout = layout.model_dump(exclude_none=True, by_alias=True)
+
     components: list[dict[str, Any]] = []
     layout_type = layout.get("type", "column")
 
@@ -636,14 +644,25 @@ class AppBuilderService:
         page_id: str,
         title: str,
         path: str,
-        layout: dict[str, Any],
+        layout: LayoutContainer | dict[str, Any],
         version_id: UUID | None = None,
         **page_kwargs: Any,
     ) -> AppPage:
         """Create a page and flatten its layout into component rows.
 
         The page will be linked to the specified version_id.
+
+        Args:
+            layout: Either a validated LayoutContainer or a raw dict.
+                   If dict, it will be validated through LayoutContainer.
         """
+        # Validate layout if it's a raw dict
+        if isinstance(layout, dict):
+            layout = LayoutContainer.model_validate(layout)
+
+        # Convert to dict for extracting config values
+        layout_dict = layout.model_dump(exclude_none=True, by_alias=True)
+
         # Create page
         page = AppPage(
             application_id=application_id,
@@ -651,9 +670,9 @@ class AppBuilderService:
             title=title,
             path=path,
             version_id=version_id,
-            root_layout_type=layout.get("type", "column"),
+            root_layout_type=layout_dict.get("type", "column"),
             root_layout_config={
-                k: v for k, v in layout.items()
+                k: v for k, v in layout_dict.items()
                 if k in ("gap", "padding", "align", "justify", "columns", "distribute", "maxHeight", "overflow", "sticky", "stickyOffset", "className", "style")
             },
             **page_kwargs,
@@ -678,9 +697,21 @@ class AppBuilderService:
     async def update_page_layout(
         self,
         page: AppPage,
-        layout: dict[str, Any],
+        layout: LayoutContainer | dict[str, Any],
     ) -> None:
-        """Update a page's layout by replacing all its components."""
+        """Update a page's layout by replacing all its components.
+
+        Args:
+            layout: Either a validated LayoutContainer or a raw dict.
+                   If dict, it will be validated through LayoutContainer.
+        """
+        # Validate layout if it's a raw dict
+        if isinstance(layout, dict):
+            layout = LayoutContainer.model_validate(layout)
+
+        # Convert to dict for extracting config values
+        layout_dict = layout.model_dump(exclude_none=True, by_alias=True)
+
         # Delete existing components for this page
         comp_query = select(AppComponent).where(
             AppComponent.page_id == page.id,
@@ -694,9 +725,9 @@ class AppBuilderService:
         await self.session.flush()
 
         # Update root layout config
-        page.root_layout_type = layout.get("type", "column")
+        page.root_layout_type = layout_dict.get("type", "column")
         page.root_layout_config = {
-            k: v for k, v in layout.items()
+            k: v for k, v in layout_dict.items()
             if k in ("gap", "padding", "align", "justify", "columns", "distribute", "maxHeight", "overflow", "sticky", "stickyOffset", "className", "style")
         }
 

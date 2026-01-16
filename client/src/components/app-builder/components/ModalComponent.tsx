@@ -5,7 +5,7 @@
  * Supports custom footer actions with workflow integration.
  */
 
-import { useState, useCallback } from "react";
+import { useState, useCallback, useMemo } from "react";
 import { Loader2 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
@@ -66,15 +66,19 @@ export function ModalComponent({
 
 	// Use local state if has trigger, otherwise use external state
 	const isOpen = hasTrigger ? localIsOpen : externalIsOpen;
-	const setIsOpen = hasTrigger
-		? setLocalIsOpen
-		: (open: boolean) => {
-				if (open) {
-					context.openModal?.(component.id);
-				} else {
-					context.closeModal?.(component.id);
-				}
-			};
+	const setIsOpen = useMemo(
+		() =>
+			hasTrigger
+				? setLocalIsOpen
+				: (open: boolean) => {
+						if (open) {
+							context.openModal?.(component.id);
+						} else {
+							context.closeModal?.(component.id);
+						}
+					},
+		[hasTrigger, context.openModal, context.closeModal, component.id],
+	);
 
 	const [loadingAction, setLoadingAction] = useState<number | null>(null);
 
@@ -188,7 +192,7 @@ export function ModalComponent({
 				setLoadingAction(null);
 			}
 		},
-		[context],
+		[context, setIsOpen],
 	);
 
 	// Create a modal-scoped context that can track form values inside the modal

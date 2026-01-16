@@ -352,7 +352,7 @@ export function handleApiError(error: unknown): never {
 }
 
 // Re-export error classes for convenience
-export { ApiError, RateLimitError };
+export { ApiError, RateLimitError, refreshAccessToken };
 
 /**
  * Authenticated fetch wrapper for endpoints not in OpenAPI spec

@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState } from "react";
 import { Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -33,13 +33,7 @@ export function PoolConfigForm({
 
 	const updateConfig = useUpdatePoolConfig();
 
-	// Sync form state when currentMin/currentMax changes (e.g., from config fetch)
-	useEffect(() => {
-		setMinWorkers(currentMin);
-		setMaxWorkers(currentMax);
-	}, [currentMin, currentMax]);
-
-	// Reset form when dialog opens
+	// Reset form when dialog opens (syncs with latest prop values)
 	const handleOpenChange = (newOpen: boolean) => {
 		if (newOpen) {
 			setMinWorkers(currentMin);

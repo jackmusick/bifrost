@@ -90,8 +90,10 @@ class FormField(BaseModel):
     def validate_field_requirements(self):
         """Validate field-specific requirements"""
         # data_provider_inputs requires data_provider_id
+        # If data_provider_id is NULL but data_provider_inputs exists, clear the inputs
+        # This handles the edge case where the data provider was deleted (FK SET NULL)
         if self.data_provider_inputs and not self.data_provider_id:
-            raise ValueError("data_provider_inputs requires data_provider_id to be set")
+            object.__setattr__(self, 'data_provider_inputs', None)
 
         # label is required for non-display fields (markdown/html use content instead)
         display_only_types = {FormFieldType.MARKDOWN, FormFieldType.HTML}
