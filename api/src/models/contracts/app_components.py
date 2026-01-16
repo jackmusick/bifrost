@@ -14,7 +14,7 @@ from __future__ import annotations
 
 from typing import Annotated, Any, Literal, Union
 
-from pydantic import BaseModel, ConfigDict, Field, field_serializer
+from pydantic import BaseModel, Field, field_serializer
 
 
 # -----------------------------------------------------------------------------
@@ -1490,8 +1490,6 @@ class PermissionConfig(BaseModel):
 class NavItem(BaseModel):
     """Navigation item for sidebar/navbar."""
 
-    model_config = ConfigDict(extra="forbid")
-
     id: str = Field(description="Item identifier (usually page ID)")
     label: str = Field(description="Display label")
     icon: str | None = Field(default=None, description="Icon name (lucide icon)")
@@ -1512,8 +1510,6 @@ NavItem.model_rebuild()
 
 class NavigationConfig(BaseModel):
     """Navigation configuration for the application."""
-
-    model_config = ConfigDict(extra="forbid")
 
     sidebar: list[NavItem] | None = Field(
         default=None, description="Sidebar navigation items"

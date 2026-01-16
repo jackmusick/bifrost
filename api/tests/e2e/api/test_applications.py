@@ -174,34 +174,6 @@ class TestApplicationCRUD:
             headers=platform_admin.headers,
         )
 
-    def test_update_application_rejects_invalid_navigation(self, e2e_client, platform_admin):
-        """Reject navigation with invalid 'items' field (must use 'sidebar')."""
-        # Create app
-        e2e_client.post(
-            "/api/applications",
-            headers=platform_admin.headers,
-            json={"name": "Invalid Nav App", "slug": "invalid-nav-app"},
-        )
-
-        # Try to update with invalid navigation
-        response = e2e_client.patch(
-            "/api/applications/invalid-nav-app",
-            headers=platform_admin.headers,
-            json={
-                "navigation": {
-                    "items": [{"id": "home", "label": "Home"}]  # Wrong field name
-                }
-            },
-        )
-        assert response.status_code == 422, \
-            f"Expected 422 for invalid navigation, got {response.status_code}: {response.text}"
-
-        # Cleanup
-        e2e_client.delete(
-            "/api/applications/invalid-nav-app",
-            headers=platform_admin.headers,
-        )
-
     def test_delete_application(self, e2e_client, platform_admin):
         """Delete application."""
         # Create app
