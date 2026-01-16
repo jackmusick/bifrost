@@ -16,6 +16,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.models.contracts.applications import ComponentTreeNode
 from src.models.contracts.app_components import (
+    AppComponent as AppComponentModel,
     AppComponentNode,
     DataSourceConfig,
     LayoutContainer,
@@ -53,6 +54,9 @@ def flatten_layout_tree(
     }
 
     Returns list of dicts ready to create AppComponent rows.
+
+    Raises:
+        ValidationError: If component props fail Pydantic validation.
     """
     components: list[dict[str, Any]] = []
     layout_type = layout.get("type", "column")
@@ -98,13 +102,27 @@ def flatten_layout_tree(
         # The props are in a "props" key for leaf components
         props = layout.get("props", {})
 
+        # Validate props through the discriminated union (AppComponentModel)
+        # This routes to the correct component model based on 'type' field
+        # and ensures field names are correct (e.g., data_source not dataSource)
+        from pydantic import TypeAdapter
+
+        component_data = {
+            "id": component_id,
+            "type": layout_type,
+            "props": props,
+        }
+        adapter = TypeAdapter(AppComponentModel)
+        validated_component = adapter.validate_python(component_data)
+        validated_props = validated_component.props.model_dump(exclude_none=True)
+
         components.append({
             "id": component_uuid,
             "page_id": page_id,
             "component_id": component_id,
             "parent_id": parent_id,
             "type": layout_type,
-            "props": props,
+            "props": validated_props,
             "component_order": order,
             "visible": layout.get("visible"),
             "width": layout.get("width"),

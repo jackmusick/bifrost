@@ -285,10 +285,28 @@ async def create_component(
                 return json.dumps({"error": f"Component '{component_id}' already exists"})
 
             try:
+                # Validate props through the discriminated union (AppComponent)
+                # This routes to the correct component model based on 'type' field
+                from pydantic import ValidationError
+                from src.models.contracts.app_components import AppComponent
+
+                component_data = {
+                    "id": component_id,
+                    "type": component_type,
+                    "props": props or {},
+                }
+                try:
+                    validated_component = AppComponent.model_validate(component_data)
+                    validated_props = validated_component.props.model_dump(exclude_none=True)
+                except ValidationError as e:
+                    return json.dumps({
+                        "error": f"Invalid component props for type '{component_type}': {e}"
+                    })
+
                 data = AppComponentCreate(
                     component_id=component_id,
                     type=component_type,
-                    props=props or {},
+                    props=validated_props,
                     parent_id=parent_uuid,
                     component_order=order,
                 )
@@ -399,9 +417,29 @@ async def update_component(
             updates_made = []
 
             data = AppComponentUpdate()
+
+            # If props are being updated, validate through the component model
             if props is not None:
-                data.props = props
-                updates_made.append("props")
+                from pydantic import ValidationError
+                from src.models.contracts.app_components import AppComponent
+
+                # Use new type if provided, otherwise use existing component type
+                effective_type = component_type if component_type is not None else component.type
+
+                component_data = {
+                    "id": component_id,
+                    "type": effective_type,
+                    "props": props,
+                }
+                try:
+                    validated_component = AppComponent.model_validate(component_data)
+                    data.props = validated_component.props.model_dump(exclude_none=True)
+                    updates_made.append("props")
+                except ValidationError as e:
+                    return json.dumps({
+                        "error": f"Invalid component props for type '{effective_type}': {e}"
+                    })
+
             if component_type is not None:
                 data.type = component_type
                 updates_made.append("type")
