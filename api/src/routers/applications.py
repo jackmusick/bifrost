@@ -305,6 +305,10 @@ class ApplicationRepository(OrgScopedRepository[Application]):
                 except ValueError:
                     pass  # Invalid UUID, ignore
 
+        # Handle navigation updates
+        if data.navigation is not None:
+            application.navigation = data.navigation.model_dump(exclude_none=True)
+
         # Update role associations if provided
         if data.role_ids is not None:
             # Delete existing role associations

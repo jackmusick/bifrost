@@ -138,6 +138,70 @@ class TestApplicationCRUD:
             headers=platform_admin.headers,
         )
 
+    def test_update_application_navigation(self, e2e_client, platform_admin):
+        """Update application navigation configuration."""
+        # Create app
+        e2e_client.post(
+            "/api/applications",
+            headers=platform_admin.headers,
+            json={"name": "Nav Test App", "slug": "nav-test-app"},
+        )
+
+        # Update navigation
+        response = e2e_client.patch(
+            "/api/applications/nav-test-app",
+            headers=platform_admin.headers,
+            json={
+                "navigation": {
+                    "sidebar": [
+                        {"id": "home", "label": "Home", "path": "/", "icon": "Home"},
+                        {"id": "settings", "label": "Settings", "path": "/settings"},
+                    ],
+                    "show_sidebar": True,
+                }
+            },
+        )
+        assert response.status_code == 200, f"Update navigation failed: {response.text}"
+        app = response.json()
+
+        assert app["navigation"] is not None
+        assert app["navigation"]["sidebar"][0]["id"] == "home"
+        assert app["navigation"]["show_sidebar"] is True
+
+        # Cleanup
+        e2e_client.delete(
+            "/api/applications/nav-test-app",
+            headers=platform_admin.headers,
+        )
+
+    def test_update_application_rejects_invalid_navigation(self, e2e_client, platform_admin):
+        """Reject navigation with invalid 'items' field (must use 'sidebar')."""
+        # Create app
+        e2e_client.post(
+            "/api/applications",
+            headers=platform_admin.headers,
+            json={"name": "Invalid Nav App", "slug": "invalid-nav-app"},
+        )
+
+        # Try to update with invalid navigation
+        response = e2e_client.patch(
+            "/api/applications/invalid-nav-app",
+            headers=platform_admin.headers,
+            json={
+                "navigation": {
+                    "items": [{"id": "home", "label": "Home"}]  # Wrong field name
+                }
+            },
+        )
+        assert response.status_code == 422, \
+            f"Expected 422 for invalid navigation, got {response.status_code}: {response.text}"
+
+        # Cleanup
+        e2e_client.delete(
+            "/api/applications/invalid-nav-app",
+            headers=platform_admin.headers,
+        )
+
     def test_delete_application(self, e2e_client, platform_admin):
         """Delete application."""
         # Create app
