@@ -17,10 +17,9 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from src.models.contracts.applications import ComponentTreeNode
 from src.models.contracts.app_components import (
     AppComponent as AppComponentModel,
-    AppComponentNode,
     DataSourceConfig,
     LayoutContainer,
-    LayoutElement,
+    LayoutContainerOrComponent,
     PageDefinition,
     PagePermission,
 )
@@ -199,6 +198,103 @@ def flatten_layout_tree(
 
 
 # =============================================================================
+# New Unified Tree Flattening (AppComponent list -> Rows)
+# =============================================================================
+
+
+# Container types that have children in the unified model
+CONTAINER_TYPES = frozenset(
+    ["row", "column", "grid", "card", "modal", "tabs", "tab-item", "form-group"]
+)
+
+# Base fields from ComponentBase that should be stored at row level, not in props
+BASE_FIELDS = frozenset(["id", "type", "children", "visible", "width", "loading_workflows"])
+
+
+def flatten_components(
+    components: list[AppComponentModel],
+    page_id: UUID,
+    parent_id: UUID | None = None,
+) -> list[dict[str, Any]]:
+    """
+    Flatten nested component tree to flat rows for database storage.
+
+    Each component becomes one row. Container components have their children
+    recursively flattened with parent_id pointing to the container's row.
+
+    This function works with the unified AppComponent model where:
+    - All components extend ComponentBase
+    - Container components (row, column, grid, card, modal, tabs, tab-item, form-group)
+      have children: list[AppComponent] at the top level
+    - Leaf components have no children field
+    - Props are top-level fields, not nested under a 'props' key
+
+    Args:
+        components: List of AppComponent instances (from discriminated union)
+        page_id: Page UUID for all rows
+        parent_id: Parent component UUID (None for root level)
+
+    Returns:
+        List of dicts ready for AppComponent ORM creation with:
+        - id: UUID for this row
+        - page_id: Page UUID
+        - component_id: Original component ID string
+        - parent_id: Parent row UUID (None for root)
+        - type: Component type string
+        - props: Dict of component-specific properties
+        - component_order: Order among siblings
+        - visible: Visibility expression (extracted from base fields)
+        - width: Component width (extracted from base fields)
+        - loading_workflows: List of workflow IDs (extracted from base fields)
+    """
+    rows: list[dict[str, Any]] = []
+
+    for order, component in enumerate(components):
+        component_uuid = uuid4()
+
+        # Dump component to dict, excluding children (handled separately via recursion)
+        component_dict = component.model_dump(exclude_none=True, exclude={"children"})
+
+        # Extract base identifiers
+        component_id = component_dict.pop("id")
+        component_type = component_dict.pop("type")
+
+        # Extract base fields that are stored at row level
+        visible = component_dict.pop("visible", None)
+        width = component_dict.pop("width", None)
+        loading_workflows = component_dict.pop("loading_workflows", None)
+
+        # Everything remaining becomes props
+        props = component_dict
+
+        rows.append(
+            {
+                "id": component_uuid,
+                "page_id": page_id,
+                "component_id": component_id,
+                "parent_id": parent_id,
+                "type": component_type,
+                "props": props,
+                "component_order": order,
+                "visible": visible,
+                "width": width,
+                "loading_workflows": loading_workflows,
+            }
+        )
+
+        # Recursively flatten children if this is a container component
+        if hasattr(component, "children") and component.children:
+            child_rows = flatten_components(
+                component.children,  # type: ignore[arg-type]
+                page_id,
+                parent_id=component_uuid,
+            )
+            rows.extend(child_rows)
+
+    return rows
+
+
+# =============================================================================
 # Tree Reconstruction (Rows -> JSON)
 # =============================================================================
 
@@ -249,9 +345,9 @@ def build_component_tree(components: list[AppComponent]) -> list[ComponentTreeNo
     return root_nodes
 
 
-def _layout_element_to_dict(node: LayoutElement) -> dict[str, Any]:
+def _layout_element_to_dict(node: LayoutContainerOrComponent) -> dict[str, Any]:
     """
-    Convert a LayoutElement back to dict for embedding in props.
+    Convert a LayoutContainerOrComponent back to dict for embedding in props.
 
     Used to reconstruct card/modal/tabs children that are stored as separate
     component rows but need to be returned as nested dicts in props.
@@ -288,19 +384,8 @@ def _layout_element_to_dict(node: LayoutElement) -> dict[str, Any]:
             result["children"] = [_layout_element_to_dict(c) for c in node.children]
         return result
     else:
-        # AppComponentNode
-        result = {
-            "id": node.id,
-            "type": node.type,
-            "props": node.props.copy() if node.props else {},
-        }
-        if node.visible:
-            result["visible"] = node.visible
-        if node.width:
-            result["width"] = node.width
-        if node.loading_workflows:
-            result["loadingWorkflows"] = node.loading_workflows
-        return result
+        # AppComponent (discriminated union) - serialize via model_dump
+        return node.model_dump(exclude_none=True, by_alias=True)
 
 
 def build_layout_tree(components: list[AppComponent]) -> LayoutContainer:
@@ -313,18 +398,20 @@ def build_layout_tree(components: list[AppComponent]) -> LayoutContainer:
 
     Uses a single pass with a lookup dict to build the tree efficiently.
     """
+    from pydantic import TypeAdapter
+
     if not components:
         # Return empty column layout
         return LayoutContainer(id=f"layout_{uuid4().hex[:8]}", type="column", children=[])
 
-    # First pass: create all nodes as LayoutElement (either LayoutContainer or AppComponentNode)
-    nodes: dict[UUID, tuple[LayoutElement, int, UUID | None]] = {}  # id -> (node, order, parent_id)
+    # First pass: create all nodes as LayoutContainerOrComponent
+    nodes: dict[UUID, tuple[LayoutContainerOrComponent, int, UUID | None]] = {}  # id -> (node, order, parent_id)
 
     for comp in components:
         if comp.type in ("row", "column", "grid"):
             # Layout container
             props = comp.props or {}
-            node: LayoutElement = LayoutContainer(
+            node: LayoutContainerOrComponent = LayoutContainer(
                 id=comp.component_id,  # Include component_id for API operations
                 type=comp.type,  # type: ignore[arg-type] - validated by ORM
                 gap=props.get("gap"),
@@ -344,21 +431,23 @@ def build_layout_tree(components: list[AppComponent]) -> LayoutContainer:
                 children=[],
             )
         else:
-            # Leaf component
-            node = AppComponentNode(
-                id=comp.component_id,
-                type=comp.type,
-                props=comp.props or {},
-                visible=comp.visible,
-                width=comp.width,
-                loading_workflows=comp.loading_workflows,
-            )
+            # Leaf component - validate through discriminated union
+            component_data = {
+                "id": comp.component_id,
+                "type": comp.type,
+                "props": comp.props or {},
+                "visible": comp.visible,
+                "width": comp.width,
+                "loading_workflows": comp.loading_workflows,
+            }
+            adapter = TypeAdapter(AppComponentModel)
+            node = adapter.validate_python(component_data)
         nodes[comp.id] = (node, comp.component_order, comp.parent_id)
 
     # Second pass: build tree structure
     # Track children for container-like leaf components (card, modal, tabs)
-    container_children: dict[UUID, list[tuple[LayoutElement, int]]] = {}
-    root_nodes: list[tuple[LayoutElement, int]] = []  # (node, order)
+    container_children: dict[UUID, list[tuple[LayoutContainerOrComponent, int]]] = {}
+    root_nodes: list[tuple[LayoutContainerOrComponent, int]] = []  # (node, order)
 
     for comp_id, (node, order, parent_id) in nodes.items():
         if parent_id is None:
@@ -367,7 +456,7 @@ def build_layout_tree(components: list[AppComponent]) -> LayoutContainer:
             parent_node, _, _ = nodes[parent_id]
             if isinstance(parent_node, LayoutContainer):
                 parent_node.children.append(node)
-            elif isinstance(parent_node, AppComponentNode):
+            else:
                 # Track children for container-like leaf components
                 if parent_id not in container_children:
                     container_children[parent_id] = []
@@ -396,42 +485,48 @@ def build_layout_tree(components: list[AppComponent]) -> LayoutContainer:
     # (card, modal, tabs store children in props rather than as layout children)
     for comp_id, children_list in container_children.items():
         parent_node, _, _ = nodes[comp_id]
-        if isinstance(parent_node, AppComponentNode):
+        if not isinstance(parent_node, LayoutContainer):
             # Sort children by order
             children_list.sort(key=lambda x: x[1])
 
-            if parent_node.type == "card":
+            parent_type = parent_node.type
+            if parent_type == "card":
                 # Card stores children in props.children as dicts
-                parent_node.props["children"] = [
+                parent_node.props.children = [
                     _layout_element_to_dict(child) for child, _ in children_list
                 ]
-            elif parent_node.type == "modal":
+            elif parent_type == "modal":
                 # Modal stores single content layout in props.content
                 if children_list:
-                    parent_node.props["content"] = _layout_element_to_dict(children_list[0][0])
-            elif parent_node.type == "tabs":
+                    content_dict = _layout_element_to_dict(children_list[0][0])
+                    parent_node.props.content = LayoutContainer.model_validate(content_dict)
+            elif parent_type == "tabs":
                 # Tabs: tab_content children need to be matched to items
-                tab_contents = {
-                    child.props.get("tab_id"): child
-                    for child, _ in children_list
-                    if isinstance(child, AppComponentNode) and child.type == "tab_content"
-                }
-                items = parent_node.props.get("items", [])
-                for item in items:
-                    tab_id = item.get("id")
-                    if tab_id in tab_contents:
-                        tab_content_node = tab_contents[tab_id]
-                        # Get children of the tab_content from container_children
-                        tab_content_id = None
-                        for cid, (n, _, _) in nodes.items():
-                            if n is tab_content_node:
-                                tab_content_id = cid
-                                break
-                        if tab_content_id and tab_content_id in container_children:
-                            tab_children = container_children[tab_content_id]
-                            tab_children.sort(key=lambda x: x[1])
-                            if tab_children:
-                                item["content"] = _layout_element_to_dict(tab_children[0][0])
+                tab_contents: dict[str, LayoutContainerOrComponent] = {}
+                for child, _ in children_list:
+                    if not isinstance(child, LayoutContainer) and child.type == "tab_content":
+                        # Internal tab_content marker - extract tab_id from props
+                        tab_id = getattr(child.props, "tab_id", None) if hasattr(child, "props") else None
+                        if tab_id:
+                            tab_contents[tab_id] = child
+
+                if parent_node.props.items:
+                    for item in parent_node.props.items:
+                        tab_id = item.id
+                        if tab_id in tab_contents:
+                            tab_content_node = tab_contents[tab_id]
+                            # Get children of the tab_content from container_children
+                            tab_content_id = None
+                            for cid, (n, _, _) in nodes.items():
+                                if n is tab_content_node:
+                                    tab_content_id = cid
+                                    break
+                            if tab_content_id and tab_content_id in container_children:
+                                tab_children = container_children[tab_content_id]
+                                tab_children.sort(key=lambda x: x[1])
+                                if tab_children:
+                                    content_dict = _layout_element_to_dict(tab_children[0][0])
+                                    item.content = LayoutContainer.model_validate(content_dict)
 
     # Return: if single root layout container, return it; otherwise wrap in column
     if len(root_nodes) == 1:
@@ -660,21 +755,13 @@ class AppBuilderService:
         if isinstance(layout, dict):
             layout = LayoutContainer.model_validate(layout)
 
-        # Convert to dict for extracting config values
-        layout_dict = layout.model_dump(exclude_none=True, by_alias=True)
-
-        # Create page
+        # Create page (root layout is now just the first component row)
         page = AppPage(
             application_id=application_id,
             page_id=page_id,
             title=title,
             path=path,
             version_id=version_id,
-            root_layout_type=layout_dict.get("type", "column"),
-            root_layout_config={
-                k: v for k, v in layout_dict.items()
-                if k in ("gap", "padding", "align", "justify", "columns", "distribute", "maxHeight", "overflow", "sticky", "stickyOffset", "className", "style")
-            },
             **page_kwargs,
         )
         self.session.add(page)
@@ -709,9 +796,6 @@ class AppBuilderService:
         if isinstance(layout, dict):
             layout = LayoutContainer.model_validate(layout)
 
-        # Convert to dict for extracting config values
-        layout_dict = layout.model_dump(exclude_none=True, by_alias=True)
-
         # Delete existing components for this page
         comp_query = select(AppComponent).where(
             AppComponent.page_id == page.id,
@@ -724,14 +808,7 @@ class AppBuilderService:
         # Flush deletes before inserting new components to avoid unique constraint violations
         await self.session.flush()
 
-        # Update root layout config
-        page.root_layout_type = layout_dict.get("type", "column")
-        page.root_layout_config = {
-            k: v for k, v in layout_dict.items()
-            if k in ("gap", "padding", "align", "justify", "columns", "distribute", "maxHeight", "overflow", "sticky", "stickyOffset", "className", "style")
-        }
-
-        # Create new components
+        # Create new components (root layout is now just the first component row)
         component_dicts = flatten_layout_tree(layout, page.id)
         for comp_dict in component_dicts:
             component = AppComponent(**comp_dict)
