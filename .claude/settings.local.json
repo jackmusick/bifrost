@@ -176,7 +176,9 @@
       "WebFetch(domain:supertokens.com)",
       "WebFetch(domain:ably.com)",
       "WebFetch(domain:websockets.readthedocs.io)",
-      "WebFetch(domain:socket.io)"
+      "WebFetch(domain:socket.io)",
+      "Bash(alembic revision:*)",
+      "Skill(superpowers:subagent-driven-development)"
     ],
     "deny": [],
     "ask": [],

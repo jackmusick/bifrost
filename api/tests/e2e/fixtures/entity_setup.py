@@ -140,7 +140,6 @@ def test_app_with_workflow(
             "title": "Test Page",
             "path": "/test",
             "page_order": 0,
-            "root_layout_type": "column",
             "launch_workflow_id": test_workflow["id"],
         },
     )

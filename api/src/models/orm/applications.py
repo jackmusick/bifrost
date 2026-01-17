@@ -204,14 +204,6 @@ class AppPage(Base):
     )
     page_order: Mapped[int] = mapped_column(Integer, default=0, server_default="0")
 
-    # Root layout config
-    root_layout_type: Mapped[str] = mapped_column(
-        String(20), default="column", server_default="'column'"
-    )
-    root_layout_config: Mapped[dict[str, Any]] = mapped_column(
-        JSONB, default=dict, server_default="{}"
-    )
-
     # Timestamps
     created_at: Mapped[datetime] = mapped_column(
         DateTime, default=datetime.utcnow, server_default=text("NOW()")

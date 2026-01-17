@@ -166,8 +166,10 @@ from src.models.contracts.app_components import (
     FormGroupComponent,
     # Layout types
     LayoutContainer,
-    AppComponentNode,
     PageDefinition,
+    # Internal tree building types
+    AppComponentNode,
+    LayoutElement,
 )
 
 # Agents & Chat
@@ -1008,8 +1010,9 @@ __all__ = [
     "FormEmbedComponent",
     "FormGroupComponent",
     "LayoutContainer",
-    "AppComponentNode",
     "PageDefinition",
+    "AppComponentNode",
+    "LayoutElement",
     # Platform Admin
     "PoolDetail",
     "PoolsListResponse",

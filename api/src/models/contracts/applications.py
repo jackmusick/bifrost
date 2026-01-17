@@ -261,8 +261,6 @@ class AppPageCreate(AppPageBase):
     launch_workflow_data_source_id: str | None = Field(default=None, description="Data source ID for workflow results (defaults to workflow function name)")
     permission: dict[str, Any] = Field(default_factory=dict, description="Page permission config (allowedRoles, etc.)")
     page_order: int = Field(default=0, ge=0, description="Order in navigation/page list")
-    root_layout_type: str = Field(default="column", description="Root layout type (row, column, grid)")
-    root_layout_config: dict[str, Any] = Field(default_factory=dict, description="Root layout config (gap, padding, etc.)")
 
 
 class AppPageUpdate(BaseModel):
@@ -277,8 +275,6 @@ class AppPageUpdate(BaseModel):
     launch_workflow_data_source_id: str | None = None
     permission: dict[str, Any] | None = None
     page_order: int | None = Field(default=None, ge=0)
-    root_layout_type: str | None = None
-    root_layout_config: dict[str, Any] | None = None
 
 
 class AppPageSummary(BaseModel):
@@ -310,8 +306,6 @@ class AppPageResponse(AppPageSummary):
     launch_workflow_id: UUID | None
     launch_workflow_params: dict[str, Any] | None
     launch_workflow_data_source_id: str | None
-    root_layout_type: str
-    root_layout_config: dict[str, Any]
 
 
 class AppPageListResponse(BaseModel):

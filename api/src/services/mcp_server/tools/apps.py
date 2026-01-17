@@ -596,17 +596,22 @@ async def get_app_schema(context: Any) -> str:  # noqa: ARG001
         AppComponentMove,
     )
     from src.models.contracts.app_components import (
-        ButtonProps,
-        CardProps,
-        DataTableProps,
-        HeadingProps,
-        TextProps,
-        TextInputProps,
-        SelectProps,
-        FormEmbedProps,
-        ModalProps,
-        StatCardProps,
-        TabsProps,
+        # Container components
+        RowComponent,
+        ColumnComponent,
+        CardComponent,
+        ModalComponent,
+        TabsComponent,
+        FormGroupComponent,
+        # Leaf components
+        HeadingComponent,
+        TextComponent,
+        ButtonComponent,
+        StatCardComponent,
+        DataTableComponent,
+        TextInputComponent,
+        SelectComponent,
+        FormEmbedComponent,
     )
     from src.services.mcp_server.schema_utils import models_to_markdown
 
@@ -627,20 +632,26 @@ async def get_app_schema(context: Any) -> str:  # noqa: ARG001
         (AppComponentMove, "AppComponentMove (for moving components)"),
     ], "Component Models")
 
-    # Component props for common types
-    props_models = models_to_markdown([
-        (HeadingProps, "HeadingProps"),
-        (TextProps, "TextProps"),
-        (CardProps, "CardProps"),
-        (ButtonProps, "ButtonProps"),
-        (StatCardProps, "StatCardProps"),
-        (DataTableProps, "DataTableProps"),
-        (TextInputProps, "TextInputProps"),
-        (SelectProps, "SelectProps"),
-        (FormEmbedProps, "FormEmbedProps"),
-        (ModalProps, "ModalProps"),
-        (TabsProps, "TabsProps"),
-    ], "Component Props (Common Types)")
+    # Component types - unified model with flat props
+    container_components = models_to_markdown([
+        (RowComponent, "RowComponent (horizontal layout)"),
+        (ColumnComponent, "ColumnComponent (vertical layout)"),
+        (CardComponent, "CardComponent (container with header)"),
+        (ModalComponent, "ModalComponent (dialog container)"),
+        (TabsComponent, "TabsComponent (tabbed container)"),
+        (FormGroupComponent, "FormGroupComponent (form field group)"),
+    ], "Container Components (can have children)")
+
+    leaf_components = models_to_markdown([
+        (HeadingComponent, "HeadingComponent (h1-h6)"),
+        (TextComponent, "TextComponent (body text)"),
+        (ButtonComponent, "ButtonComponent (clickable button)"),
+        (StatCardComponent, "StatCardComponent (metric display)"),
+        (DataTableComponent, "DataTableComponent (data table)"),
+        (TextInputComponent, "TextInputComponent (text field)"),
+        (SelectComponent, "SelectComponent (dropdown)"),
+        (FormEmbedComponent, "FormEmbedComponent (embedded form)"),
+    ], "Leaf Components (no children)")
 
     # Conceptual documentation
     overview = """# App Builder Schema Documentation
@@ -683,7 +694,7 @@ then component tools for granular edits.
 
 All components use a unified model where props are FLAT on the component (not nested under a 'props' key).
 
-Example component data for MCP tools:
+When creating/updating components via MCP tools, pass props in the `props` dict:
 ```json
 {
     "component_id": "my-heading",
@@ -695,7 +706,17 @@ Example component data for MCP tools:
 }
 ```
 
-The props dictionary contents vary by component type - see props models above.
+When reading components (from get_page), props are returned FLAT on the component:
+```json
+{
+    "id": "my-heading",
+    "type": "heading",
+    "text": "Welcome",
+    "level": 1
+}
+```
+
+See the component type documentation above for all available properties per type.
 
 ## Available Component Types
 

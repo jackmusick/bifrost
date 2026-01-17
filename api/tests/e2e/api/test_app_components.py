@@ -54,11 +54,6 @@ class TestAppBuilderSetup:
                 "title": "Test Page",
                 "path": "/test",
                 "page_order": 0,
-                "root_layout_type": "column",
-                "root_layout_config": {
-                    "gap": 16,
-                    "padding": 24,
-                },
             },
         )
         assert response.status_code == 201, f"Create page failed: {response.text}"
@@ -111,7 +106,6 @@ class TestComponentCreate:
                 "title": "Create Test",
                 "path": "/create",
                 "page_order": 0,
-                "root_layout_type": "column",
             },
         )
         assert response.status_code == 201
@@ -258,7 +252,6 @@ class TestComponentUpdate:
                 "title": "Update Test",
                 "path": "/update",
                 "page_order": 0,
-                "root_layout_type": "column",
             },
         )
         assert response.status_code == 201
@@ -388,7 +381,6 @@ class TestComponentDelete:
                 "title": "Delete Test",
                 "path": "/delete",
                 "page_order": 0,
-                "root_layout_type": "column",
             },
         )
         assert response.status_code == 201
@@ -467,7 +459,6 @@ class TestComponentMove:
                 "title": "Move Test",
                 "path": "/move",
                 "page_order": 0,
-                "root_layout_type": "column",
             },
         )
         assert response.status_code == 201
@@ -584,7 +575,6 @@ class TestComponentList:
                 "title": "List Test",
                 "path": "/list",
                 "page_order": 0,
-                "root_layout_type": "column",
             },
         )
         assert response.status_code == 201
@@ -678,7 +668,6 @@ class TestComponentVersioning:
                 "title": "Version Test",
                 "path": "/version",
                 "page_order": 0,
-                "root_layout_type": "column",
             },
         )
         assert response.status_code == 201
@@ -764,7 +753,6 @@ class TestComponentRealTimeSaveWorkflow:
                 "title": "Realtime Test",
                 "path": "/realtime",
                 "page_order": 0,
-                "root_layout_type": "column",
             },
         )
         assert response.status_code == 201
@@ -907,7 +895,6 @@ class TestComponentIsolation:
                 "title": "Isolation Page",
                 "path": "/iso",
                 "page_order": 0,
-                "root_layout_type": "column",
             },
         )
         assert response.status_code == 201
@@ -924,7 +911,6 @@ class TestComponentIsolation:
                 "title": "Isolation Page",
                 "path": "/iso",
                 "page_order": 0,
-                "root_layout_type": "column",
             },
         )
         assert response.status_code == 201

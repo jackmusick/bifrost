@@ -9,7 +9,7 @@ Endpoints use UUID for internal APIs (not slug).
 
 import logging
 from typing import Any
-from uuid import UUID
+from uuid import UUID, uuid4
 
 from fastapi import APIRouter, HTTPException, Path, Query, status
 from sqlalchemy import select
@@ -22,7 +22,7 @@ from src.models.contracts.applications import (
     AppPageSummary,
     AppPageUpdate,
 )
-from src.models.contracts.app_components import PageDefinition
+from src.models.contracts.app_components import LayoutContainer, PageDefinition
 from src.core.exceptions import AccessDeniedError
 from src.core.pubsub import publish_app_draft_update
 from src.models.orm.applications import AppPage, Application
@@ -165,8 +165,6 @@ def page_to_response(page: AppPage) -> AppPageResponse:
         launch_workflow_id=page.launch_workflow_id,
         launch_workflow_params=page.launch_workflow_params,
         launch_workflow_data_source_id=page.launch_workflow_data_source_id,
-        root_layout_type=page.root_layout_type,
-        root_layout_config=page.root_layout_config,
     )
 
 
@@ -289,12 +287,13 @@ async def create_page(
             detail=f"Page with ID '{data.page_id}' already exists",
         )
 
-    # Build initial layout from root_layout_type if no explicit layout provided
-    layout = {
-        "type": data.root_layout_type,
-        **data.root_layout_config,
-        "children": [],
-    }
+    # Build initial layout container (default column with no children)
+    # Validated through LayoutContainer model
+    layout = LayoutContainer(
+        id=f"layout_{uuid4().hex[:8]}",
+        type="column",
+        children=[],
+    )
 
     service = AppBuilderService(ctx.db)
     page = await service.create_page_with_layout(
@@ -363,10 +362,6 @@ async def update_page(
         page.permission = data.permission
     if data.page_order is not None:
         page.page_order = data.page_order
-    if data.root_layout_type is not None:
-        page.root_layout_type = data.root_layout_type
-    if data.root_layout_config is not None:
-        page.root_layout_config = data.root_layout_config
 
     await ctx.db.flush()
     await ctx.db.refresh(page)
@@ -439,8 +434,11 @@ async def replace_page_layout(
     app = await get_application_or_404(ctx, app_id)
     page = await get_draft_page_or_404(ctx, app, page_id)
 
+    # Validate layout through LayoutContainer model
+    validated_layout = LayoutContainer.model_validate(layout)
+
     service = AppBuilderService(ctx.db)
-    await service.update_page_layout(page, layout)
+    await service.update_page_layout(page, validated_layout)
 
     await ctx.db.flush()
     await ctx.db.refresh(page)

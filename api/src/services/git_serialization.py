@@ -329,8 +329,6 @@ def serialize_app_to_dict(app: Application, workflow_map: dict[str, str]) -> tup
                 "variables": page.variables,
                 "permission": page.permission,
                 "page_order": page.page_order,
-                "root_layout_type": page.root_layout_type,
-                "root_layout_config": page.root_layout_config,
             }
 
             if page.launch_workflow_id:

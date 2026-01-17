@@ -118,9 +118,10 @@ services:
 
   # Init Container - Runs migrations and warms module cache before services start
   init:
-    build:
-      context: .
-      dockerfile: api/Dockerfile
+    # build:
+    #   context: .
+    #   dockerfile: api/Dockerfile
+    image: jackmusick/bifrost-api:latest
     container_name: bifrost-init
     environment:
       # Core (required by Settings during migrations)
@@ -173,9 +174,10 @@ services:
 
   # FastAPI Application
   api:
-    build:
-      context: .
-      dockerfile: api/Dockerfile
+    # build:
+    #   context: .
+    #   dockerfile: api/Dockerfile
+    image: jackmusick/bifrost-api:latest
     environment:
       # Core
       BIFROST_ENVIRONMENT: ${BIFROST_ENVIRONMENT:-production}
@@ -232,10 +234,11 @@ services:
 
   # Frontend (Vite)
   client:
-    build:
-      context: ./client
-      dockerfile: Dockerfile
-      target: production
+    # build:
+    #   context: ./client
+    #   dockerfile: Dockerfile
+    #   target: production
+    image: jackmusick/bifrost-client:latest
     container_name: bifrost-client
     environment:
       API_URL: http://api:8000
@@ -249,9 +252,10 @@ services:
   # Scheduler Service (APScheduler only)
   # MUST run as single instance - handles CRON jobs, cleanup tasks, OAuth refresh
   scheduler:
-    build:
-      context: .
-      dockerfile: api/Dockerfile
+    # build:
+    #   context: .
+    #   dockerfile: api/Dockerfile
+    image: jackmusick/bifrost-api:latest
     container_name: bifrost-scheduler
     environment:
       # Core (must match API)
@@ -289,9 +293,10 @@ services:
   # Can be scaled horizontally for increased throughput
   # Workers load Python modules from Redis cache (no filesystem sync needed)
   worker:
-    build:
-      context: .
-      dockerfile: api/Dockerfile
+    # build:
+    #   context: .
+    #   dockerfile: api/Dockerfile
+    image: jackmusick/bifrost-api:latest
     environment:
       # Core (must match API)
       BIFROST_ENVIRONMENT: ${BIFROST_ENVIRONMENT:-production}
@@ -332,9 +337,10 @@ services:
   # Runs SDK in isolation - can block without affecting API health
   # MUST run as single instance (SDK clients cached per session)
   coding-agent:
-    build:
-      context: .
-      dockerfile: api/Dockerfile
+    # build:
+    #   context: .
+    #   dockerfile: api/Dockerfile
+    image: jackmusick/bifrost-api:latest
     container_name: bifrost-coding-agent
     environment:
       # Core (must match API)
