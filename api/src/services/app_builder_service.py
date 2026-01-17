@@ -643,7 +643,8 @@ def build_page_definition(page: AppPage, components: list[AppComponent]) -> Page
     This is the primary function for building the full page response
     that matches the frontend TypeScript PageDefinition interface.
     """
-    layout = build_layout_tree(components)
+    # Build the unified component tree (list of root-level components)
+    children = build_unified_component_tree(components)
 
     # Convert data_sources to typed list
     data_sources: list[DataSourceConfig] = []
@@ -660,7 +661,7 @@ def build_page_definition(page: AppPage, components: list[AppComponent]) -> Page
         id=page.page_id,
         title=page.title,
         path=page.path,
-        layout=layout,
+        children=children,
         data_sources=data_sources,
         variables=page.variables or {},
         launch_workflow_id=str(page.launch_workflow_id) if page.launch_workflow_id else None,
@@ -934,8 +935,6 @@ class AppBuilderService:
             launch_workflow_data_source_id=source_page.launch_workflow_data_source_id,
             permission=source_page.permission,
             page_order=source_page.page_order,
-            root_layout_type=source_page.root_layout_type,
-            root_layout_config=source_page.root_layout_config,
         )
         self.session.add(new_page)
         await self.session.flush()
@@ -1041,9 +1040,8 @@ class AppBuilderService:
             comp_result = await self.session.execute(comp_query)
             components = list(comp_result.scalars().all())
 
-            # Build tree and convert to JSON
-            tree = build_component_tree(components)
-            layout = tree_to_layout_json(tree)
+            # Build unified component tree
+            children = build_unified_component_tree(components)
 
             exported_pages.append({
                 "id": page.page_id,
@@ -1054,7 +1052,7 @@ class AppBuilderService:
                 "launchWorkflowId": str(page.launch_workflow_id) if page.launch_workflow_id else None,
                 "launchWorkflowParams": page.launch_workflow_params,
                 "permission": page.permission,
-                "layout": layout,
+                "children": [c.model_dump(exclude_none=True, by_alias=True) for c in children],
             })
 
         return {
@@ -1065,7 +1063,7 @@ class AppBuilderService:
             "navigation": app.navigation,
             "permissions": app.permissions,
             "pages": exported_pages,
-            "exportVersion": "1.0",
+            "exportVersion": "2.0",
             "exportedAt": datetime.utcnow().isoformat(),
         }
 
