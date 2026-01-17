@@ -6802,67 +6802,6 @@ export interface components {
             new_order: number;
         };
         /**
-         * AppComponentNode
-         * @description Simple component node for internal tree building.
-         *
-         *     Unlike the discriminated AppComponent union (which validates props per type),
-         *     this model accepts any component type with untyped props. Used by
-         *     app_builder_service.py when constructing trees from database rows.
-         */
-        AppComponentNode: {
-            /**
-             * Id
-             * @description Unique component identifier
-             */
-            id: string;
-            /**
-             * Type
-             * @description Component type string
-             */
-            type: string;
-            /**
-             * Props
-             * @description Component props dictionary
-             */
-            props?: {
-                [key: string]: unknown;
-            };
-            /**
-             * Visible
-             * @description Visibility expression
-             */
-            visible?: string | null;
-            /**
-             * Width
-             * @description Component width
-             */
-            width?: ("auto" | "full" | "1/2" | "1/3" | "1/4" | "2/3" | "3/4") | null;
-            /**
-             * Loading Workflows
-             * @description Workflow IDs that trigger loading state
-             */
-            loading_workflows?: string[] | null;
-            /**
-             * Grid Span
-             * @description Grid column span (for grid layouts)
-             */
-            grid_span?: number | null;
-            /** @description Repeat configuration for rendering multiple instances */
-            repeat_for?: components["schemas"]["RepeatFor"] | null;
-            /**
-             * Class Name
-             * @description Additional CSS classes
-             */
-            class_name?: string | null;
-            /**
-             * Style
-             * @description Inline CSS styles (camelCase properties)
-             */
-            style?: {
-                [key: string]: unknown;
-            } | null;
-        };
-        /**
          * AppComponentResponse
          * @description Full component response with all fields.
          */
@@ -7003,19 +6942,6 @@ export interface components {
              * @default 0
              */
             page_order: number;
-            /**
-             * Root Layout Type
-             * @description Root layout type (row, column, grid)
-             * @default column
-             */
-            root_layout_type: string;
-            /**
-             * Root Layout Config
-             * @description Root layout config (gap, padding, etc.)
-             */
-            root_layout_config?: {
-                [key: string]: unknown;
-            };
         };
         /**
          * AppPageListResponse
@@ -7080,12 +7006,6 @@ export interface components {
             } | null;
             /** Launch Workflow Data Source Id */
             launch_workflow_data_source_id: string | null;
-            /** Root Layout Type */
-            root_layout_type: string;
-            /** Root Layout Config */
-            root_layout_config: {
-                [key: string]: unknown;
-            };
         };
         /**
          * AppPageSummary
@@ -7151,12 +7071,6 @@ export interface components {
             } | null;
             /** Page Order */
             page_order?: number | null;
-            /** Root Layout Type */
-            root_layout_type?: string | null;
-            /** Root Layout Config */
-            root_layout_config?: {
-                [key: string]: unknown;
-            } | null;
         };
         /**
          * ApplicationCreate
@@ -7500,13 +7414,6 @@ export interface components {
              */
             id: string;
             /**
-             * @description Component type (enum property replaced by openapi-typescript)
-             * @enum {string}
-             */
-            type: "badge";
-            /** @description Component props */
-            props: components["schemas"]["BadgeProps"];
-            /**
              * Width
              * @description Component width
              */
@@ -7540,12 +7447,11 @@ export interface components {
             style?: {
                 [key: string]: unknown;
             } | null;
-        };
-        /**
-         * BadgeProps
-         * @description Props for badge component.
-         */
-        BadgeProps: {
+            /**
+             * @description Component type (enum property replaced by openapi-typescript)
+             * @enum {string}
+             */
+            type: "badge";
             /**
              * Text
              * @description Badge text (supports expressions)
@@ -7556,11 +7462,6 @@ export interface components {
              * @description Badge variant
              */
             variant?: ("default" | "secondary" | "destructive" | "outline") | null;
-            /**
-             * Class Name
-             * @description Additional CSS classes
-             */
-            class_name?: string | null;
         };
         /** Body_login_auth_login_post */
         Body_login_auth_login_post: {
@@ -7646,13 +7547,6 @@ export interface components {
              */
             id: string;
             /**
-             * @description Component type (enum property replaced by openapi-typescript)
-             * @enum {string}
-             */
-            type: "button";
-            /** @description Component props */
-            props: components["schemas"]["ButtonProps"];
-            /**
              * Width
              * @description Component width
              */
@@ -7686,12 +7580,11 @@ export interface components {
             style?: {
                 [key: string]: unknown;
             } | null;
-        };
-        /**
-         * ButtonProps
-         * @description Props for button component.
-         */
-        ButtonProps: {
+            /**
+             * @description Component type (enum property replaced by openapi-typescript)
+             * @enum {string}
+             */
+            type: "button";
             /**
              * Label
              * @description Button label (supports expressions)
@@ -7760,11 +7653,6 @@ export interface components {
              * @description Icon name to display (from lucide-react)
              */
             icon?: string | null;
-            /**
-             * Class Name
-             * @description Additional CSS classes
-             */
-            class_name?: string | null;
         };
         /**
          * CLIAICompleteRequest
@@ -8341,7 +8229,7 @@ export interface components {
         };
         /**
          * CardComponent
-         * @description Card component.
+         * @description Card container component.
          */
         CardComponent: {
             /**
@@ -8349,13 +8237,6 @@ export interface components {
              * @description Unique component identifier
              */
             id: string;
-            /**
-             * @description Component type (enum property replaced by openapi-typescript)
-             * @enum {string}
-             */
-            type: "card";
-            /** @description Component props */
-            props: components["schemas"]["CardProps"];
             /**
              * Width
              * @description Component width
@@ -8390,32 +8271,43 @@ export interface components {
             style?: {
                 [key: string]: unknown;
             } | null;
-        };
-        /**
-         * CardProps
-         * @description Props for card component.
-         */
-        CardProps: {
+            /**
+             * @description Component type (enum property replaced by openapi-typescript)
+             * @enum {string}
+             */
+            type: "card";
+            /**
+             * Children
+             * @description Card content
+             */
+            children?: (components["schemas"]["RowComponent"] | components["schemas"]["ColumnComponent"] | components["schemas"]["GridComponent"] | components["schemas"]["CardComponent"] | components["schemas"]["ModalComponent"] | components["schemas"]["TabsComponent"] | components["schemas"]["TabItemComponent"] | components["schemas"]["FormGroupComponent"] | components["schemas"]["HeadingComponent"] | components["schemas"]["TextComponent"] | components["schemas"]["HtmlComponent"] | components["schemas"]["DividerComponent"] | components["schemas"]["SpacerComponent"] | components["schemas"]["ButtonComponent"] | components["schemas"]["StatCardComponent"] | components["schemas"]["ImageComponent"] | components["schemas"]["BadgeComponent"] | components["schemas"]["ProgressComponent"] | components["schemas"]["DataTableComponent"] | components["schemas"]["FileViewerComponent"] | components["schemas"]["TextInputComponent"] | components["schemas"]["NumberInputComponent"] | components["schemas"]["SelectComponent"] | components["schemas"]["CheckboxComponent"] | components["schemas"]["FormEmbedComponent"])[];
             /**
              * Title
-             * @description Optional card title
+             * @description Card title
              */
             title?: string | null;
             /**
              * Description
-             * @description Optional card description
+             * @description Card description
              */
             description?: string | null;
             /**
-             * Children
-             * @description Card content (can be a layout container or components)
+             * Collapsible
+             * @description Whether card is collapsible
+             * @default false
              */
-            children?: (components["schemas"]["LayoutContainer"] | (components["schemas"]["HeadingComponent"] | components["schemas"]["TextComponent"] | components["schemas"]["HtmlComponent"] | components["schemas"]["CardComponent"] | components["schemas"]["DividerComponent"] | components["schemas"]["SpacerComponent"] | components["schemas"]["ButtonComponent"] | components["schemas"]["StatCardComponent"] | components["schemas"]["ImageComponent"] | components["schemas"]["BadgeComponent"] | components["schemas"]["ProgressComponent"] | components["schemas"]["DataTableComponent"] | components["schemas"]["TabsComponent"] | components["schemas"]["FileViewerComponent"] | components["schemas"]["ModalComponent"] | components["schemas"]["TextInputComponent"] | components["schemas"]["NumberInputComponent"] | components["schemas"]["SelectComponent"] | components["schemas"]["CheckboxComponent"] | components["schemas"]["FormEmbedComponent"] | components["schemas"]["FormGroupComponent"]) | components["schemas"]["AppComponentNode"])[] | null;
+            collapsible: boolean;
             /**
-             * Class Name
-             * @description Additional CSS classes
+             * Default Collapsed
+             * @description Initial collapsed state
+             * @default false
              */
-            class_name?: string | null;
+            default_collapsed: boolean;
+            /**
+             * Header Actions
+             * @description Header action buttons
+             */
+            header_actions?: components["schemas"]["TableAction"][] | null;
         };
         /**
          * ChatRequest
@@ -8460,13 +8352,6 @@ export interface components {
              */
             id: string;
             /**
-             * @description Component type (enum property replaced by openapi-typescript)
-             * @enum {string}
-             */
-            type: "checkbox";
-            /** @description Component props */
-            props: components["schemas"]["CheckboxProps"];
-            /**
              * Width
              * @description Component width
              */
@@ -8500,12 +8385,11 @@ export interface components {
             style?: {
                 [key: string]: unknown;
             } | null;
-        };
-        /**
-         * CheckboxProps
-         * @description Props for checkbox component.
-         */
-        CheckboxProps: {
+            /**
+             * @description Component type (enum property replaced by openapi-typescript)
+             * @enum {string}
+             */
+            type: "checkbox";
             /**
              * Field Id
              * @description Field ID for value tracking
@@ -8536,11 +8420,6 @@ export interface components {
              * @description Disabled state (boolean or expression)
              */
             disabled?: boolean | string | null;
-            /**
-             * Class Name
-             * @description Additional CSS classes
-             */
-            class_name?: string | null;
         };
         /**
          * CleanupTriggeredResponse
@@ -8622,6 +8501,101 @@ export interface components {
              * @default false
              */
             clear_overrides: boolean;
+        };
+        /**
+         * ColumnComponent
+         * @description Column layout component - vertical flex container.
+         */
+        ColumnComponent: {
+            /**
+             * Id
+             * @description Unique component identifier
+             */
+            id: string;
+            /**
+             * Width
+             * @description Component width
+             */
+            width?: ("auto" | "full" | "1/2" | "1/3" | "1/4" | "2/3" | "3/4") | null;
+            /**
+             * Visible
+             * @description Visibility expression
+             */
+            visible?: string | null;
+            /**
+             * Loading Workflows
+             * @description Workflow IDs that trigger loading state
+             */
+            loading_workflows?: string[] | null;
+            /**
+             * Grid Span
+             * @description Grid column span (for grid layouts)
+             */
+            grid_span?: number | null;
+            /** @description Repeat configuration for rendering multiple instances */
+            repeat_for?: components["schemas"]["RepeatFor"] | null;
+            /**
+             * Class Name
+             * @description Additional CSS classes
+             */
+            class_name?: string | null;
+            /**
+             * Style
+             * @description Inline CSS styles (camelCase properties)
+             */
+            style?: {
+                [key: string]: unknown;
+            } | null;
+            /**
+             * @description Component type (enum property replaced by openapi-typescript)
+             * @enum {string}
+             */
+            type: "column";
+            /**
+             * Children
+             * @description Child components
+             */
+            children?: (components["schemas"]["RowComponent"] | components["schemas"]["ColumnComponent"] | components["schemas"]["GridComponent"] | components["schemas"]["CardComponent"] | components["schemas"]["ModalComponent"] | components["schemas"]["TabsComponent"] | components["schemas"]["TabItemComponent"] | components["schemas"]["FormGroupComponent"] | components["schemas"]["HeadingComponent"] | components["schemas"]["TextComponent"] | components["schemas"]["HtmlComponent"] | components["schemas"]["DividerComponent"] | components["schemas"]["SpacerComponent"] | components["schemas"]["ButtonComponent"] | components["schemas"]["StatCardComponent"] | components["schemas"]["ImageComponent"] | components["schemas"]["BadgeComponent"] | components["schemas"]["ProgressComponent"] | components["schemas"]["DataTableComponent"] | components["schemas"]["FileViewerComponent"] | components["schemas"]["TextInputComponent"] | components["schemas"]["NumberInputComponent"] | components["schemas"]["SelectComponent"] | components["schemas"]["CheckboxComponent"] | components["schemas"]["FormEmbedComponent"])[];
+            /**
+             * Gap
+             * @description Gap between children
+             */
+            gap?: number | string | null;
+            /**
+             * Padding
+             * @description Container padding
+             */
+            padding?: number | string | null;
+            /**
+             * Align
+             * @description Cross-axis alignment
+             */
+            align?: ("start" | "center" | "end" | "stretch") | null;
+            /**
+             * Max Width
+             * @description Maximum width
+             */
+            max_width?: ("sm" | "md" | "lg" | "xl" | "2xl" | "full" | "none") | null;
+            /**
+             * Max Height
+             * @description Maximum height in pixels
+             */
+            max_height?: number | null;
+            /**
+             * Overflow
+             * @description Overflow behavior
+             */
+            overflow?: ("auto" | "scroll" | "hidden" | "visible") | null;
+            /**
+             * Sticky
+             * @description Sticky positioning
+             */
+            sticky?: ("top" | "bottom") | null;
+            /**
+             * Sticky Offset
+             * @description Sticky offset in pixels
+             */
+            sticky_offset?: number | null;
         };
         /**
          * CommitHistoryResponse
@@ -9179,13 +9153,6 @@ export interface components {
              */
             id: string;
             /**
-             * @description Component type (enum property replaced by openapi-typescript)
-             * @enum {string}
-             */
-            type: "data-table";
-            /** @description Component props */
-            props: components["schemas"]["DataTableProps"];
-            /**
              * Width
              * @description Component width
              */
@@ -9219,12 +9186,11 @@ export interface components {
             style?: {
                 [key: string]: unknown;
             } | null;
-        };
-        /**
-         * DataTableProps
-         * @description Props for data-table component.
-         */
-        DataTableProps: {
+            /**
+             * @description Component type (enum property replaced by openapi-typescript)
+             * @enum {string}
+             */
+            type: "data-table";
             /**
              * Data Source
              * @description Data source - ID of a page data source
@@ -9277,11 +9243,6 @@ export interface components {
              * @description Empty state message
              */
             empty_message?: string | null;
-            /**
-             * Class Name
-             * @description Additional CSS classes
-             */
-            class_name?: string | null;
             /**
              * Cache Key
              * @description Cache key - if set, data persists across page navigations
@@ -9557,13 +9518,6 @@ export interface components {
              */
             id: string;
             /**
-             * @description Component type (enum property replaced by openapi-typescript)
-             * @enum {string}
-             */
-            type: "divider";
-            /** @description Component props */
-            props: components["schemas"]["DividerProps"];
-            /**
              * Width
              * @description Component width
              */
@@ -9597,22 +9551,16 @@ export interface components {
             style?: {
                 [key: string]: unknown;
             } | null;
-        };
-        /**
-         * DividerProps
-         * @description Props for divider component.
-         */
-        DividerProps: {
+            /**
+             * @description Component type (enum property replaced by openapi-typescript)
+             * @enum {string}
+             */
+            type: "divider";
             /**
              * Orientation
              * @description Divider orientation
              */
             orientation?: ("horizontal" | "vertical") | null;
-            /**
-             * Class Name
-             * @description Additional CSS classes
-             */
-            class_name?: string | null;
         };
         /**
          * DocsIndexResponse
@@ -10934,13 +10882,6 @@ export interface components {
              */
             id: string;
             /**
-             * @description Component type (enum property replaced by openapi-typescript)
-             * @enum {string}
-             */
-            type: "file-viewer";
-            /** @description Component props */
-            props: components["schemas"]["FileViewerProps"];
-            /**
              * Width
              * @description Component width
              */
@@ -10974,12 +10915,11 @@ export interface components {
             style?: {
                 [key: string]: unknown;
             } | null;
-        };
-        /**
-         * FileViewerProps
-         * @description Props for file-viewer component.
-         */
-        FileViewerProps: {
+            /**
+             * @description Component type (enum property replaced by openapi-typescript)
+             * @enum {string}
+             */
+            type: "file-viewer";
             /**
              * Src
              * @description File URL or path (supports expressions)
@@ -11020,11 +10960,6 @@ export interface components {
              * @description Whether to show download button alongside inline/modal view
              */
             show_download_button?: boolean | null;
-            /**
-             * Class Name
-             * @description Additional CSS classes
-             */
-            class_name?: string | null;
         };
         /**
          * FileWriteRequest
@@ -11110,13 +11045,6 @@ export interface components {
              */
             id: string;
             /**
-             * @description Component type (enum property replaced by openapi-typescript)
-             * @enum {string}
-             */
-            type: "form-embed";
-            /** @description Component props */
-            props: components["schemas"]["FormEmbedProps"];
-            /**
              * Width
              * @description Component width
              */
@@ -11150,12 +11078,11 @@ export interface components {
             style?: {
                 [key: string]: unknown;
             } | null;
-        };
-        /**
-         * FormEmbedProps
-         * @description Props for form-embed component.
-         */
-        FormEmbedProps: {
+            /**
+             * @description Component type (enum property replaced by openapi-typescript)
+             * @enum {string}
+             */
+            type: "form-embed";
             /**
              * Form Id
              * @description Form ID to embed
@@ -11181,11 +11108,6 @@ export interface components {
              * @description Actions to execute after form submission
              */
             on_submit?: components["schemas"]["OnCompleteAction"][] | null;
-            /**
-             * Class Name
-             * @description Additional CSS classes
-             */
-            class_name?: string | null;
         };
         /**
          * FormExecuteRequest
@@ -11377,7 +11299,7 @@ export interface components {
         FormFieldType: "text" | "email" | "number" | "select" | "checkbox" | "textarea" | "radio" | "date" | "datetime" | "markdown" | "html" | "file";
         /**
          * FormGroupComponent
-         * @description Form group component.
+         * @description Form group component for grouping form fields.
          */
         FormGroupComponent: {
             /**
@@ -11385,13 +11307,6 @@ export interface components {
              * @description Unique component identifier
              */
             id: string;
-            /**
-             * @description Component type (enum property replaced by openapi-typescript)
-             * @enum {string}
-             */
-            type: "form-group";
-            /** @description Component props */
-            props: components["schemas"]["FormGroupProps"];
             /**
              * Width
              * @description Component width
@@ -11426,12 +11341,16 @@ export interface components {
             style?: {
                 [key: string]: unknown;
             } | null;
-        };
-        /**
-         * FormGroupProps
-         * @description Props for form-group component.
-         */
-        FormGroupProps: {
+            /**
+             * @description Component type (enum property replaced by openapi-typescript)
+             * @enum {string}
+             */
+            type: "form-group";
+            /**
+             * Children
+             * @description Form field components
+             */
+            children?: (components["schemas"]["RowComponent"] | components["schemas"]["ColumnComponent"] | components["schemas"]["GridComponent"] | components["schemas"]["CardComponent"] | components["schemas"]["ModalComponent"] | components["schemas"]["TabsComponent"] | components["schemas"]["TabItemComponent"] | components["schemas"]["FormGroupComponent"] | components["schemas"]["HeadingComponent"] | components["schemas"]["TextComponent"] | components["schemas"]["HtmlComponent"] | components["schemas"]["DividerComponent"] | components["schemas"]["SpacerComponent"] | components["schemas"]["ButtonComponent"] | components["schemas"]["StatCardComponent"] | components["schemas"]["ImageComponent"] | components["schemas"]["BadgeComponent"] | components["schemas"]["ProgressComponent"] | components["schemas"]["DataTableComponent"] | components["schemas"]["FileViewerComponent"] | components["schemas"]["TextInputComponent"] | components["schemas"]["NumberInputComponent"] | components["schemas"]["SelectComponent"] | components["schemas"]["CheckboxComponent"] | components["schemas"]["FormEmbedComponent"])[];
             /**
              * Label
              * @description Group label
@@ -11444,29 +11363,19 @@ export interface components {
             description?: string | null;
             /**
              * Required
-             * @description Whether the group fields are required
+             * @description Whether fields are required
              */
             required?: boolean | null;
             /**
              * Direction
-             * @description Layout direction for grouped fields
+             * @description Layout direction
              */
             direction?: ("row" | "column") | null;
             /**
              * Gap
              * @description Gap between fields
              */
-            gap?: number | null;
-            /**
-             * Children
-             * @description Child form field components
-             */
-            children: (components["schemas"]["HeadingComponent"] | components["schemas"]["TextComponent"] | components["schemas"]["HtmlComponent"] | components["schemas"]["CardComponent"] | components["schemas"]["DividerComponent"] | components["schemas"]["SpacerComponent"] | components["schemas"]["ButtonComponent"] | components["schemas"]["StatCardComponent"] | components["schemas"]["ImageComponent"] | components["schemas"]["BadgeComponent"] | components["schemas"]["ProgressComponent"] | components["schemas"]["DataTableComponent"] | components["schemas"]["TabsComponent"] | components["schemas"]["FileViewerComponent"] | components["schemas"]["ModalComponent"] | components["schemas"]["TextInputComponent"] | components["schemas"]["NumberInputComponent"] | components["schemas"]["SelectComponent"] | components["schemas"]["CheckboxComponent"] | components["schemas"]["FormEmbedComponent"] | components["schemas"]["FormGroupComponent"])[];
-            /**
-             * Class Name
-             * @description Additional CSS classes
-             */
-            class_name?: string | null;
+            gap?: number | string | null;
         };
         /**
          * FormPublic
@@ -11922,28 +11831,16 @@ export interface components {
              */
             org_id?: string | null;
         };
-        /** HTTPValidationError */
-        HTTPValidationError: {
-            /** Detail */
-            detail?: components["schemas"]["ValidationError"][];
-        };
         /**
-         * HeadingComponent
-         * @description Heading component.
+         * GridComponent
+         * @description Grid layout component.
          */
-        HeadingComponent: {
+        GridComponent: {
             /**
              * Id
              * @description Unique component identifier
              */
             id: string;
-            /**
-             * @description Component type (enum property replaced by openapi-typescript)
-             * @enum {string}
-             */
-            type: "heading";
-            /** @description Component props */
-            props: components["schemas"]["HeadingProps"];
             /**
              * Width
              * @description Component width
@@ -11978,15 +11875,90 @@ export interface components {
             style?: {
                 [key: string]: unknown;
             } | null;
+            /**
+             * @description Component type (enum property replaced by openapi-typescript)
+             * @enum {string}
+             */
+            type: "grid";
+            /**
+             * Children
+             * @description Child components
+             */
+            children?: (components["schemas"]["RowComponent"] | components["schemas"]["ColumnComponent"] | components["schemas"]["GridComponent"] | components["schemas"]["CardComponent"] | components["schemas"]["ModalComponent"] | components["schemas"]["TabsComponent"] | components["schemas"]["TabItemComponent"] | components["schemas"]["FormGroupComponent"] | components["schemas"]["HeadingComponent"] | components["schemas"]["TextComponent"] | components["schemas"]["HtmlComponent"] | components["schemas"]["DividerComponent"] | components["schemas"]["SpacerComponent"] | components["schemas"]["ButtonComponent"] | components["schemas"]["StatCardComponent"] | components["schemas"]["ImageComponent"] | components["schemas"]["BadgeComponent"] | components["schemas"]["ProgressComponent"] | components["schemas"]["DataTableComponent"] | components["schemas"]["FileViewerComponent"] | components["schemas"]["TextInputComponent"] | components["schemas"]["NumberInputComponent"] | components["schemas"]["SelectComponent"] | components["schemas"]["CheckboxComponent"] | components["schemas"]["FormEmbedComponent"])[];
+            /**
+             * Columns
+             * @description Number of columns or template
+             * @default 3
+             */
+            columns: number | string;
+            /**
+             * Gap
+             * @description Gap between children
+             */
+            gap?: number | string | null;
+            /**
+             * Padding
+             * @description Container padding
+             */
+            padding?: number | string | null;
+        };
+        /** HTTPValidationError */
+        HTTPValidationError: {
+            /** Detail */
+            detail?: components["schemas"]["ValidationError"][];
         };
         /**
-         * HeadingProps
-         * @description Props for heading component.
+         * HeadingComponent
+         * @description Heading text component.
          */
-        HeadingProps: {
+        HeadingComponent: {
+            /**
+             * Id
+             * @description Unique component identifier
+             */
+            id: string;
+            /**
+             * Width
+             * @description Component width
+             */
+            width?: ("auto" | "full" | "1/2" | "1/3" | "1/4" | "2/3" | "3/4") | null;
+            /**
+             * Visible
+             * @description Visibility expression
+             */
+            visible?: string | null;
+            /**
+             * Loading Workflows
+             * @description Workflow IDs that trigger loading state
+             */
+            loading_workflows?: string[] | null;
+            /**
+             * Grid Span
+             * @description Grid column span (for grid layouts)
+             */
+            grid_span?: number | null;
+            /** @description Repeat configuration for rendering multiple instances */
+            repeat_for?: components["schemas"]["RepeatFor"] | null;
+            /**
+             * Class Name
+             * @description Additional CSS classes
+             */
+            class_name?: string | null;
+            /**
+             * Style
+             * @description Inline CSS styles (camelCase properties)
+             */
+            style?: {
+                [key: string]: unknown;
+            } | null;
+            /**
+             * @description Component type (enum property replaced by openapi-typescript)
+             * @enum {string}
+             */
+            type: "heading";
             /**
              * Text
-             * @description Text content (supports expressions)
+             * @description Heading text (supports expressions)
              */
             text: string;
             /**
@@ -11994,11 +11966,6 @@ export interface components {
              * @description Heading level (1-6)
              */
             level?: (1 | 2 | 3 | 4 | 5 | 6) | null;
-            /**
-             * Class Name
-             * @description Additional CSS classes
-             */
-            class_name?: string | null;
         };
         /**
          * HealthCheck
@@ -12031,13 +11998,6 @@ export interface components {
              */
             id: string;
             /**
-             * @description Component type (enum property replaced by openapi-typescript)
-             * @enum {string}
-             */
-            type: "html";
-            /** @description Component props */
-            props: components["schemas"]["HtmlProps"];
-            /**
              * Width
              * @description Component width
              */
@@ -12071,22 +12031,16 @@ export interface components {
             style?: {
                 [key: string]: unknown;
             } | null;
-        };
-        /**
-         * HtmlProps
-         * @description Props for HTML component.
-         */
-        HtmlProps: {
+            /**
+             * @description Component type (enum property replaced by openapi-typescript)
+             * @enum {string}
+             */
+            type: "html";
             /**
              * Content
              * @description HTML or JSX template content
              */
             content: string;
-            /**
-             * Class Name
-             * @description Additional CSS classes
-             */
-            class_name?: string | null;
         };
         /**
          * ImageComponent
@@ -12099,13 +12053,6 @@ export interface components {
              */
             id: string;
             /**
-             * @description Component type (enum property replaced by openapi-typescript)
-             * @enum {string}
-             */
-            type: "image";
-            /** @description Component props */
-            props: components["schemas"]["ImageProps"];
-            /**
              * Width
              * @description Component width
              */
@@ -12139,12 +12086,11 @@ export interface components {
             style?: {
                 [key: string]: unknown;
             } | null;
-        };
-        /**
-         * ImageProps
-         * @description Props for image component.
-         */
-        ImageProps: {
+            /**
+             * @description Component type (enum property replaced by openapi-typescript)
+             * @enum {string}
+             */
+            type: "image";
             /**
              * Src
              * @description Image source (URL or expression)
@@ -12170,11 +12116,6 @@ export interface components {
              * @description Object fit mode
              */
             object_fit?: ("contain" | "cover" | "fill" | "none") | null;
-            /**
-             * Class Name
-             * @description Additional CSS classes
-             */
-            class_name?: string | null;
         };
         /**
          * InstallPackageRequest
@@ -12966,100 +12907,6 @@ export interface components {
             data_source_id?: string | null;
         };
         /**
-         * LayoutContainer
-         * @description Layout container for organizing components.
-         */
-        LayoutContainer: {
-            /**
-             * Id
-             * @description Unique identifier for API operations (e.g., "layout_abc123")
-             */
-            id: string;
-            /**
-             * Type
-             * @description Layout type
-             * @enum {string}
-             */
-            type: "row" | "column" | "grid";
-            /**
-             * Gap
-             * @description Gap between children (in pixels or Tailwind units)
-             */
-            gap?: number | null;
-            /**
-             * Padding
-             * @description Padding (in pixels or Tailwind units)
-             */
-            padding?: number | null;
-            /**
-             * Align
-             * @description Cross-axis alignment
-             */
-            align?: ("start" | "center" | "end" | "stretch") | null;
-            /**
-             * Justify
-             * @description Main-axis justification
-             */
-            justify?: ("start" | "center" | "end" | "between" | "around") | null;
-            /**
-             * Columns
-             * @description Grid column count (for grid type)
-             */
-            columns?: number | null;
-            /**
-             * Distribute
-             * @description Controls how children fill available space (primarily for row layouts). "natural" (default): Children keep their natural size (standard CSS flexbox). "equal": Children expand equally to fill space (flex-1). "fit": Children fit content, no stretch.
-             */
-            distribute?: ("natural" | "equal" | "fit") | null;
-            /**
-             * Max Width
-             * @description Constrains the max-width of the layout container. Values: "sm" (384px), "md" (448px), "lg" (512px), "xl" (576px), "2xl" (672px), "full"/"none" (no constraint). Recommended: Use "lg" for pages containing forms to prevent them from stretching too wide.
-             */
-            max_width?: ("sm" | "md" | "lg" | "xl" | "2xl" | "full" | "none") | null;
-            /**
-             * Max Height
-             * @description Maximum height of the container (in pixels). Used with overflow to create scrollable containers.
-             */
-            max_height?: number | null;
-            /**
-             * Overflow
-             * @description How content outside bounds behaves. Use with maxHeight to create scrollable containers.
-             */
-            overflow?: ("auto" | "scroll" | "hidden" | "visible") | null;
-            /**
-             * Sticky
-             * @description Sticky positioning - pins container to top or bottom when scrolling. Useful for headers, sidebars, or action bars.
-             */
-            sticky?: ("top" | "bottom") | null;
-            /**
-             * Sticky Offset
-             * @description Offset from edge when sticky (in pixels). Default: 0
-             */
-            sticky_offset?: number | null;
-            /**
-             * Class Name
-             * @description Additional CSS classes
-             */
-            class_name?: string | null;
-            /**
-             * Style
-             * @description Inline CSS styles (camelCase properties)
-             */
-            style?: {
-                [key: string]: unknown;
-            } | null;
-            /**
-             * Visible
-             * @description Visibility expression
-             */
-            visible?: string | null;
-            /**
-             * Children
-             * @description Child elements
-             */
-            children: (components["schemas"]["LayoutContainer"] | (components["schemas"]["HeadingComponent"] | components["schemas"]["TextComponent"] | components["schemas"]["HtmlComponent"] | components["schemas"]["CardComponent"] | components["schemas"]["DividerComponent"] | components["schemas"]["SpacerComponent"] | components["schemas"]["ButtonComponent"] | components["schemas"]["StatCardComponent"] | components["schemas"]["ImageComponent"] | components["schemas"]["BadgeComponent"] | components["schemas"]["ProgressComponent"] | components["schemas"]["DataTableComponent"] | components["schemas"]["TabsComponent"] | components["schemas"]["FileViewerComponent"] | components["schemas"]["ModalComponent"] | components["schemas"]["TextInputComponent"] | components["schemas"]["NumberInputComponent"] | components["schemas"]["SelectComponent"] | components["schemas"]["CheckboxComponent"] | components["schemas"]["FormEmbedComponent"] | components["schemas"]["FormGroupComponent"]) | components["schemas"]["AppComponentNode"])[];
-        };
-        /**
          * LinkedAccountResponse
          * @description Linked OAuth account info.
          */
@@ -13437,7 +13284,7 @@ export interface components {
         };
         /**
          * ModalComponent
-         * @description Modal component.
+         * @description Modal dialog component.
          */
         ModalComponent: {
             /**
@@ -13445,13 +13292,6 @@ export interface components {
              * @description Unique component identifier
              */
             id: string;
-            /**
-             * @description Component type (enum property replaced by openapi-typescript)
-             * @enum {string}
-             */
-            type: "modal";
-            /** @description Component props */
-            props: components["schemas"]["ModalProps"];
             /**
              * Width
              * @description Component width
@@ -13486,6 +13326,56 @@ export interface components {
             style?: {
                 [key: string]: unknown;
             } | null;
+            /**
+             * @description Component type (enum property replaced by openapi-typescript)
+             * @enum {string}
+             */
+            type: "modal";
+            /**
+             * Children
+             * @description Modal body content
+             */
+            children?: (components["schemas"]["RowComponent"] | components["schemas"]["ColumnComponent"] | components["schemas"]["GridComponent"] | components["schemas"]["CardComponent"] | components["schemas"]["ModalComponent"] | components["schemas"]["TabsComponent"] | components["schemas"]["TabItemComponent"] | components["schemas"]["FormGroupComponent"] | components["schemas"]["HeadingComponent"] | components["schemas"]["TextComponent"] | components["schemas"]["HtmlComponent"] | components["schemas"]["DividerComponent"] | components["schemas"]["SpacerComponent"] | components["schemas"]["ButtonComponent"] | components["schemas"]["StatCardComponent"] | components["schemas"]["ImageComponent"] | components["schemas"]["BadgeComponent"] | components["schemas"]["ProgressComponent"] | components["schemas"]["DataTableComponent"] | components["schemas"]["FileViewerComponent"] | components["schemas"]["TextInputComponent"] | components["schemas"]["NumberInputComponent"] | components["schemas"]["SelectComponent"] | components["schemas"]["CheckboxComponent"] | components["schemas"]["FormEmbedComponent"])[];
+            /**
+             * Title
+             * @description Modal title
+             */
+            title: string;
+            /**
+             * Description
+             * @description Modal description
+             */
+            description?: string | null;
+            /**
+             * Trigger Label
+             * @description Trigger button label
+             */
+            trigger_label?: string | null;
+            /**
+             * Trigger Variant
+             * @description Trigger button variant
+             */
+            trigger_variant?: ("default" | "destructive" | "outline" | "secondary" | "ghost" | "link") | null;
+            /**
+             * Trigger Size
+             * @description Trigger button size
+             */
+            trigger_size?: ("default" | "sm" | "lg") | null;
+            /**
+             * Size
+             * @description Modal size
+             */
+            size?: ("sm" | "default" | "lg" | "xl" | "full") | null;
+            /**
+             * Footer Actions
+             * @description Footer actions
+             */
+            footer_actions?: components["schemas"]["ModalFooterAction"][] | null;
+            /**
+             * Show Close Button
+             * @description Show close button
+             */
+            show_close_button?: boolean | null;
         };
         /**
          * ModalFooterAction
@@ -13540,59 +13430,6 @@ export interface components {
              * @description Whether clicking this action should close the modal
              */
             close_on_click?: boolean | null;
-        };
-        /**
-         * ModalProps
-         * @description Props for modal component.
-         */
-        ModalProps: {
-            /**
-             * Title
-             * @description Modal title
-             */
-            title: string;
-            /**
-             * Description
-             * @description Modal description
-             */
-            description?: string | null;
-            /**
-             * Trigger Label
-             * @description Trigger button label (optional - if not provided, modal must be opened via button action)
-             */
-            trigger_label?: string | null;
-            /**
-             * Trigger Variant
-             * @description Trigger button variant
-             */
-            trigger_variant?: ("default" | "destructive" | "outline" | "secondary" | "ghost" | "link") | null;
-            /**
-             * Trigger Size
-             * @description Trigger button size
-             */
-            trigger_size?: ("default" | "sm" | "lg") | null;
-            /**
-             * Size
-             * @description Modal size
-             */
-            size?: ("sm" | "default" | "lg" | "xl" | "full") | null;
-            /** @description Content layout inside the modal */
-            content: components["schemas"]["LayoutContainer"];
-            /**
-             * Footer Actions
-             * @description Footer actions (optional)
-             */
-            footer_actions?: components["schemas"]["ModalFooterAction"][] | null;
-            /**
-             * Show Close Button
-             * @description Show close button in header
-             */
-            show_close_button?: boolean | null;
-            /**
-             * Class Name
-             * @description Additional CSS classes for modal content
-             */
-            class_name?: string | null;
         };
         /**
          * NavItem
@@ -13848,13 +13685,6 @@ export interface components {
              */
             id: string;
             /**
-             * @description Component type (enum property replaced by openapi-typescript)
-             * @enum {string}
-             */
-            type: "number-input";
-            /** @description Component props */
-            props: components["schemas"]["NumberInputProps"];
-            /**
              * Width
              * @description Component width
              */
@@ -13888,12 +13718,11 @@ export interface components {
             style?: {
                 [key: string]: unknown;
             } | null;
-        };
-        /**
-         * NumberInputProps
-         * @description Props for number-input component.
-         */
-        NumberInputProps: {
+            /**
+             * @description Component type (enum property replaced by openapi-typescript)
+             * @enum {string}
+             */
+            type: "number-input";
             /**
              * Field Id
              * @description Field ID for value tracking
@@ -13939,11 +13768,6 @@ export interface components {
              * @description Step increment
              */
             step?: number | null;
-            /**
-             * Class Name
-             * @description Additional CSS classes
-             */
-            class_name?: string | null;
         };
         /**
          * OAuthAuthorizeResponse
@@ -14816,8 +14640,11 @@ export interface components {
              * @description Page path/route
              */
             path: string;
-            /** @description Page layout */
-            layout: components["schemas"]["LayoutContainer"];
+            /**
+             * Children
+             * @description Page content - direct children like HTML body
+             */
+            children?: (components["schemas"]["RowComponent"] | components["schemas"]["ColumnComponent"] | components["schemas"]["GridComponent"] | components["schemas"]["CardComponent"] | components["schemas"]["ModalComponent"] | components["schemas"]["TabsComponent"] | components["schemas"]["TabItemComponent"] | components["schemas"]["FormGroupComponent"] | components["schemas"]["HeadingComponent"] | components["schemas"]["TextComponent"] | components["schemas"]["HtmlComponent"] | components["schemas"]["DividerComponent"] | components["schemas"]["SpacerComponent"] | components["schemas"]["ButtonComponent"] | components["schemas"]["StatCardComponent"] | components["schemas"]["ImageComponent"] | components["schemas"]["BadgeComponent"] | components["schemas"]["ProgressComponent"] | components["schemas"]["DataTableComponent"] | components["schemas"]["FileViewerComponent"] | components["schemas"]["TextInputComponent"] | components["schemas"]["NumberInputComponent"] | components["schemas"]["SelectComponent"] | components["schemas"]["CheckboxComponent"] | components["schemas"]["FormEmbedComponent"])[];
             /**
              * Data Sources
              * @description Data sources configured for this page
@@ -15476,13 +15303,6 @@ export interface components {
              */
             id: string;
             /**
-             * @description Component type (enum property replaced by openapi-typescript)
-             * @enum {string}
-             */
-            type: "progress";
-            /** @description Component props */
-            props: components["schemas"]["ProgressProps"];
-            /**
              * Width
              * @description Component width
              */
@@ -15516,12 +15336,11 @@ export interface components {
             style?: {
                 [key: string]: unknown;
             } | null;
-        };
-        /**
-         * ProgressProps
-         * @description Props for progress component.
-         */
-        ProgressProps: {
+            /**
+             * @description Component type (enum property replaced by openapi-typescript)
+             * @enum {string}
+             */
+            type: "progress";
             /**
              * Value
              * @description Progress value (0-100, supports expressions)
@@ -15532,11 +15351,6 @@ export interface components {
              * @description Show percentage label
              */
             show_label?: boolean | null;
-            /**
-             * Class Name
-             * @description Additional CSS classes
-             */
-            class_name?: string | null;
         };
         /**
          * QueueItem
@@ -16196,6 +16010,111 @@ export interface components {
              * @description Variable name (for set-variable type)
              */
             variable_name?: string | null;
+        };
+        /**
+         * RowComponent
+         * @description Row layout component - horizontal flex container.
+         */
+        RowComponent: {
+            /**
+             * Id
+             * @description Unique component identifier
+             */
+            id: string;
+            /**
+             * Width
+             * @description Component width
+             */
+            width?: ("auto" | "full" | "1/2" | "1/3" | "1/4" | "2/3" | "3/4") | null;
+            /**
+             * Visible
+             * @description Visibility expression
+             */
+            visible?: string | null;
+            /**
+             * Loading Workflows
+             * @description Workflow IDs that trigger loading state
+             */
+            loading_workflows?: string[] | null;
+            /**
+             * Grid Span
+             * @description Grid column span (for grid layouts)
+             */
+            grid_span?: number | null;
+            /** @description Repeat configuration for rendering multiple instances */
+            repeat_for?: components["schemas"]["RepeatFor"] | null;
+            /**
+             * Class Name
+             * @description Additional CSS classes
+             */
+            class_name?: string | null;
+            /**
+             * Style
+             * @description Inline CSS styles (camelCase properties)
+             */
+            style?: {
+                [key: string]: unknown;
+            } | null;
+            /**
+             * @description Component type (enum property replaced by openapi-typescript)
+             * @enum {string}
+             */
+            type: "row";
+            /**
+             * Children
+             * @description Child components
+             */
+            children?: (components["schemas"]["RowComponent"] | components["schemas"]["ColumnComponent"] | components["schemas"]["GridComponent"] | components["schemas"]["CardComponent"] | components["schemas"]["ModalComponent"] | components["schemas"]["TabsComponent"] | components["schemas"]["TabItemComponent"] | components["schemas"]["FormGroupComponent"] | components["schemas"]["HeadingComponent"] | components["schemas"]["TextComponent"] | components["schemas"]["HtmlComponent"] | components["schemas"]["DividerComponent"] | components["schemas"]["SpacerComponent"] | components["schemas"]["ButtonComponent"] | components["schemas"]["StatCardComponent"] | components["schemas"]["ImageComponent"] | components["schemas"]["BadgeComponent"] | components["schemas"]["ProgressComponent"] | components["schemas"]["DataTableComponent"] | components["schemas"]["FileViewerComponent"] | components["schemas"]["TextInputComponent"] | components["schemas"]["NumberInputComponent"] | components["schemas"]["SelectComponent"] | components["schemas"]["CheckboxComponent"] | components["schemas"]["FormEmbedComponent"])[];
+            /**
+             * Gap
+             * @description Gap between children
+             */
+            gap?: number | string | null;
+            /**
+             * Padding
+             * @description Container padding
+             */
+            padding?: number | string | null;
+            /**
+             * Align
+             * @description Cross-axis alignment
+             */
+            align?: ("start" | "center" | "end" | "stretch") | null;
+            /**
+             * Justify
+             * @description Main-axis justification
+             */
+            justify?: ("start" | "center" | "end" | "between" | "around") | null;
+            /**
+             * Distribute
+             * @description Child distribution
+             */
+            distribute?: ("natural" | "equal" | "fit") | null;
+            /**
+             * Max Width
+             * @description Maximum width
+             */
+            max_width?: ("sm" | "md" | "lg" | "xl" | "2xl" | "full" | "none") | null;
+            /**
+             * Max Height
+             * @description Maximum height in pixels
+             */
+            max_height?: number | null;
+            /**
+             * Overflow
+             * @description Overflow behavior
+             */
+            overflow?: ("auto" | "scroll" | "hidden" | "visible") | null;
+            /**
+             * Sticky
+             * @description Sticky positioning
+             */
+            sticky?: ("top" | "bottom") | null;
+            /**
+             * Sticky Offset
+             * @description Sticky offset in pixels
+             */
+            sticky_offset?: number | null;
         };
         /**
          * SDKDocumentCountRequest
@@ -17080,13 +16999,6 @@ export interface components {
              */
             id: string;
             /**
-             * @description Component type (enum property replaced by openapi-typescript)
-             * @enum {string}
-             */
-            type: "select";
-            /** @description Component props */
-            props: components["schemas"]["SelectProps"];
-            /**
              * Width
              * @description Component width
              */
@@ -17120,28 +17032,11 @@ export interface components {
             style?: {
                 [key: string]: unknown;
             } | null;
-        };
-        /**
-         * SelectOption
-         * @description Select option definition.
-         */
-        SelectOption: {
             /**
-             * Value
-             * @description Option value
+             * @description Component type (enum property replaced by openapi-typescript)
+             * @enum {string}
              */
-            value: string;
-            /**
-             * Label
-             * @description Option display label
-             */
-            label: string;
-        };
-        /**
-         * SelectProps
-         * @description Props for select component.
-         */
-        SelectProps: {
+            type: "select";
             /**
              * Field Id
              * @description Field ID for value tracking
@@ -17192,11 +17087,22 @@ export interface components {
              * @description Field in data source for option label
              */
             label_field?: string | null;
+        };
+        /**
+         * SelectOption
+         * @description Select option definition.
+         */
+        SelectOption: {
             /**
-             * Class Name
-             * @description Additional CSS classes
+             * Value
+             * @description Option value
              */
-            class_name?: string | null;
+            value: string;
+            /**
+             * Label
+             * @description Option display label
+             */
+            label: string;
         };
         /**
          * SetConfigRequest
@@ -17322,13 +17228,6 @@ export interface components {
              */
             id: string;
             /**
-             * @description Component type (enum property replaced by openapi-typescript)
-             * @enum {string}
-             */
-            type: "spacer";
-            /** @description Component props */
-            props: components["schemas"]["SpacerProps"];
-            /**
              * Width
              * @description Component width
              */
@@ -17362,12 +17261,11 @@ export interface components {
             style?: {
                 [key: string]: unknown;
             } | null;
-        };
-        /**
-         * SpacerProps
-         * @description Props for spacer component.
-         */
-        SpacerProps: {
+            /**
+             * @description Component type (enum property replaced by openapi-typescript)
+             * @enum {string}
+             */
+            type: "spacer";
             /**
              * Size
              * @description Size in pixels or Tailwind spacing units
@@ -17378,11 +17276,6 @@ export interface components {
              * @description Alias for size - supports legacy definitions
              */
             height?: number | string | null;
-            /**
-             * Class Name
-             * @description Additional CSS classes
-             */
-            class_name?: string | null;
         };
         /**
          * StatCardComponent
@@ -17395,13 +17288,6 @@ export interface components {
              */
             id: string;
             /**
-             * @description Component type (enum property replaced by openapi-typescript)
-             * @enum {string}
-             */
-            type: "stat-card";
-            /** @description Component props */
-            props: components["schemas"]["StatCardProps"];
-            /**
              * Width
              * @description Component width
              */
@@ -17435,34 +17321,11 @@ export interface components {
             style?: {
                 [key: string]: unknown;
             } | null;
-        };
-        /**
-         * StatCardOnClick
-         * @description Click handler for stat cards.
-         */
-        StatCardOnClick: {
             /**
-             * Type
-             * @description Type of click action
+             * @description Component type (enum property replaced by openapi-typescript)
              * @enum {string}
              */
-            type: "navigate" | "workflow";
-            /**
-             * Navigate To
-             * @description Path to navigate to (for navigate type)
-             */
-            navigate_to?: string | null;
-            /**
-             * Workflow Id
-             * @description Workflow ID (for workflow type)
-             */
-            workflow_id?: string | null;
-        };
-        /**
-         * StatCardProps
-         * @description Props for stat-card component.
-         */
-        StatCardProps: {
+            type: "stat-card";
             /**
              * Title
              * @description Card title
@@ -17487,11 +17350,28 @@ export interface components {
             trend?: components["schemas"]["StatCardTrend"] | null;
             /** @description Click action */
             on_click?: components["schemas"]["StatCardOnClick"] | null;
+        };
+        /**
+         * StatCardOnClick
+         * @description Click handler for stat cards.
+         */
+        StatCardOnClick: {
             /**
-             * Class Name
-             * @description Additional CSS classes
+             * Type
+             * @description Type of click action
+             * @enum {string}
              */
-            class_name?: string | null;
+            type: "navigate" | "workflow";
+            /**
+             * Navigate To
+             * @description Path to navigate to (for navigate type)
+             */
+            navigate_to?: string | null;
+            /**
+             * Workflow Id
+             * @description Workflow ID (for workflow type)
+             */
+            workflow_id?: string | null;
         };
         /**
          * StatCardTrend
@@ -17853,27 +17733,74 @@ export interface components {
             continuation_token?: string | null;
         };
         /**
-         * TabItem
-         * @description Tab item definition.
+         * TabItemComponent
+         * @description Tab item within a Tabs component.
          */
-        TabItem: {
+        TabItemComponent: {
             /**
              * Id
-             * @description Tab ID
+             * @description Unique component identifier
              */
             id: string;
+            /**
+             * Width
+             * @description Component width
+             */
+            width?: ("auto" | "full" | "1/2" | "1/3" | "1/4" | "2/3" | "3/4") | null;
+            /**
+             * Visible
+             * @description Visibility expression
+             */
+            visible?: string | null;
+            /**
+             * Loading Workflows
+             * @description Workflow IDs that trigger loading state
+             */
+            loading_workflows?: string[] | null;
+            /**
+             * Grid Span
+             * @description Grid column span (for grid layouts)
+             */
+            grid_span?: number | null;
+            /** @description Repeat configuration for rendering multiple instances */
+            repeat_for?: components["schemas"]["RepeatFor"] | null;
+            /**
+             * Class Name
+             * @description Additional CSS classes
+             */
+            class_name?: string | null;
+            /**
+             * Style
+             * @description Inline CSS styles (camelCase properties)
+             */
+            style?: {
+                [key: string]: unknown;
+            } | null;
+            /**
+             * @description Component type (enum property replaced by openapi-typescript)
+             * @enum {string}
+             */
+            type: "tab-item";
+            /**
+             * Children
+             * @description Tab content
+             */
+            children?: (components["schemas"]["RowComponent"] | components["schemas"]["ColumnComponent"] | components["schemas"]["GridComponent"] | components["schemas"]["CardComponent"] | components["schemas"]["ModalComponent"] | components["schemas"]["TabsComponent"] | components["schemas"]["TabItemComponent"] | components["schemas"]["FormGroupComponent"] | components["schemas"]["HeadingComponent"] | components["schemas"]["TextComponent"] | components["schemas"]["HtmlComponent"] | components["schemas"]["DividerComponent"] | components["schemas"]["SpacerComponent"] | components["schemas"]["ButtonComponent"] | components["schemas"]["StatCardComponent"] | components["schemas"]["ImageComponent"] | components["schemas"]["BadgeComponent"] | components["schemas"]["ProgressComponent"] | components["schemas"]["DataTableComponent"] | components["schemas"]["FileViewerComponent"] | components["schemas"]["TextInputComponent"] | components["schemas"]["NumberInputComponent"] | components["schemas"]["SelectComponent"] | components["schemas"]["CheckboxComponent"] | components["schemas"]["FormEmbedComponent"])[];
             /**
              * Label
              * @description Tab label
              */
             label: string;
             /**
+             * Value
+             * @description Tab value (defaults to label if not provided)
+             */
+            value?: string | null;
+            /**
              * Icon
-             * @description Tab icon
+             * @description Tab icon name
              */
             icon?: string | null;
-            /** @description Tab content (layout) */
-            content: components["schemas"]["LayoutContainer"];
         };
         /**
          * TableAction
@@ -18098,7 +18025,7 @@ export interface components {
         };
         /**
          * TabsComponent
-         * @description Tabs component.
+         * @description Tabs container component.
          */
         TabsComponent: {
             /**
@@ -18107,13 +18034,6 @@ export interface components {
              */
             id: string;
             /**
-             * @description Component type (enum property replaced by openapi-typescript)
-             * @enum {string}
-             */
-            type: "tabs";
-            /** @description Component props */
-            props: components["schemas"]["TabsProps"];
-            /**
              * Width
              * @description Component width
              */
@@ -18147,36 +18067,30 @@ export interface components {
             style?: {
                 [key: string]: unknown;
             } | null;
-        };
-        /**
-         * TabsProps
-         * @description Props for tabs component.
-         */
-        TabsProps: {
             /**
-             * Items
-             * @description Tab items
+             * @description Component type (enum property replaced by openapi-typescript)
+             * @enum {string}
              */
-            items: components["schemas"]["TabItem"][];
+            type: "tabs";
+            /**
+             * Children
+             * @description TabItemComponent children
+             */
+            children?: (components["schemas"]["RowComponent"] | components["schemas"]["ColumnComponent"] | components["schemas"]["GridComponent"] | components["schemas"]["CardComponent"] | components["schemas"]["ModalComponent"] | components["schemas"]["TabsComponent"] | components["schemas"]["TabItemComponent"] | components["schemas"]["FormGroupComponent"] | components["schemas"]["HeadingComponent"] | components["schemas"]["TextComponent"] | components["schemas"]["HtmlComponent"] | components["schemas"]["DividerComponent"] | components["schemas"]["SpacerComponent"] | components["schemas"]["ButtonComponent"] | components["schemas"]["StatCardComponent"] | components["schemas"]["ImageComponent"] | components["schemas"]["BadgeComponent"] | components["schemas"]["ProgressComponent"] | components["schemas"]["DataTableComponent"] | components["schemas"]["FileViewerComponent"] | components["schemas"]["TextInputComponent"] | components["schemas"]["NumberInputComponent"] | components["schemas"]["SelectComponent"] | components["schemas"]["CheckboxComponent"] | components["schemas"]["FormEmbedComponent"])[];
             /**
              * Default Tab
-             * @description Default active tab ID
+             * @description Default active tab value
              */
             default_tab?: string | null;
             /**
              * Orientation
-             * @description Orientation
+             * @description Tab orientation
              */
             orientation?: ("horizontal" | "vertical") | null;
-            /**
-             * Class Name
-             * @description Additional CSS classes
-             */
-            class_name?: string | null;
         };
         /**
          * TextComponent
-         * @description Text component.
+         * @description Text paragraph component.
          */
         TextComponent: {
             /**
@@ -18185,13 +18099,6 @@ export interface components {
              */
             id: string;
             /**
-             * @description Component type (enum property replaced by openapi-typescript)
-             * @enum {string}
-             */
-            type: "text";
-            /** @description Component props */
-            props: components["schemas"]["TextProps"];
-            /**
              * Width
              * @description Component width
              */
@@ -18225,6 +18132,21 @@ export interface components {
             style?: {
                 [key: string]: unknown;
             } | null;
+            /**
+             * @description Component type (enum property replaced by openapi-typescript)
+             * @enum {string}
+             */
+            type: "text";
+            /**
+             * Text
+             * @description Text content (supports expressions)
+             */
+            text: string;
+            /**
+             * Label
+             * @description Optional label above text
+             */
+            label?: string | null;
         };
         /**
          * TextInputComponent
@@ -18237,13 +18159,6 @@ export interface components {
              */
             id: string;
             /**
-             * @description Component type (enum property replaced by openapi-typescript)
-             * @enum {string}
-             */
-            type: "text-input";
-            /** @description Component props */
-            props: components["schemas"]["TextInputProps"];
-            /**
              * Width
              * @description Component width
              */
@@ -18277,12 +18192,11 @@ export interface components {
             style?: {
                 [key: string]: unknown;
             } | null;
-        };
-        /**
-         * TextInputProps
-         * @description Props for text-input component.
-         */
-        TextInputProps: {
+            /**
+             * @description Component type (enum property replaced by openapi-typescript)
+             * @enum {string}
+             */
+            type: "text-input";
             /**
              * Field Id
              * @description Field ID for value tracking (used in {{ field.* }} expressions)
@@ -18333,32 +18247,6 @@ export interface components {
              * @description Regex pattern for validation
              */
             pattern?: string | null;
-            /**
-             * Class Name
-             * @description Additional CSS classes
-             */
-            class_name?: string | null;
-        };
-        /**
-         * TextProps
-         * @description Props for text component.
-         */
-        TextProps: {
-            /**
-             * Text
-             * @description Text content (supports expressions)
-             */
-            text: string;
-            /**
-             * Label
-             * @description Optional label above text
-             */
-            label?: string | null;
-            /**
-             * Class Name
-             * @description Additional CSS classes
-             */
-            class_name?: string | null;
         };
         /**
          * Token
