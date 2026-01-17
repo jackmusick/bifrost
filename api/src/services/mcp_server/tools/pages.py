@@ -9,7 +9,10 @@ import logging
 from typing import Any
 from uuid import UUID
 
+from pydantic import TypeAdapter, ValidationError
+
 from src.core.pubsub import publish_app_draft_update
+from src.models.contracts.app_components import AppComponent as AppComponentModel
 from src.services.mcp_server.tool_decorator import system_tool
 from src.services.mcp_server.tool_registry import ToolCategory
 
@@ -57,8 +60,8 @@ async def get_page(
     from sqlalchemy import select
 
     from src.core.database import get_db_context
-    from src.models.orm.applications import Application
-    from src.services.app_builder_service import AppBuilderService, tree_to_layout_json
+    from src.models.orm.applications import AppPage, Application
+    from src.services.app_builder_service import AppBuilderService
 
     logger.info(f"MCP get_page called with app={app_id}, page={page_id}, version_id={version_id}")
 
@@ -94,14 +97,27 @@ async def get_page(
             if not effective_version_id:
                 return json.dumps({"error": "Application has no draft version"})
 
-            # Get page with components
-            service = AppBuilderService(db)
-            page, tree = await service.get_page_with_components(
-                app_uuid, page_id, version_id=effective_version_id
+            # Get page
+            page_query = select(AppPage).where(
+                AppPage.application_id == app_uuid,
+                AppPage.page_id == page_id,
+                AppPage.version_id == effective_version_id,
             )
+            page_result = await db.execute(page_query)
+            page = page_result.scalar_one_or_none()
 
             if not page:
                 return json.dumps({"error": f"Page not found: {page_id}"})
+
+            # Get components as unified AppComponent tree
+            service = AppBuilderService(db)
+            children = await service.get_page_children(page)
+
+            # Serialize children to JSON-compatible dicts
+            children_json = [
+                child.model_dump(exclude_none=True, by_alias=True)
+                for child in children
+            ]
 
             # Build structured response
             result = {
@@ -113,7 +129,7 @@ async def get_page(
                 "launch_workflow_id": str(page.launch_workflow_id) if page.launch_workflow_id else None,
                 "launch_workflow_params": page.launch_workflow_params,
                 "launch_workflow_data_source_id": page.launch_workflow_data_source_id,
-                "layout": tree_to_layout_json(tree) if tree else {"type": "column", "children": []},
+                "children": children_json,
             }
 
             return json.dumps(result)
@@ -126,7 +142,7 @@ async def get_page(
 @system_tool(
     id="create_page",
     name="Create Page",
-    description="Create a new page in an application with optional layout.",
+    description="Create a new page in an application with optional children components.",
     category=ToolCategory.APP_BUILDER,
     default_enabled_for_coding_agent=True,
     is_restricted=True,
@@ -149,9 +165,9 @@ async def get_page(
                 "type": "string",
                 "description": "URL path for the page (e.g., '/settings')",
             },
-            "layout": {
-                "type": "object",
-                "description": "Optional layout structure with components",
+            "children": {
+                "type": "array",
+                "description": "List of child components for the page",
             },
             "variables": {
                 "type": "object",
@@ -175,12 +191,12 @@ async def create_page(
     page_id: str,
     title: str,
     path: str,
-    layout: dict[str, Any] | None = None,
+    children: list[dict[str, Any]] | None = None,
     variables: dict[str, Any] | None = None,
     launch_workflow_id: str | None = None,
     launch_workflow_data_source_id: str | None = None,
 ) -> str:
-    """Create a new page with optional layout."""
+    """Create a new page with optional children components."""
     from sqlalchemy import select
 
     from src.core.database import get_db_context
@@ -219,9 +235,14 @@ async def create_page(
             if existing.scalar_one_or_none():
                 return json.dumps({"error": f"Page '{page_id}' already exists"})
 
-            # Build layout
-            if layout is None:
-                layout = {"type": "column", "children": []}
+            # Validate children through discriminated union
+            validated_children: list[AppComponentModel] = []
+            if children:
+                try:
+                    adapter = TypeAdapter(list[AppComponentModel])
+                    validated_children = adapter.validate_python(children)
+                except ValidationError as e:
+                    return json.dumps({"error": f"Invalid children: {e}"})
 
             # Parse workflow ID
             wf_id = None
@@ -232,12 +253,12 @@ async def create_page(
                     return json.dumps({"error": f"Invalid launch_workflow_id format: {launch_workflow_id}"})
 
             service = AppBuilderService(db)
-            new_page = await service.create_page_with_layout(
+            new_page = await service.create_page_with_children(
                 application_id=app_uuid,
                 page_id=page_id,
                 title=title,
                 path=path,
-                layout=layout,
+                children=validated_children,
                 version_id=app.draft_version_id,
                 variables=variables or {},
                 launch_workflow_id=wf_id,
@@ -271,7 +292,7 @@ async def create_page(
 @system_tool(
     id="update_page",
     name="Update Page",
-    description="Update a page's metadata or replace its layout.",
+    description="Update a page's metadata or replace its children components.",
     category=ToolCategory.APP_BUILDER,
     default_enabled_for_coding_agent=True,
     is_restricted=True,
@@ -294,9 +315,9 @@ async def create_page(
                 "type": "string",
                 "description": "New URL path for the page",
             },
-            "layout": {
-                "type": "object",
-                "description": "New layout structure (replaces entire layout)",
+            "children": {
+                "type": "array",
+                "description": "New child components (replaces entire component tree)",
             },
             "variables": {
                 "type": "object",
@@ -310,6 +331,10 @@ async def create_page(
                 "type": "string",
                 "description": "Key name for accessing launch workflow results. Access via {{ workflow.<this_value>.result }}",
             },
+            "launch_workflow_params": {
+                "type": "object",
+                "description": "Parameters to pass to the launch workflow. Use {{ params.id }} for route parameters.",
+            },
         },
         "required": ["app_id", "page_id"],
     },
@@ -320,12 +345,13 @@ async def update_page(
     page_id: str,
     title: str | None = None,
     path: str | None = None,
-    layout: dict[str, Any] | None = None,
+    children: list[dict[str, Any]] | None = None,
     variables: dict[str, Any] | None = None,
     launch_workflow_id: str | None = None,
     launch_workflow_data_source_id: str | None = None,
+    launch_workflow_params: dict[str, Any] | None = None,
 ) -> str:
-    """Update a page's metadata or replace its layout."""
+    """Update a page's metadata or replace its children components."""
     from sqlalchemy import select
 
     from src.core.database import get_db_context
@@ -393,11 +419,22 @@ async def update_page(
                 page.launch_workflow_data_source_id = launch_workflow_data_source_id if launch_workflow_data_source_id else None
                 updates_made.append("launch_workflow_data_source_id")
 
-            # Replace layout if provided (this is the heavy operation)
-            if layout is not None:
+            if launch_workflow_params is not None:
+                page.launch_workflow_params = launch_workflow_params
+                updates_made.append("launch_workflow_params")
+
+            # Replace children if provided (this is the heavy operation)
+            if children is not None:
+                # Validate children through discriminated union
+                try:
+                    adapter = TypeAdapter(list[AppComponentModel])
+                    validated_children = adapter.validate_python(children)
+                except ValidationError as e:
+                    return json.dumps({"error": f"Invalid children: {e}"})
+
                 service = AppBuilderService(db)
-                await service.update_page_layout(page, layout)
-                updates_made.append("layout")
+                await service.update_page_children(page, validated_children)
+                updates_made.append("children")
 
             if not updates_made:
                 return json.dumps({"error": "No updates specified"})
