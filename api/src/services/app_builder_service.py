@@ -339,9 +339,6 @@ def build_unified_component_tree(
 
     adapter = TypeAdapter(AppComponentModel)
 
-    # Build lookup by UUID for parent resolution
-    by_uuid: dict[UUID, Any] = {comp.id: comp for comp in flat_components}
-
     # Group children by parent_id
     children_by_parent: dict[UUID | None, list[Any]] = {}
     for comp in flat_components:
@@ -1236,3 +1233,108 @@ class AppBuilderService:
 
         await self.session.flush()
         logger.info(f"Rolled back app {app.slug} to version {version_id}")
+
+    # =========================================================================
+    # Unified Component Model Methods
+    # =========================================================================
+
+    async def create_page_with_children(
+        self,
+        application_id: UUID,
+        page_id: str,
+        title: str,
+        path: str,
+        children: Sequence[AppComponentModel],
+        version_id: UUID | None = None,
+        **page_kwargs: Any,
+    ) -> AppPage:
+        """Create a page using unified component model.
+
+        This method works with the unified AppComponent model where components
+        are validated Pydantic instances (from the discriminated union).
+
+        Args:
+            application_id: Application UUID
+            page_id: Page identifier string (e.g., "dashboard")
+            title: Page title
+            path: Page path (e.g., "/")
+            children: List of validated AppComponent instances (from discriminated union)
+            version_id: Version UUID to link the page to
+            **page_kwargs: Additional page fields (data_sources, variables, etc.)
+
+        Returns:
+            The created AppPage instance
+        """
+        page = AppPage(
+            application_id=application_id,
+            page_id=page_id,
+            title=title,
+            path=path,
+            version_id=version_id,
+            **page_kwargs,
+        )
+        self.session.add(page)
+        await self.session.flush()
+
+        # Flatten using new function
+        component_rows = flatten_components(children, page.id)
+        for row in component_rows:
+            component = AppComponent(**row)
+            self.session.add(component)
+
+        await self.session.flush()
+        await self.session.refresh(page)
+        logger.info(f"Created page '{page_id}' with {len(component_rows)} components")
+        return page
+
+    async def update_page_children(
+        self,
+        page: AppPage,
+        children: Sequence[AppComponentModel],
+    ) -> None:
+        """Update a page's components using unified model.
+
+        Replaces all existing components with the provided unified component tree.
+
+        Args:
+            page: The AppPage to update
+            children: List of validated AppComponent instances (from discriminated union)
+        """
+        # Delete existing components
+        comp_query = select(AppComponent).where(AppComponent.page_id == page.id)
+        result = await self.session.execute(comp_query)
+        existing = list(result.scalars().all())
+        for comp in existing:
+            await self.session.delete(comp)
+        await self.session.flush()
+
+        # Create new components
+        component_rows = flatten_components(children, page.id)
+        for row in component_rows:
+            component = AppComponent(**row)
+            self.session.add(component)
+
+        await self.session.flush()
+        logger.info(f"Updated page with {len(component_rows)} components")
+
+    async def get_page_children(
+        self,
+        page: AppPage,
+    ) -> list[AppComponentModel]:
+        """Get page components as unified AppComponent tree.
+
+        Retrieves all components for a page and builds a nested tree
+        using the unified AppComponent model.
+
+        Args:
+            page: The AppPage to get components for
+
+        Returns:
+            List of validated AppComponent instances (from discriminated union)
+            representing the root-level components with children nested.
+        """
+        comp_query = select(AppComponent).where(AppComponent.page_id == page.id)
+        result = await self.session.execute(comp_query)
+        flat_components = list(result.scalars().all())
+
+        return build_unified_component_tree(flat_components)
