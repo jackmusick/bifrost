@@ -42,11 +42,10 @@ from src.models.contracts.app_components import (
     CheckboxComponent,
     FormEmbedComponent,
     FormGroupComponent,
-    # Props types
+    # Props types (for leaf components that still use props wrapper)
     HeadingProps,
     TextProps,
     HtmlProps,
-    CardProps,
     DividerProps,
     SpacerProps,
     ButtonProps,
@@ -55,22 +54,18 @@ from src.models.contracts.app_components import (
     BadgeProps,
     ProgressProps,
     DataTableProps,
-    TabsProps,
     FileViewerProps,
-    ModalProps,
     TextInputProps,
     NumberInputProps,
     SelectProps,
     CheckboxProps,
     FormEmbedProps,
-    FormGroupProps,
     # Supporting types
     TableColumn,
     TableAction,
     TableActionOnClick,
     TableActionConfirm,
     RowClickHandler,
-    TabItem,
     SelectOption,
     StatCardTrend,
     StatCardOnClick,
@@ -205,130 +200,114 @@ class TestDiscriminatedUnion:
         assert table.props.row_actions[1].confirm is not None
 
     def test_modal_with_content_layout(self):
-        """Modal component with nested layout content is valid."""
+        """Modal component with children is valid."""
         modal = ModalComponent(
             id="modal-1",
             type="modal",
-            props=ModalProps(
-                title="Edit Client",
-                description="Update client information",
-                size="lg",
-                content=LayoutContainer(
-                    id="modal-layout",
-                    type="column",
-                    gap=4,
-                    children=[
-                        TextInputComponent(
-                            id="input-name",
-                            type="text-input",
-                            props=TextInputProps(
-                                field_id="name",
-                                label="Name",
-                                required=True,
-                            ),
-                        ),
-                    ],
+            title="Edit Client",
+            description="Update client information",
+            size="lg",
+            children=[
+                TextInputComponent(
+                    id="input-name",
+                    type="text-input",
+                    props=TextInputProps(
+                        field_id="name",
+                        label="Name",
+                        required=True,
+                    ),
                 ),
-                footer_actions=[
-                    ModalFooterAction(
-                        label="Save",
-                        variant="default",
-                        action_type="submit",
-                        close_on_click=True,
-                    ),
-                    ModalFooterAction(
-                        label="Cancel",
-                        variant="outline",
-                        action_type="custom",
-                        close_on_click=True,
-                    ),
-                ],
-            ),
+            ],
+            footer_actions=[
+                ModalFooterAction(
+                    label="Save",
+                    variant="default",
+                    action_type="submit",
+                    close_on_click=True,
+                ),
+                ModalFooterAction(
+                    label="Cancel",
+                    variant="outline",
+                    action_type="custom",
+                    close_on_click=True,
+                ),
+            ],
         )
-        assert modal.props.content.type == "column"
-        assert len(modal.props.content.children) == 1
-        assert modal.props.footer_actions is not None
-        assert len(modal.props.footer_actions) == 2
+        assert len(modal.children) == 1
+        assert modal.footer_actions is not None
+        assert len(modal.footer_actions) == 2
 
     def test_tabs_with_tab_items(self):
-        """Tabs component with TabItems validates correctly."""
+        """Tabs component with TabItemComponent children validates correctly."""
+        from src.models.contracts.app_components import TabItemComponent
+
         tabs = TabsComponent(
             id="tabs-1",
             type="tabs",
-            props=TabsProps(
-                items=[
-                    TabItem(
-                        id="tab-overview",
-                        label="Overview",
-                        icon="Home",
-                        content=LayoutContainer(
-                            id="overview-layout",
-                            type="column",
-                            children=[
-                                HeadingComponent(
-                                    id="h1",
-                                    type="heading",
-                                    props=HeadingProps(text="Overview", level=2),
-                                ),
-                            ],
+            children=[
+                TabItemComponent(
+                    id="tab-overview",
+                    label="Overview",
+                    value="overview",
+                    icon="Home",
+                    children=[
+                        HeadingComponent(
+                            id="h1",
+                            type="heading",
+                            props=HeadingProps(text="Overview", level=2),
                         ),
-                    ),
-                    TabItem(
-                        id="tab-details",
-                        label="Details",
-                        content=LayoutContainer(
-                            id="details-layout",
-                            type="column",
-                            children=[
-                                TextComponent(
-                                    id="t1",
-                                    type="text",
-                                    props=TextProps(text="Details content"),
-                                ),
-                            ],
+                    ],
+                ),
+                TabItemComponent(
+                    id="tab-details",
+                    label="Details",
+                    value="details",
+                    children=[
+                        TextComponent(
+                            id="t1",
+                            type="text",
+                            props=TextProps(text="Details content"),
                         ),
-                    ),
-                ],
-                default_tab="tab-overview",
-            ),
+                    ],
+                ),
+            ],
+            default_tab="overview",
         )
-        assert len(tabs.props.items) == 2
-        assert tabs.props.items[0].content.type == "column"
+        assert len(tabs.children) == 2
+        assert tabs.children[0].type == "tab-item"
 
     def test_form_group_with_children(self):
         """FormGroup with child form components validates correctly."""
         form_group = FormGroupComponent(
             id="form-group-1",
             type="form-group",
-            props=FormGroupProps(
-                label="Contact Information",
-                direction="row",
-                gap=4,
-                children=[
-                    TextInputComponent(
-                        id="input-email",
-                        type="text-input",
-                        props=TextInputProps(
-                            field_id="email",
-                            label="Email",
-                            input_type="email",
-                            required=True,
-                        ),
+            label="Contact Information",
+            direction="row",
+            gap=4,
+            children=[
+                TextInputComponent(
+                    id="input-email",
+                    type="text-input",
+                    props=TextInputProps(
+                        field_id="email",
+                        label="Email",
+                        input_type="email",
+                        required=True,
                     ),
-                    TextInputComponent(
-                        id="input-phone",
-                        type="text-input",
-                        props=TextInputProps(
-                            field_id="phone",
-                            label="Phone",
-                            input_type="tel",
-                        ),
+                ),
+                TextInputComponent(
+                    id="input-phone",
+                    type="text-input",
+                    props=TextInputProps(
+                        field_id="phone",
+                        label="Phone",
+                        input_type="tel",
                     ),
-                ],
-            ),
+                ),
+            ],
         )
-        assert len(form_group.props.children) == 2
-        assert form_group.props.direction == "row"
+        assert len(form_group.children) == 2
+        assert form_group.direction == "row"
 
 
 class TestSnakeCaseSerialization:
@@ -576,6 +555,8 @@ class TestRoundTrip:
 
     def test_complex_nested_layout_roundtrip(self):
         """Complex nested layout survives round-trip."""
+        from src.models.contracts.app_components import TabItemComponent
+
         page = PageDefinition(
             id="page-dashboard",
             title="Dashboard",
@@ -618,115 +599,103 @@ class TestRoundTrip:
                             ),
                         ],
                     ),
-                    # Tabs with nested content
+                    # Tabs with nested content (new structure: children with TabItemComponent)
                     TabsComponent(
                         id="main-tabs",
                         type="tabs",
-                        props=TabsProps(
-                            items=[
-                                TabItem(
-                                    id="tab-clients",
-                                    label="Clients",
-                                    icon="Users",
-                                    content=LayoutContainer(
-                                        id="clients-layout",
-                                        type="column",
-                                        children=[
-                                            DataTableComponent(
-                                                id="clients-table",
-                                                type="data-table",
-                                                props=DataTableProps(
-                                                    data_source="dashboardData",
-                                                    data_path="clients",
-                                                    columns=[
-                                                        TableColumn(
-                                                            key="name",
-                                                            header="Name",
-                                                        ),
-                                                        TableColumn(
-                                                            key="status",
-                                                            header="Status",
-                                                            type="badge",
-                                                        ),
-                                                    ],
-                                                    searchable=True,
-                                                    paginated=True,
-                                                    row_actions=[
-                                                        TableAction(
-                                                            label="Edit",
-                                                            on_click=TableActionOnClick(
-                                                                type="navigate",
-                                                                navigate_to="/clients/{{ row.id }}",
-                                                            ),
-                                                        ),
-                                                    ],
-                                                ),
-                                            ),
-                                        ],
-                                    ),
-                                ),
-                            ],
-                            default_tab="tab-clients",
-                        ),
-                    ),
-                    # Modal component
-                    ModalComponent(
-                        id="add-client-modal",
-                        type="modal",
-                        props=ModalProps(
-                            title="Add Client",
-                            trigger_label="Add New Client",
-                            trigger_variant="default",
-                            size="lg",
-                            content=LayoutContainer(
-                                id="modal-content",
-                                type="column",
-                                gap=4,
+                        default_tab="clients",
+                        children=[
+                            TabItemComponent(
+                                id="tab-clients",
+                                label="Clients",
+                                value="clients",
+                                icon="Users",
                                 children=[
-                                    TextInputComponent(
-                                        id="client-name",
-                                        type="text-input",
-                                        props=TextInputProps(
-                                            field_id="clientName",
-                                            label="Client Name",
-                                            required=True,
-                                        ),
-                                    ),
-                                    SelectComponent(
-                                        id="client-type",
-                                        type="select",
-                                        props=SelectProps(
-                                            field_id="clientType",
-                                            label="Type",
-                                            options=[
-                                                SelectOption(
-                                                    value="enterprise",
-                                                    label="Enterprise",
+                                    DataTableComponent(
+                                        id="clients-table",
+                                        type="data-table",
+                                        props=DataTableProps(
+                                            data_source="dashboardData",
+                                            data_path="clients",
+                                            columns=[
+                                                TableColumn(
+                                                    key="name",
+                                                    header="Name",
                                                 ),
-                                                SelectOption(
-                                                    value="smb",
-                                                    label="SMB",
+                                                TableColumn(
+                                                    key="status",
+                                                    header="Status",
+                                                    type="badge",
+                                                ),
+                                            ],
+                                            searchable=True,
+                                            paginated=True,
+                                            row_actions=[
+                                                TableAction(
+                                                    label="Edit",
+                                                    on_click=TableActionOnClick(
+                                                        type="navigate",
+                                                        navigate_to="/clients/{{ row.id }}",
+                                                    ),
                                                 ),
                                             ],
                                         ),
                                     ),
                                 ],
                             ),
-                            footer_actions=[
-                                ModalFooterAction(
-                                    label="Create",
-                                    action_type="submit",
-                                    workflow_id="create-client",
-                                    on_complete=[
-                                        OnCompleteAction(
-                                            type="refresh-table",
-                                            data_source_key="clients-table",
-                                        )
-                                    ],
-                                    close_on_click=True,
+                        ],
+                    ),
+                    # Modal component (new structure: children instead of props.content)
+                    ModalComponent(
+                        id="add-client-modal",
+                        type="modal",
+                        title="Add Client",
+                        trigger_label="Add New Client",
+                        trigger_variant="default",
+                        size="lg",
+                        children=[
+                            TextInputComponent(
+                                id="client-name",
+                                type="text-input",
+                                props=TextInputProps(
+                                    field_id="clientName",
+                                    label="Client Name",
+                                    required=True,
                                 ),
-                            ],
-                        ),
+                            ),
+                            SelectComponent(
+                                id="client-type",
+                                type="select",
+                                props=SelectProps(
+                                    field_id="clientType",
+                                    label="Type",
+                                    options=[
+                                        SelectOption(
+                                            value="enterprise",
+                                            label="Enterprise",
+                                        ),
+                                        SelectOption(
+                                            value="smb",
+                                            label="SMB",
+                                        ),
+                                    ],
+                                ),
+                            ),
+                        ],
+                        footer_actions=[
+                            ModalFooterAction(
+                                label="Create",
+                                action_type="submit",
+                                workflow_id="create-client",
+                                on_complete=[
+                                    OnCompleteAction(
+                                        type="refresh-table",
+                                        data_source_key="clients-table",
+                                    )
+                                ],
+                                close_on_click=True,
+                            ),
+                        ],
                     ),
                 ],
             ),
@@ -755,16 +724,16 @@ class TestRoundTrip:
         layout = imported_page.layout
         assert len(layout.children) == 3
 
-        # Verify tabs with nested content
+        # Verify tabs with nested content (new structure)
         tabs = layout.children[1]
         assert tabs.type == "tabs"  # type: ignore
-        assert len(tabs.props.items) == 1  # type: ignore
+        assert len(tabs.children) == 1  # type: ignore
 
-        # Verify modal
+        # Verify modal (new structure)
         modal = layout.children[2]
         assert modal.type == "modal"  # type: ignore
-        assert modal.props.footer_actions is not None  # type: ignore
-        assert modal.props.footer_actions[0].on_complete is not None  # type: ignore
+        assert modal.footer_actions is not None  # type: ignore
+        assert modal.footer_actions[0].on_complete is not None  # type: ignore
 
     def test_export_excludes_none_values(self):
         """Export dict excludes None values."""
@@ -968,22 +937,20 @@ class TestAllComponentTypes:
         card = CardComponent(
             id="card-1",
             type="card",
-            props=CardProps(
-                title="Card Title",
-                description="Card description",
-                children=[
-                    HeadingComponent(
-                        id="card-heading",
-                        type="heading",
-                        props=HeadingProps(text="Inner Heading", level=3),
-                    ),
-                    TextComponent(
-                        id="card-text",
-                        type="text",
-                        props=TextProps(text="Card body text"),
-                    ),
-                ],
-            ),
+            title="Card Title",
+            description="Card description",
+            children=[
+                HeadingComponent(
+                    id="card-heading",
+                    type="heading",
+                    props=HeadingProps(text="Inner Heading", level=3),
+                ),
+                TextComponent(
+                    id="card-text",
+                    type="text",
+                    props=TextProps(text="Card body text"),
+                ),
+            ],
         )
 
         # Round-trip
@@ -992,12 +959,12 @@ class TestAllComponentTypes:
         imported_data = json.loads(json_str)
         imported = CardComponent.model_validate(imported_data)
 
-        assert imported.props.title == "Card Title"
-        assert imported.props.children is not None
-        assert len(imported.props.children) == 2
+        assert imported.title == "Card Title"
+        assert imported.children is not None
+        assert len(imported.children) == 2
         # Children are validated as discriminated union
-        assert imported.props.children[0].type == "heading"  # type: ignore
-        assert imported.props.children[1].type == "text"  # type: ignore
+        assert imported.children[0].type == "heading"  # type: ignore
+        assert imported.children[1].type == "text"  # type: ignore
 
     def test_stat_card_with_all_options_roundtrip(self):
         """StatCard with trend and onClick survives round-trip."""
@@ -1201,9 +1168,7 @@ class TestEdgeCases:
         card = CardComponent(
             id="repeated-card",
             type="card",
-            props=CardProps(
-                title="{{ item.name }}",
-            ),
+            title="{{ item.name }}",
             repeat_for=RepeatFor(
                 items="{{ data.items }}",
                 item_key="id",

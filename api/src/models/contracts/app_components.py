@@ -22,10 +22,20 @@ from pydantic import BaseModel, ConfigDict, Field, field_serializer
 # -----------------------------------------------------------------------------
 
 ComponentType = Literal[
+    # Layout containers
+    "row",
+    "column",
+    "grid",
+    # Content containers
+    "card",
+    "modal",
+    "tabs",
+    "tab-item",
+    "form-group",
+    # Leaf components
     "heading",
     "text",
     "html",
-    "card",
     "divider",
     "spacer",
     "button",
@@ -34,15 +44,12 @@ ComponentType = Literal[
     "badge",
     "progress",
     "data-table",
-    "tabs",
     "file-viewer",
-    "modal",
     "text-input",
     "number-input",
     "select",
     "checkbox",
     "form-embed",
-    "form-group",
 ]
 
 ComponentWidth = Literal["auto", "full", "1/2", "1/3", "1/4", "2/3", "3/4"]
@@ -851,26 +858,21 @@ class HtmlComponent(BaseModel):
     )
 
 
-class CardComponent(BaseModel):
-    """Card component."""
+class CardComponent(ComponentBase):
+    """Card container component."""
 
-    id: str = Field(description="Unique component identifier")
     type: Literal["card"] = Field(default="card", description="Component type")
-    props: CardProps = Field(description="Component props")
-    width: ComponentWidth | None = Field(default=None, description="Component width")
-    visible: str | None = Field(default=None, description="Visibility expression")
-    loading_workflows: list[str] | None = Field(
-        default=None, description="Workflow IDs that trigger loading state"
+    children: list["AppComponent"] = Field(
+        default_factory=list, description="Card content"
     )
-    grid_span: int | None = Field(
-        default=None, description="Grid column span (for grid layouts)"
+    title: str | None = Field(default=None, description="Card title")
+    description: str | None = Field(default=None, description="Card description")
+    collapsible: bool = Field(default=False, description="Whether card is collapsible")
+    default_collapsed: bool = Field(
+        default=False, description="Initial collapsed state"
     )
-    repeat_for: RepeatFor | None = Field(
-        default=None, description="Repeat configuration for rendering multiple instances"
-    )
-    class_name: str | None = Field(default=None, description="Additional CSS classes")
-    style: dict[str, Any] | None = Field(
-        default=None, description="Inline CSS styles (camelCase properties)"
+    header_actions: list[TableAction] | None = Field(
+        default=None, description="Header action buttons"
     )
 
 
@@ -1060,26 +1062,32 @@ class DataTableComponent(BaseModel):
     )
 
 
-class TabsComponent(BaseModel):
-    """Tabs component."""
+class TabItemComponent(ComponentBase):
+    """Tab item within a Tabs component."""
 
-    id: str = Field(description="Unique component identifier")
+    type: Literal["tab-item"] = Field(default="tab-item", description="Component type")
+    children: list["AppComponent"] = Field(
+        default_factory=list, description="Tab content"
+    )
+    label: str = Field(description="Tab label")
+    value: str | None = Field(
+        default=None, description="Tab value (defaults to label if not provided)"
+    )
+    icon: str | None = Field(default=None, description="Tab icon name")
+
+
+class TabsComponent(ComponentBase):
+    """Tabs container component."""
+
     type: Literal["tabs"] = Field(default="tabs", description="Component type")
-    props: TabsProps = Field(description="Component props")
-    width: ComponentWidth | None = Field(default=None, description="Component width")
-    visible: str | None = Field(default=None, description="Visibility expression")
-    loading_workflows: list[str] | None = Field(
-        default=None, description="Workflow IDs that trigger loading state"
+    children: list["AppComponent"] = Field(
+        default_factory=list, description="TabItemComponent children"
     )
-    grid_span: int | None = Field(
-        default=None, description="Grid column span (for grid layouts)"
+    default_tab: str | None = Field(
+        default=None, description="Default active tab value"
     )
-    repeat_for: RepeatFor | None = Field(
-        default=None, description="Repeat configuration for rendering multiple instances"
-    )
-    class_name: str | None = Field(default=None, description="Additional CSS classes")
-    style: dict[str, Any] | None = Field(
-        default=None, description="Inline CSS styles (camelCase properties)"
+    orientation: Orientation | None = Field(
+        default=None, description="Tab orientation"
     )
 
 
@@ -1106,26 +1114,30 @@ class FileViewerComponent(BaseModel):
     )
 
 
-class ModalComponent(BaseModel):
-    """Modal component."""
+class ModalComponent(ComponentBase):
+    """Modal dialog component."""
 
-    id: str = Field(description="Unique component identifier")
     type: Literal["modal"] = Field(default="modal", description="Component type")
-    props: ModalProps = Field(description="Component props")
-    width: ComponentWidth | None = Field(default=None, description="Component width")
-    visible: str | None = Field(default=None, description="Visibility expression")
-    loading_workflows: list[str] | None = Field(
-        default=None, description="Workflow IDs that trigger loading state"
+    children: list["AppComponent"] = Field(
+        default_factory=list, description="Modal body content"
     )
-    grid_span: int | None = Field(
-        default=None, description="Grid column span (for grid layouts)"
+    title: str = Field(description="Modal title")
+    description: str | None = Field(default=None, description="Modal description")
+    trigger_label: str | None = Field(
+        default=None, description="Trigger button label"
     )
-    repeat_for: RepeatFor | None = Field(
-        default=None, description="Repeat configuration for rendering multiple instances"
+    trigger_variant: ButtonVariant | None = Field(
+        default=None, description="Trigger button variant"
     )
-    class_name: str | None = Field(default=None, description="Additional CSS classes")
-    style: dict[str, Any] | None = Field(
-        default=None, description="Inline CSS styles (camelCase properties)"
+    trigger_size: ButtonSize | None = Field(
+        default=None, description="Trigger button size"
+    )
+    size: ModalSize | None = Field(default=None, description="Modal size")
+    footer_actions: list[ModalFooterAction] | None = Field(
+        default=None, description="Footer actions"
+    )
+    show_close_button: bool | None = Field(
+        default=None, description="Show close button"
     )
 
 
@@ -1244,27 +1256,22 @@ class FormEmbedComponent(BaseModel):
     )
 
 
-class FormGroupComponent(BaseModel):
-    """Form group component."""
+class FormGroupComponent(ComponentBase):
+    """Form group component for grouping form fields."""
 
-    id: str = Field(description="Unique component identifier")
     type: Literal["form-group"] = Field(default="form-group", description="Component type")
-    props: FormGroupProps = Field(description="Component props")
-    width: ComponentWidth | None = Field(default=None, description="Component width")
-    visible: str | None = Field(default=None, description="Visibility expression")
-    loading_workflows: list[str] | None = Field(
-        default=None, description="Workflow IDs that trigger loading state"
+    children: list["AppComponent"] = Field(
+        default_factory=list, description="Form field components"
     )
-    grid_span: int | None = Field(
-        default=None, description="Grid column span (for grid layouts)"
+    label: str | None = Field(default=None, description="Group label")
+    description: str | None = Field(default=None, description="Group description")
+    required: bool | None = Field(
+        default=None, description="Whether fields are required"
     )
-    repeat_for: RepeatFor | None = Field(
-        default=None, description="Repeat configuration for rendering multiple instances"
+    direction: Literal["row", "column"] | None = Field(
+        default=None, description="Layout direction"
     )
-    class_name: str | None = Field(default=None, description="Additional CSS classes")
-    style: dict[str, Any] | None = Field(
-        default=None, description="Inline CSS styles (camelCase properties)"
-    )
+    gap: int | str | None = Field(default=None, description="Gap between fields")
 
 
 # -----------------------------------------------------------------------------
@@ -1277,11 +1284,16 @@ AppComponent = Annotated[
         RowComponent,
         ColumnComponent,
         GridComponent,
+        # Content containers (with children)
+        CardComponent,
+        ModalComponent,
+        TabsComponent,
+        TabItemComponent,
+        FormGroupComponent,
         # Leaf components (no children)
         HeadingComponent,
         TextComponent,
         HtmlComponent,
-        CardComponent,
         DividerComponent,
         SpacerComponent,
         ButtonComponent,
@@ -1290,15 +1302,12 @@ AppComponent = Annotated[
         BadgeComponent,
         ProgressComponent,
         DataTableComponent,
-        TabsComponent,
         FileViewerComponent,
-        ModalComponent,
         TextInputComponent,
         NumberInputComponent,
         SelectComponent,
         CheckboxComponent,
         FormEmbedComponent,
-        FormGroupComponent,
     ],
     Field(discriminator="type"),
 ]
@@ -1447,6 +1456,13 @@ FormGroupProps.model_rebuild()
 RowComponent.model_rebuild()
 ColumnComponent.model_rebuild()
 GridComponent.model_rebuild()
+
+# Rebuild content container components that reference AppComponent
+CardComponent.model_rebuild()
+ModalComponent.model_rebuild()
+TabsComponent.model_rebuild()
+TabItemComponent.model_rebuild()
+FormGroupComponent.model_rebuild()
 
 # Alias for internal tree building (LayoutContainer or simple AppComponentNode)
 LayoutElement = Union[LayoutContainer, AppComponentNode]
@@ -1655,7 +1671,7 @@ def is_app_component(element: LayoutContainer | AppComponent) -> bool:
     return not is_layout_container(element)
 
 
-CONTAINER_TYPES = ("row", "column", "grid", "card", "modal")
+CONTAINER_TYPES = ("row", "column", "grid", "card", "modal", "tabs", "tab-item", "form-group")
 
 
 def can_have_children(element: LayoutContainer | AppComponent) -> bool:
