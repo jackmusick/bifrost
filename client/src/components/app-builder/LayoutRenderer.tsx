@@ -143,6 +143,37 @@ function getWidthClasses(width?: ComponentWidth): string {
 }
 
 /**
+ * Get inline styles for component width using flex grow ratios
+ * This allows flexbox to handle gaps automatically while maintaining proportions
+ * e.g., 1/3 + 2/3 = flex:1 + flex:2 = items fill row in 1:2 ratio
+ */
+function getWidthStyles(width?: ComponentWidth): React.CSSProperties {
+	// Map width fractions to flex grow values
+	// 1/3 -> flex: 1, 2/3 -> flex: 2 (1:2 ratio)
+	// 1/4 -> flex: 1, 3/4 -> flex: 3 (1:3 ratio)
+	// 1/2 -> flex: 1 (equal sizing)
+	const flexGrowMap: Record<string, number> = {
+		"1/2": 1,
+		"1/3": 1,
+		"1/4": 1,
+		"2/3": 2,
+		"3/4": 3,
+	};
+
+	if (width === "full") {
+		return { width: "100%" };
+	}
+
+	if (width && width !== "auto" && flexGrowMap[width]) {
+		return {
+			flex: `${flexGrowMap[width]} 1 0%`,
+			minWidth: 0,
+		};
+	}
+	return {};
+}
+
+/**
  * Get Tailwind classes for layout alignment (cross-axis)
  */
 function getAlignClasses(align?: string): string {
@@ -746,11 +777,14 @@ function renderComponent(
 
 	// Wrap component if it has width, class_name, or style
 	if (normalizedComponent.width || normalizedComponent.class_name || normalizedComponent.style) {
+		const widthStyles = getWidthStyles(normalizedComponent.width ?? undefined);
+		// Don't use Tailwind width classes when we have flex-basis styles (they conflict)
+		const hasFlexStyles = Object.keys(widthStyles).length > 0;
 		return wrapWithSelectable(
 			<div
 				key={normalizedComponent.id}
-				className={cn(widthClass, normalizedComponent.class_name, className)}
-				style={normalizedComponent.style ?? undefined}
+				className={cn(!hasFlexStyles && widthClass, normalizedComponent.class_name, className)}
+				style={{ ...widthStyles, ...normalizedComponent.style }}
 			>
 				{wrappedComponent}
 			</div>,
