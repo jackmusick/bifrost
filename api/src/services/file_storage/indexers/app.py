@@ -10,9 +10,11 @@ from datetime import datetime
 from typing import Any
 from uuid import UUID, uuid4
 
+from pydantic import TypeAdapter
 from sqlalchemy import delete, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from src.models.contracts.app_components import AppComponent as AppComponentModel
 from src.models.orm.applications import AppComponent, Application, AppPage, AppVersion
 
 logger = logging.getLogger(__name__)
@@ -284,50 +286,62 @@ class AppIndexer:
             launch_workflow_data_source_id=page_data.get("launch_workflow_data_source_id"),
             permission=page_data.get("permission", {}),
             page_order=page_order,
-            root_layout_type=page_data.get("root_layout_type", "column"),
-            root_layout_config=page_data.get("root_layout_config", {}),
         )
         self.db.add(page)
         await self.db.flush()  # Get page.id for component FK
 
-        # Create components from layout tree
-        layout = page_data.get("layout")
-        if layout:
-            await self._create_components_from_layout(page.id, layout, parent_id=None)
+        # Create components from children array
+        children = page_data.get("children", [])
+        if children:
+            await self._create_components(children, page.id, parent_id=None)
 
-    async def _create_components_from_layout(
+    async def _create_components(
         self,
+        components: list[dict[str, Any]],
         page_db_id: UUID,
-        layout: dict[str, Any],
-        parent_id: UUID | None,
-        order: int = 0,
+        parent_id: UUID | None = None,
     ) -> None:
-        """Recursively create components from a layout tree."""
-        component_id_str = layout.get("id") or f"comp_{uuid4().hex[:8]}"
-        component_type = layout.get("type", "column")
-        props = layout.get("props", {})
+        """Recursively create component records from nested children array."""
+        adapter = TypeAdapter(AppComponentModel)
 
-        # Create the component
-        component = AppComponent(
-            page_id=page_db_id,
-            component_id=component_id_str,
-            parent_id=parent_id,
-            type=component_type,
-            props=props,
-            component_order=order,
-            visible=layout.get("visible"),
-            width=layout.get("width"),
-            loading_workflows=layout.get("loading_workflows"),
-        )
-        self.db.add(component)
-        await self.db.flush()  # Get component.id for children FK
+        for order, comp_data in enumerate(components):
+            # Pop children before validation (handled recursively)
+            children = comp_data.pop("children", [])
 
-        # Recursively create children
-        children = layout.get("children", [])
-        for child_order, child in enumerate(children):
-            await self._create_components_from_layout(
-                page_db_id, child, parent_id=component.id, order=child_order
+            # Validate component through discriminated union
+            validated = adapter.validate_python({**comp_data, "children": []})
+
+            # Extract flat props (everything except standard fields)
+            component_dict = validated.model_dump(exclude_none=True)
+            component_id_str = component_dict.pop("id")
+            component_type = component_dict.pop("type")
+            visible = component_dict.pop("visible", None)
+            width = component_dict.pop("width", None)
+            loading_workflows = component_dict.pop("loading_workflows", None)
+            component_dict.pop("children", None)  # Already handled
+
+            props = component_dict  # Remaining fields are the props
+
+            # Create ORM record
+            component_uuid = uuid4()
+            record = AppComponent(
+                id=component_uuid,
+                page_id=page_db_id,
+                component_id=component_id_str,
+                parent_id=parent_id,
+                type=component_type,
+                props=props,
+                component_order=order,
+                visible=visible,
+                width=width,
+                loading_workflows=loading_workflows,
             )
+            self.db.add(record)
+            await self.db.flush()  # Get component ID for children FK
+
+            # Recurse for children
+            if children:
+                await self._create_components(children, page_db_id, parent_id=component_uuid)
 
     async def delete_app_for_file(self, path: str) -> int:
         """
