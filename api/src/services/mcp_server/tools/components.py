@@ -291,15 +291,26 @@ async def create_component(
                 from pydantic import TypeAdapter, ValidationError
                 from src.models.contracts.app_components import AppComponent
 
+                # Spread props to top level (unified model has flat props, not nested under 'props')
                 component_data = {
                     "id": component_id,
                     "type": component_type,
-                    "props": props or {},
+                    **(props or {}),
                 }
                 try:
                     adapter = TypeAdapter(AppComponent)
                     validated_component = adapter.validate_python(component_data)
-                    validated_props = validated_component.props.model_dump(exclude_none=True)
+                    # Extract props by dumping and removing base fields stored at row level
+                    component_dict = validated_component.model_dump(exclude_none=True)
+                    # Remove base fields that are stored at row level (not in props JSONB)
+                    base_fields = [
+                        "id", "type", "children", "visible", "width",
+                        "loading_workflows", "grid_span", "repeat_for",
+                        "class_name", "style"
+                    ]
+                    for field in base_fields:
+                        component_dict.pop(field, None)
+                    validated_props = component_dict
                 except ValidationError as e:
                     return json.dumps({
                         "error": f"Invalid component props for type '{component_type}': {e}"
@@ -429,15 +440,26 @@ async def update_component(
                 # Use new type if provided, otherwise use existing component type
                 effective_type = component_type if component_type is not None else component.type
 
+                # Spread props to top level (unified model has flat props, not nested under 'props')
                 component_data = {
                     "id": component_id,
                     "type": effective_type,
-                    "props": props,
+                    **props,
                 }
                 try:
                     adapter = TypeAdapter(AppComponent)
                     validated_component = adapter.validate_python(component_data)
-                    data.props = validated_component.props.model_dump(exclude_none=True)
+                    # Extract props by dumping and removing base fields stored at row level
+                    component_dict = validated_component.model_dump(exclude_none=True)
+                    # Remove base fields that are stored at row level (not in props JSONB)
+                    base_fields = [
+                        "id", "type", "children", "visible", "width",
+                        "loading_workflows", "grid_span", "repeat_for",
+                        "class_name", "style"
+                    ]
+                    for field in base_fields:
+                        component_dict.pop(field, None)
+                    data.props = component_dict
                     updates_made.append("props")
                 except ValidationError as e:
                     return json.dumps({

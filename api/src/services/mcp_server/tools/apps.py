@@ -218,7 +218,8 @@ async def create_app(
 
             page_count = 0
             if create_home_page:
-                # Create blank home page with column layout
+                # Create blank home page - layout will be created via create_page MCP tool
+                # or added when components are first added
                 page = AppPage(
                     id=uuid4(),
                     application_id=app.id,
@@ -226,11 +227,22 @@ async def create_app(
                     title="Home",
                     path="/",
                     version_id=draft_version.id,
-                    root_layout_type="column",
-                    root_layout_config={"gap": 16, "padding": 24},
                     page_order=0,
                 )
                 db.add(page)
+
+                # Create root layout component
+                from src.models.orm.applications import AppComponent
+                root_layout = AppComponent(
+                    id=uuid4(),
+                    page_id=page.id,
+                    component_id="layout_root",
+                    parent_id=None,
+                    type="column",
+                    props={"gap": 16, "padding": 24},
+                    component_order=0,
+                )
+                db.add(root_layout)
                 page_count = 1
 
             await db.commit()
@@ -667,14 +679,44 @@ then component tools for granular edits.
 """
 
     component_types_doc = """
+## Component Model (Unified Flat Props)
+
+All components use a unified model where props are FLAT on the component (not nested under a 'props' key).
+
+Example component data for MCP tools:
+```json
+{
+    "component_id": "my-heading",
+    "type": "heading",
+    "props": {
+        "text": "Welcome",
+        "level": 1
+    }
+}
+```
+
+The props dictionary contents vary by component type - see props models above.
+
 ## Available Component Types
 
+### Container Components (can have children)
+| Type | Description |
+|------|-------------|
+| row | Horizontal flex container (layout) |
+| column | Vertical flex container (layout) |
+| grid | CSS grid container (layout) |
+| card | Container with optional header/title |
+| modal | Dialog/modal container |
+| tabs | Tabbed container |
+| tab-item | Single tab within tabs |
+| form-group | Group form fields with label |
+
+### Leaf Components (no children)
 | Type | Description |
 |------|-------------|
 | heading | Display heading text (h1-h6) |
-| text | Display text with optional markdown |
+| text | Display text content |
 | html | Render raw HTML content |
-| card | Container with header, content, footer |
 | divider | Horizontal dividing line |
 | spacer | Vertical spacing |
 | button | Clickable button with actions |
@@ -683,15 +725,12 @@ then component tools for granular edits.
 | badge | Status indicator |
 | progress | Progress bar |
 | data-table | Data table with sorting/filtering |
-| tabs | Tabbed container |
 | file-viewer | Document/image viewer |
-| modal | Dialog/modal container |
 | text-input | Text input field |
 | number-input | Number input field |
 | select | Dropdown selection |
 | checkbox | Boolean toggle |
 | form-embed | Embed a Bifrost form |
-| form-group | Group form fields |
 
 ## Expression Syntax
 
