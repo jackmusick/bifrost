@@ -6,9 +6,16 @@ Files are versioned - each file belongs to a specific app version.
 
 Endpoints use UUID for app_id and version_id, with path as file identifier.
 Path can contain slashes (e.g., 'pages/clients/[id]').
+
+Path conventions:
+- Root: _layout, _providers only
+- pages/: index, _layout, [param]/, named subfolders
+- components/: files or subfolders (free naming)
+- modules/: files or subfolders (free naming)
 """
 
 import logging
+import re
 from uuid import UUID
 
 from fastapi import APIRouter, HTTPException, Path, status
@@ -32,6 +39,104 @@ router = APIRouter(
     prefix="/api/applications/{app_id}/versions/{version_id}/files",
     tags=["App Code Files"],
 )
+
+
+# =============================================================================
+# Path Validation
+# =============================================================================
+
+# Valid root-level files (no directory prefix)
+ROOT_ALLOWED_FILES = {"_layout", "_providers"}
+
+# Valid top-level directories
+VALID_TOP_DIRS = {"pages", "components", "modules"}
+
+# Pattern for dynamic route segments like [id] or [slug]
+DYNAMIC_SEGMENT_PATTERN = re.compile(r"^\[[\w-]+\]$")
+
+# Pattern for valid file/folder names (alphanumeric, underscore, hyphen)
+VALID_NAME_PATTERN = re.compile(r"^[\w-]+$")
+
+
+def validate_file_path(path: str) -> None:
+    """Validate file path against conventions.
+
+    Path conventions:
+    - Root: only _layout, _providers allowed
+    - pages/: index, _layout, [param]/, named subfolders
+    - components/: files or subfolders (free naming)
+    - modules/: files or subfolders (free naming)
+
+    Raises:
+        HTTPException 400 if path is invalid
+    """
+    if not path:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="File path cannot be empty",
+        )
+
+    # Normalize path (remove leading/trailing slashes)
+    path = path.strip("/")
+
+    # Split into segments
+    segments = path.split("/")
+
+    # Check for empty segments (double slashes)
+    if any(not seg for seg in segments):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Path cannot contain empty segments (double slashes)",
+        )
+
+    # Root level file (no directory)
+    if len(segments) == 1:
+        if segments[0] not in ROOT_ALLOWED_FILES:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=f"Root-level file must be one of: {', '.join(sorted(ROOT_ALLOWED_FILES))}. "
+                f"Use pages/, components/, or modules/ directories for other files.",
+            )
+        return
+
+    # Check top-level directory
+    top_dir = segments[0]
+    if top_dir not in VALID_TOP_DIRS:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Files must be in one of: {', '.join(sorted(VALID_TOP_DIRS))}. "
+            f"Got: '{top_dir}'",
+        )
+
+    # Validate remaining segments
+    for segment in segments[1:]:
+        # Dynamic segments only allowed in pages/
+        if DYNAMIC_SEGMENT_PATTERN.match(segment):
+            if top_dir != "pages":
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail=f"Dynamic segments like [{segment[1:-1]}] are only allowed in pages/",
+                )
+            continue
+
+        # Validate segment name
+        if not VALID_NAME_PATTERN.match(segment):
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=f"Invalid path segment '{segment}'. "
+                "Use only alphanumeric characters, underscores, and hyphens.",
+            )
+
+        # Special files in pages/
+        if top_dir == "pages" and segment in ("index", "_layout"):
+            continue
+
+        # _layout only allowed in pages/ at any level
+        if segment == "_layout" and top_dir != "pages":
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="_layout files are only allowed in pages/",
+            )
 
 
 # =============================================================================
@@ -204,6 +309,9 @@ async def create_code_file(
     # Verify app access
     app = await get_application_or_404(ctx, app_id)
     await validate_version_id(ctx, app, version_id)
+
+    # Validate path conventions
+    validate_file_path(data.path)
 
     # Check for duplicate path in this version
     existing_query = select(AppCodeFile).where(
