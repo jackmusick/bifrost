@@ -29,7 +29,7 @@ from src.routers.applications import ApplicationRepository
 logger = logging.getLogger(__name__)
 
 router = APIRouter(
-    prefix="/api/apps/{app_id}/versions/{version_id}/files",
+    prefix="/api/applications/{app_id}/versions/{version_id}/files",
     tags=["App JSX Files"],
 )
 
