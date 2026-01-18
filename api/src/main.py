@@ -67,7 +67,7 @@ from src.routers import (
     applications_router,
     app_pages_router,
     app_components_router,
-    app_jsx_files_router,
+    app_code_files_router,
     dependencies_router,
     platform_workers_router,
     platform_queue_router,
@@ -435,7 +435,7 @@ def create_app() -> FastAPI:
     app.include_router(applications_router)
     app.include_router(app_pages_router)
     app.include_router(app_components_router)
-    app.include_router(app_jsx_files_router)
+    app.include_router(app_code_files_router)
     app.include_router(dependencies_router)
     app.include_router(platform_workers_router)
     app.include_router(platform_queue_router)

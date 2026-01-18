@@ -1,5 +1,5 @@
 /**
- * JSX Router Builder
+ * App Code Router Builder
  *
  * Converts file-based routing conventions to react-router route configuration.
  * Handles layouts, dynamic segments, and index routes.
@@ -8,9 +8,9 @@
 import type { RouteObject } from "react-router-dom";
 
 /**
- * JSX file from the API
+ * Code file from the API
  */
-export interface JsxFile {
+export interface AppCodeFile {
 	id: string;
 	app_version_id: string;
 	path: string;
@@ -41,11 +41,11 @@ interface RouteNode {
 	/** Full path from root */
 	fullPath: string;
 	/** Layout file for this route level */
-	layout?: JsxFile;
+	layout?: AppCodeFile;
 	/** Index page for this route level */
-	index?: JsxFile;
+	index?: AppCodeFile;
 	/** Named pages at this level (non-index) */
-	pages: Map<string, JsxFile>;
+	pages: Map<string, AppCodeFile>;
 	/** Child route nodes */
 	children: Map<string, RouteNode>;
 }
@@ -54,15 +54,15 @@ interface RouteNode {
  * Route with associated file information
  *
  * This extends RouteObject with file metadata needed for rendering.
- * The actual component rendering happens in JsxPageRenderer.
+ * The actual component rendering happens in AppCodePageRenderer.
  */
-export interface JsxRouteObject extends Omit<RouteObject, "children"> {
-	/** The JSX file to render for this route */
-	file?: JsxFile;
+export interface AppCodeRouteObject extends Omit<RouteObject, "children"> {
+	/** The code file to render for this route */
+	file?: AppCodeFile;
 	/** Whether this is a layout route (has Outlet) */
 	isLayout?: boolean;
 	/** Child routes */
-	children?: JsxRouteObject[];
+	children?: AppCodeRouteObject[];
 }
 
 /**
@@ -139,17 +139,17 @@ function getDirPath(path: string): string {
 /**
  * Check if a file is a page file (in pages/ directory)
  */
-function isPageFile(file: JsxFile): boolean {
+function isPageFile(file: AppCodeFile): boolean {
 	return file.path.startsWith("pages/") || file.path === "_layout";
 }
 
 /**
  * Build the route tree from files
  *
- * @param files - All JSX files for the app
+ * @param files - All code files for the app
  * @returns Root route node
  */
-function buildRouteTree(files: JsxFile[]): RouteNode {
+function buildRouteTree(files: AppCodeFile[]): RouteNode {
 	const root: RouteNode = {
 		segment: "",
 		fullPath: "",
@@ -217,10 +217,10 @@ function buildRouteTree(files: JsxFile[]): RouteNode {
  *
  * @param node - Route node to convert
  * @param isRoot - Whether this is the root node
- * @returns JsxRouteObject or null if empty
+ * @returns AppCodeRouteObject or null if empty
  */
-function nodeToRoute(node: RouteNode, isRoot: boolean = false): JsxRouteObject | null {
-	const children: JsxRouteObject[] = [];
+function nodeToRoute(node: RouteNode, isRoot: boolean = false): AppCodeRouteObject | null {
+	const children: AppCodeRouteObject[] = [];
 
 	// Add index route if present
 	if (node.index) {
@@ -295,7 +295,7 @@ function nodeToRoute(node: RouteNode, isRoot: boolean = false): JsxRouteObject |
 }
 
 /**
- * Build react-router route configuration from JSX files
+ * Build react-router route configuration from code files
  *
  * Converts file-based routing conventions to RouteObject[]:
  * - `_layout` files become parent routes with Outlet
@@ -303,7 +303,7 @@ function nodeToRoute(node: RouteNode, isRoot: boolean = false): JsxRouteObject |
  * - `[param]` segments become `:param` dynamic routes
  * - Nested directories become nested routes
  *
- * @param files - All JSX files for the app version
+ * @param files - All code files for the app version
  * @returns Array of route objects for react-router
  *
  * @example
@@ -320,7 +320,7 @@ function nodeToRoute(node: RouteNode, isRoot: boolean = false): JsxRouteObject |
  * // Returns RouteObject[] ready for createBrowserRouter
  * ```
  */
-export function buildRoutes(files: JsxFile[]): JsxRouteObject[] {
+export function buildRoutes(files: AppCodeFile[]): AppCodeRouteObject[] {
 	if (files.length === 0) {
 		return [];
 	}

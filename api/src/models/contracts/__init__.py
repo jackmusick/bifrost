@@ -97,6 +97,10 @@ from src.models.contracts.forms import (
 
 # Applications (App Builder)
 from src.models.contracts.applications import (
+    AppCodeFileCreate,
+    AppCodeFileListResponse,
+    AppCodeFileResponse,
+    AppCodeFileUpdate,
     ApplicationCreate,
     ApplicationDefinition,
     ApplicationDraftSave,
@@ -958,6 +962,11 @@ __all__ = [
     "ApplicationRollbackRequest",
     "VersionHistoryEntry",
     "VersionHistoryResponse",
+    # App Code Files
+    "AppCodeFileCreate",
+    "AppCodeFileUpdate",
+    "AppCodeFileResponse",
+    "AppCodeFileListResponse",
     # App Builder Components
     "RepeatFor",
     "OnCompleteAction",

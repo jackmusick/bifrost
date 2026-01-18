@@ -143,6 +143,11 @@ const ApplicationEditor = lazy(() =>
 		default: m.ApplicationEditor,
 	})),
 );
+const AppCodeEditorPage = lazy(() =>
+	import("@/pages/AppCodeEditorPage").then((m) => ({
+		default: m.AppCodeEditorPage,
+	})),
+);
 const ApplicationRunner = lazy(() =>
 	import("@/pages/AppRouter").then((m) => ({
 		default: m.AppPublished,
@@ -386,10 +391,26 @@ function AppRoutes() {
 							}
 						/>
 						<Route
+							path="apps/new/code"
+							element={
+								<ProtectedRoute requirePlatformAdmin>
+									<AppCodeEditorPage />
+								</ProtectedRoute>
+							}
+						/>
+						<Route
 							path="apps/new"
 							element={
 								<ProtectedRoute requirePlatformAdmin>
 									<ApplicationEditor />
+								</ProtectedRoute>
+							}
+						/>
+						<Route
+							path="apps/:applicationId/edit/code"
+							element={
+								<ProtectedRoute requirePlatformAdmin>
+									<AppCodeEditorPage />
 								</ProtectedRoute>
 							}
 						/>

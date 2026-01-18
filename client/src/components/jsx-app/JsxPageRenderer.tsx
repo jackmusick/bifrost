@@ -8,13 +8,13 @@
  */
 
 import React, { useEffect, useState, useMemo } from "react";
-import { createComponent } from "@/lib/jsx-runtime";
+import { createComponent } from "@/lib/app-code-runtime";
 import {
 	resolveAppComponents,
 	extractComponentNames,
 	isBuiltInComponent,
-} from "@/lib/jsx-resolver";
-import type { JsxFile } from "@/lib/jsx-router";
+} from "@/lib/app-code-resolver";
+import type { AppCodeFile } from "@/lib/app-code-router";
 import { Skeleton } from "@/components/ui/skeleton";
 import { JsxErrorBoundary } from "./JsxErrorBoundary";
 
@@ -23,8 +23,8 @@ interface JsxPageRendererProps {
 	appId: string;
 	/** Version ID (draft or published) */
 	versionId: string;
-	/** The JSX file to render */
-	file: JsxFile;
+	/** The app code file to render */
+	file: AppCodeFile;
 }
 
 /**

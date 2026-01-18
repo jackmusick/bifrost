@@ -24,7 +24,7 @@ from src.models.contracts.app_components import (
     PageDefinition,
     PagePermission,
 )
-from src.models.orm.applications import AppComponent, AppPage, Application, AppVersion, JsxFile
+from src.models.orm.applications import AppCodeFile, AppComponent, AppPage, Application, AppVersion
 
 logger = logging.getLogger(__name__)
 
@@ -973,25 +973,25 @@ class AppBuilderService:
         logger.info(f"Copied page '{source_page.page_id}' to version {target_version_id}")
         return new_page
 
-    async def copy_jsx_files_to_version(
+    async def copy_code_files_to_version(
         self,
         source_version_id: UUID,
         target_version_id: UUID,
     ) -> int:
-        """Copy all JSX files from one version to another.
+        """Copy all code files from one version to another.
 
         Returns the number of files copied.
         """
-        # Get all JSX files from source version
-        files_query = select(JsxFile).where(
-            JsxFile.app_version_id == source_version_id,
+        # Get all code files from source version
+        files_query = select(AppCodeFile).where(
+            AppCodeFile.app_version_id == source_version_id,
         )
         result = await self.session.execute(files_query)
         source_files = list(result.scalars().all())
 
         # Copy each file to the target version
         for file in source_files:
-            new_file = JsxFile(
+            new_file = AppCodeFile(
                 app_version_id=target_version_id,
                 path=file.path,
                 source=file.source,
@@ -1007,7 +1007,7 @@ class AppBuilderService:
         app: Application,
         source_version_id: UUID,
     ) -> AppVersion:
-        """Create a new version by copying all pages and JSX files from a source version.
+        """Create a new version by copying all pages and code files from a source version.
 
         This is used during publish to create a new version from the draft.
         """
@@ -1027,14 +1027,14 @@ class AppBuilderService:
         for page in source_pages:
             await self.copy_page_to_version(page, new_version.id)
 
-        # Copy JSX files to the new version
-        jsx_file_count = await self.copy_jsx_files_to_version(
+        # Copy code files to the new version
+        code_file_count = await self.copy_code_files_to_version(
             source_version_id, new_version.id
         )
 
         logger.info(
             f"Created version {new_version.id} for app {app.id} "
-            f"with {len(source_pages)} pages and {jsx_file_count} JSX files"
+            f"with {len(source_pages)} pages and {code_file_count} code files"
         )
         return new_version
 

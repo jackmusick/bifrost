@@ -15,13 +15,13 @@ import {
 } from "react-router-dom";
 import type { RouteObject } from "react-router-dom";
 import { authFetch } from "@/lib/api-client";
-import { buildRoutes, type JsxFile, type JsxRouteObject } from "@/lib/jsx-router";
-import { createComponent } from "@/lib/jsx-runtime";
+import { buildRoutes, type AppCodeFile, type AppCodeRouteObject } from "@/lib/app-code-router";
+import { createComponent } from "@/lib/app-code-runtime";
 import {
 	resolveAppComponents,
 	extractComponentNames,
 	isBuiltInComponent,
-} from "@/lib/jsx-resolver";
+} from "@/lib/app-code-resolver";
 import { PageLoader } from "@/components/PageLoader";
 import { JsxErrorBoundary } from "./JsxErrorBoundary";
 import { JsxPageRenderer } from "./JsxPageRenderer";
@@ -51,12 +51,12 @@ export function useJsxAppContext(): JsxAppContext {
 }
 
 /**
- * Fetch all JSX files for an app version
+ * Fetch all app code files for an app version
  */
 async function fetchAppFiles(
 	appId: string,
 	versionId: string,
-): Promise<JsxFile[]> {
+): Promise<AppCodeFile[]> {
 	const response = await authFetch(
 		`/api/apps/${appId}/versions/${versionId}/files`,
 	);
@@ -73,9 +73,9 @@ async function fetchAppFiles(
  * Find a special file by path
  */
 function findSpecialFile(
-	files: JsxFile[],
+	files: AppCodeFile[],
 	path: string,
-): JsxFile | undefined {
+): AppCodeFile | undefined {
 	return files.find((f) => f.path === path);
 }
 
@@ -89,7 +89,7 @@ function LayoutWrapper({
 	appId,
 	versionId,
 }: {
-	file: JsxFile;
+	file: AppCodeFile;
 	appId: string;
 	versionId: string;
 }) {
@@ -198,7 +198,7 @@ function ProvidersWrapper({
 	versionId,
 	children,
 }: {
-	file: JsxFile;
+	file: AppCodeFile;
 	appId: string;
 	versionId: string;
 	children: React.ReactNode;
@@ -290,13 +290,13 @@ function ProvidersWrapper({
 }
 
 /**
- * Convert JsxRouteObject to react-router RouteObject
+ * Convert AppCodeRouteObject to react-router RouteObject
  *
  * This function creates the actual route elements by wrapping
  * pages with JsxPageRenderer and layouts with LayoutWrapper.
  */
 function convertToRouteObjects(
-	routes: JsxRouteObject[],
+	routes: AppCodeRouteObject[],
 	appId: string,
 	versionId: string,
 ): RouteObject[] {
@@ -358,7 +358,7 @@ function AppContent({
 	versionId,
 	basePath,
 }: {
-	files: JsxFile[];
+	files: AppCodeFile[];
 	appId: string;
 	versionId: string;
 	basePath: string;
@@ -429,7 +429,7 @@ export function JsxAppShell({
 	versionId,
 	basePath = "/",
 }: JsxAppShellProps) {
-	const [files, setFiles] = useState<JsxFile[] | null>(null);
+	const [files, setFiles] = useState<AppCodeFile[] | null>(null);
 	const [error, setError] = useState<string | null>(null);
 	const [isLoading, setIsLoading] = useState(true);
 

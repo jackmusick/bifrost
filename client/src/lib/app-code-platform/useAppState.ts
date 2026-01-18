@@ -1,7 +1,7 @@
 /**
  * Platform hook: useAppState
  *
- * Zustand-backed cross-page state for JSX apps.
+ * Zustand-backed cross-page state for app code.
  * State persists across page navigations within the same app session.
  */
 
@@ -10,10 +10,10 @@ import { subscribeWithSelector } from "zustand/middleware";
 import { useCallback } from "react";
 
 /**
- * Internal store for JSX app state
+ * Internal store for app state
  * Manages cross-page state that persists during the session
  */
-interface JsxAppStateStore {
+interface AppCodeStateStore {
 	/** App-level state values keyed by name */
 	state: Record<string, unknown>;
 
@@ -28,10 +28,10 @@ interface JsxAppStateStore {
 }
 
 /**
- * Zustand store for JSX app state
+ * Zustand store for app state
  * Uses subscribeWithSelector for granular re-renders
  */
-export const jsxAppStateStore = create<JsxAppStateStore>()(
+export const appCodeStateStore = create<AppCodeStateStore>()(
 	subscribeWithSelector((set, get) => ({
 		state: {},
 
@@ -84,8 +84,8 @@ export function useAppState<T>(
 	initialValue: T,
 ): [T, (value: T) => void] {
 	// Subscribe to changes for this specific key
-	const storedValue = jsxAppStateStore((state) => state.state[key]);
-	const setStateAction = jsxAppStateStore((state) => state.setState);
+	const storedValue = appCodeStateStore((state) => state.state[key]);
+	const setStateAction = appCodeStateStore((state) => state.setState);
 
 	// Return initialValue if no stored value exists
 	const value = (storedValue !== undefined ? storedValue : initialValue) as T;
@@ -102,10 +102,10 @@ export function useAppState<T>(
 }
 
 /**
- * Reset all JSX app state
+ * Reset all app state
  * Called when switching between apps or on app unmount
  * @internal
  */
-export function resetJsxAppState(): void {
-	jsxAppStateStore.getState().reset();
+export function resetAppCodeState(): void {
+	appCodeStateStore.getState().reset();
 }

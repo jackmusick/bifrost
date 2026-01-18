@@ -153,7 +153,7 @@ class AppEngine(str, Enum):
     App Builder rendering engine.
 
     - COMPONENTS: JSON component tree (v1, default)
-    - JSX: JSX-based engine with file-based components (v2)
+    - CODE: Code-based engine with file-based components (v2)
     """
     COMPONENTS = "components"
-    JSX = "jsx"
+    CODE = "code"

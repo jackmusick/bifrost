@@ -55,6 +55,13 @@ from src.models.orm import (
     WorkflowROIDaily,
     WorkspaceFile,
     DeveloperContext,
+    # Applications (App Builder)
+    Application,
+    AppVersion,
+    AppPage,
+    AppComponent,
+    AppRole,
+    AppCodeFile,
 )
 
 # Pydantic schemas (API request/response) - from contracts/
@@ -115,6 +122,13 @@ __all__ = [
     "WorkflowROIDaily",
     "WorkspaceFile",
     "DeveloperContext",
+    # Applications (App Builder)
+    "Application",
+    "AppVersion",
+    "AppPage",
+    "AppComponent",
+    "AppRole",
+    "AppCodeFile",
     # Enums
     "ExecutionStatus",
     "FormAccessLevel",

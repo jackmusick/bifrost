@@ -1,19 +1,19 @@
 /**
- * JSX Runtime
+ * App Code Runtime
  *
- * Creates React components from compiled JSX code by injecting
+ * Creates React components from compiled code by injecting
  * the platform scope (React hooks, platform APIs, UI components).
  */
 
 import React from "react";
-import { compileJsx, wrapAsComponent } from "./jsx-compiler";
-import { createPlatformScope } from "./jsx-platform/scope";
+import { compileAppCode, wrapAsComponent } from "./app-code-compiler";
+import { createPlatformScope } from "./app-code-platform/scope";
 
 /**
- * Platform scope containing all APIs available to JSX code
+ * Platform scope containing all APIs available to user code
  *
  * This object is injected into the runtime scope of every component.
- * JSX code can use these without imports:
+ * User code can use these without imports:
  *
  * ```jsx
  * const [count, setCount] = useState(0);
@@ -50,11 +50,11 @@ export const PLATFORM_SCOPE: Record<string, unknown> = {
 	lazy: React.lazy,
 	Suspense: React.Suspense,
 
-	// Platform APIs from jsx-platform
+	// Platform APIs from app-code-platform
 	...createPlatformScope(),
 
 	// UI Components will be added later via customComponents parameter
-	// or by extending this scope with jsx-ui components
+	// or by extending this scope with UI components
 };
 
 /**
@@ -90,7 +90,7 @@ function ErrorComponent({
 }
 
 /**
- * Create a React component from JSX source or pre-compiled code
+ * Create a React component from source or pre-compiled code
  *
  * This function:
  * 1. Compiles the source (if not already compiled)
@@ -98,10 +98,10 @@ function ErrorComponent({
  * 3. Creates a function with the platform scope injected
  * 4. Returns the resulting React component
  *
- * @param source - JSX source code or pre-compiled JavaScript
+ * @param source - Source code or pre-compiled JavaScript
  * @param customComponents - Additional components to inject (e.g., app-specific components)
  * @param useCompiled - If true, source is already compiled and doesn't need transformation
- * @returns A React component that renders the JSX
+ * @returns A React component that renders the code
  *
  * @example
  * ```typescript
@@ -130,7 +130,7 @@ export function createComponent(
 	if (useCompiled) {
 		compiled = source;
 	} else {
-		const result = compileJsx(source);
+		const result = compileAppCode(source);
 
 		if (!result.success) {
 			// Return an error component that shows the compilation error

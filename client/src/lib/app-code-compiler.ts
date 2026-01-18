@@ -1,5 +1,5 @@
 /**
- * JSX Compiler
+ * App Code Compiler
  *
  * Browser-based JSX/TSX compilation using Babel standalone.
  * Compiles user-authored JSX source into executable JavaScript.
@@ -8,7 +8,7 @@
 import { transform } from "@babel/standalone";
 
 /**
- * Result of JSX compilation
+ * Result of code compilation
  */
 export interface CompileResult {
 	/** Whether compilation succeeded */
@@ -30,7 +30,7 @@ export interface CompileResult {
  *
  * @example
  * ```typescript
- * const result = compileJsx(`
+ * const result = compileAppCode(`
  *   const [count, setCount] = useState(0);
  *   return <Button onClick={() => setCount(c => c + 1)}>{count}</Button>;
  * `);
@@ -42,7 +42,7 @@ export interface CompileResult {
  * }
  * ```
  */
-export function compileJsx(source: string): CompileResult {
+export function compileAppCode(source: string): CompileResult {
 	try {
 		const result = transform(source, {
 			presets: ["react", "typescript"],

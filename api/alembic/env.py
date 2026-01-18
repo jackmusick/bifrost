@@ -29,7 +29,6 @@ from src.models import (  # noqa: F401
     CLISession,
     Config,
     Workflow,
-    DataProvider,
     OAuthProvider,
     OAuthToken,
     AuditLog,
@@ -38,6 +37,13 @@ from src.models import (  # noqa: F401
     TrustedDevice,
     UserOAuthAccount,
     GlobalBranding,
+    # Applications (App Builder)
+    Application,
+    AppVersion,
+    AppPage,
+    AppComponent,
+    AppRole,
+    AppCodeFile,
 )
 
 # Alembic Config object

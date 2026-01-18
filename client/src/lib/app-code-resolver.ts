@@ -1,12 +1,12 @@
 /**
- * JSX File Resolver
+ * App Code File Resolver
  *
- * Fetches and compiles JSX files from the API with caching.
+ * Fetches and compiles code files from the API with caching.
  * Handles component resolution for custom app components.
  */
 
 import React from "react";
-import { createComponent } from "./jsx-runtime";
+import { createComponent } from "./app-code-runtime";
 import { authFetch } from "./api-client";
 
 /**
@@ -18,9 +18,9 @@ interface ComponentCache {
 }
 
 /**
- * JSX file response from the API
+ * Code file response from the API
  */
-interface JsxFileResponse {
+interface AppCodeFileResponse {
 	id: string;
 	app_version_id: string;
 	path: string;
@@ -48,7 +48,7 @@ function buildCacheKey(
 }
 
 /**
- * Fetch a JSX file from the API
+ * Fetch a code file from the API
  *
  * @param appId - Application ID
  * @param versionId - Version ID (draft or published)
@@ -59,7 +59,7 @@ export async function resolveFile(
 	appId: string,
 	versionId: string,
 	path: string,
-): Promise<JsxFileResponse | null> {
+): Promise<AppCodeFileResponse | null> {
 	try {
 		// URL-encode the path since it may contain slashes
 		const encodedPath = encodeURIComponent(path);
@@ -76,7 +76,7 @@ export async function resolveFile(
 
 		return response.json();
 	} catch (error) {
-		console.error(`Error fetching JSX file ${path}:`, error);
+		console.error(`Error fetching code file ${path}:`, error);
 		return null;
 	}
 }
@@ -143,12 +143,12 @@ export async function resolveAppComponents(
 }
 
 /**
- * Extract component names from JSX source code
+ * Extract component names from source code
  *
  * Uses regex to find all PascalCase component references in JSX.
  * This is a simple heuristic - a full AST parser would be more accurate.
  *
- * @param source - JSX source code
+ * @param source - Source code
  * @returns Array of unique component names
  *
  * @example

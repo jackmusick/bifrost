@@ -1,5 +1,5 @@
 import { useEffect, useCallback } from "react";
-import { useFileTree } from "@/hooks/useFileTree";
+import { useFileTree, workspaceOperations } from "@/components/file-tree";
 import { useEditorStore } from "@/stores/editorStore";
 import { fileService } from "@/services/fileService";
 
@@ -10,7 +10,7 @@ import { fileService } from "@/services/fileService";
  * - Checks active file for conflicts
  */
 export function useWindowFocusRefresh() {
-	const { refreshAll } = useFileTree();
+	const { refreshAll } = useFileTree(workspaceOperations);
 	const setConflictState = useEditorStore((state) => state.setConflictState);
 
 	// Handle window focus event

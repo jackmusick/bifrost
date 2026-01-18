@@ -1,12 +1,12 @@
 """
-Application, AppVersion, AppPage, AppComponent, and JsxFile ORM models.
+Application, AppVersion, AppPage, AppComponent, and AppCodeFile ORM models.
 
 Represents applications for the App Builder with:
 - applications: metadata, navigation, permissions, engine type
 - app_versions: version snapshots (active = live, draft = current work)
 - app_pages: one row per page, linked to a version (components engine)
 - app_components: one row per component with parent_id for tree structure (components engine)
-- app_jsx_files: JSX/TS source files for JSX engine apps
+- app_code_files: source code files for code engine apps
 """
 
 from __future__ import annotations
@@ -54,8 +54,8 @@ class AppVersion(Base):
         cascade="all, delete-orphan",
         foreign_keys="AppPage.version_id",
     )
-    jsx_files: Mapped[list["JsxFile"]] = relationship(
-        "JsxFile",
+    code_files: Mapped[list["AppCodeFile"]] = relationship(
+        "AppCodeFile",
         back_populates="version",
         cascade="all, delete-orphan",
     )
@@ -305,14 +305,14 @@ class AppComponent(Base):
         return self.type in ("row", "column", "grid")
 
 
-class JsxFile(Base):
-    """JSX/TypeScript source file for JSX engine apps.
+class AppCodeFile(Base):
+    """Source code file for code engine apps.
 
     Each file belongs to a version (via app_version_id).
     Path is the unique identifier within a version (e.g., "pages/clients/[id]").
     """
 
-    __tablename__ = "app_jsx_files"
+    __tablename__ = "app_code_files"
 
     id: Mapped[UUID] = mapped_column(primary_key=True, default=uuid4)
     app_version_id: Mapped[UUID] = mapped_column(
@@ -323,8 +323,8 @@ class JsxFile(Base):
     path: Mapped[str] = mapped_column(String(500), nullable=False)
 
     # Content
-    source: Mapped[str] = mapped_column(Text, nullable=False)  # Original JSX/TS source
-    compiled: Mapped[str | None] = mapped_column(Text, default=None)  # Babel output
+    source: Mapped[str] = mapped_column(Text, nullable=False)  # Original source code
+    compiled: Mapped[str | None] = mapped_column(Text, default=None)  # Compiled output
 
     # Timestamps
     created_at: Mapped[datetime] = mapped_column(
@@ -338,9 +338,9 @@ class JsxFile(Base):
     )
 
     # Relationships
-    version: Mapped["AppVersion"] = relationship("AppVersion", back_populates="jsx_files")
+    version: Mapped["AppVersion"] = relationship("AppVersion", back_populates="code_files")
 
     __table_args__ = (
-        Index("ix_jsx_files_version", "app_version_id"),
-        Index("ix_jsx_files_path", "app_version_id", "path", unique=True),
+        Index("ix_code_files_version", "app_version_id"),
+        Index("ix_code_files_path", "app_version_id", "path", unique=True),
     )

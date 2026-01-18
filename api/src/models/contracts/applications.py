@@ -55,7 +55,7 @@ class ApplicationCreate(ApplicationBase):
     )
     engine: str = Field(
         default="components",
-        description="Rendering engine: 'components' (JSON tree) or 'jsx' (JSX files)",
+        description="Rendering engine: 'components' (JSON tree) or 'code' (code files)",
     )
 
     @field_validator("slug")
@@ -81,8 +81,8 @@ class ApplicationCreate(ApplicationBase):
     @classmethod
     def validate_engine(cls, v: str) -> str:
         """Validate engine is one of the allowed values."""
-        if v not in ("components", "jsx"):
-            raise ValueError("engine must be 'components' or 'jsx'")
+        if v not in ("components", "code"):
+            raise ValueError("engine must be 'components' or 'code'")
         return v
 
 
@@ -147,7 +147,7 @@ class ApplicationPublic(ApplicationBase):
     access_level: str = Field(default="authenticated")
     engine: str = Field(
         default="components",
-        description="Rendering engine: 'components' (JSON tree) or 'jsx' (JSX files)",
+        description="Rendering engine: 'components' (JSON tree) or 'code' (code files)",
     )
     role_ids: list[UUID] = Field(default_factory=list)
     navigation: NavigationConfig | None = Field(
@@ -501,11 +501,11 @@ class ComponentTreeNode(BaseModel):
     children: list["ComponentTreeNode"] = Field(default_factory=list)
 
 
-# ==================== JSX FILE MODELS ====================
+# ==================== CODE FILE MODELS ====================
 
 
-class JsxFileBase(BaseModel):
-    """Shared JSX file fields."""
+class AppCodeFileBase(BaseModel):
+    """Shared code file fields."""
 
     path: str = Field(
         min_length=1,
@@ -514,37 +514,37 @@ class JsxFileBase(BaseModel):
     )
 
 
-class JsxFileCreate(JsxFileBase):
-    """Input for creating a JSX file."""
+class AppCodeFileCreate(AppCodeFileBase):
+    """Input for creating a code file."""
 
     source: str = Field(
         min_length=1,
-        description="Original JSX/TypeScript source code",
+        description="Original source code",
     )
 
 
-class JsxFileUpdate(BaseModel):
-    """Input for updating a JSX file."""
+class AppCodeFileUpdate(BaseModel):
+    """Input for updating a code file."""
 
     source: str | None = Field(
         default=None,
-        description="Updated JSX/TypeScript source code",
+        description="Updated source code",
     )
     compiled: str | None = Field(
         default=None,
-        description="Compiled JavaScript output (Babel)",
+        description="Compiled output",
     )
 
 
-class JsxFileResponse(JsxFileBase):
-    """Full JSX file response."""
+class AppCodeFileResponse(AppCodeFileBase):
+    """Full code file response."""
 
     model_config = ConfigDict(from_attributes=True)
 
     id: UUID
     app_version_id: UUID = Field(description="ID of the version this file belongs to")
-    source: str = Field(description="Original JSX/TypeScript source code")
-    compiled: str | None = Field(default=None, description="Compiled JavaScript output")
+    source: str = Field(description="Original source code")
+    compiled: str | None = Field(default=None, description="Compiled output")
     created_at: datetime
     updated_at: datetime
 
@@ -553,10 +553,10 @@ class JsxFileResponse(JsxFileBase):
         return dt.isoformat()
 
 
-class JsxFileListResponse(BaseModel):
-    """Response for listing JSX files."""
+class AppCodeFileListResponse(BaseModel):
+    """Response for listing code files."""
 
-    files: list[JsxFileResponse]
+    files: list[AppCodeFileResponse]
     total: int
 
 

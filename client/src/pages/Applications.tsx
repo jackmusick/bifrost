@@ -19,6 +19,7 @@ import {
 	Table as TableIcon,
 	Eye,
 } from "lucide-react";
+import { AppEngineSelector } from "@/components/app-builder/AppEngineSelector";
 import { Button } from "@/components/ui/button";
 import {
 	Card,
@@ -69,6 +70,7 @@ export function Applications() {
 	const [searchTerm, setSearchTerm] = useState("");
 	const [viewMode, setViewMode] = useState<"grid" | "table">("grid");
 	const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false);
+	const [isEngineSelectOpen, setIsEngineSelectOpen] = useState(false);
 	const [selectedApp, setSelectedApp] = useState<{
 		id: string;
 		name: string;
@@ -105,7 +107,7 @@ export function Applications() {
 	const canManageApps = isPlatformAdmin;
 
 	const handleCreate = () => {
-		navigate("/apps/new");
+		setIsEngineSelectOpen(true);
 	};
 
 	const handleEdit = (appId: string) => {
@@ -603,6 +605,12 @@ export function Applications() {
 					</AlertDialogFooter>
 				</AlertDialogContent>
 			</AlertDialog>
+
+			{/* Engine Selection Dialog */}
+			<AppEngineSelector
+				open={isEngineSelectOpen}
+				onOpenChange={setIsEngineSelectOpen}
+			/>
 		</div>
 	);
 }

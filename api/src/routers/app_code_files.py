@@ -1,7 +1,7 @@
 """
-App JSX Files Router
+App Code Files Router
 
-CRUD operations for JSX/TypeScript source files in JSX engine applications.
+CRUD operations for code source files in code engine applications.
 Files are versioned - each file belongs to a specific app version.
 
 Endpoints use UUID for app_id and version_id, with path as file identifier.
@@ -18,19 +18,19 @@ from src.core.auth import Context, CurrentUser
 from src.core.exceptions import AccessDeniedError
 from src.core.pubsub import publish_app_draft_update
 from src.models.contracts.applications import (
-    JsxFileCreate,
-    JsxFileListResponse,
-    JsxFileResponse,
-    JsxFileUpdate,
+    AppCodeFileCreate,
+    AppCodeFileListResponse,
+    AppCodeFileResponse,
+    AppCodeFileUpdate,
 )
-from src.models.orm.applications import Application, JsxFile
+from src.models.orm.applications import Application, AppCodeFile
 from src.routers.applications import ApplicationRepository
 
 logger = logging.getLogger(__name__)
 
 router = APIRouter(
     prefix="/api/applications/{app_id}/versions/{version_id}/files",
-    tags=["App JSX Files"],
+    tags=["App Code Files"],
 )
 
 
@@ -95,120 +95,120 @@ async def validate_version_id(
             )
 
 
-async def get_jsx_file_or_404(
+async def get_code_file_or_404(
     ctx: Context,
     version_id: UUID,
     file_path: str,
-) -> JsxFile:
-    """Get JSX file by version_id and path or raise 404."""
-    query = select(JsxFile).where(
-        JsxFile.app_version_id == version_id,
-        JsxFile.path == file_path,
+) -> AppCodeFile:
+    """Get code file by version_id and path or raise 404."""
+    query = select(AppCodeFile).where(
+        AppCodeFile.app_version_id == version_id,
+        AppCodeFile.path == file_path,
     )
     result = await ctx.db.execute(query)
-    jsx_file = result.scalar_one_or_none()
+    code_file = result.scalar_one_or_none()
 
-    if not jsx_file:
+    if not code_file:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail=f"File '{file_path}' not found",
         )
 
-    return jsx_file
+    return code_file
 
 
-def jsx_file_to_response(jsx_file: JsxFile) -> JsxFileResponse:
+def code_file_to_response(code_file: AppCodeFile) -> AppCodeFileResponse:
     """Convert ORM model to response."""
-    return JsxFileResponse(
-        id=jsx_file.id,
-        app_version_id=jsx_file.app_version_id,
-        path=jsx_file.path,
-        source=jsx_file.source,
-        compiled=jsx_file.compiled,
-        created_at=jsx_file.created_at,
-        updated_at=jsx_file.updated_at,
+    return AppCodeFileResponse(
+        id=code_file.id,
+        app_version_id=code_file.app_version_id,
+        path=code_file.path,
+        source=code_file.source,
+        compiled=code_file.compiled,
+        created_at=code_file.created_at,
+        updated_at=code_file.updated_at,
     )
 
 
 # =============================================================================
-# JSX File CRUD Endpoints
+# Code File CRUD Endpoints
 # =============================================================================
 
 
 @router.get(
     "",
-    response_model=JsxFileListResponse,
-    summary="List JSX files",
+    response_model=AppCodeFileListResponse,
+    summary="List code files",
 )
-async def list_jsx_files(
+async def list_code_files(
     app_id: UUID = Path(..., description="Application UUID"),
     version_id: UUID = Path(..., description="Version UUID"),
     ctx: Context = None,
     user: CurrentUser = None,
-) -> JsxFileListResponse:
-    """List all JSX files for a specific app version."""
+) -> AppCodeFileListResponse:
+    """List all code files for a specific app version."""
     # Verify app access
     app = await get_application_or_404(ctx, app_id)
     await validate_version_id(ctx, app, version_id)
 
     query = (
-        select(JsxFile)
-        .where(JsxFile.app_version_id == version_id)
-        .order_by(JsxFile.path)
+        select(AppCodeFile)
+        .where(AppCodeFile.app_version_id == version_id)
+        .order_by(AppCodeFile.path)
     )
     result = await ctx.db.execute(query)
     files = list(result.scalars().all())
 
-    return JsxFileListResponse(
-        files=[jsx_file_to_response(f) for f in files],
+    return AppCodeFileListResponse(
+        files=[code_file_to_response(f) for f in files],
         total=len(files),
     )
 
 
 @router.get(
     "/{file_path:path}",
-    response_model=JsxFileResponse,
-    summary="Get JSX file by path",
+    response_model=AppCodeFileResponse,
+    summary="Get code file by path",
 )
-async def get_jsx_file(
+async def get_code_file(
     app_id: UUID = Path(..., description="Application UUID"),
     version_id: UUID = Path(..., description="Version UUID"),
     file_path: str = Path(..., description="File path (can contain slashes)"),
     ctx: Context = None,
     user: CurrentUser = None,
-) -> JsxFileResponse:
-    """Get a specific JSX file by its path."""
+) -> AppCodeFileResponse:
+    """Get a specific code file by its path."""
     # Verify app access
     app = await get_application_or_404(ctx, app_id)
     await validate_version_id(ctx, app, version_id)
 
-    jsx_file = await get_jsx_file_or_404(ctx, version_id, file_path)
+    code_file = await get_code_file_or_404(ctx, version_id, file_path)
 
-    return jsx_file_to_response(jsx_file)
+    return code_file_to_response(code_file)
 
 
 @router.post(
     "",
-    response_model=JsxFileResponse,
+    response_model=AppCodeFileResponse,
     status_code=status.HTTP_201_CREATED,
-    summary="Create JSX file",
+    summary="Create code file",
 )
-async def create_jsx_file(
-    data: JsxFileCreate,
+async def create_code_file(
+    data: AppCodeFileCreate,
     app_id: UUID = Path(..., description="Application UUID"),
     version_id: UUID = Path(..., description="Version UUID"),
     ctx: Context = None,
     user: CurrentUser = None,
-) -> JsxFileResponse:
-    """Create a new JSX file in the specified version."""
+) -> AppCodeFileResponse:
+    """Create a new code file in the specified version."""
     # Verify app access
     app = await get_application_or_404(ctx, app_id)
     await validate_version_id(ctx, app, version_id)
 
     # Check for duplicate path in this version
-    existing_query = select(JsxFile).where(
-        JsxFile.app_version_id == version_id,
-        JsxFile.path == data.path,
+    existing_query = select(AppCodeFile).where(
+        AppCodeFile.app_version_id == version_id,
+        AppCodeFile.path == data.path,
     )
     existing = await ctx.db.execute(existing_query)
     if existing.scalar_one_or_none():
@@ -218,90 +218,90 @@ async def create_jsx_file(
         )
 
     # Create the file
-    jsx_file = JsxFile(
+    code_file = AppCodeFile(
         app_version_id=version_id,
         path=data.path,
         source=data.source,
     )
-    ctx.db.add(jsx_file)
+    ctx.db.add(code_file)
     await ctx.db.flush()
-    await ctx.db.refresh(jsx_file)
+    await ctx.db.refresh(code_file)
 
     # Emit event for real-time updates
     await publish_app_draft_update(
         app_id=str(app_id),
         user_id=str(user.user_id),
         user_name=user.name or user.email or "Unknown",
-        entity_type="jsx_file",
+        entity_type="code_file",
         entity_id=data.path,
     )
 
-    logger.info(f"Created JSX file '{data.path}' in app {app_id} version {version_id}")
-    return jsx_file_to_response(jsx_file)
+    logger.info(f"Created code file '{data.path}' in app {app_id} version {version_id}")
+    return code_file_to_response(code_file)
 
 
 @router.patch(
     "/{file_path:path}",
-    response_model=JsxFileResponse,
-    summary="Update JSX file",
+    response_model=AppCodeFileResponse,
+    summary="Update code file",
 )
-async def update_jsx_file(
-    data: JsxFileUpdate,
+async def update_code_file(
+    data: AppCodeFileUpdate,
     app_id: UUID = Path(..., description="Application UUID"),
     version_id: UUID = Path(..., description="Version UUID"),
     file_path: str = Path(..., description="File path (can contain slashes)"),
     ctx: Context = None,
     user: CurrentUser = None,
-) -> JsxFileResponse:
-    """Update a JSX file's source or compiled output."""
+) -> AppCodeFileResponse:
+    """Update a code file's source or compiled output."""
     # Verify app access
     app = await get_application_or_404(ctx, app_id)
     await validate_version_id(ctx, app, version_id)
 
-    jsx_file = await get_jsx_file_or_404(ctx, version_id, file_path)
+    code_file = await get_code_file_or_404(ctx, version_id, file_path)
 
     # Apply updates
     if data.source is not None:
-        jsx_file.source = data.source
+        code_file.source = data.source
     if data.compiled is not None:
-        jsx_file.compiled = data.compiled
+        code_file.compiled = data.compiled
 
     await ctx.db.flush()
-    await ctx.db.refresh(jsx_file)
+    await ctx.db.refresh(code_file)
 
     # Emit event for real-time updates
     await publish_app_draft_update(
         app_id=str(app_id),
         user_id=str(user.user_id),
         user_name=user.name or user.email or "Unknown",
-        entity_type="jsx_file",
+        entity_type="code_file",
         entity_id=file_path,
     )
 
-    logger.info(f"Updated JSX file '{file_path}' in app {app_id} version {version_id}")
-    return jsx_file_to_response(jsx_file)
+    logger.info(f"Updated code file '{file_path}' in app {app_id} version {version_id}")
+    return code_file_to_response(code_file)
 
 
 @router.delete(
     "/{file_path:path}",
     status_code=status.HTTP_204_NO_CONTENT,
-    summary="Delete JSX file",
+    summary="Delete code file",
 )
-async def delete_jsx_file(
+async def delete_code_file(
     app_id: UUID = Path(..., description="Application UUID"),
     version_id: UUID = Path(..., description="Version UUID"),
     file_path: str = Path(..., description="File path (can contain slashes)"),
     ctx: Context = None,
     user: CurrentUser = None,
 ) -> None:
-    """Delete a JSX file."""
+    """Delete a code file."""
     # Verify app access
     app = await get_application_or_404(ctx, app_id)
     await validate_version_id(ctx, app, version_id)
 
-    jsx_file = await get_jsx_file_or_404(ctx, version_id, file_path)
+    code_file = await get_code_file_or_404(ctx, version_id, file_path)
 
-    await ctx.db.delete(jsx_file)
+    await ctx.db.delete(code_file)
     await ctx.db.flush()
 
     # Emit event for real-time updates
@@ -309,8 +309,8 @@ async def delete_jsx_file(
         app_id=str(app_id),
         user_id=str(user.user_id),
         user_name=user.name or user.email or "Unknown",
-        entity_type="jsx_file",
+        entity_type="code_file",
         entity_id=file_path,
     )
 
-    logger.info(f"Deleted JSX file '{file_path}' from app {app_id} version {version_id}")
+    logger.info(f"Deleted code file '{file_path}' from app {app_id} version {version_id}")

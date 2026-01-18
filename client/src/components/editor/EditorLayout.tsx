@@ -1,7 +1,7 @@
 import { useState, useRef, useCallback, useEffect } from "react";
 import { Sidebar } from "./Sidebar";
 import { StatusBar } from "./StatusBar";
-import { FileTree } from "./FileTree";
+import { WorkspaceFileTree } from "@/components/file-tree";
 import { CodeEditor } from "./CodeEditor";
 import { TerminalPanel } from "./TerminalPanel";
 import { RunPanel } from "./RunPanel";
@@ -289,7 +289,7 @@ export function EditorLayout() {
 							style={{ width: `${sidebarWidth}px` }}
 						>
 							<div className="flex-1 overflow-hidden">
-								{sidebarPanel === "files" && <FileTree />}
+								{sidebarPanel === "files" && <WorkspaceFileTree />}
 								{sidebarPanel === "search" && <SearchPanel />}
 								{sidebarPanel === "sourceControl" && (
 									<SourceControlPanel />

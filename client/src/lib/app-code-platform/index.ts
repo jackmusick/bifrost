@@ -1,15 +1,15 @@
 /**
- * JSX Platform APIs
+ * App Code Platform APIs
  *
  * This module exports all platform hooks and functions that are injected
- * into the JSX runtime scope. These APIs allow JSX apps to interact with
+ * into the runtime scope. These APIs allow apps to interact with
  * the platform (run workflows, navigate, access user info, etc.).
  *
- * Usage: These are injected into the JSX runtime scope automatically.
- * JSX code can use them without imports:
+ * Usage: These are injected into the runtime scope automatically.
+ * User code can use them without imports:
  *
  * ```jsx
- * // All of these are available in JSX code
+ * // All of these are available in code
  * const { data, isLoading } = useWorkflow('list_clients');
  * const user = useUser();
  * const params = useParams();
@@ -38,15 +38,19 @@ export { useUser } from "./useUser";
 // App state
 export {
 	useAppState,
-	jsxAppStateStore,
-	resetJsxAppState,
+	appCodeStateStore,
+	resetAppCodeState,
 } from "./useAppState";
 
+// UI Components
+export { APP_CODE_COMPONENTS } from "./components";
+export type { AppCodeComponents } from "./components";
+
 /**
- * Platform scope object for JSX runtime
+ * Platform scope object for runtime
  *
  * This object contains all platform APIs that are injected into
- * the JSX runtime scope. The JSX compiler uses this to make
+ * the runtime scope. The compiler uses this to make
  * these functions/hooks available to user-authored code.
  *
  * Note: React hooks (useState, useEffect, etc.) are added separately

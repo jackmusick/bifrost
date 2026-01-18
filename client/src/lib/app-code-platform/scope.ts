@@ -1,7 +1,7 @@
 /**
- * Platform Scope for JSX Runtime
+ * Platform Scope for App Code Runtime
  *
- * Creates the scope object that gets injected into the JSX runtime.
+ * Creates the scope object that gets injected into the runtime.
  * All platform APIs are bundled here for easy injection.
  */
 
@@ -17,11 +17,11 @@ import { useAppState } from "./useAppState";
  * Platform scope object containing all platform APIs
  *
  * This is merged with React hooks and UI components to create
- * the full scope available to JSX code.
+ * the full scope available to user code.
  *
  * @example
  * ```typescript
- * // In jsx-runtime.ts
+ * // In app-code-runtime.ts
  * const scope = {
  *   ...createPlatformScope(),
  *   React,
