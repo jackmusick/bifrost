@@ -30,6 +30,19 @@ export interface AppDraftUpdate {
 	timestamp: string;
 }
 
+// Code engine file update (includes full content for real-time preview)
+export interface AppCodeFileUpdate {
+	type: "app_code_file_update";
+	appId: string;
+	action: "create" | "update" | "delete";
+	path: string;
+	source: string | null;
+	compiled: string | null;
+	userId: string;
+	userName: string;
+	timestamp: string;
+}
+
 export interface AppPublishedUpdate {
 	type: "app_published";
 	appId: string;
@@ -390,6 +403,7 @@ type WebSocketMessage =
 	| ChatStreamChunk
 	| (ReindexMessage & { jobId: string })
 	| AppDraftUpdate
+	| AppCodeFileUpdate
 	| AppPublishedUpdate
 	| PoolMessage;
 
@@ -432,6 +446,7 @@ type CLISessionUpdateCallback = (update: CLISessionUpdate) => void;
 type EventSourceUpdateCallback = (update: EventSourceUpdate) => void;
 type ChatStreamCallback = (chunk: ChatStreamChunk) => void;
 type AppDraftUpdateCallback = (update: AppDraftUpdate) => void;
+type AppCodeFileUpdateCallback = (update: AppCodeFileUpdate) => void;
 type AppPublishedUpdateCallback = (update: AppPublishedUpdate) => void;
 type PoolMessageCallback = (message: PoolMessage) => void;
 
@@ -475,6 +490,10 @@ class WebSocketService {
 	private appDraftUpdateCallbacks = new Map<
 		string,
 		Set<AppDraftUpdateCallback>
+	>();
+	private appCodeFileUpdateCallbacks = new Map<
+		string,
+		Set<AppCodeFileUpdateCallback>
 	>();
 	private appPublishedUpdateCallbacks = new Map<
 		string,
@@ -806,6 +825,10 @@ class WebSocketService {
 				this.dispatchAppDraftUpdate(message as AppDraftUpdate);
 				break;
 
+			case "app_code_file_update":
+				this.dispatchAppCodeFileUpdate(message as AppCodeFileUpdate);
+				break;
+
 			case "app_published":
 				this.dispatchAppPublished(message as AppPublishedUpdate);
 				break;
@@ -879,6 +902,12 @@ class WebSocketService {
 	private dispatchAppDraftUpdate(update: AppDraftUpdate) {
 		const appId = update.appId;
 		const callbacks = this.appDraftUpdateCallbacks.get(appId);
+		callbacks?.forEach((cb) => cb(update));
+	}
+
+	private dispatchAppCodeFileUpdate(update: AppCodeFileUpdate) {
+		const appId = update.appId;
+		const callbacks = this.appCodeFileUpdateCallbacks.get(appId);
 		callbacks?.forEach((cb) => cb(update));
 	}
 
@@ -1427,7 +1456,7 @@ class WebSocketService {
 	}
 
 	/**
-	 * Subscribe to draft updates for an app
+	 * Subscribe to draft updates for an app (components engine)
 	 */
 	onAppDraftUpdate(
 		appId: string,
@@ -1443,6 +1472,28 @@ class WebSocketService {
 			this.appDraftUpdateCallbacks.get(appId)?.delete(callback);
 			if (this.appDraftUpdateCallbacks.get(appId)?.size === 0) {
 				this.appDraftUpdateCallbacks.delete(appId);
+			}
+		};
+	}
+
+	/**
+	 * Subscribe to code file updates for an app (code engine)
+	 * Includes full source/compiled content for real-time preview
+	 */
+	onAppCodeFileUpdate(
+		appId: string,
+		callback: AppCodeFileUpdateCallback,
+	): () => void {
+		if (!this.appCodeFileUpdateCallbacks.has(appId)) {
+			this.appCodeFileUpdateCallbacks.set(appId, new Set());
+		}
+		this.appCodeFileUpdateCallbacks.get(appId)!.add(callback);
+
+		// Return unsubscribe function
+		return () => {
+			this.appCodeFileUpdateCallbacks.get(appId)?.delete(callback);
+			if (this.appCodeFileUpdateCallbacks.get(appId)?.size === 0) {
+				this.appCodeFileUpdateCallbacks.delete(appId);
 			}
 		};
 	}

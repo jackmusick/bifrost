@@ -10,7 +10,7 @@ import logging
 from typing import Any
 from uuid import UUID
 
-from src.core.pubsub import publish_app_draft_update
+from src.core.pubsub import publish_app_code_file_update
 from src.services.mcp_server.tool_decorator import system_tool
 from src.services.mcp_server.tool_registry import ToolCategory
 
@@ -284,13 +284,15 @@ async def code_create_file(context: Any, app_id: str, path: str, source: str) ->
             await db.flush()
             await db.refresh(file)
 
-            # Publish update
-            await publish_app_draft_update(
+            # Publish update with full content for real-time preview
+            await publish_app_code_file_update(
                 app_id=app_id,
                 user_id=str(context.user_id) if context.user_id else "mcp",
                 user_name=context.user_name or "MCP Tool",
-                entity_type="code_file",
-                entity_id=path,
+                path=path,
+                source=source,
+                compiled=None,
+                action="create",
             )
 
             await db.commit()
@@ -377,13 +379,15 @@ async def code_update_file(context: Any, app_id: str, path: str, source: str) ->
             await db.flush()
             await db.refresh(file)
 
-            # Publish update
-            await publish_app_draft_update(
+            # Publish update with full content for real-time preview
+            await publish_app_code_file_update(
                 app_id=app_id,
                 user_id=str(context.user_id) if context.user_id else "mcp",
                 user_name=context.user_name or "MCP Tool",
-                entity_type="code_file",
-                entity_id=path,
+                path=path,
+                source=source,
+                compiled=file.compiled,
+                action="update",
             )
 
             await db.commit()
@@ -465,13 +469,15 @@ async def code_delete_file(context: Any, app_id: str, path: str) -> str:
             await db.delete(file)
             await db.flush()
 
-            # Publish update
-            await publish_app_draft_update(
+            # Publish delete event
+            await publish_app_code_file_update(
                 app_id=app_id,
                 user_id=str(context.user_id) if context.user_id else "mcp",
                 user_name=context.user_name or "MCP Tool",
-                entity_type="code_file",
-                entity_id=path,
+                path=path,
+                source=None,
+                compiled=None,
+                action="delete",
             )
 
             await db.commit()

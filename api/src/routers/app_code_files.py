@@ -23,7 +23,7 @@ from sqlalchemy import select
 
 from src.core.auth import Context, CurrentUser
 from src.core.exceptions import AccessDeniedError
-from src.core.pubsub import publish_app_draft_update
+from src.core.pubsub import publish_app_code_file_update
 from src.models.contracts.applications import (
     AppCodeFileCreate,
     AppCodeFileListResponse,
@@ -335,13 +335,15 @@ async def create_code_file(
     await ctx.db.flush()
     await ctx.db.refresh(code_file)
 
-    # Emit event for real-time updates
-    await publish_app_draft_update(
+    # Emit event for real-time updates with full content
+    await publish_app_code_file_update(
         app_id=str(app_id),
         user_id=str(user.user_id),
         user_name=user.name or user.email or "Unknown",
-        entity_type="code_file",
-        entity_id=data.path,
+        path=data.path,
+        source=data.source,
+        compiled=None,
+        action="create",
     )
 
     logger.info(f"Created code file '{data.path}' in app {app_id} version {version_id}")
@@ -377,13 +379,15 @@ async def update_code_file(
     await ctx.db.flush()
     await ctx.db.refresh(code_file)
 
-    # Emit event for real-time updates
-    await publish_app_draft_update(
+    # Emit event for real-time updates with full content
+    await publish_app_code_file_update(
         app_id=str(app_id),
         user_id=str(user.user_id),
         user_name=user.name or user.email or "Unknown",
-        entity_type="code_file",
-        entity_id=file_path,
+        path=file_path,
+        source=code_file.source,
+        compiled=code_file.compiled,
+        action="update",
     )
 
     logger.info(f"Updated code file '{file_path}' in app {app_id} version {version_id}")
@@ -413,12 +417,14 @@ async def delete_code_file(
     await ctx.db.flush()
 
     # Emit event for real-time updates
-    await publish_app_draft_update(
+    await publish_app_code_file_update(
         app_id=str(app_id),
         user_id=str(user.user_id),
         user_name=user.name or user.email or "Unknown",
-        entity_type="code_file",
-        entity_id=file_path,
+        path=file_path,
+        source=None,
+        compiled=None,
+        action="delete",
     )
 
     logger.info(f"Deleted code file '{file_path}' from app {app_id} version {version_id}")
