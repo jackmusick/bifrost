@@ -144,13 +144,13 @@ const ApplicationEditor = lazy(() =>
 	})),
 );
 const ApplicationRunner = lazy(() =>
-	import("@/pages/ApplicationRunner").then((m) => ({
-		default: m.ApplicationRunner,
+	import("@/pages/AppRouter").then((m) => ({
+		default: m.AppPublished,
 	})),
 );
 const ApplicationPreview = lazy(() =>
-	import("@/pages/ApplicationRunner").then((m) => ({
-		default: m.ApplicationPreview,
+	import("@/pages/AppRouter").then((m) => ({
+		default: m.AppPreview,
 	})),
 );
 const ApplicationEmbed = lazy(() =>
