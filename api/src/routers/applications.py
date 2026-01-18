@@ -469,6 +469,7 @@ async def application_to_public(
         is_published=application.is_published,
         has_unpublished_changes=application.has_unpublished_changes,
         access_level=application.access_level,
+        engine=application.engine,
         role_ids=role_ids,
         navigation=application.navigation,
     )
