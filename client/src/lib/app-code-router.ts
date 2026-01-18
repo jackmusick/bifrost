@@ -8,7 +8,7 @@
 import type { RouteObject } from "react-router-dom";
 import type { components } from "@/lib/v1";
 
-export type AppCodeFile = components["schemas"]["AppCodeFileResponse"];
+export type AppCodeFile = components["schemas"]["AppFileResponse"];
 
 /**
  * Parsed route segment

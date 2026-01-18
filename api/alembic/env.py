@@ -40,10 +40,8 @@ from src.models import (  # noqa: F401
     # Applications (App Builder)
     Application,
     AppVersion,
-    AppPage,
-    AppComponent,
+    AppFile,
     AppRole,
-    AppCodeFile,
 )
 
 # Alembic Config object

@@ -58,10 +58,8 @@ from src.models.orm import (
     # Applications (App Builder)
     Application,
     AppVersion,
-    AppPage,
-    AppComponent,
+    AppFile,
     AppRole,
-    AppCodeFile,
 )
 
 # Pydantic schemas (API request/response) - from contracts/
@@ -125,10 +123,8 @@ __all__ = [
     # Applications (App Builder)
     "Application",
     "AppVersion",
-    "AppPage",
-    "AppComponent",
+    "AppFile",
     "AppRole",
-    "AppCodeFile",
     # Enums
     "ExecutionStatus",
     "FormAccessLevel",

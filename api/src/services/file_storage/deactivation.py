@@ -67,7 +67,6 @@ class DeactivationProtectionService:
             List of affected entities with entity_type, id, name, reference_type
         """
         from src.models import Form, FormField, Agent, AgentTool
-        from src.models.orm.applications import Application, AppPage
 
         affected: list[dict[str, str]] = []
 
@@ -142,37 +141,9 @@ class DeactivationProtectionService:
                 "reference_type": "tool",
             })
 
-        # Find apps that reference this workflow
-        # Apps use a versioned page/component structure:
-        # - AppPage.launch_workflow_id references workflows
-        # - AppComponent.props may contain workflow_id references
-        try:
-            workflow_uuid = UUID_type(workflow_id)
-        except ValueError:
-            workflow_uuid = None
-
-        if workflow_uuid:
-            # Check pages with this workflow as launch_workflow_id
-            page_stmt = select(AppPage).where(AppPage.launch_workflow_id == workflow_uuid)
-            page_result = await self.db.execute(page_stmt)
-            pages = page_result.scalars().all()
-
-            # Track which apps we've already added
-            added_app_ids: set[UUID_type] = set()
-            for page in pages:
-                if page.application_id not in added_app_ids:
-                    # Get the app to include its name
-                    app_stmt = select(Application).where(Application.id == page.application_id)
-                    app_result = await self.db.execute(app_stmt)
-                    app = app_result.scalar_one_or_none()
-                    if app:
-                        affected.append({
-                            "entity_type": "app",
-                            "id": str(app.id),
-                            "name": app.name,
-                            "reference_type": "page_launch_workflow",
-                        })
-                        added_app_ids.add(page.application_id)
+        # Note: The component engine has been removed. Apps no longer reference
+        # workflows through pages/components. Code engine apps reference workflows
+        # through their code files, which is not tracked in the database.
 
         return affected
 

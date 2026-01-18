@@ -14,8 +14,10 @@ interface JsxUser {
 	email: string;
 	/** User's display name */
 	name: string;
-	/** User's primary role (first role in roles array, or empty string) */
-	role: string;
+	/** All roles assigned to the user */
+	roles: string[];
+	/** Check if user has a specific role */
+	hasRole: (role: string) => boolean;
 	/** User's organization ID (empty string if platform user) */
 	organizationId: string;
 }
@@ -23,7 +25,7 @@ interface JsxUser {
 /**
  * Get the current authenticated user
  *
- * @returns User object with id, email, name, role, and organizationId
+ * @returns User object with id, email, name, roles, hasRole(), and organizationId
  *
  * @example
  * ```jsx
@@ -33,7 +35,7 @@ interface JsxUser {
  *   <div>
  *     <Text>Welcome, {user.name}</Text>
  *     <Text muted>{user.email}</Text>
- *     {user.role === 'Admin' && (
+ *     {user.hasRole('Admin') && (
  *       <Button onClick={() => navigate('/settings')}>
  *         Settings
  *       </Button>
@@ -52,18 +54,20 @@ export function useUser(): JsxUser {
 			id: "",
 			email: "",
 			name: "",
-			role: "",
+			roles: [],
+			hasRole: () => false,
 			organizationId: "",
 		};
 	}
+
+	const roles = user.roles ?? [];
 
 	return {
 		id: user.id,
 		email: user.email,
 		name: user.name,
-		// Return the first role, or empty string if no roles
-		role: user.roles.length > 0 ? user.roles[0] : "",
-		// Return organization ID or empty string for platform users
+		roles,
+		hasRole: (role: string) => roles.includes(role),
 		organizationId: user.organizationId ?? "",
 	};
 }

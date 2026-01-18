@@ -176,10 +176,17 @@ export interface AppCodeUser {
 	name: string;
 
 	/**
-	 * User's primary role.
-	 * This is the first role in the user's roles array, or empty string if no roles.
+	 * All roles assigned to the user.
+	 * Use hasRole() for role checking.
 	 */
-	role: string;
+	roles: string[];
+
+	/**
+	 * Check if user has a specific role.
+	 * @param role - The role to check for
+	 * @returns true if the user has the specified role
+	 */
+	hasRole: (role: string) => boolean;
 
 	/**
 	 * User's organization ID.
@@ -192,7 +199,7 @@ export interface AppCodeUser {
  * Hook to get the current authenticated user information.
  * Returns a consistent shape even if the user is not authenticated.
  *
- * @returns User object with id, email, name, role, and organizationId
+ * @returns User object with id, email, name, roles, hasRole(), and organizationId
  *
  * @example
  * ```jsx
@@ -202,7 +209,7 @@ export interface AppCodeUser {
  *   <div>
  *     <Text>Welcome, {user.name}</Text>
  *     <Text muted>{user.email}</Text>
- *     {user.role === 'Admin' && (
+ *     {user.hasRole('Admin') && (
  *       <Button onClick={() => navigate('/settings')}>
  *         Settings
  *       </Button>

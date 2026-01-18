@@ -2,20 +2,87 @@
 Application contract models for Bifrost App Builder.
 
 Provides Pydantic models for API request/response handling.
-Supports the 3-table schema: applications -> app_pages -> app_components
+Applications use code-based files (TSX/TypeScript) stored in app_files table.
 
 Type Alignment:
 These models are designed to match the frontend TypeScript types exactly.
 """
 
 from datetime import datetime
-from typing import Any
+from typing import Any, Literal
 from uuid import UUID
 
-from pydantic import BaseModel, ConfigDict, Field, field_serializer, field_validator, model_validator
+from pydantic import BaseModel, ConfigDict, Field, field_serializer, field_validator
 import re
 
-from src.models.contracts.app_components import NavigationConfig, PageDefinition, PermissionConfig
+
+# ==================== NAVIGATION & PERMISSION TYPES ====================
+
+
+PageTransition = Literal["fade", "slide", "blur", "none"]
+PermissionLevel = Literal["none", "view", "edit", "admin"]
+
+
+class NavItem(BaseModel):
+    """Navigation item for sidebar/navbar."""
+
+    id: str = Field(description="Item identifier (usually page ID)")
+    label: str = Field(description="Display label")
+    icon: str | None = Field(default=None, description="Icon name (lucide icon)")
+    path: str | None = Field(default=None, description="Navigation path")
+    visible: str | None = Field(default=None, description="Visibility expression")
+    order: int | None = Field(default=None, description="Order in navigation")
+    is_section: bool | None = Field(
+        default=None, description="Whether this is a section header (group)"
+    )
+    children: list["NavItem"] | None = Field(
+        default=None, description="Child items for section groups"
+    )
+
+
+class NavigationConfig(BaseModel):
+    """Navigation configuration for the application."""
+
+    sidebar: list[NavItem] | None = Field(
+        default=None, description="Sidebar navigation items"
+    )
+    show_sidebar: bool | None = Field(
+        default=None, description="Whether to show the sidebar"
+    )
+    show_header: bool | None = Field(
+        default=None, description="Whether to show the header"
+    )
+    logo_url: str | None = Field(default=None, description="Custom logo URL")
+    brand_color: str | None = Field(default=None, description="Brand color (hex)")
+    page_transition: PageTransition | None = Field(
+        default=None,
+        description="Page transition animation. Defaults to 'fade'. Use 'none' to disable.",
+    )
+
+
+class PermissionRule(BaseModel):
+    """Permission rule for app access control."""
+
+    role: str = Field(
+        description='Role that has this permission (e.g., "admin", "user", "*" for all)'
+    )
+    level: Literal["view", "edit", "admin"] = Field(
+        description="Permission level: view, edit, admin"
+    )
+
+
+class PermissionConfig(BaseModel):
+    """Permission configuration for an application."""
+
+    public: bool | None = Field(
+        default=None, description="Whether the app is public (no auth required)"
+    )
+    default_level: PermissionLevel | None = Field(
+        default=None, description="Default permission level for authenticated users"
+    )
+    rules: list[PermissionRule] | None = Field(
+        default=None, description="Role-based permission rules"
+    )
 
 # ==================== APPLICATION MODELS ====================
 
@@ -53,10 +120,6 @@ class ApplicationCreate(ApplicationBase):
         default_factory=list,
         description="Role IDs for role_based access (ignored if access_level is 'authenticated')",
     )
-    engine: str = Field(
-        default="components",
-        description="Rendering engine: 'components' (JSON tree) or 'code' (code files)",
-    )
 
     @field_validator("slug")
     @classmethod
@@ -75,14 +138,6 @@ class ApplicationCreate(ApplicationBase):
         """Validate access_level is one of the allowed values."""
         if v not in ("authenticated", "role_based"):
             raise ValueError("access_level must be 'authenticated' or 'role_based'")
-        return v
-
-    @field_validator("engine")
-    @classmethod
-    def validate_engine(cls, v: str) -> str:
-        """Validate engine is one of the allowed values."""
-        if v not in ("components", "code"):
-            raise ValueError("engine must be 'components' or 'code'")
         return v
 
 
@@ -122,7 +177,6 @@ class ApplicationPublic(ApplicationBase):
     """Application output for API responses.
 
     This is the unified model for both list/get operations AND export/import.
-    Fields like `pages` are optional - omitted for list views, included for export.
     """
 
     model_config = ConfigDict(from_attributes=True)
@@ -145,12 +199,8 @@ class ApplicationPublic(ApplicationBase):
     is_published: bool
     has_unpublished_changes: bool
     access_level: str = Field(default="authenticated")
-    engine: str = Field(
-        default="components",
-        description="Rendering engine: 'components' (JSON tree) or 'code' (code files)",
-    )
     role_ids: list[UUID] = Field(default_factory=list)
-    navigation: NavigationConfig | None = Field(
+    navigation: NavigationConfig | dict[str, Any] | None = Field(
         default=None,
         description="Navigation configuration (sidebar items, etc.)",
     )
@@ -158,10 +208,6 @@ class ApplicationPublic(ApplicationBase):
     permissions: PermissionConfig | None = Field(
         default=None,
         description="Permission configuration (included in export)",
-    )
-    pages: list[PageDefinition] | None = Field(
-        default=None,
-        description="Page definitions with nested layout/components (included in export)",
     )
 
     @field_serializer("created_at", "updated_at", "published_at")
@@ -251,260 +297,10 @@ class VersionHistoryResponse(BaseModel):
     )
 
 
-# ==================== PAGE MODELS ====================
+# ==================== APP FILE MODELS ====================
 
 
-class AppPageBase(BaseModel):
-    """Shared page fields."""
-
-    page_id: str = Field(
-        min_length=1,
-        max_length=255,
-        pattern=r"^[a-z][a-z0-9_-]*$",
-        description="Page identifier (lowercase letters, numbers, underscores, hyphens)",
-    )
-    title: str = Field(min_length=1, max_length=255, description="Page display title")
-    path: str = Field(min_length=1, max_length=255, description="Page URL path (e.g., '/' or '/settings')")
-
-
-class AppPageCreate(AppPageBase):
-    """Input for creating a page."""
-
-    data_sources: list[dict[str, Any]] = Field(default_factory=list, description="Page-level data sources")
-    variables: dict[str, Any] = Field(default_factory=dict, description="Page-level variables")
-    launch_workflow_id: UUID | None = Field(default=None, description="Workflow to execute on page mount")
-    launch_workflow_params: dict[str, Any] | None = Field(default=None, description="Parameters for launch workflow")
-    launch_workflow_data_source_id: str | None = Field(default=None, description="Data source ID for workflow results (defaults to workflow function name)")
-    permission: dict[str, Any] = Field(default_factory=dict, description="Page permission config (allowedRoles, etc.)")
-    page_order: int = Field(default=0, ge=0, description="Order in navigation/page list")
-
-
-class AppPageUpdate(BaseModel):
-    """Input for updating a page."""
-
-    title: str | None = Field(default=None, min_length=1, max_length=255)
-    path: str | None = Field(default=None, min_length=1, max_length=255)
-    data_sources: list[dict[str, Any]] | None = None
-    variables: dict[str, Any] | None = None
-    launch_workflow_id: UUID | None = None
-    launch_workflow_params: dict[str, Any] | None = None
-    launch_workflow_data_source_id: str | None = None
-    permission: dict[str, Any] | None = None
-    page_order: int | None = Field(default=None, ge=0)
-
-
-class AppPageSummary(BaseModel):
-    """Page summary for listings (no component details)."""
-
-    model_config = ConfigDict(from_attributes=True)
-
-    id: UUID
-    page_id: str
-    title: str
-    path: str
-    version_id: UUID = Field(description="ID of the version this page belongs to")
-    page_order: int
-    permission: dict[str, Any]
-    created_at: datetime
-    updated_at: datetime
-
-    @field_serializer("created_at", "updated_at")
-    def serialize_dt(self, dt: datetime) -> str:
-        return dt.isoformat()
-
-
-class AppPageResponse(AppPageSummary):
-    """Full page response with all fields (but not component tree)."""
-
-    application_id: UUID
-    data_sources: list[dict[str, Any]]
-    variables: dict[str, Any]
-    launch_workflow_id: UUID | None
-    launch_workflow_params: dict[str, Any] | None
-    launch_workflow_data_source_id: str | None
-
-
-class AppPageListResponse(BaseModel):
-    """Response for listing pages."""
-
-    pages: list[AppPageSummary]
-    total: int
-
-
-# ==================== COMPONENT MODELS ====================
-
-
-class AppComponentBase(BaseModel):
-    """Shared component fields."""
-
-    component_id: str = Field(
-        min_length=1,
-        max_length=255,
-        description="Component identifier (e.g., 'btn_submit', 'table_customers')",
-    )
-    type: str = Field(
-        min_length=1,
-        max_length=50,
-        description="Component type (button, text, data-table, row, column, grid, etc.)",
-    )
-
-
-class AppComponentCreate(AppComponentBase):
-    """Input for creating a component."""
-
-    parent_id: UUID | None = Field(default=None, description="Parent component ID (null for root level)")
-    props: dict[str, Any] = Field(default_factory=dict, description="Component-specific properties")
-    component_order: int = Field(default=0, ge=0, description="Order among siblings")
-    visible: str | None = Field(default=None, description="Visibility expression (e.g., \"{{ user.role == 'admin' }}\")")
-    width: str | None = Field(default=None, max_length=20, description="Component width (auto, full, 1/2, etc.)")
-    loading_workflows: list[str] | None = Field(default=None, description="Workflow IDs that show loading skeleton")
-
-    @model_validator(mode="after")
-    def validate_layout_props(self) -> "AppComponentCreate":
-        """Validate layout container props match expected types."""
-        if self.type in ("row", "column", "grid"):
-            # Validate layout-specific props
-            props = self.props or {}
-            if "padding" in props and not isinstance(props["padding"], int | type(None)):
-                raise ValueError(f"padding must be an integer, got {type(props['padding']).__name__}")
-            if "gap" in props and not isinstance(props["gap"], int | type(None)):
-                raise ValueError(f"gap must be an integer, got {type(props['gap']).__name__}")
-            if "columns" in props and not isinstance(props["columns"], int | type(None)):
-                raise ValueError(f"columns must be an integer, got {type(props['columns']).__name__}")
-            if "maxHeight" in props and not isinstance(props["maxHeight"], int | type(None)):
-                raise ValueError(f"maxHeight must be an integer, got {type(props['maxHeight']).__name__}")
-            if "stickyOffset" in props and not isinstance(props["stickyOffset"], int | type(None)):
-                raise ValueError(f"stickyOffset must be an integer, got {type(props['stickyOffset']).__name__}")
-            if "distribute" in props and props["distribute"] not in (None, "natural", "equal", "fit"):
-                raise ValueError(f"distribute must be one of: natural, equal, fit, got {props['distribute']}")
-            if "overflow" in props and props["overflow"] not in (None, "auto", "scroll", "hidden", "visible"):
-                raise ValueError(f"overflow must be one of: auto, scroll, hidden, visible, got {props['overflow']}")
-            if "sticky" in props and props["sticky"] not in (None, "top", "bottom"):
-                raise ValueError(f"sticky must be one of: top, bottom, got {props['sticky']}")
-            if "align" in props and props["align"] not in (None, "start", "center", "end", "stretch"):
-                raise ValueError(f"align must be one of: start, center, end, stretch, got {props['align']}")
-            if "justify" in props and props["justify"] not in (None, "start", "center", "end", "between", "around"):
-                raise ValueError(f"justify must be one of: start, center, end, between, around, got {props['justify']}")
-        return self
-
-
-class AppComponentUpdate(BaseModel):
-    """Input for updating a component."""
-
-    type: str | None = Field(default=None, min_length=1, max_length=50)
-    props: dict[str, Any] | None = None
-    component_order: int | None = Field(default=None, ge=0)
-    visible: str | None = None
-    width: str | None = Field(default=None, max_length=20)
-    loading_workflows: list[str] | None = None
-
-    @model_validator(mode="after")
-    def validate_layout_props(self) -> "AppComponentUpdate":
-        """Validate layout container props match expected types."""
-        # Only validate if type is a layout container
-        # (type can be None in updates, so check if props look like layout props)
-        if self.type in ("row", "column", "grid") and self.props:
-            props = self.props
-            if "padding" in props and not isinstance(props["padding"], int | type(None)):
-                raise ValueError(f"padding must be an integer, got {type(props['padding']).__name__}")
-            if "gap" in props and not isinstance(props["gap"], int | type(None)):
-                raise ValueError(f"gap must be an integer, got {type(props['gap']).__name__}")
-            if "columns" in props and not isinstance(props["columns"], int | type(None)):
-                raise ValueError(f"columns must be an integer, got {type(props['columns']).__name__}")
-            if "maxHeight" in props and not isinstance(props["maxHeight"], int | type(None)):
-                raise ValueError(f"maxHeight must be an integer, got {type(props['maxHeight']).__name__}")
-            if "stickyOffset" in props and not isinstance(props["stickyOffset"], int | type(None)):
-                raise ValueError(f"stickyOffset must be an integer, got {type(props['stickyOffset']).__name__}")
-            if "distribute" in props and props["distribute"] not in (None, "natural", "equal", "fit"):
-                raise ValueError(f"distribute must be one of: natural, equal, fit, got {props['distribute']}")
-            if "overflow" in props and props["overflow"] not in (None, "auto", "scroll", "hidden", "visible"):
-                raise ValueError(f"overflow must be one of: auto, scroll, hidden, visible, got {props['overflow']}")
-            if "sticky" in props and props["sticky"] not in (None, "top", "bottom"):
-                raise ValueError(f"sticky must be one of: top, bottom, got {props['sticky']}")
-            if "align" in props and props["align"] not in (None, "start", "center", "end", "stretch"):
-                raise ValueError(f"align must be one of: start, center, end, stretch, got {props['align']}")
-            if "justify" in props and props["justify"] not in (None, "start", "center", "end", "between", "around"):
-                raise ValueError(f"justify must be one of: start, center, end, between, around, got {props['justify']}")
-        return self
-
-
-class AppComponentMove(BaseModel):
-    """Input for moving a component to a new parent/position."""
-
-    new_parent_id: UUID | None = Field(description="New parent component ID (null for root level)")
-    new_order: int = Field(ge=0, description="New order among siblings")
-
-
-class AppComponentSummary(BaseModel):
-    """Component summary for listings (type + position info)."""
-
-    model_config = ConfigDict(from_attributes=True)
-
-    id: UUID
-    component_id: str
-    parent_id: UUID | None
-    type: str
-    component_order: int
-
-
-class AppComponentResponse(AppComponentSummary):
-    """Full component response with all fields."""
-
-    page_id: UUID
-    props: dict[str, Any]
-    visible: str | None
-    width: str | None
-    loading_workflows: list[str] | None
-    created_at: datetime
-    updated_at: datetime
-
-    @field_serializer("created_at", "updated_at")
-    def serialize_dt(self, dt: datetime) -> str:
-        return dt.isoformat()
-
-
-class AppComponentListResponse(BaseModel):
-    """Response for listing components."""
-
-    components: list[AppComponentSummary]
-    total: int
-
-
-class PageListItem(BaseModel):
-    """Summary of a page for list endpoints (without full layout)."""
-
-    id: str
-    title: str
-    path: str
-    page_order: int
-
-
-# ==================== LEGACY TREE MODELS (for internal use, to be deprecated) ====================
-
-
-class ComponentTreeNode(BaseModel):
-    """
-    A component with its children for tree representation.
-
-    DEPRECATED: Use LayoutContainer and AppComponentNode instead.
-    Kept for backwards compatibility during migration.
-    """
-
-    id: UUID
-    component_id: str
-    type: str
-    props: dict[str, Any]
-    visible: str | None = None
-    width: str | None = None
-    loading_workflows: list[str] | None = None
-    component_order: int
-    children: list["ComponentTreeNode"] = Field(default_factory=list)
-
-
-# ==================== CODE FILE MODELS ====================
-
-
-class AppCodeFileBase(BaseModel):
+class AppFileBase(BaseModel):
     """Shared code file fields."""
 
     path: str = Field(
@@ -514,7 +310,7 @@ class AppCodeFileBase(BaseModel):
     )
 
 
-class AppCodeFileCreate(AppCodeFileBase):
+class AppFileCreate(AppFileBase):
     """Input for creating a code file."""
 
     source: str = Field(
@@ -523,7 +319,7 @@ class AppCodeFileCreate(AppCodeFileBase):
     )
 
 
-class AppCodeFileUpdate(BaseModel):
+class AppFileUpdate(BaseModel):
     """Input for updating a code file."""
 
     source: str | None = Field(
@@ -536,7 +332,7 @@ class AppCodeFileUpdate(BaseModel):
     )
 
 
-class AppCodeFileResponse(AppCodeFileBase):
+class AppFileResponse(AppFileBase):
     """Full code file response."""
 
     model_config = ConfigDict(from_attributes=True)
@@ -553,10 +349,10 @@ class AppCodeFileResponse(AppCodeFileBase):
         return dt.isoformat()
 
 
-class AppCodeFileListResponse(BaseModel):
+class AppFileListResponse(BaseModel):
     """Response for listing code files."""
 
-    files: list[AppCodeFileResponse]
+    files: list[AppFileResponse]
     total: int
 
 

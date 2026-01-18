@@ -28,7 +28,7 @@ import { JsxErrorBoundary } from "./JsxErrorBoundary";
 import { JsxPageRenderer } from "./JsxPageRenderer";
 import { useAppBuilderStore } from "@/stores/app-builder.store";
 
-type AppCodeFileListResponse = components["schemas"]["AppCodeFileListResponse"];
+type AppFileListResponse = components["schemas"]["AppFileListResponse"];
 
 interface JsxAppShellProps {
 	/** Application ID */
@@ -74,7 +74,7 @@ async function fetchAppFiles(
 		throw new Error(`Failed to fetch app files: ${errorText}`);
 	}
 
-	const data: AppCodeFileListResponse = await response.json();
+	const data: AppFileListResponse = await response.json();
 	return data.files;
 }
 

@@ -318,23 +318,19 @@ class TestSystemToolsRegistry:
         assert "list_executions" in tool_ids
         assert "get_execution" in tool_ids
 
-        # App builder tools
+        # App builder tools (code-based engine)
         assert "list_apps" in tool_ids
         assert "create_app" in tool_ids
         assert "get_app" in tool_ids
         assert "update_app" in tool_ids
         assert "publish_app" in tool_ids
         assert "get_app_schema" in tool_ids
-        assert "get_page" in tool_ids
-        assert "create_page" in tool_ids
-        assert "update_page" in tool_ids
-        assert "delete_page" in tool_ids
-        assert "list_components" in tool_ids
-        assert "get_component" in tool_ids
-        assert "create_component" in tool_ids
-        assert "update_component" in tool_ids
-        assert "delete_component" in tool_ids
-        assert "move_component" in tool_ids
+        # App file tools for code-based app builder
+        assert "list_app_files" in tool_ids
+        assert "get_app_file" in tool_ids
+        assert "create_app_file" in tool_ids
+        assert "update_app_file" in tool_ids
+        assert "delete_app_file" in tool_ids
 
         # Other tools
         assert "list_integrations" in tool_ids
@@ -343,7 +339,8 @@ class TestSystemToolsRegistry:
 
         # Total count - verify we have a reasonable number of tools
         # (exact count may change as tools are added)
-        assert len(tool_ids) >= 46, f"Expected at least 46 tools, got {len(tool_ids)}: {sorted(tool_ids)}"
+        # Reduced from 46 to 36 after removing component engine tools
+        assert len(tool_ids) >= 36, f"Expected at least 36 tools, got {len(tool_ids)}: {sorted(tool_ids)}"
 
     def test_file_operations_disabled_for_coding_agent(self):
         """File operation tools should be disabled by default for coding agent."""

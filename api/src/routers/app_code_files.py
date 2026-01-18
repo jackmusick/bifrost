@@ -25,12 +25,12 @@ from src.core.auth import Context, CurrentUser
 from src.core.exceptions import AccessDeniedError
 from src.core.pubsub import publish_app_code_file_update
 from src.models.contracts.applications import (
-    AppCodeFileCreate,
-    AppCodeFileListResponse,
-    AppCodeFileResponse,
-    AppCodeFileUpdate,
+    AppFileCreate,
+    AppFileListResponse,
+    AppFileResponse,
+    AppFileUpdate,
 )
-from src.models.orm.applications import Application, AppCodeFile
+from src.models.orm.applications import Application, AppFile
 from src.routers.applications import ApplicationRepository
 
 logger = logging.getLogger(__name__)
@@ -51,8 +51,8 @@ ROOT_ALLOWED_FILES = {"_layout", "_providers"}
 # Valid top-level directories
 VALID_TOP_DIRS = {"pages", "components", "modules"}
 
-# Pattern for dynamic route segments like [id] or [slug]
-DYNAMIC_SEGMENT_PATTERN = re.compile(r"^\[[\w-]+\]$")
+# Pattern for dynamic route segments like [id] or [slug], with optional .ts/.tsx extension
+DYNAMIC_SEGMENT_PATTERN = re.compile(r"^\[[\w-]+\](\.tsx?)?$")
 
 # Pattern for valid folder names (alphanumeric, underscore, hyphen)
 VALID_NAME_PATTERN = re.compile(r"^[\w-]+$")
@@ -134,6 +134,12 @@ def validate_file_path(path: str) -> None:
                 raise HTTPException(
                     status_code=status.HTTP_400_BAD_REQUEST,
                     detail=f"Dynamic segments like [{segment[1:-1]}] are only allowed in pages/",
+                )
+            # For last segment, require extension
+            if is_last_segment and not segment.endswith((".ts", ".tsx")):
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail=f"Files must have a .ts or .tsx extension. Got: '{segment}'",
                 )
             continue
 
@@ -238,11 +244,11 @@ async def get_code_file_or_404(
     ctx: Context,
     version_id: UUID,
     file_path: str,
-) -> AppCodeFile:
+) -> AppFile:
     """Get code file by version_id and path or raise 404."""
-    query = select(AppCodeFile).where(
-        AppCodeFile.app_version_id == version_id,
-        AppCodeFile.path == file_path,
+    query = select(AppFile).where(
+        AppFile.app_version_id == version_id,
+        AppFile.path == file_path,
     )
     result = await ctx.db.execute(query)
     code_file = result.scalar_one_or_none()
@@ -256,9 +262,9 @@ async def get_code_file_or_404(
     return code_file
 
 
-def code_file_to_response(code_file: AppCodeFile) -> AppCodeFileResponse:
+def code_file_to_response(code_file: AppFile) -> AppFileResponse:
     """Convert ORM model to response."""
-    return AppCodeFileResponse(
+    return AppFileResponse(
         id=code_file.id,
         app_version_id=code_file.app_version_id,
         path=code_file.path,
@@ -276,7 +282,7 @@ def code_file_to_response(code_file: AppCodeFile) -> AppCodeFileResponse:
 
 @router.get(
     "",
-    response_model=AppCodeFileListResponse,
+    response_model=AppFileListResponse,
     summary="List code files",
 )
 async def list_code_files(
@@ -284,21 +290,21 @@ async def list_code_files(
     version_id: UUID = Path(..., description="Version UUID"),
     ctx: Context = None,
     user: CurrentUser = None,
-) -> AppCodeFileListResponse:
+) -> AppFileListResponse:
     """List all code files for a specific app version."""
     # Verify app access
     app = await get_application_or_404(ctx, app_id)
     await validate_version_id(ctx, app, version_id)
 
     query = (
-        select(AppCodeFile)
-        .where(AppCodeFile.app_version_id == version_id)
-        .order_by(AppCodeFile.path)
+        select(AppFile)
+        .where(AppFile.app_version_id == version_id)
+        .order_by(AppFile.path)
     )
     result = await ctx.db.execute(query)
     files = list(result.scalars().all())
 
-    return AppCodeFileListResponse(
+    return AppFileListResponse(
         files=[code_file_to_response(f) for f in files],
         total=len(files),
     )
@@ -306,7 +312,7 @@ async def list_code_files(
 
 @router.get(
     "/{file_path:path}",
-    response_model=AppCodeFileResponse,
+    response_model=AppFileResponse,
     summary="Get code file by path",
 )
 async def get_code_file(
@@ -315,7 +321,7 @@ async def get_code_file(
     file_path: str = Path(..., description="File path (can contain slashes)"),
     ctx: Context = None,
     user: CurrentUser = None,
-) -> AppCodeFileResponse:
+) -> AppFileResponse:
     """Get a specific code file by its path."""
     # Verify app access
     app = await get_application_or_404(ctx, app_id)
@@ -328,17 +334,17 @@ async def get_code_file(
 
 @router.post(
     "",
-    response_model=AppCodeFileResponse,
+    response_model=AppFileResponse,
     status_code=status.HTTP_201_CREATED,
     summary="Create code file",
 )
 async def create_code_file(
-    data: AppCodeFileCreate,
+    data: AppFileCreate,
     app_id: UUID = Path(..., description="Application UUID"),
     version_id: UUID = Path(..., description="Version UUID"),
     ctx: Context = None,
     user: CurrentUser = None,
-) -> AppCodeFileResponse:
+) -> AppFileResponse:
     """Create a new code file in the specified version."""
     # Verify app access
     app = await get_application_or_404(ctx, app_id)
@@ -348,9 +354,9 @@ async def create_code_file(
     validate_file_path(data.path)
 
     # Check for duplicate path in this version
-    existing_query = select(AppCodeFile).where(
-        AppCodeFile.app_version_id == version_id,
-        AppCodeFile.path == data.path,
+    existing_query = select(AppFile).where(
+        AppFile.app_version_id == version_id,
+        AppFile.path == data.path,
     )
     existing = await ctx.db.execute(existing_query)
     if existing.scalar_one_or_none():
@@ -360,7 +366,7 @@ async def create_code_file(
         )
 
     # Create the file
-    code_file = AppCodeFile(
+    code_file = AppFile(
         app_version_id=version_id,
         path=data.path,
         source=data.source,
@@ -386,17 +392,17 @@ async def create_code_file(
 
 @router.patch(
     "/{file_path:path}",
-    response_model=AppCodeFileResponse,
+    response_model=AppFileResponse,
     summary="Update code file",
 )
 async def update_code_file(
-    data: AppCodeFileUpdate,
+    data: AppFileUpdate,
     app_id: UUID = Path(..., description="Application UUID"),
     version_id: UUID = Path(..., description="Version UUID"),
     file_path: str = Path(..., description="File path (can contain slashes)"),
     ctx: Context = None,
     user: CurrentUser = None,
-) -> AppCodeFileResponse:
+) -> AppFileResponse:
     """Update a code file's source or compiled output."""
     # Verify app access
     app = await get_application_or_404(ctx, app_id)

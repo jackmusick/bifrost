@@ -1101,27 +1101,9 @@ class GitHubSyncService:
                 name=form.name,
             ))
 
-        # Check applications - workflows can be referenced in:
-        # 1. AppPage.launch_workflow_id
-        # 2. AppComponent.props (various workflow reference fields)
-        try:
-            from src.models.orm.applications import AppPage
-
-            # Check pages with launch_workflow_id
-            stmt = select(AppPage).where(AppPage.launch_workflow_id == workflow_id)
-            result = await self.db.execute(stmt)
-            seen_app_ids: set[str] = set()
-            for page in result.scalars():
-                app = page.application
-                if app and str(app.id) not in seen_app_ids:
-                    seen_app_ids.add(str(app.id))
-                    refs.append(WorkflowReference(
-                        type="app",
-                        id=str(app.id),
-                        name=app.name,
-                    ))
-        except Exception:
-            pass  # Applications table might not exist
+        # Note: The component engine has been removed. Apps no longer reference
+        # workflows through pages/components. Code engine apps reference workflows
+        # through their code files, which is not tracked in the database.
 
         # Check agents (tools relationship)
         try:
@@ -1609,16 +1591,11 @@ class GitHubSyncService:
             content: JSON content bytes
         """
         from src.services.file_storage.indexers.agent import AgentIndexer
-        from src.services.file_storage.indexers.app import AppIndexer
         from src.services.file_storage.indexers.form import FormIndexer
 
         entity_type = VirtualFileProvider.get_entity_type_from_path(path)
 
-        if entity_type == "app":
-            indexer = AppIndexer(self.db)
-            await indexer.index_app(path, content)
-            logger.debug(f"Imported app from {path}")
-        elif entity_type == "form":
+        if entity_type == "form":
             indexer = FormIndexer(self.db)
             await indexer.index_form(path, content)
             logger.debug(f"Imported form from {path}")

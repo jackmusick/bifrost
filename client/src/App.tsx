@@ -138,11 +138,6 @@ const TableDetail = lazy(() =>
 const Applications = lazy(() =>
 	import("@/pages/Applications").then((m) => ({ default: m.Applications })),
 );
-const ApplicationEditor = lazy(() =>
-	import("@/pages/ApplicationEditor").then((m) => ({
-		default: m.ApplicationEditor,
-	})),
-);
 const AppCodeEditorPage = lazy(() =>
 	import("@/pages/AppCodeEditorPage").then((m) => ({
 		default: m.AppCodeEditorPage,
@@ -156,11 +151,6 @@ const ApplicationRunner = lazy(() =>
 const ApplicationPreview = lazy(() =>
 	import("@/pages/AppRouter").then((m) => ({
 		default: m.AppPreview,
-	})),
-);
-const ApplicationEmbed = lazy(() =>
-	import("@/pages/ApplicationRunner").then((m) => ({
-		default: m.ApplicationEmbed,
 	})),
 );
 const DependencyCanvas = lazy(() =>
@@ -229,12 +219,6 @@ function AppRoutes() {
 					<Route
 						path="oauth/callback/:integrationId"
 						element={<OAuthCallback />}
-					/>
-
-					{/* Embed route - minimal chrome for iframe embedding */}
-					<Route
-						path="embed/:applicationId/*"
-						element={<ApplicationEmbed />}
 					/>
 
 					{/* Application Runner - Published apps with own layout (no main sidebar) */}
@@ -383,18 +367,10 @@ function AppRoutes() {
 							}
 						/>
 						<Route
-							path="apps/new/code"
-							element={
-								<ProtectedRoute requirePlatformAdmin>
-									<AppCodeEditorPage />
-								</ProtectedRoute>
-							}
-						/>
-						<Route
 							path="apps/new"
 							element={
 								<ProtectedRoute requirePlatformAdmin>
-									<ApplicationEditor />
+									<AppCodeEditorPage />
 								</ProtectedRoute>
 							}
 						/>
@@ -403,14 +379,6 @@ function AppRoutes() {
 							element={
 								<ProtectedRoute requirePlatformAdmin>
 									<AppCodeEditorPage />
-								</ProtectedRoute>
-							}
-						/>
-						<Route
-							path="apps/:applicationId/edit"
-							element={
-								<ProtectedRoute requirePlatformAdmin>
-									<ApplicationEditor />
 								</ProtectedRoute>
 							}
 						/>

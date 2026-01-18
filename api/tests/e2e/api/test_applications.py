@@ -295,57 +295,48 @@ class TestApplicationVersioning:
         # Definition is returned as-is from input
 
     def test_get_saved_draft(self, e2e_client, platform_admin, test_app):
-        """Saved draft is retrievable."""
-        draft_definition = {
-            "pages": [{"id": "page1", "title": "Page 1", "path": "/", "layout": {"type": "column", "children": []}}],
-        }
-
-        # Save draft
-        e2e_client.put(
-            f"/api/applications/{test_app['id']}/draft",
-            headers=platform_admin.headers,
-            json={"definition": draft_definition},
-        )
-
-        # Get draft
+        """Saved draft is retrievable via files API."""
+        # Code engine apps store their definition as files
+        # Get the draft version ID
         response = e2e_client.get(
-            f"/api/applications/{test_app['id']}/draft",
+            f"/api/applications/{test_app['id']}/versions/{test_app['draft_version_id']}/files",
             headers=platform_admin.headers,
         )
         assert response.status_code == 200
         data = response.json()
-        assert data["definition"]["pages"][0]["id"] == "page1"
+        # New code engine apps have scaffolded files
+        assert data["total"] >= 2, "Expected scaffolded files for code engine app"
 
     def test_multiple_publishes_create_new_versions(
         self, e2e_client, platform_admin, test_app
     ):
         """Multiple publishes create new version IDs."""
-        # Publish first version
-        e2e_client.put(
-            f"/api/applications/{test_app['id']}/draft",
-            headers=platform_admin.headers,
-            json={"definition": {"pages": [{"id": "v1", "title": "V1", "path": "/", "layout": {"type": "column", "children": []}}]}},
-        )
+        # Code engine apps don't use the /draft endpoint for definition
+        # They use the files API. Publishing copies draft files to active version.
+
+        # First publish - promotes draft to active
         response = e2e_client.post(
             f"/api/applications/{test_app['id']}/publish",
             headers=platform_admin.headers,
         )
-        assert response.status_code == 200
+        assert response.status_code == 200, f"First publish failed: {response.text}"
         v1 = response.json()
         v1_active_id = v1["active_version_id"]
         assert v1_active_id is not None, "First publish should set active_version_id"
 
-        # Publish second version
-        e2e_client.put(
-            f"/api/applications/{test_app['id']}/draft",
+        # Modify a file in draft (PATCH for updates)
+        e2e_client.patch(
+            f"/api/applications/{test_app['id']}/versions/{test_app['draft_version_id']}/files/pages/index.tsx",
             headers=platform_admin.headers,
-            json={"definition": {"pages": [{"id": "v2", "title": "V2", "path": "/", "layout": {"type": "column", "children": []}}]}},
+            json={"source": "export default function Index() { return <div>V2</div>; }"},
         )
+
+        # Second publish
         response = e2e_client.post(
             f"/api/applications/{test_app['id']}/publish",
             headers=platform_admin.headers,
         )
-        assert response.status_code == 200
+        assert response.status_code == 200, f"Second publish failed: {response.text}"
         v2 = response.json()
         v2_active_id = v2["active_version_id"]
 
@@ -492,7 +483,7 @@ class TestApplicationDBStorage:
 
     def test_app_persists_across_requests(self, e2e_client, platform_admin):
         """App data persists across multiple requests."""
-        # Create and save draft
+        # Create app - code engine is now the only engine
         create_response = e2e_client.post(
             "/api/applications",
             headers=platform_admin.headers,
@@ -501,27 +492,33 @@ class TestApplicationDBStorage:
         assert create_response.status_code == 201
         app = create_response.json()
 
-        e2e_client.put(
-            f"/api/applications/{app['id']}/draft",
-            headers=platform_admin.headers,
-            json={
-                "definition": {
-                    "pages": [{"id": "persist", "title": "Persist", "path": "/", "layout": {"type": "column", "children": []}}],
-                    "custom_data": "test_value",
-                }
-            },
-        )
-
-        # Query in a separate request - data should persist
+        # Verify scaffolded files exist (they're automatically created)
         response = e2e_client.get(
-            f"/api/applications/{app['id']}/draft",
+            f"/api/applications/{app['id']}/versions/{app['draft_version_id']}/files",
             headers=platform_admin.headers,
         )
         assert response.status_code == 200
         data = response.json()
-        # Note: custom_data won't be preserved (only pages are stored)
-        # Check that the page was saved
-        assert len(data["definition"]["pages"]) == 1
+        # Code engine apps have scaffolded files
+        file_paths = [f["path"] for f in data["files"]]
+        assert "pages/index.tsx" in file_paths, f"Expected pages/index.tsx in {file_paths}"
+
+        # Modify the index file via files API (PATCH for updates)
+        modify_response = e2e_client.patch(
+            f"/api/applications/{app['id']}/versions/{app['draft_version_id']}/files/pages/index.tsx",
+            headers=platform_admin.headers,
+            json={"source": "export default function Index() { return <div>Persisted</div>; }"},
+        )
+        assert modify_response.status_code == 200, f"Modify file failed: {modify_response.text}"
+
+        # Query in a separate request - data should persist
+        response = e2e_client.get(
+            f"/api/applications/{app['id']}/versions/{app['draft_version_id']}/files/pages/index.tsx",
+            headers=platform_admin.headers,
+        )
+        assert response.status_code == 200, f"Get file failed: {response.text}"
+        data = response.json()
+        assert "Persisted" in data["source"]
 
         # Cleanup
         e2e_client.delete(
@@ -534,16 +531,15 @@ class TestApplicationDBStorage:
 class TestCodeEngineApps:
     """Test code engine application features."""
 
-    def test_code_engine_scaffolds_files(self, e2e_client, platform_admin):
-        """Creating a code engine app scaffolds initial files."""
-        # Create code engine app
+    def test_app_scaffolds_files(self, e2e_client, platform_admin):
+        """Creating an app scaffolds initial files (code engine is now the only engine)."""
+        # Create app (code engine is now the default and only engine)
         response = e2e_client.post(
             "/api/applications",
             headers=platform_admin.headers,
             json={
                 "name": "Code Engine Test",
                 "slug": "code-engine-test",
-                "engine": "code",
             },
         )
         assert response.status_code == 201, f"Create app failed: {response.text}"
@@ -558,48 +554,18 @@ class TestCodeEngineApps:
         assert response.status_code == 200, f"List files failed: {response.text}"
         data = response.json()
 
-        # Should have scaffolded _layout and pages/index
+        # Should have scaffolded _layout.tsx and pages/index.tsx
         file_paths = [f["path"] for f in data["files"]]
-        assert "_layout" in file_paths, f"Expected _layout in {file_paths}"
-        assert "pages/index" in file_paths, f"Expected pages/index in {file_paths}"
+        assert "_layout.tsx" in file_paths, f"Expected _layout.tsx in {file_paths}"
+        assert "pages/index.tsx" in file_paths, f"Expected pages/index.tsx in {file_paths}"
 
         # Check content
         files_by_path = {f["path"]: f for f in data["files"]}
-        assert "RootLayout" in files_by_path["_layout"]["source"]
-        assert "HomePage" in files_by_path["pages/index"]["source"]
+        assert "RootLayout" in files_by_path["_layout.tsx"]["source"]
+        assert "HomePage" in files_by_path["pages/index.tsx"]["source"]
 
         # Cleanup
         e2e_client.delete(
             "/api/applications/code-engine-test",
-            headers=platform_admin.headers,
-        )
-
-    def test_components_engine_does_not_scaffold_files(self, e2e_client, platform_admin):
-        """Creating a components engine app does NOT scaffold code files."""
-        # Create components engine app (default)
-        response = e2e_client.post(
-            "/api/applications",
-            headers=platform_admin.headers,
-            json={
-                "name": "Components Engine Test",
-                "slug": "components-engine-test",
-                "engine": "components",
-            },
-        )
-        assert response.status_code == 201
-        app = response.json()
-
-        # List files - should be empty
-        response = e2e_client.get(
-            f"/api/applications/{app['id']}/versions/{app['draft_version_id']}/files",
-            headers=platform_admin.headers,
-        )
-        assert response.status_code == 200
-        data = response.json()
-        assert data["total"] == 0, f"Expected 0 files, got {data['total']}"
-
-        # Cleanup
-        e2e_client.delete(
-            "/api/applications/components-engine-test",
             headers=platform_admin.headers,
         )

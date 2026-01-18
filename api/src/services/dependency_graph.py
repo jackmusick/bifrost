@@ -20,8 +20,6 @@ from src.models.orm import (
     Agent,
     AgentTool,
     Application,
-    AppPage,
-    AppComponent,
     Form,
     Workflow,
 )
@@ -227,52 +225,15 @@ class DependencyGraphService:
         """
         Check if an application uses a specific workflow.
 
-        Checks pages (launch_workflow_id, data_sources) and components (props).
+        Note: The component engine has been removed. Apps no longer reference
+        workflows through pages/components. Code engine apps reference workflows
+        through their code files, which is not tracked in the database.
+
+        This method now always returns False as there's no way to detect
+        workflow usage in code engine apps at the database level.
         """
-        if not app.active_version_id:
-            return False
-
-        # Get pages for the active version
-        pages_result = await self.db.execute(
-            select(AppPage).where(AppPage.version_id == app.active_version_id)
-        )
-        pages = pages_result.scalars().all()
-
-        for page in pages:
-            # Check launch workflow
-            if page.launch_workflow_id == workflow_id:
-                return True
-
-            # Check data sources
-            for ds in page.data_sources or []:
-                if ds.get("workflowId") == str(workflow_id):
-                    return True
-                if ds.get("dataProviderId") == str(workflow_id):
-                    return True
-
-        # Get components for those pages
-        page_ids = [p.id for p in pages]
-        if not page_ids:
-            return False
-
-        components_result = await self.db.execute(
-            select(AppComponent).where(AppComponent.page_id.in_(page_ids))
-        )
-        components = components_result.scalars().all()
-
-        for comp in components:
-            # Check loading_workflows
-            for wf_id in comp.loading_workflows or []:
-                try:
-                    if UUID(wf_id) == workflow_id:
-                        return True
-                except ValueError:
-                    pass
-
-            # Check props recursively
-            if workflow_id in _extract_workflows_from_props(comp.props or {}):
-                return True
-
+        # Component engine removed - apps no longer have pages/components
+        # that reference workflows in a trackable way
         return False
 
     async def _fetch_entity_node(
@@ -419,68 +380,11 @@ class DependencyGraphService:
                         )
 
         elif entity_type == "app":
-            # Apps USE workflows (via pages and components)
-            result = await self.db.execute(
-                select(Application)
-                .options(selectinload(Application.active_version))
-                .where(Application.id == entity_id)
-            )
-            app = result.scalar_one_or_none()
-            if app and app.active_version_id:
-                # Get pages for the active version
-                pages_result = await self.db.execute(
-                    select(AppPage).where(AppPage.version_id == app.active_version_id)
-                )
-                pages = pages_result.scalars().all()
-
-                # Get components for those pages
-                page_ids = [p.id for p in pages]
-                if page_ids:
-                    components_result = await self.db.execute(
-                        select(AppComponent).where(AppComponent.page_id.in_(page_ids))
-                    )
-                    components = components_result.scalars().all()
-                else:
-                    components = []
-
-                # Extract workflows from pages
-                for page in pages:
-                    if page.launch_workflow_id:
-                        dependencies.append(
-                            ("workflow", page.launch_workflow_id, "uses")
-                        )
-
-                    # Data sources
-                    for ds in page.data_sources or []:
-                        if wf_id := ds.get("workflowId"):
-                            try:
-                                dependencies.append(
-                                    ("workflow", UUID(wf_id), "uses")
-                                )
-                            except ValueError:
-                                pass
-                        if dp_id := ds.get("dataProviderId"):
-                            try:
-                                dependencies.append(
-                                    ("workflow", UUID(dp_id), "uses")
-                                )
-                            except ValueError:
-                                pass
-
-                # Extract workflows from components
-                for comp in components:
-                    # Loading workflows
-                    for wf_id in comp.loading_workflows or []:
-                        try:
-                            dependencies.append(
-                                ("workflow", UUID(wf_id), "uses")
-                            )
-                        except ValueError:
-                            pass
-
-                    # Props (recursive extraction)
-                    for wf_id in _extract_workflows_from_props(comp.props or {}):
-                        dependencies.append(("workflow", wf_id, "uses"))
+            # Note: The component engine has been removed. Apps no longer reference
+            # workflows through pages/components. Code engine apps reference workflows
+            # through their code files, which is not tracked in the database.
+            # This section now returns no dependencies for apps.
+            pass
 
         elif entity_type == "agent":
             # Agents USE workflows (via agent_tools)

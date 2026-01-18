@@ -2,7 +2,9 @@
 App Builder MCP Tools - Application Level
 
 Tools for listing, creating, getting, updating, publishing apps,
-plus schema documentation and validation.
+plus schema documentation.
+
+Applications use code-based files (TSX/TypeScript) stored in app_files table.
 """
 
 import json
@@ -19,23 +21,23 @@ logger = logging.getLogger(__name__)
 @system_tool(
     id="list_apps",
     name="List Applications",
-    description="List all App Builder applications with page counts and URLs.",
+    description="List all App Builder applications with file counts and URLs.",
     category=ToolCategory.APP_BUILDER,
     default_enabled_for_coding_agent=True,
     input_schema={"type": "object", "properties": {}, "required": []},
 )
 async def list_apps(context: Any) -> str:
-    """List all applications with page summaries."""
+    """List all applications with file summaries."""
     from sqlalchemy import func, select
 
     from src.core.database import get_db_context
-    from src.models.orm.applications import AppPage, Application
+    from src.models.orm.applications import AppFile, Application
 
     logger.info("MCP list_apps called")
 
     try:
         async with get_db_context() as db:
-            # Query apps with page count
+            # Query apps with file count
             query = select(Application)
 
             # Non-admins can only see their org's apps + global apps
@@ -50,19 +52,16 @@ async def list_apps(context: Any) -> str:
 
             apps_data = []
             for app in apps:
-                # Get page count from draft version
+                # Get file count from draft version
                 count = 0
                 if app.draft_version_id:
-                    page_count_query = (
+                    file_count_query = (
                         select(func.count())
-                        .select_from(AppPage)
-                        .where(
-                            AppPage.application_id == app.id,
-                            AppPage.version_id == app.draft_version_id,
-                        )
+                        .select_from(AppFile)
+                        .where(AppFile.app_version_id == app.draft_version_id)
                     )
-                    page_count = await db.execute(page_count_query)
-                    count = page_count.scalar() or 0
+                    file_count = await db.execute(file_count_query)
+                    count = file_count.scalar() or 0
 
                 apps_data.append({
                     "id": str(app.id),
@@ -70,7 +69,7 @@ async def list_apps(context: Any) -> str:
                     "slug": app.slug,
                     "description": app.description,
                     "status": "published" if app.is_published else "draft",
-                    "page_count": count,
+                    "file_count": count,
                     "active_version_id": str(app.active_version_id) if app.active_version_id else None,
                     "draft_version_id": str(app.draft_version_id) if app.draft_version_id else None,
                     "url": f"/apps/{app.slug}",
@@ -86,7 +85,7 @@ async def list_apps(context: Any) -> str:
 @system_tool(
     id="create_app",
     name="Create Application",
-    description="Create a new App Builder application. Creates app metadata and optional home page. Use create_page and create_component for content.",
+    description="Create a new App Builder application with scaffold files.",
     category=ToolCategory.APP_BUILDER,
     default_enabled_for_coding_agent=True,
     is_restricted=True,
@@ -101,10 +100,6 @@ async def list_apps(context: Any) -> str:
             "slug": {
                 "type": "string",
                 "description": "URL slug (auto-generated from name if not provided)",
-            },
-            "create_home_page": {
-                "type": "boolean",
-                "description": "Create blank home page (default: true)",
             },
             "scope": {
                 "type": "string",
@@ -124,18 +119,16 @@ async def create_app(
     name: str,
     description: str | None = None,
     slug: str | None = None,
-    create_home_page: bool = True,
     scope: str = "organization",
     organization_id: str | None = None,
 ) -> str:
     """
-    Create a new application with optional home page.
+    Create a new application with scaffold files.
 
     Args:
         name: Application name (required)
         description: Application description
         slug: URL slug (auto-generated from name if not provided)
-        create_home_page: Create a blank home page (default: True)
         scope: 'global' (visible to all orgs) or 'organization' (default)
         organization_id: Override context.org_id when scope='organization'
 
@@ -148,7 +141,7 @@ async def create_app(
     from sqlalchemy import select
 
     from src.core.database import get_db_context
-    from src.models.orm.applications import AppPage, AppVersion, Application
+    from src.models.orm.applications import AppFile, AppVersion, Application
 
     logger.info(f"MCP create_app called with name={name}, scope={scope}")
 
@@ -214,36 +207,45 @@ async def create_app(
 
             # Link app to draft version
             app.draft_version_id = draft_version.id
-            await db.flush()  # Ensure draft_version_id is persisted
+            await db.flush()
 
-            page_count = 0
-            if create_home_page:
-                # Create blank home page - layout will be created via create_page MCP tool
-                # or added when components are first added
-                page = AppPage(
-                    id=uuid4(),
-                    application_id=app.id,
-                    page_id="home",
-                    title="Home",
-                    path="/",
-                    version_id=draft_version.id,
-                    page_order=0,
-                )
-                db.add(page)
+            # Create scaffold files
+            # Root layout - wraps all pages
+            layout_source = '''import { Outlet } from "bifrost";
 
-                # Create root layout component
-                from src.models.orm.applications import AppComponent
-                root_layout = AppComponent(
-                    id=uuid4(),
-                    page_id=page.id,
-                    component_id="layout_root",
-                    parent_id=None,
-                    type="column",
-                    props={"gap": 16, "padding": 24},
-                    component_order=0,
-                )
-                db.add(root_layout)
-                page_count = 1
+export default function RootLayout() {
+  return (
+    <div className="min-h-screen bg-background">
+      <Outlet />
+    </div>
+  );
+}
+'''
+            layout_file = AppFile(
+                app_version_id=draft_version.id,
+                path="_layout.tsx",
+                source=layout_source,
+            )
+            db.add(layout_file)
+
+            # Home page
+            index_source = '''export default function HomePage() {
+  return (
+    <div className="p-8">
+      <h1 className="text-3xl font-bold mb-4">Welcome</h1>
+      <p className="text-muted-foreground">
+        Start building your app by editing this page or adding new files.
+      </p>
+    </div>
+  );
+}
+'''
+            index_file = AppFile(
+                app_version_id=draft_version.id,
+                path="pages/index.tsx",
+                source=index_source,
+            )
+            db.add(index_file)
 
             await db.commit()
 
@@ -253,7 +255,7 @@ async def create_app(
                 "name": app.name,
                 "slug": app.slug,
                 "draft_version_id": str(draft_version.id),
-                "page_count": page_count,
+                "file_count": 2,
                 "url": f"/apps/{app.slug}",
             })
 
@@ -265,7 +267,7 @@ async def create_app(
 @system_tool(
     id="get_app",
     name="Get Application",
-    description="Get application metadata and page list (does NOT include component details - use get_page for that).",
+    description="Get application metadata and file list.",
     category=ToolCategory.APP_BUILDER,
     default_enabled_for_coding_agent=True,
     input_schema={
@@ -286,17 +288,16 @@ async def get_app(
     app_slug: str | None = None,
 ) -> str:
     """
-    Get application metadata and page list.
+    Get application metadata and file list.
 
-    Does NOT return full component trees - use get_page for that.
-    This provides enough info to know what pages exist without token bloat.
+    Returns app info and a summary of files in the draft version.
     """
     from uuid import UUID
 
     from sqlalchemy import select
 
     from src.core.database import get_db_context
-    from src.models.orm.applications import AppPage, Application
+    from src.models.orm.applications import AppFile, Application
 
     logger.info(f"MCP get_app called with id={app_id}, slug={app_slug}")
 
@@ -328,19 +329,16 @@ async def get_app(
             if not app:
                 return json.dumps({"error": f"Application not found: {app_id or app_slug}"})
 
-            # List pages from draft version (summaries only)
-            pages = []
+            # List files from draft version
+            files = []
             if app.draft_version_id:
-                pages_query = (
-                    select(AppPage)
-                    .where(
-                        AppPage.application_id == app.id,
-                        AppPage.version_id == app.draft_version_id,
-                    )
-                    .order_by(AppPage.page_order)
+                files_query = (
+                    select(AppFile)
+                    .where(AppFile.app_version_id == app.draft_version_id)
+                    .order_by(AppFile.path)
                 )
-                pages_result = await db.execute(pages_query)
-                pages = list(pages_result.scalars().all())
+                files_result = await db.execute(files_query)
+                files = list(files_result.scalars().all())
 
             return json.dumps({
                 "id": str(app.id),
@@ -351,15 +349,13 @@ async def get_app(
                 "draft_version_id": str(app.draft_version_id) if app.draft_version_id else None,
                 "url": f"/apps/{app.slug}",
                 "navigation": app.navigation,
-                "pages": [
+                "files": [
                     {
-                        "page_id": page.page_id,
-                        "title": page.title,
-                        "path": page.path,
-                        "has_launch_workflow": page.launch_workflow_id is not None,
-                        "version_id": str(page.version_id) if page.version_id else None,
+                        "id": str(f.id),
+                        "path": f.path,
+                        "has_compiled": f.compiled is not None,
                     }
-                    for page in pages
+                    for f in files
                 ],
             })
 
@@ -371,7 +367,7 @@ async def get_app(
 @system_tool(
     id="update_app",
     name="Update Application",
-    description="Update application metadata (name, description, navigation). Does NOT update pages - use page tools for that.",
+    description="Update application metadata (name, description, navigation).",
     category=ToolCategory.APP_BUILDER,
     default_enabled_for_coding_agent=True,
     is_restricted=True,
@@ -397,9 +393,16 @@ async def update_app(
     navigation: dict[str, Any] | None = None,
 ) -> str:
     """
-    Update application metadata only.
+    Update application metadata.
 
-    Does NOT update pages or components - use page/component tools for that.
+    Args:
+        app_id: Application UUID (required)
+        name: New application name
+        description: New description
+        navigation: Navigation configuration dict
+
+    Returns:
+        Success message with updated fields, or error message
     """
     from uuid import UUID
 
@@ -410,9 +413,6 @@ async def update_app(
 
     logger.info(f"MCP update_app called with id={app_id}")
 
-    if not app_id:
-        return json.dumps({"error": "app_id is required"})
-
     try:
         app_uuid = UUID(app_id)
     except ValueError:
@@ -422,9 +422,11 @@ async def update_app(
         async with get_db_context() as db:
             query = select(Application).where(Application.id == app_uuid)
 
-            # Non-admins can only update their org's apps
             if not context.is_platform_admin and context.org_id:
-                query = query.where(Application.organization_id == context.org_id)
+                query = query.where(
+                    (Application.organization_id == context.org_id)
+                    | (Application.organization_id.is_(None))
+                )
 
             result = await db.execute(query)
             app = result.scalar_one_or_none()
@@ -446,7 +448,7 @@ async def update_app(
                 # Validate navigation through Pydantic model with strict checking
                 from pydantic import ValidationError
 
-                from src.models.contracts.app_components import NavigationConfig
+                from src.models.contracts.applications import NavigationConfig
 
                 try:
                     # Use strict=True to catch type mismatches
@@ -487,7 +489,7 @@ async def update_app(
 @system_tool(
     id="publish_app",
     name="Publish Application",
-    description="Publish all draft pages and components to live.",
+    description="Publish all draft files to live.",
     category=ToolCategory.APP_BUILDER,
     default_enabled_for_coding_agent=True,
     is_restricted=True,
@@ -500,18 +502,19 @@ async def update_app(
     },
 )
 async def publish_app(context: Any, app_id: str) -> str:
-    """Publish all draft pages and components to live.
+    """Publish all draft files to live.
 
-    Creates a new version by copying all pages from the draft version,
+    Creates a new version by copying all files from the draft version,
     then sets this new version as the active (live) version.
     """
+    from datetime import datetime, timezone
     from uuid import UUID
 
     from sqlalchemy import select
+    from sqlalchemy.orm import selectinload
 
     from src.core.database import get_db_context
-    from src.models.orm.applications import AppPage, Application
-    from src.services.app_builder_service import AppBuilderService
+    from src.models.orm.applications import AppFile, AppVersion, Application
 
     logger.info(f"MCP publish_app called with id={app_id}")
 
@@ -536,20 +539,36 @@ async def publish_app(context: Any, app_id: str) -> str:
             if not app.draft_version_id:
                 return json.dumps({"error": "Application has no draft version to publish"})
 
-            # Count draft pages for reporting
-            pages_query = select(AppPage).where(
-                AppPage.application_id == app_uuid,
-                AppPage.version_id == app.draft_version_id,
+            # Get draft version with files
+            draft_version_query = (
+                select(AppVersion)
+                .where(AppVersion.id == app.draft_version_id)
+                .options(selectinload(AppVersion.files))
             )
-            pages_result = await db.execute(pages_query)
-            draft_pages = list(pages_result.scalars().all())
+            draft_result = await db.execute(draft_version_query)
+            draft_version = draft_result.scalar_one_or_none()
 
-            if not draft_pages:
-                return json.dumps({"error": "No draft pages to publish"})
+            if not draft_version or not draft_version.files:
+                return json.dumps({"error": "No files in draft version to publish"})
 
-            # Use versioning-based publish (copies draft to new version)
-            service = AppBuilderService(db)
-            new_version = await service.publish_with_versioning(app)
+            # Create new version for the published copy
+            new_version = AppVersion(application_id=app.id)
+            db.add(new_version)
+            await db.flush()
+
+            # Copy all files from draft to new version
+            for draft_file in draft_version.files:
+                new_file = AppFile(
+                    app_version_id=new_version.id,
+                    path=draft_file.path,
+                    source=draft_file.source,
+                    compiled=draft_file.compiled,
+                )
+                db.add(new_file)
+
+            # Update application to point to new active version
+            app.active_version_id = new_version.id
+            app.published_at = datetime.now(timezone.utc)
 
             await db.commit()
 
@@ -567,7 +586,7 @@ async def publish_app(context: Any, app_id: str) -> str:
                 "name": app.name,
                 "active_version_id": str(new_version.id),
                 "draft_version_id": str(app.draft_version_id),
-                "pages_published": len(draft_pages),
+                "files_published": len(draft_version.files),
             })
 
     except Exception as e:
@@ -578,51 +597,19 @@ async def publish_app(context: Any, app_id: str) -> str:
 @system_tool(
     id="get_app_schema",
     name="Get App Schema",
-    description="Get documentation about App Builder application structure, components, expressions, and actions.",
+    description="Get documentation about App Builder application structure and code-based files.",
     category=ToolCategory.APP_BUILDER,
     default_enabled_for_coding_agent=True,
     is_restricted=True,
     input_schema={"type": "object", "properties": {}, "required": []},
 )
 async def get_app_schema(context: Any) -> str:  # noqa: ARG001
-    """Get application schema documentation generated from Pydantic models."""
+    """Get application schema documentation for code-based apps."""
     from src.models.contracts.applications import (
+        AppFileCreate,
+        AppFileUpdate,
         ApplicationCreate,
         ApplicationUpdate,
-        AppPageCreate,
-        AppPageUpdate,
-        AppComponentCreate,
-        AppComponentUpdate,
-        AppComponentMove,
-    )
-    from src.models.contracts.app_components import (
-        # Container components
-        RowComponent,
-        ColumnComponent,
-        GridComponent,
-        CardComponent,
-        ModalComponent,
-        TabsComponent,
-        TabItemComponent,
-        FormGroupComponent,
-        # Leaf components
-        HeadingComponent,
-        TextComponent,
-        HtmlComponent,
-        DividerComponent,
-        SpacerComponent,
-        ButtonComponent,
-        StatCardComponent,
-        ImageComponent,
-        BadgeComponent,
-        ProgressComponent,
-        DataTableComponent,
-        FileViewerComponent,
-        TextInputComponent,
-        NumberInputComponent,
-        SelectComponent,
-        CheckboxComponent,
-        FormEmbedComponent,
     )
     from src.services.mcp_server.schema_utils import models_to_markdown
 
@@ -632,136 +619,108 @@ async def get_app_schema(context: Any) -> str:  # noqa: ARG001
         (ApplicationUpdate, "ApplicationUpdate (for updating apps)"),
     ], "Application Models")
 
-    page_models = models_to_markdown([
-        (AppPageCreate, "AppPageCreate (for creating pages)"),
-        (AppPageUpdate, "AppPageUpdate (for updating pages)"),
-    ], "Page Models")
+    file_models = models_to_markdown([
+        (AppFileCreate, "AppFileCreate (for creating files)"),
+        (AppFileUpdate, "AppFileUpdate (for updating files)"),
+    ], "File Models")
 
-    component_models = models_to_markdown([
-        (AppComponentCreate, "AppComponentCreate (for creating components)"),
-        (AppComponentUpdate, "AppComponentUpdate (for updating components)"),
-        (AppComponentMove, "AppComponentMove (for moving components)"),
-    ], "Component Models")
-
-    # Component types - unified model with flat props
-    container_components = models_to_markdown([
-        (RowComponent, "RowComponent (horizontal layout)"),
-        (ColumnComponent, "ColumnComponent (vertical layout)"),
-        (GridComponent, "GridComponent (CSS grid layout)"),
-        (CardComponent, "CardComponent (container with header)"),
-        (ModalComponent, "ModalComponent (dialog container)"),
-        (TabsComponent, "TabsComponent (tabbed container)"),
-        (TabItemComponent, "TabItemComponent (single tab within tabs)"),
-        (FormGroupComponent, "FormGroupComponent (form field group)"),
-    ], "Container Components (can have children)")
-
-    leaf_components = models_to_markdown([
-        (HeadingComponent, "HeadingComponent (h1-h6)"),
-        (TextComponent, "TextComponent (body text)"),
-        (HtmlComponent, "HtmlComponent (raw HTML content)"),
-        (DividerComponent, "DividerComponent (horizontal line)"),
-        (SpacerComponent, "SpacerComponent (vertical spacing)"),
-        (ButtonComponent, "ButtonComponent (clickable button)"),
-        (StatCardComponent, "StatCardComponent (metric display)"),
-        (ImageComponent, "ImageComponent (display images)"),
-        (BadgeComponent, "BadgeComponent (status indicator)"),
-        (ProgressComponent, "ProgressComponent (progress bar)"),
-        (DataTableComponent, "DataTableComponent (data table)"),
-        (FileViewerComponent, "FileViewerComponent (document/image viewer)"),
-        (TextInputComponent, "TextInputComponent (text field)"),
-        (NumberInputComponent, "NumberInputComponent (number field)"),
-        (SelectComponent, "SelectComponent (dropdown)"),
-        (CheckboxComponent, "CheckboxComponent (boolean toggle)"),
-        (FormEmbedComponent, "FormEmbedComponent (embedded form)"),
-    ], "Leaf Components (no children)")
-
-    # Conceptual documentation
+    # Documentation for code-based apps
     overview = """# App Builder Schema Documentation
 
-Applications in Bifrost are defined using a JSON schema with pages, layouts, and components.
+Applications in Bifrost use a code-based approach with TypeScript/TSX files.
 
 ## App Builder Tool Hierarchy
 
-Apps are managed at three levels:
+Apps are managed at two levels:
 
 ### App Level
-- `list_apps` - List all applications with page summaries
-- `get_app` - Get app metadata and page list (NOT full component trees)
-- `update_app` - Update app settings (name, description, navigation, global config)
-- `publish_app` - Publish all draft pages and components to live
+- `list_apps` - List all applications with file counts
+- `get_app` - Get app metadata and file list
+- `update_app` - Update app settings (name, description, navigation)
+- `publish_app` - Publish all draft files to live
 
-### Page Level
-- `create_page` - Add a new page to an app with optional layout
-- `get_page` - Get page definition with full component tree
-- `update_page` - Update page settings or replace layout
-- `delete_page` - Remove a page and all its components
+### File Level
+- `code_list_files` - List all files in an app
+- `code_get_file` - Get a specific file's content
+- `code_create_file` - Create a new file
+- `code_update_file` - Update a file's content
+- `code_delete_file` - Delete a file
 
-### Component Level
-- `list_components` - List components in a page (type, parent, order only)
-- `create_component` - Add a component to a page
-- `get_component` - Get a single component with full props
-- `update_component` - Update component props or settings
-- `delete_component` - Remove a component and all its children
-- `move_component` - Reposition a component to new parent/order
-
-**Workflow**: Use `get_app` to see pages, then `get_page` for the page you need,
-then component tools for granular edits.
+**Workflow**: Use `get_app` to see files, then file tools for editing.
 
 ---
 
-"""
+## File Structure
 
-    component_types_doc = """
-## Component Model (Unified Flat Props)
+Applications use a file-based structure:
 
-All components use a unified model where props are FLAT on the component (not nested under a 'props' key).
+```
+_layout.tsx          # Root layout wrapper (required)
+_providers.tsx       # Optional providers wrapper
+pages/
+  index.tsx          # Home page (/)
+  about.tsx          # About page (/about)
+  clients/
+    index.tsx        # Clients list (/clients)
+    [id].tsx         # Client detail (/clients/:id)
+components/
+  Button.tsx         # Shared components
+  Card.tsx
+modules/
+  api.ts             # Utility modules
+  utils.ts
+```
 
-When creating/updating components via MCP tools, pass props in the `props` dict:
-```json
-{
-    "component_id": "my-heading",
-    "type": "heading",
-    "props": {
-        "text": "Welcome",
-        "level": 1
-    }
+## File Path Conventions
+
+- Root files: `_layout.tsx`, `_providers.tsx` only
+- Pages: `pages/*.tsx` - automatically become routes
+- Components: `components/*.tsx` - reusable UI
+- Modules: `modules/*.ts` - utilities and helpers
+- Dynamic routes: `[param].tsx` syntax
+
+## Available Imports
+
+```tsx
+// Bifrost SDK
+import { useWorkflow, useUser, Outlet } from "bifrost";
+
+// UI Components (shadcn/ui)
+import { Button, Card, Input, Select } from "@/components/ui";
+
+// React
+import { useState, useEffect } from "react";
+```
+
+## Example Page
+
+```tsx
+import { useWorkflow } from "bifrost";
+import { Button, Card } from "@/components/ui";
+
+export default function ClientsPage() {
+  const { data: clients, loading } = useWorkflow("list-clients");
+
+  if (loading) return <div>Loading...</div>;
+
+  return (
+    <div className="p-8">
+      <h1 className="text-2xl font-bold mb-4">Clients</h1>
+      <div className="grid gap-4">
+        {clients?.map(client => (
+          <Card key={client.id}>
+            <h3>{client.name}</h3>
+          </Card>
+        ))}
+      </div>
+    </div>
+  );
 }
 ```
 
-When reading components (from get_page), props are returned FLAT on the component:
-```json
-{
-    "id": "my-heading",
-    "type": "heading",
-    "text": "Welcome",
-    "level": 1
-}
-```
-
-See the component type documentation above for all available properties per type.
-
-## Expression Syntax
-
-Use `{{ expression }}` for dynamic content:
-- `{{ page.variable }}` - Page variables
-- `{{ component.id.value }}` - Component values
-- `{{ workflow.dataSourceId.result }}` - Workflow results
-- `{{ $user.name }}` - Current user info
-
-## Action Types
-
-| Action | Description |
-|--------|-------------|
-| navigate | Navigate to another page |
-| openModal | Open a modal component |
-| closeModal | Close current modal |
-| runWorkflow | Execute a workflow |
-| setValue | Set a component or page variable |
-| openUrl | Open external URL |
-
 """
 
-    return overview + app_models + "\n\n" + page_models + "\n\n" + component_models + "\n\n" + container_components + "\n\n" + leaf_components + "\n\n" + component_types_doc
+    return overview + app_models + "\n\n" + file_models
 
 
 # End of apps.py

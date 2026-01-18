@@ -150,6 +150,7 @@ def execute_sync_with_auto_resolution(e2e_client, headers, max_wait: float = 60.
 class TestPortableRefsPush:
     """Test that entities pushed to GitHub have portable refs."""
 
+    @pytest.mark.skip(reason="Component engine removed - app.json portable refs no longer used")
     def test_app_push_has_portable_refs(
         self,
         e2e_client,
@@ -280,6 +281,7 @@ class TestPortableRefsPush:
 class TestPortableRefsPull:
     """Test that entities pulled from GitHub have UUIDs restored."""
 
+    @pytest.mark.skip(reason="Component engine removed - app.json portable refs no longer used")
     def test_app_pull_resolves_refs(
         self,
         e2e_client,

@@ -27,11 +27,9 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
 from src.models import Agent, Form
-from src.models.orm.applications import Application, AppPage, AppVersion
-from src.services.app_builder_service import build_unified_component_tree
+from src.models.orm.applications import Application, AppVersion
 from src.services.file_storage.file_ops import compute_git_blob_sha
 from src.services.file_storage.indexers.agent import _serialize_agent_to_json
-from src.services.file_storage.indexers.app import _serialize_app_to_json
 from src.services.file_storage.indexers.form import _serialize_form_to_json
 from src.services.file_storage.ref_translation import build_workflow_ref_map
 
@@ -170,23 +168,18 @@ class VirtualFileProvider:
         """
         Generate virtual files for all applications.
 
-        Fetches all applications with their draft version pages and components,
-        serializes them to JSON with portable workflow refs.
+        Fetches all applications with their draft version files,
+        serializes them to JSON.
 
         Args:
-            workflow_map: Mapping of workflow UUID -> "path::function_name"
+            workflow_map: Mapping of workflow UUID -> "path::function_name" (unused for apps)
 
         Returns:
             VirtualFileResult with files and any serialization errors
         """
-        # Query apps with draft version, pages, and components eagerly loaded
-        stmt = (
-            select(Application)
-            .options(
-                selectinload(Application.draft_version_ref)
-                .selectinload(AppVersion.pages)
-                .selectinload(AppPage.components)
-            )
+        # Query apps with draft version and files eagerly loaded
+        stmt = select(Application).options(
+            selectinload(Application.draft_version_ref).selectinload(AppVersion.files)
         )
         result = await self.db.execute(stmt)
         apps = result.scalars().all()
@@ -197,45 +190,8 @@ class VirtualFileProvider:
         for app in apps:
             virtual_path = f"apps/{app.id}.app.json"
 
-            # Build pages data from draft version
-            pages_data: list[dict] = []
-            if app.draft_version_ref and app.draft_version_ref.pages:
-                for page in sorted(
-                    app.draft_version_ref.pages, key=lambda p: p.page_order
-                ):
-                    # Build component tree from flat components
-                    children = []
-                    if page.components:
-                        component_models = build_unified_component_tree(
-                            page.components, parent_id=None
-                        )
-                        children = [
-                            c.model_dump(exclude_none=True) for c in component_models
-                        ]
-
-                    page_data = {
-                        "id": page.page_id,
-                        "title": page.title,
-                        "path": page.path,
-                        "data_sources": page.data_sources or [],
-                        "variables": page.variables or {},
-                        "permission": page.permission or {},
-                        "children": children,
-                    }
-
-                    if page.launch_workflow_id:
-                        page_data["launch_workflow_id"] = str(page.launch_workflow_id)
-                    if page.launch_workflow_params:
-                        page_data["launch_workflow_params"] = page.launch_workflow_params
-                    if page.launch_workflow_data_source_id:
-                        page_data["launch_workflow_data_source_id"] = (
-                            page.launch_workflow_data_source_id
-                        )
-
-                    pages_data.append(page_data)
-
             try:
-                content = _serialize_app_to_json(app, pages_data, workflow_map)
+                content = self._serialize_app_to_json(app)
                 computed_sha = compute_git_blob_sha(content)
 
                 virtual_files.append(
@@ -417,9 +373,9 @@ class VirtualFileProvider:
         stmt = (
             select(Application)
             .options(
-                selectinload(Application.draft_version_ref)
-                .selectinload(AppVersion.pages)
-                .selectinload(AppPage.components)
+                selectinload(Application.draft_version_ref).selectinload(
+                    AppVersion.files
+                )
             )
             .where(Application.id == app_id)
         )
@@ -429,45 +385,8 @@ class VirtualFileProvider:
         if not app:
             return None
 
-        # Build pages data
-        pages_data: list[dict] = []
-        if app.draft_version_ref and app.draft_version_ref.pages:
-            for page in sorted(
-                app.draft_version_ref.pages, key=lambda p: p.page_order
-            ):
-                # Build component tree from flat components
-                children = []
-                if page.components:
-                    component_models = build_unified_component_tree(
-                        page.components, parent_id=None
-                    )
-                    children = [
-                        c.model_dump(exclude_none=True) for c in component_models
-                    ]
-
-                page_data = {
-                    "id": page.page_id,
-                    "title": page.title,
-                    "path": page.path,
-                    "data_sources": page.data_sources or [],
-                    "variables": page.variables or {},
-                    "permission": page.permission or {},
-                    "children": children,
-                }
-
-                if page.launch_workflow_id:
-                    page_data["launch_workflow_id"] = str(page.launch_workflow_id)
-                if page.launch_workflow_params:
-                    page_data["launch_workflow_params"] = page.launch_workflow_params
-                if page.launch_workflow_data_source_id:
-                    page_data["launch_workflow_data_source_id"] = (
-                        page.launch_workflow_data_source_id
-                    )
-
-                pages_data.append(page_data)
-
         try:
-            content = _serialize_app_to_json(app, pages_data, workflow_map)
+            content = self._serialize_app_to_json(app)
             computed_sha = compute_git_blob_sha(content)
 
             return VirtualFile(
@@ -544,6 +463,46 @@ class VirtualFileProvider:
         except Exception as e:
             logger.warning(f"Failed to serialize agent {agent.id}: {e}")
             return None
+
+    def _serialize_app_to_json(self, app: Application) -> bytes:
+        """
+        Serialize an application to JSON bytes for GitHub sync.
+
+        Args:
+            app: Application ORM model with draft_version_ref and files loaded
+
+        Returns:
+            JSON content as bytes
+        """
+        # Build files list from draft version
+        files_data: list[dict] = []
+        if app.draft_version_ref and app.draft_version_ref.files:
+            for file in sorted(app.draft_version_ref.files, key=lambda f: f.path):
+                file_data = {
+                    "path": file.path,
+                    "source": file.source,
+                }
+                if file.compiled:
+                    file_data["compiled"] = file.compiled
+                files_data.append(file_data)
+
+        app_data = {
+            "id": str(app.id),
+            "name": app.name,
+            "slug": app.slug,
+            "description": app.description,
+            "icon": app.icon,
+            "navigation": app.navigation,
+            "permissions": app.permissions,
+            "access_level": app.access_level,
+            "files": files_data,
+        }
+
+        # Remove None values for cleaner output
+        app_data = {k: v for k, v in app_data.items() if v is not None}
+
+        content = json.dumps(app_data, indent=2, sort_keys=True)
+        return content.encode("utf-8")
 
     @staticmethod
     def extract_id_from_filename(filename: str) -> str | None:

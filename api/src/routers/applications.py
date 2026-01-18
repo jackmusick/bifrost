@@ -8,8 +8,8 @@ Applications follow the same scoping pattern as configs:
 - organization_id = NULL: Global application (platform-wide)
 - organization_id = UUID: Organization-scoped application
 
-NOTE: This router handles app-level operations. Page and component operations
-are in separate routers (app_pages.py, app_components.py).
+Applications use code-based files (TSX/TypeScript) stored in app_files table.
+File operations are handled through the app_files router.
 """
 
 import logging
@@ -32,12 +32,9 @@ from src.models.contracts.applications import (
     ApplicationUpdate,
 )
 from src.models.orm.app_roles import AppRole
-from src.models.orm.applications import AppCodeFile, AppComponent, AppPage, AppVersion, Application
-from src.models.enums import AppEngine
+from src.models.orm.applications import AppFile, AppVersion, Application
 from src.core.exceptions import AccessDeniedError
 from src.repositories.org_scoped import OrgScopedRepository
-from src.services.app_builder_service import AppBuilderService
-from src.services.workflow_role_service import sync_app_roles_to_workflows
 
 logger = logging.getLogger(__name__)
 
@@ -245,7 +242,6 @@ class ApplicationRepository(OrgScopedRepository[Application]):
             navigation={},
             permissions={},
             access_level=data.access_level,
-            engine=data.engine,
         )
         self.session.add(application)
         await self.session.flush()
@@ -259,9 +255,8 @@ class ApplicationRepository(OrgScopedRepository[Application]):
         application.draft_version_id = draft_version.id
         await self.session.flush()  # Ensure draft_version_id is persisted
 
-        # Scaffold initial files for code engine apps
-        if data.engine == AppEngine.CODE:
-            await self._scaffold_code_files(draft_version.id)
+        # Scaffold initial files for new apps
+        await self._scaffold_code_files(draft_version.id)
 
         # Add role associations if role_based access
         if data.access_level == "role_based" and data.role_ids:
@@ -370,26 +365,27 @@ class ApplicationRepository(OrgScopedRepository[Application]):
         if not application.draft_version_id:
             raise ValueError("Application has no draft version to publish")
 
-        # Verify there are pages in the draft version
-        pages_query = select(AppPage).where(
-            AppPage.application_id == app_id,
-            AppPage.version_id == application.draft_version_id,
+        # Verify there are files in the draft version
+        from sqlalchemy.orm import selectinload
+        draft_version_query = (
+            select(AppVersion)
+            .where(AppVersion.id == application.draft_version_id)
+            .options(selectinload(AppVersion.files))
         )
-        result = await self.session.execute(pages_query)
-        draft_pages = list(result.scalars().all())
+        result = await self.session.execute(draft_version_query)
+        draft_version = result.scalar_one_or_none()
 
-        if not draft_pages:
-            raise ValueError("No draft pages to publish")
+        if not draft_version or not draft_version.files:
+            raise ValueError("No files in draft version to publish")
 
-        # Use versioning-based publish
-        service = AppBuilderService(self.session)
-        new_version = await service.publish_with_versioning(application)
+        # Create new version with files copied from draft
+        await self._publish_version(application, draft_version)
 
         await self.session.flush()
         await self.session.refresh(application)
 
         logger.info(
-            f"Published application {app_id} with version {new_version.id} "
+            f"Published application {app_id} with version {application.active_version_id} "
             f"by user {published_by}"
         )
         return application
@@ -412,9 +408,9 @@ export default function RootLayout() {
   );
 }
 '''
-        layout_file = AppCodeFile(
+        layout_file = AppFile(
             app_version_id=version_id,
-            path="_layout",
+            path="_layout.tsx",
             source=layout_source,
         )
         self.session.add(layout_file)
@@ -431,15 +427,174 @@ export default function RootLayout() {
   );
 }
 '''
-        index_file = AppCodeFile(
+        index_file = AppFile(
             app_version_id=version_id,
-            path="pages/index",
+            path="pages/index.tsx",
             source=index_source,
         )
         self.session.add(index_file)
 
         await self.session.flush()
         logger.info(f"Scaffolded initial code files for version {version_id}")
+
+    async def _publish_version(
+        self,
+        application: Application,
+        draft_version: AppVersion,
+    ) -> None:
+        """
+        Create a new published version by copying files from the draft version.
+
+        Sets the new version as the active version and updates published_at.
+        """
+        from datetime import datetime
+
+        # Create new version for the published copy
+        new_version = AppVersion(application_id=application.id)
+        self.session.add(new_version)
+        await self.session.flush()
+
+        # Copy all files from draft to new version
+        for draft_file in draft_version.files:
+            new_file = AppFile(
+                app_version_id=new_version.id,
+                path=draft_file.path,
+                source=draft_file.source,
+                compiled=draft_file.compiled,
+            )
+            self.session.add(new_file)
+
+        # Update application to point to new active version
+        application.active_version_id = new_version.id
+        application.published_at = datetime.utcnow()
+
+        await self.session.flush()
+
+    async def get_files_for_version(
+        self,
+        version_id: UUID,
+    ) -> list[AppFile]:
+        """Get all files for a specific version."""
+        from sqlalchemy.orm import selectinload
+
+        version_query = (
+            select(AppVersion)
+            .where(AppVersion.id == version_id)
+            .options(selectinload(AppVersion.files))
+        )
+        result = await self.session.execute(version_query)
+        version = result.scalar_one_or_none()
+
+        if not version:
+            return []
+        return list(version.files)
+
+    async def export_application(
+        self,
+        application: Application,
+        version_id: UUID | None = None,
+    ) -> dict:
+        """
+        Export application data for API response or GitHub sync.
+
+        Returns a dictionary with application metadata and files.
+        """
+        # Use draft version if no specific version requested
+        target_version_id = version_id or application.draft_version_id
+        files_data: list[dict] = []
+
+        if target_version_id:
+            files = await self.get_files_for_version(target_version_id)
+            for file in sorted(files, key=lambda f: f.path):
+                file_dict: dict = {"path": file.path, "source": file.source}
+                if file.compiled:
+                    file_dict["compiled"] = file.compiled
+                files_data.append(file_dict)
+
+        role_ids = await self.get_role_ids(application.id)
+
+        return {
+            "id": str(application.id),
+            "name": application.name,
+            "slug": application.slug,
+            "description": application.description,
+            "icon": application.icon,
+            "organization_id": str(application.organization_id) if application.organization_id else None,
+            "active_version_id": str(application.active_version_id) if application.active_version_id else None,
+            "draft_version_id": str(application.draft_version_id) if application.draft_version_id else None,
+            "published_at": application.published_at.isoformat() if application.published_at else None,
+            "created_at": application.created_at.isoformat() if application.created_at else None,
+            "updated_at": application.updated_at.isoformat() if application.updated_at else None,
+            "created_by": application.created_by,
+            "is_published": application.is_published,
+            "has_unpublished_changes": application.has_unpublished_changes,
+            "access_level": application.access_level,
+            "role_ids": [str(rid) for rid in role_ids],
+            "navigation": application.navigation,
+            "files": files_data,
+        }
+
+    async def update_draft_files(
+        self,
+        application: Application,
+        files_data: list[dict],
+    ) -> None:
+        """
+        Replace all files in the draft version with the provided files.
+
+        Args:
+            application: The application to update
+            files_data: List of file dictionaries with 'path', 'source', and optional 'compiled'
+        """
+        if not application.draft_version_id:
+            raise ValueError("Application has no draft version")
+
+        # Delete existing files
+        from sqlalchemy import delete as sql_delete
+        await self.session.execute(
+            sql_delete(AppFile).where(AppFile.app_version_id == application.draft_version_id)
+        )
+
+        # Create new files
+        for file_dict in files_data:
+            new_file = AppFile(
+                app_version_id=application.draft_version_id,
+                path=file_dict["path"],
+                source=file_dict["source"],
+                compiled=file_dict.get("compiled"),
+            )
+            self.session.add(new_file)
+
+        await self.session.flush()
+
+    async def rollback_to_version(
+        self,
+        application: Application,
+        version_id: UUID,
+    ) -> None:
+        """
+        Rollback the application's active version to a previous version.
+
+        Validates that the version belongs to this application.
+        """
+        # Verify version exists and belongs to this application
+        version_query = select(AppVersion).where(
+            AppVersion.id == version_id,
+            AppVersion.application_id == application.id,
+        )
+        result = await self.session.execute(version_query)
+        version = result.scalar_one_or_none()
+
+        if not version:
+            raise ValueError(f"Version {version_id} not found for this application")
+
+        # Cannot rollback to draft version
+        if version_id == application.draft_version_id:
+            raise ValueError("Cannot rollback to draft version")
+
+        # Update active version
+        application.active_version_id = version_id
+        await self.session.flush()
 
 
 # =============================================================================
@@ -469,7 +624,6 @@ async def application_to_public(
         is_published=application.is_published,
         has_unpublished_changes=application.has_unpublished_changes,
         access_level=application.access_level,
-        engine=application.engine,
         role_ids=role_ids,
         navigation=application.navigation,
     )
@@ -690,30 +844,6 @@ async def update_application(
             detail=f"Application '{slug}' not found",
         )
 
-    # Sync app roles to workflows if role_ids changed
-    # Only sync draft pages/components (live sync happens on publish)
-    if data.role_ids is not None and application.draft_version_id:
-        draft_pages_query = select(AppPage).where(
-            AppPage.application_id == application.id,
-            AppPage.version_id == application.draft_version_id,
-        )
-        draft_pages_result = await ctx.db.execute(draft_pages_query)
-        draft_pages = list(draft_pages_result.scalars().all())
-
-        draft_components: list[AppComponent] = []
-        for page in draft_pages:
-            comp_query = select(AppComponent).where(AppComponent.page_id == page.id)
-            comp_result = await ctx.db.execute(comp_query)
-            draft_components.extend(comp_result.scalars().all())
-
-        await sync_app_roles_to_workflows(
-            db=ctx.db,
-            app_id=application.id,
-            pages=draft_pages,
-            components=draft_components,
-            assigned_by=user.email,
-        )
-
     # Emit event for real-time updates
     await publish_app_draft_update(
         app_id=str(application.id),
@@ -767,17 +897,23 @@ async def delete_application(
 async def get_draft(
     app_id: UUID,
     ctx: Context,
-    _user: CurrentUser,
+    user: CurrentUser,
     scope: str | None = Query(default=None),
 ) -> ApplicationDefinition:
     """
     Get the current draft definition.
 
-    Returns the draft pages and components serialized as JSON.
+    Returns the draft files serialized as JSON.
     """
+    target_org_id = _resolve_target_org_safe(ctx, scope)
+    repo = ApplicationRepository(
+        ctx.db,
+        target_org_id,
+        user_id=user.user_id,
+        is_superuser=user.is_platform_admin,
+    )
     app = await get_application_by_id_or_404(ctx, app_id, scope)
-    service = AppBuilderService(ctx.db)
-    export_data = await service.export_application(app, version_id=app.draft_version_id)
+    export_data = await repo.export_application(app, version_id=app.draft_version_id)
     return ApplicationDefinition(
         definition=export_data,
         version=0,  # Legacy field - deprecated
@@ -794,17 +930,26 @@ async def save_draft(
     app_id: UUID,
     data: ApplicationDraftSave,
     ctx: Context,
-    _user: CurrentUser,
+    user: CurrentUser,
     scope: str | None = Query(default=None),
 ) -> ApplicationDefinition:
     """
     Save a new draft definition.
 
-    Replaces all existing draft pages and components with the provided definition.
+    Replaces all existing draft files with the provided definition.
     """
+    target_org_id = _resolve_target_org_safe(ctx, scope)
+    repo = ApplicationRepository(
+        ctx.db,
+        target_org_id,
+        user_id=user.user_id,
+        is_superuser=user.is_platform_admin,
+    )
     app = await get_application_by_id_or_404(ctx, app_id, scope)
-    service = AppBuilderService(ctx.db)
-    await service.update_draft_definition(app, data.definition)
+
+    # Extract files from definition and update
+    files_data = data.definition.get("files", [])
+    await repo.update_draft_files(app, files_data)
     await ctx.db.flush()
     await ctx.db.refresh(app)
     return ApplicationDefinition(
@@ -834,8 +979,7 @@ async def publish_application(
     """
     Publish the draft to live.
 
-    Copies all draft pages and components to live versions.
-    Also syncs workflow_roles for execution authorization.
+    Copies all draft files to a new live version.
     """
     target_org_id = _resolve_target_org_safe(ctx, scope)
     repo = ApplicationRepository(
@@ -854,45 +998,12 @@ async def publish_application(
                 detail=f"Application '{app_id}' not found",
             )
 
-        # Sync workflow roles for the newly published live pages/components
-        # Query pages by the active version (set by publish)
-        if not application.active_version_id:
-            raise HTTPException(
-                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-                detail="Publish completed but no active version found",
-            )
-
-        live_pages_query = select(AppPage).where(
-            AppPage.application_id == app_id,
-            AppPage.version_id == application.active_version_id,
-        )
-        live_pages_result = await ctx.db.execute(live_pages_query)
-        live_pages = list(live_pages_result.scalars().all())
-
-        # Get all components for these live pages (components belong to page by FK)
-        live_components: list[AppComponent] = []
-        for page in live_pages:
-            comp_query = select(AppComponent).where(
-                AppComponent.page_id == page.id,
-            )
-            comp_result = await ctx.db.execute(comp_query)
-            live_components.extend(comp_result.scalars().all())
-
-        # Sync app roles to referenced workflows - additive
-        await sync_app_roles_to_workflows(
-            db=ctx.db,
-            app_id=app_id,
-            pages=live_pages,
-            components=live_components,
-            assigned_by=user.email,
-        )
-
         # Emit event for real-time updates
         await publish_app_published(
             app_id=str(app_id),
             user_id=str(user.user_id),
             user_name=user.name or user.email or "Unknown",
-            new_version_id=str(application.active_version_id),
+            new_version_id=str(application.active_version_id) if application.active_version_id else "",
         )
 
         return await application_to_public(application, repo)
@@ -916,23 +1027,25 @@ async def publish_application(
 async def export_application(
     app_id: UUID,
     ctx: Context,
-    _user: CurrentUser,
+    user: CurrentUser,
     version_id: UUID | None = Query(default=None, description="Version UUID to export (defaults to draft)"),
     scope: str | None = Query(default=None),
 ) -> ApplicationPublic:
     """
     Export full application to JSON for GitHub sync/portability.
 
-    Returns the complete application structure including all pages and components.
+    Returns the complete application structure including all files.
     Pass version_id to export a specific version, or omit to export draft.
-
-    The export format uses typed PageDefinition models and includes `_export`
-    metadata for portable workflow refs resolution during import.
     """
+    target_org_id = _resolve_target_org_safe(ctx, scope)
+    repo = ApplicationRepository(
+        ctx.db,
+        target_org_id,
+        user_id=user.user_id,
+        is_superuser=user.is_platform_admin,
+    )
     application = await get_application_by_id_or_404(ctx, app_id, scope)
-
-    service = AppBuilderService(ctx.db)
-    export_data = await service.export_application(application, version_id)
+    export_data = await repo.export_application(application, version_id)
 
     return ApplicationPublic.model_validate(export_data)
 
@@ -969,10 +1082,8 @@ async def rollback_application(
     )
     application = await get_application_by_id_or_404(ctx, app_id, scope)
 
-    service = AppBuilderService(ctx.db)
-
     try:
-        await service.rollback_to_version(application, data.version_id)
+        await repo.rollback_to_version(application, data.version_id)
         await ctx.db.flush()
         await ctx.db.refresh(application)
         logger.info(f"Rolled back application {app_id} to version {data.version_id}")

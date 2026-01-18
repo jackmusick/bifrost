@@ -20,12 +20,10 @@ Structure:
 - data_providers.py - data provider tools
 - sdk.py          - SDK documentation (generated from source)
 - apps.py         - application CRUD
-- pages.py        - page CRUD
-- components.py   - component CRUD
 - tables.py       - table CRUD and schema
 - organizations.py - organization CRUD (restricted)
 - agents.py       - agent CRUD and schema
-- code_files.py   - code file CRUD for code engine apps
+- app_files.py    - app file CRUD for code engine apps
 """
 
 # Import all tool modules to trigger registration
@@ -38,10 +36,8 @@ from src.services.mcp_server.tools import integrations  # noqa: F401
 from src.services.mcp_server.tools import execution  # noqa: F401
 from src.services.mcp_server.tools import data_providers  # noqa: F401
 from src.services.mcp_server.tools import apps  # noqa: F401
-from src.services.mcp_server.tools import pages  # noqa: F401
-from src.services.mcp_server.tools import components  # noqa: F401
 from src.services.mcp_server.tools import tables  # noqa: F401
 from src.services.mcp_server.tools import organizations  # noqa: F401
 from src.services.mcp_server.tools import sdk  # noqa: F401
 from src.services.mcp_server.tools import agents  # noqa: F401
-from src.services.mcp_server.tools import code_files  # noqa: F401
+from src.services.mcp_server.tools import app_files  # noqa: F401

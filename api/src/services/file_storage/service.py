@@ -32,7 +32,7 @@ from .deactivation import DeactivationProtectionService
 from .file_ops import FileOperationsService
 from .folder_ops import FolderOperationsService
 from .reindex import WorkspaceReindexService
-from .indexers import WorkflowIndexer, FormIndexer, AppIndexer, AgentIndexer
+from .indexers import WorkflowIndexer, FormIndexer, AgentIndexer
 
 if TYPE_CHECKING:
     from src.models.contracts.maintenance import ReindexResult
@@ -72,7 +72,6 @@ class FileStorageService:
         # Initialize indexers
         self._workflow_indexer = WorkflowIndexer(db)
         self._form_indexer = FormIndexer(db)
-        self._app_indexer = AppIndexer(db)
         self._agent_indexer = AgentIndexer(db)
 
         # Initialize operation services with dependencies
@@ -353,9 +352,6 @@ class FileStorageService:
                 # Index the form and return proper tuple
                 content_modified = await self._form_indexer.index_form(path, content)
                 return content, content_modified, False, None, [], None, None
-            elif path.endswith(".app.json"):
-                content_modified = await self._app_indexer.index_app(path, content)
-                return content, content_modified, False, None, [], None, None
             elif path.endswith(".agent.json"):
                 content_modified = await self._agent_indexer.index_agent(path, content)
                 return content, content_modified, False, None, [], None, None
@@ -484,8 +480,6 @@ class FileStorageService:
             await self._workflow_indexer.index_python_file(path, content)
         elif entity_type == "form":
             await self._form_indexer.index_form(path, content)
-        elif entity_type == "app":
-            await self._app_indexer.index_app(path, content)
         elif entity_type == "agent":
             await self._agent_indexer.index_agent(path, content)
 
@@ -506,9 +500,6 @@ class FileStorageService:
         elif path.endswith(".form.json"):
             # Delete forms
             await self._form_indexer.delete_form_for_file(path)
-        elif path.endswith(".app.json"):
-            # Delete apps
-            await self._app_indexer.delete_app_for_file(path)
         elif path.endswith(".agent.json"):
             # Delete agents
             await self._agent_indexer.delete_agent_for_file(path)

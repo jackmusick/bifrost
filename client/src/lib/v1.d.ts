@@ -5841,14 +5841,14 @@ export interface paths {
          * Get draft definition
          * @description Get the current draft definition.
          *
-         *     Returns the draft pages and components serialized as JSON.
+         *     Returns the draft files serialized as JSON.
          */
         get: operations["get_draft_api_applications__app_id__draft_get"];
         /**
          * Save draft definition
          * @description Save a new draft definition.
          *
-         *     Replaces all existing draft pages and components with the provided definition.
+         *     Replaces all existing draft files with the provided definition.
          */
         put: operations["save_draft_api_applications__app_id__draft_put"];
         post?: never;
@@ -5871,8 +5871,7 @@ export interface paths {
          * Publish draft to live
          * @description Publish the draft to live.
          *
-         *     Copies all draft pages and components to live versions.
-         *     Also syncs workflow_roles for execution authorization.
+         *     Copies all draft files to a new live version.
          */
         post: operations["publish_application_api_applications__app_id__publish_post"];
         delete?: never;
@@ -5892,11 +5891,8 @@ export interface paths {
          * Export application to JSON
          * @description Export full application to JSON for GitHub sync/portability.
          *
-         *     Returns the complete application structure including all pages and components.
+         *     Returns the complete application structure including all files.
          *     Pass version_id to export a specific version, or omit to export draft.
-         *
-         *     The export format uses typed PageDefinition models and includes `_export`
-         *     metadata for portable workflow refs resolution during import.
          */
         get: operations["export_application_api_applications__app_id__export_get"];
         put?: never;
@@ -5924,166 +5920,6 @@ export interface paths {
          *     The draft version remains unchanged.
          */
         post: operations["rollback_application_api_applications__app_id__rollback_post"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/applications/{app_id}/pages": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /**
-         * List pages
-         * @description List all pages for an application (summaries only).
-         *
-         *     Requires version_id to specify which version of pages to list.
-         *     Defaults to app's draft_version_id if not provided.
-         */
-        get: operations["list_pages_api_applications__app_id__pages_get"];
-        put?: never;
-        /**
-         * Create page
-         * @description Create a new page with optional layout.
-         */
-        post: operations["create_page_api_applications__app_id__pages_post"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/applications/{app_id}/pages/{page_id}": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /**
-         * Get page definition
-         * @description Get a page with its full layout tree.
-         *
-         *     Requires version_id to specify which version of the page to get.
-         *     Defaults to app's draft_version_id if not provided.
-         *
-         *     Returns a PageDefinition with nested layout structure that matches
-         *     the frontend TypeScript PageDefinition interface exactly.
-         *     The response is serialized to camelCase JSON.
-         */
-        get: operations["get_page_api_applications__app_id__pages__page_id__get"];
-        put?: never;
-        post?: never;
-        /**
-         * Delete page
-         * @description Delete a page and all its components.
-         */
-        delete: operations["delete_page_api_applications__app_id__pages__page_id__delete"];
-        options?: never;
-        head?: never;
-        /**
-         * Update page metadata
-         * @description Update page metadata (not components).
-         */
-        patch: operations["update_page_api_applications__app_id__pages__page_id__patch"];
-        trace?: never;
-    };
-    "/api/applications/{app_id}/pages/{page_id}/layout": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        /**
-         * Replace page layout
-         * @description Replace the entire layout of a page (all components).
-         */
-        put: operations["replace_page_layout_api_applications__app_id__pages__page_id__layout_put"];
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/applications/{app_id}/pages/{page_id}/components": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /**
-         * List components
-         * @description List all components for a page (summaries only).
-         *
-         *     Returns component_id, type, parent_id, order - enough to decide what to fetch.
-         *
-         *     Requires version_id to specify which version of the page to query.
-         */
-        get: operations["list_components_api_applications__app_id__pages__page_id__components_get"];
-        put?: never;
-        /**
-         * Create component
-         * @description Create a new component.
-         */
-        post: operations["create_component_api_applications__app_id__pages__page_id__components_post"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/applications/{app_id}/pages/{page_id}/components/{component_id}": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /**
-         * Get component
-         * @description Get a single component with full props.
-         *
-         *     Requires version_id to specify which version of the page to query.
-         */
-        get: operations["get_component_api_applications__app_id__pages__page_id__components__component_id__get"];
-        put?: never;
-        post?: never;
-        /**
-         * Delete component
-         * @description Delete a component and all its children.
-         */
-        delete: operations["delete_component_api_applications__app_id__pages__page_id__components__component_id__delete"];
-        options?: never;
-        head?: never;
-        /**
-         * Update component
-         * @description Update component props and fields.
-         */
-        patch: operations["update_component_api_applications__app_id__pages__page_id__components__component_id__patch"];
-        trace?: never;
-    };
-    "/api/applications/{app_id}/pages/{page_id}/components/{component_id}/move": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /**
-         * Move component
-         * @description Move a component to a new parent and/or position.
-         */
-        post: operations["move_component_api_applications__app_id__pages__page_id__components__component_id__move_post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -6779,10 +6615,10 @@ export interface components {
             system_tools?: string[] | null;
         };
         /**
-         * AppCodeFileCreate
+         * AppFileCreate
          * @description Input for creating a code file.
          */
-        AppCodeFileCreate: {
+        AppFileCreate: {
             /**
              * Path
              * @description File path within the app (e.g., 'pages/clients/[id]', 'components/Button')
@@ -6795,20 +6631,20 @@ export interface components {
             source: string;
         };
         /**
-         * AppCodeFileListResponse
+         * AppFileListResponse
          * @description Response for listing code files.
          */
-        AppCodeFileListResponse: {
+        AppFileListResponse: {
             /** Files */
-            files: components["schemas"]["AppCodeFileResponse"][];
+            files: components["schemas"]["AppFileResponse"][];
             /** Total */
             total: number;
         };
         /**
-         * AppCodeFileResponse
+         * AppFileResponse
          * @description Full code file response.
          */
-        AppCodeFileResponse: {
+        AppFileResponse: {
             /**
              * Path
              * @description File path within the app (e.g., 'pages/clients/[id]', 'components/Button')
@@ -6841,10 +6677,10 @@ export interface components {
             updated_at: string;
         };
         /**
-         * AppCodeFileUpdate
+         * AppFileUpdate
          * @description Input for updating a code file.
          */
-        AppCodeFileUpdate: {
+        AppFileUpdate: {
             /**
              * Source
              * @description Updated source code
@@ -6855,352 +6691,6 @@ export interface components {
              * @description Compiled output
              */
             compiled?: string | null;
-        };
-        /**
-         * AppComponentCreate
-         * @description Input for creating a component.
-         */
-        AppComponentCreate: {
-            /**
-             * Component Id
-             * @description Component identifier (e.g., 'btn_submit', 'table_customers')
-             */
-            component_id: string;
-            /**
-             * Type
-             * @description Component type (button, text, data-table, row, column, grid, etc.)
-             */
-            type: string;
-            /**
-             * Parent Id
-             * @description Parent component ID (null for root level)
-             */
-            parent_id?: string | null;
-            /**
-             * Props
-             * @description Component-specific properties
-             */
-            props?: {
-                [key: string]: unknown;
-            };
-            /**
-             * Component Order
-             * @description Order among siblings
-             * @default 0
-             */
-            component_order: number;
-            /**
-             * Visible
-             * @description Visibility expression (e.g., "{{ user.role == 'admin' }}")
-             */
-            visible?: string | null;
-            /**
-             * Width
-             * @description Component width (auto, full, 1/2, etc.)
-             */
-            width?: string | null;
-            /**
-             * Loading Workflows
-             * @description Workflow IDs that show loading skeleton
-             */
-            loading_workflows?: string[] | null;
-        };
-        /**
-         * AppComponentListResponse
-         * @description Response for listing components.
-         */
-        AppComponentListResponse: {
-            /** Components */
-            components: components["schemas"]["AppComponentSummary"][];
-            /** Total */
-            total: number;
-        };
-        /**
-         * AppComponentMove
-         * @description Input for moving a component to a new parent/position.
-         */
-        AppComponentMove: {
-            /**
-             * New Parent Id
-             * @description New parent component ID (null for root level)
-             */
-            new_parent_id: string | null;
-            /**
-             * New Order
-             * @description New order among siblings
-             */
-            new_order: number;
-        };
-        /**
-         * AppComponentResponse
-         * @description Full component response with all fields.
-         */
-        AppComponentResponse: {
-            /**
-             * Id
-             * Format: uuid
-             */
-            id: string;
-            /** Component Id */
-            component_id: string;
-            /** Parent Id */
-            parent_id: string | null;
-            /** Type */
-            type: string;
-            /** Component Order */
-            component_order: number;
-            /**
-             * Page Id
-             * Format: uuid
-             */
-            page_id: string;
-            /** Props */
-            props: {
-                [key: string]: unknown;
-            };
-            /** Visible */
-            visible: string | null;
-            /** Width */
-            width: string | null;
-            /** Loading Workflows */
-            loading_workflows: string[] | null;
-            /** Created At */
-            created_at: string;
-            /** Updated At */
-            updated_at: string;
-        };
-        /**
-         * AppComponentSummary
-         * @description Component summary for listings (type + position info).
-         */
-        AppComponentSummary: {
-            /**
-             * Id
-             * Format: uuid
-             */
-            id: string;
-            /** Component Id */
-            component_id: string;
-            /** Parent Id */
-            parent_id: string | null;
-            /** Type */
-            type: string;
-            /** Component Order */
-            component_order: number;
-        };
-        /**
-         * AppComponentUpdate
-         * @description Input for updating a component.
-         */
-        AppComponentUpdate: {
-            /** Type */
-            type?: string | null;
-            /** Props */
-            props?: {
-                [key: string]: unknown;
-            } | null;
-            /** Component Order */
-            component_order?: number | null;
-            /** Visible */
-            visible?: string | null;
-            /** Width */
-            width?: string | null;
-            /** Loading Workflows */
-            loading_workflows?: string[] | null;
-        };
-        /**
-         * AppPageCreate
-         * @description Input for creating a page.
-         */
-        AppPageCreate: {
-            /**
-             * Page Id
-             * @description Page identifier (lowercase letters, numbers, underscores, hyphens)
-             */
-            page_id: string;
-            /**
-             * Title
-             * @description Page display title
-             */
-            title: string;
-            /**
-             * Path
-             * @description Page URL path (e.g., '/' or '/settings')
-             */
-            path: string;
-            /**
-             * Data Sources
-             * @description Page-level data sources
-             */
-            data_sources?: {
-                [key: string]: unknown;
-            }[];
-            /**
-             * Variables
-             * @description Page-level variables
-             */
-            variables?: {
-                [key: string]: unknown;
-            };
-            /**
-             * Launch Workflow Id
-             * @description Workflow to execute on page mount
-             */
-            launch_workflow_id?: string | null;
-            /**
-             * Launch Workflow Params
-             * @description Parameters for launch workflow
-             */
-            launch_workflow_params?: {
-                [key: string]: unknown;
-            } | null;
-            /**
-             * Launch Workflow Data Source Id
-             * @description Data source ID for workflow results (defaults to workflow function name)
-             */
-            launch_workflow_data_source_id?: string | null;
-            /**
-             * Permission
-             * @description Page permission config (allowedRoles, etc.)
-             */
-            permission?: {
-                [key: string]: unknown;
-            };
-            /**
-             * Page Order
-             * @description Order in navigation/page list
-             * @default 0
-             */
-            page_order: number;
-        };
-        /**
-         * AppPageListResponse
-         * @description Response for listing pages.
-         */
-        AppPageListResponse: {
-            /** Pages */
-            pages: components["schemas"]["AppPageSummary"][];
-            /** Total */
-            total: number;
-        };
-        /**
-         * AppPageResponse
-         * @description Full page response with all fields (but not component tree).
-         */
-        AppPageResponse: {
-            /**
-             * Id
-             * Format: uuid
-             */
-            id: string;
-            /** Page Id */
-            page_id: string;
-            /** Title */
-            title: string;
-            /** Path */
-            path: string;
-            /**
-             * Version Id
-             * Format: uuid
-             * @description ID of the version this page belongs to
-             */
-            version_id: string;
-            /** Page Order */
-            page_order: number;
-            /** Permission */
-            permission: {
-                [key: string]: unknown;
-            };
-            /** Created At */
-            created_at: string;
-            /** Updated At */
-            updated_at: string;
-            /**
-             * Application Id
-             * Format: uuid
-             */
-            application_id: string;
-            /** Data Sources */
-            data_sources: {
-                [key: string]: unknown;
-            }[];
-            /** Variables */
-            variables: {
-                [key: string]: unknown;
-            };
-            /** Launch Workflow Id */
-            launch_workflow_id: string | null;
-            /** Launch Workflow Params */
-            launch_workflow_params: {
-                [key: string]: unknown;
-            } | null;
-            /** Launch Workflow Data Source Id */
-            launch_workflow_data_source_id: string | null;
-        };
-        /**
-         * AppPageSummary
-         * @description Page summary for listings (no component details).
-         */
-        AppPageSummary: {
-            /**
-             * Id
-             * Format: uuid
-             */
-            id: string;
-            /** Page Id */
-            page_id: string;
-            /** Title */
-            title: string;
-            /** Path */
-            path: string;
-            /**
-             * Version Id
-             * Format: uuid
-             * @description ID of the version this page belongs to
-             */
-            version_id: string;
-            /** Page Order */
-            page_order: number;
-            /** Permission */
-            permission: {
-                [key: string]: unknown;
-            };
-            /** Created At */
-            created_at: string;
-            /** Updated At */
-            updated_at: string;
-        };
-        /**
-         * AppPageUpdate
-         * @description Input for updating a page.
-         */
-        AppPageUpdate: {
-            /** Title */
-            title?: string | null;
-            /** Path */
-            path?: string | null;
-            /** Data Sources */
-            data_sources?: {
-                [key: string]: unknown;
-            }[] | null;
-            /** Variables */
-            variables?: {
-                [key: string]: unknown;
-            } | null;
-            /** Launch Workflow Id */
-            launch_workflow_id?: string | null;
-            /** Launch Workflow Params */
-            launch_workflow_params?: {
-                [key: string]: unknown;
-            } | null;
-            /** Launch Workflow Data Source Id */
-            launch_workflow_data_source_id?: string | null;
-            /** Permission */
-            permission?: {
-                [key: string]: unknown;
-            } | null;
-            /** Page Order */
-            page_order?: number | null;
         };
         /**
          * ApplicationCreate
@@ -7238,12 +6728,6 @@ export interface components {
              * @description Role IDs for role_based access (ignored if access_level is 'authenticated')
              */
             role_ids?: string[];
-            /**
-             * Engine
-             * @description Rendering engine: 'components' (JSON tree) or 'code' (code files)
-             * @default components
-             */
-            engine: string;
         };
         /**
          * ApplicationDefinition
@@ -7296,7 +6780,6 @@ export interface components {
          * @description Application output for API responses.
          *
          *     This is the unified model for both list/get operations AND export/import.
-         *     Fields like `pages` are optional - omitted for list views, included for export.
          */
         ApplicationPublic: {
             /**
@@ -7350,23 +6833,17 @@ export interface components {
              * @default authenticated
              */
             access_level: string;
-            /**
-             * Engine
-             * @description Rendering engine: 'components' (JSON tree) or 'code' (code files)
-             * @default components
-             */
-            engine: string;
             /** Role Ids */
             role_ids?: string[];
-            /** @description Navigation configuration (sidebar items, etc.) */
-            navigation?: components["schemas"]["NavigationConfig-Output"] | null;
+            /**
+             * Navigation
+             * @description Navigation configuration (sidebar items, etc.)
+             */
+            navigation?: components["schemas"]["NavigationConfig-Output"] | {
+                [key: string]: unknown;
+            } | null;
             /** @description Permission configuration (included in export) */
             permissions?: components["schemas"]["PermissionConfig"] | null;
-            /**
-             * Pages
-             * @description Page definitions with nested layout/components (included in export)
-             */
-            pages?: components["schemas"]["PageDefinition"][] | null;
         };
         /**
          * ApplicationPublishRequest
@@ -7495,7 +6972,7 @@ export interface components {
             /** Mfa Required For Password */
             mfa_required_for_password: boolean;
             /** Oauth Providers */
-            oauth_providers: components["schemas"]["OAuthProviderInfo"][];
+            oauth_providers: components["schemas"]["src__models__contracts__auth__OAuthProviderInfo"][];
         };
         /**
          * AuthorizeResponse
@@ -7544,66 +7021,6 @@ export interface components {
              * @description Similarity score to the deactivated workflow (0.0-1.0)
              */
             similarity_score: number;
-        };
-        /**
-         * BadgeComponent
-         * @description Badge component.
-         */
-        BadgeComponent: {
-            /**
-             * Id
-             * @description Unique component identifier
-             */
-            id: string;
-            /**
-             * Width
-             * @description Component width
-             */
-            width?: ("auto" | "full" | "1/2" | "1/3" | "1/4" | "2/3" | "3/4") | null;
-            /**
-             * Visible
-             * @description Visibility expression
-             */
-            visible?: string | null;
-            /**
-             * Loading Workflows
-             * @description Workflow IDs that trigger loading state
-             */
-            loading_workflows?: string[] | null;
-            /**
-             * Grid Span
-             * @description Grid column span (for grid layouts)
-             */
-            grid_span?: number | null;
-            /** @description Repeat configuration for rendering multiple instances */
-            repeat_for?: components["schemas"]["RepeatFor"] | null;
-            /**
-             * Class Name
-             * @description Additional CSS classes
-             */
-            class_name?: string | null;
-            /**
-             * Style
-             * @description Inline CSS styles (camelCase properties)
-             */
-            style?: {
-                [key: string]: unknown;
-            } | null;
-            /**
-             * @description Component type (enum property replaced by openapi-typescript)
-             * @enum {string}
-             */
-            type: "badge";
-            /**
-             * Text
-             * @description Badge text (supports expressions)
-             */
-            text: string;
-            /**
-             * Variant
-             * @description Badge variant
-             */
-            variant?: ("default" | "secondary" | "destructive" | "outline") | null;
         };
         /** Body_login_auth_login_post */
         Body_login_auth_login_post: {
@@ -7677,124 +7094,6 @@ export interface components {
              * @description Primary color (hex code, e.g., #0066CC)
              */
             primary_color?: string | null;
-        };
-        /**
-         * ButtonComponent
-         * @description Button component.
-         */
-        ButtonComponent: {
-            /**
-             * Id
-             * @description Unique component identifier
-             */
-            id: string;
-            /**
-             * Width
-             * @description Component width
-             */
-            width?: ("auto" | "full" | "1/2" | "1/3" | "1/4" | "2/3" | "3/4") | null;
-            /**
-             * Visible
-             * @description Visibility expression
-             */
-            visible?: string | null;
-            /**
-             * Loading Workflows
-             * @description Workflow IDs that trigger loading state
-             */
-            loading_workflows?: string[] | null;
-            /**
-             * Grid Span
-             * @description Grid column span (for grid layouts)
-             */
-            grid_span?: number | null;
-            /** @description Repeat configuration for rendering multiple instances */
-            repeat_for?: components["schemas"]["RepeatFor"] | null;
-            /**
-             * Class Name
-             * @description Additional CSS classes
-             */
-            class_name?: string | null;
-            /**
-             * Style
-             * @description Inline CSS styles (camelCase properties)
-             */
-            style?: {
-                [key: string]: unknown;
-            } | null;
-            /**
-             * @description Component type (enum property replaced by openapi-typescript)
-             * @enum {string}
-             */
-            type: "button";
-            /**
-             * Label
-             * @description Button label (supports expressions)
-             */
-            label: string;
-            /**
-             * Action Type
-             * @description Action type
-             * @enum {string}
-             */
-            action_type: "navigate" | "workflow" | "custom" | "submit" | "open-modal";
-            /**
-             * Navigate To
-             * @description Navigation path for navigate action
-             */
-            navigate_to?: string | null;
-            /**
-             * Workflow Id
-             * @description Workflow ID for workflow action
-             */
-            workflow_id?: string | null;
-            /**
-             * Custom Action Id
-             * @description Custom action ID
-             */
-            custom_action_id?: string | null;
-            /**
-             * Modal Id
-             * @description Modal ID to open (for open-modal action)
-             */
-            modal_id?: string | null;
-            /**
-             * Action Params
-             * @description Parameters to pass to action
-             */
-            action_params?: {
-                [key: string]: unknown;
-            } | null;
-            /**
-             * On Complete
-             * @description Action(s) to execute after workflow completes successfully
-             */
-            on_complete?: components["schemas"]["OnCompleteAction"][] | null;
-            /**
-             * On Error
-             * @description Action(s) to execute if workflow fails
-             */
-            on_error?: components["schemas"]["OnCompleteAction"][] | null;
-            /**
-             * Variant
-             * @description Button variant
-             */
-            variant?: ("default" | "destructive" | "outline" | "secondary" | "ghost" | "link") | null;
-            /**
-             * Size
-             * @description Button size
-             */
-            size?: ("default" | "sm" | "lg") | null;
-            /**
-             * Disabled
-             * @description Disabled state (boolean or expression like "{{ row.status == 'completed' }}")
-             */
-            disabled?: boolean | string | null;
-            /**
-             * Icon
-             * @description Icon name to display (from lucide-react)
-             */
-            icon?: string | null;
         };
         /**
          * CLIAICompleteRequest
@@ -8370,98 +7669,6 @@ export interface components {
             logs?: components["schemas"]["CLISessionLogRequest"][];
         };
         /**
-         * CardComponent
-         * @description Card container component.
-         */
-        CardComponent: {
-            /**
-             * Id
-             * @description Unique component identifier
-             */
-            id: string;
-            /**
-             * Width
-             * @description Component width
-             */
-            width?: ("auto" | "full" | "1/2" | "1/3" | "1/4" | "2/3" | "3/4") | null;
-            /**
-             * Visible
-             * @description Visibility expression
-             */
-            visible?: string | null;
-            /**
-             * Loading Workflows
-             * @description Workflow IDs that trigger loading state
-             */
-            loading_workflows?: string[] | null;
-            /**
-             * Grid Span
-             * @description Grid column span (for grid layouts)
-             */
-            grid_span?: number | null;
-            /** @description Repeat configuration for rendering multiple instances */
-            repeat_for?: components["schemas"]["RepeatFor"] | null;
-            /**
-             * Class Name
-             * @description Additional CSS classes
-             */
-            class_name?: string | null;
-            /**
-             * Style
-             * @description Inline CSS styles (camelCase properties)
-             */
-            style?: {
-                [key: string]: unknown;
-            } | null;
-            /**
-             * @description Component type (enum property replaced by openapi-typescript)
-             * @enum {string}
-             */
-            type: "card";
-            /**
-             * Children
-             * @description Card content
-             */
-            children?: (components["schemas"]["RowComponent"] | components["schemas"]["ColumnComponent"] | components["schemas"]["GridComponent"] | components["schemas"]["CardComponent"] | components["schemas"]["ModalComponent"] | components["schemas"]["TabsComponent"] | components["schemas"]["TabItemComponent"] | components["schemas"]["FormGroupComponent"] | components["schemas"]["HeadingComponent"] | components["schemas"]["TextComponent"] | components["schemas"]["HtmlComponent"] | components["schemas"]["DividerComponent"] | components["schemas"]["SpacerComponent"] | components["schemas"]["ButtonComponent"] | components["schemas"]["StatCardComponent"] | components["schemas"]["ImageComponent"] | components["schemas"]["BadgeComponent"] | components["schemas"]["ProgressComponent"] | components["schemas"]["DataTableComponent"] | components["schemas"]["FileViewerComponent"] | components["schemas"]["TextInputComponent"] | components["schemas"]["NumberInputComponent"] | components["schemas"]["SelectComponent"] | components["schemas"]["CheckboxComponent"] | components["schemas"]["FormEmbedComponent"])[];
-            /**
-             * Title
-             * @description Card title
-             */
-            title?: string | null;
-            /**
-             * Description
-             * @description Card description
-             */
-            description?: string | null;
-            /**
-             * Collapsible
-             * @description Whether card is collapsible
-             * @default false
-             */
-            collapsible: boolean;
-            /**
-             * Default Collapsed
-             * @description Initial collapsed state
-             * @default false
-             */
-            default_collapsed: boolean;
-            /**
-             * Header Actions
-             * @description Header action buttons
-             */
-            header_actions?: components["schemas"]["TableAction"][] | null;
-            /**
-             * Flex
-             * @description Flex behavior. 'grow' fills available space (flex-1 min-h-0). Combine with overflow: auto for contained scrolling.
-             */
-            flex?: ("grow" | "none") | null;
-            /**
-             * Overflow
-             * @description Overflow behavior for card content. Use 'auto' with flex: 'grow' for internal scrolling.
-             */
-            overflow?: ("auto" | "scroll" | "hidden" | "visible") | null;
-        };
-        /**
          * ChatRequest
          * @description Request for sending a chat message.
          */
@@ -8492,86 +7699,6 @@ export interface components {
             token_count_output?: number | null;
             /** Duration Ms */
             duration_ms?: number | null;
-        };
-        /**
-         * CheckboxComponent
-         * @description Checkbox component.
-         */
-        CheckboxComponent: {
-            /**
-             * Id
-             * @description Unique component identifier
-             */
-            id: string;
-            /**
-             * Width
-             * @description Component width
-             */
-            width?: ("auto" | "full" | "1/2" | "1/3" | "1/4" | "2/3" | "3/4") | null;
-            /**
-             * Visible
-             * @description Visibility expression
-             */
-            visible?: string | null;
-            /**
-             * Loading Workflows
-             * @description Workflow IDs that trigger loading state
-             */
-            loading_workflows?: string[] | null;
-            /**
-             * Grid Span
-             * @description Grid column span (for grid layouts)
-             */
-            grid_span?: number | null;
-            /** @description Repeat configuration for rendering multiple instances */
-            repeat_for?: components["schemas"]["RepeatFor"] | null;
-            /**
-             * Class Name
-             * @description Additional CSS classes
-             */
-            class_name?: string | null;
-            /**
-             * Style
-             * @description Inline CSS styles (camelCase properties)
-             */
-            style?: {
-                [key: string]: unknown;
-            } | null;
-            /**
-             * @description Component type (enum property replaced by openapi-typescript)
-             * @enum {string}
-             */
-            type: "checkbox";
-            /**
-             * Field Id
-             * @description Field ID for value tracking
-             */
-            field_id: string;
-            /**
-             * Label
-             * @description Checkbox label
-             */
-            label: string;
-            /**
-             * Description
-             * @description Description text below label
-             */
-            description?: string | null;
-            /**
-             * Default Checked
-             * @description Default checked state
-             */
-            default_checked?: boolean | null;
-            /**
-             * Required
-             * @description Required field
-             */
-            required?: boolean | null;
-            /**
-             * Disabled
-             * @description Disabled state (boolean or expression)
-             */
-            disabled?: boolean | string | null;
         };
         /**
          * CleanupTriggeredResponse
@@ -8653,106 +7780,6 @@ export interface components {
              * @default false
              */
             clear_overrides: boolean;
-        };
-        /**
-         * ColumnComponent
-         * @description Column layout component - vertical flex container.
-         */
-        ColumnComponent: {
-            /**
-             * Id
-             * @description Unique component identifier
-             */
-            id: string;
-            /**
-             * Width
-             * @description Component width
-             */
-            width?: ("auto" | "full" | "1/2" | "1/3" | "1/4" | "2/3" | "3/4") | null;
-            /**
-             * Visible
-             * @description Visibility expression
-             */
-            visible?: string | null;
-            /**
-             * Loading Workflows
-             * @description Workflow IDs that trigger loading state
-             */
-            loading_workflows?: string[] | null;
-            /**
-             * Grid Span
-             * @description Grid column span (for grid layouts)
-             */
-            grid_span?: number | null;
-            /** @description Repeat configuration for rendering multiple instances */
-            repeat_for?: components["schemas"]["RepeatFor"] | null;
-            /**
-             * Class Name
-             * @description Additional CSS classes
-             */
-            class_name?: string | null;
-            /**
-             * Style
-             * @description Inline CSS styles (camelCase properties)
-             */
-            style?: {
-                [key: string]: unknown;
-            } | null;
-            /**
-             * @description Component type (enum property replaced by openapi-typescript)
-             * @enum {string}
-             */
-            type: "column";
-            /**
-             * Children
-             * @description Child components
-             */
-            children?: (components["schemas"]["RowComponent"] | components["schemas"]["ColumnComponent"] | components["schemas"]["GridComponent"] | components["schemas"]["CardComponent"] | components["schemas"]["ModalComponent"] | components["schemas"]["TabsComponent"] | components["schemas"]["TabItemComponent"] | components["schemas"]["FormGroupComponent"] | components["schemas"]["HeadingComponent"] | components["schemas"]["TextComponent"] | components["schemas"]["HtmlComponent"] | components["schemas"]["DividerComponent"] | components["schemas"]["SpacerComponent"] | components["schemas"]["ButtonComponent"] | components["schemas"]["StatCardComponent"] | components["schemas"]["ImageComponent"] | components["schemas"]["BadgeComponent"] | components["schemas"]["ProgressComponent"] | components["schemas"]["DataTableComponent"] | components["schemas"]["FileViewerComponent"] | components["schemas"]["TextInputComponent"] | components["schemas"]["NumberInputComponent"] | components["schemas"]["SelectComponent"] | components["schemas"]["CheckboxComponent"] | components["schemas"]["FormEmbedComponent"])[];
-            /**
-             * Gap
-             * @description Gap between children
-             */
-            gap?: number | string | null;
-            /**
-             * Padding
-             * @description Container padding
-             */
-            padding?: number | string | null;
-            /**
-             * Align
-             * @description Cross-axis alignment
-             */
-            align?: ("start" | "center" | "end" | "stretch") | null;
-            /**
-             * Max Width
-             * @description Maximum width
-             */
-            max_width?: ("sm" | "md" | "lg" | "xl" | "2xl" | "full" | "none") | null;
-            /**
-             * Max Height
-             * @description Maximum height in pixels
-             */
-            max_height?: number | null;
-            /**
-             * Overflow
-             * @description Overflow behavior
-             */
-            overflow?: ("auto" | "scroll" | "hidden" | "visible") | null;
-            /**
-             * Sticky
-             * @description Sticky positioning
-             */
-            sticky?: ("top" | "bottom") | null;
-            /**
-             * Sticky Offset
-             * @description Sticky offset in pixels
-             */
-            sticky_offset?: number | null;
-            /**
-             * Flex
-             * @description Flex behavior. 'grow' fills available space (flex-1 min-h-0). Combine with overflow: auto for contained scrolling.
-             */
-            flex?: ("grow" | "none") | null;
         };
         /**
          * CommitHistoryResponse
@@ -9239,184 +8266,6 @@ export interface components {
          */
         DataProviderInputMode: "static" | "fieldRef" | "expression";
         /**
-         * DataSourceConfig
-         * @description Data source configuration for pages.
-         *
-         *     Defines how data is fetched and made available to page components.
-         */
-        DataSourceConfig: {
-            /**
-             * Id
-             * @description Unique identifier for this data source
-             */
-            id: string;
-            /**
-             * Type
-             * @description Type of data source
-             * @enum {string}
-             */
-            type: "api" | "static" | "computed" | "data-provider" | "workflow";
-            /**
-             * Endpoint
-             * @description API endpoint (for 'api' type)
-             */
-            endpoint?: string | null;
-            /**
-             * Data
-             * @description Static data (for 'static' type)
-             */
-            data?: unknown | null;
-            /**
-             * Expression
-             * @description Computed expression (for 'computed' type)
-             */
-            expression?: string | null;
-            /**
-             * Data Provider Id
-             * @description Data provider ID (for 'data-provider' type)
-             */
-            data_provider_id?: string | null;
-            /**
-             * Workflow Id
-             * @description Workflow ID (for 'workflow' type)
-             */
-            workflow_id?: string | null;
-            /**
-             * Input Params
-             * @description Parameters to pass to the data source
-             */
-            input_params?: {
-                [key: string]: unknown;
-            } | null;
-            /**
-             * Auto Refresh
-             * @description Whether to auto-refresh data
-             */
-            auto_refresh?: boolean | null;
-            /**
-             * Refresh Interval
-             * @description Refresh interval in milliseconds
-             */
-            refresh_interval?: number | null;
-        };
-        /**
-         * DataTableComponent
-         * @description Data table component.
-         */
-        DataTableComponent: {
-            /**
-             * Id
-             * @description Unique component identifier
-             */
-            id: string;
-            /**
-             * Width
-             * @description Component width
-             */
-            width?: ("auto" | "full" | "1/2" | "1/3" | "1/4" | "2/3" | "3/4") | null;
-            /**
-             * Visible
-             * @description Visibility expression
-             */
-            visible?: string | null;
-            /**
-             * Loading Workflows
-             * @description Workflow IDs that trigger loading state
-             */
-            loading_workflows?: string[] | null;
-            /**
-             * Grid Span
-             * @description Grid column span (for grid layouts)
-             */
-            grid_span?: number | null;
-            /** @description Repeat configuration for rendering multiple instances */
-            repeat_for?: components["schemas"]["RepeatFor"] | null;
-            /**
-             * Class Name
-             * @description Additional CSS classes
-             */
-            class_name?: string | null;
-            /**
-             * Style
-             * @description Inline CSS styles (camelCase properties)
-             */
-            style?: {
-                [key: string]: unknown;
-            } | null;
-            /**
-             * @description Component type (enum property replaced by openapi-typescript)
-             * @enum {string}
-             */
-            type: "data-table";
-            /**
-             * Data Source
-             * @description Data source - ID of a page data source
-             */
-            data_source: string;
-            /**
-             * Data Path
-             * @description Path to array within the data source result (e.g., 'clients' if result is { clients: [...] })
-             */
-            data_path?: string | null;
-            /**
-             * Columns
-             * @description Column definitions
-             */
-            columns: components["schemas"]["TableColumn"][];
-            /**
-             * Selectable
-             * @description Enable row selection
-             */
-            selectable?: boolean | null;
-            /**
-             * Searchable
-             * @description Enable search
-             */
-            searchable?: boolean | null;
-            /**
-             * Paginated
-             * @description Enable pagination
-             */
-            paginated?: boolean | null;
-            /**
-             * Page Size
-             * @description Page size
-             */
-            page_size?: number | null;
-            /**
-             * Row Actions
-             * @description Row actions
-             */
-            row_actions?: components["schemas"]["TableAction"][] | null;
-            /**
-             * Header Actions
-             * @description Header actions (e.g., Add New button)
-             */
-            header_actions?: components["schemas"]["TableAction"][] | null;
-            /** @description Row click handler */
-            on_row_click?: components["schemas"]["RowClickHandler"] | null;
-            /**
-             * Empty Message
-             * @description Empty state message
-             */
-            empty_message?: string | null;
-            /**
-             * Cache Key
-             * @description Cache key - if set, data persists across page navigations
-             */
-            cache_key?: string | null;
-            /**
-             * Contained
-             * @description When true, table fills its container and scrolls internally. Header becomes sticky. Use with a parent that has flex: grow.
-             */
-            contained?: boolean | null;
-            /**
-             * Sticky Header
-             * @description Make header sticky during scroll. Defaults to true when contained is true.
-             */
-            sticky_header?: boolean | null;
-        };
-        /**
          * DeactivateWorkflowResponse
          * @description Response after deactivating an orphaned workflow.
          */
@@ -9673,61 +8522,6 @@ export interface components {
              * @default 1800
              */
             expires_in: number;
-        };
-        /**
-         * DividerComponent
-         * @description Divider component.
-         */
-        DividerComponent: {
-            /**
-             * Id
-             * @description Unique component identifier
-             */
-            id: string;
-            /**
-             * Width
-             * @description Component width
-             */
-            width?: ("auto" | "full" | "1/2" | "1/3" | "1/4" | "2/3" | "3/4") | null;
-            /**
-             * Visible
-             * @description Visibility expression
-             */
-            visible?: string | null;
-            /**
-             * Loading Workflows
-             * @description Workflow IDs that trigger loading state
-             */
-            loading_workflows?: string[] | null;
-            /**
-             * Grid Span
-             * @description Grid column span (for grid layouts)
-             */
-            grid_span?: number | null;
-            /** @description Repeat configuration for rendering multiple instances */
-            repeat_for?: components["schemas"]["RepeatFor"] | null;
-            /**
-             * Class Name
-             * @description Additional CSS classes
-             */
-            class_name?: string | null;
-            /**
-             * Style
-             * @description Inline CSS styles (camelCase properties)
-             */
-            style?: {
-                [key: string]: unknown;
-            } | null;
-            /**
-             * @description Component type (enum property replaced by openapi-typescript)
-             * @enum {string}
-             */
-            type: "divider";
-            /**
-             * Orientation
-             * @description Divider orientation
-             */
-            orientation?: ("horizontal" | "vertical") | null;
         };
         /**
          * DocsIndexResponse
@@ -11039,96 +9833,6 @@ export interface components {
             file_metadata: components["schemas"]["UploadedFileMetadata"];
         };
         /**
-         * FileViewerComponent
-         * @description File viewer component.
-         */
-        FileViewerComponent: {
-            /**
-             * Id
-             * @description Unique component identifier
-             */
-            id: string;
-            /**
-             * Width
-             * @description Component width
-             */
-            width?: ("auto" | "full" | "1/2" | "1/3" | "1/4" | "2/3" | "3/4") | null;
-            /**
-             * Visible
-             * @description Visibility expression
-             */
-            visible?: string | null;
-            /**
-             * Loading Workflows
-             * @description Workflow IDs that trigger loading state
-             */
-            loading_workflows?: string[] | null;
-            /**
-             * Grid Span
-             * @description Grid column span (for grid layouts)
-             */
-            grid_span?: number | null;
-            /** @description Repeat configuration for rendering multiple instances */
-            repeat_for?: components["schemas"]["RepeatFor"] | null;
-            /**
-             * Class Name
-             * @description Additional CSS classes
-             */
-            class_name?: string | null;
-            /**
-             * Style
-             * @description Inline CSS styles (camelCase properties)
-             */
-            style?: {
-                [key: string]: unknown;
-            } | null;
-            /**
-             * @description Component type (enum property replaced by openapi-typescript)
-             * @enum {string}
-             */
-            type: "file-viewer";
-            /**
-             * Src
-             * @description File URL or path (supports expressions)
-             */
-            src: string;
-            /**
-             * File Name
-             * @description File name for display and download
-             */
-            file_name?: string | null;
-            /**
-             * Mime Type
-             * @description MIME type of the file (auto-detected if not provided)
-             */
-            mime_type?: string | null;
-            /**
-             * Display Mode
-             * @description Display mode: inline (embed), modal (popup), or download (link)
-             */
-            display_mode?: ("inline" | "modal" | "download") | null;
-            /**
-             * Max Width
-             * @description Max width for inline display
-             */
-            max_width?: number | string | null;
-            /**
-             * Max Height
-             * @description Max height for inline display
-             */
-            max_height?: number | string | null;
-            /**
-             * Download Label
-             * @description Label for download button (when displayMode is 'download')
-             */
-            download_label?: string | null;
-            /**
-             * Show Download Button
-             * @description Whether to show download button alongside inline/modal view
-             */
-            show_download_button?: boolean | null;
-        };
-        /**
          * FileWriteRequest
          * @description Request to write a file.
          */
@@ -11200,81 +9904,6 @@ export interface components {
              * @description Organization ID (null = global resource)
              */
             organization_id?: string | null;
-        };
-        /**
-         * FormEmbedComponent
-         * @description Form embed component.
-         */
-        FormEmbedComponent: {
-            /**
-             * Id
-             * @description Unique component identifier
-             */
-            id: string;
-            /**
-             * Width
-             * @description Component width
-             */
-            width?: ("auto" | "full" | "1/2" | "1/3" | "1/4" | "2/3" | "3/4") | null;
-            /**
-             * Visible
-             * @description Visibility expression
-             */
-            visible?: string | null;
-            /**
-             * Loading Workflows
-             * @description Workflow IDs that trigger loading state
-             */
-            loading_workflows?: string[] | null;
-            /**
-             * Grid Span
-             * @description Grid column span (for grid layouts)
-             */
-            grid_span?: number | null;
-            /** @description Repeat configuration for rendering multiple instances */
-            repeat_for?: components["schemas"]["RepeatFor"] | null;
-            /**
-             * Class Name
-             * @description Additional CSS classes
-             */
-            class_name?: string | null;
-            /**
-             * Style
-             * @description Inline CSS styles (camelCase properties)
-             */
-            style?: {
-                [key: string]: unknown;
-            } | null;
-            /**
-             * @description Component type (enum property replaced by openapi-typescript)
-             * @enum {string}
-             */
-            type: "form-embed";
-            /**
-             * Form Id
-             * @description Form ID to embed
-             */
-            form_id: string;
-            /**
-             * Show Title
-             * @description Whether to show the form title
-             */
-            show_title?: boolean | null;
-            /**
-             * Show Description
-             * @description Whether to show the form description
-             */
-            show_description?: boolean | null;
-            /**
-             * Show Progress
-             * @description Whether to show form progress steps
-             */
-            show_progress?: boolean | null;
-            /**
-             * On Submit
-             * @description Actions to execute after form submission
-             */
-            on_submit?: components["schemas"]["OnCompleteAction"][] | null;
         };
         /**
          * FormExecuteRequest
@@ -11464,86 +10093,6 @@ export interface components {
          * @enum {string}
          */
         FormFieldType: "text" | "email" | "number" | "select" | "checkbox" | "textarea" | "radio" | "date" | "datetime" | "markdown" | "html" | "file";
-        /**
-         * FormGroupComponent
-         * @description Form group component for grouping form fields.
-         */
-        FormGroupComponent: {
-            /**
-             * Id
-             * @description Unique component identifier
-             */
-            id: string;
-            /**
-             * Width
-             * @description Component width
-             */
-            width?: ("auto" | "full" | "1/2" | "1/3" | "1/4" | "2/3" | "3/4") | null;
-            /**
-             * Visible
-             * @description Visibility expression
-             */
-            visible?: string | null;
-            /**
-             * Loading Workflows
-             * @description Workflow IDs that trigger loading state
-             */
-            loading_workflows?: string[] | null;
-            /**
-             * Grid Span
-             * @description Grid column span (for grid layouts)
-             */
-            grid_span?: number | null;
-            /** @description Repeat configuration for rendering multiple instances */
-            repeat_for?: components["schemas"]["RepeatFor"] | null;
-            /**
-             * Class Name
-             * @description Additional CSS classes
-             */
-            class_name?: string | null;
-            /**
-             * Style
-             * @description Inline CSS styles (camelCase properties)
-             */
-            style?: {
-                [key: string]: unknown;
-            } | null;
-            /**
-             * @description Component type (enum property replaced by openapi-typescript)
-             * @enum {string}
-             */
-            type: "form-group";
-            /**
-             * Children
-             * @description Form field components
-             */
-            children?: (components["schemas"]["RowComponent"] | components["schemas"]["ColumnComponent"] | components["schemas"]["GridComponent"] | components["schemas"]["CardComponent"] | components["schemas"]["ModalComponent"] | components["schemas"]["TabsComponent"] | components["schemas"]["TabItemComponent"] | components["schemas"]["FormGroupComponent"] | components["schemas"]["HeadingComponent"] | components["schemas"]["TextComponent"] | components["schemas"]["HtmlComponent"] | components["schemas"]["DividerComponent"] | components["schemas"]["SpacerComponent"] | components["schemas"]["ButtonComponent"] | components["schemas"]["StatCardComponent"] | components["schemas"]["ImageComponent"] | components["schemas"]["BadgeComponent"] | components["schemas"]["ProgressComponent"] | components["schemas"]["DataTableComponent"] | components["schemas"]["FileViewerComponent"] | components["schemas"]["TextInputComponent"] | components["schemas"]["NumberInputComponent"] | components["schemas"]["SelectComponent"] | components["schemas"]["CheckboxComponent"] | components["schemas"]["FormEmbedComponent"])[];
-            /**
-             * Label
-             * @description Group label
-             */
-            label?: string | null;
-            /**
-             * Description
-             * @description Group description
-             */
-            description?: string | null;
-            /**
-             * Required
-             * @description Whether fields are required
-             */
-            required?: boolean | null;
-            /**
-             * Direction
-             * @description Layout direction
-             */
-            direction?: ("row" | "column") | null;
-            /**
-             * Gap
-             * @description Gap between fields
-             */
-            gap?: number | string | null;
-        };
         /**
          * FormPublic
          * @description Form output for API responses.
@@ -11998,146 +10547,10 @@ export interface components {
              */
             org_id?: string | null;
         };
-        /**
-         * GridComponent
-         * @description Grid layout component.
-         */
-        GridComponent: {
-            /**
-             * Id
-             * @description Unique component identifier
-             */
-            id: string;
-            /**
-             * Width
-             * @description Component width
-             */
-            width?: ("auto" | "full" | "1/2" | "1/3" | "1/4" | "2/3" | "3/4") | null;
-            /**
-             * Visible
-             * @description Visibility expression
-             */
-            visible?: string | null;
-            /**
-             * Loading Workflows
-             * @description Workflow IDs that trigger loading state
-             */
-            loading_workflows?: string[] | null;
-            /**
-             * Grid Span
-             * @description Grid column span (for grid layouts)
-             */
-            grid_span?: number | null;
-            /** @description Repeat configuration for rendering multiple instances */
-            repeat_for?: components["schemas"]["RepeatFor"] | null;
-            /**
-             * Class Name
-             * @description Additional CSS classes
-             */
-            class_name?: string | null;
-            /**
-             * Style
-             * @description Inline CSS styles (camelCase properties)
-             */
-            style?: {
-                [key: string]: unknown;
-            } | null;
-            /**
-             * @description Component type (enum property replaced by openapi-typescript)
-             * @enum {string}
-             */
-            type: "grid";
-            /**
-             * Children
-             * @description Child components
-             */
-            children?: (components["schemas"]["RowComponent"] | components["schemas"]["ColumnComponent"] | components["schemas"]["GridComponent"] | components["schemas"]["CardComponent"] | components["schemas"]["ModalComponent"] | components["schemas"]["TabsComponent"] | components["schemas"]["TabItemComponent"] | components["schemas"]["FormGroupComponent"] | components["schemas"]["HeadingComponent"] | components["schemas"]["TextComponent"] | components["schemas"]["HtmlComponent"] | components["schemas"]["DividerComponent"] | components["schemas"]["SpacerComponent"] | components["schemas"]["ButtonComponent"] | components["schemas"]["StatCardComponent"] | components["schemas"]["ImageComponent"] | components["schemas"]["BadgeComponent"] | components["schemas"]["ProgressComponent"] | components["schemas"]["DataTableComponent"] | components["schemas"]["FileViewerComponent"] | components["schemas"]["TextInputComponent"] | components["schemas"]["NumberInputComponent"] | components["schemas"]["SelectComponent"] | components["schemas"]["CheckboxComponent"] | components["schemas"]["FormEmbedComponent"])[];
-            /**
-             * Columns
-             * @description Number of columns or template
-             * @default 3
-             */
-            columns: number | string;
-            /**
-             * Gap
-             * @description Gap between children
-             */
-            gap?: number | string | null;
-            /**
-             * Padding
-             * @description Container padding
-             */
-            padding?: number | string | null;
-            /**
-             * Flex
-             * @description Flex behavior. 'grow' fills available space (flex-1 min-h-0). Combine with overflow: auto for contained scrolling.
-             */
-            flex?: ("grow" | "none") | null;
-        };
         /** HTTPValidationError */
         HTTPValidationError: {
             /** Detail */
             detail?: components["schemas"]["ValidationError"][];
-        };
-        /**
-         * HeadingComponent
-         * @description Heading text component.
-         */
-        HeadingComponent: {
-            /**
-             * Id
-             * @description Unique component identifier
-             */
-            id: string;
-            /**
-             * Width
-             * @description Component width
-             */
-            width?: ("auto" | "full" | "1/2" | "1/3" | "1/4" | "2/3" | "3/4") | null;
-            /**
-             * Visible
-             * @description Visibility expression
-             */
-            visible?: string | null;
-            /**
-             * Loading Workflows
-             * @description Workflow IDs that trigger loading state
-             */
-            loading_workflows?: string[] | null;
-            /**
-             * Grid Span
-             * @description Grid column span (for grid layouts)
-             */
-            grid_span?: number | null;
-            /** @description Repeat configuration for rendering multiple instances */
-            repeat_for?: components["schemas"]["RepeatFor"] | null;
-            /**
-             * Class Name
-             * @description Additional CSS classes
-             */
-            class_name?: string | null;
-            /**
-             * Style
-             * @description Inline CSS styles (camelCase properties)
-             */
-            style?: {
-                [key: string]: unknown;
-            } | null;
-            /**
-             * @description Component type (enum property replaced by openapi-typescript)
-             * @enum {string}
-             */
-            type: "heading";
-            /**
-             * Text
-             * @description Heading text (supports expressions)
-             */
-            text: string;
-            /**
-             * Level
-             * @description Heading level (1-6)
-             */
-            level?: (1 | 2 | 3 | 4 | 5 | 6) | null;
         };
         /**
          * HealthCheck
@@ -12158,136 +10571,6 @@ export interface components {
             version: string;
             /** Environment */
             environment: string;
-        };
-        /**
-         * HtmlComponent
-         * @description HTML component.
-         */
-        HtmlComponent: {
-            /**
-             * Id
-             * @description Unique component identifier
-             */
-            id: string;
-            /**
-             * Width
-             * @description Component width
-             */
-            width?: ("auto" | "full" | "1/2" | "1/3" | "1/4" | "2/3" | "3/4") | null;
-            /**
-             * Visible
-             * @description Visibility expression
-             */
-            visible?: string | null;
-            /**
-             * Loading Workflows
-             * @description Workflow IDs that trigger loading state
-             */
-            loading_workflows?: string[] | null;
-            /**
-             * Grid Span
-             * @description Grid column span (for grid layouts)
-             */
-            grid_span?: number | null;
-            /** @description Repeat configuration for rendering multiple instances */
-            repeat_for?: components["schemas"]["RepeatFor"] | null;
-            /**
-             * Class Name
-             * @description Additional CSS classes
-             */
-            class_name?: string | null;
-            /**
-             * Style
-             * @description Inline CSS styles (camelCase properties)
-             */
-            style?: {
-                [key: string]: unknown;
-            } | null;
-            /**
-             * @description Component type (enum property replaced by openapi-typescript)
-             * @enum {string}
-             */
-            type: "html";
-            /**
-             * Content
-             * @description HTML/JSX template content that can include inline <style> tags for CSS. Access data via the 'context' object: context.workflow.<dataSourceId> (workflow results, where dataSourceId is configured when setting up the workflow - defaults to the workflow function name), context.workflow.user (current user info), context.field (form field values), context.query (URL query parameters). Example: <div className="p-4">Hello {context.workflow.user.name}!</div>
-             */
-            content: string;
-        };
-        /**
-         * ImageComponent
-         * @description Image component.
-         */
-        ImageComponent: {
-            /**
-             * Id
-             * @description Unique component identifier
-             */
-            id: string;
-            /**
-             * Width
-             * @description Component width
-             */
-            width?: ("auto" | "full" | "1/2" | "1/3" | "1/4" | "2/3" | "3/4") | null;
-            /**
-             * Visible
-             * @description Visibility expression
-             */
-            visible?: string | null;
-            /**
-             * Loading Workflows
-             * @description Workflow IDs that trigger loading state
-             */
-            loading_workflows?: string[] | null;
-            /**
-             * Grid Span
-             * @description Grid column span (for grid layouts)
-             */
-            grid_span?: number | null;
-            /** @description Repeat configuration for rendering multiple instances */
-            repeat_for?: components["schemas"]["RepeatFor"] | null;
-            /**
-             * Class Name
-             * @description Additional CSS classes
-             */
-            class_name?: string | null;
-            /**
-             * Style
-             * @description Inline CSS styles (camelCase properties)
-             */
-            style?: {
-                [key: string]: unknown;
-            } | null;
-            /**
-             * @description Component type (enum property replaced by openapi-typescript)
-             * @enum {string}
-             */
-            type: "image";
-            /**
-             * Src
-             * @description Image source (URL or expression)
-             */
-            src: string;
-            /**
-             * Alt
-             * @description Alt text
-             */
-            alt?: string | null;
-            /**
-             * Max Width
-             * @description Max width
-             */
-            max_width?: number | string | null;
-            /**
-             * Max Height
-             * @description Max height
-             */
-            max_height?: number | string | null;
-            /**
-             * Object Fit
-             * @description Object fit mode
-             */
-            object_fit?: ("contain" | "cover" | "fill" | "none") | null;
         };
         /**
          * InstallPackageRequest
@@ -13056,29 +11339,6 @@ export interface components {
             models?: components["schemas"]["LLMModelInfo"][] | null;
         };
         /**
-         * LaunchWorkflowConfig
-         * @description Configuration for page launch workflow.
-         */
-        LaunchWorkflowConfig: {
-            /**
-             * Workflow Id
-             * @description Workflow ID to execute on page mount
-             */
-            workflow_id: string;
-            /**
-             * Params
-             * @description Parameters to pass to the workflow
-             */
-            params?: {
-                [key: string]: unknown;
-            } | null;
-            /**
-             * Data Source Id
-             * @description Data source ID for accessing workflow results
-             */
-            data_source_id?: string | null;
-        };
-        /**
          * LinkedAccountResponse
          * @description Linked OAuth account info.
          */
@@ -13312,11 +11572,6 @@ export interface components {
             issuer: string;
             /** Account Name */
             account_name: string;
-            /**
-             * Is Existing
-             * @default false
-             */
-            is_existing: boolean;
         };
         /**
          * MFAStatusResponse
@@ -13336,20 +11591,11 @@ export interface components {
         };
         /**
          * MFAVerifyRequest
-         * @description Request to verify MFA code during login.
+         * @description Request to verify MFA code.
          */
         MFAVerifyRequest: {
-            /** Mfa Token */
-            mfa_token: string;
             /** Code */
             code: string;
-            /**
-             * Trust Device
-             * @default false
-             */
-            trust_device: boolean;
-            /** Device Name */
-            device_name?: string | null;
         };
         /**
          * MFAVerifyResponse
@@ -13453,155 +11699,6 @@ export interface components {
              * @default common
              */
             tenant_id: string;
-        };
-        /**
-         * ModalComponent
-         * @description Modal dialog component.
-         */
-        ModalComponent: {
-            /**
-             * Id
-             * @description Unique component identifier
-             */
-            id: string;
-            /**
-             * Width
-             * @description Component width
-             */
-            width?: ("auto" | "full" | "1/2" | "1/3" | "1/4" | "2/3" | "3/4") | null;
-            /**
-             * Visible
-             * @description Visibility expression
-             */
-            visible?: string | null;
-            /**
-             * Loading Workflows
-             * @description Workflow IDs that trigger loading state
-             */
-            loading_workflows?: string[] | null;
-            /**
-             * Grid Span
-             * @description Grid column span (for grid layouts)
-             */
-            grid_span?: number | null;
-            /** @description Repeat configuration for rendering multiple instances */
-            repeat_for?: components["schemas"]["RepeatFor"] | null;
-            /**
-             * Class Name
-             * @description Additional CSS classes
-             */
-            class_name?: string | null;
-            /**
-             * Style
-             * @description Inline CSS styles (camelCase properties)
-             */
-            style?: {
-                [key: string]: unknown;
-            } | null;
-            /**
-             * @description Component type (enum property replaced by openapi-typescript)
-             * @enum {string}
-             */
-            type: "modal";
-            /**
-             * Children
-             * @description Modal body content
-             */
-            children?: (components["schemas"]["RowComponent"] | components["schemas"]["ColumnComponent"] | components["schemas"]["GridComponent"] | components["schemas"]["CardComponent"] | components["schemas"]["ModalComponent"] | components["schemas"]["TabsComponent"] | components["schemas"]["TabItemComponent"] | components["schemas"]["FormGroupComponent"] | components["schemas"]["HeadingComponent"] | components["schemas"]["TextComponent"] | components["schemas"]["HtmlComponent"] | components["schemas"]["DividerComponent"] | components["schemas"]["SpacerComponent"] | components["schemas"]["ButtonComponent"] | components["schemas"]["StatCardComponent"] | components["schemas"]["ImageComponent"] | components["schemas"]["BadgeComponent"] | components["schemas"]["ProgressComponent"] | components["schemas"]["DataTableComponent"] | components["schemas"]["FileViewerComponent"] | components["schemas"]["TextInputComponent"] | components["schemas"]["NumberInputComponent"] | components["schemas"]["SelectComponent"] | components["schemas"]["CheckboxComponent"] | components["schemas"]["FormEmbedComponent"])[];
-            /**
-             * Title
-             * @description Modal title
-             */
-            title: string;
-            /**
-             * Description
-             * @description Modal description
-             */
-            description?: string | null;
-            /**
-             * Trigger Label
-             * @description Trigger button label
-             */
-            trigger_label?: string | null;
-            /**
-             * Trigger Variant
-             * @description Trigger button variant
-             */
-            trigger_variant?: ("default" | "destructive" | "outline" | "secondary" | "ghost" | "link") | null;
-            /**
-             * Trigger Size
-             * @description Trigger button size
-             */
-            trigger_size?: ("default" | "sm" | "lg") | null;
-            /**
-             * Size
-             * @description Modal size
-             */
-            size?: ("sm" | "default" | "lg" | "xl" | "full") | null;
-            /**
-             * Footer Actions
-             * @description Footer actions
-             */
-            footer_actions?: components["schemas"]["ModalFooterAction"][] | null;
-            /**
-             * Show Close Button
-             * @description Show close button
-             */
-            show_close_button?: boolean | null;
-        };
-        /**
-         * ModalFooterAction
-         * @description Footer action for modals.
-         */
-        ModalFooterAction: {
-            /**
-             * Label
-             * @description Action button label
-             */
-            label: string;
-            /**
-             * Variant
-             * @description Button variant
-             */
-            variant?: ("default" | "destructive" | "outline" | "secondary" | "ghost") | null;
-            /**
-             * Action Type
-             * @description Type of action
-             * @enum {string}
-             */
-            action_type: "navigate" | "workflow" | "custom" | "submit" | "open-modal";
-            /**
-             * Navigate To
-             * @description Path to navigate to (for navigate type)
-             */
-            navigate_to?: string | null;
-            /**
-             * Workflow Id
-             * @description Workflow ID (for workflow type)
-             */
-            workflow_id?: string | null;
-            /**
-             * Action Params
-             * @description Parameters to pass to action
-             */
-            action_params?: {
-                [key: string]: unknown;
-            } | null;
-            /**
-             * On Complete
-             * @description Action(s) to execute after workflow completes successfully
-             */
-            on_complete?: components["schemas"]["OnCompleteAction"][] | null;
-            /**
-             * On Error
-             * @description Action(s) to execute if workflow fails (for submit actionType)
-             */
-            on_error?: components["schemas"]["OnCompleteAction"][] | null;
-            /**
-             * Close On Click
-             * @description Whether clicking this action should close the modal
-             */
-            close_on_click?: boolean | null;
         };
         /**
          * NavItem
@@ -13857,101 +11954,6 @@ export interface components {
          */
         NotificationStatus: "pending" | "running" | "awaiting_action" | "completed" | "failed" | "cancelled";
         /**
-         * NumberInputComponent
-         * @description Number input component.
-         */
-        NumberInputComponent: {
-            /**
-             * Id
-             * @description Unique component identifier
-             */
-            id: string;
-            /**
-             * Width
-             * @description Component width
-             */
-            width?: ("auto" | "full" | "1/2" | "1/3" | "1/4" | "2/3" | "3/4") | null;
-            /**
-             * Visible
-             * @description Visibility expression
-             */
-            visible?: string | null;
-            /**
-             * Loading Workflows
-             * @description Workflow IDs that trigger loading state
-             */
-            loading_workflows?: string[] | null;
-            /**
-             * Grid Span
-             * @description Grid column span (for grid layouts)
-             */
-            grid_span?: number | null;
-            /** @description Repeat configuration for rendering multiple instances */
-            repeat_for?: components["schemas"]["RepeatFor"] | null;
-            /**
-             * Class Name
-             * @description Additional CSS classes
-             */
-            class_name?: string | null;
-            /**
-             * Style
-             * @description Inline CSS styles (camelCase properties)
-             */
-            style?: {
-                [key: string]: unknown;
-            } | null;
-            /**
-             * @description Component type (enum property replaced by openapi-typescript)
-             * @enum {string}
-             */
-            type: "number-input";
-            /**
-             * Field Id
-             * @description Field ID for value tracking
-             */
-            field_id: string;
-            /**
-             * Label
-             * @description Input label
-             */
-            label?: string | null;
-            /**
-             * Placeholder
-             * @description Placeholder text
-             */
-            placeholder?: string | null;
-            /**
-             * Default Value
-             * @description Default value (supports expressions)
-             */
-            default_value?: number | string | null;
-            /**
-             * Required
-             * @description Required field
-             */
-            required?: boolean | null;
-            /**
-             * Disabled
-             * @description Disabled state (boolean or expression)
-             */
-            disabled?: boolean | string | null;
-            /**
-             * Min
-             * @description Minimum value
-             */
-            min?: number | null;
-            /**
-             * Max
-             * @description Maximum value
-             */
-            max?: number | null;
-            /**
-             * Step
-             * @description Step increment
-             */
-            step?: number | null;
-        };
-        /**
          * OAuthAuthorizeResponse
          * @description Response model for OAuth authorization URL.
          */
@@ -13974,29 +11976,15 @@ export interface components {
         };
         /**
          * OAuthCallbackRequest
-         * @description Request model for OAuth callback endpoint
+         * @description OAuth callback request (for when frontend handles callback).
          */
         OAuthCallbackRequest: {
-            /**
-             * Code
-             * @description Authorization code from OAuth provider
-             */
+            /** Provider */
+            provider: string;
+            /** Code */
             code: string;
-            /**
-             * State
-             * @description State parameter for CSRF protection
-             */
-            state?: string | null;
-            /**
-             * Redirect Uri
-             * @description Redirect URI used in authorization request
-             */
-            redirect_uri?: string | null;
-            /**
-             * Organization Id
-             * @description Organization ID for org-specific token storage (optional, for org overrides)
-             */
-            organization_id?: string | null;
+            /** State */
+            state: string;
         };
         /**
          * OAuthCallbackResponse
@@ -14426,7 +12414,7 @@ export interface components {
         };
         /**
          * OAuthProviderInfo
-         * @description OAuth provider information for login page
+         * @description OAuth provider information.
          */
         OAuthProviderInfo: {
             /** Name */
@@ -14442,7 +12430,7 @@ export interface components {
          */
         OAuthProvidersResponse: {
             /** Providers */
-            providers: components["schemas"]["src__routers__oauth_sso__OAuthProviderInfo"][];
+            providers: components["schemas"]["OAuthProviderInfo"][];
         };
         /**
          * OAuthTokenResponse
@@ -14485,38 +12473,6 @@ export interface components {
              * @default SSO
              */
             display_name: string;
-        };
-        /**
-         * OnCompleteAction
-         * @description Action to execute after workflow completes.
-         */
-        OnCompleteAction: {
-            /**
-             * Type
-             * @description Type of action to perform
-             * @enum {string}
-             */
-            type: "navigate" | "set-variable" | "refresh-table";
-            /**
-             * Navigate To
-             * @description Path to navigate to (for navigate type)
-             */
-            navigate_to?: string | null;
-            /**
-             * Variable Name
-             * @description Variable name to set (for set-variable type)
-             */
-            variable_name?: string | null;
-            /**
-             * Variable Value
-             * @description Variable value to set, supports {{ workflow.result.* }} expressions
-             */
-            variable_value?: string | null;
-            /**
-             * Data Source Key
-             * @description Data source key to refresh (for refresh-table type)
-             */
-            data_source_key?: string | null;
         };
         /**
          * OrganizationCreate
@@ -14801,96 +12757,6 @@ export interface components {
             updates_available: components["schemas"]["PackageUpdate"][];
             /** Total Count */
             total_count: number;
-        };
-        /**
-         * PageDefinition
-         * @description Page definition for the app builder.
-         */
-        PageDefinition: {
-            /**
-             * Id
-             * @description Page identifier
-             */
-            id: string;
-            /**
-             * Title
-             * @description Page title
-             */
-            title: string;
-            /**
-             * Path
-             * @description Page path/route
-             */
-            path: string;
-            /**
-             * Children
-             * @description Page content - direct children like HTML body
-             */
-            children?: (components["schemas"]["RowComponent"] | components["schemas"]["ColumnComponent"] | components["schemas"]["GridComponent"] | components["schemas"]["CardComponent"] | components["schemas"]["ModalComponent"] | components["schemas"]["TabsComponent"] | components["schemas"]["TabItemComponent"] | components["schemas"]["FormGroupComponent"] | components["schemas"]["HeadingComponent"] | components["schemas"]["TextComponent"] | components["schemas"]["HtmlComponent"] | components["schemas"]["DividerComponent"] | components["schemas"]["SpacerComponent"] | components["schemas"]["ButtonComponent"] | components["schemas"]["StatCardComponent"] | components["schemas"]["ImageComponent"] | components["schemas"]["BadgeComponent"] | components["schemas"]["ProgressComponent"] | components["schemas"]["DataTableComponent"] | components["schemas"]["FileViewerComponent"] | components["schemas"]["TextInputComponent"] | components["schemas"]["NumberInputComponent"] | components["schemas"]["SelectComponent"] | components["schemas"]["CheckboxComponent"] | components["schemas"]["FormEmbedComponent"])[];
-            /**
-             * Data Sources
-             * @description Data sources configured for this page
-             */
-            data_sources?: components["schemas"]["DataSourceConfig"][];
-            /**
-             * Variables
-             * @description Initial page variables
-             */
-            variables?: {
-                [key: string]: unknown;
-            } | null;
-            /**
-             * Launch Workflow Id
-             * @description Workflow to execute on page mount (results available as {{ workflow.<dataSourceId> }})
-             */
-            launch_workflow_id?: string | null;
-            /**
-             * Launch Workflow Params
-             * @description Parameters to pass to the launch workflow
-             */
-            launch_workflow_params?: {
-                [key: string]: unknown;
-            } | null;
-            /**
-             * Launch Workflow Data Source Id
-             * @description Data source ID for accessing workflow results (defaults to workflow function name)
-             */
-            launch_workflow_data_source_id?: string | null;
-            /** @description Alternative nested format for launch workflow configuration */
-            launch_workflow?: components["schemas"]["LaunchWorkflowConfig"] | null;
-            /**
-             * Styles
-             * @description Page-level vanilla CSS styles (scoped to this page). Write standard CSS syntax, NOT TypeScript/CSS-in-JS. Example: '.my-class { color: red; font-size: 16px; }'
-             */
-            styles?: string | null;
-            /** @description Page-level permission configuration */
-            permission?: components["schemas"]["PagePermission"] | null;
-            /**
-             * Fill Height
-             * @description When true, the page's root layout fills available viewport height. Enables children to use flex: grow with internal scrolling.
-             */
-            fill_height?: boolean | null;
-        };
-        /**
-         * PagePermission
-         * @description Page-level permission configuration.
-         */
-        PagePermission: {
-            /**
-             * Allowed Roles
-             * @description Roles that can access this page (* for all authenticated users)
-             */
-            allowed_roles?: string[] | null;
-            /**
-             * Access Expression
-             * @description Permission expression for dynamic access control
-             */
-            access_expression?: string | null;
-            /**
-             * Redirect To
-             * @description Redirect path if access denied
-             */
-            redirect_to?: string | null;
         };
         /**
          * PasskeyAuthOptionsRequest
@@ -15480,66 +13346,6 @@ export interface components {
             name?: string | null;
         };
         /**
-         * ProgressComponent
-         * @description Progress component.
-         */
-        ProgressComponent: {
-            /**
-             * Id
-             * @description Unique component identifier
-             */
-            id: string;
-            /**
-             * Width
-             * @description Component width
-             */
-            width?: ("auto" | "full" | "1/2" | "1/3" | "1/4" | "2/3" | "3/4") | null;
-            /**
-             * Visible
-             * @description Visibility expression
-             */
-            visible?: string | null;
-            /**
-             * Loading Workflows
-             * @description Workflow IDs that trigger loading state
-             */
-            loading_workflows?: string[] | null;
-            /**
-             * Grid Span
-             * @description Grid column span (for grid layouts)
-             */
-            grid_span?: number | null;
-            /** @description Repeat configuration for rendering multiple instances */
-            repeat_for?: components["schemas"]["RepeatFor"] | null;
-            /**
-             * Class Name
-             * @description Additional CSS classes
-             */
-            class_name?: string | null;
-            /**
-             * Style
-             * @description Inline CSS styles (camelCase properties)
-             */
-            style?: {
-                [key: string]: unknown;
-            } | null;
-            /**
-             * @description Component type (enum property replaced by openapi-typescript)
-             * @enum {string}
-             */
-            type: "progress";
-            /**
-             * Value
-             * @description Progress value (0-100, supports expressions)
-             */
-            value: string | number;
-            /**
-             * Show Label
-             * @description Show percentage label
-             */
-            show_label?: boolean | null;
-        };
-        /**
          * QueueItem
          * @description An item in the execution queue.
          */
@@ -15937,27 +13743,6 @@ export interface components {
             notification_id?: string | null;
         };
         /**
-         * RepeatFor
-         * @description Repeat component for each item in an array.
-         */
-        RepeatFor: {
-            /**
-             * Items
-             * @description Expression that evaluates to an array (e.g., "{{ workflow.clients }}")
-             */
-            items: string;
-            /**
-             * Item Key
-             * @description Property name to use for React key (must be unique, e.g., "id")
-             */
-            item_key: string;
-            /**
-             * As
-             * @description Variable name to access current item in expressions (e.g., "client")
-             */
-            as: string;
-        };
-        /**
          * ReplaceWorkflowRequest
          * @description Request to replace an orphaned workflow with content from existing file.
          */
@@ -16175,138 +13960,6 @@ export interface components {
              * @description List of user IDs assigned to the role
              */
             user_ids: string[];
-        };
-        /**
-         * RowClickHandler
-         * @description Row click handler for data tables.
-         */
-        RowClickHandler: {
-            /**
-             * Type
-             * @description Type of row click action
-             * @enum {string}
-             */
-            type: "navigate" | "select" | "set-variable";
-            /**
-             * Navigate To
-             * @description Path to navigate to (for navigate type)
-             */
-            navigate_to?: string | null;
-            /**
-             * Variable Name
-             * @description Variable name (for set-variable type)
-             */
-            variable_name?: string | null;
-        };
-        /**
-         * RowComponent
-         * @description Row layout component - horizontal flex container.
-         */
-        RowComponent: {
-            /**
-             * Id
-             * @description Unique component identifier
-             */
-            id: string;
-            /**
-             * Width
-             * @description Component width
-             */
-            width?: ("auto" | "full" | "1/2" | "1/3" | "1/4" | "2/3" | "3/4") | null;
-            /**
-             * Visible
-             * @description Visibility expression
-             */
-            visible?: string | null;
-            /**
-             * Loading Workflows
-             * @description Workflow IDs that trigger loading state
-             */
-            loading_workflows?: string[] | null;
-            /**
-             * Grid Span
-             * @description Grid column span (for grid layouts)
-             */
-            grid_span?: number | null;
-            /** @description Repeat configuration for rendering multiple instances */
-            repeat_for?: components["schemas"]["RepeatFor"] | null;
-            /**
-             * Class Name
-             * @description Additional CSS classes
-             */
-            class_name?: string | null;
-            /**
-             * Style
-             * @description Inline CSS styles (camelCase properties)
-             */
-            style?: {
-                [key: string]: unknown;
-            } | null;
-            /**
-             * @description Component type (enum property replaced by openapi-typescript)
-             * @enum {string}
-             */
-            type: "row";
-            /**
-             * Children
-             * @description Child components
-             */
-            children?: (components["schemas"]["RowComponent"] | components["schemas"]["ColumnComponent"] | components["schemas"]["GridComponent"] | components["schemas"]["CardComponent"] | components["schemas"]["ModalComponent"] | components["schemas"]["TabsComponent"] | components["schemas"]["TabItemComponent"] | components["schemas"]["FormGroupComponent"] | components["schemas"]["HeadingComponent"] | components["schemas"]["TextComponent"] | components["schemas"]["HtmlComponent"] | components["schemas"]["DividerComponent"] | components["schemas"]["SpacerComponent"] | components["schemas"]["ButtonComponent"] | components["schemas"]["StatCardComponent"] | components["schemas"]["ImageComponent"] | components["schemas"]["BadgeComponent"] | components["schemas"]["ProgressComponent"] | components["schemas"]["DataTableComponent"] | components["schemas"]["FileViewerComponent"] | components["schemas"]["TextInputComponent"] | components["schemas"]["NumberInputComponent"] | components["schemas"]["SelectComponent"] | components["schemas"]["CheckboxComponent"] | components["schemas"]["FormEmbedComponent"])[];
-            /**
-             * Gap
-             * @description Gap between children
-             */
-            gap?: number | string | null;
-            /**
-             * Padding
-             * @description Container padding
-             */
-            padding?: number | string | null;
-            /**
-             * Align
-             * @description Cross-axis alignment
-             */
-            align?: ("start" | "center" | "end" | "stretch") | null;
-            /**
-             * Justify
-             * @description Main-axis justification
-             */
-            justify?: ("start" | "center" | "end" | "between" | "around") | null;
-            /**
-             * Distribute
-             * @description Child distribution
-             */
-            distribute?: ("natural" | "equal" | "fit") | null;
-            /**
-             * Max Width
-             * @description Maximum width
-             */
-            max_width?: ("sm" | "md" | "lg" | "xl" | "2xl" | "full" | "none") | null;
-            /**
-             * Max Height
-             * @description Maximum height in pixels
-             */
-            max_height?: number | null;
-            /**
-             * Overflow
-             * @description Overflow behavior
-             */
-            overflow?: ("auto" | "scroll" | "hidden" | "visible") | null;
-            /**
-             * Sticky
-             * @description Sticky positioning
-             */
-            sticky?: ("top" | "bottom") | null;
-            /**
-             * Sticky Offset
-             * @description Sticky offset in pixels
-             */
-            sticky_offset?: number | null;
-            /**
-             * Flex
-             * @description Flex behavior. 'grow' fills available space (flex-1 min-h-0). Combine with overflow: auto for contained scrolling.
-             */
-            flex?: ("grow" | "none") | null;
         };
         /**
          * SDKDocumentCountRequest
@@ -17181,122 +14834,6 @@ export interface components {
             context_after?: string | null;
         };
         /**
-         * SelectComponent
-         * @description Select component.
-         */
-        SelectComponent: {
-            /**
-             * Id
-             * @description Unique component identifier
-             */
-            id: string;
-            /**
-             * Width
-             * @description Component width
-             */
-            width?: ("auto" | "full" | "1/2" | "1/3" | "1/4" | "2/3" | "3/4") | null;
-            /**
-             * Visible
-             * @description Visibility expression
-             */
-            visible?: string | null;
-            /**
-             * Loading Workflows
-             * @description Workflow IDs that trigger loading state
-             */
-            loading_workflows?: string[] | null;
-            /**
-             * Grid Span
-             * @description Grid column span (for grid layouts)
-             */
-            grid_span?: number | null;
-            /** @description Repeat configuration for rendering multiple instances */
-            repeat_for?: components["schemas"]["RepeatFor"] | null;
-            /**
-             * Class Name
-             * @description Additional CSS classes
-             */
-            class_name?: string | null;
-            /**
-             * Style
-             * @description Inline CSS styles (camelCase properties)
-             */
-            style?: {
-                [key: string]: unknown;
-            } | null;
-            /**
-             * @description Component type (enum property replaced by openapi-typescript)
-             * @enum {string}
-             */
-            type: "select";
-            /**
-             * Field Id
-             * @description Field ID for value tracking
-             */
-            field_id: string;
-            /**
-             * Label
-             * @description Select label
-             */
-            label?: string | null;
-            /**
-             * Placeholder
-             * @description Placeholder text
-             */
-            placeholder?: string | null;
-            /**
-             * Default Value
-             * @description Default value (supports expressions)
-             */
-            default_value?: string | null;
-            /**
-             * Required
-             * @description Required field
-             */
-            required?: boolean | null;
-            /**
-             * Disabled
-             * @description Disabled state (boolean or expression)
-             */
-            disabled?: boolean | string | null;
-            /**
-             * Options
-             * @description Static options or expression string like "{{ data.options }}".
-             */
-            options?: components["schemas"]["SelectOption"][] | string | null;
-            /**
-             * Options Source
-             * @description Data source name for dynamic options
-             */
-            options_source?: string | null;
-            /**
-             * Value Field
-             * @description Field in data source for option value
-             */
-            value_field?: string | null;
-            /**
-             * Label Field
-             * @description Field in data source for option label
-             */
-            label_field?: string | null;
-        };
-        /**
-         * SelectOption
-         * @description Select option definition.
-         */
-        SelectOption: {
-            /**
-             * Value
-             * @description Option value
-             */
-            value: string;
-            /**
-             * Label
-             * @description Option display label
-             */
-            label: string;
-        };
-        /**
          * SetConfigRequest
          * @description Request model for setting config
          */
@@ -17408,179 +14945,6 @@ export interface components {
              * @default bearer
              */
             token_type: string;
-        };
-        /**
-         * SpacerComponent
-         * @description Spacer component.
-         */
-        SpacerComponent: {
-            /**
-             * Id
-             * @description Unique component identifier
-             */
-            id: string;
-            /**
-             * Width
-             * @description Component width
-             */
-            width?: ("auto" | "full" | "1/2" | "1/3" | "1/4" | "2/3" | "3/4") | null;
-            /**
-             * Visible
-             * @description Visibility expression
-             */
-            visible?: string | null;
-            /**
-             * Loading Workflows
-             * @description Workflow IDs that trigger loading state
-             */
-            loading_workflows?: string[] | null;
-            /**
-             * Grid Span
-             * @description Grid column span (for grid layouts)
-             */
-            grid_span?: number | null;
-            /** @description Repeat configuration for rendering multiple instances */
-            repeat_for?: components["schemas"]["RepeatFor"] | null;
-            /**
-             * Class Name
-             * @description Additional CSS classes
-             */
-            class_name?: string | null;
-            /**
-             * Style
-             * @description Inline CSS styles (camelCase properties)
-             */
-            style?: {
-                [key: string]: unknown;
-            } | null;
-            /**
-             * @description Component type (enum property replaced by openapi-typescript)
-             * @enum {string}
-             */
-            type: "spacer";
-            /**
-             * Size
-             * @description Size in pixels or Tailwind spacing units
-             */
-            size?: number | string | null;
-            /**
-             * Height
-             * @description Alias for size - supports legacy definitions
-             */
-            height?: number | string | null;
-        };
-        /**
-         * StatCardComponent
-         * @description Stat card component.
-         */
-        StatCardComponent: {
-            /**
-             * Id
-             * @description Unique component identifier
-             */
-            id: string;
-            /**
-             * Width
-             * @description Component width
-             */
-            width?: ("auto" | "full" | "1/2" | "1/3" | "1/4" | "2/3" | "3/4") | null;
-            /**
-             * Visible
-             * @description Visibility expression
-             */
-            visible?: string | null;
-            /**
-             * Loading Workflows
-             * @description Workflow IDs that trigger loading state
-             */
-            loading_workflows?: string[] | null;
-            /**
-             * Grid Span
-             * @description Grid column span (for grid layouts)
-             */
-            grid_span?: number | null;
-            /** @description Repeat configuration for rendering multiple instances */
-            repeat_for?: components["schemas"]["RepeatFor"] | null;
-            /**
-             * Class Name
-             * @description Additional CSS classes
-             */
-            class_name?: string | null;
-            /**
-             * Style
-             * @description Inline CSS styles (camelCase properties)
-             */
-            style?: {
-                [key: string]: unknown;
-            } | null;
-            /**
-             * @description Component type (enum property replaced by openapi-typescript)
-             * @enum {string}
-             */
-            type: "stat-card";
-            /**
-             * Title
-             * @description Card title
-             */
-            title: string;
-            /**
-             * Value
-             * @description Value (supports expressions)
-             */
-            value: string;
-            /**
-             * Description
-             * @description Optional description
-             */
-            description?: string | null;
-            /**
-             * Icon
-             * @description Icon name
-             */
-            icon?: string | null;
-            /** @description Trend indicator */
-            trend?: components["schemas"]["StatCardTrend"] | null;
-            /** @description Click action */
-            on_click?: components["schemas"]["StatCardOnClick"] | null;
-        };
-        /**
-         * StatCardOnClick
-         * @description Click handler for stat cards.
-         */
-        StatCardOnClick: {
-            /**
-             * Type
-             * @description Type of click action
-             * @enum {string}
-             */
-            type: "navigate" | "workflow";
-            /**
-             * Navigate To
-             * @description Path to navigate to (for navigate type)
-             */
-            navigate_to?: string | null;
-            /**
-             * Workflow Id
-             * @description Workflow ID (for workflow type)
-             */
-            workflow_id?: string | null;
-        };
-        /**
-         * StatCardTrend
-         * @description Trend indicator for stat cards.
-         */
-        StatCardTrend: {
-            /**
-             * Value
-             * @description Trend value (e.g., '+5%')
-             */
-            value: string;
-            /**
-             * Direction
-             * @description Trend direction
-             * @enum {string}
-             */
-            direction: "up" | "down" | "neutral";
         };
         /**
          * StuckExecutionsResponse
@@ -17925,214 +15289,6 @@ export interface components {
             continuation_token?: string | null;
         };
         /**
-         * TabItemComponent
-         * @description Tab item within a Tabs component.
-         */
-        TabItemComponent: {
-            /**
-             * Id
-             * @description Unique component identifier
-             */
-            id: string;
-            /**
-             * Width
-             * @description Component width
-             */
-            width?: ("auto" | "full" | "1/2" | "1/3" | "1/4" | "2/3" | "3/4") | null;
-            /**
-             * Visible
-             * @description Visibility expression
-             */
-            visible?: string | null;
-            /**
-             * Loading Workflows
-             * @description Workflow IDs that trigger loading state
-             */
-            loading_workflows?: string[] | null;
-            /**
-             * Grid Span
-             * @description Grid column span (for grid layouts)
-             */
-            grid_span?: number | null;
-            /** @description Repeat configuration for rendering multiple instances */
-            repeat_for?: components["schemas"]["RepeatFor"] | null;
-            /**
-             * Class Name
-             * @description Additional CSS classes
-             */
-            class_name?: string | null;
-            /**
-             * Style
-             * @description Inline CSS styles (camelCase properties)
-             */
-            style?: {
-                [key: string]: unknown;
-            } | null;
-            /**
-             * @description Component type (enum property replaced by openapi-typescript)
-             * @enum {string}
-             */
-            type: "tab-item";
-            /**
-             * Children
-             * @description Tab content
-             */
-            children?: (components["schemas"]["RowComponent"] | components["schemas"]["ColumnComponent"] | components["schemas"]["GridComponent"] | components["schemas"]["CardComponent"] | components["schemas"]["ModalComponent"] | components["schemas"]["TabsComponent"] | components["schemas"]["TabItemComponent"] | components["schemas"]["FormGroupComponent"] | components["schemas"]["HeadingComponent"] | components["schemas"]["TextComponent"] | components["schemas"]["HtmlComponent"] | components["schemas"]["DividerComponent"] | components["schemas"]["SpacerComponent"] | components["schemas"]["ButtonComponent"] | components["schemas"]["StatCardComponent"] | components["schemas"]["ImageComponent"] | components["schemas"]["BadgeComponent"] | components["schemas"]["ProgressComponent"] | components["schemas"]["DataTableComponent"] | components["schemas"]["FileViewerComponent"] | components["schemas"]["TextInputComponent"] | components["schemas"]["NumberInputComponent"] | components["schemas"]["SelectComponent"] | components["schemas"]["CheckboxComponent"] | components["schemas"]["FormEmbedComponent"])[];
-            /**
-             * Label
-             * @description Tab label
-             */
-            label: string;
-            /**
-             * Value
-             * @description Tab value (defaults to label if not provided)
-             */
-            value?: string | null;
-            /**
-             * Icon
-             * @description Tab icon name
-             */
-            icon?: string | null;
-        };
-        /**
-         * TableAction
-         * @description Table action definition.
-         */
-        TableAction: {
-            /**
-             * Label
-             * @description Action label
-             */
-            label: string;
-            /**
-             * Icon
-             * @description Icon name
-             */
-            icon?: string | null;
-            /**
-             * Variant
-             * @description Button variant
-             */
-            variant?: ("default" | "destructive" | "outline" | "ghost") | null;
-            /** @description Action handler */
-            on_click: components["schemas"]["TableActionOnClick"];
-            /** @description Confirmation dialog */
-            confirm?: components["schemas"]["TableActionConfirm"] | null;
-            /**
-             * Visible
-             * @description Visibility expression
-             */
-            visible?: string | null;
-            /**
-             * Disabled
-             * @description Disabled expression (e.g., "{{ row.status == 'completed' }}")
-             */
-            disabled?: string | null;
-        };
-        /**
-         * TableActionConfirm
-         * @description Confirmation dialog for table actions.
-         */
-        TableActionConfirm: {
-            /**
-             * Title
-             * @description Confirmation dialog title
-             */
-            title: string;
-            /**
-             * Message
-             * @description Confirmation dialog message
-             */
-            message: string;
-            /**
-             * Confirm Label
-             * @description Confirm button label
-             */
-            confirm_label?: string | null;
-            /**
-             * Cancel Label
-             * @description Cancel button label
-             */
-            cancel_label?: string | null;
-        };
-        /**
-         * TableActionOnClick
-         * @description Click handler for table actions.
-         */
-        TableActionOnClick: {
-            /**
-             * Type
-             * @description Type of action
-             * @enum {string}
-             */
-            type: "navigate" | "workflow" | "delete" | "set-variable";
-            /**
-             * Navigate To
-             * @description Path to navigate to (for navigate type)
-             */
-            navigate_to?: string | null;
-            /**
-             * Workflow Id
-             * @description Workflow ID (for workflow type)
-             */
-            workflow_id?: string | null;
-            /**
-             * Action Params
-             * @description Parameters to pass to workflow (supports {{ row.* }} expressions)
-             */
-            action_params?: {
-                [key: string]: unknown;
-            } | null;
-            /**
-             * Variable Name
-             * @description Variable name (for set-variable type)
-             */
-            variable_name?: string | null;
-            /**
-             * Variable Value
-             * @description Variable value (for set-variable type)
-             */
-            variable_value?: string | null;
-        };
-        /**
-         * TableColumn
-         * @description Table column definition.
-         */
-        TableColumn: {
-            /**
-             * Key
-             * @description Key path into document data
-             */
-            key: string;
-            /**
-             * Header
-             * @description Column header
-             */
-            header: string;
-            /**
-             * Type
-             * @description Column type for formatting
-             */
-            type?: ("text" | "number" | "date" | "badge") | null;
-            /**
-             * Width
-             * @description Width
-             */
-            width?: number | "auto" | null;
-            /**
-             * Sortable
-             * @description Sortable
-             */
-            sortable?: boolean | null;
-            /**
-             * Badge Colors
-             * @description Badge color mapping for badge type
-             */
-            badge_colors?: {
-                [key: string]: string;
-            } | null;
-        };
-        /**
          * TableCreate
          * @description Input for creating a table.
          */
@@ -18214,231 +15370,6 @@ export interface components {
             schema?: {
                 [key: string]: unknown;
             } | null;
-        };
-        /**
-         * TabsComponent
-         * @description Tabs container component.
-         */
-        TabsComponent: {
-            /**
-             * Id
-             * @description Unique component identifier
-             */
-            id: string;
-            /**
-             * Width
-             * @description Component width
-             */
-            width?: ("auto" | "full" | "1/2" | "1/3" | "1/4" | "2/3" | "3/4") | null;
-            /**
-             * Visible
-             * @description Visibility expression
-             */
-            visible?: string | null;
-            /**
-             * Loading Workflows
-             * @description Workflow IDs that trigger loading state
-             */
-            loading_workflows?: string[] | null;
-            /**
-             * Grid Span
-             * @description Grid column span (for grid layouts)
-             */
-            grid_span?: number | null;
-            /** @description Repeat configuration for rendering multiple instances */
-            repeat_for?: components["schemas"]["RepeatFor"] | null;
-            /**
-             * Class Name
-             * @description Additional CSS classes
-             */
-            class_name?: string | null;
-            /**
-             * Style
-             * @description Inline CSS styles (camelCase properties)
-             */
-            style?: {
-                [key: string]: unknown;
-            } | null;
-            /**
-             * @description Component type (enum property replaced by openapi-typescript)
-             * @enum {string}
-             */
-            type: "tabs";
-            /**
-             * Children
-             * @description TabItemComponent children
-             */
-            children?: (components["schemas"]["RowComponent"] | components["schemas"]["ColumnComponent"] | components["schemas"]["GridComponent"] | components["schemas"]["CardComponent"] | components["schemas"]["ModalComponent"] | components["schemas"]["TabsComponent"] | components["schemas"]["TabItemComponent"] | components["schemas"]["FormGroupComponent"] | components["schemas"]["HeadingComponent"] | components["schemas"]["TextComponent"] | components["schemas"]["HtmlComponent"] | components["schemas"]["DividerComponent"] | components["schemas"]["SpacerComponent"] | components["schemas"]["ButtonComponent"] | components["schemas"]["StatCardComponent"] | components["schemas"]["ImageComponent"] | components["schemas"]["BadgeComponent"] | components["schemas"]["ProgressComponent"] | components["schemas"]["DataTableComponent"] | components["schemas"]["FileViewerComponent"] | components["schemas"]["TextInputComponent"] | components["schemas"]["NumberInputComponent"] | components["schemas"]["SelectComponent"] | components["schemas"]["CheckboxComponent"] | components["schemas"]["FormEmbedComponent"])[];
-            /**
-             * Default Tab
-             * @description Default active tab value
-             */
-            default_tab?: string | null;
-            /**
-             * Orientation
-             * @description Tab orientation
-             */
-            orientation?: ("horizontal" | "vertical") | null;
-        };
-        /**
-         * TextComponent
-         * @description Text paragraph component.
-         */
-        TextComponent: {
-            /**
-             * Id
-             * @description Unique component identifier
-             */
-            id: string;
-            /**
-             * Width
-             * @description Component width
-             */
-            width?: ("auto" | "full" | "1/2" | "1/3" | "1/4" | "2/3" | "3/4") | null;
-            /**
-             * Visible
-             * @description Visibility expression
-             */
-            visible?: string | null;
-            /**
-             * Loading Workflows
-             * @description Workflow IDs that trigger loading state
-             */
-            loading_workflows?: string[] | null;
-            /**
-             * Grid Span
-             * @description Grid column span (for grid layouts)
-             */
-            grid_span?: number | null;
-            /** @description Repeat configuration for rendering multiple instances */
-            repeat_for?: components["schemas"]["RepeatFor"] | null;
-            /**
-             * Class Name
-             * @description Additional CSS classes
-             */
-            class_name?: string | null;
-            /**
-             * Style
-             * @description Inline CSS styles (camelCase properties)
-             */
-            style?: {
-                [key: string]: unknown;
-            } | null;
-            /**
-             * @description Component type (enum property replaced by openapi-typescript)
-             * @enum {string}
-             */
-            type: "text";
-            /**
-             * Text
-             * @description Text content (supports expressions)
-             */
-            text: string;
-            /**
-             * Label
-             * @description Optional label above text
-             */
-            label?: string | null;
-        };
-        /**
-         * TextInputComponent
-         * @description Text input component.
-         */
-        TextInputComponent: {
-            /**
-             * Id
-             * @description Unique component identifier
-             */
-            id: string;
-            /**
-             * Width
-             * @description Component width
-             */
-            width?: ("auto" | "full" | "1/2" | "1/3" | "1/4" | "2/3" | "3/4") | null;
-            /**
-             * Visible
-             * @description Visibility expression
-             */
-            visible?: string | null;
-            /**
-             * Loading Workflows
-             * @description Workflow IDs that trigger loading state
-             */
-            loading_workflows?: string[] | null;
-            /**
-             * Grid Span
-             * @description Grid column span (for grid layouts)
-             */
-            grid_span?: number | null;
-            /** @description Repeat configuration for rendering multiple instances */
-            repeat_for?: components["schemas"]["RepeatFor"] | null;
-            /**
-             * Class Name
-             * @description Additional CSS classes
-             */
-            class_name?: string | null;
-            /**
-             * Style
-             * @description Inline CSS styles (camelCase properties)
-             */
-            style?: {
-                [key: string]: unknown;
-            } | null;
-            /**
-             * @description Component type (enum property replaced by openapi-typescript)
-             * @enum {string}
-             */
-            type: "text-input";
-            /**
-             * Field Id
-             * @description Field ID for value tracking (used in {{ field.* }} expressions)
-             */
-            field_id: string;
-            /**
-             * Label
-             * @description Input label
-             */
-            label?: string | null;
-            /**
-             * Placeholder
-             * @description Placeholder text
-             */
-            placeholder?: string | null;
-            /**
-             * Default Value
-             * @description Default value (supports expressions)
-             */
-            default_value?: string | null;
-            /**
-             * Required
-             * @description Required field
-             */
-            required?: boolean | null;
-            /**
-             * Disabled
-             * @description Disabled state (boolean or expression)
-             */
-            disabled?: boolean | string | null;
-            /**
-             * Input Type
-             * @description Input type (text, email, password, url, tel)
-             */
-            input_type?: ("text" | "email" | "password" | "url" | "tel") | null;
-            /**
-             * Min Length
-             * @description Minimum length
-             */
-            min_length?: number | null;
-            /**
-             * Max Length
-             * @description Maximum length
-             */
-            max_length?: number | null;
-            /**
-             * Pattern
-             * @description Regex pattern for validation
-             */
-            pattern?: string | null;
         };
         /**
          * Token
@@ -19755,6 +16686,82 @@ export interface components {
             metadata?: components["schemas"]["WorkflowMetadata"] | null;
         };
         /**
+         * OAuthProviderInfo
+         * @description OAuth provider information for login page
+         */
+        src__models__contracts__auth__OAuthProviderInfo: {
+            /** Name */
+            name: string;
+            /** Display Name */
+            display_name: string;
+            /** Icon */
+            icon?: string | null;
+        };
+        /**
+         * OAuthCallbackRequest
+         * @description Request model for OAuth callback endpoint
+         */
+        src__models__contracts__oauth__OAuthCallbackRequest: {
+            /**
+             * Code
+             * @description Authorization code from OAuth provider
+             */
+            code: string;
+            /**
+             * State
+             * @description State parameter for CSRF protection
+             */
+            state?: string | null;
+            /**
+             * Redirect Uri
+             * @description Redirect URI used in authorization request
+             */
+            redirect_uri?: string | null;
+            /**
+             * Organization Id
+             * @description Organization ID for org-specific token storage (optional, for org overrides)
+             */
+            organization_id?: string | null;
+        };
+        /**
+         * MFASetupResponse
+         * @description MFA setup response with secret.
+         */
+        src__routers__auth__MFASetupResponse: {
+            /** Secret */
+            secret: string;
+            /** Qr Code Uri */
+            qr_code_uri: string;
+            /** Provisioning Uri */
+            provisioning_uri: string;
+            /** Issuer */
+            issuer: string;
+            /** Account Name */
+            account_name: string;
+            /**
+             * Is Existing
+             * @default false
+             */
+            is_existing: boolean;
+        };
+        /**
+         * MFAVerifyRequest
+         * @description Request to verify MFA code during login.
+         */
+        src__routers__auth__MFAVerifyRequest: {
+            /** Mfa Token */
+            mfa_token: string;
+            /** Code */
+            code: string;
+            /**
+             * Trust Device
+             * @default false
+             */
+            trust_device: boolean;
+            /** Device Name */
+            device_name?: string | null;
+        };
+        /**
          * UserCreate
          * @description User creation request model.
          */
@@ -19768,54 +16775,6 @@ export interface components {
             password: string;
             /** Name */
             name?: string | null;
-        };
-        /**
-         * MFASetupResponse
-         * @description MFA setup response with secret.
-         */
-        src__routers__mfa__MFASetupResponse: {
-            /** Secret */
-            secret: string;
-            /** Qr Code Uri */
-            qr_code_uri: string;
-            /** Provisioning Uri */
-            provisioning_uri: string;
-            /** Issuer */
-            issuer: string;
-            /** Account Name */
-            account_name: string;
-        };
-        /**
-         * MFAVerifyRequest
-         * @description Request to verify MFA code.
-         */
-        src__routers__mfa__MFAVerifyRequest: {
-            /** Code */
-            code: string;
-        };
-        /**
-         * OAuthCallbackRequest
-         * @description OAuth callback request (for when frontend handles callback).
-         */
-        src__routers__oauth_sso__OAuthCallbackRequest: {
-            /** Provider */
-            provider: string;
-            /** Code */
-            code: string;
-            /** State */
-            state: string;
-        };
-        /**
-         * OAuthProviderInfo
-         * @description OAuth provider information.
-         */
-        src__routers__oauth_sso__OAuthProviderInfo: {
-            /** Name */
-            name: string;
-            /** Display Name */
-            display_name: string;
-            /** Icon */
-            icon?: string | null;
         };
     };
     responses: never;
@@ -19918,7 +16877,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["MFASetupResponse"];
+                    "application/json": components["schemas"]["src__routers__auth__MFASetupResponse"];
                 };
             };
             /** @description Validation Error */
@@ -19961,7 +16920,7 @@ export interface operations {
         };
         requestBody: {
             content: {
-                "application/json": components["schemas"]["MFAVerifyRequest"];
+                "application/json": components["schemas"]["src__routers__auth__MFAVerifyRequest"];
             };
         };
         responses: {
@@ -20364,7 +17323,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["src__routers__mfa__MFASetupResponse"];
+                    "application/json": components["schemas"]["MFASetupResponse"];
                 };
             };
         };
@@ -20378,7 +17337,7 @@ export interface operations {
         };
         requestBody: {
             content: {
-                "application/json": components["schemas"]["src__routers__mfa__MFAVerifyRequest"];
+                "application/json": components["schemas"]["MFAVerifyRequest"];
             };
         };
         responses: {
@@ -20628,7 +17587,7 @@ export interface operations {
         };
         requestBody: {
             content: {
-                "application/json": components["schemas"]["src__routers__oauth_sso__OAuthCallbackRequest"];
+                "application/json": components["schemas"]["OAuthCallbackRequest"];
             };
         };
         responses: {
@@ -24414,7 +21373,7 @@ export interface operations {
         };
         requestBody: {
             content: {
-                "application/json": components["schemas"]["OAuthCallbackRequest"];
+                "application/json": components["schemas"]["src__models__contracts__oauth__OAuthCallbackRequest"];
             };
         };
         responses: {
@@ -30017,452 +26976,6 @@ export interface operations {
             };
         };
     };
-    list_pages_api_applications__app_id__pages_get: {
-        parameters: {
-            query?: {
-                /** @description Version UUID (defaults to draft) */
-                version_id?: string | null;
-            };
-            header?: never;
-            path: {
-                /** @description Application UUID */
-                app_id: string;
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["AppPageListResponse"];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    create_page_api_applications__app_id__pages_post: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                /** @description Application UUID */
-                app_id: string;
-            };
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["AppPageCreate"];
-            };
-        };
-        responses: {
-            /** @description Successful Response */
-            201: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["AppPageResponse"];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    get_page_api_applications__app_id__pages__page_id__get: {
-        parameters: {
-            query?: {
-                /** @description Version UUID (defaults to draft) */
-                version_id?: string | null;
-            };
-            header?: never;
-            path: {
-                /** @description Application UUID */
-                app_id: string;
-                /** @description Page ID (string identifier) */
-                page_id: string;
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["PageDefinition"];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    delete_page_api_applications__app_id__pages__page_id__delete: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                /** @description Application UUID */
-                app_id: string;
-                /** @description Page ID (string identifier) */
-                page_id: string;
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            204: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    update_page_api_applications__app_id__pages__page_id__patch: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                /** @description Application UUID */
-                app_id: string;
-                /** @description Page ID (string identifier) */
-                page_id: string;
-            };
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["AppPageUpdate"];
-            };
-        };
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["AppPageResponse"];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    replace_page_layout_api_applications__app_id__pages__page_id__layout_put: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                /** @description Application UUID */
-                app_id: string;
-                /** @description Page ID (string identifier) */
-                page_id: string;
-            };
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": {
-                    [key: string]: unknown;
-                };
-            };
-        };
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["AppPageResponse"];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    list_components_api_applications__app_id__pages__page_id__components_get: {
-        parameters: {
-            query?: {
-                /** @description Version ID to query components from */
-                version_id?: string | null;
-            };
-            header?: never;
-            path: {
-                /** @description Application UUID */
-                app_id: string;
-                /** @description Page ID (string identifier) */
-                page_id: string;
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["AppComponentListResponse"];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    create_component_api_applications__app_id__pages__page_id__components_post: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                /** @description Application UUID */
-                app_id: string;
-                /** @description Page ID (string identifier) */
-                page_id: string;
-            };
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["AppComponentCreate"];
-            };
-        };
-        responses: {
-            /** @description Successful Response */
-            201: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["AppComponentResponse"];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    get_component_api_applications__app_id__pages__page_id__components__component_id__get: {
-        parameters: {
-            query?: {
-                /** @description Version ID to query component from */
-                version_id?: string | null;
-            };
-            header?: never;
-            path: {
-                /** @description Application UUID */
-                app_id: string;
-                /** @description Page ID (string identifier) */
-                page_id: string;
-                /** @description Component ID (string identifier) */
-                component_id: string;
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["AppComponentResponse"];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    delete_component_api_applications__app_id__pages__page_id__components__component_id__delete: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                /** @description Application UUID */
-                app_id: string;
-                /** @description Page ID (string identifier) */
-                page_id: string;
-                /** @description Component ID (string identifier) */
-                component_id: string;
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            204: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    update_component_api_applications__app_id__pages__page_id__components__component_id__patch: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                /** @description Application UUID */
-                app_id: string;
-                /** @description Page ID (string identifier) */
-                page_id: string;
-                /** @description Component ID (string identifier) */
-                component_id: string;
-            };
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["AppComponentUpdate"];
-            };
-        };
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["AppComponentResponse"];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    move_component_api_applications__app_id__pages__page_id__components__component_id__move_post: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                /** @description Application UUID */
-                app_id: string;
-                /** @description Page ID (string identifier) */
-                page_id: string;
-                /** @description Component ID (string identifier) */
-                component_id: string;
-            };
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["AppComponentMove"];
-            };
-        };
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["AppComponentResponse"];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
     list_code_files_api_applications__app_id__versions__version_id__files_get: {
         parameters: {
             query?: never;
@@ -30483,7 +26996,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["AppCodeFileListResponse"];
+                    "application/json": components["schemas"]["AppFileListResponse"];
                 };
             };
             /** @description Validation Error */
@@ -30511,7 +27024,7 @@ export interface operations {
         };
         requestBody: {
             content: {
-                "application/json": components["schemas"]["AppCodeFileCreate"];
+                "application/json": components["schemas"]["AppFileCreate"];
             };
         };
         responses: {
@@ -30521,7 +27034,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["AppCodeFileResponse"];
+                    "application/json": components["schemas"]["AppFileResponse"];
                 };
             };
             /** @description Validation Error */
@@ -30557,7 +27070,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["AppCodeFileResponse"];
+                    "application/json": components["schemas"]["AppFileResponse"];
                 };
             };
             /** @description Validation Error */
@@ -30621,7 +27134,7 @@ export interface operations {
         };
         requestBody: {
             content: {
-                "application/json": components["schemas"]["AppCodeFileUpdate"];
+                "application/json": components["schemas"]["AppFileUpdate"];
             };
         };
         responses: {
@@ -30631,7 +27144,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["AppCodeFileResponse"];
+                    "application/json": components["schemas"]["AppFileResponse"];
                 };
             };
             /** @description Validation Error */

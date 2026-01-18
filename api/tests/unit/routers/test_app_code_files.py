@@ -14,60 +14,60 @@ class TestValidateFilePath:
     # ==========================================================================
 
     def test_valid_root_layout(self):
-        """Root _layout is valid."""
-        validate_file_path("_layout")
+        """Root _layout.tsx is valid."""
+        validate_file_path("_layout.tsx")
 
     def test_valid_root_providers(self):
-        """Root _providers is valid."""
-        validate_file_path("_providers")
+        """Root _providers.tsx is valid."""
+        validate_file_path("_providers.tsx")
 
     def test_valid_pages_index(self):
-        """pages/index is valid."""
-        validate_file_path("pages/index")
+        """pages/index.tsx is valid."""
+        validate_file_path("pages/index.tsx")
 
     def test_valid_pages_layout(self):
-        """pages/_layout is valid."""
-        validate_file_path("pages/_layout")
+        """pages/_layout.tsx is valid."""
+        validate_file_path("pages/_layout.tsx")
 
     def test_valid_pages_nested(self):
         """Nested pages are valid."""
-        validate_file_path("pages/clients/index")
-        validate_file_path("pages/clients/_layout")
+        validate_file_path("pages/clients/index.tsx")
+        validate_file_path("pages/clients/_layout.tsx")
 
     def test_valid_pages_dynamic(self):
         """Dynamic route segments in pages are valid."""
-        validate_file_path("pages/clients/[id]")
-        validate_file_path("pages/clients/[id]/edit")
+        validate_file_path("pages/clients/[id].tsx")
+        validate_file_path("pages/clients/[id]/edit.tsx")
 
     def test_valid_components_file(self):
         """Component files are valid."""
-        validate_file_path("components/Button")
-        validate_file_path("components/ClientCard")
+        validate_file_path("components/Button.tsx")
+        validate_file_path("components/ClientCard.tsx")
 
     def test_valid_components_nested(self):
         """Nested component folders are valid."""
-        validate_file_path("components/ui/Button")
-        validate_file_path("components/forms/ClientForm")
+        validate_file_path("components/ui/Button.tsx")
+        validate_file_path("components/forms/ClientForm.tsx")
 
     def test_valid_modules_file(self):
         """Module files are valid."""
-        validate_file_path("modules/api")
-        validate_file_path("modules/utils")
+        validate_file_path("modules/api.ts")
+        validate_file_path("modules/utils.ts")
 
     def test_valid_modules_nested(self):
         """Nested module folders are valid."""
-        validate_file_path("modules/services/api")
-        validate_file_path("modules/hooks/useAuth")
+        validate_file_path("modules/services/api.ts")
+        validate_file_path("modules/hooks/useAuth.ts")
 
     def test_valid_path_with_underscores(self):
         """Paths with underscores are valid."""
-        validate_file_path("components/my_component")
-        validate_file_path("modules/api_client")
+        validate_file_path("components/my_component.tsx")
+        validate_file_path("modules/api_client.ts")
 
     def test_valid_path_with_hyphens(self):
         """Paths with hyphens are valid."""
-        validate_file_path("components/my-component")
-        validate_file_path("modules/api-client")
+        validate_file_path("components/my-component.tsx")
+        validate_file_path("modules/api-client.ts")
 
     # ==========================================================================
     # Invalid paths - empty/malformed
@@ -94,7 +94,7 @@ class TestValidateFilePath:
     def test_invalid_root_arbitrary_file(self):
         """Arbitrary files at root are rejected."""
         with pytest.raises(HTTPException) as exc_info:
-            validate_file_path("main")
+            validate_file_path("main.tsx")
         assert exc_info.value.status_code == 400
         assert "_layout" in exc_info.value.detail
         assert "_providers" in exc_info.value.detail
@@ -102,7 +102,7 @@ class TestValidateFilePath:
     def test_invalid_root_index(self):
         """index at root is rejected (must be in pages/)."""
         with pytest.raises(HTTPException) as exc_info:
-            validate_file_path("index")
+            validate_file_path("index.tsx")
         assert exc_info.value.status_code == 400
 
     # ==========================================================================
@@ -112,7 +112,7 @@ class TestValidateFilePath:
     def test_invalid_top_dir(self):
         """Invalid top-level directories are rejected."""
         with pytest.raises(HTTPException) as exc_info:
-            validate_file_path("services/api")
+            validate_file_path("services/api.ts")
         assert exc_info.value.status_code == 400
         assert "pages" in exc_info.value.detail
         assert "components" in exc_info.value.detail
@@ -121,7 +121,7 @@ class TestValidateFilePath:
     def test_invalid_top_dir_utils(self):
         """utils/ directory is rejected."""
         with pytest.raises(HTTPException) as exc_info:
-            validate_file_path("utils/helpers")
+            validate_file_path("utils/helpers.ts")
         assert exc_info.value.status_code == 400
 
     # ==========================================================================
@@ -131,7 +131,7 @@ class TestValidateFilePath:
     def test_invalid_dynamic_in_components(self):
         """Dynamic segments in components/ are rejected."""
         with pytest.raises(HTTPException) as exc_info:
-            validate_file_path("components/[id]")
+            validate_file_path("components/[id].tsx")
         assert exc_info.value.status_code == 400
         assert "Dynamic segments" in exc_info.value.detail
         assert "pages/" in exc_info.value.detail
@@ -139,7 +139,7 @@ class TestValidateFilePath:
     def test_invalid_dynamic_in_modules(self):
         """Dynamic segments in modules/ are rejected."""
         with pytest.raises(HTTPException) as exc_info:
-            validate_file_path("modules/[id]/utils")
+            validate_file_path("modules/[id]/utils.ts")
         assert exc_info.value.status_code == 400
         assert "Dynamic segments" in exc_info.value.detail
 
@@ -150,7 +150,7 @@ class TestValidateFilePath:
     def test_invalid_layout_in_components(self):
         """_layout in components/ is rejected."""
         with pytest.raises(HTTPException) as exc_info:
-            validate_file_path("components/_layout")
+            validate_file_path("components/_layout.tsx")
         assert exc_info.value.status_code == 400
         assert "_layout" in exc_info.value.detail
         assert "pages/" in exc_info.value.detail
@@ -158,7 +158,7 @@ class TestValidateFilePath:
     def test_invalid_layout_in_modules(self):
         """_layout in modules/ is rejected."""
         with pytest.raises(HTTPException) as exc_info:
-            validate_file_path("modules/_layout")
+            validate_file_path("modules/_layout.tsx")
         assert exc_info.value.status_code == 400
 
     # ==========================================================================
@@ -168,16 +168,16 @@ class TestValidateFilePath:
     def test_invalid_special_chars(self):
         """Paths with special characters are rejected."""
         with pytest.raises(HTTPException) as exc_info:
-            validate_file_path("components/my.component")
+            validate_file_path("components/my.component.tsx")
         assert exc_info.value.status_code == 400
-        assert "Invalid path segment" in exc_info.value.detail
+        assert "Invalid" in exc_info.value.detail
 
     def test_invalid_spaces(self):
         """Paths with spaces are rejected."""
         with pytest.raises(HTTPException) as exc_info:
-            validate_file_path("components/my component")
+            validate_file_path("components/my component.tsx")
         assert exc_info.value.status_code == 400
-        assert "Invalid path segment" in exc_info.value.detail
+        assert "Invalid" in exc_info.value.detail
 
     # ==========================================================================
     # Edge cases
@@ -185,14 +185,14 @@ class TestValidateFilePath:
 
     def test_strips_leading_slash(self):
         """Leading slashes are stripped."""
-        validate_file_path("/pages/index")
+        validate_file_path("/pages/index.tsx")
 
     def test_strips_trailing_slash(self):
         """Trailing slashes are stripped."""
-        validate_file_path("pages/index/")
+        validate_file_path("pages/index.tsx/")
 
     def test_valid_deeply_nested(self):
         """Deeply nested paths are valid."""
-        validate_file_path("components/ui/forms/fields/TextInput")
-        validate_file_path("modules/services/auth/providers/oauth")
-        validate_file_path("pages/admin/users/[id]/settings/profile")
+        validate_file_path("components/ui/forms/fields/TextInput.tsx")
+        validate_file_path("modules/services/auth/providers/oauth.ts")
+        validate_file_path("pages/admin/users/[id]/settings/profile.tsx")

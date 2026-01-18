@@ -48,7 +48,7 @@ from src.models import (
 from src.models import Workflow as WorkflowORM
 from src.models.orm.workflow_roles import WorkflowRole
 from src.models.orm.forms import Form, FormField
-from src.models.orm.applications import Application, AppPage, AppComponent
+from src.models.orm.applications import Application
 from src.models.orm.agents import Agent, AgentTool
 from src.models.orm.developer import DeveloperContext
 from src.models.orm.users import Role
@@ -197,66 +197,13 @@ async def _get_app_workflow_ids(db: DbSession, app_id: UUID) -> set[UUID]:
     """
     Get all workflow IDs referenced by an app.
 
-    Extracts from pages and components in the active version:
-    - page.launch_workflow_id
-    - page.data_sources[].workflowId / dataProviderId
-    - component.loading_workflows[]
-    - component.props (recursively)
+    Note: The component engine has been removed. This function now returns
+    an empty set as apps no longer reference workflows through pages/components.
+    Code engine apps reference workflows through their code files, which is
+    not tracked in the database.
     """
-    result = await db.execute(
-        select(Application).where(Application.id == app_id)
-    )
-    app = result.scalar_one_or_none()
-
-    if not app or not app.active_version_id:
-        return set()
-
-    workflow_ids: set[UUID] = set()
-
-    # Get pages for the active version
-    pages_result = await db.execute(
-        select(AppPage).where(AppPage.version_id == app.active_version_id)
-    )
-    pages = list(pages_result.scalars().all())
-
-    for page in pages:
-        # Page launch workflow
-        if page.launch_workflow_id:
-            workflow_ids.add(page.launch_workflow_id)
-
-        # Page data sources
-        for ds in page.data_sources or []:
-            if wf_id := ds.get("workflowId"):
-                try:
-                    workflow_ids.add(UUID(wf_id))
-                except ValueError:
-                    pass
-            if dp_id := ds.get("dataProviderId"):
-                try:
-                    workflow_ids.add(UUID(dp_id))
-                except ValueError:
-                    pass
-
-    # Get components for those pages
-    page_ids = [p.id for p in pages]
-    if page_ids:
-        components_result = await db.execute(
-            select(AppComponent).where(AppComponent.page_id.in_(page_ids))
-        )
-        components = list(components_result.scalars().all())
-
-        for comp in components:
-            # Loading workflows
-            for wf_id in comp.loading_workflows or []:
-                try:
-                    workflow_ids.add(UUID(wf_id))
-                except ValueError:
-                    pass
-
-            # Props (recursive extraction)
-            _extract_workflows_from_props(comp.props or {}, workflow_ids)
-
-    return workflow_ids
+    # Component engine removed - apps no longer have pages/components that reference workflows
+    return set()
 
 
 # =============================================================================
@@ -527,14 +474,14 @@ async def get_workflow_usage_stats(
         ]
 
         # =========================================================================
-        # Apps: pages.launch_workflow_id + pages.data_sources + component props
-        # Note: Pages belong to versions (draft/active). We check both to catch all usage.
+        # Apps: Component engine has been removed
+        # Note: Apps no longer have pages/components that reference workflows.
+        # Code engine apps reference workflows through their code files, which is
+        # not tracked in the database.
         # =========================================================================
         apps_query = select(
             Application.id,
             Application.name,
-            Application.draft_version_id,
-            Application.active_version_id,
         ).order_by(Application.name)
         if org_filter:
             apps_query = apps_query.where(Application.organization_id == org_filter)
@@ -542,61 +489,15 @@ async def get_workflow_usage_stats(
         apps_result = await db.execute(apps_query)
         apps_list = apps_result.all()
 
-        apps: list[EntityUsage] = []
-        for app_row in apps_list:
-            workflow_ids: set[str] = set()
-
-            # Build list of version IDs to check (draft and/or active)
-            version_ids: list[UUID] = []
-            if app_row.draft_version_id:
-                version_ids.append(app_row.draft_version_id)
-            if app_row.active_version_id and app_row.active_version_id != app_row.draft_version_id:
-                version_ids.append(app_row.active_version_id)
-
-            # Get pages from relevant versions only
-            if version_ids:
-                pages_query = select(
-                    AppPage.id,
-                    AppPage.launch_workflow_id,
-                    AppPage.data_sources,
-                ).where(
-                    AppPage.application_id == app_row.id,
-                    AppPage.version_id.in_(version_ids),
-                )
-                pages_result = await db.execute(pages_query)
-                page_ids: list[UUID] = []
-                for page_row in pages_result.all():
-                    page_ids.append(page_row.id)
-                    if page_row.launch_workflow_id:
-                        workflow_ids.add(str(page_row.launch_workflow_id))
-
-                    # Extract workflows from page data_sources array
-                    # Each data source can have workflowId or dataProviderId
-                    if page_row.data_sources:
-                        for ds in page_row.data_sources:
-                            if isinstance(ds, dict):
-                                if wf_id := ds.get("workflowId"):
-                                    workflow_ids.add(str(wf_id))
-                                if dp_id := ds.get("dataProviderId"):
-                                    workflow_ids.add(str(dp_id))
-
-                # Get workflow IDs from component props (JSONB extraction)
-                if page_ids:
-                    components_query = select(AppComponent.props).where(
-                        AppComponent.page_id.in_(page_ids)
-                    )
-                    components_result = await db.execute(components_query)
-                    for comp_row in components_result.all():
-                        if comp_row.props:
-                            _extract_workflows_from_props(comp_row.props, workflow_ids)
-
-            apps.append(
-                EntityUsage(
-                    id=str(app_row.id),
-                    name=app_row.name,
-                    workflow_count=len(workflow_ids),
-                )
+        # All apps return 0 workflow count since component engine is removed
+        apps: list[EntityUsage] = [
+            EntityUsage(
+                id=str(app_row.id),
+                name=app_row.name,
+                workflow_count=0,
             )
+            for app_row in apps_list
+        ]
 
         return WorkflowUsageStats(forms=forms, apps=apps, agents=agents)
 

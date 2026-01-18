@@ -262,12 +262,12 @@ async def create_form(
 
             # Validate form schema using Pydantic model
             from pydantic import ValidationError
-            from src.services.mcp_server.tools.validation import format_validation_errors
 
             try:
                 FormSchema.model_validate({"fields": fields})
             except ValidationError as e:
-                return json.dumps({"error": f"Invalid form schema: {format_validation_errors(e.errors())}"})
+                errors_str = "; ".join(f"{'.'.join(str(x) for x in err['loc'])}: {err['msg']}" for err in e.errors())
+                return json.dumps({"error": f"Invalid form schema: {errors_str}"})
             except Exception as e:
                 return json.dumps({"error": f"Error validating form schema: {str(e)}"})
 
@@ -648,12 +648,12 @@ async def update_form(
             if fields is not None:
                 # Validate new fields using Pydantic model
                 from pydantic import ValidationError
-                from src.services.mcp_server.tools.validation import format_validation_errors
 
                 try:
                     FormSchema.model_validate({"fields": fields})
                 except ValidationError as e:
-                    return json.dumps({"error": f"Invalid form schema: {format_validation_errors(e.errors())}"})
+                    errors_str = "; ".join(f"{'.'.join(str(x) for x in err['loc'])}: {err['msg']}" for err in e.errors())
+                    return json.dumps({"error": f"Invalid form schema: {errors_str}"})
                 except Exception as e:
                     return json.dumps({"error": f"Error validating form schema: {str(e)}"})
 

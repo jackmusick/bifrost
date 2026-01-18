@@ -10,7 +10,7 @@ import { createComponent } from "./app-code-runtime";
 import { authFetch } from "./api-client";
 import type { components } from "@/lib/v1";
 
-type AppCodeFile = components["schemas"]["AppCodeFileResponse"];
+type AppCodeFile = components["schemas"]["AppFileResponse"];
 
 /**
  * Cached component entry

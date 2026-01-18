@@ -43,8 +43,6 @@ from src.routers.events import router as events_router
 from src.routers.hooks import router as hooks_router
 from src.routers.tables import router as tables_router
 from src.routers.applications import router as applications_router
-from src.routers.app_pages import router as app_pages_router
-from src.routers.app_components import router as app_components_router
 from src.routers.app_code_files import router as app_code_files_router
 from src.routers.dependencies import router as dependencies_router
 from src.routers.jobs import router as jobs_router
@@ -99,8 +97,6 @@ __all__ = [
     "hooks_router",
     "tables_router",
     "applications_router",
-    "app_pages_router",
-    "app_components_router",
     "app_code_files_router",
     "dependencies_router",
     "jobs_router",

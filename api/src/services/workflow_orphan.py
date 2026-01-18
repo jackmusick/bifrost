@@ -23,10 +23,8 @@ from uuid import UUID
 from pydantic import BaseModel
 from sqlalchemy import or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy.orm import selectinload
 
 from src.models.orm.agents import Agent, AgentTool
-from src.models.orm.applications import AppComponent, Application, AppPage
 from src.models.orm.forms import Form, FormField
 from src.models.orm.workflows import Workflow
 
@@ -435,73 +433,21 @@ class WorkflowOrphanService:
         """
         Find all apps that reference this workflow.
 
-        Checks:
-        - AppPage.launch_workflow_id
-        - AppPage.data_sources (JSON array with workflowId/dataProviderId)
-        - AppComponent.loading_workflows (JSON array)
-        - AppComponent.props (nested workflowId/dataProviderId)
+        Note: The component engine has been removed. Apps no longer reference
+        workflows through pages/components. Code engine apps reference workflows
+        through their code files, which is not tracked in the database.
+
+        This method now always returns an empty list.
 
         Args:
             workflow_id: UUID of the workflow
 
         Returns:
-            List of WorkflowReference for apps using this workflow
+            Empty list (app workflow references are no longer tracked)
         """
-        refs: list[WorkflowReference] = []
-        workflow_id_str = str(workflow_id)
-        app_ids: set[UUID] = set()
-
-        # Check AppPage.launch_workflow_id
-        stmt = select(AppPage).where(AppPage.launch_workflow_id == workflow_id)
-        result = await self.db.execute(stmt)
-        for page in result.scalars():
-            app_ids.add(page.application_id)
-
-        # For data_sources and props, we need to check JSON content
-        # This is more expensive, so we do a broader query and filter in Python
-
-        # Load all pages and check data_sources
-        stmt = select(AppPage)
-        result = await self.db.execute(stmt)
-        for page in result.scalars():
-            if page.data_sources:
-                for ds in page.data_sources:
-                    if ds.get("workflowId") == workflow_id_str:
-                        app_ids.add(page.application_id)
-                        break
-                    if ds.get("dataProviderId") == workflow_id_str:
-                        app_ids.add(page.application_id)
-                        break
-
-        # Load all components and check loading_workflows and props
-        stmt = select(AppComponent).options(selectinload(AppComponent.page))
-        result = await self.db.execute(stmt)
-        for comp in result.scalars():
-            # Check loading_workflows
-            if comp.loading_workflows and workflow_id_str in comp.loading_workflows:
-                if comp.page:
-                    app_ids.add(comp.page.application_id)
-                continue
-
-            # Check props recursively
-            if comp.props and self._props_contain_workflow(comp.props, workflow_id_str):
-                if comp.page:
-                    app_ids.add(comp.page.application_id)
-
-        # Load app names
-        if app_ids:
-            stmt = select(Application).where(Application.id.in_(app_ids))
-            result = await self.db.execute(stmt)
-            for app in result.scalars():
-                refs.append(
-                    WorkflowReference(
-                        type="app",
-                        id=str(app.id),
-                        name=app.name,
-                    )
-                )
-
-        return refs
+        # Component engine removed - apps no longer have pages/components
+        # that reference workflows in a trackable way
+        return []
 
     def _props_contain_workflow(self, obj: dict | list | str | None, workflow_id: str) -> bool:
         """
