@@ -86,6 +86,7 @@ export function FileTree({
 	iconResolver = defaultIconResolver,
 	config: userConfig,
 	className,
+	refreshTrigger,
 }: FileTreeProps) {
 	const config = { ...DEFAULT_CONFIG, ...userConfig };
 
@@ -115,6 +116,19 @@ export function FileTree({
 	useEffect(() => {
 		loadFiles("");
 	}, [loadFiles]);
+
+	// Refresh when refreshTrigger changes (for external refresh requests)
+	const prevRefreshTrigger = useRef(refreshTrigger);
+	useEffect(() => {
+		if (
+			refreshTrigger !== undefined &&
+			prevRefreshTrigger.current !== undefined &&
+			refreshTrigger !== prevRefreshTrigger.current
+		) {
+			refreshAll();
+		}
+		prevRefreshTrigger.current = refreshTrigger;
+	}, [refreshTrigger, refreshAll]);
 
 	// Notify editor of loading state changes
 	useEffect(() => {

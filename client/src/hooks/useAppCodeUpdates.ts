@@ -20,7 +20,7 @@ export interface CodeFile {
 	compiled: string | null;
 }
 
-interface LastUpdate {
+export interface LastUpdate {
 	userName: string;
 	timestamp: Date;
 	action: "create" | "update" | "delete";
@@ -32,6 +32,8 @@ interface UseAppCodeUpdatesOptions {
 	appId: string | undefined;
 	/** Whether to enable WebSocket subscriptions (default: true) */
 	enabled?: boolean;
+	/** Callback when a file update is received (for triggering side effects) */
+	onUpdate?: (update: LastUpdate) => void;
 }
 
 /**
@@ -52,7 +54,7 @@ interface UseAppCodeUpdatesOptions {
  * ```
  */
 export function useAppCodeUpdates(options: UseAppCodeUpdatesOptions) {
-	const { appId, enabled = true } = options;
+	const { appId, enabled = true, onUpdate } = options;
 
 	// Local cache of file contents (path -> CodeFile)
 	const [files, setFiles] = useState<Map<string, CodeFile>>(new Map());
@@ -70,13 +72,15 @@ export function useAppCodeUpdates(options: UseAppCodeUpdatesOptions) {
 			// Don't process if disabled or wrong app
 			if (!enabled || update.appId !== appId) return;
 
-			// Update attribution display
-			setLastUpdate({
+			const lastUpdateData: LastUpdate = {
 				userName: update.userName,
 				timestamp: new Date(update.timestamp),
 				action: update.action,
 				path: update.path,
-			});
+			};
+
+			// Update attribution display
+			setLastUpdate(lastUpdateData);
 
 			// Clear attribution after 3 seconds
 			setTimeout(() => setLastUpdate(null), 3000);
@@ -101,8 +105,11 @@ export function useAppCodeUpdates(options: UseAppCodeUpdatesOptions) {
 
 				return next;
 			});
+
+			// Call update callback (for triggering side effects like file tree refresh)
+			onUpdate?.(lastUpdateData);
 		},
-		[appId, enabled],
+		[appId, enabled, onUpdate],
 	);
 
 	// Handle publish events - show new version banner

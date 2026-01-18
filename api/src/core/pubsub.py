@@ -533,6 +533,47 @@ async def publish_app_draft_update(
     await manager.broadcast(channel, message)
 
 
+async def publish_app_code_file_update(
+    app_id: str,
+    user_id: str,
+    user_name: str,
+    path: str,
+    source: str | None = None,
+    compiled: str | None = None,
+    action: str = "update",  # 'create', 'update', 'delete'
+) -> None:
+    """
+    Broadcast code file changes with full content to app:draft:{app_id} channel.
+
+    This specialized function includes the file content, enabling
+    real-time preview updates without additional API calls.
+
+    Args:
+        app_id: Application ID
+        user_id: User who made the change
+        user_name: Display name of the user
+        path: File path (e.g., 'pages/index', 'components/Button')
+        source: Source code content (None for delete)
+        compiled: Compiled JS content (None for delete or if not compiled)
+        action: Type of change ('create', 'update', 'delete')
+    """
+    from datetime import datetime, timezone
+
+    channel = f"app:draft:{app_id}"
+    message = {
+        "type": "app_code_file_update",
+        "appId": app_id,
+        "action": action,
+        "path": path,
+        "source": source,
+        "compiled": compiled,
+        "userId": user_id,
+        "userName": user_name,
+        "timestamp": datetime.now(timezone.utc).isoformat(),
+    }
+    await manager.broadcast(channel, message)
+
+
 async def publish_app_published(
     app_id: str,
     user_id: str,

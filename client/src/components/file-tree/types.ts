@@ -179,4 +179,6 @@ export interface FileTreeProps {
 	config?: FileTreeConfig;
 	/** Additional CSS classes */
 	className?: string;
+	/** Optional trigger to refresh the file tree - change this value to trigger a refresh */
+	refreshTrigger?: number;
 }

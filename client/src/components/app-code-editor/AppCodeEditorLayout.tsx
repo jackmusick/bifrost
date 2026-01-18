@@ -7,7 +7,7 @@
  * - Live preview panel
  */
 
-import { useState, useCallback, useMemo, useEffect } from "react";
+import { useState, useCallback, useMemo, useEffect, useRef } from "react";
 import { Button } from "@/components/ui/button";
 import {
 	FileTree,
@@ -17,6 +17,7 @@ import {
 import { AppCodeEditor } from "./AppCodeEditor";
 import { AppCodePreview } from "./AppCodePreview";
 import { useAppCodeEditor } from "./useAppCodeEditor";
+import { useAppCodeUpdates, type LastUpdate } from "@/hooks/useAppCodeUpdates";
 import { toast } from "sonner";
 import {
 	Save,
@@ -70,6 +71,74 @@ export function AppCodeEditorLayout({
 		() => createAppCodeOperations(appId, versionId),
 		[appId, versionId],
 	);
+
+	// Track file tree refresh counter - increments to trigger refresh
+	const [fileTreeRefresh, setFileTreeRefresh] = useState(0);
+
+	// Use a ref to track current file path so the callback can access it
+	const currentFilePathRef = useRef<string | null>(null);
+	useEffect(() => {
+		currentFilePathRef.current = currentFile?.path ?? null;
+	}, [currentFile?.path]);
+
+	// Handle real-time updates from WebSocket via callback
+	const handleWebSocketUpdate = useCallback(
+		(update: LastUpdate) => {
+			const { action, path, userName } = update;
+
+			// Show toast for external changes (not from this editor session)
+			if (action === "create") {
+				toast.info(`${userName} created ${path.split("/").pop()}`, {
+					duration: 2000,
+				});
+				// Trigger file tree refresh
+				setFileTreeRefresh((n) => n + 1);
+			} else if (action === "delete") {
+				toast.info(`${userName} deleted ${path.split("/").pop()}`, {
+					duration: 2000,
+				});
+				// If the deleted file was open, close it
+				if (currentFilePathRef.current === path) {
+					setCurrentFile(null);
+				}
+				// Trigger file tree refresh
+				setFileTreeRefresh((n) => n + 1);
+			} else if (action === "update") {
+				// If the updated file is currently open, show a toast with reload option
+				if (currentFilePathRef.current === path) {
+					toast.info(`${userName} updated this file`, {
+						duration: 2000,
+						action: {
+							label: "Reload",
+							onClick: async () => {
+								// Re-fetch the file content
+								try {
+									const content = await operations.read(path);
+									if (content) {
+										setCurrentFile((prev) =>
+											prev
+												? { ...prev, source: content.content }
+												: null,
+										);
+									}
+								} catch (error) {
+									console.error("[AppCodeEditorLayout] Failed to reload file:", error);
+								}
+							},
+						},
+					});
+				}
+			}
+		},
+		[operations],
+	);
+
+	// Real-time updates via WebSocket
+	useAppCodeUpdates({
+		appId,
+		enabled: true,
+		onUpdate: handleWebSocketUpdate,
+	});
 
 	// App code editor hook for managing source, compilation, etc.
 	const {
@@ -278,6 +347,7 @@ export function AppCodeEditorLayout({
 							operations={operations}
 							iconResolver={appCodeIconResolver}
 							editor={editorCallbacks}
+							refreshTrigger={fileTreeRefresh}
 							config={{
 								enableUpload: false,
 								enableDragMove: true,
