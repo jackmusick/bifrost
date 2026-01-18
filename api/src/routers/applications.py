@@ -32,7 +32,8 @@ from src.models.contracts.applications import (
     ApplicationUpdate,
 )
 from src.models.orm.app_roles import AppRole
-from src.models.orm.applications import AppComponent, AppPage, AppVersion, Application
+from src.models.orm.applications import AppCodeFile, AppComponent, AppPage, AppVersion, Application
+from src.models.enums import AppEngine
 from src.core.exceptions import AccessDeniedError
 from src.repositories.org_scoped import OrgScopedRepository
 from src.services.app_builder_service import AppBuilderService
@@ -244,6 +245,7 @@ class ApplicationRepository(OrgScopedRepository[Application]):
             navigation={},
             permissions={},
             access_level=data.access_level,
+            engine=data.engine,
         )
         self.session.add(application)
         await self.session.flush()
@@ -256,6 +258,10 @@ class ApplicationRepository(OrgScopedRepository[Application]):
         # Link app to draft version
         application.draft_version_id = draft_version.id
         await self.session.flush()  # Ensure draft_version_id is persisted
+
+        # Scaffold initial files for code engine apps
+        if data.engine == AppEngine.CODE:
+            await self._scaffold_code_files(draft_version.id)
 
         # Add role associations if role_based access
         if data.access_level == "role_based" and data.role_ids:
@@ -387,6 +393,53 @@ class ApplicationRepository(OrgScopedRepository[Application]):
             f"by user {published_by}"
         )
         return application
+
+    async def _scaffold_code_files(self, version_id: UUID) -> None:
+        """Create initial scaffold files for a code engine app.
+
+        Creates:
+        - _layout: Root layout wrapper
+        - pages/index: Home page
+        """
+        # Root layout - wraps all pages
+        layout_source = '''import { Outlet } from "bifrost";
+
+export default function RootLayout() {
+  return (
+    <div className="min-h-screen bg-background">
+      <Outlet />
+    </div>
+  );
+}
+'''
+        layout_file = AppCodeFile(
+            app_version_id=version_id,
+            path="_layout",
+            source=layout_source,
+        )
+        self.session.add(layout_file)
+
+        # Home page
+        index_source = '''export default function HomePage() {
+  return (
+    <div className="p-8">
+      <h1 className="text-3xl font-bold mb-4">Welcome</h1>
+      <p className="text-muted-foreground">
+        Start building your app by editing this page or adding new files.
+      </p>
+    </div>
+  );
+}
+'''
+        index_file = AppCodeFile(
+            app_version_id=version_id,
+            path="pages/index",
+            source=index_source,
+        )
+        self.session.add(index_file)
+
+        await self.session.flush()
+        logger.info(f"Scaffolded initial code files for version {version_id}")
 
 
 # =============================================================================

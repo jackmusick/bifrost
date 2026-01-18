@@ -528,3 +528,78 @@ class TestApplicationDBStorage:
             "/api/applications/persist-test-app",
             headers=platform_admin.headers,
         )
+
+
+@pytest.mark.e2e
+class TestCodeEngineApps:
+    """Test code engine application features."""
+
+    def test_code_engine_scaffolds_files(self, e2e_client, platform_admin):
+        """Creating a code engine app scaffolds initial files."""
+        # Create code engine app
+        response = e2e_client.post(
+            "/api/applications",
+            headers=platform_admin.headers,
+            json={
+                "name": "Code Engine Test",
+                "slug": "code-engine-test",
+                "engine": "code",
+            },
+        )
+        assert response.status_code == 201, f"Create app failed: {response.text}"
+        app = response.json()
+        assert app["draft_version_id"] is not None
+
+        # List files for the draft version
+        response = e2e_client.get(
+            f"/api/applications/{app['id']}/versions/{app['draft_version_id']}/files",
+            headers=platform_admin.headers,
+        )
+        assert response.status_code == 200, f"List files failed: {response.text}"
+        data = response.json()
+
+        # Should have scaffolded _layout and pages/index
+        file_paths = [f["path"] for f in data["files"]]
+        assert "_layout" in file_paths, f"Expected _layout in {file_paths}"
+        assert "pages/index" in file_paths, f"Expected pages/index in {file_paths}"
+
+        # Check content
+        files_by_path = {f["path"]: f for f in data["files"]}
+        assert "RootLayout" in files_by_path["_layout"]["source"]
+        assert "HomePage" in files_by_path["pages/index"]["source"]
+
+        # Cleanup
+        e2e_client.delete(
+            "/api/applications/code-engine-test",
+            headers=platform_admin.headers,
+        )
+
+    def test_components_engine_does_not_scaffold_files(self, e2e_client, platform_admin):
+        """Creating a components engine app does NOT scaffold code files."""
+        # Create components engine app (default)
+        response = e2e_client.post(
+            "/api/applications",
+            headers=platform_admin.headers,
+            json={
+                "name": "Components Engine Test",
+                "slug": "components-engine-test",
+                "engine": "components",
+            },
+        )
+        assert response.status_code == 201
+        app = response.json()
+
+        # List files - should be empty
+        response = e2e_client.get(
+            f"/api/applications/{app['id']}/versions/{app['draft_version_id']}/files",
+            headers=platform_admin.headers,
+        )
+        assert response.status_code == 200
+        data = response.json()
+        assert data["total"] == 0, f"Expected 0 files, got {data['total']}"
+
+        # Cleanup
+        e2e_client.delete(
+            "/api/applications/components-engine-test",
+            headers=platform_admin.headers,
+        )
