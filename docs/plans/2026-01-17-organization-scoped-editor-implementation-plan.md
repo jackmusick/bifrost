@@ -1,24 +1,31 @@
 # Organization-Scoped Editor Implementation Plan
 
 **Date:** 2026-01-17
+**Updated:** 2026-01-18 (reflects modular FileTree refactor)
 **Design Doc:** [2026-01-17-organization-scoped-editor-design.md](./2026-01-17-organization-scoped-editor-design.md)
 
 ## Overview
 
 This plan implements the organization-scoped editor design. The work is broken into phases that can be completed incrementally, with each phase delivering value independently.
 
-## Current State
+## Current State (Post-Refactor)
 
-**Existing infrastructure we can leverage:**
+The FileTree has been refactored into a modular, dependency-injected architecture:
 
 | Component | Location | Notes |
 |-----------|----------|-------|
-| Entity type icons | `FileTree.tsx:140-148` | Already has workflow/form/app/agent icons with colors |
-| Extension icons | `FileTree.tsx:153-194` | Python, JSON, etc. icons for fallback |
-| Org scope context | `OrgScopeContext.tsx` | Provides `useOrgScope()` hook, persists to localStorage |
-| File tree component | `FileTree.tsx` | Drag-drop, expand/collapse, CRUD operations |
-| Git sync UI | `SourceControlPanel.tsx` | Pull/push preview, conflict resolution, orphan warnings |
+| **FileTree component** | `components/file-tree/FileTree.tsx` | Modular, accepts `FileOperations` interface |
+| **FileOperations interface** | `components/file-tree/types.ts` | Abstract interface for any backend |
+| **Icon resolvers** | `components/file-tree/icons.ts` | Includes `orgScopedIconResolver` already |
+| **useFileTree hook** | `components/file-tree/useFileTree.ts` | Manages tree state, accepts operations |
+| **FileNode type** | `components/file-tree/types.ts` | Has `metadata` field for custom data |
+| Org scope context | `OrgScopeContext.tsx` | Provides `useOrgScope()` hook |
+| Git sync UI | `SourceControlPanel.tsx` | Pull/push preview, conflict resolution |
 | Workflow update hook | `useWorkflows.ts:76-109` | **Has CSRF bug** - uses raw `fetch` |
+
+**Key insight:** The `orgScopedIconResolver` already exists and uses `file.metadata?.isOrgContainer` to detect org containers. The `FileNode.metadata` field is designed for exactly this use case.
+
+**Removed:** The old app indexer (`.app.json`) has been removed. Entity types are now: workflow, form, agent.
 
 ## Phase 1: Fix CSRF Bug (Quick Win)
 
@@ -63,7 +70,7 @@ interface OrganizationScopeDialogProps {
   // Single or multi-entity mode
   entities: Array<{
     path: string;
-    entityType: 'workflow' | 'form' | 'app' | 'agent';
+    entityType: 'workflow' | 'form' | 'agent';
     currentOrgId?: string | null;  // Pre-fill for existing entities
   }>;
 
@@ -98,17 +105,17 @@ Check if this exists. If not, create a hook that fetches the org list for the dr
 
 **Changes to `handleManualSave()`:**
 
-1. After `fileService.writeFile()` returns, check if response indicates a new scoped entity was created
+1. After file write returns, check if response indicates a new scoped entity was created
 2. If new entity AND no org assigned, show `OrganizationScopeDialog`
 3. On confirm, call API to update entity's organization
 
-**Backend requirement:** The `writeFile` response already returns `entity_type` and `entity_id`. Need to also return `is_new_entity: boolean` to distinguish creates from updates.
+**Backend requirement:** The write response already returns `entity_type` and `entity_id`. Need to also return `is_new_entity: boolean` to distinguish creates from updates.
 
 ### Task 3.2: Add is_new_entity to file write response
 
 **File:** `api/src/handlers/files_handlers.py` (or wherever writeFile is handled)
 
-Add `is_new_entity` field to response when indexer creates a new workflow/form/app/agent.
+Add `is_new_entity` field to response when indexer creates a new workflow/form/agent.
 
 ### Task 3.3: Wire up dialog in CodeEditor
 
@@ -143,53 +150,88 @@ const handleScopeConfirm = async (assignments) => {
 
 **Goal:** Reorganize file tree with org containers at top level.
 
-### Task 4.1: Update useFileTree to group by organization
+### Task 4.1: Create OrgScopedFileOperations adapter
 
-**File:** `client/src/hooks/useFileTree.ts`
+**File:** `client/src/services/orgScopedFileOperations.ts` (new)
 
-**Changes:**
-1. Fetch entity org mappings along with file list
-2. Build tree structure with org containers at root:
-   - Global (null org_id)
-   - Org A
-   - Org B
-   - etc.
-3. Place files under their entity's org container
-4. Non-entity files (plain Python modules) go under Global
+This adapter wraps the existing `fileService` and transforms the flat file list into org-grouped structure:
 
-**Data structure change:**
 ```typescript
-// Current: flat list of files grouped into folder tree
-// New: org containers at root, each containing folder tree
+import type { FileOperations, FileNode } from "@/components/file-tree/types";
+import { fileService } from "./fileService";
 
-interface OrgContainer {
-  type: 'org-container';
-  orgId: string | null;  // null = Global
-  orgName: string;
-  children: FileTreeNode[];
+export function createOrgScopedFileOperations(
+  entityOrgMap: Map<string, string | null>  // path -> orgId
+): FileOperations {
+  return {
+    async list(path: string): Promise<FileNode[]> {
+      // If listing root, return org containers
+      if (path === "") {
+        return buildOrgContainers(entityOrgMap);
+      }
+
+      // If path starts with org container prefix, strip it and delegate
+      const [orgPrefix, ...rest] = path.split("/");
+      const realPath = rest.join("/");
+      const files = await fileService.listFiles(realPath);
+
+      // Filter to only files belonging to this org
+      return files.filter(f => matchesOrg(f, orgPrefix, entityOrgMap));
+    },
+    // ... other methods delegate to fileService with path transformation
+  };
+}
+
+function buildOrgContainers(entityOrgMap: Map<string, string | null>): FileNode[] {
+  // Build: Global (null), then each org alphabetically
+  // Each container has metadata.isOrgContainer = true
 }
 ```
 
-### Task 4.2: Update FileTree component rendering
+### Task 4.2: Fetch entity-to-org mapping
 
-**File:** `client/src/components/editor/FileTree.tsx`
+**File:** `client/src/hooks/useEntityOrgMap.ts` (new)
 
-**Changes:**
-1. Add org container rendering with distinct icon (📌 for Global, 📍 for orgs)
-2. Org containers not deletable (no trash icon)
-3. Org containers always collapsible
-4. Visual distinction: different background/indent/styling
+Hook that fetches the mapping of file paths to organization IDs:
 
-### Task 4.3: Update file tree drag-drop for re-scoping
+```typescript
+export function useEntityOrgMap() {
+  // Fetch all entities (workflows, forms, agents) with their org_id
+  // Build Map<path, orgId | null>
+  // Return { data: Map, isLoading, error }
+}
+```
 
-**File:** `client/src/components/editor/FileTree.tsx`
+This requires a backend endpoint or extending existing endpoints to return org_id with file listings.
 
-**Changes:**
-1. Allow dragging files between org containers
-2. On drop to different org container:
-   - Show `OrganizationScopeDialog` pre-filled with target org
-   - On confirm, update entity's organization via API
-   - Refresh file tree
+### Task 4.3: Wire up org-scoped operations in workspace editor
+
+**File:** Where the workspace editor creates its FileTree (likely `client/src/pages/Editor.tsx` or similar)
+
+```typescript
+const { data: entityOrgMap } = useEntityOrgMap();
+const operations = useMemo(
+  () => createOrgScopedFileOperations(entityOrgMap ?? new Map()),
+  [entityOrgMap]
+);
+
+<FileTree
+  operations={operations}
+  iconResolver={orgScopedIconResolver}  // Already exists in icons.ts
+  editor={editorCallbacks}
+  config={{ enableUpload: true, enableDragMove: true }}
+/>
+```
+
+### Task 4.4: Handle drag-drop between org containers
+
+**File:** `client/src/components/file-tree/FileTree.tsx`
+
+The modular FileTree already supports drag-drop. Need to detect when drop target is a different org container:
+
+1. In drop handler, check if source and target have different `metadata.orgId`
+2. If different org, show `OrganizationScopeDialog` pre-filled with target org
+3. On confirm, update entity's organization via API, then refresh tree
 
 ---
 
@@ -213,7 +255,7 @@ const [pendingOrgAssignments, setPendingOrgAssignments] = useState<Record<string
 **File:** `client/src/components/editor/SourceControlPanel.tsx`
 
 For each incoming file that would create a scoped entity:
-- Show entity icon (⚡📋🤖⊞)
+- Show entity icon (use `defaultIconResolver` from `file-tree/icons.ts`)
 - Show file name
 - Show org assignment as subtext below:
   - "Global" / "Customer A" / etc. if assigned
@@ -296,7 +338,7 @@ Add parameter to import flow that sets `organization_id` based on provided mappi
 - [ ] File tree shows Global container at top
 - [ ] File tree shows org containers below Global
 - [ ] Files appear under correct org based on entity's organization_id
-- [ ] Org containers have distinct icon, not deletable
+- [ ] Org containers have distinct icon (Building2), not deletable
 - [ ] Drag-drop between orgs triggers scope dialog
 
 ### Phase 5
@@ -311,20 +353,26 @@ Add parameter to import flow that sets `organization_id` based on provided mappi
 ## File Summary
 
 ### New Files
-- `client/src/components/editor/OrganizationScopeDialog.tsx`
+- `client/src/components/editor/OrganizationScopeDialog.tsx` - Reusable scope selection dialog
+- `client/src/services/orgScopedFileOperations.ts` - FileOperations adapter for org grouping
+- `client/src/hooks/useEntityOrgMap.ts` - Fetch entity-to-org mapping
 
 ### Modified Files (Frontend)
 - `client/src/hooks/useWorkflows.ts` - Fix CSRF bug
-- `client/src/hooks/useFileTree.ts` - Group by org
 - `client/src/hooks/useGitHub.ts` - Pass org assignments
-- `client/src/components/editor/FileTree.tsx` - Org containers, drag-drop
 - `client/src/components/editor/CodeEditor.tsx` - Scope dialog on save
 - `client/src/components/editor/SourceControlPanel.tsx` - Org assignment UI
+- `client/src/pages/Editor.tsx` (or equivalent) - Wire up org-scoped operations
 
 ### Modified Files (Backend)
 - `api/src/handlers/files_handlers.py` - Return `is_new_entity`
 - `api/src/handlers/github_handlers.py` - Accept org assignments
 - `api/src/services/github_sync.py` - Apply org assignments on import
+
+### Already Exists (No Changes Needed)
+- `client/src/components/file-tree/icons.ts` - `orgScopedIconResolver` already handles `metadata.isOrgContainer`
+- `client/src/components/file-tree/types.ts` - `FileNode.metadata` field ready for use
+- `client/src/components/file-tree/FileTree.tsx` - Modular, no changes needed
 
 ---
 
@@ -337,3 +385,15 @@ Add parameter to import flow that sets `organization_id` based on provided mappi
 5. **Phase 5 + 6** - Git sync (depends on Phase 2)
 
 Phases 3 and 4 can be worked on in parallel once Phase 2 is complete.
+
+---
+
+## Architecture Notes
+
+The modular FileTree refactor means we don't touch the core component at all. Instead:
+
+1. **Create adapter** (`orgScopedFileOperations`) that transforms paths and injects org containers
+2. **Use existing icon resolver** (`orgScopedIconResolver`) that's already in `icons.ts`
+3. **Pass to FileTree** via dependency injection - no coupling to org logic in the component
+
+This keeps the FileTree reusable for other contexts (App Builder JSX files, etc.) while adding org-scoping as a layer on top.
