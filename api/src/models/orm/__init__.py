@@ -30,7 +30,7 @@ from src.models.orm.tables import Document, Table
 from src.models.orm.users import Role, User, UserRole
 from src.models.orm.workspace import WorkspaceFile
 from src.models.orm.workflow_roles import WorkflowRole
-from src.models.orm.workflows import DataProvider, Workflow
+from src.models.orm.workflows import Workflow
 
 __all__ = [
     # Base
@@ -71,7 +71,6 @@ __all__ = [
     "SystemConfig",
     # Workflows
     "Workflow",
-    "DataProvider",
     "WorkflowRole",
     # OAuth
     "OAuthProvider",

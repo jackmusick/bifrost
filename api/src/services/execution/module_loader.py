@@ -808,40 +808,6 @@ def _convert_parameters(params: list) -> list[WorkflowParameter]:
     return result
 
 
-# ==================== DIRECT FILE LOADING ====================
-
-
-def load_workflow_by_file_path(
-    file_path: str | Path,
-    function_name: str,
-) -> tuple[Callable, WorkflowMetadata] | None:
-    """
-    DEPRECATED: Use load_workflow_from_db() instead.
-
-    This function was used to load workflows from the filesystem.
-    Now all workflows are loaded from the database.
-
-    Args:
-        file_path: Path to the Python file (no longer used)
-        function_name: Python function name to find
-
-    Returns:
-        None - always returns None since filesystem loading is deprecated
-    """
-    import warnings
-    warnings.warn(
-        "load_workflow_by_file_path() is deprecated. Use load_workflow_from_db() instead. "
-        "All workflows are now loaded from the database.",
-        DeprecationWarning,
-        stacklevel=2,
-    )
-    logger.warning(
-        f"Deprecated load_workflow_by_file_path() called for {file_path}:{function_name}. "
-        "Use load_workflow_from_db() instead."
-    )
-    return None
-
-
 def get_workflow(name: str) -> tuple[Callable, WorkflowMetadata] | None:
     """
     Get a workflow by name.

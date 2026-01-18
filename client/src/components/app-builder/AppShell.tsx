@@ -543,7 +543,16 @@ export function AppShell({
 				</header>
 
 				{/* Page Content */}
-				<main className="flex-1 overflow-auto p-6">
+				<main
+					className={cn(
+						"flex-1 p-6",
+						// When fill_height is true, let the page handle its own scrolling
+						// Otherwise, this main element is the scroll container
+						currentPage?.fill_height
+							? "flex flex-col overflow-hidden"
+							: "overflow-auto",
+					)}
+				>
 					{children || <Outlet />}
 				</main>
 			</div>

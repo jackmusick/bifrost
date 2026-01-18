@@ -56,10 +56,33 @@ export function CardComponent({
 
 	const hasChildren = comp.children && comp.children.length > 0;
 
+	// Build card styles for flex support
+	// Note: overflow is NOT applied to the card itself - it goes on the content container
+	// to enable internal scrolling while the card maintains its flex layout
+	const cardStyle: React.CSSProperties = {};
+	if (comp.flex === "grow") {
+		cardStyle.flex = "1 1 0%";
+		cardStyle.minHeight = 0;
+	}
+
+	// Content container needs flex-1 and overflow when card has flex grow
+	const contentContainerClass = cn(
+		"flex flex-col gap-4",
+		comp.flex === "grow" && "flex-1 min-h-0",
+		comp.overflow === "auto" && "overflow-auto",
+	);
+
 	return (
-		<Card className={cn("h-full", comp.class_name)}>
+		<Card
+			className={cn(
+				"h-full",
+				comp.flex === "grow" && "flex flex-col",
+				comp.class_name,
+			)}
+			style={cardStyle}
+		>
 			{hasHeader && (
-				<CardHeader>
+				<CardHeader className={comp.flex === "grow" ? "flex-shrink-0" : undefined}>
 					{title && <CardTitle>{title}</CardTitle>}
 					{description && (
 						<CardDescription>{description}</CardDescription>
@@ -67,8 +90,8 @@ export function CardComponent({
 				</CardHeader>
 			)}
 			{hasChildren ? (
-				<CardContent>
-					<div className="flex flex-col gap-4">
+				<CardContent className={comp.flex === "grow" ? "flex-1 min-h-0 flex flex-col" : undefined}>
+					<div className={contentContainerClass}>
 						{comp.children!.map((child, index: number) => (
 							<LayoutRenderer
 								key={child.id ?? `child-${index}`}

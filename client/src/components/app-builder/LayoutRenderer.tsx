@@ -174,6 +174,9 @@ function getWidthStyles(width?: ComponentWidth): React.CSSProperties {
 		return {
 			flex: `${flexGrowMap[width]} 1 0%`,
 			minWidth: 0,
+			// minHeight: 0 allows the wrapper to shrink in vertical flex contexts
+			// (e.g., when parent row has items-stretch and the row is constrained)
+			minHeight: 0,
 		};
 	}
 	return {};
@@ -700,7 +703,7 @@ function renderLayoutContainer(
 		case "row":
 			return wrapWithSelectable(
 				<div
-					className={cn("flex flex-row flex-wrap", baseClasses, normalizedLayout.class_name)}
+					className={cn("flex flex-row", baseClasses, normalizedLayout.class_name)}
 					style={layoutStyles}
 				>
 					{(normalizedLayout.children ?? []).map((child, index) =>

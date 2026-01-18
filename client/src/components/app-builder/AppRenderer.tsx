@@ -68,8 +68,10 @@ function PageRenderer({
 			type: "column" as const,
 			gap: 16,
 			children: page.children || [],
-			// Pass fill_height through to root layout via class_name
+			// When fill_height is true, the root layout fills available space and enables
+			// flex: grow so it constrains to parent height (enabling child scroll containers)
 			class_name: page.fill_height ? "h-full" : undefined,
+			flex: page.fill_height ? ("grow" as const) : undefined,
 		}),
 		[page.id, page.children, page.fill_height],
 	);

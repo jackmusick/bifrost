@@ -668,6 +668,7 @@ def build_page_definition(page: AppPage, components: list[AppComponent]) -> Page
         launch_workflow_params=page.launch_workflow_params,
         launch_workflow_data_source_id=page.launch_workflow_data_source_id,
         permission=permission,
+        fill_height=page.fill_height if page.fill_height else None,
     )
 
 

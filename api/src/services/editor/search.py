@@ -273,29 +273,3 @@ async def search_files_db(
         truncated=truncated,
         search_time_ms=search_time_ms
     )
-
-
-# Legacy synchronous function - wraps async for backwards compatibility
-def search_files(request: SearchRequest, root_path: str = "") -> SearchResponse:
-    """
-    DEPRECATED: Use search_files_db with async database session instead.
-
-    This synchronous wrapper exists for backwards compatibility but will
-    return empty results. Callers should migrate to search_files_db.
-    """
-    import warnings
-    warnings.warn(
-        "search_files() is deprecated. Use search_files_db() with async database session.",
-        DeprecationWarning,
-        stacklevel=2,
-    )
-
-    # Return empty results - callers should use async version
-    return SearchResponse(
-        query=request.query,
-        total_matches=0,
-        files_searched=0,
-        results=[],
-        truncated=False,
-        search_time_ms=0
-    )

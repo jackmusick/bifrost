@@ -59,6 +59,7 @@ function convertApiPageToFrontend(apiPage: PageDefinitionAPI): PageDefinition {
 		launch_workflow_id: apiPage.launch_workflow_id ?? undefined,
 		launch_workflow_params: apiPage.launch_workflow_params ?? undefined,
 		launch_workflow_data_source_id: apiPage.launch_workflow_data_source_id ?? undefined,
+		fill_height: apiPage.fill_height ?? undefined,
 		permission: apiPage.permission
 			? {
 					allowed_roles: apiPage.permission.allowed_roles ?? undefined,

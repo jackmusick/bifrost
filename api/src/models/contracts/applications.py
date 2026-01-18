@@ -485,19 +485,5 @@ class ComponentTreeNode(BaseModel):
     children: list["ComponentTreeNode"] = Field(default_factory=list)
 
 
-class AppPageWithComponents(AppPageResponse):
-    """
-    Page response with full component tree.
-
-    DEPRECATED: Use PageDefinition instead.
-    Kept for backwards compatibility during migration.
-    """
-
-    components: list[ComponentTreeNode] = Field(
-        default_factory=list,
-        description="Component tree (root-level components with nested children)",
-    )
-
-
 # ==================== IMPORT MODELS ====================
 # Applications use file sync (like forms/agents), not a dedicated import endpoint
