@@ -53,6 +53,10 @@ class ApplicationCreate(ApplicationBase):
         default_factory=list,
         description="Role IDs for role_based access (ignored if access_level is 'authenticated')",
     )
+    engine: str = Field(
+        default="components",
+        description="Rendering engine: 'components' (JSON tree) or 'jsx' (JSX files)",
+    )
 
     @field_validator("slug")
     @classmethod
@@ -71,6 +75,14 @@ class ApplicationCreate(ApplicationBase):
         """Validate access_level is one of the allowed values."""
         if v not in ("authenticated", "role_based"):
             raise ValueError("access_level must be 'authenticated' or 'role_based'")
+        return v
+
+    @field_validator("engine")
+    @classmethod
+    def validate_engine(cls, v: str) -> str:
+        """Validate engine is one of the allowed values."""
+        if v not in ("components", "jsx"):
+            raise ValueError("engine must be 'components' or 'jsx'")
         return v
 
 
@@ -133,6 +145,10 @@ class ApplicationPublic(ApplicationBase):
     is_published: bool
     has_unpublished_changes: bool
     access_level: str = Field(default="authenticated")
+    engine: str = Field(
+        default="components",
+        description="Rendering engine: 'components' (JSON tree) or 'jsx' (JSX files)",
+    )
     role_ids: list[UUID] = Field(default_factory=list)
     navigation: NavigationConfig | None = Field(
         default=None,
