@@ -12,8 +12,9 @@
  */
 
 import { useParams, useNavigate } from "react-router-dom";
-import { Loader2, AlertTriangle, ArrowLeft } from "lucide-react";
+import { AlertTriangle, ArrowLeft } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { AppLoadingSkeleton } from "@/components/jsx-app/AppLoadingSkeleton";
 import {
 	Card,
 	CardContent,
@@ -32,22 +33,15 @@ interface AppRouterProps {
 }
 
 /**
- * Helper to get the base path for JSX apps based on mode
- */
-function getBasePath(slug: string, preview: boolean): string {
-	return preview ? `/apps/${slug}/preview` : `/apps/${slug}`;
-}
-
-/**
  * Type guard to check if application has the engine field
  * This handles the transition period where the type might not include engine yet
  */
 function getAppEngine(
 	app: ApplicationPublic,
-): "components" | "jsx" {
+): "components" | "code" {
 	// Access engine field, defaulting to 'components' for backwards compatibility
 	const engine = (app as ApplicationPublic & { engine?: string }).engine;
-	return engine === "jsx" ? "jsx" : "components";
+	return engine === "code" ? "code" : "components";
 }
 
 export function AppRouter({ preview = false }: AppRouterProps) {
@@ -63,16 +57,7 @@ export function AppRouter({ preview = false }: AppRouterProps) {
 
 	// Loading state
 	if (isLoading) {
-		return (
-			<div className="min-h-screen flex items-center justify-center">
-				<div className="flex flex-col items-center gap-4">
-					<Loader2 className="h-8 w-8 animate-spin text-primary" />
-					<p className="text-muted-foreground">
-						Loading application...
-					</p>
-				</div>
-			</div>
-		);
+		return <AppLoadingSkeleton message="Loading application..." />;
 	}
 
 	// Error state
@@ -137,8 +122,8 @@ export function AppRouter({ preview = false }: AppRouterProps) {
 	// Determine which engine to use
 	const engine = getAppEngine(application);
 
-	// For JSX engine, render JsxAppShell
-	if (engine === "jsx") {
+	// For code engine, render JsxAppShell
+	if (engine === "code") {
 		// Get the appropriate version ID
 		const versionId = preview
 			? application.draft_version_id
@@ -172,7 +157,7 @@ export function AppRouter({ preview = false }: AppRouterProps) {
 							</Button>
 							<Button
 								onClick={() =>
-									navigate(`/apps/${slugParam}/edit`)
+									navigate(`/apps/${slugParam}/code`)
 								}
 							>
 								Open Editor
@@ -186,24 +171,25 @@ export function AppRouter({ preview = false }: AppRouterProps) {
 		// Render with preview banner if in preview mode
 		if (preview) {
 			return (
-				<div className="h-screen flex flex-col bg-background">
+				<div className="h-full flex flex-col bg-background overflow-hidden">
 					{/* Preview Banner */}
-					<div className="sticky top-0 z-50 bg-amber-500 text-amber-950 px-4 py-2 text-center text-sm font-medium flex-shrink-0">
+					<div className="z-50 bg-amber-500 text-amber-950 px-4 py-2 text-center text-sm font-medium shrink-0">
 						Preview Mode - This is the draft version
 						<Button
 							variant="link"
 							size="sm"
 							className="ml-2 text-amber-950 underline"
-							onClick={() => navigate(`/apps/${slugParam}/edit`)}
+							onClick={() => navigate(`/apps/${slugParam}/code`)}
 						>
 							Back to Editor
 						</Button>
 					</div>
-					<div className="flex-1 overflow-hidden">
+					<div className="flex-1 min-h-0 overflow-hidden">
 						<JsxAppShell
 							appId={application.id}
+							appSlug={application.slug}
 							versionId={versionId}
-							basePath={getBasePath(application.slug, preview)}
+							isPreview={true}
 						/>
 					</div>
 				</div>
@@ -214,8 +200,9 @@ export function AppRouter({ preview = false }: AppRouterProps) {
 		return (
 			<JsxAppShell
 				appId={application.id}
+				appSlug={application.slug}
 				versionId={versionId}
-				basePath={getBasePath(application.slug, preview)}
+				isPreview={false}
 			/>
 		);
 	}

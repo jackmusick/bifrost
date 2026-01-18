@@ -3081,22 +3081,22 @@ export interface paths {
          * Execute workflow via API key
          * @description Execute an endpoint-enabled workflow using an API key for authentication
          */
-        get: operations["execute_endpoint_api_endpoints__workflow_name__post"];
+        get: operations["execute_endpoint_api_endpoints__workflow_name__get"];
         /**
          * Execute workflow via API key
          * @description Execute an endpoint-enabled workflow using an API key for authentication
          */
-        put: operations["execute_endpoint_api_endpoints__workflow_name__post"];
+        put: operations["execute_endpoint_api_endpoints__workflow_name__get"];
         /**
          * Execute workflow via API key
          * @description Execute an endpoint-enabled workflow using an API key for authentication
          */
-        post: operations["execute_endpoint_api_endpoints__workflow_name__post"];
+        post: operations["execute_endpoint_api_endpoints__workflow_name__get"];
         /**
          * Execute workflow via API key
          * @description Execute an endpoint-enabled workflow using an API key for authentication
          */
-        delete: operations["execute_endpoint_api_endpoints__workflow_name__post"];
+        delete: operations["execute_endpoint_api_endpoints__workflow_name__get"];
         options?: never;
         head?: never;
         patch?: never;
@@ -6090,6 +6090,58 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/applications/{app_id}/versions/{version_id}/files": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List code files
+         * @description List all code files for a specific app version.
+         */
+        get: operations["list_code_files_api_applications__app_id__versions__version_id__files_get"];
+        put?: never;
+        /**
+         * Create code file
+         * @description Create a new code file in the specified version.
+         */
+        post: operations["create_code_file_api_applications__app_id__versions__version_id__files_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/applications/{app_id}/versions/{version_id}/files/{file_path}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get code file by path
+         * @description Get a specific code file by its path.
+         */
+        get: operations["get_code_file_api_applications__app_id__versions__version_id__files__file_path__get"];
+        put?: never;
+        post?: never;
+        /**
+         * Delete code file
+         * @description Delete a code file.
+         */
+        delete: operations["delete_code_file_api_applications__app_id__versions__version_id__files__file_path__delete"];
+        options?: never;
+        head?: never;
+        /**
+         * Update code file
+         * @description Update a code file's source or compiled output.
+         */
+        patch: operations["update_code_file_api_applications__app_id__versions__version_id__files__file_path__patch"];
+        trace?: never;
+    };
     "/api/dependencies/{entity_type}/{entity_id}": {
         parameters: {
             query?: never;
@@ -6727,6 +6779,84 @@ export interface components {
             system_tools?: string[] | null;
         };
         /**
+         * AppCodeFileCreate
+         * @description Input for creating a code file.
+         */
+        AppCodeFileCreate: {
+            /**
+             * Path
+             * @description File path within the app (e.g., 'pages/clients/[id]', 'components/Button')
+             */
+            path: string;
+            /**
+             * Source
+             * @description Original source code
+             */
+            source: string;
+        };
+        /**
+         * AppCodeFileListResponse
+         * @description Response for listing code files.
+         */
+        AppCodeFileListResponse: {
+            /** Files */
+            files: components["schemas"]["AppCodeFileResponse"][];
+            /** Total */
+            total: number;
+        };
+        /**
+         * AppCodeFileResponse
+         * @description Full code file response.
+         */
+        AppCodeFileResponse: {
+            /**
+             * Path
+             * @description File path within the app (e.g., 'pages/clients/[id]', 'components/Button')
+             */
+            path: string;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /**
+             * App Version Id
+             * Format: uuid
+             * @description ID of the version this file belongs to
+             */
+            app_version_id: string;
+            /**
+             * Source
+             * @description Original source code
+             */
+            source: string;
+            /**
+             * Compiled
+             * @description Compiled output
+             */
+            compiled?: string | null;
+            /** Created At */
+            created_at: string;
+            /** Updated At */
+            updated_at: string;
+        };
+        /**
+         * AppCodeFileUpdate
+         * @description Input for updating a code file.
+         */
+        AppCodeFileUpdate: {
+            /**
+             * Source
+             * @description Updated source code
+             */
+            source?: string | null;
+            /**
+             * Compiled
+             * @description Compiled output
+             */
+            compiled?: string | null;
+        };
+        /**
          * AppComponentCreate
          * @description Input for creating a component.
          */
@@ -7108,6 +7238,12 @@ export interface components {
              * @description Role IDs for role_based access (ignored if access_level is 'authenticated')
              */
             role_ids?: string[];
+            /**
+             * Engine
+             * @description Rendering engine: 'components' (JSON tree) or 'code' (code files)
+             * @default components
+             */
+            engine: string;
         };
         /**
          * ApplicationDefinition
@@ -7214,6 +7350,12 @@ export interface components {
              * @default authenticated
              */
             access_level: string;
+            /**
+             * Engine
+             * @description Rendering engine: 'components' (JSON tree) or 'code' (code files)
+             * @default components
+             */
+            engine: string;
             /** Role Ids */
             role_ids?: string[];
             /** @description Navigation configuration (sidebar items, etc.) */
@@ -13194,11 +13336,20 @@ export interface components {
         };
         /**
          * MFAVerifyRequest
-         * @description Request to verify MFA code.
+         * @description Request to verify MFA code during login.
          */
         MFAVerifyRequest: {
+            /** Mfa Token */
+            mfa_token: string;
             /** Code */
             code: string;
+            /**
+             * Trust Device
+             * @default false
+             */
+            trust_device: boolean;
+            /** Device Name */
+            device_name?: string | null;
         };
         /**
          * MFAVerifyResponse
@@ -19604,23 +19755,6 @@ export interface components {
             metadata?: components["schemas"]["WorkflowMetadata"] | null;
         };
         /**
-         * MFAVerifyRequest
-         * @description Request to verify MFA code during login.
-         */
-        src__routers__auth__MFAVerifyRequest: {
-            /** Mfa Token */
-            mfa_token: string;
-            /** Code */
-            code: string;
-            /**
-             * Trust Device
-             * @default false
-             */
-            trust_device: boolean;
-            /** Device Name */
-            device_name?: string | null;
-        };
-        /**
          * UserCreate
          * @description User creation request model.
          */
@@ -19650,6 +19784,14 @@ export interface components {
             issuer: string;
             /** Account Name */
             account_name: string;
+        };
+        /**
+         * MFAVerifyRequest
+         * @description Request to verify MFA code.
+         */
+        src__routers__mfa__MFAVerifyRequest: {
+            /** Code */
+            code: string;
         };
         /**
          * OAuthCallbackRequest
@@ -19819,7 +19961,7 @@ export interface operations {
         };
         requestBody: {
             content: {
-                "application/json": components["schemas"]["src__routers__auth__MFAVerifyRequest"];
+                "application/json": components["schemas"]["MFAVerifyRequest"];
             };
         };
         responses: {
@@ -20236,7 +20378,7 @@ export interface operations {
         };
         requestBody: {
             content: {
-                "application/json": components["schemas"]["MFAVerifyRequest"];
+                "application/json": components["schemas"]["src__routers__mfa__MFAVerifyRequest"];
             };
         };
         responses: {
@@ -24367,7 +24509,7 @@ export interface operations {
             };
         };
     };
-    execute_endpoint_api_endpoints__workflow_name__post: {
+    execute_endpoint_api_endpoints__workflow_name__get: {
         parameters: {
             query?: never;
             header: {
@@ -24400,7 +24542,7 @@ export interface operations {
             };
         };
     };
-    execute_endpoint_api_endpoints__workflow_name__post: {
+    execute_endpoint_api_endpoints__workflow_name__get: {
         parameters: {
             query?: never;
             header: {
@@ -24433,7 +24575,7 @@ export interface operations {
             };
         };
     };
-    execute_endpoint_api_endpoints__workflow_name__post: {
+    execute_endpoint_api_endpoints__workflow_name__get: {
         parameters: {
             query?: never;
             header: {
@@ -24466,7 +24608,7 @@ export interface operations {
             };
         };
     };
-    execute_endpoint_api_endpoints__workflow_name__post: {
+    execute_endpoint_api_endpoints__workflow_name__get: {
         parameters: {
             query?: never;
             header: {
@@ -30308,6 +30450,188 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["AppComponentResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_code_files_api_applications__app_id__versions__version_id__files_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Application UUID */
+                app_id: string;
+                /** @description Version UUID */
+                version_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AppCodeFileListResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    create_code_file_api_applications__app_id__versions__version_id__files_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Application UUID */
+                app_id: string;
+                /** @description Version UUID */
+                version_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AppCodeFileCreate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AppCodeFileResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_code_file_api_applications__app_id__versions__version_id__files__file_path__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Application UUID */
+                app_id: string;
+                /** @description Version UUID */
+                version_id: string;
+                /** @description File path (can contain slashes) */
+                file_path: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AppCodeFileResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    delete_code_file_api_applications__app_id__versions__version_id__files__file_path__delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Application UUID */
+                app_id: string;
+                /** @description Version UUID */
+                version_id: string;
+                /** @description File path (can contain slashes) */
+                file_path: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    update_code_file_api_applications__app_id__versions__version_id__files__file_path__patch: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Application UUID */
+                app_id: string;
+                /** @description Version UUID */
+                version_id: string;
+                /** @description File path (can contain slashes) */
+                file_path: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AppCodeFileUpdate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AppCodeFileResponse"];
                 };
             };
             /** @description Validation Error */

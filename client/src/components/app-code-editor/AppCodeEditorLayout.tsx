@@ -8,6 +8,7 @@
  */
 
 import { useState, useCallback, useMemo, useEffect, useRef } from "react";
+import { useLocation } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import {
 	FileTree,
@@ -19,6 +20,7 @@ import { AppCodeEditor } from "./AppCodeEditor";
 import { AppCodePreview } from "./AppCodePreview";
 import { useAppCodeEditor } from "./useAppCodeEditor";
 import { useAppCodeUpdates, type LastUpdate } from "@/hooks/useAppCodeUpdates";
+import { JsxAppShell } from "@/components/jsx-app/JsxAppShell";
 import { toast } from "sonner";
 import {
 	Save,
@@ -28,6 +30,7 @@ import {
 	PanelLeftClose,
 	PanelLeft,
 	LayoutGrid,
+	AppWindow,
 } from "lucide-react";
 import type { FileNode, FileContent, EditorCallbacks } from "@/components/file-tree/types";
 
@@ -38,11 +41,13 @@ interface AppCodeEditorLayoutProps {
 	versionId: string;
 	/** Application name for display */
 	appName?: string;
+	/** Application slug for building base path */
+	appSlug?: string;
 	/** Callback when files are saved */
 	onSave?: (path: string, source: string, compiled: string) => Promise<void>;
 }
 
-type ViewMode = "split" | "code" | "preview";
+type ViewMode = "split" | "code" | "preview" | "app";
 
 /**
  * App Code Editor Layout
@@ -53,11 +58,36 @@ export function AppCodeEditorLayout({
 	appId,
 	versionId,
 	appName = "App",
+	appSlug,
 	onSave,
 }: AppCodeEditorLayoutProps) {
+	const location = useLocation();
+
 	// Layout state
 	const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
 	const [viewMode, setViewMode] = useState<ViewMode>("split");
+
+	// Compute base path for the app preview
+	// The editor is now at /apps/{slug}/code/* so we need to extract that base
+	const basePath = useMemo(() => {
+		if (appSlug) {
+			return `/apps/${appSlug}/code`;
+		}
+		// Fallback: extract from current location
+		// Pattern: /apps/{slug}/code/...
+		const match = location.pathname.match(/^(\/apps\/[^/]+\/code)/);
+		return match ? match[1] : "/";
+	}, [appSlug, location.pathname]);
+
+	// Get the current route within the app (for display)
+	const currentAppRoute = useMemo(() => {
+		const prefix = basePath;
+		if (location.pathname.startsWith(prefix)) {
+			const route = location.pathname.slice(prefix.length) || "/";
+			return route;
+		}
+		return "/";
+	}, [basePath, location.pathname]);
 
 	// File state
 	const [currentFile, setCurrentFile] = useState<{
@@ -277,6 +307,13 @@ export function AppCodeEditorLayout({
 				</div>
 
 				<div className="flex items-center gap-1">
+					{/* Current app route indicator (in app view) */}
+					{viewMode === "app" && (
+						<span className="text-xs text-muted-foreground mr-2 font-mono">
+							{currentAppRoute}
+						</span>
+					)}
+
 					{/* View mode toggles */}
 					<div className="flex items-center gap-0.5 mr-2">
 						<Button
@@ -293,7 +330,7 @@ export function AppCodeEditorLayout({
 							size="icon"
 							className="h-7 w-7"
 							onClick={() => setViewMode("split")}
-							title="Split view"
+							title="Split view (code + file preview)"
 						>
 							<LayoutGrid className="h-4 w-4" />
 						</Button>
@@ -302,9 +339,18 @@ export function AppCodeEditorLayout({
 							size="icon"
 							className="h-7 w-7"
 							onClick={() => setViewMode("preview")}
-							title="Preview only"
+							title="File preview only"
 						>
 							<Eye className="h-4 w-4" />
+						</Button>
+						<Button
+							variant={viewMode === "app" ? "secondary" : "ghost"}
+							size="icon"
+							className="h-7 w-7"
+							onClick={() => setViewMode("app")}
+							title="Full app preview (with navigation)"
+						>
+							<AppWindow className="h-4 w-4" />
 						</Button>
 					</div>
 
@@ -364,7 +410,7 @@ export function AppCodeEditorLayout({
 				)}
 
 				{/* Editor and Preview */}
-				<div className="flex-1 min-w-0 flex">
+				<div className="flex-1 min-h-0 flex">
 					{viewMode === "split" ? (
 						<>
 							{/* Code Editor */}
@@ -375,7 +421,7 @@ export function AppCodeEditorLayout({
 										onChange={setSource}
 										onSave={handleSave}
 										errors={editorState.errors}
-										language="javascript"
+										path={currentFile.path}
 									/>
 								) : (
 									<div className="h-full flex items-center justify-center text-muted-foreground">
@@ -386,7 +432,7 @@ export function AppCodeEditorLayout({
 								)}
 							</div>
 
-							{/* Preview */}
+							{/* File Preview */}
 							<div className="flex-1 min-w-0 overflow-auto">
 								<AppCodePreview
 									compiled={editorState.compiled}
@@ -404,7 +450,7 @@ export function AppCodeEditorLayout({
 									onChange={setSource}
 									onSave={handleSave}
 									errors={editorState.errors}
-									language="javascript"
+									path={currentFile.path}
 								/>
 							) : (
 								<div className="h-full flex items-center justify-center text-muted-foreground">
@@ -412,13 +458,23 @@ export function AppCodeEditorLayout({
 								</div>
 							)}
 						</div>
-					) : (
+					) : viewMode === "preview" ? (
 						<div className="flex-1 min-w-0 overflow-auto">
 							<AppCodePreview
 								compiled={editorState.compiled}
 								errors={editorState.errors}
 								isCompiling={editorState.isCompiling}
 								bordered={false}
+							/>
+						</div>
+					) : (
+						/* App preview - full app with navigation */
+						<div className="flex-1 min-h-0 overflow-hidden">
+							<JsxAppShell
+								appId={appId}
+								appSlug={appSlug || ""}
+								versionId={versionId}
+								isPreview={true}
 							/>
 						</div>
 					)}

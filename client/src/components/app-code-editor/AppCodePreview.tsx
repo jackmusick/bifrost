@@ -8,7 +8,7 @@
  */
 
 import React, { useEffect, useMemo, useReducer } from "react";
-import { createComponent, PLATFORM_SCOPE } from "@/lib/app-code-runtime";
+import { createComponent, $ } from "@/lib/app-code-runtime";
 import { Loader2, AlertCircle, RefreshCw } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import type { CompilationError } from "./AppCodeEditor";
@@ -285,11 +285,11 @@ export function AppCodePreview({
  */
 export function createSandboxedPreview(
 	compiled: string,
-	scopeOverrides: Partial<typeof PLATFORM_SCOPE> = {},
+	scopeOverrides: Partial<typeof $> = {},
 	customComponents: Record<string, React.ComponentType> = {},
 ): React.ComponentType {
 	const scope = {
-		...PLATFORM_SCOPE,
+		...$,
 		...scopeOverrides,
 		...customComponents,
 	};

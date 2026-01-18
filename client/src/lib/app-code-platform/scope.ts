@@ -5,6 +5,13 @@
  * All platform APIs are bundled here for easy injection.
  */
 
+import {
+	useLocation,
+	useMatch,
+	useResolvedPath,
+	Outlet,
+	useOutletContext,
+} from "react-router-dom";
 import { runWorkflow } from "./runWorkflow";
 import { useWorkflow } from "./useWorkflow";
 import { useParams } from "./useParams";
@@ -12,6 +19,7 @@ import { useSearchParams } from "./useSearchParams";
 import { navigate, useNavigate } from "./navigate";
 import { useUser } from "./useUser";
 import { useAppState } from "./useAppState";
+import { Link, NavLink, Navigate } from "./navigation";
 
 /**
  * Platform scope object containing all platform APIs
@@ -37,11 +45,19 @@ export function createPlatformScope(): Record<string, unknown> {
 		runWorkflow,
 		useWorkflow,
 
-		// Router utilities
+		// React Router - ALL commonly used exports
+		useLocation,
 		useParams,
 		useSearchParams,
+		useMatch,
+		useResolvedPath,
+		useOutletContext,
 		navigate,
 		useNavigate,
+		Outlet,
+		Link,
+		NavLink,
+		Navigate,
 
 		// User context
 		useUser,

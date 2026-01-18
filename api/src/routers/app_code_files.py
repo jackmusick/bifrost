@@ -54,8 +54,11 @@ VALID_TOP_DIRS = {"pages", "components", "modules"}
 # Pattern for dynamic route segments like [id] or [slug]
 DYNAMIC_SEGMENT_PATTERN = re.compile(r"^\[[\w-]+\]$")
 
-# Pattern for valid file/folder names (alphanumeric, underscore, hyphen)
+# Pattern for valid folder names (alphanumeric, underscore, hyphen)
 VALID_NAME_PATTERN = re.compile(r"^[\w-]+$")
+
+# Pattern for valid file names (requires .ts or .tsx extension)
+VALID_FILENAME_PATTERN = re.compile(r"^[\w-]+\.tsx?$")
 
 
 def validate_file_path(path: str) -> None:
@@ -91,10 +94,22 @@ def validate_file_path(path: str) -> None:
 
     # Root level file (no directory)
     if len(segments) == 1:
-        if segments[0] not in ROOT_ALLOWED_FILES:
+        filename = segments[0]
+
+        # Must have .ts or .tsx extension
+        if not re.search(r"\.tsx?$", filename):
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
-                detail=f"Root-level file must be one of: {', '.join(sorted(ROOT_ALLOWED_FILES))}. "
+                detail="Files must have a .ts or .tsx extension",
+            )
+
+        # Check root name without extension
+        root_name = re.sub(r"\.tsx?$", "", filename)
+        if root_name not in ROOT_ALLOWED_FILES:
+            allowed = ", ".join(sorted(f"{f}.tsx" for f in ROOT_ALLOWED_FILES))
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=f"Root-level file must be one of: {allowed}. "
                 f"Use pages/, components/, or modules/ directories for other files.",
             )
         return
@@ -109,7 +124,10 @@ def validate_file_path(path: str) -> None:
         )
 
     # Validate remaining segments
-    for segment in segments[1:]:
+    remaining_segments = segments[1:]
+    for i, segment in enumerate(remaining_segments):
+        is_last_segment = i == len(remaining_segments) - 1
+
         # Dynamic segments only allowed in pages/
         if DYNAMIC_SEGMENT_PATTERN.match(segment):
             if top_dir != "pages":
@@ -119,20 +137,36 @@ def validate_file_path(path: str) -> None:
                 )
             continue
 
-        # Validate segment name
-        if not VALID_NAME_PATTERN.match(segment):
+        # Validate segment name - use filename pattern for last segment
+        pattern = VALID_FILENAME_PATTERN if is_last_segment else VALID_NAME_PATTERN
+        if not pattern.match(segment):
+            if is_last_segment:
+                # Check if missing extension
+                if VALID_NAME_PATTERN.match(segment):
+                    raise HTTPException(
+                        status_code=status.HTTP_400_BAD_REQUEST,
+                        detail=f"Files must have a .ts or .tsx extension. Got: '{segment}'",
+                    )
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail=f"Invalid filename '{segment}'. "
+                    "Use alphanumeric characters, underscores, hyphens, with .ts or .tsx extension.",
+                )
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
                 detail=f"Invalid path segment '{segment}'. "
                 "Use only alphanumeric characters, underscores, and hyphens.",
             )
 
+        # Strip extension for special file checks
+        segment_name = re.sub(r"\.tsx?$", "", segment)
+
         # Special files in pages/
-        if top_dir == "pages" and segment in ("index", "_layout"):
+        if top_dir == "pages" and segment_name in ("index", "_layout"):
             continue
 
         # _layout only allowed in pages/ at any level
-        if segment == "_layout" and top_dir != "pages":
+        if segment_name == "_layout" and top_dir != "pages":
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
                 detail="_layout files are only allowed in pages/",

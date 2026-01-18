@@ -8,31 +8,37 @@
 
 import React, { useEffect, useState, useMemo } from "react";
 import {
-	createBrowserRouter,
-	RouterProvider,
+	Routes,
+	Route,
 	Outlet,
 	useOutletContext,
 } from "react-router-dom";
-import type { RouteObject } from "react-router-dom";
 import { authFetch } from "@/lib/api-client";
+import type { components } from "@/lib/v1";
 import { buildRoutes, type AppCodeFile, type AppCodeRouteObject } from "@/lib/app-code-router";
 import { createComponent } from "@/lib/app-code-runtime";
 import {
-	resolveAppComponents,
+	resolveAppComponentsFromFiles,
 	extractComponentNames,
-	isBuiltInComponent,
+	getUserComponentNames,
 } from "@/lib/app-code-resolver";
 import { PageLoader } from "@/components/PageLoader";
+import { AppLoadingSkeleton } from "./AppLoadingSkeleton";
 import { JsxErrorBoundary } from "./JsxErrorBoundary";
 import { JsxPageRenderer } from "./JsxPageRenderer";
+import { useAppBuilderStore } from "@/stores/app-builder.store";
+
+type AppCodeFileListResponse = components["schemas"]["AppCodeFileListResponse"];
 
 interface JsxAppShellProps {
 	/** Application ID */
 	appId: string;
+	/** Application slug for URL routing */
+	appSlug: string;
 	/** Version ID (draft or published) */
 	versionId: string;
-	/** Optional base path for the app (defaults to /) */
-	basePath?: string;
+	/** Whether this is preview mode (uses draft version) */
+	isPreview?: boolean;
 }
 
 /**
@@ -41,6 +47,8 @@ interface JsxAppShellProps {
 interface JsxAppContext {
 	appId: string;
 	versionId: string;
+	/** Set of component names that exist as user files in components/ */
+	userComponentNames: Set<string>;
 }
 
 /**
@@ -58,7 +66,7 @@ async function fetchAppFiles(
 	versionId: string,
 ): Promise<AppCodeFile[]> {
 	const response = await authFetch(
-		`/api/apps/${appId}/versions/${versionId}/files`,
+		`/api/applications/${appId}/versions/${versionId}/files`,
 	);
 
 	if (!response.ok) {
@@ -66,7 +74,8 @@ async function fetchAppFiles(
 		throw new Error(`Failed to fetch app files: ${errorText}`);
 	}
 
-	return response.json();
+	const data: AppCodeFileListResponse = await response.json();
+	return data.files;
 }
 
 /**
@@ -88,10 +97,12 @@ function LayoutWrapper({
 	file,
 	appId,
 	versionId,
+	userComponentNames,
 }: {
 	file: AppCodeFile;
 	appId: string;
 	versionId: string;
+	userComponentNames: Set<string>;
 }) {
 	const [LayoutComponent, setLayoutComponent] =
 		useState<React.ComponentType | null>(null);
@@ -99,8 +110,8 @@ function LayoutWrapper({
 	const [isLoading, setIsLoading] = useState(true);
 
 	const appContext = useMemo<JsxAppContext>(
-		() => ({ appId, versionId }),
-		[appId, versionId],
+		() => ({ appId, versionId, userComponentNames }),
+		[appId, versionId, userComponentNames],
 	);
 
 	useEffect(() => {
@@ -112,16 +123,14 @@ function LayoutWrapper({
 
 			try {
 				const componentNames = extractComponentNames(file.source);
-				const customNames = componentNames.filter(
-					(name) => !isBuiltInComponent(name),
-				);
 
 				let customComponents: Record<string, React.ComponentType> = {};
-				if (customNames.length > 0) {
-					customComponents = await resolveAppComponents(
+				if (componentNames.length > 0) {
+					customComponents = await resolveAppComponentsFromFiles(
 						appId,
 						versionId,
-						customNames,
+						componentNames,
+						userComponentNames,
 					);
 				}
 
@@ -153,7 +162,7 @@ function LayoutWrapper({
 		return () => {
 			cancelled = true;
 		};
-	}, [appId, versionId, file.id, file.source, file.compiled]);
+	}, [appId, versionId, userComponentNames, file.id, file.source, file.compiled]);
 
 	if (isLoading) {
 		return <PageLoader message="Loading layout..." />;
@@ -196,11 +205,13 @@ function ProvidersWrapper({
 	file,
 	appId,
 	versionId,
+	userComponentNames,
 	children,
 }: {
 	file: AppCodeFile;
 	appId: string;
 	versionId: string;
+	userComponentNames: Set<string>;
 	children: React.ReactNode;
 }) {
 	const [ProvidersComponent, setProvidersComponent] = useState<
@@ -218,16 +229,14 @@ function ProvidersWrapper({
 
 			try {
 				const componentNames = extractComponentNames(file.source);
-				const customNames = componentNames.filter(
-					(name) => !isBuiltInComponent(name),
-				);
 
 				let customComponents: Record<string, React.ComponentType> = {};
-				if (customNames.length > 0) {
-					customComponents = await resolveAppComponents(
+				if (componentNames.length > 0) {
+					customComponents = await resolveAppComponentsFromFiles(
 						appId,
 						versionId,
-						customNames,
+						componentNames,
+						userComponentNames,
 					);
 				}
 
@@ -266,7 +275,7 @@ function ProvidersWrapper({
 		return () => {
 			cancelled = true;
 		};
-	}, [appId, versionId, file.id, file.source, file.compiled]);
+	}, [appId, versionId, userComponentNames, file.id, file.source, file.compiled]);
 
 	if (isLoading) {
 		return <PageLoader message="Loading app..." />;
@@ -290,32 +299,34 @@ function ProvidersWrapper({
 }
 
 /**
- * Convert AppCodeRouteObject to react-router RouteObject
- *
- * This function creates the actual route elements by wrapping
- * pages with JsxPageRenderer and layouts with LayoutWrapper.
+ * Recursively render Route elements from route objects
  */
-function convertToRouteObjects(
+function renderRoutes(
 	routes: AppCodeRouteObject[],
 	appId: string,
 	versionId: string,
-): RouteObject[] {
-	return routes.map((route): RouteObject => {
-		// Handle index routes specially (they have a different type shape)
+	userComponentNames: Set<string>,
+): React.ReactNode {
+	return routes.map((route, index) => {
+		// Handle index routes
 		if (route.index && route.file) {
-			return {
-				index: true,
-				element: (
-					<JsxPageRenderer
-						appId={appId}
-						versionId={versionId}
-						file={route.file}
-					/>
-				),
-			};
+			return (
+				<Route
+					key={`index-${index}`}
+					index
+					element={
+						<JsxPageRenderer
+							appId={appId}
+							versionId={versionId}
+							file={route.file}
+							userComponentNames={userComponentNames}
+						/>
+					}
+				/>
+			);
 		}
 
-		// Build non-index route
+		// Build element for this route
 		const element = route.file
 			? route.isLayout
 				? (
@@ -323,6 +334,7 @@ function convertToRouteObjects(
 							file={route.file}
 							appId={appId}
 							versionId={versionId}
+							userComponentNames={userComponentNames}
 						/>
 					)
 				: (
@@ -330,78 +342,69 @@ function convertToRouteObjects(
 							appId={appId}
 							versionId={versionId}
 							file={route.file}
+							userComponentNames={userComponentNames}
 						/>
 					)
 			: route.children && route.children.length > 0
-				? <Outlet context={{ appId, versionId }} />
+				? <Outlet context={{ appId, versionId, userComponentNames }} />
 				: undefined;
 
-		const children =
-			route.children && route.children.length > 0
-				? convertToRouteObjects(route.children, appId, versionId)
-				: undefined;
+		// Render with children if any
+		if (route.children && route.children.length > 0) {
+			return (
+				<Route key={route.path || index} path={route.path} element={element}>
+					{renderRoutes(route.children, appId, versionId, userComponentNames)}
+				</Route>
+			);
+		}
 
-		return {
-			path: route.path,
-			element,
-			children,
-		};
+		return (
+			<Route
+				key={route.path || index}
+				path={route.path}
+				element={element}
+			/>
+		);
 	});
 }
 
 /**
- * App content component that renders the router
+ * App content component that renders routes
  */
 function AppContent({
 	files,
 	appId,
 	versionId,
-	basePath,
+	userComponentNames,
 }: {
 	files: AppCodeFile[];
 	appId: string;
 	versionId: string;
-	basePath: string;
+	userComponentNames: Set<string>;
 }) {
 	// Build routes from files
 	const jsxRoutes = useMemo(() => buildRoutes(files), [files]);
 
-	// Convert to react-router format
-	const routeObjects = useMemo(
-		() => convertToRouteObjects(jsxRoutes, appId, versionId),
-		[jsxRoutes, appId, versionId],
+	if (jsxRoutes.length === 0) {
+		return (
+			<div className="flex items-center justify-center h-full min-h-[200px]">
+				<div className="text-center">
+					<h2 className="text-lg font-semibold text-muted-foreground">
+						No pages found
+					</h2>
+					<p className="text-sm text-muted-foreground mt-1">
+						Create a page file to get started
+					</p>
+				</div>
+			</div>
+		);
+	}
+
+	return (
+		<Routes>
+			{renderRoutes(jsxRoutes, appId, versionId, userComponentNames)}
+		</Routes>
 	);
-
-	// Create router
-	const router = useMemo(() => {
-		if (routeObjects.length === 0) {
-			// No routes - show empty state
-			return createBrowserRouter(
-				[
-					{
-						path: "*",
-						element: (
-							<div className="flex items-center justify-center min-h-screen">
-								<div className="text-center">
-									<h2 className="text-lg font-semibold text-muted-foreground">
-										No pages found
-									</h2>
-									<p className="text-sm text-muted-foreground mt-1">
-										Create a page file to get started
-									</p>
-								</div>
-							</div>
-						),
-					},
-				],
-				{ basename: basePath },
-			);
-		}
-
-		return createBrowserRouter(routeObjects, { basename: basePath });
-	}, [routeObjects, basePath]);
-
-	return <RouterProvider router={router} />;
 }
 
 /**
@@ -410,28 +413,42 @@ function AppContent({
  * The main entry point for rendering a JSX-based application.
  *
  * This component:
- * 1. Fetches all files for the app version
- * 2. Builds the router configuration from page files
- * 3. Wraps with _providers if it exists
- * 4. Renders the app with proper layouts
+ * 1. Sets up app context for navigation path transformation
+ * 2. Fetches all files for the app version
+ * 3. Builds the router configuration from page files
+ * 4. Wraps with _providers if it exists
+ * 5. Renders the app with proper layouts
  *
  * @example
  * ```tsx
  * <JsxAppShell
  *   appId="my-app-id"
+ *   appSlug="my-app"
  *   versionId="draft"
- *   basePath="/apps/my-app"
+ *   isPreview={true}
  * />
  * ```
  */
 export function JsxAppShell({
 	appId,
+	appSlug,
 	versionId,
-	basePath = "/",
+	isPreview = false,
 }: JsxAppShellProps) {
 	const [files, setFiles] = useState<AppCodeFile[] | null>(null);
 	const [error, setError] = useState<string | null>(null);
 	const [isLoading, setIsLoading] = useState(true);
+	const setAppContext = useAppBuilderStore((state) => state.setAppContext);
+
+	// Set app context for navigation path transformation
+	useEffect(() => {
+		setAppContext(appSlug, isPreview);
+
+		// Clear context on unmount
+		return () => {
+			setAppContext("", false);
+		};
+	}, [appSlug, isPreview, setAppContext]);
 
 	useEffect(() => {
 		let cancelled = false;
@@ -467,13 +484,20 @@ export function JsxAppShell({
 		};
 	}, [appId, versionId]);
 
+	// Compute user component names from files list (memoized)
+	// Must be called before any conditional returns to satisfy React Hooks rules
+	const userComponentNames = useMemo(
+		() => (files ? getUserComponentNames(files) : new Set<string>()),
+		[files],
+	);
+
 	if (isLoading) {
-		return <PageLoader message="Loading application..." fullScreen />;
+		return <AppLoadingSkeleton message="Loading application..." />;
 	}
 
 	if (error) {
 		return (
-			<div className="flex items-center justify-center min-h-screen p-4">
+			<div className="flex items-center justify-center h-full min-h-[200px] p-4">
 				<div className="p-6 bg-red-50 dark:bg-red-950/20 border border-red-200 dark:border-red-800 rounded-lg max-w-lg">
 					<h2 className="text-lg font-semibold text-red-700 dark:text-red-400">
 						Application Error
@@ -502,22 +526,25 @@ export function JsxAppShell({
 			files={files}
 			appId={appId}
 			versionId={versionId}
-			basePath={basePath}
+			userComponentNames={userComponentNames}
 		/>
 	);
 
 	// Wrap with providers if present
 	if (providersFile) {
 		return (
-			<ProvidersWrapper
-				file={providersFile}
-				appId={appId}
-				versionId={versionId}
-			>
-				{appContent}
-			</ProvidersWrapper>
+			<div className="h-full w-full overflow-hidden">
+				<ProvidersWrapper
+					file={providersFile}
+					appId={appId}
+					versionId={versionId}
+					userComponentNames={userComponentNames}
+				>
+					{appContent}
+				</ProvidersWrapper>
+			</div>
 		);
 	}
 
-	return appContent;
+	return <div className="h-full w-full overflow-hidden">{appContent}</div>;
 }

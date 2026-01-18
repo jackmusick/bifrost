@@ -31,7 +31,7 @@ def upgrade() -> None:
             "engine",
             sa.String(20),
             nullable=False,
-            server_default="'components'",
+            server_default="components",
         ),
     )
 

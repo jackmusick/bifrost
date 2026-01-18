@@ -32,18 +32,17 @@ import { cn } from "@/lib/utils";
 import { toast } from "sonner";
 import { useAuth } from "@/contexts/AuthContext";
 import { OrganizationSelect } from "@/components/forms/OrganizationSelect";
-import { useCreateApplication } from "@/hooks/useApplications";
+import { useCreateApplication, ApplicationCreate } from "@/hooks/useApplications";
 
 interface CreateAppModalProps {
 	open: boolean;
 	onOpenChange: (open: boolean) => void;
 }
 
-type EngineType = "components" | "code";
 type Step = "engine" | "details";
 
 interface EngineOption {
-	id: EngineType;
+	id: ApplicationCreate["engine"];
 	title: string;
 	description: string;
 	icon: React.ReactNode;
@@ -96,7 +95,7 @@ function CreateAppModalContent({
 
 	// Engine selection
 	const [selectedEngine, setSelectedEngine] =
-		useState<EngineType>("components");
+		useState<ApplicationCreate["engine"]>("components");
 
 	// Form fields - initialize with defaults
 	const [name, setName] = useState("");
@@ -157,11 +156,10 @@ function CreateAppModalContent({
 					description: description || null,
 					slug: finalSlug,
 					access_level: "authenticated",
-					engine: selectedEngine === "code" ? "code" : "components",
-					organization_id: organizationId,
-				} as Parameters<typeof createApplication.mutateAsync>[0]["body"] & {
-					engine?: string;
-					organization_id?: string | null;
+					engine: selectedEngine,
+				},
+				params: {
+					query: organizationId ? { scope: organizationId } : undefined,
 				},
 			});
 
@@ -170,7 +168,7 @@ function CreateAppModalContent({
 
 			// Navigate to the appropriate editor
 			if (selectedEngine === "code") {
-				navigate(`/apps/${result.slug}/edit/code`);
+				navigate(`/apps/${result.slug}/code`);
 			} else {
 				navigate(`/apps/${result.slug}/edit`);
 			}

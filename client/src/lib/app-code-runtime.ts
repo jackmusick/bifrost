@@ -3,62 +3,244 @@
  *
  * Creates React components from compiled code by injecting
  * the platform scope (React hooks, platform APIs, UI components).
+ *
+ * Architecture:
+ * - User code imports from "bifrost": `import { Button, cn } from "bifrost"`
+ * - Compiler transforms to: `const { Button, cn } = $;`
+ * - Runtime passes `$` containing everything
+ * - No manual maintenance of what's "available" - just add to the registry
  */
 
 import React from "react";
+import {
+	// Exclude: Link, NavLink, Navigate, useNavigate (wrapped in platform scope)
+	// Include everything else from react-router-dom
+	BrowserRouter,
+	HashRouter,
+	MemoryRouter,
+	Router,
+	RouterProvider,
+	Routes,
+	Route,
+	Outlet,
+	useHref,
+	useLinkClickHandler,
+	useInRouterContext,
+	useLocation,
+	useMatch,
+	useNavigationType,
+	useOutlet,
+	useOutletContext,
+	useParams,
+	useResolvedPath,
+	useRoutes,
+	useSearchParams,
+	createBrowserRouter,
+	createHashRouter,
+	createMemoryRouter,
+	createRoutesFromChildren,
+	createRoutesFromElements,
+	createSearchParams,
+	generatePath,
+	matchPath,
+	matchRoutes,
+	renderMatches,
+	resolvePath,
+	ScrollRestoration,
+	useBeforeUnload,
+	useFetcher,
+	useFetchers,
+	useLoaderData,
+	useNavigation,
+	useRevalidator,
+	useRouteError,
+	useRouteLoaderData,
+	useSubmit,
+	useBlocker,
+	unstable_usePrompt,
+	Form,
+	Await,
+	useActionData,
+	useAsyncError,
+	useAsyncValue,
+	UNSAFE_DataRouterContext,
+	UNSAFE_DataRouterStateContext,
+	UNSAFE_NavigationContext,
+	UNSAFE_LocationContext,
+	UNSAFE_RouteContext,
+} from "react-router-dom";
+import * as LucideIcons from "lucide-react";
 import { compileAppCode, wrapAsComponent } from "./app-code-compiler";
 import { createPlatformScope } from "./app-code-platform/scope";
 
 /**
- * Platform scope containing all APIs available to user code
- *
- * This object is injected into the runtime scope of every component.
- * User code can use these without imports:
- *
- * ```jsx
- * const [count, setCount] = useState(0);
- * const { data } = useWorkflow('get_data');
- * navigate('/home');
- * ```
+ * React Router exports that we include in the runtime.
+ * Note: Link, NavLink, Navigate, useNavigate are EXCLUDED here because
+ * they are provided by the platform scope with path transformation.
  */
-export const PLATFORM_SCOPE: Record<string, unknown> = {
-	// React core
+const reactRouterExports = {
+	BrowserRouter,
+	HashRouter,
+	MemoryRouter,
+	Router,
+	RouterProvider,
+	Routes,
+	Route,
+	Outlet,
+	useHref,
+	useLinkClickHandler,
+	useInRouterContext,
+	useLocation,
+	useMatch,
+	useNavigationType,
+	useOutlet,
+	useOutletContext,
+	useParams,
+	useResolvedPath,
+	useRoutes,
+	useSearchParams,
+	createBrowserRouter,
+	createHashRouter,
+	createMemoryRouter,
+	createRoutesFromChildren,
+	createRoutesFromElements,
+	createSearchParams,
+	generatePath,
+	matchPath,
+	matchRoutes,
+	renderMatches,
+	resolvePath,
+	ScrollRestoration,
+	useBeforeUnload,
+	useFetcher,
+	useFetchers,
+	useLoaderData,
+	useNavigation,
+	useRevalidator,
+	useRouteError,
+	useRouteLoaderData,
+	useSubmit,
+	useBlocker,
+	unstable_usePrompt,
+	Form,
+	Await,
+	useActionData,
+	useAsyncError,
+	useAsyncValue,
+	UNSAFE_DataRouterContext,
+	UNSAFE_DataRouterStateContext,
+	UNSAFE_NavigationContext,
+	UNSAFE_LocationContext,
+	UNSAFE_RouteContext,
+};
+
+// Utilities
+import * as utils from "./utils";
+import { clsx } from "clsx";
+import { twMerge } from "tailwind-merge";
+
+// UI Components - import entire modules
+import * as ButtonModule from "@/components/ui/button";
+import * as InputModule from "@/components/ui/input";
+import * as LabelModule from "@/components/ui/label";
+import * as TextareaModule from "@/components/ui/textarea";
+import * as CardModule from "@/components/ui/card";
+import * as BadgeModule from "@/components/ui/badge";
+import * as AvatarModule from "@/components/ui/avatar";
+import * as CheckboxModule from "@/components/ui/checkbox";
+import * as SwitchModule from "@/components/ui/switch";
+import * as SelectModule from "@/components/ui/select";
+import * as TableModule from "@/components/ui/table";
+import * as TabsModule from "@/components/ui/tabs";
+import * as DialogModule from "@/components/ui/dialog";
+import * as DropdownMenuModule from "@/components/ui/dropdown-menu";
+import * as TooltipModule from "@/components/ui/tooltip";
+import * as ProgressModule from "@/components/ui/progress";
+import * as SkeletonModule from "@/components/ui/skeleton";
+import * as AlertModule from "@/components/ui/alert";
+import * as AccordionModule from "@/components/ui/accordion";
+import * as CollapsibleModule from "@/components/ui/collapsible";
+import * as PopoverModule from "@/components/ui/popover";
+import * as RadioGroupModule from "@/components/ui/radio-group";
+import * as SliderModule from "@/components/ui/slider";
+import * as ToggleModule from "@/components/ui/toggle";
+import * as ToggleGroupModule from "@/components/ui/toggle-group";
+import * as HoverCardModule from "@/components/ui/hover-card";
+import * as CommandModule from "@/components/ui/command";
+import * as AlertDialogModule from "@/components/ui/alert-dialog";
+import * as ContextMenuModule from "@/components/ui/context-menu";
+import * as SheetModule from "@/components/ui/sheet";
+import * as SeparatorModule from "@/components/ui/separator";
+
+/**
+ * The $ registry - contains EVERYTHING available to user code
+ *
+ * Users import from "bifrost" and the compiler transforms to destructuring from $.
+ * This means we just need to add things here - no manual maintenance elsewhere.
+ *
+ * IMPORTANT: Platform scope is spread AFTER React Router exports, so wrapped
+ * navigation components (Link, NavLink, Navigate, useNavigate) from the platform
+ * take precedence over the raw React Router versions.
+ */
+export const $: Record<string, unknown> = {
+	// React core and all hooks
 	React,
+	...React,
 
-	// React hooks (commonly used, exposed at top level for convenience)
-	useState: React.useState,
-	useEffect: React.useEffect,
-	useMemo: React.useMemo,
-	useCallback: React.useCallback,
-	useRef: React.useRef,
-	useContext: React.useContext,
-	useReducer: React.useReducer,
-	useLayoutEffect: React.useLayoutEffect,
-	useImperativeHandle: React.useImperativeHandle,
-	useDebugValue: React.useDebugValue,
-	useDeferredValue: React.useDeferredValue,
-	useTransition: React.useTransition,
-	useId: React.useId,
-	useSyncExternalStore: React.useSyncExternalStore,
+	// React Router - selective exports (excludes Link, NavLink, Navigate, useNavigate)
+	...reactRouterExports,
 
-	// React utilities
-	Fragment: React.Fragment,
-	createElement: React.createElement,
-	createContext: React.createContext,
-	forwardRef: React.forwardRef,
-	memo: React.memo,
-	lazy: React.lazy,
-	Suspense: React.Suspense,
+	// Lucide icons - all of them
+	// MUST come before platform scope so Link/NavLink/Navigate navigation components
+	// override Lucide's Link icon
+	...LucideIcons,
 
-	// Platform APIs from app-code-platform
+	// Platform APIs (useWorkflow, navigate, useUser, etc.)
+	// MUST come after Lucide icons to override Link, NavLink, Navigate, useNavigate
 	...createPlatformScope(),
 
-	// UI Components will be added later via customComponents parameter
-	// or by extending this scope with UI components
+	// Utilities
+	...utils,
+	clsx,
+	twMerge,
+
+	// UI Components - spread all exports from each module
+	...ButtonModule,
+	...InputModule,
+	...LabelModule,
+	...TextareaModule,
+	...CardModule,
+	...BadgeModule,
+	...AvatarModule,
+	...CheckboxModule,
+	...SwitchModule,
+	...SelectModule,
+	...TableModule,
+	...TabsModule,
+	...DialogModule,
+	...DropdownMenuModule,
+	...TooltipModule,
+	...ProgressModule,
+	...SkeletonModule,
+	...AlertModule,
+	...AccordionModule,
+	...CollapsibleModule,
+	...PopoverModule,
+	...RadioGroupModule,
+	...SliderModule,
+	...ToggleModule,
+	...ToggleGroupModule,
+	...HoverCardModule,
+	...CommandModule,
+	...AlertDialogModule,
+	...ContextMenuModule,
+	...SheetModule,
+	...SeparatorModule,
 };
 
 /**
  * Error component displayed when compilation or runtime errors occur
+ * Renders as plain text to blend with editor content
  */
 function ErrorComponent({
 	title,
@@ -70,19 +252,17 @@ function ErrorComponent({
 	return React.createElement(
 		"div",
 		{
-			className:
-				"p-4 bg-red-50 border border-red-200 rounded-lg text-red-700",
+			className: "p-4 text-destructive",
 		},
 		React.createElement(
 			"div",
-			{ className: "font-semibold text-red-800 mb-1" },
+			{ className: "font-semibold mb-2" },
 			title,
 		),
 		React.createElement(
 			"pre",
 			{
-				className:
-					"text-sm whitespace-pre-wrap font-mono bg-red-100 p-2 rounded mt-2",
+				className: "text-sm whitespace-pre-wrap font-mono overflow-auto",
 			},
 			message,
 		),
@@ -95,7 +275,7 @@ function ErrorComponent({
  * This function:
  * 1. Compiles the source (if not already compiled)
  * 2. Wraps it as a component factory
- * 3. Creates a function with the platform scope injected
+ * 3. Creates a function with $ injected
  * 4. Returns the resulting React component
  *
  * @param source - Source code or pre-compiled JavaScript
@@ -107,9 +287,10 @@ function ErrorComponent({
  * ```typescript
  * // From source
  * const MyPage = createComponent(`
+ *   import { useWorkflow, Button } from "bifrost";
  *   const { data, isLoading } = useWorkflow('get_clients');
  *   if (isLoading) return <div>Loading...</div>;
- *   return <div>{data.length} clients</div>;
+ *   return <Button>{data.length} clients</Button>;
  * `);
  *
  * // From pre-compiled (for production)
@@ -148,11 +329,14 @@ export function createComponent(
 
 	// Step 2: Build the full scope
 	const scope = {
-		...PLATFORM_SCOPE,
+		...$,
 		...customComponents,
+		$: { ...$, ...customComponents }, // Also provide $ for explicit imports
 	};
 
 	// Step 3: Create argument names and values for the function
+	// This makes everything available as direct variables (backward compat)
+	// AND as properties on $ (for import statements)
 	const argNames = Object.keys(scope);
 	const argValues = Object.values(scope);
 
@@ -162,7 +346,6 @@ export function createComponent(
 	// Step 5: Create and execute the factory
 	try {
 		// Create a function that takes all scope items as arguments
-		// and returns a component function
 		const factory = new Function(...argNames, wrapped) as (
 			...args: unknown[]
 		) => React.ComponentType;

@@ -14,16 +14,31 @@
 // =============================================================================
 
 /**
- * Options for the useWorkflow hook
+ * Streaming log entry from workflow execution
  */
-export interface UseWorkflowOptions {
-	/**
-	 * Whether to enable the query.
-	 * When false, the workflow will not execute.
-	 * @default true
-	 */
-	enabled?: boolean;
+export interface StreamingLog {
+	/** Log level (DEBUG, INFO, WARNING, ERROR, etc.) */
+	level: string;
+	/** Log message content */
+	message: string;
+	/** ISO timestamp of when the log was created */
+	timestamp: string;
+	/** Optional sequence number for ordering */
+	sequence?: number;
 }
+
+/**
+ * Execution status values
+ */
+export type ExecutionStatus =
+	| "Pending"
+	| "Running"
+	| "Success"
+	| "Failed"
+	| "CompletedWithErrors"
+	| "Timeout"
+	| "Cancelled"
+	| "Cancelling";
 
 /**
  * Result object returned by the useWorkflow hook
@@ -31,66 +46,120 @@ export interface UseWorkflowOptions {
  */
 export interface UseWorkflowResult<T> {
 	/**
+	 * Start workflow execution with optional parameters.
+	 * Returns a Promise that resolves to the execution ID.
+	 * Calling execute() again replaces the current execution.
+	 */
+	execute: (params?: Record<string, unknown>) => Promise<string>;
+
+	/**
+	 * Current execution ID.
+	 * Null if workflow hasn't been started yet.
+	 */
+	executionId: string | null;
+
+	/**
+	 * Current execution status.
+	 * Null if workflow hasn't been started yet.
+	 */
+	status: ExecutionStatus | null;
+
+	/**
+	 * True while the workflow is Pending or Running.
+	 * Use this for showing loading spinners.
+	 */
+	loading: boolean;
+
+	/**
+	 * True when the workflow completed successfully (status = "Success").
+	 * Use this to conditionally render results.
+	 */
+	completed: boolean;
+
+	/**
+	 * True when the workflow failed (status = "Failed", "Timeout", "Cancelled", or "CompletedWithErrors").
+	 * Use this to show error states.
+	 */
+	failed: boolean;
+
+	/**
 	 * The workflow result data.
-	 * Undefined while loading or if an error occurred.
+	 * Null until the workflow completes successfully.
 	 */
-	data: T | undefined;
+	result: T | null;
 
 	/**
-	 * Whether the workflow is currently loading.
-	 * True during initial load and refreshes.
+	 * Error message if the workflow failed.
+	 * Null if successful or still running.
 	 */
-	isLoading: boolean;
+	error: string | null;
 
 	/**
-	 * Error message if the workflow execution failed.
-	 * Undefined if successful or still loading.
+	 * Streaming logs array that updates in real-time.
+	 * Use this to display log output during long-running workflows.
 	 */
-	error: string | undefined;
-
-	/**
-	 * Function to manually refresh/re-execute the workflow.
-	 * Useful for refetching data after mutations.
-	 */
-	refresh: () => void;
+	logs: StreamingLog[];
 }
 
 /**
- * Hook for fetching data via workflow execution.
- * Provides loading, error, and refresh states for data fetching workflows.
+ * Hook for executing workflows with real-time streaming updates.
+ * Provides loading, error, completion states, streaming logs, and result.
  *
  * @template T - The type of data returned by the workflow
  * @param workflowId - The workflow ID or name to execute
- * @param params - Optional parameters to pass to the workflow
- * @param options - Optional configuration (enabled)
- * @returns Object with data, isLoading, error, and refresh function
+ * @returns Object with execute function and reactive state
  *
  * @example
- * ```jsx
- * // Basic usage - fetch list of clients
- * const { data: clients, isLoading, error, refresh } = useWorkflow('list_clients');
+ * ```tsx
+ * // Load data on mount
+ * const workflow = useWorkflow<Customer[]>('list-customers');
  *
- * if (isLoading) return <Skeleton />;
- * if (error) return <Alert>{error}</Alert>;
+ * useEffect(() => {
+ *   workflow.execute({ limit: 10 });
+ * }, []);
  *
- * return (
- *   <DataTable data={clients} onRefresh={refresh} />
- * );
+ * if (workflow.loading) return <Skeleton />;
+ * if (workflow.failed) return <Alert>{workflow.error}</Alert>;
+ *
+ * return <CustomerList data={workflow.result} />;
  * ```
  *
  * @example
- * ```jsx
- * // With parameters
- * const { data: client } = useWorkflow('get_client', { id: clientId });
+ * ```tsx
+ * // Button trigger with loading state
+ * const workflow = useWorkflow('create-customer');
  *
- * // Conditionally enabled (only fetch when id is available)
- * const { data } = useWorkflow('get_details', { id }, { enabled: !!id });
+ * <Button
+ *   onClick={() => workflow.execute({ name: 'Acme' })}
+ *   disabled={workflow.loading}
+ * >
+ *   {workflow.loading ? <Loader2 className="animate-spin" /> : 'Create'}
+ * </Button>
+ * ```
+ *
+ * @example
+ * ```tsx
+ * // With streaming logs for long-running tasks
+ * const workflow = useWorkflow('long-running-task');
+ *
+ * useEffect(() => {
+ *   workflow.execute({ taskId: 123 });
+ * }, []);
+ *
+ * {workflow.loading && (
+ *   <div>
+ *     <p>Processing...</p>
+ *     <div className="font-mono text-sm">
+ *       {workflow.logs.map((log, i) => (
+ *         <div key={i}>[{log.level}] {log.message}</div>
+ *       ))}
+ *     </div>
+ *   </div>
+ * )}
  * ```
  */
 export declare function useWorkflow<T = unknown>(
 	workflowId: string,
-	params?: Record<string, unknown>,
-	options?: UseWorkflowOptions,
 ): UseWorkflowResult<T>;
 
 /**
@@ -362,6 +431,227 @@ export declare const lazy: typeof import("react").lazy;
 export declare const Suspense: typeof import("react").Suspense;
 
 // =============================================================================
+// Router Hooks
+// =============================================================================
+
+/**
+ * Hook to get the current location object.
+ * Provides access to the current URL pathname and search params.
+ *
+ * @returns Location object with pathname, search, hash, state, and key
+ *
+ * @example
+ * ```jsx
+ * const location = useLocation();
+ *
+ * // Highlight nav item based on current path
+ * const isActive = location.pathname === '/clients';
+ *
+ * // Check for query params
+ * if (location.search.includes('?status=active')) {
+ *   // ...
+ * }
+ * ```
+ */
+export declare function useLocation(): {
+	pathname: string;
+	search: string;
+	hash: string;
+	state: unknown;
+	key: string;
+};
+
+// =============================================================================
+// Utility Functions
+// =============================================================================
+
+/**
+ * Utility function for merging Tailwind CSS classes with proper precedence.
+ * Combines clsx and tailwind-merge for conditional class name building.
+ *
+ * @param inputs - Class values (strings, arrays, objects with boolean values)
+ * @returns Merged class string
+ *
+ * @example
+ * ```jsx
+ * // Basic usage
+ * <div className={cn("flex items-center", "gap-2")}>
+ *
+ * // Conditional classes
+ * <div className={cn(
+ *   "rounded-lg p-4",
+ *   isActive && "bg-primary text-white",
+ *   isDisabled && "opacity-50 cursor-not-allowed"
+ * )}>
+ *
+ * // Object syntax
+ * <div className={cn("base-class", {
+ *   "active-class": isActive,
+ *   "error-class": hasError,
+ * })}>
+ * ```
+ */
+export declare function cn(...inputs: (string | undefined | null | false | Record<string, boolean>)[]): string;
+
+/**
+ * Format a date/time string in the user's local timezone.
+ *
+ * @param dateString - ISO date string or Date object
+ * @param options - Intl.DateTimeFormatOptions to customize the output
+ * @returns Formatted date string
+ *
+ * @example
+ * ```jsx
+ * formatDate(task.createdAt)  // "Jan 15, 2025, 03:45:12 PM"
+ * formatDate(task.createdAt, { dateStyle: 'short' })  // "1/15/25"
+ * ```
+ */
+export declare function formatDate(dateString: string | Date, options?: Intl.DateTimeFormatOptions): string;
+
+/**
+ * Format a date/time string as a short date (no time).
+ *
+ * @param dateString - ISO date string or Date object
+ * @returns Formatted date string (e.g., "Jan 15, 2025")
+ */
+export declare function formatDateShort(dateString: string | Date): string;
+
+/**
+ * Format a date/time string relative to now (e.g., "2 hours ago", "in 3 days").
+ *
+ * @param dateString - ISO date string or Date object
+ * @returns Relative time string
+ */
+export declare function formatRelativeTime(dateString: string | Date): string;
+
+/**
+ * Format a number with thousand separators.
+ *
+ * @param num - Number to format
+ * @returns Formatted string (e.g., "1,234,567")
+ */
+export declare function formatNumber(num: number): string;
+
+/**
+ * Format a cost value as currency.
+ *
+ * @param cost - Cost value as string or number (may be null)
+ * @returns Formatted currency string (e.g., "$0.0012") or "N/A" if null
+ */
+export declare function formatCost(cost: string | number | null | undefined): string;
+
+/**
+ * Format duration in milliseconds to a human-readable string.
+ *
+ * @param ms - Duration in milliseconds (may be null)
+ * @returns Formatted duration string (e.g., "1.23s" or "456ms")
+ */
+export declare function formatDuration(ms: number | null | undefined): string;
+
+// =============================================================================
+// Icons (Lucide React)
+// =============================================================================
+
+/**
+ * Icon component type from lucide-react.
+ * All icons accept these common props.
+ */
+type LucideIcon = import("lucide-react").LucideIcon;
+
+// Navigation & Layout Icons
+export declare const LayoutDashboard: LucideIcon;
+export declare const Home: LucideIcon;
+export declare const Menu: LucideIcon;
+export declare const X: LucideIcon;
+export declare const ChevronRight: LucideIcon;
+export declare const ChevronLeft: LucideIcon;
+export declare const ChevronDown: LucideIcon;
+export declare const ChevronUp: LucideIcon;
+export declare const ArrowLeft: LucideIcon;
+export declare const ArrowRight: LucideIcon;
+export declare const ArrowUp: LucideIcon;
+export declare const ArrowDown: LucideIcon;
+export declare const ExternalLink: LucideIcon;
+
+// Action Icons
+export declare const Plus: LucideIcon;
+export declare const Minus: LucideIcon;
+export declare const Pencil: LucideIcon;
+export declare const Trash2: LucideIcon;
+export declare const Save: LucideIcon;
+export declare const Download: LucideIcon;
+export declare const Upload: LucideIcon;
+export declare const Copy: LucideIcon;
+export declare const Check: LucideIcon;
+export declare const RefreshCw: LucideIcon;
+export declare const Settings: LucideIcon;
+export declare const MoreHorizontal: LucideIcon;
+export declare const MoreVertical: LucideIcon;
+
+// Object Icons
+export declare const Users: LucideIcon;
+export declare const User: LucideIcon;
+export declare const UserPlus: LucideIcon;
+export declare const Building: LucideIcon;
+export declare const Building2: LucideIcon;
+export declare const FolderKanban: LucideIcon;
+export declare const Folder: LucideIcon;
+export declare const FolderOpen: LucideIcon;
+export declare const File: LucideIcon;
+export declare const FileText: LucideIcon;
+export declare const Calendar: LucideIcon;
+export declare const Clock: LucideIcon;
+export declare const Mail: LucideIcon;
+export declare const Phone: LucideIcon;
+export declare const MapPin: LucideIcon;
+
+// Status & Feedback Icons
+export declare const CheckSquare: LucideIcon;
+export declare const Square: LucideIcon;
+export declare const CheckCircle: LucideIcon;
+export declare const XCircle: LucideIcon;
+export declare const AlertCircle: LucideIcon;
+export declare const AlertTriangle: LucideIcon;
+export declare const Info: LucideIcon;
+export declare const HelpCircle: LucideIcon;
+export declare const Loader2: LucideIcon;
+
+// Data & Analytics Icons
+export declare const DollarSign: LucideIcon;
+export declare const TrendingUp: LucideIcon;
+export declare const TrendingDown: LucideIcon;
+export declare const BarChart: LucideIcon;
+export declare const PieChart: LucideIcon;
+export declare const Activity: LucideIcon;
+
+// Search & Filter Icons
+export declare const Search: LucideIcon;
+export declare const Filter: LucideIcon;
+export declare const SlidersHorizontal: LucideIcon;
+
+// Communication Icons
+export declare const MessageSquare: LucideIcon;
+export declare const Send: LucideIcon;
+export declare const Bell: LucideIcon;
+
+// Misc Icons
+export declare const Star: LucideIcon;
+export declare const Heart: LucideIcon;
+export declare const Bookmark: LucideIcon;
+export declare const Tag: LucideIcon;
+export declare const Hash: LucideIcon;
+export declare const LinkIcon: LucideIcon;
+export declare const Eye: LucideIcon;
+export declare const EyeOff: LucideIcon;
+export declare const Lock: LucideIcon;
+export declare const Unlock: LucideIcon;
+export declare const Shield: LucideIcon;
+export declare const Zap: LucideIcon;
+export declare const Globe: LucideIcon;
+export declare const Sun: LucideIcon;
+export declare const Moon: LucideIcon;
+
+// =============================================================================
 // Aggregate Types for Monaco Editor Integration
 // =============================================================================
 
@@ -405,10 +695,25 @@ export interface PlatformScope {
 	useSearchParams: typeof useSearchParams;
 	useNavigate: typeof useNavigate;
 	useAppState: typeof useAppState;
+	useLocation: typeof useLocation;
 
 	// Platform utilities
 	runWorkflow: typeof runWorkflow;
 	navigate: typeof navigate;
+	cn: typeof cn;
+	formatDate: typeof formatDate;
+	formatDateShort: typeof formatDateShort;
+	formatRelativeTime: typeof formatRelativeTime;
+	formatNumber: typeof formatNumber;
+	formatCost: typeof formatCost;
+	formatDuration: typeof formatDuration;
+
+	// Icons (partial list - see full exports above)
+	LayoutDashboard: LucideIcon;
+	Home: LucideIcon;
+	Users: LucideIcon;
+	Plus: LucideIcon;
+	// ... and many more icons
 }
 
 /**

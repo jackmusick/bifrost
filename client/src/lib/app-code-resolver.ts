@@ -8,6 +8,9 @@
 import React from "react";
 import { createComponent } from "./app-code-runtime";
 import { authFetch } from "./api-client";
+import type { components } from "@/lib/v1";
+
+type AppCodeFile = components["schemas"]["AppCodeFileResponse"];
 
 /**
  * Cached component entry
@@ -64,7 +67,7 @@ export async function resolveFile(
 		// URL-encode the path since it may contain slashes
 		const encodedPath = encodeURIComponent(path);
 		const response = await authFetch(
-			`/api/apps/${appId}/versions/${versionId}/files/${encodedPath}`,
+			`/api/applications/${appId}/versions/${versionId}/files/${encodedPath}`,
 		);
 
 		if (!response.ok) {
@@ -79,67 +82,6 @@ export async function resolveFile(
 		console.error(`Error fetching code file ${path}:`, error);
 		return null;
 	}
-}
-
-/**
- * Resolve multiple components for an app
- *
- * Fetches, compiles, and caches components. Uses the compiled version
- * from the API if available, otherwise compiles on the client.
- *
- * @param appId - Application ID
- * @param versionId - Version ID
- * @param componentNames - Names of components to resolve (e.g., ["ClientCard", "DataGrid"])
- * @returns Map of component name to React component
- */
-export async function resolveAppComponents(
-	appId: string,
-	versionId: string,
-	componentNames: string[],
-): Promise<Record<string, React.ComponentType>> {
-	const components: Record<string, React.ComponentType> = {};
-
-	// Filter out built-in components
-	const customNames = componentNames.filter(
-		(name) => !isBuiltInComponent(name),
-	);
-
-	for (const name of customNames) {
-		const cacheKey = buildCacheKey(appId, versionId, `components/${name}`);
-
-		// Check cache first
-		const cached = componentCache.get(cacheKey);
-		if (cached) {
-			components[name] = cached.component;
-			continue;
-		}
-
-		// Fetch from API
-		const file = await resolveFile(appId, versionId, `components/${name}`);
-		if (!file) {
-			console.warn(`Component not found: ${name}`);
-			continue;
-		}
-
-		// Use compiled version if available, otherwise compile on client
-		const source = file.compiled || file.source;
-		const useCompiled = !!file.compiled;
-
-		// Extract any nested custom component dependencies
-		// For now, we don't recursively resolve to avoid circular dependencies
-		// In a full implementation, we would track a dependency graph
-		const component = createComponent(source, {}, useCompiled);
-
-		// Cache the compiled component
-		componentCache.set(cacheKey, {
-			component,
-			compiledAt: Date.now(),
-		});
-
-		components[name] = component;
-	}
-
-	return components;
 }
 
 /**
@@ -227,286 +169,107 @@ export function getCacheStats(): { size: number; keys: string[] } {
 }
 
 /**
- * Check if a component name is a built-in platform component
+ * Extract user component names from an app's file list.
  *
- * Built-in components are provided by the platform scope and don't need
- * to be fetched from the API. This includes:
- * - React built-ins (Fragment, Suspense)
- * - Layout components (Column, Row, Grid, Card)
- * - Typography (Heading, Text)
- * - Data display (DataTable, Badge, Avatar, etc.)
- * - Form elements (Input, Select, Button, etc.)
- * - Feedback (Dialog, Alert, etc.)
+ * This looks for files in the `components/` directory and extracts their names.
+ * These are the ONLY components that should be fetched from the API.
  *
- * @param name - Component name to check
- * @returns true if the component is a built-in
+ * @param files - All files for an app version
+ * @returns Set of component names that exist as user files
+ *
+ * @example
+ * ```typescript
+ * const files = [
+ *   { path: "pages/index" },
+ *   { path: "components/ClientCard" },
+ *   { path: "components/DataGrid" },
+ * ];
+ * getUserComponentNames(files);
+ * // Returns: Set { "ClientCard", "DataGrid" }
+ * ```
  */
-export function isBuiltInComponent(name: string): boolean {
-	const builtIns = new Set([
-		// React built-ins
-		"Fragment",
-		"Suspense",
+export function getUserComponentNames(files: AppCodeFile[]): Set<string> {
+	const names = new Set<string>();
 
-		// Layout
-		"Column",
-		"Row",
-		"Grid",
-		"Card",
-		"CardHeader",
-		"CardTitle",
-		"CardDescription",
-		"CardContent",
-		"CardFooter",
-		"Tabs",
-		"TabsList",
-		"TabsTrigger",
-		"TabsContent",
-		"TabItem",
-		"Separator",
-		"ScrollArea",
-		"Collapsible",
-		"CollapsibleTrigger",
-		"CollapsibleContent",
-		"Accordion",
-		"AccordionItem",
-		"AccordionTrigger",
-		"AccordionContent",
+	for (const file of files) {
+		if (file.path.startsWith("components/")) {
+			// Extract component name from path (e.g., "components/ClientCard.tsx" -> "ClientCard")
+			let name = file.path.slice("components/".length);
+			// Strip .tsx extension if present
+			if (name.endsWith(".tsx")) {
+				name = name.slice(0, -4);
+			}
+			// Handle nested components (e.g., "components/cards/ClientCard" -> "cards/ClientCard")
+			// For now, only support flat components directory
+			if (!name.includes("/")) {
+				names.add(name);
+			}
+		}
+	}
 
-		// Typography
-		"Heading",
-		"Text",
+	return names;
+}
 
-		// Data Display
-		"DataTable",
-		"Table",
-		"TableHeader",
-		"TableBody",
-		"TableFooter",
-		"TableHead",
-		"TableRow",
-		"TableCell",
-		"TableCaption",
-		"Badge",
-		"Avatar",
-		"AvatarImage",
-		"AvatarFallback",
-		"Progress",
-		"Skeleton",
-		"Stat",
-		"Calendar",
-		"HoverCard",
-		"HoverCardTrigger",
-		"HoverCardContent",
-		"Tooltip",
-		"TooltipTrigger",
-		"TooltipContent",
-		"TooltipProvider",
+/**
+ * Resolve components using known user files.
+ *
+ * This is the preferred method when you already have the app's file list.
+ * It only fetches components that actually exist, avoiding 404 errors.
+ *
+ * @param appId - Application ID
+ * @param versionId - Version ID
+ * @param componentNames - Names referenced in JSX
+ * @param userComponentNames - Set of component names that exist as user files
+ * @returns Map of component name to React component
+ */
+export async function resolveAppComponentsFromFiles(
+	appId: string,
+	versionId: string,
+	componentNames: string[],
+	userComponentNames: Set<string>,
+): Promise<Record<string, React.ComponentType>> {
+	const components: Record<string, React.ComponentType> = {};
 
-		// Forms
-		"Form",
-		"FormField",
-		"FormItem",
-		"FormLabel",
-		"FormControl",
-		"FormDescription",
-		"FormMessage",
-		"Input",
-		"Textarea",
-		"TextInput",
-		"TextArea",
-		"NumberInput",
-		"Select",
-		"SelectTrigger",
-		"SelectValue",
-		"SelectContent",
-		"SelectItem",
-		"SelectGroup",
-		"SelectLabel",
-		"SelectSeparator",
-		"Checkbox",
-		"Switch",
-		"RadioGroup",
-		"RadioGroupItem",
-		"Label",
-		"Slider",
-		"DatePicker",
-		"FileUpload",
-		"Command",
-		"CommandInput",
-		"CommandList",
-		"CommandEmpty",
-		"CommandGroup",
-		"CommandItem",
-		"CommandSeparator",
-		"Combobox",
-		"Popover",
-		"PopoverTrigger",
-		"PopoverContent",
+	// Only resolve components that actually exist as user files
+	const existingCustomNames = componentNames.filter((name) =>
+		userComponentNames.has(name),
+	);
 
-		// Actions
-		"Button",
-		"Link",
-		"Toggle",
-		"ToggleGroup",
-		"ToggleGroupItem",
-		"DropdownMenu",
-		"DropdownMenuTrigger",
-		"DropdownMenuContent",
-		"DropdownMenuItem",
-		"DropdownMenuCheckboxItem",
-		"DropdownMenuRadioItem",
-		"DropdownMenuLabel",
-		"DropdownMenuSeparator",
-		"DropdownMenuShortcut",
-		"DropdownMenuGroup",
-		"DropdownMenuSub",
-		"DropdownMenuSubContent",
-		"DropdownMenuSubTrigger",
-		"DropdownMenuRadioGroup",
-		"ContextMenu",
-		"ContextMenuTrigger",
-		"ContextMenuContent",
-		"ContextMenuItem",
-		"ContextMenuCheckboxItem",
-		"ContextMenuRadioItem",
-		"ContextMenuLabel",
-		"ContextMenuSeparator",
-		"ContextMenuShortcut",
-		"ContextMenuGroup",
-		"ContextMenuSub",
-		"ContextMenuSubContent",
-		"ContextMenuSubTrigger",
-		"ContextMenuRadioGroup",
-		"Menubar",
-		"MenubarMenu",
-		"MenubarTrigger",
-		"MenubarContent",
-		"MenubarItem",
-		"MenubarSeparator",
-		"MenubarLabel",
-		"MenubarCheckboxItem",
-		"MenubarRadioGroup",
-		"MenubarRadioItem",
-		"MenubarShortcut",
-		"MenubarSub",
-		"MenubarSubContent",
-		"MenubarSubTrigger",
+	for (const name of existingCustomNames) {
+		const cacheKey = buildCacheKey(appId, versionId, `components/${name}`);
 
-		// Feedback
-		"Dialog",
-		"DialogTrigger",
-		"DialogContent",
-		"DialogHeader",
-		"DialogFooter",
-		"DialogTitle",
-		"DialogDescription",
-		"DialogClose",
-		"Modal",
-		"Alert",
-		"AlertTitle",
-		"AlertDescription",
-		"AlertDialog",
-		"AlertDialogTrigger",
-		"AlertDialogContent",
-		"AlertDialogHeader",
-		"AlertDialogFooter",
-		"AlertDialogTitle",
-		"AlertDialogDescription",
-		"AlertDialogAction",
-		"AlertDialogCancel",
-		"Toast",
-		"Toaster",
-		"Sheet",
-		"SheetTrigger",
-		"SheetContent",
-		"SheetHeader",
-		"SheetFooter",
-		"SheetTitle",
-		"SheetDescription",
-		"SheetClose",
-		"Drawer",
-		"DrawerTrigger",
-		"DrawerContent",
-		"DrawerHeader",
-		"DrawerFooter",
-		"DrawerTitle",
-		"DrawerDescription",
-		"DrawerClose",
+		// Check cache first
+		const cached = componentCache.get(cacheKey);
+		if (cached) {
+			components[name] = cached.component;
+			continue;
+		}
 
-		// Navigation
-		"Breadcrumb",
-		"BreadcrumbList",
-		"BreadcrumbItem",
-		"BreadcrumbLink",
-		"BreadcrumbPage",
-		"BreadcrumbSeparator",
-		"BreadcrumbEllipsis",
-		"NavigationMenu",
-		"NavigationMenuList",
-		"NavigationMenuItem",
-		"NavigationMenuTrigger",
-		"NavigationMenuContent",
-		"NavigationMenuLink",
-		"NavigationMenuIndicator",
-		"NavigationMenuViewport",
-		"Pagination",
-		"PaginationContent",
-		"PaginationItem",
-		"PaginationLink",
-		"PaginationPrevious",
-		"PaginationNext",
-		"PaginationEllipsis",
-		"Sidebar",
-		"SidebarHeader",
-		"SidebarNav",
-		"SidebarLink",
-		"SidebarFooter",
-		"SidebarContent",
-		"SidebarGroup",
-		"SidebarGroupLabel",
-		"SidebarGroupContent",
-		"SidebarMenu",
-		"SidebarMenuItem",
-		"SidebarMenuButton",
-		"SidebarMenuSub",
-		"SidebarMenuSubItem",
-		"SidebarMenuSubButton",
-		"SidebarTrigger",
-		"SidebarInset",
-		"SidebarProvider",
-		"SidebarRail",
-		"SidebarSeparator",
+		// Fetch from API - try with .tsx extension first, then without
+		let file = await resolveFile(appId, versionId, `components/${name}.tsx`);
+		if (!file) {
+			file = await resolveFile(appId, versionId, `components/${name}`);
+		}
+		if (!file) {
+			// This shouldn't happen since we filtered to known files
+			console.warn(`Component file not found (unexpected): ${name}`);
+			continue;
+		}
 
-		// Layout primitives
-		"AspectRatio",
-		"Resizable",
-		"ResizableHandle",
-		"ResizablePanel",
-		"ResizablePanelGroup",
+		// Use compiled version if available, otherwise compile on client
+		const source = file.compiled || file.source;
+		const useCompiled = !!file.compiled;
 
-		// Data input
-		"InputOTP",
-		"InputOTPGroup",
-		"InputOTPSlot",
-		"InputOTPSeparator",
+		const component = createComponent(source, {}, useCompiled);
 
-		// Charts (if using Recharts through shadcn)
-		"ChartContainer",
-		"ChartTooltip",
-		"ChartTooltipContent",
-		"ChartLegend",
-		"ChartLegendContent",
+		// Cache the compiled component
+		componentCache.set(cacheKey, {
+			component,
+			compiledAt: Date.now(),
+		});
 
-		// Misc
-		"Carousel",
-		"CarouselContent",
-		"CarouselItem",
-		"CarouselPrevious",
-		"CarouselNext",
+		components[name] = component;
+	}
 
-		// Outlet for layouts
-		"Outlet",
-	]);
-
-	return builtIns.has(name);
+	return components;
 }

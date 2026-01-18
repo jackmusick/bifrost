@@ -178,7 +178,12 @@
       "WebFetch(domain:websockets.readthedocs.io)",
       "WebFetch(domain:socket.io)",
       "Bash(alembic revision:*)",
-      "Skill(superpowers:subagent-driven-development)"
+      "Skill(superpowers:subagent-driven-development)",
+      "mcp__bifrost__code_create_file",
+      "mcp__bifrost__code_update_file",
+      "mcp__bifrost__code_get_file",
+      "mcp__bifrost__code_list_files",
+      "mcp__bifrost__list_agents"
     ],
     "deny": [],
     "ask": [],

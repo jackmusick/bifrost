@@ -6,19 +6,9 @@
  */
 
 import type { RouteObject } from "react-router-dom";
+import type { components } from "@/lib/v1";
 
-/**
- * Code file from the API
- */
-export interface AppCodeFile {
-	id: string;
-	app_version_id: string;
-	path: string;
-	source: string;
-	compiled: string | null;
-	created_at: string;
-	updated_at: string;
-}
+export type AppCodeFile = components["schemas"]["AppCodeFileResponse"];
 
 /**
  * Parsed route segment
@@ -125,6 +115,18 @@ function getFileName(path: string): string {
 }
 
 /**
+ * Get the filename without directory or extension
+ *
+ * @param path - File path (e.g., "pages/index.tsx")
+ * @returns Filename without extension (e.g., "index")
+ */
+function getFileNameWithoutExt(path: string): string {
+	const fileName = getFileName(path);
+	// Remove .tsx, .ts, .jsx, .js extensions
+	return fileName.replace(/\.(tsx?|jsx?)$/, "");
+}
+
+/**
  * Get the directory path without filename
  *
  * @param path - File path
@@ -137,10 +139,16 @@ function getDirPath(path: string): string {
 }
 
 /**
- * Check if a file is a page file (in pages/ directory)
+ * Check if a file is a page file (in pages/ directory or root _layout)
  */
 function isPageFile(file: AppCodeFile): boolean {
-	return file.path.startsWith("pages/") || file.path === "_layout";
+	// Files in pages/ directory are page files
+	if (file.path.startsWith("pages/")) {
+		return true;
+	}
+	// Root _layout file (with or without extension)
+	const fileNameNoExt = getFileNameWithoutExt(file.path);
+	return fileNameNoExt === "_layout" && !file.path.includes("/");
 }
 
 /**
@@ -162,9 +170,10 @@ function buildRouteTree(files: AppCodeFile[]): RouteNode {
 
 	for (const file of pageFiles) {
 		const fileName = getFileName(file.path);
+		const fileNameNoExt = getFileNameWithoutExt(file.path);
 
-		// Handle root _layout
-		if (file.path === "_layout") {
+		// Handle root _layout (e.g., "_layout.tsx" or "_layout")
+		if (fileNameNoExt === "_layout" && !file.path.includes("/")) {
 			root.layout = file;
 			continue;
 		}
@@ -198,14 +207,15 @@ function buildRouteTree(files: AppCodeFile[]): RouteNode {
 			}
 		}
 
-		// Place the file in the appropriate slot
-		if (fileName === "_layout") {
+		// Place the file in the appropriate slot (compare without extension)
+		const currentFileNoExt = getFileNameWithoutExt(fileName);
+		if (currentFileNoExt === "_layout") {
 			currentNode.layout = file;
-		} else if (fileName === "index") {
+		} else if (currentFileNoExt === "index") {
 			currentNode.index = file;
 		} else {
-			// Regular page file (e.g., "billing" -> /settings/billing)
-			currentNode.pages.set(fileName, file);
+			// Regular page file (e.g., "billing.tsx" -> /settings/billing)
+			currentNode.pages.set(currentFileNoExt, file);
 		}
 	}
 
@@ -341,18 +351,22 @@ export function buildRoutes(files: AppCodeFile[]): AppCodeRouteObject[] {
  *
  * Useful for navigation and breadcrumbs.
  *
- * @param filePath - File path (e.g., "pages/clients/[id]/contacts")
+ * @param filePath - File path (e.g., "pages/clients/[id]/contacts.tsx")
  * @returns Route path (e.g., "/clients/:id/contacts")
  *
  * @example
- * getRoutePath("pages/clients/[id]/contacts") // "/clients/:id/contacts"
- * getRoutePath("pages/index") // "/"
- * getRoutePath("pages/settings/billing") // "/settings/billing"
+ * getRoutePath("pages/clients/[id]/contacts.tsx") // "/clients/:id/contacts"
+ * getRoutePath("pages/index.tsx") // "/"
+ * getRoutePath("pages/settings/billing.tsx") // "/settings/billing"
  */
 export function getRoutePath(filePath: string): string {
-	// Handle root files
-	if (filePath === "_layout" || filePath === "_providers") {
-		return "/";
+	const fileNameNoExt = getFileNameWithoutExt(filePath);
+
+	// Handle root files (with or without extension)
+	if (fileNameNoExt === "_layout" || fileNameNoExt === "_providers") {
+		if (!filePath.includes("/") || filePath.startsWith("_")) {
+			return "/";
+		}
 	}
 
 	// Remove pages/ prefix
@@ -361,10 +375,10 @@ export function getRoutePath(filePath: string): string {
 	}
 
 	const relativePath = filePath.slice(6); // Remove "pages/"
-	const fileName = getFileName(relativePath);
+	const relativeFileNameNoExt = getFileNameWithoutExt(relativePath);
 
 	// Handle index files
-	if (fileName === "index") {
+	if (relativeFileNameNoExt === "index") {
 		const dirPath = getDirPath(relativePath);
 		if (!dirPath) return "/";
 		const segments = parseSegments(dirPath);
@@ -372,15 +386,16 @@ export function getRoutePath(filePath: string): string {
 	}
 
 	// Handle layout files (they represent their parent path)
-	if (fileName === "_layout") {
+	if (relativeFileNameNoExt === "_layout") {
 		const dirPath = getDirPath(relativePath);
 		if (!dirPath) return "/";
 		const segments = parseSegments(dirPath);
 		return segmentsToPath(segments);
 	}
 
-	// Regular page file
-	const segments = parseSegments(relativePath);
+	// Regular page file - need to strip extension from path before parsing
+	const pathWithoutExt = relativePath.replace(/\.(tsx?|jsx?)$/, "");
+	const segments = parseSegments(pathWithoutExt);
 	return segmentsToPath(segments);
 }
 
@@ -388,14 +403,14 @@ export function getRoutePath(filePath: string): string {
  * Check if a file path is a layout file
  */
 export function isLayoutFile(filePath: string): boolean {
-	return getFileName(filePath) === "_layout";
+	return getFileNameWithoutExt(filePath) === "_layout";
 }
 
 /**
  * Check if a file path is an index file
  */
 export function isIndexFile(filePath: string): boolean {
-	return getFileName(filePath) === "index";
+	return getFileNameWithoutExt(filePath) === "index";
 }
 
 /**

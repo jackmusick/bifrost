@@ -35,8 +35,8 @@ export interface AppCodeEditorProps {
 	readOnly?: boolean;
 	/** Height of the editor (default: 100%) */
 	height?: string | number;
-	/** Language mode (default: javascript for JSX) */
-	language?: "javascript" | "typescript" | "json";
+	/** File path - used by Monaco to determine language and file type */
+	path?: string;
 	/** Additional class name for the container */
 	className?: string;
 }
@@ -53,7 +53,7 @@ export function AppCodeEditor({
 	errors = [],
 	readOnly = false,
 	height = "100%",
-	language = "javascript",
+	path,
 	className = "",
 }: AppCodeEditorProps) {
 	const { theme } = useTheme();
@@ -63,6 +63,13 @@ export function AppCodeEditor({
 
 	// Determine Monaco theme based on app theme
 	const monacoTheme = theme === "light" ? "vs" : "vs-dark";
+
+	// Ensure path has .tsx extension for Monaco to recognize TypeScript+JSX
+	const monacoPath = path
+		? path.endsWith(".tsx")
+			? path
+			: `${path}.tsx`
+		: "file.tsx";
 
 	// Configure Monaco BEFORE it mounts
 	const handleEditorWillMount: BeforeMount = async (monaco) => {
@@ -129,7 +136,8 @@ export function AppCodeEditor({
 		<div className={`h-full w-full ${className}`}>
 			<Editor
 				height={height}
-				language={language}
+				path={monacoPath}
+				defaultLanguage="typescript"
 				value={value}
 				onChange={handleChange}
 				beforeMount={handleEditorWillMount}

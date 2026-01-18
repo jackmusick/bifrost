@@ -25,6 +25,8 @@ def _validate_file_path(path: str) -> str | None:
     VALID_TOP_DIRS = {"pages", "components", "modules"}
     DYNAMIC_SEGMENT_PATTERN = re.compile(r"^\[[\w-]+\]$")
     VALID_NAME_PATTERN = re.compile(r"^[\w-]+$")
+    # Require .ts or .tsx extension on filenames
+    VALID_FILENAME_PATTERN = re.compile(r"^[\w-]+\.tsx?$")
 
     if not path:
         return "File path cannot be empty"
@@ -36,24 +38,45 @@ def _validate_file_path(path: str) -> str | None:
         return "Path cannot contain empty segments (double slashes)"
 
     if len(segments) == 1:
-        if segments[0] not in ROOT_ALLOWED_FILES:
-            return f"Root-level file must be one of: {', '.join(sorted(ROOT_ALLOWED_FILES))}"
+        filename = segments[0]
+
+        # Must have .ts or .tsx extension
+        if not re.search(r"\.tsx?$", filename):
+            return "Files must have a .ts or .tsx extension"
+
+        # Check root name without extension
+        root_name = re.sub(r"\.tsx?$", "", filename)
+        if root_name not in ROOT_ALLOWED_FILES:
+            allowed = ", ".join(sorted(f"{f}.tsx" for f in ROOT_ALLOWED_FILES))
+            return f"Root-level file must be one of: {allowed}. Use pages/, components/, or modules/ directories for other files."
         return None
 
     top_dir = segments[0]
     if top_dir not in VALID_TOP_DIRS:
         return f"Files must be in one of: {', '.join(sorted(VALID_TOP_DIRS))}"
 
-    for segment in segments[1:]:
+    for i, segment in enumerate(segments[1:], start=1):
+        is_last_segment = i == len(segments) - 1
+
         if DYNAMIC_SEGMENT_PATTERN.match(segment):
             if top_dir != "pages":
                 return f"Dynamic segments like [{segment[1:-1]}] are only allowed in pages/"
             continue
 
-        if not VALID_NAME_PATTERN.match(segment):
-            return f"Invalid path segment '{segment}'. Use only alphanumeric characters, underscores, and hyphens."
+        # Use filename pattern (requires .ts/.tsx) for last segment, name pattern for directories
+        pattern = VALID_FILENAME_PATTERN if is_last_segment else VALID_NAME_PATTERN
+        if not pattern.match(segment):
+            if is_last_segment:
+                # Check if missing extension
+                if VALID_NAME_PATTERN.match(segment):
+                    return f"Files must have a .ts or .tsx extension. Got: '{segment}'"
+                return f"Invalid filename '{segment}'. Use alphanumeric characters, underscores, hyphens, with .ts or .tsx extension."
+            else:
+                return f"Invalid path segment '{segment}'. Use only alphanumeric characters, underscores, and hyphens."
 
-        if segment == "_layout" and top_dir != "pages":
+        # Check _layout restriction (strip extension for comparison)
+        segment_name = re.sub(r"\.tsx?$", "", segment)
+        if segment_name == "_layout" and top_dir != "pages":
             return "_layout files are only allowed in pages/"
 
     return None
@@ -150,7 +173,7 @@ async def code_list_files(context: Any, app_id: str) -> str:
             },
             "path": {
                 "type": "string",
-                "description": "File path (e.g., 'pages/index', 'components/Button')",
+                "description": "File path with extension (e.g., 'pages/index.tsx', 'components/Button.tsx')",
             },
         },
         "required": ["app_id", "path"],
@@ -222,7 +245,7 @@ async def code_get_file(context: Any, app_id: str, path: str) -> str:
             },
             "path": {
                 "type": "string",
-                "description": "File path (e.g., 'pages/clients', 'components/Button')",
+                "description": "File path with extension (e.g., 'pages/clients.tsx', 'components/Button.tsx')",
             },
             "source": {
                 "type": "string",

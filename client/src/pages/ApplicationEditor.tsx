@@ -645,6 +645,7 @@ export function ApplicationEditor() {
 					slug,
 					access_level: accessLevel,
 					role_ids: accessLevel === "role_based" ? selectedRoleIds : undefined,
+					engine: "components",
 				},
 			});
 

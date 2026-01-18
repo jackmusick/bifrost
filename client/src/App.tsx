@@ -237,15 +237,7 @@ function AppRoutes() {
 						element={<ApplicationEmbed />}
 					/>
 
-					{/* Application Runner & Preview - Own layout (no main sidebar) */}
-					<Route
-						path="apps/:applicationId/preview/*"
-						element={
-							<ProtectedRoute requirePlatformAdmin>
-								<ApplicationPreview />
-							</ProtectedRoute>
-						}
-					/>
+					{/* Application Runner - Published apps with own layout (no main sidebar) */}
 					<Route
 						path="apps/:applicationId/*"
 						element={
@@ -407,7 +399,7 @@ function AppRoutes() {
 							}
 						/>
 						<Route
-							path="apps/:applicationId/edit/code"
+							path="apps/:applicationId/code/*"
 							element={
 								<ProtectedRoute requirePlatformAdmin>
 									<AppCodeEditorPage />
@@ -602,6 +594,15 @@ function AppRoutes() {
 
 					{/* ContentLayout - Pages without default padding */}
 					<Route path="/" element={<ContentLayout />}>
+						{/* Application Preview - Embedded in main layout for development */}
+						<Route
+							path="apps/:applicationId/preview/*"
+							element={
+								<ProtectedRoute requirePlatformAdmin>
+									<ApplicationPreview />
+								</ProtectedRoute>
+							}
+						/>
 						{/* Chat - All authenticated users */}
 						<Route
 							path="chat"

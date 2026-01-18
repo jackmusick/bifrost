@@ -113,7 +113,7 @@ export function Applications() {
 	const handleEdit = (appSlug: string, engine?: string) => {
 		// Route to appropriate editor based on engine type
 		if (engine === "code" || engine === "jsx") {
-			navigate(`/apps/${appSlug}/edit/code`);
+			navigate(`/apps/${appSlug}/code`);
 		} else {
 			navigate(`/apps/${appSlug}/edit`);
 		}

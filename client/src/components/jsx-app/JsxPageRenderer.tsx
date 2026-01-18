@@ -10,9 +10,8 @@
 import React, { useEffect, useState, useMemo } from "react";
 import { createComponent } from "@/lib/app-code-runtime";
 import {
-	resolveAppComponents,
+	resolveAppComponentsFromFiles,
 	extractComponentNames,
-	isBuiltInComponent,
 } from "@/lib/app-code-resolver";
 import type { AppCodeFile } from "@/lib/app-code-router";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -25,6 +24,8 @@ interface JsxPageRendererProps {
 	versionId: string;
 	/** The app code file to render */
 	file: AppCodeFile;
+	/** Set of component names that exist as user files in components/ */
+	userComponentNames: Set<string>;
 }
 
 /**
@@ -82,6 +83,7 @@ export function JsxPageRenderer({
 	appId,
 	versionId,
 	file,
+	userComponentNames,
 }: JsxPageRendererProps) {
 	const [PageComponent, setPageComponent] =
 		useState<React.ComponentType | null>(null);
@@ -108,18 +110,15 @@ export function JsxPageRenderer({
 				// since compiled code may have different identifiers
 				const componentNames = extractComponentNames(file.source);
 
-				// Filter to only non-built-in components
-				const customNames = componentNames.filter(
-					(name) => !isBuiltInComponent(name),
-				);
-
-				// Resolve custom components from the API
+				// Resolve only components that exist as user files
+				// (userComponentNames is the authoritative list from the files API)
 				let customComponents: Record<string, React.ComponentType> = {};
-				if (customNames.length > 0) {
-					customComponents = await resolveAppComponents(
+				if (componentNames.length > 0) {
+					customComponents = await resolveAppComponentsFromFiles(
 						appId,
 						versionId,
-						customNames,
+						componentNames,
+						userComponentNames,
 					);
 				}
 
@@ -150,7 +149,7 @@ export function JsxPageRenderer({
 		return () => {
 			cancelled = true;
 		};
-	}, [appId, versionId, file.id, file.source, source, useCompiled]);
+	}, [appId, versionId, userComponentNames, file.id, file.source, source, useCompiled]);
 
 	if (isLoading) {
 		return <PageSkeleton />;
