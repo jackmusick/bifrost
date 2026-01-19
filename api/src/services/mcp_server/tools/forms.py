@@ -190,7 +190,7 @@ async def create_form(
     from src.models import Form as FormORM
     from src.models import FormSchema
     from src.repositories.workflows import WorkflowRepository
-    from src.routers.forms import _form_schema_to_fields, _write_form_to_file
+    from src.routers.forms import _form_schema_to_fields
 
     logger.info(f"MCP create_form called: name={name}, workflow_id={workflow_id}, scope={scope}")
 
@@ -306,15 +306,6 @@ async def create_form(
             )
             form = result.scalar_one()
 
-            # Write to file system (dual-write pattern)
-            try:
-                file_path = await _write_form_to_file(form, db)
-                form.file_path = file_path
-                await db.flush()
-            except Exception as e:
-                logger.error(f"Failed to write form file for {form.id}: {e}", exc_info=True)
-                # Continue - database write succeeded
-
             logger.info(f"Created form {form.id}: {form.name}")
 
             return json.dumps({
@@ -327,7 +318,6 @@ async def create_form(
                 "field_count": len(fields),
                 "launch_workflow_id": launch_workflow_id,
                 "launch_workflow_name": launch_workflow.name if launch_workflow else None,
-                "file_path": form.file_path,
             })
 
     except Exception as e:
@@ -547,7 +537,7 @@ async def update_form(
     from src.models import Form as FormORM, FormField as FormFieldORM
     from src.models import FormSchema
     from src.repositories.workflows import WorkflowRepository
-    from src.routers.forms import _form_schema_to_fields, _update_form_file
+    from src.routers.forms import _form_schema_to_fields
 
     logger.info(f"MCP update_form called: form_id={form_id}")
 
@@ -582,7 +572,6 @@ async def update_form(
                 if form.organization_id is None:
                     return json.dumps({"error": "Only platform admins can update global forms."})
 
-            old_file_path = form.file_path
             updates_made = []
 
             # Apply updates
@@ -684,14 +673,6 @@ async def update_form(
             )
             form = result.scalar_one()
 
-            # Update file
-            try:
-                new_file_path = await _update_form_file(form, old_file_path, db)
-                form.file_path = new_file_path
-                await db.flush()
-            except Exception as e:
-                logger.error(f"Failed to update form file for {form.id}: {e}", exc_info=True)
-
             logger.info(f"Updated form {form.id}: {', '.join(updates_made)}")
 
             return json.dumps({
@@ -699,7 +680,6 @@ async def update_form(
                 "id": str(form.id),
                 "name": form.name,
                 "updates": updates_made,
-                "file_path": form.file_path,
             })
 
     except Exception as e:

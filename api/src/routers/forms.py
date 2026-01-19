@@ -5,12 +5,10 @@ CRUD operations for workflow forms.
 Support for org-specific and global forms.
 Form execution for org users with access control.
 
-Forms are persisted to BOTH database AND file system (S3):
-- Database: Fast queries, org scoping, access control
-- S3/File system: Source control, deployment portability, workspace sync
+Forms are virtual entities stored only in the database.
+They are serialized to JSON on-the-fly for git sync operations.
 """
 
-import json
 import logging
 import re
 from datetime import datetime, timedelta
@@ -47,27 +45,6 @@ from src.services.workflow_role_service import sync_form_roles_to_workflows
 logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/api/forms", tags=["Forms"])
-
-
-def _generate_form_filename(form_name: str, form_id: str) -> str:
-    """
-    Generate filesystem-safe filename from form name.
-
-    Format: {slugified-name}-{first-8-chars-of-uuid}.form.json
-    Example: customer-onboarding-a1b2c3d4.form.json
-
-    Args:
-        form_name: Human-readable form name
-        form_id: Form UUID
-
-    Returns:
-        Slugified filename
-    """
-    # Convert to lowercase and replace non-alphanumeric chars with hyphens
-    slug = re.sub(r'[^a-z0-9]+', '-', form_name.lower()).strip('-')
-    # Limit length and add short UUID prefix for uniqueness
-    short_id = str(form_id)[:8]
-    return f"{slug[:50]}-{short_id}.form.json"
 
 
 def _form_schema_to_fields(form_schema: dict, form_id: UUID) -> list[FormFieldORM]:
@@ -205,199 +182,6 @@ async def _validate_form_references(
         )
 
 
-def _fields_to_form_schema(fields: list[FormFieldORM]) -> dict:
-    """
-    Convert list of FormField ORM objects to FormSchema dict.
-
-    Args:
-        fields: List of FormField ORM objects (should be ordered by position)
-
-    Returns:
-        FormSchema dict with 'fields' key
-    """
-    fields_data = []
-    for field in fields:
-        field_data = {
-            "name": field.name,
-            "type": field.type,
-            "required": field.required,
-        }
-
-        # Add optional fields if they're set
-        if field.label:
-            field_data["label"] = field.label
-        if field.placeholder:
-            field_data["placeholder"] = field.placeholder
-        if field.help_text:
-            field_data["help_text"] = field.help_text
-        if field.default_value is not None:
-            field_data["default_value"] = field.default_value
-        if field.options:
-            field_data["options"] = field.options
-        if field.data_provider_id:
-            field_data["data_provider_id"] = str(field.data_provider_id)
-        if field.data_provider_inputs:
-            field_data["data_provider_inputs"] = field.data_provider_inputs
-        if field.visibility_expression:
-            field_data["visibility_expression"] = field.visibility_expression
-        if field.validation:
-            field_data["validation"] = field.validation
-        if field.allowed_types:
-            field_data["allowed_types"] = field.allowed_types
-        if field.multiple is not None:
-            field_data["multiple"] = field.multiple
-        if field.max_size_mb:
-            field_data["max_size_mb"] = field.max_size_mb
-        if field.content:
-            field_data["content"] = field.content
-
-        fields_data.append(field_data)
-
-    return {"fields": fields_data}
-
-
-async def _write_form_to_file(form: FormORM, db: AsyncSession) -> str:
-    """
-    Write form to S3 via FileStorageService as *.form.json.
-
-    This triggers:
-    - S3 upload
-    - workspace_files index update
-    - Redis pub/sub for workspace sync
-
-    Args:
-        form: Form ORM instance
-        db: Database session for FileStorageService
-
-    Returns:
-        Workspace-relative file path (e.g., 'forms/my-form-abc123.form.json')
-
-    Raises:
-        Exception: If file write fails
-    """
-    from src.services.file_storage import FileStorageService
-
-    # Generate filename
-    filename = _generate_form_filename(form.name, str(form.id))
-    file_path = f"forms/{filename}"
-
-    # Build form JSON (using snake_case for consistency with Python conventions)
-    # Convert fields to form_schema format for file storage
-    form_schema = _fields_to_form_schema(form.fields)
-
-    # Note: org_id, is_global, access_level are NOT written to JSON
-    # These are environment-specific and should only be set in the database
-    form_data = {
-        "id": str(form.id),
-        "name": form.name,
-        "description": form.description,
-        "workflow_id": form.workflow_id,
-        "launch_workflow_id": form.launch_workflow_id,
-        "form_schema": form_schema,
-        "is_active": form.is_active,
-        "created_by": form.created_by,
-        "created_at": form.created_at.isoformat() + "Z",
-        "updated_at": form.updated_at.isoformat() + "Z",
-        "allowed_query_params": form.allowed_query_params,
-        "default_launch_params": form.default_launch_params,
-    }
-
-    # Write to S3 via FileStorageService
-    content = json.dumps(form_data, indent=2).encode("utf-8")
-    storage = FileStorageService(db)
-    await storage.write_file(
-        path=file_path,
-        content=content,
-        updated_by=form.created_by or "system",
-    )
-
-    logger.info(f"Wrote form to S3: {file_path}")
-    return file_path
-
-
-async def _update_form_file(form: FormORM, old_file_path: str | None, db: AsyncSession) -> str:
-    """
-    Update form file, handling renames if the form name changed.
-
-    Uses FileStorageService for S3 storage and workspace sync.
-
-    Args:
-        form: Updated form ORM instance
-        old_file_path: Previous workspace-relative file path (if known)
-        db: Database session for FileStorageService
-
-    Returns:
-        New workspace-relative file path
-    """
-    from src.services.file_storage import FileStorageService
-
-    # Generate new filename
-    new_filename = _generate_form_filename(form.name, str(form.id))
-    new_file_path = f"forms/{new_filename}"
-
-    # If we have the old file path and it's different, delete the old file
-    if old_file_path and old_file_path != new_file_path:
-        storage = FileStorageService(db)
-        try:
-            await storage.delete_file(old_file_path)
-            logger.info(f"Deleted old form file: {old_file_path}")
-        except Exception as e:
-            logger.warning(f"Failed to delete old form file {old_file_path}: {e}")
-
-    # Write the updated form
-    return await _write_form_to_file(form, db)
-
-
-async def _deactivate_form_file(form: FormORM, db: AsyncSession) -> None:
-    """
-    Deactivate form file by updating is_active=false in S3.
-
-    Uses FileStorageService for S3 storage and workspace sync.
-
-    Args:
-        form: Form ORM instance with updated is_active=False
-        db: Database session for FileStorageService
-    """
-    from src.services.file_storage import FileStorageService
-
-    # Use the form's file_path if available, otherwise generate it
-    file_path = form.file_path
-    if not file_path:
-        filename = _generate_form_filename(form.name, str(form.id))
-        file_path = f"forms/{filename}"
-
-    # Build form JSON with is_active=False
-    # Note: org_id, is_global, access_level are NOT written to JSON
-    # These are environment-specific and should only be set in the database
-    form_schema = _fields_to_form_schema(form.fields)
-
-    form_data = {
-        "id": str(form.id),
-        "name": form.name,
-        "description": form.description,
-        "workflow_id": form.workflow_id,
-        "launch_workflow_id": form.launch_workflow_id,
-        "form_schema": form_schema,
-        "is_active": False,  # Deactivated
-        "created_by": form.created_by,
-        "created_at": form.created_at.isoformat() + "Z",
-        "updated_at": datetime.utcnow().isoformat() + "Z",
-        "allowed_query_params": form.allowed_query_params,
-        "default_launch_params": form.default_launch_params,
-    }
-
-    # Write to S3 via FileStorageService (overwrites with is_active=False)
-    content = json.dumps(form_data, indent=2).encode("utf-8")
-    storage = FileStorageService(db)
-    await storage.write_file(
-        path=file_path,
-        content=content,
-        updated_by="system",
-    )
-
-    logger.info(f"Deactivated form file: {file_path}")
-
-
 @router.get(
     "",
     response_model=list[FormPublic],
@@ -471,9 +255,8 @@ async def create_form(
     """
     Create a new form.
 
-    Forms are persisted to BOTH database AND file system:
-    - Database write provides immediate availability
-    - File write enables version control and deployment portability
+    Forms are stored in the database only. They are serialized
+    to JSON on-the-fly for git sync operations.
     """
     # Prepare form_schema for validation
     form_schema_data: dict = request.form_schema  # type: ignore[assignment]
@@ -524,20 +307,10 @@ async def create_form(
     )
     form = result.scalar_one()
 
-    # Write to file system (dual-write pattern)
-    try:
-        file_path = await _write_form_to_file(form, db)
-        # Store file path in database for tracking
-        form.file_path = file_path
-        await db.flush()
-    except Exception as e:
-        logger.error(f"Failed to write form file for {form.id}: {e}", exc_info=True)
-        # Continue - database write succeeded, file write can be retried
-
     # Sync form roles to referenced workflows (additive)
     await sync_form_roles_to_workflows(db, form, form.fields, assigned_by=ctx.user.email)
 
-    logger.info(f"Created form {form.id}: {form.name} (file: {form.file_path})")
+    logger.info(f"Created form {form.id}: {form.name}")
 
     # Invalidate cache after successful create
     if CACHE_INVALIDATION_AVAILABLE and invalidate_form:
@@ -635,8 +408,8 @@ async def update_form(
     """
     Update a form.
 
-    Updates are written to BOTH database AND file system.
-    If the form name changes, the file is renamed to match.
+    Forms are stored in the database only. They are serialized
+    to JSON on-the-fly for git sync operations.
     """
     result = await db.execute(
         select(FormORM)
@@ -664,9 +437,6 @@ async def update_form(
         launch_workflow_id=request.launch_workflow_id,
         form_schema=form_schema_for_validation,
     )
-
-    # Track old file path for cleanup
-    old_file_path = form.file_path
 
     if request.name is not None:
         form.name = request.name
@@ -727,19 +497,10 @@ async def update_form(
     )
     form = result.scalar_one()
 
-    # Update file system (dual-write pattern)
-    try:
-        new_file_path = await _update_form_file(form, old_file_path, db)
-        form.file_path = new_file_path
-        await db.flush()
-    except Exception as e:
-        logger.error(f"Failed to update form file for {form_id}: {e}", exc_info=True)
-        # Continue - database write succeeded
-
     # Sync form roles to referenced workflows (additive)
     await sync_form_roles_to_workflows(db, form, form.fields, assigned_by=ctx.user.email)
 
-    logger.info(f"Updated form {form_id} (file: {form.file_path})")
+    logger.info(f"Updated form {form_id}")
 
     # Invalidate cache after successful update
     if CACHE_INVALIDATION_AVAILABLE and invalidate_form:
@@ -783,12 +544,11 @@ async def delete_form(
     """
     Soft delete a form.
 
-    Sets isActive=false in BOTH database AND file system.
-    The form file remains for version control, but is marked inactive.
+    Sets is_active=False in the database. Forms are virtual entities
+    and are serialized to JSON on-the-fly for git sync operations.
     """
     result = await db.execute(
         select(FormORM)
-        .options(selectinload(FormORM.fields))
         .where(FormORM.id == form_id)
     )
     form = result.scalar_one_or_none()
@@ -803,13 +563,6 @@ async def delete_form(
     form.updated_at = datetime.utcnow()
 
     await db.flush()
-
-    # Deactivate in file system (dual-write pattern)
-    try:
-        await _deactivate_form_file(form, db)
-    except Exception as e:
-        logger.error(f"Failed to deactivate form file for {form_id}: {e}", exc_info=True)
-        # Continue - database write succeeded
 
     logger.info(f"Soft deleted form {form_id}")
 
