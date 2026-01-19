@@ -8,7 +8,7 @@ from datetime import datetime
 from typing import TYPE_CHECKING
 from uuid import UUID, uuid4
 
-from sqlalchemy import Boolean, DateTime, Enum as SQLAlchemyEnum, ForeignKey, Index, Integer, String, Text, text
+from sqlalchemy import Boolean, DateTime, Enum as SQLAlchemyEnum, ForeignKey, Integer, String, Text, text
 from sqlalchemy.dialects.postgresql import ARRAY, JSONB
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -113,8 +113,7 @@ class Form(Base):
         onupdate=datetime.utcnow,
     )
 
-    # File location metadata (for version control)
-    file_path: Mapped[str | None] = mapped_column(String(1000), default=None)
+    # Metadata for file sync
     module_path: Mapped[str | None] = mapped_column(String(500), default=None)
     last_seen_at: Mapped[datetime | None] = mapped_column(DateTime, default=None)
 
@@ -134,15 +133,7 @@ class Form(Base):
         order_by="FormField.position",
     )
 
-    __table_args__ = (
-        # Unique constraint on file_path (when not NULL) for ON CONFLICT upserts
-        Index(
-            "ix_forms_file_path_unique",
-            "file_path",
-            unique=True,
-            postgresql_where=text("file_path IS NOT NULL"),
-        ),
-    )
+    __table_args__: tuple = ()
 
 
 class FormRole(Base):

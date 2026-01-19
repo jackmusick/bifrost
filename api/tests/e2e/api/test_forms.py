@@ -6,8 +6,6 @@ Tests form CRUD operations, access levels, and role-based access.
 
 import pytest
 
-from tests.e2e.conftest import poll_until
-
 
 @pytest.mark.e2e
 class TestFormCRUD:
@@ -236,79 +234,9 @@ class TestFormFileSync:
             headers=platform_admin.headers,
         )
 
-    def test_form_file_path_is_workspace_relative(
-        self, e2e_client, platform_admin, form_with_file
-    ):
-        """Form file_path uses workspace-relative path."""
-        form = form_with_file
-        # The form should have a file_path that is relative (not absolute)
-        if "file_path" in form:
-            file_path = form["file_path"]
-            assert not file_path.startswith("/"), \
-                f"Form file_path should be relative: {file_path}"
-            assert "forms/" in file_path or file_path.endswith(".yaml"), \
-                f"Form file should be in forms/ or have .yaml extension: {file_path}"
-
-    def test_form_file_can_be_listed_in_editor(
-        self, e2e_client, platform_admin, form_with_file
-    ):
-        """Form file appears in editor file listing."""
-        form = form_with_file
-
-        def check_form_file():
-            # List files in forms directory
-            response = e2e_client.get(
-                "/api/files/editor",
-                headers=platform_admin.headers,
-                params={"path": "forms"},
-            )
-            # Forms directory may or may not exist depending on implementation
-            if response.status_code == 200:
-                files = response.json()
-                if isinstance(files, list):
-                    file_names = [f.get("name", f.get("path", "")) for f in files]
-                    if any(
-                        form["id"] in name or "file_sync_test" in name.lower()
-                        for name in file_names
-                    ):
-                        return True
-            return None
-
-        # Poll for file sync - may or may not find it depending on implementation
-        poll_until(check_form_file, max_wait=2.0, interval=0.2)
-
-    def test_form_file_can_be_deleted_via_editor(
-        self, e2e_client, platform_admin
-    ):
-        """Deleting form file via editor properly handles the form."""
-        # Create a form specifically for this test
-        response = e2e_client.post(
-            "/api/forms",
-            headers=platform_admin.headers,
-            json={
-                "name": "Delete Test Form",
-                "workflow_id": None,
-                "form_schema": {"fields": [{"name": "x", "type": "text", "label": "X"}]},
-                "access_level": "authenticated",
-            },
-        )
-        assert response.status_code == 201
-        form = response.json()
-        form_id = form["id"]
-
-        # If form has a file_path, try to delete it via editor
-        if "file_path" in form and form["file_path"]:
-            file_path = form["file_path"]
-            response = e2e_client.delete(
-                f"/api/files/editor?path={file_path}",
-                headers=platform_admin.headers,
-            )
-            # Should either succeed (204) or not find the file (404)
-            assert response.status_code in [200, 204, 404], \
-                f"Delete form file failed: {response.status_code}"
-
-        # Cleanup - delete the form itself
-        e2e_client.delete(f"/api/forms/{form_id}", headers=platform_admin.headers)
+    # NOTE: Form file_path tests removed as forms are now "fully virtual"
+    # Forms no longer have a file_path column - their virtual path is computed
+    # from their ID (forms/{uuid}.form.json) for git sync.
 
 
 

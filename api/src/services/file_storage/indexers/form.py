@@ -165,24 +165,9 @@ class FormIndexer:
             content_modified = True
             logger.info(f"Injecting ID {form_id} into form file: {path}")
 
-        # Pre-check: Does a form already exist at this file_path with a different ID?
-        # This prevents "duplicate key" errors on the file_path unique constraint
-        # and ensures we preserve the DB's ID (which may have FK references)
-        existing_form_stmt = select(Form).where(Form.file_path == path)
-        existing_form_result = await self.db.execute(existing_form_stmt)
-        existing_form = existing_form_result.scalar_one_or_none()
-
-        if existing_form and existing_form.id != form_id:
-            # ID mismatch! The DB has a different ID than the JSON file.
-            # Use DB's ID to preserve FK references (form_role_assignments, etc.)
-            old_file_id = form_id
-            form_id = existing_form.id
-            form_data["id"] = str(form_id)
-            content_modified = True
-            logger.warning(
-                f"Form at {path} had ID mismatch. "
-                f"File had {old_file_id}, DB has {form_id}. Using DB ID."
-            )
+        # Forms are now "fully virtual" - their path is computed from their ID
+        # (e.g., forms/{uuid}.form.json), so we don't need a separate file_path column.
+        # We just use the ID from the JSON content directly.
 
         now = datetime.utcnow()
 
@@ -215,7 +200,6 @@ class FormIndexer:
             launch_workflow_id=launch_workflow_id,
             default_launch_params=form_data.get("default_launch_params"),
             allowed_query_params=form_data.get("allowed_query_params"),
-            file_path=path,
             is_active=form_data.get("is_active", True),
             last_seen_at=now,
             created_by="file_sync",
@@ -229,7 +213,6 @@ class FormIndexer:
                 "launch_workflow_id": launch_workflow_id,
                 "default_launch_params": form_data.get("default_launch_params"),
                 "allowed_query_params": form_data.get("allowed_query_params"),
-                "file_path": path,
                 "is_active": form_data.get("is_active", True),
                 "last_seen_at": now,
                 "updated_at": now,
@@ -295,19 +278,33 @@ class FormIndexer:
         Delete the form associated with a file.
 
         Called when a file is deleted to clean up form records from the database.
+        For virtual forms, the ID is extracted from the path (forms/{uuid}.form.json).
 
         Args:
-            path: File path that was deleted
+            path: File path that was deleted (e.g., "forms/{uuid}.form.json")
 
         Returns:
             Number of forms deleted
         """
-        # Delete the form for this path (cascade will delete form_fields)
-        stmt = delete(Form).where(Form.file_path == path)
+        # Extract form ID from path: forms/{uuid}.form.json -> uuid
+        import re
+        match = re.match(r"forms/([a-f0-9-]+)\.form\.json$", path, re.IGNORECASE)
+        if not match:
+            logger.warning(f"Cannot extract form ID from path: {path}")
+            return 0
+
+        try:
+            form_id = UUID(match.group(1))
+        except ValueError:
+            logger.warning(f"Invalid UUID in form path: {path}")
+            return 0
+
+        # Delete the form by ID (cascade will delete form_fields)
+        stmt = delete(Form).where(Form.id == form_id)
         result = await self.db.execute(stmt)
         count = result.rowcount if result.rowcount else 0
 
         if count > 0:
-            logger.info(f"Deleted {count} form(s) from database for deleted file: {path}")
+            logger.info(f"Deleted form {form_id} from database for deleted file: {path}")
 
         return count

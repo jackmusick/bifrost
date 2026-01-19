@@ -47,7 +47,6 @@ class Agent(Base):
     is_active: Mapped[bool] = mapped_column(Boolean, default=True)
     is_coding_mode: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
     is_system: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
-    file_path: Mapped[str | None] = mapped_column(String(1000), default=None)
     # Knowledge namespaces this agent can search (RAG)
     knowledge_sources: Mapped[list[str]] = mapped_column(
         ARRAY(String), nullable=False, default=list, server_default='{}'
@@ -91,12 +90,6 @@ class Agent(Base):
     )
 
     __table_args__ = (
-        Index(
-            "ix_agents_file_path_unique",
-            "file_path",
-            unique=True,
-            postgresql_where=text("file_path IS NOT NULL"),
-        ),
         Index("ix_agents_organization_id", "organization_id"),
         Index("ix_agents_is_active", "is_active"),
     )

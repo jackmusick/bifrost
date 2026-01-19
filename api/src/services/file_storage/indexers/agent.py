@@ -145,24 +145,9 @@ class AgentIndexer:
             content_modified = True
             logger.info(f"Injecting ID {agent_id} into agent file: {path}")
 
-        # Pre-check: Does an agent already exist at this file_path with a different ID?
-        # This prevents "duplicate key" errors on the file_path unique constraint
-        # and ensures we preserve the DB's ID (which may have FK references)
-        existing_agent_stmt = select(Agent).where(Agent.file_path == path)
-        existing_agent_result = await self.db.execute(existing_agent_stmt)
-        existing_agent = existing_agent_result.scalar_one_or_none()
-
-        if existing_agent and existing_agent.id != agent_id:
-            # ID mismatch! The DB has a different ID than the JSON file.
-            # Use DB's ID to preserve FK references (agent_tools, delegations, etc.)
-            old_file_id = agent_id
-            agent_id = existing_agent.id
-            agent_data["id"] = str(agent_id)
-            content_modified = True
-            logger.warning(
-                f"Agent at {path} had ID mismatch. "
-                f"File had {old_file_id}, DB has {agent_id}. Using DB ID."
-            )
+        # Agents are now "fully virtual" - their path is computed from their ID
+        # (e.g., agents/{uuid}.agent.json), so we don't need a separate file_path column.
+        # We just use the ID from the JSON content directly.
 
         # Parse channels
         channels = agent_data.get("channels", ["chat"])
@@ -186,7 +171,6 @@ class AgentIndexer:
             channels=channels,
             knowledge_sources=knowledge_sources,
             is_active=agent_data.get("is_active", True),
-            file_path=path,
             created_by="file_sync",
         ).on_conflict_do_update(
             index_elements=[Agent.id],
@@ -197,7 +181,6 @@ class AgentIndexer:
                 "system_prompt": system_prompt,
                 "channels": channels,
                 "knowledge_sources": knowledge_sources,
-                "file_path": path,
                 "is_active": agent_data.get("is_active", True),
                 "updated_at": now,
                 # NOTE: organization_id and access_level are NOT updated
@@ -267,19 +250,33 @@ class AgentIndexer:
         Delete the agent associated with a file.
 
         Called when a file is deleted to clean up agent records from the database.
+        For virtual agents, the ID is extracted from the path (agents/{uuid}.agent.json).
 
         Args:
-            path: File path that was deleted
+            path: File path that was deleted (e.g., "agents/{uuid}.agent.json")
 
         Returns:
             Number of agents deleted
         """
-        # Delete the agent for this path (cascade will delete agent_tools and agent_delegations)
-        stmt = delete(Agent).where(Agent.file_path == path)
+        # Extract agent ID from path: agents/{uuid}.agent.json -> uuid
+        import re
+        match = re.match(r"agents/([a-f0-9-]+)\.agent\.json$", path, re.IGNORECASE)
+        if not match:
+            logger.warning(f"Cannot extract agent ID from path: {path}")
+            return 0
+
+        try:
+            agent_id = UUID(match.group(1))
+        except ValueError:
+            logger.warning(f"Invalid UUID in agent path: {path}")
+            return 0
+
+        # Delete the agent by ID (cascade will delete agent_tools and agent_delegations)
+        stmt = delete(Agent).where(Agent.id == agent_id)
         result = await self.db.execute(stmt)
         count = result.rowcount if result.rowcount else 0
 
         if count > 0:
-            logger.info(f"Deleted {count} agent(s) from database for deleted file: {path}")
+            logger.info(f"Deleted agent {agent_id} from database for deleted file: {path}")
 
         return count

@@ -119,7 +119,6 @@ def _agent_to_public(agent: Agent) -> AgentPublic:
         is_active=agent.is_active,
         is_coding_mode=agent.is_coding_mode,
         is_system=agent.is_system,
-        file_path=agent.file_path,
         created_by=agent.created_by,
         created_at=agent.created_at,
         updated_at=agent.updated_at,

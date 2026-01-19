@@ -270,7 +270,6 @@ class FormPublic(BaseModel):
     access_level: FormAccessLevel | None = None
     organization_id: UUID | None = None
     is_active: bool
-    file_path: str | None = Field(default=None, description="Workspace-relative file path (e.g., 'forms/my-form-abc123.form.json')")
     created_at: datetime | None = None
     updated_at: datetime | None = None
 
@@ -323,7 +322,6 @@ class FormPublic(BaseModel):
                 "access_level": data.access_level,
                 "organization_id": data.organization_id,
                 "is_active": data.is_active,
-                "file_path": data.file_path,
                 "created_at": data.created_at,
                 "updated_at": data.updated_at,
             }

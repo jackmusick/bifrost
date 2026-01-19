@@ -119,7 +119,6 @@ class AgentPublic(BaseModel):
     is_active: bool
     is_coding_mode: bool = False
     is_system: bool = False
-    file_path: str | None = None
     created_by: str
     created_at: datetime
     updated_at: datetime

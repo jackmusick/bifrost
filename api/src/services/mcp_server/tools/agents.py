@@ -241,7 +241,6 @@ async def get_agent(
                 "is_active": agent.is_active,
                 "is_coding_mode": agent.is_coding_mode,
                 "is_system": agent.is_system,
-                "file_path": agent.file_path,
                 "created_by": agent.created_by,
                 "created_at": agent.created_at.isoformat() if agent.created_at else None,
                 "updated_at": agent.updated_at.isoformat() if agent.updated_at else None,
@@ -487,7 +486,6 @@ async def create_agent(
                 "is_coding_mode": agent.is_coding_mode,
                 "tool_count": len(tools),
                 "delegated_agent_count": len(delegated_agents),
-                "file_path": agent.file_path,
             })
 
     except Exception as e:
@@ -743,7 +741,6 @@ async def update_agent(
                 "id": str(agent.id),
                 "name": agent.name,
                 "updates": updates_made,
-                "file_path": agent.file_path,
             })
 
     except Exception as e:

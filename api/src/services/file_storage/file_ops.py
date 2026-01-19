@@ -452,15 +452,10 @@ class FileOperationsService:
             logger.info(f"Updated workflow {entity_id} path: {old_path} -> {new_path}")
 
         elif entity_type == "form" and entity_id:
-            # Update form.file_path
-            stmt = update(Form).where(
-                Form.id == entity_id
-            ).values(
-                file_path=new_path,
-                updated_at=now,
-            )
-            await self.db.execute(stmt)
-            logger.info(f"Updated form {entity_id} path: {old_path} -> {new_path}")
+            # Forms are now "fully virtual" - their path is computed from their ID
+            # (forms/{uuid}.form.json), so we don't track file_path separately.
+            # Just log the rename for debugging.
+            logger.info(f"Form {entity_id} virtual path update: {old_path} -> {new_path}")
 
         elif entity_type == "app" and entity_id:
             # Update application (no file_path column, apps are in applications table)
@@ -469,15 +464,10 @@ class FileOperationsService:
             logger.info(f"App {entity_id} path update: {old_path} -> {new_path}")
 
         elif entity_type == "agent" and entity_id:
-            # Update agent.file_path
-            stmt = update(Agent).where(
-                Agent.id == entity_id
-            ).values(
-                file_path=new_path,
-                updated_at=now,
-            )
-            await self.db.execute(stmt)
-            logger.info(f"Updated agent {entity_id} path: {old_path} -> {new_path}")
+            # Agents are now "fully virtual" - their path is computed from their ID
+            # (agents/{uuid}.agent.json), so we don't track file_path separately.
+            # Just log the rename for debugging.
+            logger.info(f"Agent {entity_id} virtual path update: {old_path} -> {new_path}")
 
         elif entity_type == "module":
             # Module content is stored in workspace_files.content

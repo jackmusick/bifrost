@@ -84,7 +84,6 @@ def mock_form():
     mock.launch_workflow_id = None
     mock.is_active = True
     mock.access_level = MagicMock(value="authenticated")
-    mock.file_path = "forms/test-form.form.json"
 
     # Mock fields
     field = MagicMock()
