@@ -149,28 +149,16 @@ export function createOrgScopedFileOperations(
 
 	return {
 		async list(path: string): Promise<FileNode[]> {
-			// Root: return org containers
+			// Root: return org containers for all organizations
 			if (path === "") {
-				// Fetch all files recursively to determine which orgs have content
-				const allFiles = await fileService.listFiles("", true);
-
-				// Group files by organization
-				const orgHasContent = new Set<string>();
-				orgHasContent.add(GLOBAL_ORG_ID); // Always show Global
-
-				for (const file of allFiles) {
-					const orgId = file.organization_id ?? GLOBAL_ORG_ID;
-					orgHasContent.add(orgId);
-				}
-
 				// Build org containers (Global first, then others alphabetically)
 				const containers: FileNode[] = [
 					createOrgContainer(null, "Global"),
 				];
 
-				const sortedOrgs = organizations
-					.filter((org) => orgHasContent.has(org.id))
-					.sort((a, b) => a.name.localeCompare(b.name));
+				const sortedOrgs = [...organizations].sort((a, b) =>
+					a.name.localeCompare(b.name),
+				);
 
 				for (const org of sortedOrgs) {
 					containers.push(createOrgContainer(org.id, org.name));
