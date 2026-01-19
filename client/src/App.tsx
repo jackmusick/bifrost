@@ -153,9 +153,9 @@ const ApplicationPreview = lazy(() =>
 		default: m.AppPreview,
 	})),
 );
-const DependencyCanvas = lazy(() =>
-	import("@/pages/DependencyCanvas").then((m) => ({
-		default: m.DependencyCanvas,
+const EntityManagement = lazy(() =>
+	import("@/pages/EntityManagement").then((m) => ({
+		default: m.EntityManagement,
 	})),
 );
 
@@ -393,12 +393,12 @@ function AppRoutes() {
 							}
 						/>
 
-						{/* Dependencies - PlatformAdmin only */}
+						{/* Entity Management - PlatformAdmin only */}
 						<Route
 							path="dependencies"
 							element={
 								<ProtectedRoute requirePlatformAdmin>
-									<DependencyCanvas />
+									<EntityManagement />
 								</ProtectedRoute>
 							}
 						/>

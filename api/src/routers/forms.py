@@ -24,6 +24,7 @@ from sqlalchemy.orm import selectinload
 from src.core.auth import Context, CurrentActiveUser, CurrentSuperuser
 from src.core.database import DbSession
 from src.core.org_filter import resolve_org_filter
+from src.models.enums import FormAccessLevel
 from src.repositories.forms import FormRepository
 from src.models import Form as FormORM, FormField as FormFieldORM, FormRole as FormRoleORM, UserRole as UserRoleORM
 from src.models import Workflow as WorkflowORM
@@ -700,6 +701,16 @@ async def update_form(
         form.is_active = request.is_active
     if request.access_level is not None:
         form.access_level = request.access_level
+
+    # Clear all role assignments if requested
+    if request.clear_roles:
+        from src.models.orm.forms import FormRole
+        await db.execute(
+            delete(FormRole).where(FormRole.form_id == form_id)
+        )
+        # Also set to role_based access level (effectively no access)
+        form.access_level = FormAccessLevel.ROLE_BASED
+        logger.info(f"Cleared all role assignments for form '{form.name}'")
 
     form.updated_at = datetime.utcnow()
 

@@ -102,6 +102,7 @@ class AgentUpdate(BaseModel):
     role_ids: list[str] | None = Field(default=None, description="List of role IDs that can access this agent (for role_based access)")
     knowledge_sources: list[str] | None = Field(default=None, description="List of knowledge namespaces this agent can search")
     system_tools: list[str] | None = Field(default=None, description="List of system tool names enabled for this agent")
+    clear_roles: bool = Field(default=False, description="If true, clear all role assignments (sets to role_based with no roles)")
 
 
 class AgentPublic(BaseModel):
@@ -156,10 +157,17 @@ class AgentSummary(BaseModel):
     channels: list[str]
     is_active: bool
     is_coding_mode: bool = False
+    access_level: AgentAccessLevel
+    organization_id: UUID | None = None
+    created_at: datetime
 
-    @field_serializer("id")
-    def serialize_uuid(self, v: UUID) -> str:
-        return str(v)
+    @field_serializer("id", "organization_id")
+    def serialize_uuid(self, v: UUID | None) -> str | None:
+        return str(v) if v else None
+
+    @field_serializer("created_at")
+    def serialize_dt(self, dt: datetime) -> str:
+        return dt.isoformat()
 
 
 # ==================== CONVERSATION MODELS ====================

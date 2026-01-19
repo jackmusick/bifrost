@@ -3081,22 +3081,22 @@ export interface paths {
          * Execute workflow via API key
          * @description Execute an endpoint-enabled workflow using an API key for authentication
          */
-        get: operations["execute_endpoint_api_endpoints__workflow_name__get"];
+        get: operations["execute_endpoint_api_endpoints__workflow_name__put"];
         /**
          * Execute workflow via API key
          * @description Execute an endpoint-enabled workflow using an API key for authentication
          */
-        put: operations["execute_endpoint_api_endpoints__workflow_name__get"];
+        put: operations["execute_endpoint_api_endpoints__workflow_name__put"];
         /**
          * Execute workflow via API key
          * @description Execute an endpoint-enabled workflow using an API key for authentication
          */
-        post: operations["execute_endpoint_api_endpoints__workflow_name__get"];
+        post: operations["execute_endpoint_api_endpoints__workflow_name__put"];
         /**
          * Execute workflow via API key
          * @description Execute an endpoint-enabled workflow using an API key for authentication
          */
-        delete: operations["execute_endpoint_api_endpoints__workflow_name__get"];
+        delete: operations["execute_endpoint_api_endpoints__workflow_name__put"];
         options?: never;
         head?: never;
         patch?: never;
@@ -6561,6 +6561,8 @@ export interface components {
              * @default false
              */
             is_coding_mode: boolean;
+            /** Created At */
+            created_at: string;
         };
         /**
          * AgentUpdate
@@ -11572,6 +11574,11 @@ export interface components {
             issuer: string;
             /** Account Name */
             account_name: string;
+            /**
+             * Is Existing
+             * @default false
+             */
+            is_existing: boolean;
         };
         /**
          * MFAStatusResponse
@@ -11591,11 +11598,20 @@ export interface components {
         };
         /**
          * MFAVerifyRequest
-         * @description Request to verify MFA code.
+         * @description Request to verify MFA code during login.
          */
         MFAVerifyRequest: {
+            /** Mfa Token */
+            mfa_token: string;
             /** Code */
             code: string;
+            /**
+             * Trust Device
+             * @default false
+             */
+            trust_device: boolean;
+            /** Device Name */
+            device_name?: string | null;
         };
         /**
          * MFAVerifyResponse
@@ -11976,15 +11992,29 @@ export interface components {
         };
         /**
          * OAuthCallbackRequest
-         * @description OAuth callback request (for when frontend handles callback).
+         * @description Request model for OAuth callback endpoint
          */
         OAuthCallbackRequest: {
-            /** Provider */
-            provider: string;
-            /** Code */
+            /**
+             * Code
+             * @description Authorization code from OAuth provider
+             */
             code: string;
-            /** State */
-            state: string;
+            /**
+             * State
+             * @description State parameter for CSRF protection
+             */
+            state?: string | null;
+            /**
+             * Redirect Uri
+             * @description Redirect URI used in authorization request
+             */
+            redirect_uri?: string | null;
+            /**
+             * Organization Id
+             * @description Organization ID for org-specific token storage (optional, for org overrides)
+             */
+            organization_id?: string | null;
         };
         /**
          * OAuthCallbackResponse
@@ -16458,6 +16488,12 @@ export interface components {
              * @description Workspace-relative file path with /workspace/ prefix (e.g., '/workspace/workflows/my_workflow.py')
              */
             relative_file_path?: string | null;
+            /**
+             * Created At
+             * Format: date-time
+             * @description When the workflow was first discovered
+             */
+            created_at: string;
         };
         /**
          * WorkflowMetricsResponse
@@ -16698,70 +16734,6 @@ export interface components {
             icon?: string | null;
         };
         /**
-         * OAuthCallbackRequest
-         * @description Request model for OAuth callback endpoint
-         */
-        src__models__contracts__oauth__OAuthCallbackRequest: {
-            /**
-             * Code
-             * @description Authorization code from OAuth provider
-             */
-            code: string;
-            /**
-             * State
-             * @description State parameter for CSRF protection
-             */
-            state?: string | null;
-            /**
-             * Redirect Uri
-             * @description Redirect URI used in authorization request
-             */
-            redirect_uri?: string | null;
-            /**
-             * Organization Id
-             * @description Organization ID for org-specific token storage (optional, for org overrides)
-             */
-            organization_id?: string | null;
-        };
-        /**
-         * MFASetupResponse
-         * @description MFA setup response with secret.
-         */
-        src__routers__auth__MFASetupResponse: {
-            /** Secret */
-            secret: string;
-            /** Qr Code Uri */
-            qr_code_uri: string;
-            /** Provisioning Uri */
-            provisioning_uri: string;
-            /** Issuer */
-            issuer: string;
-            /** Account Name */
-            account_name: string;
-            /**
-             * Is Existing
-             * @default false
-             */
-            is_existing: boolean;
-        };
-        /**
-         * MFAVerifyRequest
-         * @description Request to verify MFA code during login.
-         */
-        src__routers__auth__MFAVerifyRequest: {
-            /** Mfa Token */
-            mfa_token: string;
-            /** Code */
-            code: string;
-            /**
-             * Trust Device
-             * @default false
-             */
-            trust_device: boolean;
-            /** Device Name */
-            device_name?: string | null;
-        };
-        /**
          * UserCreate
          * @description User creation request model.
          */
@@ -16775,6 +16747,42 @@ export interface components {
             password: string;
             /** Name */
             name?: string | null;
+        };
+        /**
+         * MFASetupResponse
+         * @description MFA setup response with secret.
+         */
+        src__routers__mfa__MFASetupResponse: {
+            /** Secret */
+            secret: string;
+            /** Qr Code Uri */
+            qr_code_uri: string;
+            /** Provisioning Uri */
+            provisioning_uri: string;
+            /** Issuer */
+            issuer: string;
+            /** Account Name */
+            account_name: string;
+        };
+        /**
+         * MFAVerifyRequest
+         * @description Request to verify MFA code.
+         */
+        src__routers__mfa__MFAVerifyRequest: {
+            /** Code */
+            code: string;
+        };
+        /**
+         * OAuthCallbackRequest
+         * @description OAuth callback request (for when frontend handles callback).
+         */
+        src__routers__oauth_sso__OAuthCallbackRequest: {
+            /** Provider */
+            provider: string;
+            /** Code */
+            code: string;
+            /** State */
+            state: string;
         };
     };
     responses: never;
@@ -16877,7 +16885,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["src__routers__auth__MFASetupResponse"];
+                    "application/json": components["schemas"]["MFASetupResponse"];
                 };
             };
             /** @description Validation Error */
@@ -16920,7 +16928,7 @@ export interface operations {
         };
         requestBody: {
             content: {
-                "application/json": components["schemas"]["src__routers__auth__MFAVerifyRequest"];
+                "application/json": components["schemas"]["MFAVerifyRequest"];
             };
         };
         responses: {
@@ -17323,7 +17331,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["MFASetupResponse"];
+                    "application/json": components["schemas"]["src__routers__mfa__MFASetupResponse"];
                 };
             };
         };
@@ -17337,7 +17345,7 @@ export interface operations {
         };
         requestBody: {
             content: {
-                "application/json": components["schemas"]["MFAVerifyRequest"];
+                "application/json": components["schemas"]["src__routers__mfa__MFAVerifyRequest"];
             };
         };
         responses: {
@@ -17587,7 +17595,7 @@ export interface operations {
         };
         requestBody: {
             content: {
-                "application/json": components["schemas"]["OAuthCallbackRequest"];
+                "application/json": components["schemas"]["src__routers__oauth_sso__OAuthCallbackRequest"];
             };
         };
         responses: {
@@ -21373,7 +21381,7 @@ export interface operations {
         };
         requestBody: {
             content: {
-                "application/json": components["schemas"]["src__models__contracts__oauth__OAuthCallbackRequest"];
+                "application/json": components["schemas"]["OAuthCallbackRequest"];
             };
         };
         responses: {
@@ -21468,7 +21476,7 @@ export interface operations {
             };
         };
     };
-    execute_endpoint_api_endpoints__workflow_name__get: {
+    execute_endpoint_api_endpoints__workflow_name__put: {
         parameters: {
             query?: never;
             header: {
@@ -21501,7 +21509,7 @@ export interface operations {
             };
         };
     };
-    execute_endpoint_api_endpoints__workflow_name__get: {
+    execute_endpoint_api_endpoints__workflow_name__put: {
         parameters: {
             query?: never;
             header: {
@@ -21534,7 +21542,7 @@ export interface operations {
             };
         };
     };
-    execute_endpoint_api_endpoints__workflow_name__get: {
+    execute_endpoint_api_endpoints__workflow_name__put: {
         parameters: {
             query?: never;
             header: {
@@ -21567,7 +21575,7 @@ export interface operations {
             };
         };
     };
-    execute_endpoint_api_endpoints__workflow_name__get: {
+    execute_endpoint_api_endpoints__workflow_name__put: {
         parameters: {
             query?: never;
             header: {

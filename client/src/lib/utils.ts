@@ -59,7 +59,12 @@ export function formatDate(
  * @returns Formatted date string (e.g., "Jan 15, 2025")
  */
 export function formatDateShort(dateString: string | Date): string {
-	return formatDate(dateString, {
+	const date =
+		typeof dateString === "string"
+			? parseBackendDate(dateString)
+			: dateString;
+
+	return date.toLocaleDateString(undefined, {
 		year: "numeric",
 		month: "short",
 		day: "numeric",

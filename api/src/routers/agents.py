@@ -23,6 +23,7 @@ from src.core.auth import CurrentActiveUser, CurrentSuperuser
 from src.core.database import DbSession
 from src.core.org_filter import resolve_org_filter
 from src.models.contracts.agents import (
+    AgentAccessLevel,
     AgentCreate,
     AgentPublic,
     AgentSummary,
@@ -251,17 +252,7 @@ async def list_agents(
         # Regular users use list_agents with built-in cascade + role-based access
         agents = await repo.list_agents(active_only=active_only)
 
-    return [
-        AgentSummary(
-            id=a.id,
-            name=a.name,
-            description=a.description,
-            channels=a.channels,
-            is_active=a.is_active,
-            is_coding_mode=a.is_coding_mode,
-        )
-        for a in agents
-    ]
+    return [AgentSummary.model_validate(a) for a in agents]
 
 
 @router.post("", status_code=status.HTTP_201_CREATED)
@@ -524,8 +515,17 @@ async def update_agent(
             except ValueError:
                 logger.warning(f"Invalid delegate agent ID: {delegate_id}")
 
-    # Update role relationships if provided
-    if agent_data.role_ids is not None:
+    # Clear all role assignments if requested
+    if agent_data.clear_roles:
+        await db.execute(
+            delete(AgentRole).where(AgentRole.agent_id == agent_id)
+        )
+        # Also set to role_based access level (effectively no access)
+        agent.access_level = AgentAccessLevel.ROLE_BASED
+        logger.info(f"Cleared all role assignments for agent '{agent.name}'")
+
+    # Update role relationships if provided (and not clearing)
+    elif agent_data.role_ids is not None:
         await db.execute(
             delete(AgentRole).where(AgentRole.agent_id == agent_id)
         )
@@ -756,16 +756,7 @@ async def get_agent_delegations(
             detail=f"Agent {agent_id} not found",
         )
 
-    return [
-        AgentSummary(
-            id=a.id,
-            name=a.name,
-            description=a.description,
-            channels=a.channels,
-            is_active=a.is_active,
-        )
-        for a in agent.delegated_agents
-    ]
+    return [AgentSummary.model_validate(a) for a in agent.delegated_agents]
 
 
 @router.post("/{agent_id}/delegations", status_code=status.HTTP_201_CREATED)
@@ -820,13 +811,7 @@ async def assign_delegations_to_agent(
                         parent_agent_id=agent_id,
                         child_agent_id=delegate.id,
                     ))
-                    added_delegations.append(AgentSummary(
-                        id=delegate.id,
-                        name=delegate.name,
-                        description=delegate.description,
-                        channels=delegate.channels,
-                        is_active=delegate.is_active,
-                    ))
+                    added_delegations.append(AgentSummary.model_validate(delegate))
         except ValueError:
             logger.warning(f"Invalid delegate agent ID: {delegate_id}")
 

@@ -111,6 +111,7 @@ def _convert_workflow_orm_to_schema(workflow: WorkflowORM) -> WorkflowMetadata:
         value=float(workflow.value or 0.0),
         source_file_path=workflow.path,
         relative_file_path=_extract_relative_path(workflow.path),
+        created_at=workflow.created_at,
     )
 
 
@@ -825,6 +826,16 @@ async def update_workflow(
                     detail=f"Invalid access_level: '{request.access_level}'. Must be 'authenticated' or 'role_based'",
                 )
             workflow.access_level = request.access_level
+
+        # Clear all role assignments if requested
+        if request.clear_roles:
+            from src.models.orm.workflow_roles import WorkflowRole
+            await db.execute(
+                delete(WorkflowRole).where(WorkflowRole.workflow_id == workflow_id)
+            )
+            # Also set to role_based access level (effectively no access)
+            workflow.access_level = "role_based"
+            logger.info(f"Cleared all role assignments for workflow '{workflow.name}'")
 
         await db.commit()
         await db.refresh(workflow)

@@ -135,7 +135,7 @@ const navSections: NavSection[] = [
 				requiresPlatformAdmin: true,
 			},
 			{
-				title: "Dependencies",
+				title: "Entity Management",
 				href: "/dependencies",
 				icon: Network,
 				requiresPlatformAdmin: true,

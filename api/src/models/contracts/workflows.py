@@ -101,6 +101,9 @@ class WorkflowMetadata(BaseModel):
     source_file_path: str | None = Field(default=None, description="Full file path to the workflow source code")
     relative_file_path: str | None = Field(default=None, description="Workspace-relative file path with /workspace/ prefix (e.g., '/workspace/workflows/my_workflow.py')")
 
+    # Timestamps
+    created_at: datetime = Field(..., description="When the workflow was first discovered")
+
 
 class DataProviderMetadata(BaseModel):
     """Data provider metadata from @data_provider decorator.
@@ -238,6 +241,10 @@ class WorkflowUpdateRequest(BaseModel):
     access_level: str | None = Field(
         default=None,
         description="Access level: 'authenticated' (any logged-in user) or 'role_based' (specific roles required)"
+    )
+    clear_roles: bool = Field(
+        default=False,
+        description="If true, clear all role assignments for this workflow (sets to role_based with no roles)"
     )
 
 

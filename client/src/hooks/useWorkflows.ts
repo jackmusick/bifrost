@@ -5,7 +5,7 @@
 
 import { useEffect, useMemo } from "react";
 import { useQueryClient } from "@tanstack/react-query";
-import { $api, apiClient, withUserContext } from "@/lib/api-client";
+import { $api, apiClient, authFetch, withUserContext } from "@/lib/api-client";
 import { useWorkflowsStore } from "@/stores/workflowsStore";
 import type { components } from "@/lib/v1";
 
@@ -82,24 +82,24 @@ export function useUpdateWorkflow() {
 			updates: {
 				organizationId?: string | null;
 				accessLevel?: "authenticated" | "role_based";
+				clearRoles?: boolean;
 			},
 		) => {
 			// Build request body with only provided fields
-			const body: Record<string, string | null | undefined> = {};
+			const body: Record<string, string | null | undefined | boolean> = {};
 			if (updates.organizationId !== undefined) {
 				body.organization_id = updates.organizationId;
 			}
 			if (updates.accessLevel !== undefined) {
 				body.access_level = updates.accessLevel;
 			}
+			if (updates.clearRoles !== undefined) {
+				body.clear_roles = updates.clearRoles;
+			}
 
-			// Use direct fetch since the PATCH endpoint might not be in generated types
-			const response = await fetch(`/api/workflows/${workflowId}`, {
+			// Use authFetch for CSRF protection (PATCH endpoint not in generated types)
+			const response = await authFetch(`/api/workflows/${workflowId}`, {
 				method: "PATCH",
-				headers: {
-					"Content-Type": "application/json",
-				},
-				credentials: "include",
 				body: JSON.stringify(body),
 			});
 

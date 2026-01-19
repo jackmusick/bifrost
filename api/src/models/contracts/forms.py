@@ -238,6 +238,7 @@ class FormUpdate(BaseModel):
     form_schema: dict | FormSchema | None = None
     is_active: bool | None = None
     access_level: FormAccessLevel | None = None
+    clear_roles: bool = False
 
     @field_validator("form_schema", mode="before")
     @classmethod
