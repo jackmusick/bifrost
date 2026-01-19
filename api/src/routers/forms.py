@@ -701,6 +701,9 @@ async def update_form(
         form.is_active = request.is_active
     if request.access_level is not None:
         form.access_level = request.access_level
+    # Use model_fields_set to distinguish "not provided" from "explicitly set to null"
+    if "organization_id" in request.model_fields_set:
+        form.organization_id = request.organization_id
 
     # Clear all role assignments if requested
     if request.clear_roles:
