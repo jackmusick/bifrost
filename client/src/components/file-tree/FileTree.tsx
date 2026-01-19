@@ -497,22 +497,53 @@ export function FileTree({
 					// Ignore parse errors
 				}
 
-				// Check if this is a cross-org move (dropping onto org container)
-				if (targetFolderNode?.metadata?.isOrgContainer) {
-					const sourceOrgId = draggedFile?.metadata?.organizationId;
-					const targetOrgId = targetFolderNode.metadata?.organizationId;
+				// Check if this is a cross-org move by comparing org prefixes in paths
+				// Paths look like "org:global/..." or "org:uuid/..."
+				const getOrgFromPath = (path: string): { id: string | null; name: string } | null => {
+					if (!path.startsWith("org:")) return null;
+					const withoutPrefix = path.slice(4); // Remove "org:"
+					const slashIdx = withoutPrefix.indexOf("/");
+					const orgPart = slashIdx === -1 ? withoutPrefix : withoutPrefix.slice(0, slashIdx);
+					if (orgPart === "global") {
+						return { id: null, name: "Global" };
+					}
+					return { id: orgPart, name: orgPart }; // Name will be resolved from metadata if available
+				};
 
-					if (sourceOrgId !== targetOrgId) {
-						// Check if file is an entity (can be moved between orgs)
-						if (!draggedFile?.entityType) {
-							toast.error("Only entities can be moved between organizations");
-							return;
-						}
+				const sourceOrg = getOrgFromPath(draggedPath);
+				const targetPath = targetFolder || "";
+				const targetOrg = getOrgFromPath(targetPath);
 
-						// Show confirmation dialog
-						setPendingOrgMove({ file: draggedFile, targetOrg: targetFolderNode });
+				// If both have org prefixes and they differ, it's a cross-org move
+				if (sourceOrg && targetOrg && sourceOrg.id !== targetOrg.id) {
+					// Check if file is an entity (can be moved between orgs)
+					if (!draggedFile?.entityType) {
+						toast.error("Only entities can be moved between organizations");
 						return;
 					}
+
+					// Get target org name from the folder node metadata or use the extracted name
+					const targetOrgName = targetFolderNode?.metadata?.isOrgContainer
+						? targetFolderNode.name
+						: targetOrg.name;
+
+					// Create synthetic org container for the confirmation dialog
+					const syntheticTargetOrg: FileNode = {
+						path: `org:${targetOrg.id ?? "global"}`,
+						name: targetOrgName,
+						type: "folder",
+						size: null,
+						extension: null,
+						modified: new Date().toISOString(),
+						metadata: {
+							isOrgContainer: true,
+							organizationId: targetOrg.id,
+						},
+					};
+
+					// Show confirmation dialog
+					setPendingOrgMove({ file: draggedFile, targetOrg: syntheticTargetOrg });
+					return;
 				}
 
 				// Don't allow dropping on itself
