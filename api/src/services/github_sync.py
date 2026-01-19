@@ -1587,10 +1587,11 @@ class GitHubSyncService:
         indexer based on the file path pattern.
 
         Args:
-            path: File path (e.g., "apps/{id}.app.json")
-            content: JSON content bytes
+            path: File path (e.g., "apps/my-app/app.json", "forms/{id}.form.json")
+            content: File content bytes
         """
         from src.services.file_storage.indexers.agent import AgentIndexer
+        from src.services.file_storage.indexers.app import AppIndexer
         from src.services.file_storage.indexers.form import FormIndexer
 
         entity_type = VirtualFileProvider.get_entity_type_from_path(path)
@@ -1603,6 +1604,14 @@ class GitHubSyncService:
             indexer = AgentIndexer(self.db)
             await indexer.index_agent(path, content)
             logger.debug(f"Imported agent from {path}")
+        elif entity_type == "app":
+            indexer = AppIndexer(self.db)
+            await indexer.index_app_json(path, content)
+            logger.debug(f"Imported app from {path}")
+        elif entity_type == "app_file":
+            indexer = AppIndexer(self.db)
+            await indexer.index_app_file(path, content)
+            logger.debug(f"Imported app file from {path}")
         else:
             raise ValueError(f"Unknown virtual file type for path: {path}")
 
@@ -1615,14 +1624,31 @@ class GitHubSyncService:
         from the appropriate table based on the file path pattern.
 
         Args:
-            path: File path (e.g., "forms/{id}.form.json")
+            path: File path (e.g., "forms/{id}.form.json", "apps/my-app/app.json")
         """
         from uuid import UUID
         from sqlalchemy import delete
         from src.models import Form
         from src.models.orm import Agent
+        from src.services.file_storage.indexers.app import AppIndexer
 
         entity_type = VirtualFileProvider.get_entity_type_from_path(path)
+
+        # Handle apps separately - they use slug, not UUID
+        if entity_type == "app":
+            slug = VirtualFileProvider.extract_app_slug_from_path(path)
+            if slug:
+                indexer = AppIndexer(self.db)
+                await indexer.delete_app(slug)
+                logger.debug(f"Deleted app {slug}")
+            return
+        elif entity_type == "app_file":
+            indexer = AppIndexer(self.db)
+            await indexer.delete_app_file(path)
+            logger.debug(f"Deleted app file {path}")
+            return
+
+        # Forms and agents use UUID in filename
         filename = path.split("/")[-1]
         entity_id_str = VirtualFileProvider.extract_id_from_filename(filename)
 
