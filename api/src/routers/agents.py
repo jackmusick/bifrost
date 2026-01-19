@@ -456,7 +456,8 @@ async def update_agent(
         agent.channels = [c.value for c in agent_data.channels]
     if agent_data.access_level is not None:
         agent.access_level = agent_data.access_level
-    if agent_data.organization_id is not None:
+    # Use model_fields_set to distinguish "not provided" from "explicitly null"
+    if "organization_id" in agent_data.model_fields_set:
         agent.organization_id = agent_data.organization_id
     if agent_data.is_active is not None:
         agent.is_active = agent_data.is_active

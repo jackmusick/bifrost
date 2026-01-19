@@ -798,25 +798,23 @@ async def update_workflow(
                 detail=f"Workflow with ID '{workflow_id}' not found",
             )
 
-        # Update organization_id
-        # The request uses a special sentinel to distinguish between "set to null" and "not provided"
-        # Since we're using Pydantic's default=None, we need to check if a value was actually provided
-        # For now, we always update since organization_id is the only field
-        if request.organization_id is not None:
-            # Validate organization exists if not setting to global
-            from src.models.orm.organizations import Organization
-            org_result = await db.execute(
-                select(Organization).where(Organization.id == UUID(request.organization_id))
-            )
-            if not org_result.scalar_one_or_none():
-                raise HTTPException(
-                    status_code=status.HTTP_400_BAD_REQUEST,
-                    detail=f"Organization with ID '{request.organization_id}' not found",
+        # Update organization_id - use model_fields_set to distinguish "not provided" from "explicitly null"
+        if "organization_id" in request.model_fields_set:
+            if request.organization_id is not None:
+                # Validate organization exists if not setting to global
+                from src.models.orm.organizations import Organization
+                org_result = await db.execute(
+                    select(Organization).where(Organization.id == UUID(request.organization_id))
                 )
-            workflow.organization_id = UUID(request.organization_id)
-        else:
-            # Set to global scope
-            workflow.organization_id = None
+                if not org_result.scalar_one_or_none():
+                    raise HTTPException(
+                        status_code=status.HTTP_400_BAD_REQUEST,
+                        detail=f"Organization with ID '{request.organization_id}' not found",
+                    )
+                workflow.organization_id = UUID(request.organization_id)
+            else:
+                # Explicitly set to global scope
+                workflow.organization_id = None
 
         # Update access_level if provided
         if request.access_level is not None:
