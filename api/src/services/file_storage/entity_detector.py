@@ -7,7 +7,6 @@ Platform entities:
 - Workflows (.py with @workflow decorator)
 - Data providers (.py with @data_provider decorator)
 - Forms (.form.json)
-- Apps (.app.json)
 - Agents (.agent.json)
 
 Regular files go to S3.
@@ -25,7 +24,6 @@ def detect_platform_entity_type(path: str, content: bytes) -> str | None:
     - Workflows (.py with @workflow decorator): stored in workflows.code
     - Data providers (.py with @data_provider decorator): stored in workflows.code
     - Forms (.form.json): stored in forms table
-    - Apps (.app.json): stored in applications table
     - Agents (.agent.json): stored in agents table
 
     Regular files (modules, data files, configs) go to S3.
@@ -35,13 +33,11 @@ def detect_platform_entity_type(path: str, content: bytes) -> str | None:
         content: File content
 
     Returns:
-        Entity type ("workflow", "form", "app", "agent") or None for regular files
+        Entity type ("workflow", "form", "agent") or None for regular files
     """
     # JSON platform entities - always go to DB
     if path.endswith(".form.json"):
         return "form"
-    if path.endswith(".app.json"):
-        return "app"
     if path.endswith(".agent.json"):
         return "agent"
 

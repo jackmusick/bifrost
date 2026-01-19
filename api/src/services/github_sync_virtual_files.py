@@ -1,7 +1,7 @@
 """
 Virtual File Provider for GitHub Sync.
 
-Platform entities (apps, forms, agents) don't exist in the `workspace_files` table -
+Platform entities (forms, agents) don't exist in the `workspace_files` table -
 they live in their own database tables. The VirtualFileProvider serializes these
 entities on-the-fly so they can participate in GitHub sync.
 
@@ -11,9 +11,11 @@ Virtual files are generated from database entities with:
 - Standardized path patterns
 
 Path patterns:
-- Apps: apps/{app.id}.app.json
 - Forms: forms/{form.id}.form.json
 - Agents: agents/{agent.id}.agent.json
+
+Note: Apps are NOT synced via virtual files - they use the app_files table
+and will have their own sync mechanism.
 """
 
 import json
@@ -27,7 +29,6 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
 from src.models import Agent, Form
-from src.models.orm.applications import Application, AppVersion
 from src.services.file_storage.file_ops import compute_git_blob_sha
 from src.services.file_storage.indexers.agent import _serialize_agent_to_json
 from src.services.file_storage.indexers.form import _serialize_form_to_json
@@ -36,10 +37,10 @@ from src.services.file_storage.ref_translation import build_workflow_ref_map
 logger = logging.getLogger(__name__)
 
 # Regex pattern for extracting UUID from filenames
-# Matches: {uuid}.app.json, {uuid}.form.json, {uuid}.agent.json
+# Matches: {uuid}.form.json, {uuid}.agent.json
 UUID_FILENAME_PATTERN = re.compile(
     r"^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12})"
-    r"\.(app|form|agent)\.json$"
+    r"\.(form|agent)\.json$"
 )
 
 
@@ -48,12 +49,12 @@ class VirtualFile:
     """
     A virtual file representing a platform entity.
 
-    Virtual files are generated on-the-fly from database entities (apps, forms, agents)
+    Virtual files are generated on-the-fly from database entities (forms, agents)
     and can participate in GitHub sync without being stored in workspace_files.
 
     Attributes:
-        path: Virtual file path, e.g., "apps/{uuid}.app.json"
-        entity_type: Type of entity - "app", "form", or "agent"
+        path: Virtual file path, e.g., "forms/{uuid}.form.json"
+        entity_type: Type of entity - "form" or "agent"
         entity_id: UUID of the entity
         content: Serialized JSON content as bytes (None if not yet computed)
         computed_sha: Git blob SHA of content (None if not yet computed)
@@ -75,7 +76,7 @@ class SerializationError:
     acknowledge and skip problematic entities.
     """
 
-    entity_type: str  # "app", "form", or "agent"
+    entity_type: str  # "form" or "agent"
     entity_id: str
     entity_name: str
     path: str  # Virtual file path (used as resolution key)
@@ -98,7 +99,7 @@ class VirtualFileProvider:
     """
     Provides virtual file representations of platform entities for GitHub sync.
 
-    Platform entities (apps, forms, agents) are stored in their own database tables,
+    Platform entities (forms, agents) are stored in their own database tables,
     not in workspace_files. This provider serializes them to JSON with portable
     workflow references so they can be synced to GitHub.
 
@@ -107,8 +108,8 @@ class VirtualFileProvider:
         virtual_files = await provider.get_all_virtual_files()
 
         # Each virtual file has:
-        # - path: e.g., "apps/abc123.app.json"
-        # - entity_type: "app", "form", or "agent"
+        # - path: e.g., "forms/abc123.form.json"
+        # - entity_type: "form" or "agent"
         # - entity_id: UUID string
         # - content: serialized JSON bytes
         # - computed_sha: git blob SHA for comparison
@@ -127,7 +128,7 @@ class VirtualFileProvider:
         """
         Get all platform entities as virtual files.
 
-        Retrieves all apps, forms, and agents from the database, serializes them
+        Retrieves all forms and agents from the database, serializes them
         to JSON with portable workflow refs, and returns them as VirtualFile objects
         with computed git SHAs. Also collects any serialization errors.
 
@@ -142,78 +143,20 @@ class VirtualFileProvider:
         errors: list[SerializationError] = []
 
         # Get all entity types
-        app_result = await self._get_app_files(workflow_map)
         form_result = await self._get_form_files(workflow_map)
         agent_result = await self._get_agent_files(workflow_map)
 
-        virtual_files.extend(app_result.files)
         virtual_files.extend(form_result.files)
         virtual_files.extend(agent_result.files)
 
-        errors.extend(app_result.errors)
         errors.extend(form_result.errors)
         errors.extend(agent_result.errors)
 
         logger.info(
             f"Generated {len(virtual_files)} virtual files: "
-            f"{len(app_result.files)} apps, {len(form_result.files)} forms, "
-            f"{len(agent_result.files)} agents, {len(errors)} errors"
+            f"{len(form_result.files)} forms, {len(agent_result.files)} agents, "
+            f"{len(errors)} errors"
         )
-
-        return VirtualFileResult(files=virtual_files, errors=errors)
-
-    async def _get_app_files(
-        self, workflow_map: dict[str, str]
-    ) -> VirtualFileResult:
-        """
-        Generate virtual files for all applications.
-
-        Fetches all applications with their draft version files,
-        serializes them to JSON.
-
-        Args:
-            workflow_map: Mapping of workflow UUID -> "path::function_name" (unused for apps)
-
-        Returns:
-            VirtualFileResult with files and any serialization errors
-        """
-        # Query apps with draft version and files eagerly loaded
-        stmt = select(Application).options(
-            selectinload(Application.draft_version_ref).selectinload(AppVersion.files)
-        )
-        result = await self.db.execute(stmt)
-        apps = result.scalars().all()
-
-        virtual_files: list[VirtualFile] = []
-        errors: list[SerializationError] = []
-
-        for app in apps:
-            virtual_path = f"apps/{app.id}.app.json"
-
-            try:
-                content = self._serialize_app_to_json(app)
-                computed_sha = compute_git_blob_sha(content)
-
-                virtual_files.append(
-                    VirtualFile(
-                        path=virtual_path,
-                        entity_type="app",
-                        entity_id=str(app.id),
-                        content=content,
-                        computed_sha=computed_sha,
-                    )
-                )
-            except Exception as e:
-                logger.warning(f"Failed to serialize app {app.id}: {e}")
-                errors.append(
-                    SerializationError(
-                        entity_type="app",
-                        entity_id=str(app.id),
-                        entity_name=app.name,
-                        path=virtual_path,
-                        error=str(e),
-                    )
-                )
 
         return VirtualFileResult(files=virtual_files, errors=errors)
 
@@ -341,7 +284,7 @@ class VirtualFileProvider:
         Get a specific virtual file by entity type and ID.
 
         Args:
-            entity_type: Type of entity - "app", "form", or "agent"
+            entity_type: Type of entity - "form" or "agent"
             entity_id: UUID string of the entity
 
         Returns:
@@ -356,48 +299,12 @@ class VirtualFileProvider:
             logger.warning(f"Invalid entity ID: {entity_id}")
             return None
 
-        if entity_type == "app":
-            return await self._get_app_file_by_id(entity_uuid, workflow_map)
-        elif entity_type == "form":
+        if entity_type == "form":
             return await self._get_form_file_by_id(entity_uuid, workflow_map)
         elif entity_type == "agent":
             return await self._get_agent_file_by_id(entity_uuid, workflow_map)
         else:
             logger.warning(f"Unknown entity type: {entity_type}")
-            return None
-
-    async def _get_app_file_by_id(
-        self, app_id: UUID, workflow_map: dict[str, str]
-    ) -> VirtualFile | None:
-        """Get a specific app as a virtual file."""
-        stmt = (
-            select(Application)
-            .options(
-                selectinload(Application.draft_version_ref).selectinload(
-                    AppVersion.files
-                )
-            )
-            .where(Application.id == app_id)
-        )
-        result = await self.db.execute(stmt)
-        app = result.scalar_one_or_none()
-
-        if not app:
-            return None
-
-        try:
-            content = self._serialize_app_to_json(app)
-            computed_sha = compute_git_blob_sha(content)
-
-            return VirtualFile(
-                path=f"apps/{app.id}.app.json",
-                entity_type="app",
-                entity_id=str(app.id),
-                content=content,
-                computed_sha=computed_sha,
-            )
-        except Exception as e:
-            logger.warning(f"Failed to serialize app {app.id}: {e}")
             return None
 
     async def _get_form_file_by_id(
@@ -464,58 +371,17 @@ class VirtualFileProvider:
             logger.warning(f"Failed to serialize agent {agent.id}: {e}")
             return None
 
-    def _serialize_app_to_json(self, app: Application) -> bytes:
-        """
-        Serialize an application to JSON bytes for GitHub sync.
-
-        Args:
-            app: Application ORM model with draft_version_ref and files loaded
-
-        Returns:
-            JSON content as bytes
-        """
-        # Build files list from draft version
-        files_data: list[dict] = []
-        if app.draft_version_ref and app.draft_version_ref.files:
-            for file in sorted(app.draft_version_ref.files, key=lambda f: f.path):
-                file_data = {
-                    "path": file.path,
-                    "source": file.source,
-                }
-                if file.compiled:
-                    file_data["compiled"] = file.compiled
-                files_data.append(file_data)
-
-        app_data = {
-            "id": str(app.id),
-            "name": app.name,
-            "slug": app.slug,
-            "description": app.description,
-            "icon": app.icon,
-            "navigation": app.navigation,
-            "permissions": app.permissions,
-            "access_level": app.access_level,
-            "files": files_data,
-        }
-
-        # Remove None values for cleaner output
-        app_data = {k: v for k, v in app_data.items() if v is not None}
-
-        content = json.dumps(app_data, indent=2, sort_keys=True)
-        return content.encode("utf-8")
-
     @staticmethod
     def extract_id_from_filename(filename: str) -> str | None:
         """
         Extract entity UUID from a virtual file filename (fast path).
 
         Uses regex to match the expected filename patterns:
-        - {uuid}.app.json
         - {uuid}.form.json
         - {uuid}.agent.json
 
         Args:
-            filename: Just the filename (not the full path), e.g., "abc123.app.json"
+            filename: Just the filename (not the full path), e.g., "abc123.form.json"
 
         Returns:
             UUID string if pattern matches, None otherwise
@@ -554,14 +420,12 @@ class VirtualFileProvider:
         Determine entity type from virtual file path.
 
         Args:
-            path: Virtual file path, e.g., "apps/abc123.app.json"
+            path: Virtual file path, e.g., "forms/abc123.form.json"
 
         Returns:
-            Entity type ("app", "form", "agent") or None if not recognized
+            Entity type ("form" or "agent") or None if not recognized
         """
-        if path.startswith("apps/") and path.endswith(".app.json"):
-            return "app"
-        elif path.startswith("forms/") and path.endswith(".form.json"):
+        if path.startswith("forms/") and path.endswith(".form.json"):
             return "form"
         elif path.startswith("agents/") and path.endswith(".agent.json"):
             return "agent"
@@ -579,7 +443,6 @@ class VirtualFileProvider:
             True if path matches virtual file pattern, False otherwise
         """
         return (
-            (path.startswith("apps/") and path.endswith(".app.json"))
-            or (path.startswith("forms/") and path.endswith(".form.json"))
+            (path.startswith("forms/") and path.endswith(".form.json"))
             or (path.startswith("agents/") and path.endswith(".agent.json"))
         )

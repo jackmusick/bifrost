@@ -1615,13 +1615,12 @@ class GitHubSyncService:
         from the appropriate table based on the file path pattern.
 
         Args:
-            path: File path (e.g., "apps/{id}.app.json")
+            path: File path (e.g., "forms/{id}.form.json")
         """
         from uuid import UUID
         from sqlalchemy import delete
         from src.models import Form
         from src.models.orm import Agent
-        from src.models.orm.applications import Application
 
         entity_type = VirtualFileProvider.get_entity_type_from_path(path)
         filename = path.split("/")[-1]
@@ -1637,11 +1636,7 @@ class GitHubSyncService:
             logger.warning(f"Invalid entity ID in virtual file path: {path}")
             return
 
-        if entity_type == "app":
-            stmt = delete(Application).where(Application.id == entity_id)
-            await self.db.execute(stmt)
-            logger.debug(f"Deleted app {entity_id}")
-        elif entity_type == "form":
+        if entity_type == "form":
             stmt = delete(Form).where(Form.id == entity_id)
             await self.db.execute(stmt)
             logger.debug(f"Deleted form {entity_id}")

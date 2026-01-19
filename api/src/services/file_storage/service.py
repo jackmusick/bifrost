@@ -471,8 +471,6 @@ class FileStorageService:
                 entity_type = "workflow"
             elif path.endswith(".form.json"):
                 entity_type = "form"
-            elif path.endswith(".app.json"):
-                entity_type = "app"
             elif path.endswith(".agent.json"):
                 entity_type = "agent"
 
