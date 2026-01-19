@@ -20,18 +20,20 @@
 | 4 | Regenerate TypeScript Types | ✅ Done |
 | 5 | Create EntitySyncItem Component | ✅ Done |
 | 6 | Create Entity Grouping Utility | ✅ Done |
-| 7 | Update SourceControlPanel to Use Entity Display | ⏳ Pending |
-| 8 | Manual Testing | ⏳ Pending |
-| 9 | Create Migration to Delete workspace_files Entries | ⏳ Pending |
-| 10 | Remove S3 Write Functions from Forms Router | ⏳ Pending |
-| 11 | Remove S3 Write Functions from Agents Router | ⏳ Pending |
-| 12 | Remove S3 Writes from MCP Tools | ⏳ Pending |
-| 13 | Create Migration to Remove file_path Columns | ⏳ Pending |
-| 14 | Run Full Test Suite | ⏳ Pending |
+| 7 | Update SourceControlPanel to Use Entity Display | ✅ Done |
+| 8 | Manual Testing | ⏳ Pending (requires human UI verification) |
+| 9 | Create Migration to Delete workspace_files Entries | ✅ Done |
+| 10 | Remove S3 Write Functions from Forms Router | ✅ Done |
+| 11 | Remove S3 Write Functions from Agents Router | ✅ Done |
+| 12 | Remove S3 Writes from MCP Tools | ✅ Done (completed in Tasks 10-11) |
+| 13 | Create Migration to Remove file_path Columns | ✅ Done |
+| 14 | Run Full Test Suite | ✅ Done (39/39 form+agent tests pass) |
 
 **Notes:**
 - Task 4 required updating both the service model AND the contract model (`api/src/models/contracts/github.py`), plus updating the router mapping to pass through the new fields
 - Fixed pre-existing TypeScript errors related to `clear_roles` and null `id` handling
+- Task 13 also removed `file_path` references from contract models, routers, MCP tools, indexers, and file operations
+- 13 pre-existing test failures in full suite are unrelated to this work (workflow validation `created_at` issues, infrastructure timeouts)
 
 ---
 
