@@ -899,7 +899,7 @@ function FileTreeItem({
 							) : (
 								<ChevronRight className="h-4 w-4 flex-shrink-0 text-muted-foreground" />
 							)}
-							<Folder className="h-4 w-4 flex-shrink-0 text-primary" />
+							<FileIcon className={cn("h-4 w-4 flex-shrink-0", iconClassName)} />
 						</>
 					) : (
 						<>
@@ -946,17 +946,16 @@ function FileTreeItem({
 							)}
 							style={{ paddingLeft: `${level * 12 + 8}px` }}
 						>
-							{isFolder && (
+							{isFolder ? (
 								<>
 									{isExpanded ? (
 										<ChevronDown className="h-4 w-4 flex-shrink-0 text-muted-foreground" />
 									) : (
 										<ChevronRight className="h-4 w-4 flex-shrink-0 text-muted-foreground" />
 									)}
-									<Folder className="h-4 w-4 flex-shrink-0 text-primary" />
+									<FileIcon className={cn("h-4 w-4 flex-shrink-0", iconClassName)} />
 								</>
-							)}
-							{!isFolder && (
+							) : (
 								<>
 									<div className="w-4" />
 									<FileIcon className={cn("h-4 w-4 flex-shrink-0", iconClassName)} />
