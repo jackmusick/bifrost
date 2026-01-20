@@ -14,7 +14,7 @@ interface WindowOverlayProps {
 export function WindowOverlay({ children }: WindowOverlayProps) {
   return (
     <motion.div
-      className="fixed inset-0 z-50 bg-background"
+      className="fixed inset-0 z-[100] bg-background"
       variants={overlayVariants}
       initial="hidden"
       animate="visible"

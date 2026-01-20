@@ -8,7 +8,10 @@ import { useAppViewerVisibility } from "@/hooks/useAppViewer";
 /**
  * App viewer overlay component.
  * Renders the app as a fullscreen overlay when maximized.
- * Mounted at root level in App.tsx.
+ *
+ * NOTE: This component is currently not used as the overlay is
+ * rendered inside AppRouter to maintain correct React Router context.
+ * Kept for reference or future use where routing context isn't needed.
  */
 export function AppViewerOverlay() {
 	const { appId, layoutMode } = useAppViewerVisibility();

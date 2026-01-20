@@ -11,6 +11,7 @@
 
 import { useEffect } from "react";
 import { useParams, useNavigate, useLocation } from "react-router-dom";
+import { AnimatePresence } from "framer-motion";
 import { AlertTriangle, ArrowLeft, Maximize2 } from "lucide-react";
 import { useAppViewerStore } from "@/stores/appViewerStore";
 import { Button } from "@/components/ui/button";
@@ -24,6 +25,8 @@ import {
 } from "@/components/ui/card";
 import { useApplication } from "@/hooks/useApplications";
 import { JsxAppShell } from "@/components/jsx-app/JsxAppShell";
+import { WindowOverlay } from "@/components/window-management";
+import { AppViewerLayout } from "@/components/app-viewer/AppViewerLayout";
 
 interface AppRouterProps {
 	/** Whether to render in preview mode (uses draft version) */
@@ -42,8 +45,9 @@ export function AppRouter({ preview = false }: AppRouterProps) {
 		error,
 	} = useApplication(slugParam);
 
-	// Get maximize action (must be called before any early returns)
+	// Get maximize action and layout mode (must be called before any early returns)
 	const maximize = useAppViewerStore((state) => state.maximize);
+	const layoutMode = useAppViewerStore((state) => state.layoutMode);
 
 	// Get the appropriate version ID
 	const versionId = application
@@ -165,6 +169,46 @@ export function AppRouter({ preview = false }: AppRouterProps) {
 							}
 						>
 							Open Editor
+						</Button>
+					</CardContent>
+				</Card>
+			</div>
+		);
+	}
+
+	// When maximized, render the fullscreen overlay
+	// This is rendered HERE (inside the route) so JsxAppShell has the correct routing context
+	if (layoutMode === "maximized") {
+		return (
+			<AnimatePresence>
+				<WindowOverlay>
+					<AppViewerLayout />
+				</WindowOverlay>
+			</AnimatePresence>
+		);
+	}
+
+	// When minimized (and user is still on app route), show placeholder
+	// This happens when user maximizes from the app page then minimizes
+	if (layoutMode === "minimized") {
+		return (
+			<div className="min-h-screen flex items-center justify-center p-4">
+				<Card className="max-w-md w-full">
+					<CardHeader>
+						<CardTitle className="text-center">
+							{application.name}
+						</CardTitle>
+						<CardDescription className="text-center">
+							This app is minimized to the dock.
+						</CardDescription>
+					</CardHeader>
+					<CardContent className="flex justify-center">
+						<Button
+							onClick={() => {
+								useAppViewerStore.setState({ layoutMode: "maximized" });
+							}}
+						>
+							Restore App
 						</Button>
 					</CardContent>
 				</Card>

@@ -1,5 +1,6 @@
 // client/src/components/layout/UnifiedDock.tsx
 
+import { useNavigate, useLocation } from "react-router-dom";
 import { Code, AppWindow } from "lucide-react";
 import { WindowDock, type DockItem } from "@/components/window-management";
 import { useEditorStore } from "@/stores/editorStore";
@@ -12,6 +13,9 @@ import { useExecutionStreamStore } from "@/stores/executionStreamStore";
  * Renders both editor and app viewer dock items.
  */
 export function UnifiedDock() {
+	const navigate = useNavigate();
+	const location = useLocation();
+
 	// Editor state
 	const editorIsOpen = useEditorStore((state) => state.isOpen);
 	const editorLayoutMode = useEditorStore((state) => state.layoutMode);
@@ -32,6 +36,7 @@ export function UnifiedDock() {
 
 	// App viewer state
 	const appId = useAppViewerStore((state) => state.appId);
+	const appSlug = useAppViewerStore((state) => state.appSlug);
 	const appName = useAppViewerStore((state) => state.appName);
 	const appLayoutMode = useAppViewerStore((state) => state.layoutMode);
 	const appIsPreview = useAppViewerStore((state) => state.isPreview);
@@ -40,14 +45,22 @@ export function UnifiedDock() {
 	const items: DockItem[] = [];
 
 	// Add app viewer if minimized
-	if (appId && appLayoutMode === "minimized") {
+	if (appId && appSlug && appLayoutMode === "minimized") {
 		items.push({
 			id: `app-${appId}`,
 			icon: <AppWindow className="h-4 w-4" />,
 			label: appIsPreview ? `${appName} (Preview)` : appName || "App",
 			isLoading: false,
 			onRestore: () => {
-				useAppViewerStore.setState({ layoutMode: "maximized" });
+				// Restore from minimized to maximized overlay
+				// Capture current path as returnToPath before navigating
+				const currentPath = location.pathname;
+				const appRoute = appIsPreview
+					? `/apps/${appSlug}/preview`
+					: `/apps/${appSlug}`;
+				// Use maximize() to properly set returnToPath
+				useAppViewerStore.getState().maximize(currentPath);
+				navigate(appRoute);
 			},
 		});
 	}

@@ -36,6 +36,18 @@ export function useAppViewer() {
 		store.maximize(location.pathname);
 	}, [store, location.pathname]);
 
+	// Minimize to dock - navigate back to returnToPath if available
+	const handleMinimize = useCallback(() => {
+		const { returnToPath } = useAppViewerStore.getState();
+		store.minimize();
+		// If we have a return path (user was somewhere else before maximizing),
+		// navigate back there
+		if (returnToPath) {
+			navigate(returnToPath);
+		}
+		// If no returnToPath, we stay on the app route and AppRouter shows minimized placeholder
+	}, [store, navigate]);
+
 	// Restore to windowed with navigation
 	const handleRestoreToWindowed = useCallback(() => {
 		const appRoute = store.restoreToWindowed();
@@ -69,7 +81,7 @@ export function useAppViewer() {
 		// Actions
 		openApp: store.openApp,
 		maximize: handleMaximize,
-		minimize: store.minimize,
+		minimize: handleMinimize,
 		restoreToWindowed: handleRestoreToWindowed,
 		restoreFromDock: handleRestoreFromDock,
 		closeApp: handleClose,

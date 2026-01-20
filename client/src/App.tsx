@@ -5,7 +5,6 @@ import { ContentLayout } from "@/components/layout/ContentLayout";
 import { ProtectedRoute } from "@/components/ProtectedRoute";
 import { ErrorBoundary } from "@/components/ErrorBoundary";
 import { EditorOverlay } from "@/components/editor/EditorOverlay";
-import { AppViewerOverlay } from "@/components/app-viewer";
 import { UnifiedDock } from "@/components/layout/UnifiedDock";
 import { QuickAccess } from "@/components/quick-access/QuickAccess";
 import { PageLoader } from "@/components/PageLoader";
@@ -201,9 +200,6 @@ function AppRoutes() {
 
 			{/* Editor Overlay - Rendered globally on top of all pages */}
 			<EditorOverlay />
-
-			{/* App Viewer Overlay - Rendered globally for maximized apps */}
-			<AppViewerOverlay />
 
 			{/* Unified Dock - Shows all minimized windows */}
 			<UnifiedDock />
