@@ -103,3 +103,68 @@ export function useAppViewerVisibility() {
 		})),
 	);
 }
+
+/**
+ * Hook for app viewer overlay that doesn't require router context.
+ * Navigation actions set pendingNavigation in store - main app listens and navigates.
+ */
+export function useAppViewerOverlay() {
+	const store = useAppViewerStore(
+		useShallow((state) => ({
+			appId: state.appId,
+			appSlug: state.appSlug,
+			appName: state.appName,
+			versionId: state.versionId,
+			isPreview: state.isPreview,
+			layoutMode: state.layoutMode,
+			returnToPath: state.returnToPath,
+			internalRoute: state.internalRoute,
+		})),
+	);
+
+	// Minimize to dock - set pending navigation for main app to handle
+	const handleMinimize = useCallback(() => {
+		const { returnToPath } = useAppViewerStore.getState();
+		useAppViewerStore.getState().minimize();
+		// Set pending navigation for the main app (inside BrowserRouter) to handle
+		if (returnToPath) {
+			useAppViewerStore.setState({ pendingNavigation: returnToPath });
+		}
+	}, []);
+
+	// Restore to windowed - set pending navigation
+	const handleRestoreToWindowed = useCallback(() => {
+		const { appSlug, isPreview } = useAppViewerStore.getState();
+		useAppViewerStore.getState().restoreToWindowed();
+		// Navigate to the app route
+		const appRoute = isPreview
+			? `/apps/${appSlug}/preview`
+			: `/apps/${appSlug}`;
+		useAppViewerStore.setState({ pendingNavigation: appRoute });
+	}, []);
+
+	// Close - set pending navigation
+	const handleClose = useCallback(() => {
+		const returnPath = useAppViewerStore.getState().closeApp();
+		if (returnPath) {
+			useAppViewerStore.setState({ pendingNavigation: returnPath });
+		}
+	}, []);
+
+	return {
+		// State
+		appId: store.appId,
+		appSlug: store.appSlug,
+		appName: store.appName,
+		versionId: store.versionId,
+		isPreview: store.isPreview,
+		layoutMode: store.layoutMode,
+		returnToPath: store.returnToPath,
+		internalRoute: store.internalRoute,
+
+		// Actions (navigation-free)
+		minimize: handleMinimize,
+		restoreToWindowed: handleRestoreToWindowed,
+		closeApp: handleClose,
+	};
+}

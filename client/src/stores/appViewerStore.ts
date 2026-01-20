@@ -25,6 +25,9 @@ interface AppViewerState {
 	// Internal app route (e.g., "/dashboard")
 	internalRoute: string;
 
+	// Pending navigation - set by overlay, consumed by main app
+	pendingNavigation: string | null;
+
 	// Actions
 	openApp: (params: {
 		appId: string;
@@ -45,6 +48,7 @@ interface AppViewerState {
 		versionId: string;
 		isPreview: boolean;
 	}) => void;
+	clearPendingNavigation: () => void;
 }
 
 export const useAppViewerStore = create<AppViewerState>()(
@@ -59,6 +63,7 @@ export const useAppViewerStore = create<AppViewerState>()(
 			layoutMode: null,
 			returnToPath: null,
 			internalRoute: "/",
+			pendingNavigation: null,
 
 			// Open an app (called when navigating to app route)
 			openApp: ({ appId, appSlug, appName, versionId, isPreview }) =>
@@ -136,6 +141,12 @@ export const useAppViewerStore = create<AppViewerState>()(
 					});
 				}
 			},
+
+			// Clear pending navigation after it's been handled
+			clearPendingNavigation: () =>
+				set({
+					pendingNavigation: null,
+				}),
 		}),
 		{
 			name: "app-viewer-storage",

@@ -38,6 +38,7 @@ from src.core.pubsub import publish_execution_update, publish_history_update
 from src.core.redis_client import get_redis_client
 from src.models import Execution as ExecutionModel
 from src.models import ExecutionLog as ExecutionLogORM
+from src.repositories.execution_logs import ExecutionLogRepository
 
 logger = logging.getLogger(__name__)
 
@@ -446,115 +447,6 @@ class ExecutionRepository:
 
 
 # =============================================================================
-# Execution Logs Repository
-# =============================================================================
-
-
-class ExecutionLogsRepository:
-    """Repository for querying execution logs across all executions."""
-
-    def __init__(self, db: AsyncSession):
-        self.db = db
-
-    async def list_logs(
-        self,
-        organization_id: UUID | None = None,
-        workflow_name: str | None = None,
-        levels: list[str] | None = None,
-        message_search: str | None = None,
-        start_date: datetime | None = None,
-        end_date: datetime | None = None,
-        limit: int = 50,
-        offset: int = 0,
-    ) -> tuple[list[dict], str | None]:
-        """
-        List logs across all executions with filtering.
-
-        Returns a tuple of (logs, next_token).
-        """
-        # Build the query joining execution_logs with executions and organizations
-        query = (
-            select(
-                ExecutionLogORM.id,
-                ExecutionLogORM.execution_id,
-                ExecutionLogORM.level,
-                ExecutionLogORM.message,
-                ExecutionLogORM.timestamp,
-                ExecutionModel.workflow_name,
-                ExecutionModel.organization_id,
-            )
-            .join(ExecutionModel, ExecutionLogORM.execution_id == ExecutionModel.id)
-            .order_by(desc(ExecutionLogORM.timestamp))
-        )
-
-        # Apply filters
-        if organization_id:
-            query = query.where(ExecutionModel.organization_id == organization_id)
-
-        if workflow_name:
-            # Partial match on workflow name
-            query = query.where(ExecutionModel.workflow_name.ilike(f"%{workflow_name}%"))
-
-        if levels:
-            query = query.where(ExecutionLogORM.level.in_(levels))
-
-        if message_search:
-            query = query.where(ExecutionLogORM.message.ilike(f"%{message_search}%"))
-
-        if start_date:
-            # Strip timezone for naive datetime comparison
-            if start_date.tzinfo is not None:
-                start_date = start_date.replace(tzinfo=None)
-            query = query.where(ExecutionLogORM.timestamp >= start_date)
-
-        if end_date:
-            # Strip timezone for naive datetime comparison
-            if end_date.tzinfo is not None:
-                end_date = end_date.replace(tzinfo=None)
-            query = query.where(ExecutionLogORM.timestamp <= end_date)
-
-        # Pagination
-        query = query.offset(offset).limit(limit + 1)  # +1 to check for more
-
-        result = await self.db.execute(query)
-        rows = result.all()
-
-        # Check if there are more results
-        has_more = len(rows) > limit
-        if has_more:
-            rows = rows[:limit]
-
-        # Generate continuation token
-        next_token = None
-        if has_more:
-            next_token = str(offset + limit)
-
-        # Get organization names for the results (batch query)
-        org_ids = list(set(row.organization_id for row in rows if row.organization_id))
-        org_names: dict[UUID, str] = {}
-        if org_ids:
-            from src.models.orm.organizations import Organization as OrgModel
-            org_query = select(OrgModel.id, OrgModel.name).where(OrgModel.id.in_(org_ids))
-            org_result = await self.db.execute(org_query)
-            org_names = {row.id: row.name for row in org_result.all()}
-
-        # Convert to dict for response
-        logs = []
-        for row in rows:
-            logs.append({
-                "id": row.id,
-                "execution_id": str(row.execution_id),
-                "organization_name": org_names.get(row.organization_id) if row.organization_id else None,
-                "workflow_name": row.workflow_name,
-                "level": row.level,
-                "message": row.message,
-                "timestamp": row.timestamp,
-            })
-
-        return logs, next_token
-
-
-# =============================================================================
 # HTTP Endpoints
 # =============================================================================
 
@@ -675,7 +567,7 @@ async def list_logs(
         parsed_end = datetime.fromisoformat(end_date.replace("Z", "+00:00"))
 
     # Get logs from repository
-    logs_repo = ExecutionLogsRepository(ctx.db)
+    logs_repo = ExecutionLogRepository(ctx.db)
     logs, next_token = await logs_repo.list_logs(
         organization_id=organization_id,
         workflow_name=workflow_name,

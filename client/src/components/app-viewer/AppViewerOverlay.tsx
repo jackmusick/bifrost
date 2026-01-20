@@ -9,15 +9,21 @@ import { useAppViewerVisibility } from "@/hooks/useAppViewer";
  * App viewer overlay component.
  * Renders the app as a fullscreen overlay when maximized.
  *
- * NOTE: This component is currently not used as the overlay is
- * rendered inside AppRouter to maintain correct React Router context.
- * Kept for reference or future use where routing context isn't needed.
+ * The app uses MemoryRouter internally for isolated routing context,
+ * allowing it to be rendered globally without conflicting with the
+ * browser's URL-based routing.
  */
 export function AppViewerOverlay() {
 	const { appId, layoutMode } = useAppViewerVisibility();
 
-	// Not active or minimized (dock handles minimized state)
-	if (!appId || !layoutMode || layoutMode === "minimized") {
+	// Not active - no app loaded
+	if (!appId) {
+		return null;
+	}
+
+	// If minimized, don't render the overlay - dock handles minimized state
+	// The app will remount when restored (MemoryRouter resets to initial route)
+	if (layoutMode === "minimized") {
 		return null;
 	}
 

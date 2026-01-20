@@ -5,6 +5,10 @@ import { ContentLayout } from "@/components/layout/ContentLayout";
 import { ProtectedRoute } from "@/components/ProtectedRoute";
 import { ErrorBoundary } from "@/components/ErrorBoundary";
 import { EditorOverlay } from "@/components/editor/EditorOverlay";
+import {
+	AppViewerOverlay,
+	AppViewerNavigationListener,
+} from "@/components/app-viewer";
 import { UnifiedDock } from "@/components/layout/UnifiedDock";
 import { QuickAccess } from "@/components/quick-access/QuickAccess";
 import { PageLoader } from "@/components/PageLoader";
@@ -200,6 +204,9 @@ function AppRoutes() {
 
 			{/* Editor Overlay - Rendered globally on top of all pages */}
 			<EditorOverlay />
+
+			{/* App Viewer Navigation Listener - Handles navigation requests from overlay */}
+			<AppViewerNavigationListener />
 
 			{/* Unified Dock - Shows all minimized windows */}
 			<UnifiedDock />
@@ -620,6 +627,9 @@ function AppRoutes() {
 function App() {
 	return (
 		<ErrorBoundary>
+			{/* App Viewer Overlay - Rendered OUTSIDE BrowserRouter for isolated MemoryRouter */}
+			<AppViewerOverlay />
+
 			<BrowserRouter>
 				<AuthProvider>
 					<OrgScopeProvider>

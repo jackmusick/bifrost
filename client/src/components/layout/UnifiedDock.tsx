@@ -1,6 +1,5 @@
 // client/src/components/layout/UnifiedDock.tsx
 
-import { useNavigate, useLocation } from "react-router-dom";
 import { Code, AppWindow } from "lucide-react";
 import { WindowDock, type DockItem } from "@/components/window-management";
 import { useEditorStore } from "@/stores/editorStore";
@@ -13,9 +12,6 @@ import { useExecutionStreamStore } from "@/stores/executionStreamStore";
  * Renders both editor and app viewer dock items.
  */
 export function UnifiedDock() {
-	const navigate = useNavigate();
-	const location = useLocation();
-
 	// Editor state
 	const editorIsOpen = useEditorStore((state) => state.isOpen);
 	const editorLayoutMode = useEditorStore((state) => state.layoutMode);
@@ -53,14 +49,8 @@ export function UnifiedDock() {
 			isLoading: false,
 			onRestore: () => {
 				// Restore from minimized to maximized overlay
-				// Capture current path as returnToPath before navigating
-				const currentPath = location.pathname;
-				const appRoute = appIsPreview
-					? `/apps/${appSlug}/preview`
-					: `/apps/${appSlug}`;
-				// Use maximize() to properly set returnToPath
-				useAppViewerStore.getState().maximize(currentPath);
-				navigate(appRoute);
+				// No navigation needed - overlay renders globally via AppViewerOverlay
+				useAppViewerStore.setState({ layoutMode: "maximized" });
 			},
 		});
 	}

@@ -1,10 +1,11 @@
 // client/src/components/app-viewer/AppViewerLayout.tsx
 
+import { MemoryRouter } from "react-router-dom";
 import { AppWindow, Minus, PictureInPicture2, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { JsxAppShell } from "@/components/jsx-app/JsxAppShell";
-import { useAppViewer } from "@/hooks/useAppViewer";
+import { useAppViewerOverlay } from "@/hooks/useAppViewer";
 
 /**
  * App viewer layout with header bar and controls.
@@ -21,7 +22,7 @@ export function AppViewerLayout() {
 		minimize,
 		restoreToWindowed,
 		closeApp,
-	} = useAppViewer();
+	} = useAppViewerOverlay();
 
 	if (!appId || !appSlug || !versionId) {
 		return null;
@@ -80,14 +81,16 @@ export function AppViewerLayout() {
 				</div>
 			</div>
 
-			{/* App content */}
+			{/* App content - wrapped in MemoryRouter for isolated routing context */}
 			<div className="flex-1 overflow-auto">
-				<JsxAppShell
-					appId={appId}
-					appSlug={appSlug}
-					versionId={versionId}
-					isPreview={isPreview}
-				/>
+				<MemoryRouter initialEntries={[internalRoute || "/"]}>
+					<JsxAppShell
+						appId={appId}
+						appSlug={appSlug}
+						versionId={versionId}
+						isPreview={isPreview}
+					/>
+				</MemoryRouter>
 			</div>
 		</div>
 	);
