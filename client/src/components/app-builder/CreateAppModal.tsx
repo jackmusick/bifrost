@@ -101,7 +101,7 @@ function CreateAppModalContent({
 			onOpenChange(false);
 
 			// Navigate to code editor
-			navigate(`/apps/${result.slug}/code`);
+			navigate(`/apps/${result.slug}/edit`);
 		} catch (error) {
 			console.error("[CreateAppModal] Create error:", error);
 			toast.error(

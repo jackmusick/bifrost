@@ -7,6 +7,6 @@
 
 | ID | Time | T | Title | Read |
 |----|------|---|-------|------|
-| #997 | 11:31 AM | 🟣 | App Builder Code Engine Documentation Created | ~514 |
-| #970 | 11:26 AM | 🔵 | App Code Platform SDK Directory Verified in Bifrost Codebase | ~588 |
+| #761 | 8:06 AM | 🔵 | Organization Filtering Logic Centralized in org_filter.py Helper | ~738 |
+| #682 | 8:03 AM | 🔵 | App Builder / Code Engine Architecture Documented | ~528 |
 </claude-mem-context>

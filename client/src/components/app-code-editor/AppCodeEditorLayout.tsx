@@ -68,14 +68,14 @@ export function AppCodeEditorLayout({
 	const [viewMode, setViewMode] = useState<ViewMode>("split");
 
 	// Compute base path for the app preview
-	// The editor is now at /apps/{slug}/code/* so we need to extract that base
+	// The editor is now at /apps/{slug}/edit/* so we need to extract that base
 	const basePath = useMemo(() => {
 		if (appSlug) {
-			return `/apps/${appSlug}/code`;
+			return `/apps/${appSlug}/edit`;
 		}
 		// Fallback: extract from current location
-		// Pattern: /apps/{slug}/code/...
-		const match = location.pathname.match(/^(\/apps\/[^/]+\/code)/);
+		// Pattern: /apps/{slug}/edit/...
+		const match = location.pathname.match(/^(\/apps\/[^/]+\/edit)/);
 		return match ? match[1] : "/";
 	}, [appSlug, location.pathname]);
 

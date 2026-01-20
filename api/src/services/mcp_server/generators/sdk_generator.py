@@ -18,7 +18,7 @@ logger = logging.getLogger(__name__)
 _sdk_tool: Callable[..., Any] | None = None
 
 try:
-    from claude_code_sdk import tool as sdk_tool_import  # type: ignore[import-not-found]
+    from claude_agent_sdk import tool as sdk_tool_import  # type: ignore[import-not-found]
 
     _sdk_tool = sdk_tool_import
 except ImportError:

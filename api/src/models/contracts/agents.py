@@ -352,6 +352,7 @@ class ChatStreamChunk(BaseModel):
         "assistant_message_end",
         "todo_update",
         "mode_changed",
+        "coding_mode_required",
     ]
 
     # Text content (for delta)

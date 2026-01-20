@@ -7,6 +7,6 @@
 
 | ID | Time | T | Title | Read |
 |----|------|---|-------|------|
-| #997 | 11:31 AM | 🟣 | App Builder Code Engine Documentation Created | ~514 |
-| #970 | 11:26 AM | 🔵 | App Code Platform SDK Directory Verified in Bifrost Codebase | ~588 |
+| #640 | 8:00 AM | 🔵 | API Directory Structure Organization | ~523 |
+| #589 | 7:39 AM | 🔄 | Major API Restructure with Schedules and Branding Features | ~838 |
 </claude-mem-context>

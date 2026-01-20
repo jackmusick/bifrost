@@ -389,7 +389,7 @@ function AppRoutes() {
 							}
 						/>
 						<Route
-							path="apps/:applicationId/code/*"
+							path="apps/:applicationId/edit/*"
 							element={
 								<ProtectedRoute requirePlatformAdmin>
 									<AppCodeEditorPage />

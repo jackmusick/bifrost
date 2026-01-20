@@ -131,7 +131,6 @@ export function AgentDialog({ agentId, open, onOpenChange }: AgentDialogProps) {
 	const { data: allAgents } = useAgents();
 	const { data: toolsGrouped } = useToolsGrouped();
 	const { data: roles } = useRoles();
-	const { data: knowledgeNamespaces } = useKnowledgeNamespaces();
 	const {
 		isConfigured: isCodingConfigured,
 		isLoading: isCodingConfigLoading,
@@ -172,6 +171,14 @@ export function AgentDialog({ agentId, open, onOpenChange }: AgentDialogProps) {
 	const accessLevel = form.watch("access_level");
 	const systemTools = form.watch("system_tools");
 	const toolIds = form.watch("tool_ids");
+	// Watch the agent's organization_id to filter knowledge sources appropriately
+	// Agent's org determines what knowledge it can access (org + global cascade)
+	const watchedOrgId = form.watch("organization_id");
+
+	// Fetch knowledge namespaces based on agent's org scope
+	// - null (global agent): show only global knowledge sources
+	// - UUID (org agent): show org + global knowledge sources (cascade)
+	const { data: knowledgeNamespaces } = useKnowledgeNamespaces(watchedOrgId);
 
 	// Load existing agent data when editing
 	useEffect(() => {

@@ -7,7 +7,6 @@ Handles session management, MCP tool registration, and streaming.
 
 import asyncio
 import logging
-import os
 import time
 from collections.abc import AsyncIterator, Awaitable, Callable
 from typing import Any
@@ -40,6 +39,7 @@ try:
         StreamEvent,
         TextBlock,
         ToolResultBlock,
+        ToolUseBlock,
         UserMessage,
     )
 
@@ -70,6 +70,7 @@ except ImportError:
     StreamEvent = Any  # type: ignore
     TextBlock = Any  # type: ignore
     ToolResultBlock = Any  # type: ignore
+    ToolUseBlock = Any  # type: ignore
     UserMessage = Any  # type: ignore
 
 # Coding agent scratch space - for Claude SDK's bash/file tools
@@ -215,6 +216,7 @@ class CodingModeClient:
             mcp_servers={"bifrost": self._mcp_server.get_sdk_server()},
             allowed_tools=allowed_tools,
             permission_mode=self._permission_mode.value,  # Plan mode restricts writes, Execute mode auto-accepts
+            env={"ANTHROPIC_API_KEY": self._api_key},  # Pass API key to SDK subprocess
             include_partial_messages=True,  # Stream events as they happen (tools, text)
             can_use_tool=self._can_use_tool,  # Handle AskUserQuestion and other permissions
         )
@@ -388,8 +390,8 @@ class CodingModeClient:
             WORKSPACE_PATH.mkdir(parents=True, exist_ok=True)
             logger.debug(f"Ensured coding agent scratch space exists: {WORKSPACE_PATH}")
 
-            # SDK reads API key from env var (doesn't accept api_key param directly)
-            os.environ["ANTHROPIC_API_KEY"] = self._api_key
+            # API key is passed via ClaudeAgentOptions.env to the SDK subprocess
+            logger.debug(f"Using ANTHROPIC_API_KEY (key prefix: {self._api_key[:7]}...)")
 
             options = self._get_options()
             self._sdk_client = ClaudeSDKClient(options=options)
@@ -593,13 +595,36 @@ class CodingModeClient:
 
             return  # StreamEvent handled
 
-        # AssistantMessage contains final content - skip text (already streamed via StreamEvent)
-        # but process ToolResultBlock for tool completion
+        # AssistantMessage contains final content
+        # Extract text from TextBlock and tool results from ToolResultBlock
         if isinstance(sdk_message, AssistantMessage):
+            # Check for SDK-level errors (authentication, billing, rate limits)
+            if hasattr(sdk_message, "error") and sdk_message.error:
+                logger.error(f"SDK AssistantMessage error: {sdk_message.error}")
+                yield ChatStreamChunk(
+                    type="error",
+                    error=f"Claude SDK error: {sdk_message.error}",
+                )
+                return
+
             for block in sdk_message.content:
 
-                # Skip TextBlock - already streamed via StreamEvent
+                # Handle TextBlock - extract text content
                 if isinstance(block, TextBlock):
+                    if block.text:
+                        yield ChatStreamChunk(type="delta", content=block.text)
+                    continue
+
+                # Handle ToolUseBlock - tool is being called
+                elif isinstance(block, ToolUseBlock):
+                    yield ChatStreamChunk(
+                        type="tool_call",
+                        tool_call=ToolCall(
+                            id=block.id,
+                            name=block.name,
+                            arguments=block.input if isinstance(block.input, dict) else {},
+                        ),
+                    )
                     continue
 
                 # Handle ToolResultBlock - tool execution completed

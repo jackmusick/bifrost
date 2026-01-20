@@ -77,13 +77,12 @@ class CodingAgentHandler:
             chunk_data = chunk.model_dump(exclude_none=True)
             chunk_data["session_id"] = session_id
             chunk_data["conversation_id"] = conversation_id
+            logger.info(f"[HANDLER] Publishing chunk type={chunk.type} to {response_exchange}")
             await publish_to_exchange(response_exchange, chunk_data)
             # Use INFO for tool_result to trace the flow
             if chunk.type == "tool_result":
                 tool_call_id = chunk.tool_result.tool_call_id if chunk.tool_result else "none"
                 logger.info(f"[HANDLER] Published tool_result chunk: tool_call_id={tool_call_id}")
-            else:
-                logger.debug(f"Published chunk type={chunk.type} to {response_exchange}")
 
         # Set up chunk callback for AskUserQuestion
         client.set_chunk_callback(publish_chunk)
@@ -188,6 +187,7 @@ class CodingAgentHandler:
             )
 
         api_key = coding_config.api_key
+        logger.info(f"Coding config: model={coding_config.model}, api_key_prefix={api_key[:10] if api_key else 'None'}...")
         # Use model from context (API sends it), fall back to config
         model = context.get("model") or coding_config.model
 

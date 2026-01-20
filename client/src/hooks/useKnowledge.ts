@@ -17,9 +17,22 @@ export interface KnowledgeNamespaceInfo {
 
 /**
  * Fetch knowledge namespaces from the CLI API
+ *
+ * @param scope - Optional organization scope filter:
+ *   - undefined: don't send scope param (backend uses DeveloperContext)
+ *   - "global": only global knowledge sources
+ *   - UUID string: that org's knowledge sources + global (cascade)
  */
-async function fetchKnowledgeNamespaces(): Promise<KnowledgeNamespaceInfo[]> {
-	const response = await fetch("/api/cli/knowledge/namespaces", {
+async function fetchKnowledgeNamespaces(
+	scope?: string,
+): Promise<KnowledgeNamespaceInfo[]> {
+	const params = new URLSearchParams();
+	if (scope) {
+		params.set("scope", scope);
+	}
+	const url = `/api/cli/knowledge/namespaces${params.toString() ? `?${params}` : ""}`;
+
+	const response = await fetch(url, {
 		method: "GET",
 		headers: {
 			"Content-Type": "application/json",
@@ -43,11 +56,19 @@ async function fetchKnowledgeNamespaces(): Promise<KnowledgeNamespaceInfo[]> {
  *
  * Returns list of namespace info with document counts.
  * Used in AgentDialog for selecting knowledge sources.
+ *
+ * @param scope - Organization scope filter:
+ *   - undefined: don't send scope param (backend uses DeveloperContext)
+ *   - null: global only - sends scope=global
+ *   - UUID string: that org + global (cascade)
  */
-export function useKnowledgeNamespaces() {
+export function useKnowledgeNamespaces(scope?: string | null) {
+	// Convert null to "global", undefined means don't send scope param
+	const scopeParam = scope === null ? "global" : scope;
+
 	return useQuery({
-		queryKey: ["knowledge", "namespaces"],
-		queryFn: fetchKnowledgeNamespaces,
+		queryKey: ["knowledge", "namespaces", scopeParam],
+		queryFn: () => fetchKnowledgeNamespaces(scopeParam),
 		staleTime: 60 * 1000, // Cache for 1 minute
 		retry: false,
 	});

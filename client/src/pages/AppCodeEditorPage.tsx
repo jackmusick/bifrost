@@ -102,7 +102,7 @@ export function AppCodeEditorPage() {
 
 			toast.success("Application created");
 			// Navigate to edit the new app
-			navigate(`/apps/${result.slug}/code`, { replace: true });
+			navigate(`/apps/${result.slug}/edit`, { replace: true });
 		} catch (error) {
 			console.error("[AppCodeEditorPage] Create error:", error);
 			toast.error(

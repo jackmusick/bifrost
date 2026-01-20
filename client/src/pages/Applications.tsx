@@ -110,13 +110,8 @@ export function Applications() {
 		setIsEngineSelectOpen(true);
 	};
 
-	const handleEdit = (appSlug: string, engine?: string) => {
-		// Route to appropriate editor based on engine type
-		if (engine === "code" || engine === "jsx") {
-			navigate(`/apps/${appSlug}/code`);
-		} else {
-			navigate(`/apps/${appSlug}/edit`);
-		}
+	const handleEdit = (appSlug: string) => {
+		navigate(`/apps/${appSlug}/edit`);
 	};
 
 	const handlePreview = (appId: string) => {
@@ -373,12 +368,7 @@ export function Applications() {
 												<Button
 													variant="outline"
 													size="icon"
-													onClick={() =>
-														handleEdit(
-															app.slug,
-															(app as { engine?: string }).engine,
-														)
-													}
+													onClick={() => handleEdit(app.slug)}
 													title="Edit application"
 												>
 													<Pencil className="h-4 w-4" />
@@ -523,12 +513,7 @@ export function Applications() {
 														<Button
 															variant="ghost"
 															size="sm"
-															onClick={() =>
-																handleEdit(
-																	app.slug,
-																	(app as { engine?: string }).engine,
-																)
-															}
+															onClick={() => handleEdit(app.slug)}
 															title="Edit application"
 														>
 															<Pencil className="h-4 w-4" />

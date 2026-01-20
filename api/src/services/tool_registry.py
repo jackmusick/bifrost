@@ -6,6 +6,7 @@ Converts workflow metadata to LLM-friendly tool definitions.
 """
 
 import logging
+import re
 from dataclasses import dataclass
 from typing import Any, Sequence
 from uuid import UUID
@@ -16,6 +17,25 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from src.models.orm import Workflow
 
 logger = logging.getLogger(__name__)
+
+
+def _normalize_tool_name(name: str) -> str:
+    """
+    Convert workflow name to valid API tool name.
+
+    Anthropic API requires tool names to match ^[a-zA-Z0-9_-]{1,128}$
+    This converts names like "Add Comment (Demo)" to "add_comment_demo".
+    """
+    name = name.lower().strip()
+    # Replace spaces and hyphens with underscores
+    name = re.sub(r"[\s\-]+", "_", name)
+    # Remove invalid characters (keep only alphanumeric and underscore)
+    name = re.sub(r"[^a-z0-9_]", "", name)
+    # Collapse multiple underscores
+    name = re.sub(r"_+", "_", name)
+    # Strip leading/trailing underscores
+    name = name.strip("_")
+    return name
 
 
 @dataclass
@@ -199,10 +219,10 @@ class ToolRegistry:
 
         return ToolDefinition(
             id=tool.id,
-            name=tool.name,
+            name=_normalize_tool_name(tool.name),
             description=tool.description,
             parameters=parameters_schema,
-            workflow_name=tool.name,
+            workflow_name=tool.name,  # Keep original for execution lookup
         )
 
     def _map_type_to_json_schema(self, param_type: str) -> str:

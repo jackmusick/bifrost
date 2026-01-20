@@ -139,7 +139,7 @@ export function AppRouter({ preview = false }: AppRouterProps) {
 						</Button>
 						<Button
 							onClick={() =>
-								navigate(`/apps/${slugParam}/code`)
+								navigate(`/apps/${slugParam}/edit`)
 							}
 						>
 							Open Editor
