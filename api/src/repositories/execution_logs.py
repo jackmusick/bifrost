@@ -11,8 +11,11 @@ from uuid import UUID
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import joinedload
 
 from src.models import ExecutionLog
+from src.models.orm.executions import Execution
+from src.models.orm.organizations import Organization
 
 
 class ExecutionLogRepository:
@@ -213,6 +216,96 @@ class ExecutionLogRepository:
         )
         await self.session.flush()
         return result.rowcount
+
+    async def list_logs(
+        self,
+        organization_id: UUID | None = None,
+        workflow_name: str | None = None,
+        levels: list[str] | None = None,
+        message_search: str | None = None,
+        start_date: datetime | None = None,
+        end_date: datetime | None = None,
+        limit: int = 50,
+        offset: int = 0,
+    ) -> tuple[list[dict[str, Any]], str | None]:
+        """
+        List logs across all executions with filtering and pagination.
+
+        Args:
+            organization_id: Filter by organization
+            workflow_name: Filter by workflow name (partial match)
+            levels: Filter by log levels (e.g., ["ERROR", "WARNING"])
+            message_search: Search in log messages (partial match)
+            start_date: Filter logs from this date
+            end_date: Filter logs until this date
+            limit: Maximum number of logs to return
+            offset: Number of logs to skip
+
+        Returns:
+            Tuple of (logs_list, next_continuation_token).
+            Token is the next offset as string, or None if no more results.
+        """
+        # Build query with joins
+        query = (
+            select(ExecutionLog)
+            .join(Execution, ExecutionLog.execution_id == Execution.id)
+            .outerjoin(Organization, Execution.organization_id == Organization.id)
+            .options(
+                joinedload(ExecutionLog.execution).joinedload(Execution.organization)
+            )
+            .order_by(ExecutionLog.timestamp.desc())
+        )
+
+        # Apply filters
+        if organization_id:
+            query = query.where(Execution.organization_id == organization_id)
+
+        if workflow_name:
+            query = query.where(Execution.workflow_name.ilike(f"%{workflow_name}%"))
+
+        if levels:
+            query = query.where(ExecutionLog.level.in_([lvl.upper() for lvl in levels]))
+
+        if message_search:
+            query = query.where(ExecutionLog.message.ilike(f"%{message_search}%"))
+
+        if start_date:
+            query = query.where(ExecutionLog.timestamp >= start_date)
+
+        if end_date:
+            query = query.where(ExecutionLog.timestamp <= end_date)
+
+        # Fetch limit+1 to check if there are more results
+        query = query.offset(offset).limit(limit + 1)
+
+        result = await self.session.execute(query)
+        logs = result.scalars().unique().all()
+
+        # Check if there are more results
+        has_more = len(logs) > limit
+        if has_more:
+            logs = list(logs)[:limit]
+
+        # Calculate next token
+        next_token = str(offset + limit) if has_more else None
+
+        # Convert to dicts with joined data
+        return [
+            {
+                "id": log.id,
+                "execution_id": str(log.execution_id),
+                "organization_name": (
+                    log.execution.organization.name
+                    if log.execution.organization
+                    else None
+                ),
+                "workflow_name": log.execution.workflow_name,
+                "level": log.level,
+                "message": log.message,
+                "timestamp": log.timestamp,
+            }
+            for log in logs
+        ], next_token
 
 
 def get_execution_logs_repository() -> Any:

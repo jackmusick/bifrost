@@ -33,6 +33,7 @@ interface AppRouterProps {
 export function AppRouter({ preview = false }: AppRouterProps) {
 	const { applicationId: slugParam } = useParams();
 	const navigate = useNavigate();
+	const location = useLocation();
 
 	// Fetch application metadata
 	const {
@@ -40,6 +41,33 @@ export function AppRouter({ preview = false }: AppRouterProps) {
 		isLoading,
 		error,
 	} = useApplication(slugParam);
+
+	// Get maximize action (must be called before any early returns)
+	const maximize = useAppViewerStore((state) => state.maximize);
+
+	// Get the appropriate version ID
+	const versionId = application
+		? preview
+			? application.draft_version_id
+			: application.active_version_id
+		: null;
+
+	// Hydrate app viewer store for minimize/maximize support
+	useEffect(() => {
+		if (application && versionId) {
+			useAppViewerStore.getState().hydrateFromRoute({
+				appId: application.id,
+				appSlug: application.slug,
+				appName: application.name,
+				versionId,
+				isPreview: preview,
+			});
+		}
+	}, [application, versionId, preview]);
+
+	const handleMaximize = () => {
+		maximize(location.pathname);
+	};
 
 	// Loading state
 	if (isLoading) {
@@ -104,33 +132,6 @@ export function AppRouter({ preview = false }: AppRouterProps) {
 			</div>
 		);
 	}
-
-	// Get the appropriate version ID
-	const versionId = preview
-		? application.draft_version_id
-		: application.active_version_id;
-
-	// Hydrate app viewer store for minimize/maximize support
-	useEffect(() => {
-		if (application && versionId) {
-			useAppViewerStore.getState().hydrateFromRoute({
-				appId: application.id,
-				appSlug: application.slug,
-				appName: application.name,
-				versionId,
-				isPreview: preview,
-			});
-		}
-	}, [application, versionId, preview]);
-
-	// Get maximize action
-	const maximize = useAppViewerStore((state) => state.maximize);
-	const location = useLocation();
-
-	const handleMaximize = () => {
-		// Store current path and go to home (or wherever makes sense)
-		maximize(location.pathname);
-	};
 
 	// Handle missing version
 	if (!versionId) {
