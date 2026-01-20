@@ -1,12 +1,16 @@
+// client/src/components/editor/EditorOverlay.tsx
+
+import { AnimatePresence } from "framer-motion";
 import { useEditorStore } from "@/stores/editorStore";
 import { useAuth } from "@/contexts/AuthContext";
 import { EditorLayout } from "./EditorLayout";
+import { WindowOverlay } from "@/components/window-management";
 
 /**
  * Editor overlay component
  * Renders the editor as a fullscreen overlay on top of the current page
  * Only visible when isOpen is true and user is a platform admin
- * When minimized, only shows the docked button without the fullscreen background
+ * When minimized, returns null - the unified dock handles the minimized state
  */
 export function EditorOverlay() {
 	const isOpen = useEditorStore((state) => state.isOpen);
@@ -17,14 +21,18 @@ export function EditorOverlay() {
 		return null;
 	}
 
-	// If minimized, don't render the fullscreen background
+	// If minimized, don't render - unified dock handles this
 	if (layoutMode === "minimized") {
-		return <EditorLayout />;
+		return null;
 	}
 
 	return (
-		<div className="fixed inset-0 z-50 bg-background">
-			<EditorLayout />
-		</div>
+		<AnimatePresence>
+			{layoutMode === "fullscreen" && (
+				<WindowOverlay>
+					<EditorLayout />
+				</WindowOverlay>
+			)}
+		</AnimatePresence>
 	);
 }
