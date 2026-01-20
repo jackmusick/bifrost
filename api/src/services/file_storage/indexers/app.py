@@ -21,6 +21,11 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.models import Application, AppFile, AppFileDependency, AppVersion
 from src.services.app_dependencies import parse_dependencies
+from src.services.file_storage.diagnostics import DiagnosticsService
+from src.services.file_storage.ref_translation import (
+    build_ref_to_uuid_map,
+    transform_app_source_refs_to_uuids,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -124,7 +129,8 @@ class AppIndexer:
                 f"Slug mismatch in {path}: path has '{slug}', JSON has '{json_slug}'. Using path slug."
             )
 
-        now = datetime.now(timezone.utc)
+        # Use naive UTC datetime - columns defined without timezone
+        now = datetime.now(timezone.utc).replace(tzinfo=None)
 
         # Check if app already exists by slug
         existing_app = await self._get_app_by_slug(slug)
@@ -142,17 +148,9 @@ class AppIndexer:
         else:
             # Create new app with safe defaults
             app_id = uuid4()
+            draft_version_id = uuid4()
 
-            # Create draft version first
-            draft_version = AppVersion(
-                id=uuid4(),
-                application_id=app_id,
-                created_at=now,
-            )
-            self.db.add(draft_version)
-            await self.db.flush()  # Get the version ID
-
-            # Create the application
+            # Create application first (required for FK constraint)
             new_app = Application(
                 id=app_id,
                 name=name,
@@ -164,8 +162,8 @@ class AppIndexer:
                 organization_id=None,  # Global
                 access_level="role_based",  # Locked down by default
                 permissions={},
-                # Version references
-                draft_version_id=draft_version.id,
+                # Version references - set draft_version_id after flush
+                draft_version_id=None,
                 active_version_id=None,  # Not published
                 # Metadata
                 created_at=now,
@@ -173,6 +171,19 @@ class AppIndexer:
                 created_by="github_sync",
             )
             self.db.add(new_app)
+            await self.db.flush()  # Get the app ID persisted
+
+            # Create draft version after application exists
+            draft_version = AppVersion(
+                id=draft_version_id,
+                application_id=app_id,
+                created_at=now,
+            )
+            self.db.add(draft_version)
+            await self.db.flush()  # Get the version ID
+
+            # Update app to point to draft version
+            new_app.draft_version_id = draft_version_id
 
             logger.info(f"Created app: {slug}")
 
@@ -227,22 +238,42 @@ class AppIndexer:
             logger.warning(f"Invalid UTF-8 in app file: {path}")
             return False
 
-        now = datetime.now(timezone.utc)
+        # Transform portable workflow refs to UUIDs
+        ref_to_uuid = await build_ref_to_uuid_map(self.db)
+        transformed_source, unresolved_refs = transform_app_source_refs_to_uuids(
+            source, ref_to_uuid
+        )
 
-        # Upsert the file
+        # Create notification for unresolved refs (or clear if resolved)
+        # Wrapped in try-except to gracefully handle notification service unavailability
+        try:
+            diagnostics = DiagnosticsService(self.db)
+            await diagnostics.scan_for_unresolved_refs(
+                path=path,
+                entity_type="app_file",
+                unresolved_refs=unresolved_refs,
+            )
+        except Exception as e:
+            # Log but don't fail indexing if notifications unavailable
+            logger.warning(f"Failed to create notification for unresolved refs in {path}: {e}")
+
+        # Use naive UTC datetime - columns defined without timezone
+        now = datetime.now(timezone.utc).replace(tzinfo=None)
+
+        # Upsert the file with transformed source
         file_id = uuid4()
         stmt = insert(AppFile).values(
             id=file_id,
             app_version_id=app.draft_version_id,
             path=relative_path,
-            source=source,
+            source=transformed_source,
             compiled=None,
             created_at=now,
             updated_at=now,
         ).on_conflict_do_update(
             index_elements=["app_version_id", "path"],
             set_={
-                "source": source,
+                "source": transformed_source,
                 "compiled": None,  # Clear compiled on update
                 "updated_at": now,
             },
@@ -250,8 +281,8 @@ class AppIndexer:
         result = await self.db.execute(stmt)
         actual_file_id = result.scalar_one()
 
-        # Sync dependencies for this file
-        await self._sync_file_dependencies(actual_file_id, source)
+        # Sync dependencies for this file (uses transformed source with UUIDs)
+        await self._sync_file_dependencies(actual_file_id, transformed_source)
 
         logger.debug(f"Indexed app file: {relative_path} in app {slug}")
         return False
