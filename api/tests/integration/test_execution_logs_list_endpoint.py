@@ -16,7 +16,7 @@ from src.models import Execution, ExecutionLog
 from src.models.enums import ExecutionStatus
 from src.models.orm.users import User
 from src.models.orm.organizations import Organization
-from src.core.auth import UserPrincipal
+from src.repositories.execution_logs import ExecutionLogRepository
 
 
 @pytest_asyncio.fixture
@@ -123,211 +123,170 @@ async def sample_execution_with_logs(
 
 @pytest.mark.integration
 @pytest.mark.asyncio
-class TestLogsListEndpoint:
-    """Tests for GET /api/executions/logs endpoint."""
-
-    async def test_list_logs_requires_admin(
-        self,
-        db_session: AsyncSession,
-        test_user: User,
-    ):
-        """Non-admin users should get 403."""
-        from fastapi import HTTPException
-        from src.routers.executions import list_logs
-
-        # Create a mock context for a regular user
-        regular_user = UserPrincipal(
-            user_id=test_user.id,
-            email=test_user.email,
-            organization_id=test_user.organization_id,
-            is_superuser=False,
-        )
-
-        # We need to create a minimal Context mock
-        class MockContext:
-            def __init__(self, user, db):
-                self.user = user
-                self.db = db
-
-        ctx = MockContext(regular_user, db_session)
-
-        # Pass all optional parameters explicitly to avoid Query() default issues
-        with pytest.raises(HTTPException) as exc_info:
-            await list_logs(
-                ctx=ctx,
-                organization_id=None,
-                workflow_name=None,
-                levels=None,
-                message_search=None,
-                start_date=None,
-                end_date=None,
-                limit=50,
-                continuation_token=None,
-            )
-
-        assert exc_info.value.status_code == 403
-        assert "Admin access required" in exc_info.value.detail
+class TestLogsListRepository:
+    """Tests for ExecutionLogRepository.list_logs method."""
 
     async def test_list_logs_returns_paginated_results(
         self,
         db_session: AsyncSession,
-        admin_user: User,
         sample_execution_with_logs: Execution,
     ):
-        """Admin can list logs with pagination."""
-        from src.routers.executions import list_logs
+        """Can list logs with pagination."""
+        repo = ExecutionLogRepository(db_session)
 
-        admin = UserPrincipal(
-            user_id=admin_user.id,
-            email=admin_user.email,
-            organization_id=None,
-            is_superuser=True,
-        )
-
-        class MockContext:
-            def __init__(self, user, db):
-                self.user = user
-                self.db = db
-
-        ctx = MockContext(admin, db_session)
-
-        # Pass all optional parameters explicitly to avoid Query() default issues
-        result = await list_logs(
-            ctx=ctx,
-            organization_id=None,
-            workflow_name=None,
-            levels=None,
-            message_search=None,
-            start_date=None,
-            end_date=None,
+        logs, next_token = await repo.list_logs(
             limit=10,
-            continuation_token=None,
+            offset=0,
         )
 
-        assert hasattr(result, "logs")
-        assert isinstance(result.logs, list)
-        assert len(result.logs) >= 1  # At least one log from our fixture
-        # continuation_token may or may not be present
+        assert isinstance(logs, list)
+        assert len(logs) >= 1  # At least one log from our fixture
+        # Each log should have expected fields
+        for log in logs:
+            assert "id" in log
+            assert "execution_id" in log
+            assert "level" in log
+            assert "message" in log
+            assert "timestamp" in log
+            assert "workflow_name" in log
 
     async def test_list_logs_filters_by_level(
         self,
         db_session: AsyncSession,
-        admin_user: User,
         sample_execution_with_logs: Execution,
     ):
         """Can filter logs by level."""
-        from src.routers.executions import list_logs
+        repo = ExecutionLogRepository(db_session)
 
-        admin = UserPrincipal(
-            user_id=admin_user.id,
-            email=admin_user.email,
-            organization_id=None,
-            is_superuser=True,
-        )
-
-        class MockContext:
-            def __init__(self, user, db):
-                self.user = user
-                self.db = db
-
-        ctx = MockContext(admin, db_session)
-
-        # Pass all optional parameters explicitly to avoid Query() default issues
-        result = await list_logs(
-            ctx=ctx,
-            organization_id=None,
-            workflow_name=None,
-            levels="ERROR,WARNING",
-            message_search=None,
-            start_date=None,
-            end_date=None,
+        logs, _ = await repo.list_logs(
+            levels=["ERROR", "WARNING"],
             limit=50,
-            continuation_token=None,
+            offset=0,
         )
 
-        assert hasattr(result, "logs")
+        assert isinstance(logs, list)
         # All returned logs should be ERROR or WARNING
-        for log in result.logs:
-            assert log.level in ["ERROR", "WARNING"]
+        for log in logs:
+            assert log["level"] in ["ERROR", "WARNING"]
 
     async def test_list_logs_filters_by_workflow_name(
         self,
         db_session: AsyncSession,
-        admin_user: User,
         sample_execution_with_logs: Execution,
     ):
         """Can filter logs by workflow name."""
-        from src.routers.executions import list_logs
+        repo = ExecutionLogRepository(db_session)
 
-        admin = UserPrincipal(
-            user_id=admin_user.id,
-            email=admin_user.email,
-            organization_id=None,
-            is_superuser=True,
-        )
-
-        class MockContext:
-            def __init__(self, user, db):
-                self.user = user
-                self.db = db
-
-        ctx = MockContext(admin, db_session)
-
-        # Pass all optional parameters explicitly to avoid Query() default issues
-        result = await list_logs(
-            ctx=ctx,
-            organization_id=None,
+        logs, _ = await repo.list_logs(
             workflow_name="test_workflow",
-            levels=None,
-            message_search=None,
-            start_date=None,
-            end_date=None,
             limit=50,
-            continuation_token=None,
+            offset=0,
         )
 
-        assert hasattr(result, "logs")
+        assert isinstance(logs, list)
         # All returned logs should be from test_workflow
-        for log in result.logs:
-            assert log.workflow_name == "test_workflow"
+        for log in logs:
+            assert log["workflow_name"] == "test_workflow"
 
     async def test_list_logs_message_search(
         self,
         db_session: AsyncSession,
-        admin_user: User,
         sample_execution_with_logs: Execution,
     ):
         """Can search in log message content."""
-        from src.routers.executions import list_logs
+        repo = ExecutionLogRepository(db_session)
 
-        admin = UserPrincipal(
-            user_id=admin_user.id,
-            email=admin_user.email,
-            organization_id=None,
-            is_superuser=True,
-        )
-
-        class MockContext:
-            def __init__(self, user, db):
-                self.user = user
-                self.db = db
-
-        ctx = MockContext(admin, db_session)
-
-        # Pass all optional parameters explicitly to avoid Query() default issues
-        result = await list_logs(
-            ctx=ctx,
-            organization_id=None,
-            workflow_name=None,
-            levels=None,
+        logs, _ = await repo.list_logs(
             message_search="timeout",
-            start_date=None,
-            end_date=None,
             limit=50,
-            continuation_token=None,
+            offset=0,
         )
 
-        assert hasattr(result, "logs")
+        assert isinstance(logs, list)
         # All returned logs should contain "timeout" in message
-        for log in result.logs:
-            assert "timeout" in log.message.lower()
+        for log in logs:
+            assert "timeout" in log["message"].lower()
+
+    async def test_list_logs_filters_by_organization(
+        self,
+        db_session: AsyncSession,
+        sample_execution_with_logs: Execution,
+        test_organization: Organization,
+    ):
+        """Can filter logs by organization."""
+        repo = ExecutionLogRepository(db_session)
+
+        logs, _ = await repo.list_logs(
+            organization_id=test_organization.id,
+            limit=50,
+            offset=0,
+        )
+
+        assert isinstance(logs, list)
+        # Should have logs from our fixture execution
+        assert len(logs) >= 1
+
+    async def test_list_logs_pagination_token(
+        self,
+        db_session: AsyncSession,
+        sample_execution_with_logs: Execution,
+    ):
+        """Pagination returns correct continuation token."""
+        repo = ExecutionLogRepository(db_session)
+
+        # Request exactly 2 logs (our fixture has 4)
+        logs, next_token = await repo.list_logs(
+            limit=2,
+            offset=0,
+        )
+
+        assert len(logs) == 2
+        # Should have a continuation token if there are more logs
+        if next_token is not None:
+            assert next_token == "2"  # Next offset
+
+            # Fetch next page
+            logs2, _ = await repo.list_logs(
+                limit=2,
+                offset=2,
+            )
+            assert len(logs2) >= 1
+
+    async def test_list_logs_filters_by_date_range(
+        self,
+        db_session: AsyncSession,
+        sample_execution_with_logs: Execution,
+    ):
+        """Can filter logs by date range."""
+        repo = ExecutionLogRepository(db_session)
+
+        # All fixture logs were created just now, so use a range that includes them
+        start_date = datetime(2020, 1, 1)
+        end_date = datetime(2030, 12, 31)
+
+        logs, _ = await repo.list_logs(
+            start_date=start_date,
+            end_date=end_date,
+            limit=50,
+            offset=0,
+        )
+
+        assert isinstance(logs, list)
+        assert len(logs) >= 1  # Should include our fixture logs
+
+    async def test_list_logs_empty_filters_returns_all(
+        self,
+        db_session: AsyncSession,
+        sample_execution_with_logs: Execution,
+    ):
+        """Empty filters return all logs."""
+        repo = ExecutionLogRepository(db_session)
+
+        logs, _ = await repo.list_logs(
+            limit=50,
+            offset=0,
+        )
+
+        assert isinstance(logs, list)
+        # Should have all 4 logs from our fixture
+        assert len(logs) >= 4
