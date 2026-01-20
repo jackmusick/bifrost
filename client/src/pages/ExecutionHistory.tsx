@@ -28,6 +28,8 @@ import {
 import { Badge } from "@/components/ui/badge";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Label } from "@/components/ui/label";
+import { Switch } from "@/components/ui/switch";
+import { LogsView } from "./ExecutionHistory/components/LogsView";
 import {
 	Tooltip,
 	TooltipContent,
@@ -110,6 +112,7 @@ export function ExecutionHistory() {
 	const [loadingStuck, setLoadingStuck] = useState(false);
 	const [cleaningUp, setCleaningUp] = useState(false);
 	const [showLocal, setShowLocal] = useState(false);
+	const [viewMode, setViewMode] = useState<"executions" | "logs">("executions");
 	const isGlobalScope = useScopeStore((state) => state.isGlobalScope);
 	const orgId = useScopeStore((state) => state.scope.orgId);
 
@@ -529,6 +532,23 @@ export function ExecutionHistory() {
 
 			{/* Search and Filters */}
 			<div className="flex items-center gap-4">
+				{isPlatformAdmin && (
+					<div className="flex items-center gap-2">
+						<Switch
+							id="view-mode"
+							checked={viewMode === "logs"}
+							onCheckedChange={(checked) =>
+								setViewMode(checked ? "logs" : "executions")
+							}
+						/>
+						<Label
+							htmlFor="view-mode"
+							className="text-sm font-normal cursor-pointer whitespace-nowrap"
+						>
+							Logs View
+						</Label>
+					</div>
+				)}
 				<SearchBox
 					value={searchTerm}
 					onChange={setSearchTerm}
@@ -567,14 +587,17 @@ export function ExecutionHistory() {
 				)}
 			</div>
 
-			{/* Status Tabs */}
-			<Tabs
-				defaultValue="all"
-				onValueChange={(v) =>
-					setStatusFilter(v as ExecutionStatus | "all")
-				}
-				className="flex flex-col flex-1 min-h-0"
-			>
+			{/* Status Tabs or Logs View */}
+			{viewMode === "logs" ? (
+				<LogsView />
+			) : (
+				<Tabs
+					defaultValue="all"
+					onValueChange={(v) =>
+						setStatusFilter(v as ExecutionStatus | "all")
+					}
+					className="flex flex-col flex-1 min-h-0"
+				>
 				<TabsList className="w-fit">
 					<TabsTrigger value="all">All</TabsTrigger>
 					<TabsTrigger value="Success">Completed</TabsTrigger>
@@ -867,7 +890,8 @@ export function ExecutionHistory() {
 						</div>
 					)}
 				</TabsContent>
-			</Tabs>
+				</Tabs>
+			)}
 		</div>
 	);
 }
