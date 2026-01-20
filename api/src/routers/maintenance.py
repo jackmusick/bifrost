@@ -13,6 +13,7 @@ from typing import Any
 import aiofiles
 from fastapi import APIRouter, Depends, HTTPException, status
 from pydantic import BaseModel
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.core.auth import Context, CurrentSuperuser
@@ -29,6 +30,14 @@ from src.models.contracts.notifications import (
     NotificationCreate,
     NotificationStatus,
 )
+from src.models.orm import (
+    AppFile,
+    AppFileDependency,
+    Application,
+    Form,
+    Workflow,
+)
+from src.services.app_dependencies import parse_dependencies
 from src.services.notification_service import get_notification_service
 
 logger = logging.getLogger(__name__)
@@ -358,4 +367,213 @@ async def index_documentation(
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Failed to index documentation: {str(e)}",
+        )
+
+
+class AppDependencyIssue(BaseModel):
+    """A missing dependency issue in an app."""
+
+    app_id: str
+    app_name: str
+    app_slug: str
+    file_path: str
+    dependency_type: str
+    dependency_id: str
+
+
+class AppDependencyScanResponse(BaseModel):
+    """Response from app dependency scan."""
+
+    apps_scanned: int
+    files_scanned: int
+    dependencies_rebuilt: int
+    issues_found: int
+    issues: list[AppDependencyIssue]
+    notification_created: bool
+
+
+@router.post(
+    "/scan-app-dependencies",
+    response_model=AppDependencyScanResponse,
+    summary="Rebuild app dependencies",
+    description="Rebuild AppFileDependency table by parsing all app source files (Platform admin only)",
+)
+async def scan_app_dependencies(
+    ctx: Context,
+    user: CurrentSuperuser,
+    db: AsyncSession = Depends(get_db),
+) -> AppDependencyScanResponse:
+    """
+    Rebuild app file dependencies from source code.
+
+    This endpoint:
+    1. Clears all existing AppFileDependency records
+    2. Parses all app file source code to find useWorkflow(), useForm(), and
+       useDataProvider() calls
+    3. Inserts new AppFileDependency records for each found dependency
+    4. Reports any dependencies that reference non-existent entities
+
+    This populates the data used by the dependency graph feature.
+
+    Creates a platform admin notification if issues are found.
+
+    Returns:
+        AppDependencyScanResponse with rebuild results
+    """
+    from sqlalchemy import delete as sql_delete
+
+    from src.models.orm.applications import AppVersion
+
+    try:
+        # Step 1: Clear all existing app file dependencies
+        await db.execute(sql_delete(AppFileDependency))
+        logger.info("Cleared existing AppFileDependency records")
+
+        # Step 2: Get all app files with their app info
+        files_result = await db.execute(
+            select(AppFile, Application)
+            .join(AppVersion, AppFile.app_version_id == AppVersion.id)
+            .join(Application, AppVersion.application_id == Application.id)
+        )
+        file_rows = files_result.all()
+
+        all_issues: list[AppDependencyIssue] = []
+        total_deps_rebuilt = 0
+        files_scanned = 0
+        apps_seen: set[str] = set()
+
+        for file, app in file_rows:
+            apps_seen.add(str(app.id))
+            files_scanned += 1
+
+            # Parse dependencies from source code
+            if not file.source:
+                continue
+
+            dependencies = parse_dependencies(file.source)
+
+            for dep_type, dep_id in dependencies:
+                # Step 3: Insert new dependency record
+                dependency = AppFileDependency(
+                    app_file_id=file.id,
+                    dependency_type=dep_type,
+                    dependency_id=dep_id,
+                )
+                db.add(dependency)
+                total_deps_rebuilt += 1
+
+                # Step 4: Check if the referenced entity exists
+                if dep_type == "workflow":
+                    # Workflows are in Workflow table with type='workflow'
+                    result = await db.execute(
+                        select(Workflow.id).where(
+                            Workflow.id == dep_id,
+                            Workflow.type == "workflow",
+                        )
+                    )
+                    exists = result.scalar_one_or_none() is not None
+
+                elif dep_type == "form":
+                    # Forms are in their own table
+                    result = await db.execute(
+                        select(Form.id).where(Form.id == dep_id)
+                    )
+                    exists = result.scalar_one_or_none() is not None
+
+                elif dep_type == "data_provider":
+                    # Data providers are in Workflow table with type='data_provider'
+                    result = await db.execute(
+                        select(Workflow.id).where(
+                            Workflow.id == dep_id,
+                            Workflow.type == "data_provider",
+                        )
+                    )
+                    exists = result.scalar_one_or_none() is not None
+
+                else:
+                    # Unknown dependency type, still record it but skip validation
+                    continue
+
+                if not exists:
+                    all_issues.append(
+                        AppDependencyIssue(
+                            app_id=str(app.id),
+                            app_name=app.name,
+                            app_slug=app.slug,
+                            file_path=file.path,
+                            dependency_type=dep_type,
+                            dependency_id=str(dep_id),
+                        )
+                    )
+
+        # Commit all the new dependency records
+        await db.commit()
+
+        # Create notification if issues found
+        notification_created = False
+        if all_issues:
+            notification_service = get_notification_service()
+
+            apps_with_issues = len({i.app_slug for i in all_issues})
+            title = f"Missing App Dependencies: {apps_with_issues} app(s)"
+
+            # Check for existing notification to avoid duplicates
+            existing = await notification_service.find_admin_notification_by_title(
+                title=title,
+                category=NotificationCategory.SYSTEM,
+            )
+
+            if not existing:
+                # Build description with first few issues
+                app_names = list({i.app_name for i in all_issues})[:3]
+                description = f"{len(all_issues)} missing: {', '.join(app_names)}"
+                if len(all_issues) > 3:
+                    description += "..."
+
+                await notification_service.create_notification(
+                    user_id="system",
+                    request=NotificationCreate(
+                        category=NotificationCategory.SYSTEM,
+                        title=title,
+                        description=description,
+                        metadata={
+                            "action": "view_apps",
+                            "issues": [
+                                {
+                                    "app_id": i.app_id,
+                                    "app_name": i.app_name,
+                                    "app_slug": i.app_slug,
+                                    "file_path": i.file_path,
+                                    "dependency_type": i.dependency_type,
+                                    "dependency_id": i.dependency_id,
+                                }
+                                for i in all_issues
+                            ],
+                        },
+                    ),
+                    for_admins=True,
+                    initial_status=NotificationStatus.AWAITING_ACTION,
+                )
+                notification_created = True
+
+        logger.info(
+            f"App dependency rebuild completed: scanned {len(apps_seen)} apps, "
+            f"{files_scanned} files, rebuilt {total_deps_rebuilt} dependencies, "
+            f"found {len(all_issues)} issues"
+        )
+
+        return AppDependencyScanResponse(
+            apps_scanned=len(apps_seen),
+            files_scanned=files_scanned,
+            dependencies_rebuilt=total_deps_rebuilt,
+            issues_found=len(all_issues),
+            issues=all_issues,
+            notification_created=notification_created,
+        )
+
+    except Exception as e:
+        logger.error(f"Error rebuilding app dependencies: {e}", exc_info=True)
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to rebuild app dependencies: {str(e)}",
         )

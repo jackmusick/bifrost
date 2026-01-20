@@ -4,6 +4,7 @@ import {
 	Workflow,
 	FileText,
 	Bot,
+	AppWindow,
 	Globe,
 	Building2,
 	Shield,
@@ -47,6 +48,7 @@ import {
 import { useWorkflows, useUpdateWorkflow } from "@/hooks/useWorkflows";
 import { useForms, useUpdateForm } from "@/hooks/useForms";
 import { useAgents, useUpdateAgent } from "@/hooks/useAgents";
+import { useApplications, useUpdateApplication } from "@/hooks/useApplications";
 import { useOrganizations } from "@/hooks/useOrganizations";
 import { useRoles } from "@/hooks/useRoles";
 import {
@@ -69,11 +71,12 @@ import type { components } from "@/lib/v1";
 type WorkflowMetadata = components["schemas"]["WorkflowMetadata"];
 type FormPublic = components["schemas"]["FormPublic"];
 type AgentSummary = components["schemas"]["AgentSummary"];
+type ApplicationPublic = components["schemas"]["ApplicationPublic"];
 type Organization = components["schemas"]["OrganizationPublic"];
 type Role = components["schemas"]["RolePublic"];
 
 // Unified entity type for the management view
-type EntityType = "workflow" | "form" | "agent";
+type EntityType = "workflow" | "form" | "agent" | "app";
 
 interface EntityWithScope {
 	id: string;
@@ -82,7 +85,7 @@ interface EntityWithScope {
 	organizationId: string | null;
 	accessLevel: string | null;
 	createdAt: string;
-	original: WorkflowMetadata | FormPublic | AgentSummary;
+	original: WorkflowMetadata | FormPublic | AgentSummary | ApplicationPublic;
 }
 
 // Relationship filter state
@@ -100,6 +103,7 @@ function normalizeEntities(
 	workflows: WorkflowMetadata[] = [],
 	forms: FormPublic[] = [],
 	agents: AgentSummary[] = [],
+	apps: ApplicationPublic[] = [],
 ): EntityWithScope[] {
 	const entities: EntityWithScope[] = [];
 
@@ -141,6 +145,18 @@ function normalizeEntities(
 		});
 	}
 
+	for (const app of apps) {
+		entities.push({
+			id: app.id,
+			name: app.name,
+			entityType: "app",
+			organizationId: app.organization_id ?? null,
+			accessLevel: app.access_level ?? null,
+			createdAt: app.created_at ?? new Date().toISOString(),
+			original: app,
+		});
+	}
+
 	return entities;
 }
 
@@ -158,8 +174,13 @@ const ENTITY_CONFIG = {
 	},
 	agent: {
 		icon: Bot,
-		color: "bg-purple-100 text-purple-800 dark:bg-purple-900 dark:text-purple-200",
+		color: "bg-orange-100 text-orange-800 dark:bg-orange-900 dark:text-orange-200",
 		label: "Agent",
+	},
+	app: {
+		icon: AppWindow,
+		color: "bg-purple-100 text-purple-800 dark:bg-purple-900 dark:text-purple-200",
+		label: "App",
 	},
 } as const;
 
@@ -286,22 +307,21 @@ function EntityCard({
 							<Icon className="h-4 w-4 text-muted-foreground flex-shrink-0" />
 							<p className="font-medium truncate">{entity.name}</p>
 						</div>
-						<div className="flex items-center gap-1 shrink-0">
+						<div className="flex items-center gap-1.5 shrink-0">
+							<Badge variant="outline" className={cn(config.color)}>
+								{config.label}
+							</Badge>
 							<Button
-								variant="ghost"
+								variant="outline"
 								size="icon"
-								className="h-6 w-6"
 								onClick={(e) => {
 									e.stopPropagation();
 									onShowRelationships(entity.id, entity.entityType, entity.name);
 								}}
-								title="Show related entities"
+								title="Show dependencies"
 							>
-								<Network className="h-3.5 w-3.5" />
+								<Network className="h-4 w-4" />
 							</Button>
-							<Badge variant="outline" className={cn(config.color)}>
-								{config.label}
-							</Badge>
 						</div>
 					</div>
 
@@ -514,6 +534,7 @@ function FilterPopover({
 		{ value: "workflow", label: "Workflows" },
 		{ value: "form", label: "Forms" },
 		{ value: "agent", label: "Agents" },
+		{ value: "app", label: "Apps" },
 	];
 
 	const orgOptions = [
@@ -635,6 +656,7 @@ interface DependencyGraphDialogProps {
 	open: boolean;
 	onOpenChange: (open: boolean) => void;
 	entityName: string;
+	entityType: EntityType | null;
 	graphData: {
 		nodes?: GraphNode[];
 		edges?: GraphEdge[];
@@ -647,6 +669,7 @@ function DependencyGraphDialog({
 	open,
 	onOpenChange,
 	entityName,
+	entityType,
 	graphData,
 	isLoading,
 }: DependencyGraphDialogProps) {
@@ -657,6 +680,11 @@ function DependencyGraphDialog({
 					<DialogTitle className="flex items-center gap-2">
 						<Network className="h-5 w-5" />
 						Dependency Graph: {entityName}
+						{entityType === "app" && (
+							<span className="text-xs font-normal text-muted-foreground ml-2">
+								(All Versions)
+							</span>
+						)}
 					</DialogTitle>
 				</DialogHeader>
 				<div className="flex-1 min-h-0 rounded-lg border bg-background/50 overflow-hidden">
@@ -724,6 +752,11 @@ export function EntityManagement() {
 		isLoading: loadingAgents,
 		refetch: refetchAgents,
 	} = useAgents();
+	const {
+		data: appsResponse,
+		isLoading: loadingApps,
+		refetch: refetchApps,
+	} = useApplications();
 	const { data: organizations } = useOrganizations();
 	const { data: roles } = useRoles();
 
@@ -741,13 +774,14 @@ export function EntityManagement() {
 	const updateWorkflow = useUpdateWorkflow();
 	const updateForm = useUpdateForm();
 	const updateAgent = useUpdateAgent();
+	const updateApplication = useUpdateApplication();
 
-	const isLoading = loadingWorkflows || loadingForms || loadingAgents;
+	const isLoading = loadingWorkflows || loadingForms || loadingAgents || loadingApps;
 
 	// Normalize and combine all entities
 	const allEntities = useMemo(
-		() => normalizeEntities(workflows ?? [], forms ?? [], agents ?? []),
-		[workflows, forms, agents],
+		() => normalizeEntities(workflows ?? [], forms ?? [], agents ?? [], appsResponse?.applications ?? []),
+		[workflows, forms, agents, appsResponse],
 	);
 
 	// Extract related entity IDs from graph data
@@ -842,6 +876,7 @@ export function EntityManagement() {
 		refetchWorkflows();
 		refetchForms();
 		refetchAgents();
+		refetchApps();
 	};
 
 	const handleSelectEntity = (entityId: string, selected: boolean) => {
@@ -911,6 +946,12 @@ export function EntityManagement() {
 								params: { path: { agent_id: entityId } },
 								body: { organization_id: orgId, clear_roles: false },
 							});
+						} else if (entity.entityType === "app") {
+							const app = entity.original as ApplicationPublic;
+							await updateApplication.mutateAsync({
+								params: { path: { slug: app.slug } },
+								body: { scope: orgId ?? "global" },
+							});
 						}
 					} catch (error) {
 						toast.error(`Failed to update ${entity.entityType}`, {
@@ -923,7 +964,7 @@ export function EntityManagement() {
 				setIsUpdating(false);
 			}
 		},
-		[allEntities, updateWorkflow, updateAgent],
+		[allEntities, updateWorkflow, updateAgent, updateApplication],
 	);
 
 	const handleRoleDrop = useCallback(
@@ -986,6 +1027,25 @@ export function EntityManagement() {
 									},
 								});
 							}
+						} else if (entity.entityType === "app") {
+							const app = entity.original as ApplicationPublic;
+							if (isClearRoles) {
+								await updateApplication.mutateAsync({
+									params: { path: { slug: app.slug } },
+									body: {
+										access_level: "role_based",
+										role_ids: [],
+									},
+								});
+							} else {
+								await updateApplication.mutateAsync({
+									params: { path: { slug: app.slug } },
+									body: {
+										access_level: isAccessLevel ? "authenticated" : "role_based",
+										role_ids: isAccessLevel ? [] : undefined,
+									},
+								});
+							}
 						}
 					} catch (error) {
 						toast.error(`Failed to update ${entity.entityType}`, {
@@ -998,7 +1058,7 @@ export function EntityManagement() {
 				setIsUpdating(false);
 			}
 		},
-		[allEntities, updateWorkflow, updateForm, updateAgent],
+		[allEntities, updateWorkflow, updateForm, updateAgent, updateApplication],
 	);
 
 	return (
@@ -1010,8 +1070,8 @@ export function EntityManagement() {
 						Entity Management
 					</h1>
 					<p className="mt-2 text-muted-foreground">
-						Manage organization and access settings for workflows, forms, and
-						agents
+						Manage organization and access settings for workflows, forms,
+						agents, and apps
 					</p>
 				</div>
 				<Button
@@ -1264,6 +1324,7 @@ export function EntityManagement() {
 				open={isGraphDialogOpen}
 				onOpenChange={setIsGraphDialogOpen}
 				entityName={relationshipFilter?.entityName ?? ""}
+				entityType={relationshipFilter?.entityType ?? null}
 				graphData={graphData ?? null}
 				isLoading={loadingGraph}
 			/>

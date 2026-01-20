@@ -27,6 +27,7 @@ import {
 	Link2,
 	Database,
 	Search,
+	AppWindow,
 } from "lucide-react";
 import { toast } from "sonner";
 import { authFetch } from "@/lib/api-client";
@@ -71,6 +72,24 @@ interface DocsIndexResponse {
 	message: string | null;
 }
 
+interface AppDependencyIssue {
+	app_id: string;
+	app_name: string;
+	app_slug: string;
+	file_path: string;
+	dependency_type: string;
+	dependency_id: string;
+}
+
+interface AppDependencyScanResponse {
+	apps_scanned: number;
+	files_scanned: number;
+	dependencies_rebuilt: number;
+	issues_found: number;
+	issues: AppDependencyIssue[];
+	notification_created: boolean;
+}
+
 // Reindex streaming state
 interface ReindexState {
 	jobId: string | null;
@@ -87,13 +106,14 @@ interface ReindexResult {
 	errors: ReindexCompleted["errors"];
 }
 
-type ScanResultType = "none" | "reindex" | "sdk" | "docs";
+type ScanResultType = "none" | "reindex" | "sdk" | "docs" | "app-deps";
 
 export function Maintenance() {
 	// Scan states
 	const [isReindexing, setIsReindexing] = useState(false);
 	const [isSdkScanning, setIsSdkScanning] = useState(false);
 	const [isDocsIndexing, setIsDocsIndexing] = useState(false);
+	const [isAppDepScanning, setIsAppDepScanning] = useState(false);
 
 	// Reindex streaming state
 	const [reindexState, setReindexState] = useState<ReindexState>({
@@ -115,8 +135,10 @@ export function Maintenance() {
 	);
 	const [docsIndexResult, setDocsIndexResult] =
 		useState<DocsIndexResponse | null>(null);
+	const [appDepScanResult, setAppDepScanResult] =
+		useState<AppDependencyScanResponse | null>(null);
 
-	const isAnyRunning = isReindexing || isSdkScanning || isDocsIndexing;
+	const isAnyRunning = isReindexing || isSdkScanning || isDocsIndexing || isAppDepScanning;
 
 	// Cleanup WebSocket subscription on unmount
 	useEffect(() => {
@@ -400,6 +422,47 @@ export function Maintenance() {
 		}
 	};
 
+	const handleAppDepScan = async () => {
+		setIsAppDepScanning(true);
+
+		try {
+			const response = await authFetch("/api/maintenance/scan-app-dependencies", {
+				method: "POST",
+			});
+
+			if (!response.ok) {
+				const errorData = await response.json().catch(() => ({}));
+				toast.error("App dependency scan failed", {
+					description: errorData.detail || "Unknown error",
+				});
+				return;
+			}
+
+			const data: AppDependencyScanResponse = await response.json();
+			setAppDepScanResult(data);
+			setLastScanType("app-deps");
+
+			if (data.issues_found === 0) {
+				toast.success("Dependencies rebuilt successfully", {
+					description: `Scanned ${data.apps_scanned} apps, ${data.files_scanned} files, rebuilt ${data.dependencies_rebuilt} dependencies`,
+				});
+			} else {
+				toast.warning("Dependencies rebuilt with issues", {
+					description: `Rebuilt ${data.dependencies_rebuilt} dependencies, found ${data.issues_found} broken references`,
+				});
+			}
+		} catch (err) {
+			toast.error("App dependency scan failed", {
+				description:
+					err instanceof Error
+						? err.message
+						: "Unknown error occurred",
+			});
+		} finally {
+			setIsAppDepScanning(false);
+		}
+	};
+
 	return (
 		<div className="space-y-6">
 			{/* Actions Card */}
@@ -552,6 +615,48 @@ export function Maintenance() {
 							Index Documents
 						</Button>
 					</div>
+
+					{/* Divider */}
+					<div className="border-t" />
+
+					{/* App Dependencies Section */}
+					<div className="space-y-4">
+						<h3 className="text-sm font-medium">
+							Rebuild App Dependencies
+						</h3>
+						<div className="flex items-start gap-3 rounded-lg border border-blue-200 bg-blue-50 p-4 dark:border-blue-900 dark:bg-blue-950">
+							<AppWindow className="h-5 w-5 text-blue-600 dark:text-blue-400 flex-shrink-0 mt-0.5" />
+							<div className="text-sm text-blue-800 dark:text-blue-200">
+								<p className="text-blue-700 dark:text-blue-300">
+									Rebuild the app dependency graph by parsing
+									all app source files. Extracts{" "}
+									<code className="px-1 py-0.5 bg-blue-100 dark:bg-blue-900 rounded">
+										useWorkflow()
+									</code>,{" "}
+									<code className="px-1 py-0.5 bg-blue-100 dark:bg-blue-900 rounded">
+										useForm()
+									</code>, and{" "}
+									<code className="px-1 py-0.5 bg-blue-100 dark:bg-blue-900 rounded">
+										useDataProvider()
+									</code>{" "}
+									references and populates the dependency table
+									used by Entity Management.
+								</p>
+							</div>
+						</div>
+						<Button
+							onClick={handleAppDepScan}
+							disabled={isAnyRunning}
+							variant="outline"
+						>
+							{isAppDepScanning ? (
+								<Loader2 className="h-4 w-4 mr-2 animate-spin" />
+							) : (
+								<AppWindow className="h-4 w-4 mr-2" />
+							)}
+							Rebuild App Dependencies
+						</Button>
+					</div>
 				</CardContent>
 			</Card>
 
@@ -580,6 +685,8 @@ export function Maintenance() {
 						/>
 					) : lastScanType === "docs" && docsIndexResult ? (
 						<DocsIndexResults result={docsIndexResult} />
+					) : lastScanType === "app-deps" && appDepScanResult ? (
+						<AppDepScanResults result={appDepScanResult} />
 					) : null}
 				</CardContent>
 			</Card>
@@ -932,6 +1039,114 @@ function DocsIndexResults({ result }: { result: DocsIndexResponse }) {
 				<p className="text-sm text-muted-foreground">
 					{result.message}
 				</p>
+			)}
+		</div>
+	);
+}
+
+function AppDepScanResults({ result }: { result: AppDependencyScanResponse }) {
+	const hasIssues = result.issues_found > 0;
+
+	// Group issues by app
+	const issuesByApp = result.issues.reduce(
+		(acc, issue) => {
+			const key = issue.app_slug;
+			if (!acc[key]) {
+				acc[key] = {
+					app_name: issue.app_name,
+					app_slug: issue.app_slug,
+					issues: [],
+				};
+			}
+			acc[key].issues.push(issue);
+			return acc;
+		},
+		{} as Record<
+			string,
+			{
+				app_name: string;
+				app_slug: string;
+				issues: AppDependencyIssue[];
+			}
+		>,
+	);
+
+	return (
+		<div className="space-y-4">
+			{/* Summary */}
+			<div className="flex items-center gap-4 flex-wrap">
+				{hasIssues ? (
+					<div className="flex items-center gap-2 text-amber-600">
+						<AlertTriangle className="h-5 w-5" />
+						<span className="font-medium">
+							{result.issues_found} broken reference
+							{result.issues_found !== 1 ? "s" : ""}
+						</span>
+					</div>
+				) : (
+					<div className="flex items-center gap-2 text-green-600">
+						<CheckCircle2 className="h-5 w-5" />
+						<span className="font-medium">
+							All dependencies valid
+						</span>
+					</div>
+				)}
+				<Badge variant="secondary">
+					{result.apps_scanned} app
+					{result.apps_scanned !== 1 ? "s" : ""} scanned
+				</Badge>
+				<Badge variant="outline">
+					{result.files_scanned} file
+					{result.files_scanned !== 1 ? "s" : ""}
+				</Badge>
+				<Badge variant="outline">
+					{result.dependencies_rebuilt} dependenc
+					{result.dependencies_rebuilt !== 1 ? "ies" : "y"} rebuilt
+				</Badge>
+			</div>
+
+			{/* Issues by app */}
+			{hasIssues && (
+				<div className="space-y-2">
+					<h4 className="text-sm font-medium text-muted-foreground">
+						Missing workflow references:
+					</h4>
+					<div className="max-h-64 overflow-y-auto rounded-md border bg-muted/50 p-3 space-y-3">
+						{Object.entries(issuesByApp).map(
+							([appSlug, { app_name, issues }]) => (
+								<div key={appSlug} className="space-y-1">
+									<div className="flex items-center gap-2 text-sm font-medium">
+										<AppWindow className="h-4 w-4 text-muted-foreground flex-shrink-0" />
+										<span>{app_name}</span>
+										<Badge
+											variant="outline"
+											className="text-xs px-1.5 py-0"
+										>
+											{appSlug}
+										</Badge>
+									</div>
+									<ul className="ml-6 space-y-1">
+										{issues.map((issue, idx) => (
+											<li
+												key={`${issue.dependency_id}-${idx}`}
+												className="text-sm text-muted-foreground"
+											>
+												<span className="font-mono text-xs">
+													{issue.file_path}
+												</span>
+												<span className="mx-1">→</span>
+												<code className="bg-destructive/10 text-destructive px-1 py-0.5 rounded text-xs">
+													{issue.dependency_type}:{" "}
+													{issue.dependency_id}
+												</code>
+											</li>
+										))}
+									</ul>
+								</div>
+							),
+						)}
+					</div>
+				</div>
 			)}
 		</div>
 	);

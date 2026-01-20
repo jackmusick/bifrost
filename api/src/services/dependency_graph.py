@@ -22,6 +22,7 @@ from src.models.orm import (
     AppFile,
     AppFileDependency,
     Application,
+    AppVersion,
     Form,
     Workflow,
 )
@@ -391,23 +392,22 @@ class DependencyGraphService:
 
         elif entity_type == "app":
             # Apps USE workflows via code file dependencies (useWorkflow hook)
-            result = await self.db.execute(
-                select(Application).where(Application.id == entity_id)
+            # Query dependencies from ALL versions of the app (not just active)
+            # This ensures we show all dependencies regardless of which version they're in
+            deps_result = await self.db.execute(
+                select(AppFileDependency.dependency_type, AppFileDependency.dependency_id)
+                .join(AppFile, AppFileDependency.app_file_id == AppFile.id)
+                .join(AppVersion, AppFile.app_version_id == AppVersion.id)
+                .where(AppVersion.application_id == entity_id)
+                .distinct()
             )
-            app = result.scalar_one_or_none()
-            if app and app.active_version_id:
-                # Query dependencies from files in the active version
-                deps_result = await self.db.execute(
-                    select(AppFileDependency.dependency_type, AppFileDependency.dependency_id)
-                    .join(AppFile, AppFileDependency.app_file_id == AppFile.id)
-                    .where(AppFile.app_version_id == app.active_version_id)
-                    .distinct()
-                )
-                for dep_type, dep_id in deps_result.all():
-                    if dep_type == "workflow":
-                        dependencies.append(("workflow", dep_id, "uses"))
-                    # Note: form and data_provider dependencies could be added here
-                    # if needed in the future
+            for dep_type, dep_id in deps_result.all():
+                if dep_type == "workflow":
+                    dependencies.append(("workflow", dep_id, "uses"))
+                elif dep_type == "form":
+                    dependencies.append(("form", dep_id, "uses"))
+                elif dep_type == "data_provider":
+                    dependencies.append(("workflow", dep_id, "uses"))
 
         elif entity_type == "agent":
             # Agents USE workflows (via agent_tools)
