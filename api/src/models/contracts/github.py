@@ -524,6 +524,19 @@ class SyncPreviewResponse(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
 
+class SyncPreviewJobResponse(BaseModel):
+    """Response when sync preview is queued as a background job.
+
+    Note: The API returns a job_id in the response. The client should subscribe
+    to WebSocket channel git:{job_id} AFTER receiving the response to receive
+    streaming progress and completion messages (git_preview_complete).
+    """
+    job_id: str = Field(..., description="Job ID for tracking progress via WebSocket")
+    status: str = Field(default="queued", description="Status: 'queued'")
+
+    model_config = ConfigDict(from_attributes=True)
+
+
 class SyncExecuteRequest(BaseModel):
     """Request to execute sync with conflict resolutions.
 

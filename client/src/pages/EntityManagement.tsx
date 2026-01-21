@@ -121,13 +121,15 @@ function normalizeEntities(
 
 	for (const f of forms) {
 		if (!f.is_active) continue;
+		// FormPublic excludes organization_id, access_level, created_at from API response
+		// Use defaults since these aren't available
 		entities.push({
 			id: f.id,
 			name: f.name,
 			entityType: "form",
-			organizationId: f.organization_id ?? null,
-			accessLevel: f.access_level ?? null,
-			createdAt: f.created_at ?? new Date().toISOString(),
+			organizationId: null, // Forms don't expose organization_id in API response
+			accessLevel: "role_based", // Default access level
+			createdAt: new Date().toISOString(), // Forms don't expose created_at in API response
 			original: f,
 		});
 	}

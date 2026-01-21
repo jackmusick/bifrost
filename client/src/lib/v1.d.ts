@@ -2862,8 +2862,8 @@ export interface paths {
             cookie?: never;
         };
         /**
-         * Preview sync changes
-         * @description Get a preview of what sync will do without executing
+         * Queue sync preview job
+         * @description Queue a background job to preview sync changes. Subscribe to git:{job_id} WebSocket channel for progress and results.
          */
         get: operations["get_sync_preview_api_github_sync_get"];
         put?: never;
@@ -2872,6 +2872,26 @@ export interface paths {
          * @description Queue sync execution with user's conflict resolutions
          */
         post: operations["execute_sync_api_github_sync_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/github/sync/content": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Get content for diff preview
+         * @description Fetch local or remote content for a file to display in diff view
+         */
+        post: operations["get_sync_content_api_github_sync_content_post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -3101,22 +3121,22 @@ export interface paths {
          * Execute workflow via API key
          * @description Execute an endpoint-enabled workflow using an API key for authentication
          */
-        get: operations["execute_endpoint_api_endpoints__workflow_name__delete"];
+        get: operations["execute_endpoint_api_endpoints__workflow_name__get"];
         /**
          * Execute workflow via API key
          * @description Execute an endpoint-enabled workflow using an API key for authentication
          */
-        put: operations["execute_endpoint_api_endpoints__workflow_name__delete"];
+        put: operations["execute_endpoint_api_endpoints__workflow_name__get"];
         /**
          * Execute workflow via API key
          * @description Execute an endpoint-enabled workflow using an API key for authentication
          */
-        post: operations["execute_endpoint_api_endpoints__workflow_name__delete"];
+        post: operations["execute_endpoint_api_endpoints__workflow_name__get"];
         /**
          * Execute workflow via API key
          * @description Execute an endpoint-enabled workflow using an API key for authentication
          */
-        delete: operations["execute_endpoint_api_endpoints__workflow_name__delete"];
+        delete: operations["execute_endpoint_api_endpoints__workflow_name__get"];
         options?: never;
         head?: never;
         patch?: never;
@@ -6547,7 +6567,7 @@ export interface components {
             system_prompt: string;
             /** Channels */
             channels: string[];
-            access_level: components["schemas"]["AgentAccessLevel"];
+            access_level?: components["schemas"]["AgentAccessLevel"] | null;
             /** Organization Id */
             organization_id?: string | null;
             /** Is Active */
@@ -6563,11 +6583,11 @@ export interface components {
              */
             is_system: boolean;
             /** Created By */
-            created_by: string;
+            created_by?: string | null;
             /** Created At */
-            created_at: string;
+            created_at?: string | null;
             /** Updated At */
-            updated_at: string;
+            updated_at?: string | null;
             /** Tool Ids */
             tool_ids?: string[];
             /** Delegated Agent Ids */
@@ -7057,7 +7077,7 @@ export interface components {
             /** Mfa Required For Password */
             mfa_required_for_password: boolean;
             /** Oauth Providers */
-            oauth_providers: components["schemas"]["src__models__contracts__auth__OAuthProviderInfo"][];
+            oauth_providers: components["schemas"]["OAuthProviderInfo"][];
         };
         /**
          * AuthorizeResponse
@@ -11700,11 +11720,6 @@ export interface components {
             issuer: string;
             /** Account Name */
             account_name: string;
-            /**
-             * Is Existing
-             * @default false
-             */
-            is_existing: boolean;
         };
         /**
          * MFAStatusResponse
@@ -11724,20 +11739,11 @@ export interface components {
         };
         /**
          * MFAVerifyRequest
-         * @description Request to verify MFA code during login.
+         * @description Request to verify MFA code.
          */
         MFAVerifyRequest: {
-            /** Mfa Token */
-            mfa_token: string;
             /** Code */
             code: string;
-            /**
-             * Trust Device
-             * @default false
-             */
-            trust_device: boolean;
-            /** Device Name */
-            device_name?: string | null;
         };
         /**
          * MFAVerifyResponse
@@ -12570,7 +12576,7 @@ export interface components {
         };
         /**
          * OAuthProviderInfo
-         * @description OAuth provider information.
+         * @description OAuth provider information for login page
          */
         OAuthProviderInfo: {
             /** Name */
@@ -12586,7 +12592,7 @@ export interface components {
          */
         OAuthProvidersResponse: {
             /** Providers */
-            providers: components["schemas"]["OAuthProviderInfo"][];
+            providers: components["schemas"]["src__routers__oauth_sso__OAuthProviderInfo"][];
         };
         /**
          * OAuthTokenResponse
@@ -12788,37 +12794,6 @@ export interface components {
             output_tokens: number;
             /** Ai Cost */
             ai_cost?: string;
-        };
-        /**
-         * OrphanInfo
-         * @description Information about a workflow that will become orphaned.
-         */
-        OrphanInfo: {
-            /**
-             * Workflow Id
-             * @description Workflow UUID
-             */
-            workflow_id: string;
-            /**
-             * Workflow Name
-             * @description Workflow display name
-             */
-            workflow_name: string;
-            /**
-             * Function Name
-             * @description Python function name
-             */
-            function_name: string;
-            /**
-             * Last Path
-             * @description Last known file path
-             */
-            last_path: string;
-            /**
-             * Used By
-             * @description Entities using this workflow
-             */
-            used_by?: components["schemas"]["WorkflowReference"][];
         };
         /**
          * OrphanedWorkflowInfo
@@ -15146,74 +15121,37 @@ export interface components {
             last_stuck_at: string;
         };
         /**
-         * SyncAction
-         * @description A single sync action (pull or push).
+         * SyncContentRequest
+         * @description Request to fetch content for diff preview.
          */
-        SyncAction: {
+        SyncContentRequest: {
             /**
              * Path
-             * @description File path relative to workspace root
+             * @description File path to fetch content for
              */
             path: string;
-            /** @description Type of action */
-            action: components["schemas"]["SyncActionType"];
             /**
-             * Sha
-             * @description Git blob SHA (for pull actions)
+             * Source
+             * @description Which side to fetch
+             * @enum {string}
              */
-            sha?: string | null;
-            /**
-             * Display Name
-             * @description Human-readable entity name
-             */
-            display_name?: string | null;
-            /**
-             * Entity Type
-             * @description Entity type: form, agent, app, app_file, workflow
-             */
-            entity_type?: string | null;
-            /**
-             * Parent Slug
-             * @description For app_file: parent app slug
-             */
-            parent_slug?: string | null;
+            source: "local" | "remote";
         };
         /**
-         * SyncActionType
-         * @description Type of sync action.
-         * @enum {string}
+         * SyncContentResponse
+         * @description Response with file content for diff preview.
          */
-        SyncActionType: "add" | "modify" | "delete";
-        /**
-         * SyncConflictInfo
-         * @description Information about a conflict between local and remote.
-         */
-        SyncConflictInfo: {
+        SyncContentResponse: {
             /**
              * Path
-             * @description File path with conflict
+             * @description File path
              */
             path: string;
             /**
-             * Local Content
-             * @description Local content
+             * Content
+             * @description File content (null if not found)
              */
-            local_content?: string | null;
-            /**
-             * Remote Content
-             * @description Remote content
-             */
-            remote_content?: string | null;
-            /**
-             * Local Sha
-             * @description SHA of local content
-             */
-            local_sha: string;
-            /**
-             * Remote Sha
-             * @description SHA of remote content
-             */
-            remote_sha: string;
+            content?: string | null;
         };
         /**
          * SyncExecuteRequest
@@ -15294,103 +15232,25 @@ export interface components {
             error?: string | null;
         };
         /**
-         * SyncPreviewResponse
-         * @description Preview of sync operations before execution.
+         * SyncPreviewJobResponse
+         * @description Response when sync preview is queued as a background job.
+         *
+         *     Note: The API returns a job_id in the response. The client should subscribe
+         *     to WebSocket channel git:{job_id} AFTER receiving the response to receive
+         *     streaming progress and completion messages (git_preview_complete).
          */
-        SyncPreviewResponse: {
+        SyncPreviewJobResponse: {
             /**
-             * To Pull
-             * @description Files to pull from GitHub
+             * Job Id
+             * @description Job ID for tracking progress via WebSocket
              */
-            to_pull?: components["schemas"]["SyncAction"][];
+            job_id: string;
             /**
-             * To Push
-             * @description Files to push to GitHub
+             * Status
+             * @description Status: 'queued'
+             * @default queued
              */
-            to_push?: components["schemas"]["SyncAction"][];
-            /**
-             * Conflicts
-             * @description Files with conflicts
-             */
-            conflicts?: components["schemas"]["SyncConflictInfo"][];
-            /**
-             * Will Orphan
-             * @description Workflows that will become orphaned
-             */
-            will_orphan?: components["schemas"]["OrphanInfo"][];
-            /**
-             * Unresolved Refs
-             * @description Workflow refs that couldn't be resolved
-             */
-            unresolved_refs?: components["schemas"]["SyncUnresolvedRefInfo"][];
-            /**
-             * Serialization Errors
-             * @description Entities that failed to serialize for sync (can be skipped)
-             */
-            serialization_errors?: components["schemas"]["SyncSerializationError"][];
-            /**
-             * Is Empty
-             * @description True if no changes to sync
-             * @default false
-             */
-            is_empty: boolean;
-        };
-        /**
-         * SyncSerializationError
-         * @description Information about an entity that failed to serialize for sync.
-         */
-        SyncSerializationError: {
-            /**
-             * Entity Type
-             * @description Type: app, form, or agent
-             */
-            entity_type: string;
-            /**
-             * Entity Id
-             * @description Entity UUID
-             */
-            entity_id: string;
-            /**
-             * Entity Name
-             * @description Entity display name
-             */
-            entity_name: string;
-            /**
-             * Path
-             * @description Virtual file path (used as resolution key)
-             */
-            path: string;
-            /**
-             * Error
-             * @description Human-readable error message
-             */
-            error: string;
-        };
-        /**
-         * SyncUnresolvedRefInfo
-         * @description Information about an unresolved portable workflow ref.
-         */
-        SyncUnresolvedRefInfo: {
-            /**
-             * Entity Type
-             * @description Type: app, form, or agent
-             */
-            entity_type: string;
-            /**
-             * Entity Path
-             * @description File path being imported
-             */
-            entity_path: string;
-            /**
-             * Field Path
-             * @description Field containing the ref, e.g., pages.0.launch_workflow_id
-             */
-            field_path: string;
-            /**
-             * Portable Ref
-             * @description The portable ref that couldn't be resolved
-             */
-            portable_ref: string;
+            status: string;
         };
         /**
          * SystemLog
@@ -15902,7 +15762,7 @@ export interface components {
         };
         /**
          * UserCreate
-         * @description Input for creating a user.
+         * @description User creation request model.
          */
         UserCreate: {
             /**
@@ -15910,22 +15770,10 @@ export interface components {
              * Format: email
              */
             email: string;
+            /** Password */
+            password: string;
             /** Name */
             name?: string | null;
-            /** Password */
-            password?: string | null;
-            /**
-             * Is Active
-             * @default true
-             */
-            is_active: boolean;
-            /**
-             * Is Superuser
-             * @default false
-             */
-            is_superuser: boolean;
-            /** Organization Id */
-            organization_id?: string | null;
         };
         /**
          * UserFormsResponse
@@ -16869,37 +16717,37 @@ export interface components {
             metadata?: components["schemas"]["WorkflowMetadata"] | null;
         };
         /**
-         * OAuthProviderInfo
-         * @description OAuth provider information for login page
-         */
-        src__models__contracts__auth__OAuthProviderInfo: {
-            /** Name */
-            name: string;
-            /** Display Name */
-            display_name: string;
-            /** Icon */
-            icon?: string | null;
-        };
-        /**
          * UserCreate
-         * @description User creation request model.
+         * @description Input for creating a user.
          */
-        src__routers__auth__UserCreate: {
+        src__models__contracts__users__UserCreate: {
             /**
              * Email
              * Format: email
              */
             email: string;
-            /** Password */
-            password: string;
             /** Name */
             name?: string | null;
+            /** Password */
+            password?: string | null;
+            /**
+             * Is Active
+             * @default true
+             */
+            is_active: boolean;
+            /**
+             * Is Superuser
+             * @default false
+             */
+            is_superuser: boolean;
+            /** Organization Id */
+            organization_id?: string | null;
         };
         /**
          * MFASetupResponse
          * @description MFA setup response with secret.
          */
-        src__routers__mfa__MFASetupResponse: {
+        src__routers__auth__MFASetupResponse: {
             /** Secret */
             secret: string;
             /** Qr Code Uri */
@@ -16910,14 +16758,28 @@ export interface components {
             issuer: string;
             /** Account Name */
             account_name: string;
+            /**
+             * Is Existing
+             * @default false
+             */
+            is_existing: boolean;
         };
         /**
          * MFAVerifyRequest
-         * @description Request to verify MFA code.
+         * @description Request to verify MFA code during login.
          */
-        src__routers__mfa__MFAVerifyRequest: {
+        src__routers__auth__MFAVerifyRequest: {
+            /** Mfa Token */
+            mfa_token: string;
             /** Code */
             code: string;
+            /**
+             * Trust Device
+             * @default false
+             */
+            trust_device: boolean;
+            /** Device Name */
+            device_name?: string | null;
         };
         /**
          * OAuthCallbackRequest
@@ -16930,6 +16792,18 @@ export interface components {
             code: string;
             /** State */
             state: string;
+        };
+        /**
+         * OAuthProviderInfo
+         * @description OAuth provider information.
+         */
+        src__routers__oauth_sso__OAuthProviderInfo: {
+            /** Name */
+            name: string;
+            /** Display Name */
+            display_name: string;
+            /** Icon */
+            icon?: string | null;
         };
     };
     responses: never;
@@ -17032,7 +16906,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["MFASetupResponse"];
+                    "application/json": components["schemas"]["src__routers__auth__MFASetupResponse"];
                 };
             };
             /** @description Validation Error */
@@ -17075,7 +16949,7 @@ export interface operations {
         };
         requestBody: {
             content: {
-                "application/json": components["schemas"]["MFAVerifyRequest"];
+                "application/json": components["schemas"]["src__routers__auth__MFAVerifyRequest"];
             };
         };
         responses: {
@@ -17247,7 +17121,7 @@ export interface operations {
         };
         requestBody: {
             content: {
-                "application/json": components["schemas"]["src__routers__auth__UserCreate"];
+                "application/json": components["schemas"]["UserCreate"];
             };
         };
         responses: {
@@ -17478,7 +17352,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["src__routers__mfa__MFASetupResponse"];
+                    "application/json": components["schemas"]["MFASetupResponse"];
                 };
             };
         };
@@ -17492,7 +17366,7 @@ export interface operations {
         };
         requestBody: {
             content: {
-                "application/json": components["schemas"]["src__routers__mfa__MFAVerifyRequest"];
+                "application/json": components["schemas"]["MFAVerifyRequest"];
             };
         };
         responses: {
@@ -18193,7 +18067,7 @@ export interface operations {
         };
         requestBody: {
             content: {
-                "application/json": components["schemas"]["UserCreate"];
+                "application/json": components["schemas"]["src__models__contracts__users__UserCreate"];
             };
         };
         responses: {
@@ -21248,7 +21122,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["SyncPreviewResponse"];
+                    "application/json": components["schemas"]["SyncPreviewJobResponse"];
                 };
             };
         };
@@ -21273,6 +21147,39 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["SyncExecuteResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_sync_content_api_github_sync_content_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SyncContentRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SyncContentResponse"];
                 };
             };
             /** @description Validation Error */
@@ -21669,7 +21576,7 @@ export interface operations {
             };
         };
     };
-    execute_endpoint_api_endpoints__workflow_name__delete: {
+    execute_endpoint_api_endpoints__workflow_name__get: {
         parameters: {
             query?: never;
             header: {
@@ -21702,7 +21609,7 @@ export interface operations {
             };
         };
     };
-    execute_endpoint_api_endpoints__workflow_name__delete: {
+    execute_endpoint_api_endpoints__workflow_name__get: {
         parameters: {
             query?: never;
             header: {
@@ -21735,7 +21642,7 @@ export interface operations {
             };
         };
     };
-    execute_endpoint_api_endpoints__workflow_name__delete: {
+    execute_endpoint_api_endpoints__workflow_name__get: {
         parameters: {
             query?: never;
             header: {
@@ -21768,7 +21675,7 @@ export interface operations {
             };
         };
     };
-    execute_endpoint_api_endpoints__workflow_name__delete: {
+    execute_endpoint_api_endpoints__workflow_name__get: {
         parameters: {
             query?: never;
             header: {

@@ -752,6 +752,91 @@ async def publish_git_sync_completed(
 
 
 # =============================================================================
+# Git Sync Preview Pub/Sub (API -> Scheduler Communication)
+# =============================================================================
+
+
+async def publish_git_sync_preview_request(
+    job_id: str,
+    org_id: str,
+    user_id: str,
+    user_email: str,
+) -> None:
+    """
+    Request a git sync preview operation from the scheduler.
+
+    The scheduler listens on `bifrost:scheduler:git-sync-preview` and executes
+    the preview, publishing progress to `git:{job_id}`.
+
+    Args:
+        job_id: Unique job ID for tracking
+        org_id: Organization ID to sync
+        user_id: User who initiated the preview
+        user_email: Email of the user
+    """
+    message = {
+        "type": "git_sync_preview_request",
+        "jobId": job_id,
+        "orgId": org_id,
+        "userId": user_id,
+        "userEmail": user_email,
+    }
+    await manager._publish_to_redis("scheduler:git-sync-preview", message)
+
+
+async def publish_git_sync_preview_completed(
+    job_id: str,
+    status: str,
+    preview: dict[str, Any] | None = None,
+    error: str | None = None,
+) -> None:
+    """
+    Publish git sync preview completion.
+
+    Broadcasts to git:{job_id} channel with the full preview data.
+    Also stores the result in Redis for HTTP polling (5-minute TTL).
+
+    Args:
+        job_id: Unique job ID
+        status: Completion status (success, error)
+        preview: Full SyncPreviewResponse data (as dict)
+        error: Error message if status is error
+    """
+    import json
+
+    completion_message: dict[str, Any] = {
+        "type": "git_preview_complete",
+        "jobId": job_id,
+        "status": status,
+    }
+    if preview is not None:
+        completion_message["preview"] = preview
+    if error is not None:
+        completion_message["error"] = error
+
+    await manager.broadcast(f"git:{job_id}", completion_message)
+
+    # Store result in Redis for HTTP polling (used by E2E tests and fallback)
+    try:
+        from src.core.redis_client import get_redis_client
+
+        redis_client = get_redis_client()
+        if redis_client:
+            result_key = f"bifrost:job:{job_id}"
+            # Store job result with 5-minute TTL
+            await redis_client.setex(
+                result_key,
+                300,  # 5 minutes TTL
+                json.dumps(completion_message),
+            )
+            logger.info(f"Stored preview result in Redis: {result_key} status={status}")
+        else:
+            logger.warning(f"Redis client is None, cannot store job result for {job_id}")
+    except Exception as e:
+        logger.warning(f"Failed to store job result in Redis: {e}")
+
+
+# =============================================================================
 # Worker Monitoring Pub/Sub
 # =============================================================================
 # These functions enable real-time monitoring of worker processes.

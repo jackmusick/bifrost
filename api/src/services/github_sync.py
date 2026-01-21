@@ -18,7 +18,7 @@ import shutil
 import subprocess
 import tempfile
 from dataclasses import dataclass
-from datetime import datetime, timezone
+from datetime import datetime
 from enum import Enum
 from pathlib import Path
 from typing import TYPE_CHECKING, Awaitable, Callable, Literal
@@ -28,6 +28,7 @@ from pydantic import BaseModel, ConfigDict, Field
 from sqlalchemy import or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from src.models.enums import GitStatus
 from src.services.file_storage.file_ops import compute_git_blob_sha
 from src.services.github_sync_entity_metadata import extract_entity_metadata
 from src.services.github_sync_virtual_files import (
@@ -100,6 +101,10 @@ class ConflictInfo(BaseModel):
     remote_content: str | None = Field(default=None, description="Remote content")
     local_sha: str = Field(..., description="SHA of local content")
     remote_sha: str = Field(..., description="SHA of remote content")
+    # Entity metadata for UI display
+    display_name: str | None = Field(default=None, description="Human-readable entity name")
+    entity_type: str | None = Field(default=None, description="Entity type: form, agent, app, app_file, workflow")
+    parent_slug: str | None = Field(default=None, description="For app_file: parent app slug")
 
     model_config = ConfigDict(from_attributes=True)
 
@@ -636,24 +641,33 @@ class GitHubSyncService:
                 except Exception:
                     pass
 
-    async def _get_local_file_shas(self) -> dict[str, str | None]:
+    async def _get_local_file_shas(
+        self,
+    ) -> dict[str, tuple[str | None, GitStatus, bool]]:
         """
-        Get path -> github_sha mapping from DB (no S3 read).
+        Get path -> (github_sha, git_status, is_deleted) mapping from DB.
 
         This is much faster than _get_local_files() which reads every file
         from S3 to compute git blob SHA.
 
+        Now includes soft-deleted files so we can detect local deletes that
+        need to be pushed to GitHub.
+
         Returns:
-            Dict mapping path to github_sha (None if never synced)
+            Dict mapping path to tuple of (github_sha, git_status, is_deleted)
         """
         from src.models import WorkspaceFile
 
-        stmt = select(WorkspaceFile.path, WorkspaceFile.github_sha).where(
-            WorkspaceFile.is_deleted.is_(False)
+        # Include deleted files so we can push deletes to remote
+        stmt = select(
+            WorkspaceFile.path,
+            WorkspaceFile.github_sha,
+            WorkspaceFile.git_status,
+            WorkspaceFile.is_deleted,
         )
         result = await self.db.execute(stmt)
         return {
-            row.path: row.github_sha
+            row.path: (row.github_sha, row.git_status, row.is_deleted)
             for row in result
             if not row.path.endswith("/")  # Skip folders
         }
@@ -733,7 +747,11 @@ class GitHubSyncService:
                 raise
             raise SyncError(f"Git clone failed: {e}")
 
-    async def get_sync_preview(self) -> SyncPreview:
+    async def get_sync_preview(
+        self,
+        progress_callback: ProgressCallback | None = None,
+        log_callback: LogCallback | None = None,
+    ) -> SyncPreview:
         """
         Compare local DB state with remote GitHub state.
 
@@ -750,31 +768,60 @@ class GitHubSyncService:
         - Files with conflicts
         - Workflows that will become orphaned
 
+        Args:
+            progress_callback: Optional async callback for progress updates.
+                Called with {"phase": str, "current": int, "total": int, "path": str | None}
+            log_callback: Optional async callback for log messages.
+                Called with (level: str, message: str)
+
         Returns:
             SyncPreview with all changes categorized
         """
         from src.services.editor.file_filter import is_excluded_path
         from src.services.file_storage import FileStorageService
 
+        # Helper to report progress
+        async def report(phase: str, current: int, total: int, path: str | None = None) -> None:
+            if progress_callback:
+                await progress_callback({"phase": phase, "current": current, "total": total, "path": path})
+
+        # Helper to log
+        async def log(level: str, message: str) -> None:
+            if log_callback:
+                await log_callback(level, message)
+
         clone_dir: str | None = None
         try:
             # 1. Clone repo to temp directory
+            await report("cloning", 0, 1)
+            await log("info", f"Cloning {self.repo}:{self.branch}...")
             logger.info(f"Cloning {self.repo}:{self.branch} for sync preview...")
             clone_dir = self._clone_to_temp()
             clone_path = Path(clone_dir)
+            await report("cloning", 1, 1)
 
             # 2. Walk clone to get remote files and compute their git SHAs
+            await report("scanning", 0, 0)
+            await log("info", "Scanning remote files...")
             remote_files: dict[str, str] = {}  # path -> git_sha
-            for file_path in clone_path.rglob("*"):
-                if file_path.is_file():
-                    rel_path = str(file_path.relative_to(clone_path))
-                    # Skip .git directory and excluded paths
-                    if rel_path.startswith(".git/") or is_excluded_path(rel_path):
-                        continue
-                    content = file_path.read_bytes()
-                    remote_files[rel_path] = compute_git_blob_sha(content)
+
+            # First pass: count files for progress reporting
+            all_files = [f for f in clone_path.rglob("*") if f.is_file()]
+            total_files = len(all_files)
+
+            for i, file_path in enumerate(all_files):
+                rel_path = str(file_path.relative_to(clone_path))
+                # Skip .git directory and excluded paths
+                if rel_path.startswith(".git/") or is_excluded_path(rel_path):
+                    continue
+                content = file_path.read_bytes()
+                remote_files[rel_path] = compute_git_blob_sha(content)
+                # Report progress every 50 files or at the end
+                if i % 50 == 0 or i == total_files - 1:
+                    await report("scanning", i + 1, total_files, rel_path)
 
             logger.info(f"Found {len(remote_files)} files in remote")
+            await log("info", f"Found {len(remote_files)} files in remote")
 
             # 2b. Identify virtual files in remote and extract entity IDs
             # Virtual files are platform entities (apps, forms, agents) that can be synced
@@ -782,6 +829,26 @@ class GitHubSyncService:
             for path, sha in list(remote_files.items()):
                 if VirtualFileProvider.is_virtual_file_path(path):
                     entity_type = VirtualFileProvider.get_entity_type_from_path(path)
+
+                    # App files use path as stable identifier (no UUID in filename)
+                    # This matches how local app_files use file_path as entity_id
+                    if entity_type == "app_file":
+                        remote_virtual_files[path] = (path, sha, entity_type)
+                        del remote_files[path]
+                        continue
+
+                    # Apps use slug-based matching (apps/{slug}/app.json)
+                    # Apps are matched by slug during import, not by UUID
+                    if entity_type == "app":
+                        # Extract app_dir from path: apps/{slug}/app.json -> apps/{slug}
+                        app_slug = VirtualFileProvider.extract_app_slug_from_path(path)
+                        if app_slug:
+                            app_dir = f"apps/{app_slug}"
+                            remote_virtual_files[app_dir] = (path, sha, entity_type)
+                            del remote_files[path]
+                        continue
+
+                    # Forms and agents use UUID-based filenames
                     filename = path.split("/")[-1]
                     entity_id = VirtualFileProvider.extract_id_from_filename(filename)
 
@@ -804,31 +871,51 @@ class GitHubSyncService:
             logger.info(f"Found {len(remote_virtual_files)} virtual files in remote")
 
             # 3. Get local file SHAs from DB (no S3 read!)
+            await report("loading_local", 0, 0)
+            await log("info", "Loading local file state...")
             local_shas = await self._get_local_file_shas()
             logger.info(f"Found {len(local_shas)} files in local DB")
+            await log("info", f"Found {len(local_shas)} files in local DB")
 
             # 3b. Get virtual platform file SHAs (and collect serialization errors)
+            await report("serializing", 0, 0)
+            await log("info", "Serializing virtual files...")
             virtual_shas, serialization_errors = await self._get_virtual_file_shas()
             logger.info(f"Found {len(virtual_shas)} virtual platform files")
+            await log("info", f"Found {len(virtual_shas)} virtual platform files")
             if serialization_errors:
                 logger.warning(
                     f"Found {len(serialization_errors)} serialization errors"
                 )
+                await log("warning", f"Found {len(serialization_errors)} serialization errors")
 
             # Note: We do NOT merge virtual_shas into local_shas because virtual files
             # are compared by entity ID, not by path. They are handled separately below.
 
             # 4. Categorize changes by comparing SHAs (regular workspace files only)
+            # Now using git_status for intelligent conflict detection:
+            # - SYNCED: File unchanged since last sync, remote changes are safe to pull
+            # - MODIFIED: File changed locally, remote changes are conflicts
+            # - DELETED: File deleted locally, may need to push delete
+            # - UNTRACKED: New local file, should push
+            await report("comparing", 0, len(remote_files) + len(local_shas))
+            await log("info", "Comparing file SHAs...")
             to_pull: list[SyncAction] = []
             to_push: list[SyncAction] = []
             conflicts: list[ConflictInfo] = []
             conflict_paths: set[str] = set()
 
+            total_to_compare = len(remote_files) + len(local_shas)
+            compared_count = 0
+
             # Check files in remote
             for path, remote_sha in remote_files.items():
-                local_sha = local_shas.get(path)
+                compared_count += 1
+                if compared_count % 100 == 0:
+                    await report("comparing", compared_count, total_to_compare, path)
+                local_info = local_shas.get(path)
 
-                if local_sha is None:
+                if local_info is None:
                     # New file in remote - pull it
                     # Read content from clone for entity metadata extraction
                     remote_content: bytes | None = None
@@ -842,29 +929,56 @@ class GitHubSyncService:
                         sha=remote_sha,
                         content=remote_content,
                     ))
-                elif local_sha != remote_sha:
-                    # SHA differs - need to determine if it's a conflict or just pull/push
-                    # If local_sha matches what we last synced from GitHub and remote changed,
-                    # then only remote changed -> pull
-                    # If local_sha differs from what we last synced, both changed -> conflict
-                    #
-                    # The key insight: github_sha is updated on every write now.
-                    # So if local_sha != remote_sha, either:
-                    # a) Remote changed (local file still has old SHA from last sync)
-                    # b) Local changed (local file has new SHA from local edit)
-                    # c) Both changed (conflict)
-                    #
-                    # We can't tell (a) vs (c) without knowing the "common ancestor" SHA.
-                    # Since we don't track that, we conservatively mark as conflict when
-                    # both sides differ. The user can resolve.
-                    #
-                    # For now, mark as conflict - the UI lets user pick which to keep.
+                    continue
+
+                local_sha, local_status, is_deleted = local_info
+
+                if is_deleted:
+                    # File was deleted locally
+                    if local_sha == remote_sha:
+                        # Remote unchanged since we synced - push the delete
+                        to_push.append(_enrich_sync_action(
+                            path=path,
+                            action=SyncActionType.DELETE,
+                        ))
+                    else:
+                        # Remote changed after we synced, then we deleted locally - conflict
+                        # User needs to decide: keep remote version or confirm delete
+                        conflict_paths.add(path)
+
+                        # Read remote content for conflict info
+                        remote_content_str = None
+                        remote_content: bytes | None = None
+                        try:
+                            remote_file = clone_path / path
+                            remote_content = remote_file.read_bytes()
+                            remote_content_str = remote_content.decode("utf-8", errors="replace")
+                        except Exception:
+                            pass
+
+                        conflict_metadata = extract_entity_metadata(path, remote_content)
+                        conflicts.append(ConflictInfo(
+                            path=path,
+                            local_content=None,  # Deleted locally
+                            remote_content=remote_content_str,
+                            local_sha="",  # Deleted
+                            remote_sha=remote_sha,
+                            display_name=conflict_metadata.display_name,
+                            entity_type=conflict_metadata.entity_type,
+                            parent_slug=conflict_metadata.parent_slug,
+                        ))
+                    continue
+
+                if local_sha is None:
+                    # Never synced before but exists locally (UNTRACKED) - shouldn't happen
+                    # if remote has it too, treat as conflict to be safe
+                    logger.warning(f"File {path} exists in remote but local has no SHA")
                     conflict_paths.add(path)
 
-                    # Read content from clone and from S3 for conflict info (lazy read)
                     remote_content_str = None
                     local_content_str = None
-                    local_computed_sha = ""
+                    remote_content: bytes | None = None
+                    local_content: bytes | None = None
 
                     try:
                         remote_file = clone_path / path
@@ -877,52 +991,129 @@ class GitHubSyncService:
                         file_storage = FileStorageService(self.db)
                         local_content, _ = await file_storage.read_file(path)
                         local_content_str = local_content.decode("utf-8", errors="replace")
-                        local_computed_sha = compute_git_blob_sha(local_content)
                     except Exception:
                         pass
 
+                    conflict_metadata = extract_entity_metadata(
+                        path, local_content if local_content else remote_content
+                    )
                     conflicts.append(ConflictInfo(
                         path=path,
                         local_content=local_content_str,
                         remote_content=remote_content_str,
-                        local_sha=local_computed_sha,
+                        local_sha=compute_git_blob_sha(local_content) if local_content else "",
                         remote_sha=remote_sha,
+                        display_name=conflict_metadata.display_name,
+                        entity_type=conflict_metadata.entity_type,
+                        parent_slug=conflict_metadata.parent_slug,
                     ))
+                    continue
+
+                if local_sha != remote_sha:
+                    # SHA differs - use git_status to determine if conflict or just pull
+                    if local_status == GitStatus.SYNCED:
+                        # File not modified locally, remote changed - safe to pull
+                        remote_content: bytes | None = None
+                        try:
+                            remote_content = (clone_path / path).read_bytes()
+                        except Exception:
+                            pass
+                        to_pull.append(_enrich_sync_action(
+                            path=path,
+                            action=SyncActionType.MODIFY,
+                            sha=remote_sha,
+                            content=remote_content,
+                        ))
+                    else:
+                        # File modified locally (MODIFIED status) AND remote changed - conflict
+                        conflict_paths.add(path)
+
+                        # Read content from clone and from S3 for conflict info (lazy read)
+                        remote_content_str = None
+                        local_content_str = None
+                        local_computed_sha = ""
+                        remote_content: bytes | None = None
+                        local_content: bytes | None = None
+
+                        try:
+                            remote_file = clone_path / path
+                            remote_content = remote_file.read_bytes()
+                            remote_content_str = remote_content.decode("utf-8", errors="replace")
+                        except Exception:
+                            pass
+
+                        try:
+                            file_storage = FileStorageService(self.db)
+                            local_content, _ = await file_storage.read_file(path)
+                            local_content_str = local_content.decode("utf-8", errors="replace")
+                            local_computed_sha = compute_git_blob_sha(local_content)
+                        except Exception:
+                            pass
+
+                        # Extract entity metadata for UI display
+                        conflict_metadata = extract_entity_metadata(
+                            path, local_content if local_content else remote_content
+                        )
+                        conflicts.append(ConflictInfo(
+                            path=path,
+                            local_content=local_content_str,
+                            remote_content=remote_content_str,
+                            local_sha=local_computed_sha,
+                            remote_sha=remote_sha,
+                            display_name=conflict_metadata.display_name,
+                            entity_type=conflict_metadata.entity_type,
+                            parent_slug=conflict_metadata.parent_slug,
+                        ))
 
             # Check files only in local (not in remote)
-            for path, local_sha in local_shas.items():
+            for path, local_info in local_shas.items():
                 if path in remote_files:
-                    # Already handled above - but check if we need to push
-                    if path not in conflict_paths and local_sha != remote_files[path]:
-                        # Different SHA but not marked as conflict above means local changed
-                        # Actually this case is handled above as conflict
-                        pass
+                    # Already handled above
+                    continue
+
+                local_sha, local_status, is_deleted = local_info
+
+                if is_deleted:
+                    # Deleted locally, doesn't exist remotely - already in sync, no action needed
                     continue
 
                 if local_sha is not None:
                     # File was synced before but now deleted in remote
-                    # This is a conflict - we have a local file, remote deleted it
-                    # Read local content for conflict info
-                    local_content_str = None
-                    local_computed_sha = ""
-                    try:
-                        file_storage = FileStorageService(self.db)
-                        local_content, _ = await file_storage.read_file(path)
-                        local_content_str = local_content.decode("utf-8", errors="replace")
-                        local_computed_sha = compute_git_blob_sha(local_content)
-                    except Exception:
-                        pass
+                    if local_status == GitStatus.SYNCED:
+                        # File not modified locally - safe to pull the delete
+                        to_pull.append(_enrich_sync_action(
+                            path=path,
+                            action=SyncActionType.DELETE,
+                        ))
+                    else:
+                        # File modified locally, deleted remotely - conflict
+                        # Read local content for conflict info
+                        local_content_str = None
+                        local_computed_sha = ""
+                        local_content_bytes: bytes | None = None
+                        try:
+                            file_storage = FileStorageService(self.db)
+                            local_content_bytes, _ = await file_storage.read_file(path)
+                            local_content_str = local_content_bytes.decode("utf-8", errors="replace")
+                            local_computed_sha = compute_git_blob_sha(local_content_bytes)
+                        except Exception:
+                            pass
 
-                    conflict_paths.add(path)
-                    conflicts.append(ConflictInfo(
-                        path=path,
-                        local_content=local_content_str,
-                        remote_content=None,  # Deleted remotely
-                        local_sha=local_computed_sha,
-                        remote_sha="",  # Deleted
-                    ))
+                        # Extract entity metadata for UI display
+                        conflict_metadata = extract_entity_metadata(path, local_content_bytes)
+                        conflict_paths.add(path)
+                        conflicts.append(ConflictInfo(
+                            path=path,
+                            local_content=local_content_str,
+                            remote_content=None,  # Deleted remotely
+                            local_sha=local_computed_sha,
+                            remote_sha="",  # Deleted
+                            display_name=conflict_metadata.display_name,
+                            entity_type=conflict_metadata.entity_type,
+                            parent_slug=conflict_metadata.parent_slug,
+                        ))
                 else:
-                    # New local file (never synced) - push
+                    # New local file (never synced, UNTRACKED) - push
                     # Read local content for entity metadata extraction
                     local_file_content: bytes | None = None
                     try:
@@ -986,20 +1177,105 @@ class GitHubSyncService:
                         except Exception:
                             pass
 
+                        metadata = extract_entity_metadata(vf.path, vf.content)
                         conflicts.append(ConflictInfo(
                             path=vf.path,  # Use local path (consistent UUID-based naming)
                             local_content=local_content_str,
                             remote_content=remote_content_str,
                             local_sha=vf.computed_sha or "",
                             remote_sha=remote_sha,
+                            display_name=metadata.display_name,
+                            entity_type=metadata.entity_type,
+                            parent_slug=metadata.parent_slug,
                         ))
 
+            # 5b. Detect path collisions between to_pull and to_push
+            # This handles the case where app child files are categorized incorrectly
+            # due to different identification methods for local vs remote
+            to_pull_paths = {a.path for a in to_pull}
+            to_push_paths = {a.path for a in to_push}
+            collision_paths = to_pull_paths & to_push_paths
+
+            if collision_paths:
+                logger.info(f"Found {len(collision_paths)} path collisions between pull/push")
+
+                for collision_path in collision_paths:
+                    # Find the actions from both lists
+                    pull_action = next((a for a in to_pull if a.path == collision_path), None)
+                    push_action = next((a for a in to_push if a.path == collision_path), None)
+
+                    if pull_action and push_action:
+                        # Get content and SHA for conflict display
+                        remote_content_str = None
+                        local_content_str = None
+                        local_computed_sha = ""
+
+                        try:
+                            remote_file = clone_path / collision_path
+                            if remote_file.exists():
+                                remote_content = remote_file.read_bytes()
+                                remote_content_str = remote_content.decode("utf-8", errors="replace")
+                        except Exception:
+                            pass
+
+                        try:
+                            # Try virtual file first
+                            if VirtualFileProvider.is_virtual_file_path(collision_path):
+                                # Find matching virtual file by path
+                                matching_vf = next((vf for vf in local_virtual_result.files if vf.path == collision_path), None)
+                                if matching_vf:
+                                    if matching_vf.content:
+                                        local_content_str = matching_vf.content.decode("utf-8", errors="replace")
+                                    if matching_vf.computed_sha:
+                                        local_computed_sha = matching_vf.computed_sha
+                            else:
+                                collision_file_storage = FileStorageService(self.db)
+                                local_file_content, _ = await collision_file_storage.read_file(collision_path)
+                                local_content_str = local_file_content.decode("utf-8", errors="replace")
+                                local_computed_sha = compute_git_blob_sha(local_file_content)
+                        except Exception:
+                            pass
+
+                        # If SHAs match, this is not a real conflict - skip it
+                        if local_computed_sha and local_computed_sha == pull_action.sha:
+                            logger.debug(f"Skipping false collision (SHAs match): {collision_path}")
+                            # Remove from both lists since content is identical
+                            to_pull = [a for a in to_pull if a.path != collision_path]
+                            to_push = [a for a in to_push if a.path != collision_path]
+                            continue
+
+                        # Get entity metadata for display
+                        content_for_metadata = local_content_str.encode("utf-8") if local_content_str else None
+                        metadata = extract_entity_metadata(collision_path, content_for_metadata)
+
+                        # Move to conflicts
+                        conflicts.append(ConflictInfo(
+                            path=collision_path,
+                            local_content=local_content_str,
+                            remote_content=remote_content_str,
+                            local_sha=local_computed_sha,
+                            remote_sha=pull_action.sha or "",
+                            display_name=metadata.display_name,
+                            entity_type=metadata.entity_type,
+                            parent_slug=metadata.parent_slug,
+                        ))
+                        conflict_paths.add(collision_path)
+
+                # Remove collision paths from to_pull and to_push (only conflicting ones remain)
+                to_pull = [a for a in to_pull if a.path not in collision_paths]
+                to_push = [a for a in to_push if a.path not in collision_paths]
+
             # 6. Detect orphaned workflows
+            await report("analyzing_orphans", 0, len(to_pull))
+            await log("info", "Detecting orphaned workflows...")
             will_orphan = await self._detect_orphans(to_pull, to_push, conflicts, clone_dir)
 
             # 7. Detect unresolved workflow refs in virtual files to pull
+            await report("analyzing_refs", 0, len(to_pull))
+            await log("info", "Checking workflow references...")
             unresolved_refs = await self._detect_unresolved_refs(to_pull, clone_path)
 
+            await log("info", f"Analysis complete: {len(to_pull)} to pull, {len(to_push)} to push, {len(conflicts)} conflicts")
             is_empty = (
                 len(to_pull) == 0
                 and len(to_push) == 0
@@ -1136,6 +1412,9 @@ class GitHubSyncService:
         """
         import json
 
+        from src.models.contracts.agents import AgentPublic
+        from src.models.contracts.forms import FormPublic
+        from src.models.contracts.refs import get_workflow_ref_paths
         from src.services.file_storage.ref_translation import (
             build_ref_to_uuid_map,
             get_nested_value,
@@ -1151,6 +1430,18 @@ class GitHubSyncService:
             if not VirtualFileProvider.is_virtual_file_path(action.path):
                 continue
 
+            entity_type = VirtualFileProvider.get_entity_type_from_path(action.path)
+
+            # Get the model class for this entity type to find workflow ref fields
+            # App files don't have workflow refs in their content (they're in source code)
+            if entity_type == "form":
+                model_class = FormPublic
+            elif entity_type == "agent":
+                model_class = AgentPublic
+            else:
+                # Apps and app_files don't have JSON-embedded workflow refs
+                continue
+
             # Read the content from clone
             file_path = clone_path / action.path
             if not file_path.exists():
@@ -1160,23 +1451,23 @@ class GitHubSyncService:
                 content = file_path.read_bytes()
                 data = json.loads(content.decode("utf-8"))
 
-                # Get export metadata with workflow ref fields
-                export_meta = data.get("_export", {})
-                workflow_ref_fields = export_meta.get("workflow_refs", [])
+                # Get workflow ref fields from model annotations (not from _export)
+                workflow_ref_fields = get_workflow_ref_paths(model_class)
 
                 for field_path in workflow_ref_fields:
                     # Get the value at this field path
                     ref_value = get_nested_value(data, field_path)
 
-                    if ref_value and ref_value not in ref_to_uuid:
-                        # This ref can't be resolved
-                        entity_type = VirtualFileProvider.get_entity_type_from_path(action.path) or "unknown"
-                        unresolved_refs.append(UnresolvedRefInfo(
-                            entity_type=entity_type,
-                            entity_path=action.path,
-                            field_path=field_path,
-                            portable_ref=ref_value,
-                        ))
+                    # Check if it looks like a portable ref (contains "::")
+                    if ref_value and isinstance(ref_value, str) and "::" in ref_value:
+                        if ref_value not in ref_to_uuid:
+                            # This ref can't be resolved
+                            unresolved_refs.append(UnresolvedRefInfo(
+                                entity_type=entity_type or "unknown",
+                                entity_path=action.path,
+                                field_path=field_path,
+                                portable_ref=ref_value,
+                            ))
             except json.JSONDecodeError:
                 # Not valid JSON, will fail during import anyway
                 pass
@@ -1567,7 +1858,13 @@ class GitHubSyncService:
         current_commit = await self.github.get_commit(self.repo, current_sha)
         base_tree_sha = current_commit["tree"]["sha"]
 
-        # 2. Create blobs for each file
+        # 2. Pre-fetch all virtual files for efficient lookup
+        # Virtual files include apps, app_files, forms, and agents
+        vf_provider = VirtualFileProvider(self.db)
+        all_vf_result = await vf_provider.get_all_virtual_files()
+        virtual_files_by_path = {vf.path: vf for vf in all_vf_result.files}
+
+        # 3. Create blobs for each file
         tree_items: list[dict] = []
         blob_shas: dict[str, str] = {}
 
@@ -1588,23 +1885,18 @@ class GitHubSyncService:
                 # Read local content - check for virtual files first
                 content: bytes | None = None
                 try:
-                    if VirtualFileProvider.is_virtual_file_path(action.path):
-                        # Get content from virtual file provider
-                        entity_type = VirtualFileProvider.get_entity_type_from_path(action.path)
-                        filename = action.path.split("/")[-1]
-                        entity_id = VirtualFileProvider.extract_id_from_filename(filename)
-
-                        if entity_type and entity_id:
-                            vf_provider = VirtualFileProvider(self.db)
-                            vf = await vf_provider.get_virtual_file_by_id(entity_type, entity_id)
-                            if vf and vf.content:
-                                content = vf.content
-                            else:
-                                logger.warning(f"Virtual file not found: {action.path}")
-                                continue
+                    if action.path in virtual_files_by_path:
+                        # Get content from pre-fetched virtual files
+                        vf = virtual_files_by_path[action.path]
+                        if vf.content:
+                            content = vf.content
                         else:
-                            logger.warning(f"Could not parse virtual file path: {action.path}")
+                            logger.warning(f"Virtual file has no content: {action.path}")
                             continue
+                    elif VirtualFileProvider.is_virtual_file_path(action.path):
+                        # Virtual file path but not in our list - shouldn't happen
+                        logger.warning(f"Virtual file not found in provider: {action.path}")
+                        continue
                     else:
                         # Regular file - read from file storage
                         content, _ = await file_storage.read_file(action.path)
@@ -1626,14 +1918,14 @@ class GitHubSyncService:
         if not tree_items:
             raise SyncError("No files to push")
 
-        # 3. Create new tree
+        # 4. Create new tree
         new_tree_sha = await self.github.create_tree(
             self.repo,
             tree_items,
             base_tree_sha,
         )
 
-        # 4. Create commit
+        # 5. Create commit
         commit_sha = await self.github.create_commit(
             self.repo,
             message="Sync from Bifrost",
@@ -1641,14 +1933,14 @@ class GitHubSyncService:
             parents=[current_sha],
         )
 
-        # 5. Update branch ref
+        # 6. Update branch ref
         await self.github.update_ref(
             self.repo,
             f"heads/{self.branch}",
             commit_sha,
         )
 
-        # 6. Update github_sha for pushed files (skip virtual files)
+        # 7. Update github_sha for pushed files (skip virtual files)
         for path, blob_sha in blob_shas.items():
             if not VirtualFileProvider.is_virtual_file_path(path):
                 await self._update_github_sha(path, blob_sha)
@@ -1658,7 +1950,11 @@ class GitHubSyncService:
 
     async def _update_github_sha(self, path: str, sha: str) -> None:
         """
-        Update the github_sha column for a file.
+        Update the github_sha column for a file and set git_status to SYNCED.
+
+        This should be called after successfully syncing a file with GitHub
+        (either pull or push). Setting git_status=SYNCED indicates the file
+        content matches GitHub, enabling smart conflict detection on future syncs.
 
         Args:
             path: File path
@@ -1670,7 +1966,7 @@ class GitHubSyncService:
         stmt = (
             update(WorkspaceFile)
             .where(WorkspaceFile.path == path)
-            .values(github_sha=sha)
+            .values(github_sha=sha, git_status=GitStatus.SYNCED)
         )
         await self.db.execute(stmt)
 
@@ -1690,7 +1986,7 @@ class GitHubSyncService:
             .where(Workflow.id == UUID(workflow_id))
             .values(
                 is_orphaned=True,
-                updated_at=datetime.now(tz=timezone.utc),
+                updated_at=datetime.utcnow(),
             )
         )
         await self.db.execute(stmt)

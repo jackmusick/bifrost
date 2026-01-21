@@ -34,13 +34,14 @@ def _serialize_app_to_json(app: Application) -> bytes:
     """
     Serialize an Application to JSON bytes for GitHub export.
 
-    Only includes portable metadata:
+    Includes:
+    - id (required for entity matching during sync)
     - name, slug, description, icon, navigation
 
     Excludes instance-specific fields:
     - permissions, access_level, organization_id, role_ids
     - created_by, created_at, updated_at, published_at
-    - id, active_version_id, draft_version_id
+    - active_version_id, draft_version_id
 
     Args:
         app: Application ORM instance
@@ -49,6 +50,7 @@ def _serialize_app_to_json(app: Application) -> bytes:
         JSON serialized as UTF-8 bytes
     """
     app_data: dict[str, Any] = {
+        "id": str(app.id),  # Required for entity matching during sync
         "name": app.name,
         "slug": app.slug,
     }

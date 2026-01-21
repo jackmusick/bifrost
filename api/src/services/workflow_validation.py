@@ -6,6 +6,7 @@ Validates workflow files for syntax errors, decorator issues, and Pydantic valid
 
 import logging
 import os
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
@@ -88,6 +89,7 @@ def _convert_workflow_metadata_to_model(
         value=workflow_metadata.value or 0.0,
         source_file_path=workflow_metadata.source_file_path,
         relative_file_path=relative_path,
+        created_at=datetime.now(timezone.utc),
     )
 
 

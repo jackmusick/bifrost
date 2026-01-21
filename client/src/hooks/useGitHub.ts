@@ -28,13 +28,72 @@ export type ConflictInfo = components["schemas"]["ConflictInfo"];
 export type CommitHistoryResponse =
 	components["schemas"]["CommitHistoryResponse"];
 
-// Sync types
-export type SyncActionType = components["schemas"]["SyncActionType"];
-export type SyncAction = components["schemas"]["SyncAction"];
-export type SyncConflictInfo = components["schemas"]["SyncConflictInfo"];
-export type WorkflowReference = components["schemas"]["WorkflowReference"];
-export type OrphanInfo = components["schemas"]["OrphanInfo"];
-export type SyncPreviewResponse = components["schemas"]["SyncPreviewResponse"];
+// Sync types - manually defined since SyncPreviewResponse is now sent via WebSocket
+// and not exposed as an HTTP response, so it's pruned from the OpenAPI schema.
+// These must match the Python models in api/src/models/contracts/github.py
+
+export type SyncActionType = "add" | "modify" | "delete";
+
+export interface SyncAction {
+	path: string;
+	action: SyncActionType;
+	sha?: string | null;
+	display_name?: string | null;
+	entity_type?: string | null;
+	parent_slug?: string | null;
+}
+
+export interface SyncConflictInfo {
+	path: string;
+	local_content?: string | null;
+	remote_content?: string | null;
+	local_sha: string;
+	remote_sha: string;
+	display_name?: string | null;
+	entity_type?: string | null;
+	parent_slug?: string | null;
+}
+
+export interface WorkflowReference {
+	type: string;
+	id: string;
+	name: string;
+}
+
+export interface OrphanInfo {
+	workflow_id: string;
+	workflow_name: string;
+	function_name: string;
+	last_path: string;
+	used_by: WorkflowReference[];
+}
+
+export interface SyncUnresolvedRefInfo {
+	entity_type: string;
+	entity_path: string;
+	field_path: string;
+	portable_ref: string;
+}
+
+export interface SyncSerializationError {
+	entity_type: string;
+	entity_id: string;
+	entity_name: string;
+	path: string;
+	error: string;
+}
+
+export interface SyncPreviewResponse {
+	to_pull: SyncAction[];
+	to_push: SyncAction[];
+	conflicts: SyncConflictInfo[];
+	will_orphan: OrphanInfo[];
+	unresolved_refs: SyncUnresolvedRefInfo[];
+	serialization_errors: SyncSerializationError[];
+	is_empty: boolean;
+}
+
+export type SyncPreviewJobResponse = components["schemas"]["SyncPreviewJobResponse"];
 export type SyncExecuteRequest = components["schemas"]["SyncExecuteRequest"];
 export type SyncExecuteResponse = components["schemas"]["SyncExecuteResponse"];
 
@@ -173,21 +232,25 @@ export function useDisconnectGitHub() {
 }
 
 /**
- * Get sync preview - shows what will be pulled/pushed and any conflicts
+ * Queue sync preview job - returns immediately with job_id
+ *
+ * The caller should subscribe to WebSocket channel git:{job_id} to receive:
+ * - Progress updates (git_progress messages with phases like 'cloning', 'scanning')
+ * - Completion with full preview data (git_preview_complete message)
  *
  * Returns a mutation-like interface for imperative usage (mutateAsync pattern).
  */
 export function useSyncPreview() {
 	return {
-		mutateAsync: async (): Promise<SyncPreviewResponse> => {
+		mutateAsync: async (): Promise<SyncPreviewJobResponse> => {
 			const response = await apiClient.GET("/api/github/sync");
 			if (!response.data) {
 				const errorDetail =
 					(response.error as { detail?: string } | undefined)?.detail ||
-					"Failed to get sync preview";
+					"Failed to queue sync preview";
 				throw new Error(errorDetail);
 			}
-			return response.data as SyncPreviewResponse;
+			return response.data as SyncPreviewJobResponse;
 		},
 		isPending: false,
 	};

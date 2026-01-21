@@ -42,7 +42,7 @@ export function AppLoadingSkeleton({
 
 					{/* Navigation items */}
 					<nav className="flex-1 p-3 space-y-1">
-						{[...Array(5)].map((_, i) => (
+						{[70, 85, 60, 95, 75].map((width, i) => (
 							<div
 								key={i}
 								className="flex items-center gap-3 px-3 py-2.5 rounded-md"
@@ -51,7 +51,7 @@ export function AppLoadingSkeleton({
 								<Skeleton
 									className="h-3.5"
 									style={{
-										width: `${60 + Math.random() * 40}px`,
+										width: `${width}px`,
 									}}
 								/>
 							</div>

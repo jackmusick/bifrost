@@ -1,7 +1,6 @@
 import { useState, useEffect, useRef, useCallback } from "react";
-import { Link } from "react-router-dom";
 import { useQueryClient } from "@tanstack/react-query";
-import { webSocketService, type GitProgress } from "@/services/websocket";
+import { webSocketService, type GitProgress, type GitPreviewComplete } from "@/services/websocket";
 import {
 	GitBranch,
 	Check,
@@ -23,6 +22,7 @@ import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { cn } from "@/lib/utils";
 import { toast } from "sonner";
+import { apiClient } from "@/lib/api-client";
 import {
 	useGitStatus,
 	useGitCommits,
@@ -35,7 +35,7 @@ import {
 } from "@/hooks/useGitHub";
 import { useEditorStore } from "@/stores/editorStore";
 import { EntitySyncItem } from "./EntitySyncItem";
-import { groupSyncActions } from "./groupSyncActions";
+import { groupSyncActions, groupConflicts } from "./groupSyncActions";
 
 /**
  * Source Control panel for Git/GitHub integration
@@ -70,6 +70,62 @@ export function SourceControlPanel() {
 	const appendTerminalOutput = useEditorStore(
 		(state) => state.appendTerminalOutput,
 	);
+	const setDiffPreview = useEditorStore((state) => state.setDiffPreview);
+
+	// Handler for clicking any sync item to show diff
+	const handleShowDiff = async (
+		path: string,
+		displayName: string,
+		entityType: string,
+		localContent: string | null,
+		remoteContent: string | null,
+		isConflict: boolean,
+		resolution?: "keep_local" | "keep_remote",
+		onResolve?: (res: "keep_local" | "keep_remote") => void
+	) => {
+		// Set preview immediately with available content
+		setDiffPreview({
+			path,
+			displayName,
+			entityType,
+			localContent,
+			remoteContent,
+			isConflict,
+			resolution,
+			onResolve,
+		});
+
+		// If missing content and not a conflict (conflicts have content), fetch it
+		// Use functional updates to avoid race conditions when both fetches complete
+		if (localContent === null && !isConflict) {
+			try {
+				const response = await apiClient.POST("/api/github/sync/content", {
+					body: { path, source: "local" },
+				});
+				if (response.data?.content !== undefined) {
+					setDiffPreview((prev) =>
+						prev ? { ...prev, localContent: response.data?.content ?? null } : null
+					);
+				}
+			} catch (error) {
+				console.error("Failed to fetch local content:", error);
+			}
+		}
+		if (remoteContent === null && !isConflict) {
+			try {
+				const response = await apiClient.POST("/api/github/sync/content", {
+					body: { path, source: "remote" },
+				});
+				if (response.data?.content !== undefined) {
+					setDiffPreview((prev) =>
+						prev ? { ...prev, remoteContent: response.data?.content ?? null } : null
+					);
+				}
+			} catch (error) {
+				console.error("Failed to fetch remote content:", error);
+			}
+		}
+	};
 
 	// Query hooks
 	const { data: status, isLoading } = useGitStatus();
@@ -92,7 +148,9 @@ export function SourceControlPanel() {
 		}
 	}, [commitsData]);
 
-	// Refresh status by invalidating queries and optionally refreshing sync preview
+	// Refresh status by invalidating queries
+	// Note: sync preview refresh is handled separately via handleFetchSyncPreview
+	// because the new async pattern requires WebSocket subscription setup
 	const handleRefreshWithPreview = useCallback(async () => {
 		// Prevent duplicate fetches using ref (synchronous check)
 		if (isLoadingRef.current) {
@@ -106,10 +164,11 @@ export function SourceControlPanel() {
 				queryKey: ["get", "/api/github/status"],
 			});
 
-			// If we have a sync preview loaded, re-fetch it to get updated state
+			// If we have a sync preview loaded, clear it so user can re-fetch
+			// with the new async pattern (which requires WebSocket setup)
 			if (syncPreview && !syncPreview.is_empty) {
-				const preview = await syncPreviewMutation.mutateAsync();
-				setSyncPreview(preview);
+				// Clear preview - user can click Sync to re-fetch
+				setSyncPreview(null);
 				setConflictResolutions({});
 				setOrphansConfirmed(false);
 			}
@@ -119,7 +178,7 @@ export function SourceControlPanel() {
 		} finally {
 			isLoadingRef.current = false;
 		}
-	}, [queryClient, syncPreview, syncPreviewMutation]);
+	}, [queryClient, syncPreview]);
 
 	// Set up event listeners for visibility changes and git status events
 	// Note: useGitStatus() already fetches data on mount, so we don't call refresh here
@@ -158,11 +217,13 @@ export function SourceControlPanel() {
 	}, [sidebarPanel, handleRefreshWithPreview]);
 
 	// Fetch sync preview (shows what will be pulled/pushed)
+	// Now uses async WebSocket pattern for progress updates
 	const handleFetchSyncPreview = async () => {
 		setIsSyncLoading(true);
 		setSyncPreview(null);
 		setConflictResolutions({});
 		setOrphansConfirmed(false);
+		setSyncProgress(null);
 
 		try {
 			appendTerminalOutput({
@@ -178,8 +239,80 @@ export function SourceControlPanel() {
 				error: undefined,
 			});
 
-			const preview = await syncPreviewMutation.mutateAsync();
+			// Queue the preview job (returns immediately with job_id)
+			const jobResponse = await syncPreviewMutation.mutateAsync();
+			const jobId = jobResponse.job_id;
+
+			if (!jobId) {
+				throw new Error("Failed to queue sync preview job");
+			}
+
+			// Connect to WebSocket channel for progress updates
+			await webSocketService.connectToGitSync(jobId);
+
+			// Set up progress handler
+			const unsubProgress = webSocketService.onGitSyncProgress(jobId, (progress: GitProgress) => {
+				setSyncProgress(progress);
+				// Map phase to user-friendly message
+				const phaseMessages: Record<string, string> = {
+					cloning: "Cloning repository...",
+					scanning: `Scanning files (${progress.current}/${progress.total})...`,
+					loading_local: "Loading local file state...",
+					serializing: "Serializing virtual files...",
+					comparing: `Comparing (${progress.current}/${progress.total})...`,
+					analyzing_orphans: "Detecting orphaned workflows...",
+					analyzing_refs: "Checking workflow references...",
+				};
+				const message = phaseMessages[progress.phase] || `${progress.phase}...`;
+
+				appendTerminalOutput({
+					loggerOutput: [
+						{
+							level: "INFO",
+							message,
+							source: "git",
+						},
+					],
+					variables: {},
+					status: "running",
+					error: undefined,
+				});
+			});
+
+			// Set up log handler for milestone messages
+			const unsubLog = webSocketService.onGitSyncLog(jobId, (log) => {
+				appendTerminalOutput({
+					loggerOutput: [
+						{
+							level: log.level === "error" ? "ERROR" : log.level === "warning" ? "WARNING" : "INFO",
+							message: log.message,
+							source: "git",
+						},
+					],
+					variables: {},
+					status: "running",
+					error: undefined,
+				});
+			});
+
+			// Wait for completion via promise
+			const preview = await new Promise<SyncPreviewResponse>((resolve, reject) => {
+				const unsubComplete = webSocketService.onGitSyncPreviewComplete(jobId, (complete: GitPreviewComplete) => {
+					// Clean up all subscriptions
+					unsubProgress();
+					unsubLog();
+					unsubComplete();
+
+					if (complete.status === "success" && complete.preview) {
+						resolve(complete.preview);
+					} else {
+						reject(new Error(complete.error || "Sync preview failed"));
+					}
+				});
+			});
+
 			setSyncPreview(preview);
+			setSyncProgress(null);
 
 			if (preview.is_empty) {
 				appendTerminalOutput({
@@ -242,6 +375,7 @@ export function SourceControlPanel() {
 			});
 		} finally {
 			setIsSyncLoading(false);
+			setSyncProgress(null);
 		}
 	};
 
@@ -338,12 +472,12 @@ export function SourceControlPanel() {
 						toast.info(
 							<div className="flex flex-col gap-1">
 								<span>New entities have restricted access by default.</span>
-								<Link
-									to="/entity-management"
+								<a
+									href="/entity-management"
 									className="text-primary underline hover:no-underline"
 								>
 									Go to Entity Management to assign access
-								</Link>
+								</a>
 							</div>,
 							{ duration: 8000 },
 						);
@@ -524,9 +658,20 @@ export function SourceControlPanel() {
 							willOrphanLength > 0 && !orphansConfirmed;
 						const canApply = hasPreview && !hasUnresolvedConflicts && !hasUnconfirmedOrphans;
 
-						// Format progress display
+						// Format progress display with user-friendly phase names
+						const phaseLabels: Record<string, string> = {
+							cloning: "Cloning repository",
+							scanning: "Scanning files",
+							loading_local: "Loading local state",
+							serializing: "Serializing entities",
+							comparing: "Comparing",
+							analyzing_orphans: "Detecting orphans",
+							analyzing_refs: "Checking references",
+						};
 						const progressText = syncProgress
-							? `${syncProgress.phase} ${syncProgress.current}/${syncProgress.total}${syncProgress.path ? `: ${syncProgress.path}` : ""}`
+							? syncProgress.total > 0
+								? `${phaseLabels[syncProgress.phase] || syncProgress.phase} (${syncProgress.current}/${syncProgress.total})`
+								: `${phaseLabels[syncProgress.phase] || syncProgress.phase}...`
 							: null;
 
 						return (
@@ -626,6 +771,9 @@ export function SourceControlPanel() {
 								title="Incoming"
 								icon={<Download className="h-4 w-4 text-blue-500 flex-shrink-0" />}
 								actions={syncPreview.to_pull ?? []}
+								onShowDiff={(path, displayName, entityType, local, remote) =>
+									handleShowDiff(path, displayName, entityType, local, remote, false)
+								}
 							/>
 						)}
 
@@ -635,6 +783,9 @@ export function SourceControlPanel() {
 								title="Outgoing"
 								icon={<Upload className="h-4 w-4 text-green-500 flex-shrink-0" />}
 								actions={syncPreview.to_push ?? []}
+								onShowDiff={(path, displayName, entityType, local, remote) =>
+									handleShowDiff(path, displayName, entityType, local, remote, false)
+								}
 							/>
 						)}
 
@@ -644,6 +795,7 @@ export function SourceControlPanel() {
 								conflicts={syncPreview.conflicts ?? []}
 								resolutions={conflictResolutions}
 								onResolve={handleResolveConflict}
+								onShowDiff={handleShowDiff}
 							/>
 						)}
 
@@ -681,10 +833,18 @@ function SyncActionList({
 	title,
 	icon,
 	actions,
+	onShowDiff,
 }: {
 	title: string;
 	icon: React.ReactNode;
 	actions: SyncAction[];
+	onShowDiff: (
+		path: string,
+		displayName: string,
+		entityType: string,
+		localContent: string | null,
+		remoteContent: string | null
+	) => void;
 }) {
 	const [expanded, setExpanded] = useState(true);
 	const groupedEntities = groupSyncActions(actions);
@@ -713,6 +873,20 @@ function SyncActionList({
 							key={entity.action.path}
 							action={entity.action}
 							childFiles={entity.childFiles}
+							onClick={() => onShowDiff(
+								entity.action.path,
+								entity.action.display_name || entity.action.path,
+								entity.action.entity_type || "workflow",
+								null,
+								null
+							)}
+							onChildClick={(child) => onShowDiff(
+								child.path,
+								child.display_name || child.path,
+								child.entity_type || "app_file",
+								null,
+								null
+							)}
 						/>
 					))}
 				</div>
@@ -728,12 +902,24 @@ function ConflictList({
 	conflicts,
 	resolutions,
 	onResolve,
+	onShowDiff,
 }: {
 	conflicts: SyncConflictInfo[];
 	resolutions: Record<string, "keep_local" | "keep_remote">;
 	onResolve: (path: string, resolution: "keep_local" | "keep_remote") => void;
+	onShowDiff: (
+		path: string,
+		displayName: string,
+		entityType: string,
+		localContent: string | null,
+		remoteContent: string | null,
+		isConflict: boolean,
+		resolution?: "keep_local" | "keep_remote",
+		onResolve?: (res: "keep_local" | "keep_remote") => void
+	) => void;
 }) {
 	const [expanded, setExpanded] = useState(true);
+	const groupedConflicts = groupConflicts(conflicts);
 	const resolvedCount = Object.keys(resolutions).length;
 
 	return (
@@ -762,29 +948,67 @@ function ConflictList({
 			</button>
 			{expanded && (
 				<div className="flex-1 overflow-y-auto px-4 pb-2 min-h-0">
-					{conflicts.map((conflict) => {
+					{groupedConflicts.map((group) => {
+						const conflict = group.conflict;
 						const resolution = resolutions[conflict.path];
-						// Extract entity metadata from path
+						// Extract entity metadata from conflict (now has entity_type, display_name)
 						const metadata: SyncAction = {
 							path: conflict.path,
 							action: "modify" as const,
-							display_name: conflict.path.split("/").pop() || conflict.path,
-							entity_type: conflict.path.endsWith(".form.json")
-								? "form"
-								: conflict.path.endsWith(".agent.json")
-									? "agent"
-									: conflict.path.startsWith("apps/")
-										? "app"
-										: "workflow",
+							display_name: conflict.display_name || conflict.path.split("/").pop() || conflict.path,
+							entity_type: conflict.entity_type || (
+								conflict.path.endsWith(".form.json")
+									? "form"
+									: conflict.path.endsWith(".agent.json")
+										? "agent"
+										: conflict.path.startsWith("apps/")
+											? "app"
+											: "workflow"
+							),
+							parent_slug: conflict.parent_slug,
 						};
+
+						// Convert child conflicts to SyncAction format for EntitySyncItem
+						const childFiles: SyncAction[] = group.childConflicts.map((child) => ({
+							path: child.path,
+							action: "modify" as const,
+							display_name: child.display_name || child.path.split("/").pop() || child.path,
+							entity_type: child.entity_type || "app_file",
+							parent_slug: child.parent_slug,
+						}));
 
 						return (
 							<EntitySyncItem
 								key={conflict.path}
 								action={metadata}
+								childFiles={childFiles}
 								isConflict
 								resolution={resolution}
 								onResolve={(res) => onResolve(conflict.path, res)}
+								onClick={() => onShowDiff(
+									conflict.path,
+									metadata.display_name || conflict.path,
+									metadata.entity_type || "workflow",
+									conflict.local_content ?? null,
+									conflict.remote_content ?? null,
+									true,
+									resolution,
+									(res) => onResolve(conflict.path, res)
+								)}
+								onChildClick={(child) => {
+									// Find the matching child conflict to get its content
+									const childConflict = group.childConflicts.find((c) => c.path === child.path);
+									onShowDiff(
+										child.path,
+										child.display_name || child.path,
+										child.entity_type || "app_file",
+										childConflict?.local_content ?? null,
+										childConflict?.remote_content ?? null,
+										true,
+										resolutions[child.path],
+										(res) => onResolve(child.path, res)
+									);
+								}}
 							/>
 						);
 					})}

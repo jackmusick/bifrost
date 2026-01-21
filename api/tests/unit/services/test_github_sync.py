@@ -4,8 +4,6 @@ Unit tests for GitHub Sync Service.
 Tests the GitHubSyncService data models and exceptions.
 """
 
-
-
 from src.services.github_sync import (
     SyncAction,
     SyncActionType,

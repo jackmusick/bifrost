@@ -28,6 +28,7 @@ from src.config import get_settings
 from src.core.database import init_db, close_db, get_db_context
 from src.core.pubsub import (
     publish_git_sync_log,
+    publish_git_sync_preview_completed,
     publish_git_sync_progress,
     publish_git_sync_completed,
 )
@@ -237,6 +238,7 @@ class Scheduler:
             # Subscribe to scheduler channels
             await self._pubsub.subscribe("bifrost:scheduler:reindex")
             await self._pubsub.subscribe("bifrost:scheduler:git-sync")
+            await self._pubsub.subscribe("bifrost:scheduler:git-sync-preview")
 
             # Start listener task
             self._listener_task = asyncio.create_task(self._pubsub_listener())
@@ -273,6 +275,8 @@ class Scheduler:
             await self._handle_reindex_request(data)
         elif channel == "bifrost:scheduler:git-sync":
             await self._handle_git_sync_request(data)
+        elif channel == "bifrost:scheduler:git-sync-preview":
+            await self._handle_git_sync_preview_request(data)
         else:
             logger.warning(f"Unknown channel: {channel}")
 
@@ -534,6 +538,254 @@ class Scheduler:
                 job_id,
                 status="failed",
                 message=str(e),
+            )
+
+    async def _handle_git_sync_preview_request(self, data: dict) -> None:
+        """
+        Handle git sync preview request from API.
+
+        Runs the sync preview and publishes progress via WebSocket.
+        """
+        from src.models import SystemConfig
+        from src.services.github_sync import GitHubSyncService, SyncError
+
+        job_id = data.get("jobId", "unknown")
+        org_id = data.get("orgId")
+
+        logger.info(f"Starting git sync preview job {job_id} for org {org_id}")
+
+        try:
+            # Publish started status
+            await publish_git_sync_log(job_id, "info", "Starting sync preview...")
+
+            async with get_db_context() as db:
+                # Get GitHub config from database
+                from uuid import UUID
+                from sqlalchemy import select
+
+                # Parse org_id to UUID
+                org_uuid = None
+                if org_id:
+                    try:
+                        org_uuid = UUID(org_id)
+                    except ValueError:
+                        pass
+
+                # Look for github integration config in system_configs table
+                stmt = select(SystemConfig).where(
+                    SystemConfig.category == "github",
+                    SystemConfig.key == "integration",
+                    SystemConfig.organization_id == org_uuid
+                )
+                result = await db.execute(stmt)
+                config = result.scalars().first()
+
+                if not config:
+                    # Try GLOBAL fallback (organization_id = NULL)
+                    stmt = select(SystemConfig).where(
+                        SystemConfig.category == "github",
+                        SystemConfig.key == "integration",
+                        SystemConfig.organization_id.is_(None)
+                    )
+                    result = await db.execute(stmt)
+                    config = result.scalars().first()
+
+                if not config or not config.value_json:
+                    await publish_git_sync_preview_completed(
+                        job_id,
+                        status="error",
+                        error="GitHub not configured for this organization",
+                    )
+                    return
+
+                github_config = config.value_json or {}
+                encrypted_token = github_config.get("encrypted_token")
+                repo_url = github_config.get("repo_url")
+                branch = github_config.get("branch", "main")
+
+                # Decrypt token if present
+                token = None
+                if encrypted_token:
+                    try:
+                        import base64
+                        from cryptography.fernet import Fernet
+                        from src.config import get_settings
+                        settings = get_settings()
+                        # Use secret_key (same as github.py pattern)
+                        key_bytes = settings.secret_key.encode()[:32].ljust(32, b'0')
+                        fernet = Fernet(base64.urlsafe_b64encode(key_bytes))
+                        token = fernet.decrypt(encrypted_token.encode()).decode()
+                    except Exception as e:
+                        logger.warning(f"Failed to decrypt GitHub token: {e}")
+
+                if not token or not repo_url:
+                    await publish_git_sync_preview_completed(
+                        job_id,
+                        status="error",
+                        error="GitHub token or repository not configured",
+                    )
+                    return
+
+                # Extract repo from URL (https://github.com/owner/repo -> owner/repo)
+                if repo_url.startswith("https://github.com/"):
+                    repo = repo_url.replace("https://github.com/", "").rstrip(".git")
+                else:
+                    repo = repo_url
+
+                await publish_git_sync_log(
+                    job_id, "info", f"Analyzing repository: {repo}"
+                )
+
+                # Create sync service
+                sync_service = GitHubSyncService(
+                    db=db,
+                    github_token=token,
+                    repo=repo,
+                    branch=branch,
+                )
+
+                # Define progress callback
+                async def progress_callback(progress: dict) -> None:
+                    await publish_git_sync_progress(
+                        job_id,
+                        progress.get("phase", "analyzing"),
+                        progress.get("current", 0),
+                        progress.get("total", 0),
+                        progress.get("path"),
+                    )
+
+                # Define log callback for milestone/error logging
+                async def log_callback(level: str, message: str) -> None:
+                    await publish_git_sync_log(job_id, level, message)
+
+                # Execute the preview with progress callbacks
+                preview = await sync_service.get_sync_preview(
+                    progress_callback=progress_callback,
+                    log_callback=log_callback,
+                )
+
+                # Convert preview to dict for serialization
+                # Import the necessary contract types
+                from src.models.contracts.github import (
+                    OrphanInfo,
+                    SyncAction,
+                    SyncActionType,
+                    SyncConflictInfo,
+                    SyncSerializationError,
+                    SyncUnresolvedRefInfo,
+                    WorkflowReference,
+                )
+                from src.services.github_sync_entity_metadata import extract_entity_metadata
+
+                preview_response = {
+                    "to_pull": [
+                        SyncAction(
+                            path=a.path,
+                            action=SyncActionType(a.action.value),
+                            sha=a.sha,
+                            display_name=a.display_name,
+                            entity_type=a.entity_type,
+                            parent_slug=a.parent_slug,
+                        ).model_dump()
+                        for a in preview.to_pull
+                    ],
+                    "to_push": [
+                        SyncAction(
+                            path=a.path,
+                            action=SyncActionType(a.action.value),
+                            sha=a.sha,
+                            display_name=a.display_name,
+                            entity_type=a.entity_type,
+                            parent_slug=a.parent_slug,
+                        ).model_dump()
+                        for a in preview.to_push
+                    ],
+                    "conflicts": [
+                        SyncConflictInfo(
+                            path=c.path,
+                            local_content=c.local_content,
+                            remote_content=c.remote_content,
+                            local_sha=c.local_sha,
+                            remote_sha=c.remote_sha,
+                            display_name=(
+                                metadata := extract_entity_metadata(
+                                    c.path,
+                                    (c.remote_content or c.local_content or "").encode("utf-8"),
+                                )
+                            ).display_name,
+                            entity_type=metadata.entity_type,
+                            parent_slug=metadata.parent_slug,
+                        ).model_dump()
+                        for c in preview.conflicts
+                    ],
+                    "will_orphan": [
+                        OrphanInfo(
+                            workflow_id=o.workflow_id,
+                            workflow_name=o.workflow_name,
+                            function_name=o.function_name,
+                            last_path=o.last_path,
+                            used_by=[
+                                WorkflowReference(
+                                    type=r.type,
+                                    id=r.id,
+                                    name=r.name,
+                                )
+                                for r in o.used_by
+                            ],
+                        ).model_dump()
+                        for o in preview.will_orphan
+                    ],
+                    "unresolved_refs": [
+                        SyncUnresolvedRefInfo(
+                            entity_type=u.entity_type,
+                            entity_path=u.entity_path,
+                            field_path=u.field_path,
+                            portable_ref=u.portable_ref,
+                        ).model_dump()
+                        for u in preview.unresolved_refs
+                    ],
+                    "serialization_errors": [
+                        SyncSerializationError(
+                            entity_type=e.entity_type,
+                            entity_id=e.entity_id,
+                            entity_name=e.entity_name,
+                            path=e.path,
+                            error=e.error,
+                        ).model_dump()
+                        for e in preview.serialization_errors
+                    ],
+                    "is_empty": preview.is_empty,
+                }
+
+                # Publish completion with preview data
+                await publish_git_sync_log(
+                    job_id, "success",
+                    f"Preview complete: {len(preview.to_pull)} to pull, {len(preview.to_push)} to push"
+                )
+                await publish_git_sync_preview_completed(
+                    job_id,
+                    status="success",
+                    preview=preview_response,
+                )
+                logger.info(
+                    f"Git sync preview job {job_id} completed: "
+                    f"to_pull={len(preview.to_pull)}, to_push={len(preview.to_push)}"
+                )
+
+        except SyncError as e:
+            logger.error(f"Git sync preview job {job_id} failed: {e}")
+            await publish_git_sync_preview_completed(
+                job_id,
+                status="error",
+                error=str(e),
+            )
+
+        except Exception as e:
+            logger.error(f"Git sync preview job {job_id} failed: {e}", exc_info=True)
+            await publish_git_sync_preview_completed(
+                job_id,
+                status="error",
+                error=str(e),
             )
 
     async def stop(self) -> None:

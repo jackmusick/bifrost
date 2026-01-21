@@ -235,6 +235,10 @@ class VirtualFileProvider:
         Fetches all active agents with their tools relationship loaded,
         serializes them to JSON with portable workflow refs.
 
+        Built-in/system agents (like "Coding Assistant") are excluded from sync
+        because they are auto-created on startup and shouldn't vary between
+        environments.
+
         Args:
             workflow_map: Mapping of workflow UUID -> "path::function_name"
 
@@ -243,6 +247,7 @@ class VirtualFileProvider:
         """
         # Query agents with all relationships eagerly loaded
         # (tools, delegated_agents, roles needed for AgentPublic validation)
+        # Exclude system agents (is_system=True) - they're auto-created and shouldn't be synced
         stmt = (
             select(Agent)
             .options(
@@ -250,7 +255,10 @@ class VirtualFileProvider:
                 selectinload(Agent.delegated_agents),
                 selectinload(Agent.roles),
             )
-            .where(Agent.is_active == True)  # noqa: E712
+            .where(
+                Agent.is_active == True,  # noqa: E712
+                Agent.is_system == False,  # noqa: E712  Exclude built-in agents
+            )
         )
         result = await self.db.execute(stmt)
         agents = result.scalars().all()
@@ -325,6 +333,8 @@ class VirtualFileProvider:
             app_dir = f"apps/{app.slug}"
 
             # 1. Serialize app.json (portable metadata only)
+            # Use app_dir as entity_id for slug-based matching (apps are matched by slug
+            # during import, not by UUID, so entity_id should be consistent with that)
             try:
                 content = _serialize_app_to_json(app)
                 computed_sha = compute_git_blob_sha(content)
@@ -333,7 +343,7 @@ class VirtualFileProvider:
                     VirtualFile(
                         path=f"{app_dir}/app.json",
                         entity_type="app",
-                        entity_id=str(app.id),
+                        entity_id=app_dir,  # Use slug-based path for matching
                         content=content,
                         computed_sha=computed_sha,
                     )
@@ -343,7 +353,7 @@ class VirtualFileProvider:
                 errors.append(
                     SerializationError(
                         entity_type="app",
-                        entity_id=str(app.id),
+                        entity_id=app_dir,
                         entity_name=app.name,
                         path=f"{app_dir}/app.json",
                         error=str(e),
@@ -366,7 +376,10 @@ class VirtualFileProvider:
                         VirtualFile(
                             path=file_path,
                             entity_type="app_file",
-                            entity_id=str(file.id),
+                            # Use path as entity_id for stable cross-environment matching
+                            # App files don't have UUIDs in their filenames, so path-based
+                            # matching is more reliable than trying to extract entity IDs
+                            entity_id=file_path,
                             content=content,
                             computed_sha=computed_sha,
                         )

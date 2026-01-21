@@ -114,14 +114,14 @@ class AgentPublic(BaseModel):
     description: str | None = None
     system_prompt: str
     channels: list[str]
-    access_level: AgentAccessLevel | None = Field(default=None, exclude=True)
-    organization_id: UUID | None = Field(default=None, exclude=True)
+    access_level: AgentAccessLevel | None = None
+    organization_id: UUID | None = None
     is_active: bool
     is_coding_mode: bool = False
-    is_system: bool = Field(default=False, exclude=True)
-    created_by: str | None = Field(default=None, exclude=True)
-    created_at: datetime | None = Field(default=None, exclude=True)
-    updated_at: datetime | None = Field(default=None, exclude=True)
+    is_system: bool = False
+    created_by: str | None = None
+    created_at: datetime | None = None
+    updated_at: datetime | None = None
     # Populated from relationships
     tool_ids: Annotated[list[str], WorkflowRef()] = Field(default_factory=list)
     delegated_agent_ids: list[str] = Field(default_factory=list)

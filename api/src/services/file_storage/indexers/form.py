@@ -19,7 +19,6 @@ from pydantic import ValidationError
 from src.models import Form, FormField as FormFieldORM, Workflow
 from src.models.contracts.forms import FormField, FormPublic
 from src.models.contracts.refs import (
-    get_workflow_ref_paths,
     transform_refs_for_export,
     transform_refs_for_import,
 )
@@ -47,16 +46,17 @@ def _serialize_form_to_json(
     """
     form_public = FormPublic.model_validate(form)
 
-    # model_dump respects Field(exclude=True) automatically
-    form_data = form_public.model_dump(mode="json", exclude_none=True)
+    # Explicitly exclude fields that shouldn't be in exported files
+    # (these are runtime/database-specific, not portable)
+    form_data = form_public.model_dump(
+        mode="json",
+        exclude_none=True,
+        exclude={"organization_id", "access_level", "created_at", "updated_at"},
+    )
 
-    # Transform refs if we have a workflow map
+    # Transform workflow UUIDs to portable refs if we have a workflow map
     if workflow_map:
         form_data = transform_refs_for_export(form_data, FormPublic, workflow_map)
-        form_data["_export"] = {
-            "workflow_refs": get_workflow_ref_paths(FormPublic),
-            "version": "1.0",
-        }
 
     return json.dumps(form_data, indent=2).encode("utf-8")
 
@@ -131,13 +131,15 @@ class FormIndexer:
             logger.warning(f"Invalid JSON in form file: {path}")
             return False
 
-        # Check for portable refs from export and resolve them to UUIDs
-        export_meta = form_data.pop("_export", None)
-        ref_to_uuid: dict[str, str] = {}
-        if export_meta and "workflow_refs" in export_meta:
-            from src.services.file_storage.ref_translation import build_ref_to_uuid_map
-            ref_to_uuid = await build_ref_to_uuid_map(self.db)
-            form_data = transform_refs_for_import(form_data, FormPublic, ref_to_uuid)
+        # Remove _export if present (backwards compatibility with old files)
+        # Pydantic will also ignore it during validation, but we clean it up explicitly
+        form_data.pop("_export", None)
+
+        # Always transform portable refs to UUIDs
+        # The model annotations tell us which fields contain workflow refs
+        from src.services.file_storage.ref_translation import build_ref_to_uuid_map
+        ref_to_uuid = await build_ref_to_uuid_map(self.db)
+        form_data = transform_refs_for_import(form_data, FormPublic, ref_to_uuid)
 
         name = form_data.get("name")
         if not name:

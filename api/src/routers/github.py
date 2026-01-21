@@ -12,7 +12,10 @@ from fastapi import APIRouter, HTTPException, Query, status
 
 from src.core.auth import Context, CurrentSuperuser
 from src.core.database import DbSession
-from src.core.pubsub import publish_git_sync_request
+from src.core.pubsub import (
+    publish_git_sync_preview_request,
+    publish_git_sync_request,
+)
 from src.models import (
     CommitHistoryResponse,
     CommitInfo,
@@ -30,6 +33,7 @@ from src.models import (
     SyncContentResponse,
     SyncExecuteRequest,
     SyncExecuteResponse,
+    SyncPreviewJobResponse,
     SyncPreviewResponse,
     SyncSerializationError,
     ValidateTokenRequest,
@@ -608,34 +612,29 @@ async def get_commits(
 
 @router.get(
     "/sync",
-    response_model=SyncPreviewResponse,
-    summary="Preview sync changes",
-    description="Get a preview of what sync will do without executing",
+    response_model=SyncPreviewJobResponse,
+    summary="Queue sync preview job",
+    description="Queue a background job to preview sync changes. Subscribe to git:{job_id} WebSocket channel for progress and results.",
 )
 async def get_sync_preview(
     ctx: Context,
     user: CurrentSuperuser,
     db: DbSession,
-) -> SyncPreviewResponse:
+) -> SyncPreviewJobResponse:
     """
-    Get a preview of sync changes.
+    Queue a sync preview as a background job.
 
-    Compares local DB state with remote GitHub state and returns:
+    Returns immediately with a job_id. The client should subscribe to the
+    WebSocket channel git:{job_id} to receive:
+    - Progress updates (git_progress messages with phases like 'cloning', 'scanning')
+    - Completion with full preview data (git_preview_complete message)
+
+    The preview compares local DB state with remote GitHub state and returns:
     - Files to pull from GitHub
     - Files to push to GitHub
     - Files with conflicts requiring resolution
     - Workflows that will become orphaned
     """
-    from src.models.contracts.github import (
-        OrphanInfo,
-        SyncAction,
-        SyncActionType,
-        SyncConflictInfo,
-        SyncUnresolvedRefInfo,
-        WorkflowReference,
-    )
-    from src.services.github_sync import GitHubSyncService, SyncError
-
     try:
         config = await get_github_config(db, ctx.org_id)
 
@@ -651,110 +650,29 @@ async def get_sync_preview(
                 detail="GitHub repository not configured.",
             )
 
-        repo = _extract_repo_from_url(config.repo_url)
+        # Generate job ID for tracking
+        job_id = str(uuid.uuid4())
 
-        sync_service = GitHubSyncService(
-            db=db,
-            github_token=config.token,
-            repo=repo,
-            branch=config.branch,
+        # Queue the preview job to the scheduler
+        await publish_git_sync_preview_request(
+            job_id=job_id,
+            org_id=str(ctx.org_id) if ctx.org_id else "",
+            user_id=str(user.user_id),
+            user_email=user.email,
         )
 
-        preview = await sync_service.get_sync_preview()
-
-        return SyncPreviewResponse(
-            to_pull=[
-                SyncAction(
-                    path=a.path,
-                    action=SyncActionType(a.action.value),
-                    sha=a.sha,
-                    display_name=a.display_name,
-                    entity_type=a.entity_type,
-                    parent_slug=a.parent_slug,
-                )
-                for a in preview.to_pull
-            ],
-            to_push=[
-                SyncAction(
-                    path=a.path,
-                    action=SyncActionType(a.action.value),
-                    sha=a.sha,
-                    display_name=a.display_name,
-                    entity_type=a.entity_type,
-                    parent_slug=a.parent_slug,
-                )
-                for a in preview.to_push
-            ],
-            conflicts=[
-                SyncConflictInfo(
-                    path=c.path,
-                    local_content=c.local_content,
-                    remote_content=c.remote_content,
-                    local_sha=c.local_sha,
-                    remote_sha=c.remote_sha,
-                    display_name=(
-                        metadata := extract_entity_metadata(
-                            c.path,
-                            (c.remote_content or c.local_content or "").encode("utf-8"),
-                        )
-                    ).display_name,
-                    entity_type=metadata.entity_type,
-                    parent_slug=metadata.parent_slug,
-                )
-                for c in preview.conflicts
-            ],
-            will_orphan=[
-                OrphanInfo(
-                    workflow_id=o.workflow_id,
-                    workflow_name=o.workflow_name,
-                    function_name=o.function_name,
-                    last_path=o.last_path,
-                    used_by=[
-                        WorkflowReference(
-                            type=r.type,
-                            id=r.id,
-                            name=r.name,
-                        )
-                        for r in o.used_by
-                    ],
-                )
-                for o in preview.will_orphan
-            ],
-            unresolved_refs=[
-                SyncUnresolvedRefInfo(
-                    entity_type=u.entity_type,
-                    entity_path=u.entity_path,
-                    field_path=u.field_path,
-                    portable_ref=u.portable_ref,
-                )
-                for u in preview.unresolved_refs
-            ],
-            serialization_errors=[
-                SyncSerializationError(
-                    entity_type=e.entity_type,
-                    entity_id=e.entity_id,
-                    entity_name=e.entity_name,
-                    path=e.path,
-                    error=e.error,
-                )
-                for e in preview.serialization_errors
-            ],
-            is_empty=preview.is_empty,
+        return SyncPreviewJobResponse(
+            job_id=job_id,
+            status="queued",
         )
 
-    except SyncError as e:
-        logger.error(f"Sync preview failed: {e}")
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail=str(e),
-        )
     except HTTPException:
         raise
     except Exception as e:
-        logger.error(f"Error getting sync preview: {e}", exc_info=True)
+        logger.error(f"Error queueing sync preview: {e}", exc_info=True)
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Failed to get sync preview",
+            detail="Failed to queue sync preview",
         )
 
 

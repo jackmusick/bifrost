@@ -13,6 +13,7 @@ import { toast } from "sonner";
 import type * as Monaco from "monaco-editor";
 import { initializeMonaco } from "@/lib/monaco-setup";
 import { ConflictDiffView } from "./ConflictDiffView";
+import { SyncDiffView } from "./SyncDiffView";
 import { IndexingOverlay } from "./IndexingOverlay";
 import { WorkflowIdConflictDialog } from "./WorkflowIdConflictDialog";
 import { WorkflowDeactivationDialog } from "./WorkflowDeactivationDialog";
@@ -47,6 +48,9 @@ export function CodeEditor() {
 
 	// Indexing state for blocking overlay during ID injection
 	const isIndexing = useEditorStore((state) => state.isIndexing);
+
+	// Diff preview state for sync UI
+	const diffPreview = useEditorStore((state) => state.diffPreview);
 
 	// Workflow ID conflict state
 	const pendingWorkflowConflict = useEditorStore(
@@ -393,6 +397,12 @@ export function CodeEditor() {
 				</div>
 			</div>
 		);
+	}
+
+	// Show diff preview when active (for sync UI) - must check BEFORE !openFile
+	// since sync diffs are viewed without opening a file
+	if (diffPreview) {
+		return <SyncDiffView preview={diffPreview} />;
 	}
 
 	if (!openFile) {

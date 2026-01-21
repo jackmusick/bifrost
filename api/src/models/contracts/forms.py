@@ -234,11 +234,11 @@ class FormPublic(BaseModel):
     default_launch_params: dict | None = None
     allowed_query_params: list[str] | None = None
     form_schema: dict | FormSchema | None = None
-    access_level: FormAccessLevel | None = Field(default=None, exclude=True)
-    organization_id: UUID | None = Field(default=None, exclude=True)
+    access_level: FormAccessLevel | None = None
+    organization_id: UUID | None = None
     is_active: bool
-    created_at: datetime | None = Field(default=None, exclude=True)
-    updated_at: datetime | None = Field(default=None, exclude=True)
+    created_at: datetime | None = None
+    updated_at: datetime | None = None
 
     @model_validator(mode="before")
     @classmethod

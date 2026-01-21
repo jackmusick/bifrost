@@ -330,7 +330,7 @@ services:
       api:
         condition: service_healthy
     deploy:
-      replicas: ${WORKER_REPLICAS:-2}
+      replicas: ${WORKER_REPLICAS:-1}
     command: python -m src.worker.main
 
   # Coding Agent Service (Claude Agent SDK)
@@ -373,7 +373,7 @@ services:
       minio-init:
         condition: service_completed_successfully
     deploy:
-      replicas: 1  # Single instance - SDK clients cached per session
+      replicas: 1 # Single instance - SDK clients cached per session
     command: >
       python -m src.coding_agent.main
 

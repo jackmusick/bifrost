@@ -11,6 +11,7 @@
  */
 
 import type { components } from "@/lib/v1";
+import type { SyncPreviewResponse } from "@/hooks/useGitHub";
 import { refreshAccessToken } from "@/lib/api-client";
 import { useNotificationStore } from "@/stores/notificationStore";
 import type { Notification } from "@/stores/notificationStore";
@@ -366,6 +367,13 @@ export type PoolMessage =
 	| PoolProgressMessage;
 
 // Message types from backend
+// Git preview completion type with full preview data
+export interface GitPreviewComplete {
+	status: "success" | "error";
+	preview?: SyncPreviewResponse;
+	error?: string;
+}
+
 type WebSocketMessage =
 	| { type: "connected"; channels: string[]; userId: string }
 	| { type: "connected"; executionId: string }
@@ -383,6 +391,7 @@ type WebSocketMessage =
 	| { type: "git_log"; jobId: string; level: string; message: string }
 	| { type: "git_progress"; jobId: string; phase: string; current: number; total: number; path?: string | null }
 	| { type: "git_complete"; jobId: string; status: "success" | "error"; message: string; [key: string]: unknown }
+	| { type: "git_preview_complete"; jobId: string; status: "success" | "error"; preview?: SyncPreviewResponse; error?: string }
 	| {
 			type: "devrun_state_update";
 			state: LocalRunnerStateUpdate | null;
@@ -440,6 +449,7 @@ export interface GitProgress {
 type GitLogCallback = (log: PackageLog) => void;
 type GitProgressCallback = (progress: GitProgress) => void;
 type GitCompleteCallback = (complete: PackageComplete & Record<string, unknown>) => void;
+type GitPreviewCompleteCallback = (complete: GitPreviewComplete) => void;
 type LocalRunnerStateCallback = (state: LocalRunnerStateUpdate | null) => void;
 type ReindexCallback = (message: ReindexMessage) => void;
 type CLISessionUpdateCallback = (update: CLISessionUpdate) => void;
@@ -476,6 +486,7 @@ class WebSocketService {
 	private gitLogCallbacks = new Map<string, Set<GitLogCallback>>();
 	private gitProgressCallbacks = new Map<string, Set<GitProgressCallback>>();
 	private gitCompleteCallbacks = new Map<string, Set<GitCompleteCallback>>();
+	private gitPreviewCompleteCallbacks = new Map<string, Set<GitPreviewCompleteCallback>>();
 	private localRunnerStateCallbacks = new Set<LocalRunnerStateCallback>();
 	private cliSessionUpdateCallbacks = new Map<
 		string,
@@ -765,6 +776,20 @@ class WebSocketService {
 					const { type: _type, jobId: _jobId, ...gitCompleteData } = message;
 					const callbacks = this.gitCompleteCallbacks.get(gitCompleteJobId);
 					callbacks?.forEach((cb) => cb(gitCompleteData as Parameters<GitCompleteCallback>[0]));
+				}
+				break;
+			}
+
+			case "git_preview_complete": {
+				// Git sync preview complete message - dispatch to job-specific subscribers
+				const gitPreviewJobId = message.jobId;
+				if (gitPreviewJobId) {
+					const callbacks = this.gitPreviewCompleteCallbacks.get(gitPreviewJobId);
+					callbacks?.forEach((cb) => cb({
+						status: message.status,
+						preview: message.preview,
+						error: message.error,
+					}));
 				}
 				break;
 			}
@@ -1235,6 +1260,24 @@ class WebSocketService {
 			this.gitCompleteCallbacks.get(connectionId)?.delete(callback);
 			if (this.gitCompleteCallbacks.get(connectionId)?.size === 0) {
 				this.gitCompleteCallbacks.delete(connectionId);
+			}
+		};
+	}
+
+	/**
+	 * Subscribe to git sync preview completion for a specific job
+	 */
+	onGitSyncPreviewComplete(jobId: string, callback: GitPreviewCompleteCallback): () => void {
+		if (!this.gitPreviewCompleteCallbacks.has(jobId)) {
+			this.gitPreviewCompleteCallbacks.set(jobId, new Set());
+		}
+		this.gitPreviewCompleteCallbacks.get(jobId)!.add(callback);
+
+		// Return unsubscribe function
+		return () => {
+			this.gitPreviewCompleteCallbacks.get(jobId)?.delete(callback);
+			if (this.gitPreviewCompleteCallbacks.get(jobId)?.size === 0) {
+				this.gitPreviewCompleteCallbacks.delete(jobId);
 			}
 		};
 	}

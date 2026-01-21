@@ -58,8 +58,10 @@ export function FormBuilder() {
 	const [linkedWorkflow, setLinkedWorkflow] = useState(
 		() => existingForm?.workflow_id || "",
 	);
+	// FormPublic excludes organization_id from API response, cast to access if present
+	type FormWithOrgAndAccess = typeof existingForm & { organization_id?: string | null; access_level?: string | null };
 	const [organizationId, setOrganizationId] = useState<string | null>(
-		() => existingForm?.organization_id ?? defaultOrgId,
+		() => (existingForm as FormWithOrgAndAccess)?.organization_id ?? defaultOrgId,
 	);
 	// Determine if form is global based on organizationId
 	const isGlobal = organizationId === null;
@@ -74,7 +76,7 @@ export function FormBuilder() {
 		"authenticated" | "role_based"
 	>(
 		() =>
-			(existingForm?.access_level as "authenticated" | "role_based") ||
+			((existingForm as FormWithOrgAndAccess)?.access_level as "authenticated" | "role_based") ||
 			"role_based",
 	);
 	const [selectedRoleIds, setSelectedRoleIds] = useState<string[]>([]);
@@ -112,7 +114,7 @@ export function FormBuilder() {
 			setFormName(existingForm.name || "");
 			setFormDescription(existingForm.description || "");
 			setLinkedWorkflow(existingForm.workflow_id || "");
-			setOrganizationId(existingForm.organization_id ?? defaultOrgId);
+			setOrganizationId((existingForm as FormWithOrgAndAccess).organization_id ?? defaultOrgId);
 			setLaunchWorkflowId(existingForm.launch_workflow_id || null);
 			setDefaultLaunchParams(
 				(existingForm.default_launch_params as Record<
@@ -121,7 +123,7 @@ export function FormBuilder() {
 				>) || null,
 			);
 			setAccessLevel(
-				(existingForm.access_level as "authenticated" | "role_based") ||
+				((existingForm as FormWithOrgAndAccess).access_level as "authenticated" | "role_based") ||
 					"role_based",
 			);
 			if (

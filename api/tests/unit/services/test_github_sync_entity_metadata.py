@@ -1,8 +1,6 @@
 """Tests for entity metadata extraction from sync files."""
-import pytest
 from src.services.github_sync_entity_metadata import (
     extract_entity_metadata,
-    EntityMetadata,
 )
 
 

@@ -53,6 +53,10 @@ interface EntitySyncItemProps {
 	resolution?: "keep_local" | "keep_remote";
 	/** Callback for conflict resolution */
 	onResolve?: (resolution: "keep_local" | "keep_remote") => void;
+	/** Callback when item is clicked for preview */
+	onClick?: () => void;
+	/** Callback when child file is clicked for preview */
+	onChildClick?: (childAction: SyncAction) => void;
 }
 
 export function EntitySyncItem({
@@ -61,6 +65,8 @@ export function EntitySyncItem({
 	isConflict = false,
 	resolution,
 	onResolve,
+	onClick,
+	onChildClick,
 }: EntitySyncItemProps) {
 	const [expanded, setExpanded] = useState(false);
 	const entityType = action.entity_type as keyof typeof ENTITY_ICONS | null;
@@ -75,17 +81,22 @@ export function EntitySyncItem({
 		<div className="py-1">
 			{/* Main entity row */}
 			<div
+				onClick={onClick}
 				className={cn(
 					"flex items-center gap-2 text-xs py-1.5 px-2 rounded",
 					isConflict && !resolution && "bg-orange-500/10",
 					isConflict && resolution && "bg-green-500/10",
-					!isConflict && "hover:bg-muted/30"
+					!isConflict && "hover:bg-muted/30",
+					onClick && "cursor-pointer"
 				)}
 			>
 				{/* Expand/collapse for apps */}
 				{hasChildren ? (
 					<button
-						onClick={() => setExpanded(!expanded)}
+						onClick={(e) => {
+							e.stopPropagation(); // Prevent triggering parent onClick
+							setExpanded(!expanded);
+						}}
 						className="p-0.5 hover:bg-muted rounded"
 					>
 						{expanded ? (
@@ -151,7 +162,11 @@ export function EntitySyncItem({
 					{childFiles.map((file) => (
 						<div
 							key={file.path}
-							className="flex items-center gap-2 text-xs py-0.5 px-1 text-muted-foreground"
+							onClick={() => onChildClick?.(file)}
+							className={cn(
+								"flex items-center gap-2 text-xs py-0.5 px-1 text-muted-foreground rounded",
+								onChildClick && "cursor-pointer hover:bg-muted/30"
+							)}
 						>
 							{getActionIcon(file.action)}
 							<FileCode className="h-3 w-3" />

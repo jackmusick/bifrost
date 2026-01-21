@@ -69,6 +69,18 @@ export interface FileDiagnostic {
 	source?: string;
 }
 
+// Diff preview state for sync UI
+export interface DiffPreviewState {
+	path: string;
+	displayName: string;
+	entityType: string;
+	localContent: string | null;
+	remoteContent: string | null;
+	isConflict: boolean;
+	resolution?: "keep_local" | "keep_remote";
+	onResolve?: (resolution: "keep_local" | "keep_remote") => void;
+}
+
 export interface EditorTab {
 	file: FileMetadata;
 	content: string;
@@ -128,6 +140,9 @@ interface EditorState {
 		etag?: string;
 		tabIndex: number;
 	} | null;
+
+	// Diff preview state for sync UI
+	diffPreview: DiffPreviewState | null;
 
 	// Computed properties helpers
 	get activeTab(): EditorTab | null;
@@ -233,6 +248,15 @@ interface EditorState {
 		action: "force_deactivate" | "apply_replacements" | "cancel",
 		replacements?: Record<string, string>,
 	) => Promise<FileContentResponse | null>;
+
+	// Diff preview actions
+	setDiffPreview: (
+		preview:
+			| DiffPreviewState
+			| null
+			| ((prev: DiffPreviewState | null) => DiffPreviewState | null),
+	) => void;
+	clearDiffPreview: () => void;
 }
 
 export const useEditorStore = create<EditorState>()(
@@ -261,6 +285,9 @@ export const useEditorStore = create<EditorState>()(
 
 			// Workflow deactivation protection state
 			pendingDeactivationConflict: null,
+
+			// Diff preview state for sync UI
+			diffPreview: null,
 
 			// Line reveal state (for scrolling to specific line after file loads)
 			pendingLineReveal: null,
@@ -894,6 +921,17 @@ export const useEditorStore = create<EditorState>()(
 					return null;
 				}
 			},
+
+			// Diff preview actions
+			setDiffPreview: (previewOrUpdater) => {
+				if (typeof previewOrUpdater === "function") {
+					const currentPreview = get().diffPreview;
+					set({ diffPreview: previewOrUpdater(currentPreview) });
+				} else {
+					set({ diffPreview: previewOrUpdater });
+				}
+			},
+			clearDiffPreview: () => set({ diffPreview: null }),
 		}),
 		{
 			name: "editor-storage", // localStorage key

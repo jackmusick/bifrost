@@ -15,11 +15,14 @@ def test_sync_content_request_model():
 
 def test_sync_content_request_invalid_source():
     """SyncContentRequest should reject invalid source values."""
+    from typing import Any
+
     from pydantic import ValidationError
     from src.models.contracts.github import SyncContentRequest
 
+    invalid_source: Any = "invalid"
     with pytest.raises(ValidationError):
-        SyncContentRequest(path="forms/test.form.json", source="invalid")
+        SyncContentRequest(path="forms/test.form.json", source=invalid_source)
 
 
 def test_sync_content_response_model():

@@ -55,6 +55,7 @@ import {
 	type SyncPreviewResponse,
 	type SyncAction,
 } from "@/hooks/useGitHub";
+import { webSocketService, type GitPreviewComplete } from "@/services/websocket";
 
 export function GitHub() {
 	const [config, setConfig] = useState<GitHubConfigResponse | null>(null);
@@ -332,15 +333,38 @@ export function GitHub() {
 		}
 	};
 
-	// Open sync preview dialog
+	// Open sync preview dialog (uses WebSocket for progress updates)
 	const handleOpenSyncPreview = async () => {
 		setLoadingSyncPreview(true);
 		setShowSyncPreview(true);
 		setSyncPreviewData(null);
 
 		try {
-			const preview = await syncPreviewMutation.mutateAsync();
-			setSyncPreviewData(preview as SyncPreviewResponse);
+			// Queue the preview job (returns immediately with job_id)
+			const jobResponse = await syncPreviewMutation.mutateAsync();
+			const jobId = jobResponse.job_id;
+
+			if (!jobId) {
+				throw new Error("Failed to queue sync preview job");
+			}
+
+			// Connect to WebSocket channel for progress updates
+			await webSocketService.connectToGitSync(jobId);
+
+			// Wait for completion via promise
+			const preview = await new Promise<SyncPreviewResponse>((resolve, reject) => {
+				const unsubComplete = webSocketService.onGitSyncPreviewComplete(jobId, (complete: GitPreviewComplete) => {
+					unsubComplete();
+
+					if (complete.status === "success" && complete.preview) {
+						resolve(complete.preview);
+					} else {
+						reject(new Error(complete.error || "Sync preview failed"));
+					}
+				});
+			});
+
+			setSyncPreviewData(preview);
 		} catch (error) {
 			toast.error("Failed to get sync preview", {
 				description:

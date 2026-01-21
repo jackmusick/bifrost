@@ -18,7 +18,6 @@ from src.models import Workflow
 from src.models.orm import Agent, AgentTool, AgentDelegation
 from src.models.contracts.agents import AgentPublic
 from src.models.contracts.refs import (
-    get_workflow_ref_paths,
     transform_refs_for_export,
     transform_refs_for_import,
 )
@@ -46,21 +45,22 @@ def _serialize_agent_to_json(
     """
     agent_public = AgentPublic.model_validate(agent)
 
-    # model_dump respects Field(exclude=True) automatically
-    agent_data = agent_public.model_dump(mode="json", exclude_none=True)
+    # Explicitly exclude fields that shouldn't be in exported files
+    # (these are runtime/database-specific, not portable)
+    agent_data = agent_public.model_dump(
+        mode="json",
+        exclude_none=True,
+        exclude={"organization_id", "access_level", "is_system", "created_by", "created_at", "updated_at"},
+    )
 
     # Remove empty arrays to match import format
     for key in ["delegated_agent_ids", "role_ids", "knowledge_sources", "system_tools"]:
         if key in agent_data and agent_data[key] == []:
             del agent_data[key]
 
-    # Transform refs if we have a workflow map
+    # Transform workflow UUIDs to portable refs if we have a workflow map
     if workflow_map:
         agent_data = transform_refs_for_export(agent_data, AgentPublic, workflow_map)
-        agent_data["_export"] = {
-            "workflow_refs": get_workflow_ref_paths(AgentPublic),
-            "version": "1.0",
-        }
 
     return json.dumps(agent_data, indent=2).encode("utf-8")
 
@@ -114,13 +114,15 @@ class AgentIndexer:
             logger.warning(f"Invalid JSON in agent file: {path}")
             return False
 
-        # Check for portable refs from export and resolve them to UUIDs
-        export_meta = agent_data.pop("_export", None)
-        ref_to_uuid: dict[str, str] = {}
-        if export_meta and "workflow_refs" in export_meta:
-            from src.services.file_storage.ref_translation import build_ref_to_uuid_map
-            ref_to_uuid = await build_ref_to_uuid_map(self.db)
-            agent_data = transform_refs_for_import(agent_data, AgentPublic, ref_to_uuid)
+        # Remove _export if present (backwards compatibility with old files)
+        # Pydantic will also ignore it during validation, but we clean it up explicitly
+        agent_data.pop("_export", None)
+
+        # Always transform portable refs to UUIDs
+        # The model annotations tell us which fields contain workflow refs
+        from src.services.file_storage.ref_translation import build_ref_to_uuid_map
+        ref_to_uuid = await build_ref_to_uuid_map(self.db)
+        agent_data = transform_refs_for_import(agent_data, AgentPublic, ref_to_uuid)
 
         name = agent_data.get("name")
         if not name:

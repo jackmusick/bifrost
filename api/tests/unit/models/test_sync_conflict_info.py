@@ -1,5 +1,4 @@
 """Test SyncConflictInfo model with metadata fields."""
-import pytest
 from src.models.contracts.github import SyncConflictInfo
 
 
