@@ -3,13 +3,14 @@ Form contract models for Bifrost.
 """
 
 from datetime import datetime
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Annotated, Any
 from uuid import UUID
 
-from pydantic import BaseModel, ConfigDict, Field, field_serializer, field_validator, model_validator
+from pydantic import BaseModel, ConfigDict, Field, ValidationInfo, field_serializer, field_validator, model_validator
 
 from src.models.enums import FormAccessLevel, FormFieldType
 from src.models.contracts.base import DataProviderInputMode
+from src.models.contracts.refs import WorkflowRef
 
 if TYPE_CHECKING:
     pass
@@ -62,7 +63,7 @@ class FormField(BaseModel):
     type: FormFieldType
     required: bool = Field(default=False)
     validation: dict[str, Any] | None = None
-    data_provider_id: UUID | None = Field(
+    data_provider_id: Annotated[UUID | None, WorkflowRef()] = Field(
         default=None, description="Data provider ID for dynamic options")
     data_provider_inputs: dict[str, DataProviderInputConfig] | None = Field(
         default=None, description="Input configurations for data provider parameters")
@@ -105,6 +106,31 @@ class FormField(BaseModel):
             raise ValueError(f"content is required for {self.type.value} fields")
 
         return self
+
+    @field_validator("data_provider_id", mode="before")
+    @classmethod
+    def deserialize_data_provider_ref(cls, value: Any, info: ValidationInfo) -> UUID | str | None:
+        """Transform portable ref to UUID using validation context."""
+        if value is None:
+            return None
+
+        value_str = str(value)
+
+        # Check if it's already a valid UUID
+        try:
+            UUID(value_str)
+            return value_str  # Let Pydantic handle the conversion
+        except ValueError:
+            pass
+
+        # It's a portable ref - try to resolve via context
+        if info.context:
+            ref_to_uuid = info.context.get("ref_to_uuid", {})
+            if value_str in ref_to_uuid:
+                return ref_to_uuid[value_str]
+
+        # Can't resolve - return as-is and let UUID validation fail with clear error
+        return value_str
 
     @field_serializer("data_provider_id")
     def serialize_data_provider_ref(self, value: UUID | None, info: Any) -> str | None:
@@ -215,15 +241,26 @@ class FormCreate(BaseModel):
         default=None, description="Organization ID (null = global resource)"
     )
 
+    @field_validator("workflow_id", "launch_workflow_id", mode="before")
+    @classmethod
+    def deserialize_workflow_ref(cls, value: str | None, info: ValidationInfo) -> str | None:
+        """Transform portable ref to UUID using validation context."""
+        if not value or not info.context:
+            return value
+
+        from src.services.file_storage.ref_translation import resolve_workflow_ref
+        ref_to_uuid = info.context.get("ref_to_uuid", {})
+        return resolve_workflow_ref(value, ref_to_uuid)
+
     @field_validator("form_schema", mode="before")
     @classmethod
-    def validate_form_schema(cls, v):
-        """Validate and convert dict to FormSchema if needed."""
+    def validate_form_schema(cls, v: Any, info: ValidationInfo) -> FormSchema | dict | None:
+        """Validate and convert dict to FormSchema, forwarding validation context."""
         if v is None:
             raise ValueError("form_schema is required")
         if isinstance(v, dict):
-            # Validate the dict conforms to FormSchema structure
-            return FormSchema.model_validate(v)
+            # Validate the dict conforms to FormSchema structure, forwarding context
+            return FormSchema.model_validate(v, context=info.context)
         return v
 
 
@@ -243,15 +280,26 @@ class FormUpdate(BaseModel):
     )
     clear_roles: bool = False
 
+    @field_validator("workflow_id", "launch_workflow_id", mode="before")
+    @classmethod
+    def deserialize_workflow_ref(cls, value: str | None, info: ValidationInfo) -> str | None:
+        """Transform portable ref to UUID using validation context."""
+        if not value or not info.context:
+            return value
+
+        from src.services.file_storage.ref_translation import resolve_workflow_ref
+        ref_to_uuid = info.context.get("ref_to_uuid", {})
+        return resolve_workflow_ref(value, ref_to_uuid)
+
     @field_validator("form_schema", mode="before")
     @classmethod
-    def validate_form_schema(cls, v):
-        """Validate and convert dict to FormSchema if needed."""
+    def validate_form_schema(cls, v: Any, info: ValidationInfo) -> FormSchema | dict | None:
+        """Validate and convert dict to FormSchema, forwarding validation context."""
         if v is None:
             return None
         if isinstance(v, dict):
-            # Validate the dict conforms to FormSchema structure
-            return FormSchema.model_validate(v)
+            # Validate the dict conforms to FormSchema structure, forwarding context
+            return FormSchema.model_validate(v, context=info.context)
         return v
 
 
@@ -329,15 +377,26 @@ class FormPublic(BaseModel):
 
         return data
 
+    @field_validator("workflow_id", "launch_workflow_id", mode="before")
+    @classmethod
+    def deserialize_workflow_ref(cls, value: str | None, info: ValidationInfo) -> str | None:
+        """Transform portable ref to UUID using validation context."""
+        if not value or not info.context:
+            return value
+
+        from src.services.file_storage.ref_translation import resolve_workflow_ref
+        ref_to_uuid = info.context.get("ref_to_uuid", {})
+        return resolve_workflow_ref(value, ref_to_uuid)
+
     @field_validator("form_schema", mode="before")
     @classmethod
-    def validate_form_schema(cls, v):
-        """Validate and convert dict to FormSchema if needed."""
+    def validate_form_schema(cls, v: Any, info: ValidationInfo) -> FormSchema | dict | None:
+        """Validate and convert dict to FormSchema, forwarding validation context."""
         if v is None:
             return None
         if isinstance(v, dict):
-            # Validate the dict conforms to FormSchema structure
-            return FormSchema.model_validate(v)
+            # Validate the dict conforms to FormSchema structure, forwarding context
+            return FormSchema.model_validate(v, context=info.context)
         return v
 
     @field_serializer("created_at", "updated_at")
