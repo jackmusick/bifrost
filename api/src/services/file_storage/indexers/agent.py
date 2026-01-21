@@ -17,6 +17,11 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from src.models import Workflow
 from src.models.orm import Agent, AgentTool, AgentDelegation
 from src.models.contracts.agents import AgentPublic
+from src.models.contracts.refs import (
+    get_workflow_ref_paths,
+    transform_refs_for_export,
+    transform_refs_for_import,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -28,29 +33,33 @@ def _serialize_agent_to_json(
     """
     Serialize an Agent to JSON bytes using Pydantic model_dump.
 
-    Uses AgentPublic.model_dump() with serialization context to support
-    portable workflow refs (UUID → path::function_name transformation).
+    Uses AgentPublic.model_dump() with exclude=True fields auto-excluded.
+    Transforms workflow refs via transform_refs_for_export().
 
     Args:
         agent: Agent ORM instance with tools relationship loaded
-        workflow_map: Optional mapping of workflow UUID → portable ref.
+        workflow_map: Optional mapping of workflow UUID -> portable ref.
                       If provided, tool_ids are transformed.
 
     Returns:
         JSON serialized as UTF-8 bytes
     """
-    # Convert ORM to Pydantic model (uses from_attributes=True and ORM properties)
     agent_public = AgentPublic.model_validate(agent)
 
-    # Serialize with context for portable refs
-    context = {"workflow_map": workflow_map} if workflow_map else None
-    agent_data = agent_public.model_dump(mode="json", context=context, exclude_none=True)
+    # model_dump respects Field(exclude=True) automatically
+    agent_data = agent_public.model_dump(mode="json", exclude_none=True)
 
-    # Add export metadata if we transformed refs
+    # Remove empty arrays to match import format
+    for key in ["delegated_agent_ids", "role_ids", "knowledge_sources", "system_tools"]:
+        if key in agent_data and agent_data[key] == []:
+            del agent_data[key]
+
+    # Transform refs if we have a workflow map
     if workflow_map:
+        agent_data = transform_refs_for_export(agent_data, AgentPublic, workflow_map)
         agent_data["_export"] = {
-            "workflow_refs": ["tool_ids.*"],
-            "version": "1.0"
+            "workflow_refs": get_workflow_ref_paths(AgentPublic),
+            "version": "1.0",
         }
 
     return json.dumps(agent_data, indent=2).encode("utf-8")
@@ -107,17 +116,11 @@ class AgentIndexer:
 
         # Check for portable refs from export and resolve them to UUIDs
         export_meta = agent_data.pop("_export", None)
+        ref_to_uuid: dict[str, str] = {}
         if export_meta and "workflow_refs" in export_meta:
-            from src.services.file_storage.ref_translation import (
-                build_ref_to_uuid_map,
-                transform_path_refs_to_uuids,
-            )
+            from src.services.file_storage.ref_translation import build_ref_to_uuid_map
             ref_to_uuid = await build_ref_to_uuid_map(self.db)
-            unresolved = transform_path_refs_to_uuids(
-                agent_data, export_meta["workflow_refs"], ref_to_uuid
-            )
-            if unresolved:
-                logger.warning(f"Unresolved portable refs in {path}: {unresolved}")
+            agent_data = transform_refs_for_import(agent_data, AgentPublic, ref_to_uuid)
 
         name = agent_data.get("name")
         if not name:
@@ -190,6 +193,8 @@ class AgentIndexer:
         await self.db.execute(stmt)
 
         # Sync tool associations (tool_ids in JSON are workflow IDs)
+        # Note: transform_refs_for_import already resolved portable refs to UUIDs,
+        # but unresolved refs remain unchanged and will be skipped below.
         tool_ids = agent_data.get("tool_ids", [])
         if isinstance(tool_ids, list):
             # Delete existing tool associations
@@ -197,18 +202,25 @@ class AgentIndexer:
                 delete(AgentTool).where(AgentTool.agent_id == agent_id)
             )
             # Create new tool associations (with existence check to prevent FK violations)
+            # Track added workflow_ids to avoid duplicates (same workflow ref appears multiple times)
+            added_tool_ids: set[UUID] = set()
             for tool_id_str in tool_ids:
                 try:
                     workflow_id = UUID(tool_id_str)
+                    # Skip if already added (dedup)
+                    if workflow_id in added_tool_ids:
+                        continue
                     # Check if workflow exists before creating FK relationship
                     workflow_exists = await self.db.execute(
                         select(Workflow.id).where(Workflow.id == workflow_id)
                     )
                     if workflow_exists.scalar_one_or_none():
                         self.db.add(AgentTool(agent_id=agent_id, workflow_id=workflow_id))
+                        added_tool_ids.add(workflow_id)
                     else:
                         logger.warning(f"Agent {name} references non-existent workflow {workflow_id}")
                 except ValueError:
+                    # Not a valid UUID - likely an unresolved portable ref
                     logger.warning(f"Invalid tool_id in agent {name}: {tool_id_str}")
 
         # Sync delegated agent associations
