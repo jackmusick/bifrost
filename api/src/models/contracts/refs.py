@@ -171,6 +171,12 @@ def transform_refs_for_export(
         if _has_workflow_ref(field_info):
             if isinstance(value, str) and value in uuid_to_ref:
                 result[field_name] = uuid_to_ref[value]
+            elif isinstance(value, list):
+                # Handle list[str] with WorkflowRef marker (e.g., tool_ids)
+                result[field_name] = [
+                    uuid_to_ref.get(item, item) if isinstance(item, str) else item
+                    for item in value
+                ]
             continue
 
         # Check for nested models
@@ -221,6 +227,12 @@ def transform_refs_for_import(
         if _has_workflow_ref(field_info):
             if isinstance(value, str) and "::" in value:
                 result[field_name] = ref_to_uuid.get(value, value)
+            elif isinstance(value, list):
+                # Handle list[str] with WorkflowRef marker (e.g., tool_ids)
+                result[field_name] = [
+                    ref_to_uuid.get(item, item) if isinstance(item, str) and "::" in item else item
+                    for item in value
+                ]
             continue
 
         # Check for nested models

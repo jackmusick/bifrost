@@ -112,6 +112,18 @@ class TestTransformRefsForExport:
         transform_refs_for_export(data, OuterModel, uuid_to_ref)
         assert data["workflow_id"] == "uuid-123"
 
+    def test_list_of_strings_with_marker(self):
+        """List of strings with WorkflowRef marker has all items transformed."""
+        data = {"tool_ids": ["uuid-1", "uuid-2", "uuid-3"], "name": "Test"}
+        uuid_to_ref = {
+            "uuid-1": "workflows/a.py::func_a",
+            "uuid-2": "workflows/b.py::func_b",
+        }
+        result = transform_refs_for_export(data, ModelWithList, uuid_to_ref)
+        assert result["tool_ids"][0] == "workflows/a.py::func_a"
+        assert result["tool_ids"][1] == "workflows/b.py::func_b"
+        assert result["tool_ids"][2] == "uuid-3"  # Not in map, unchanged
+
 
 class TestTransformRefsForImport:
     def test_simple_field(self):
@@ -163,6 +175,25 @@ class TestTransformRefsForImport:
         ref_to_uuid = {"workflows/test.py::func": "uuid-456"}
         result = transform_refs_for_import(data, OuterModel, ref_to_uuid)
         assert result["workflow_id"] == "uuid-123"
+
+    def test_list_of_strings_with_marker(self):
+        """List of strings with WorkflowRef marker has all items transformed."""
+        data = {
+            "tool_ids": [
+                "workflows/a.py::func_a",
+                "workflows/b.py::func_b",
+                "uuid-already",  # Already a UUID
+            ],
+            "name": "Test",
+        }
+        ref_to_uuid = {
+            "workflows/a.py::func_a": "uuid-1",
+            "workflows/b.py::func_b": "uuid-2",
+        }
+        result = transform_refs_for_import(data, ModelWithList, ref_to_uuid)
+        assert result["tool_ids"][0] == "uuid-1"
+        assert result["tool_ids"][1] == "uuid-2"
+        assert result["tool_ids"][2] == "uuid-already"  # Not a ref, unchanged
 
 
 class TestRoundTrip:
