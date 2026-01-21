@@ -565,6 +565,77 @@ class GitHubSyncService:
         """Compute SHA-256 hash of content."""
         return hashlib.sha256(content).hexdigest()
 
+    async def get_local_content(self, path: str) -> str | None:
+        """
+        Get serialized content for a file from the database.
+
+        For regular workspace files, reads from storage.
+        For virtual files (forms, agents, apps), serializes the entity.
+
+        Args:
+            path: File path to fetch content for
+
+        Returns:
+            File content as string, or None if not found
+        """
+        from src.services.file_storage import FileStorageService
+
+        try:
+            # Check if this is a virtual file (form, agent, app)
+            if VirtualFileProvider.is_virtual_file_path(path):
+                entity_type = VirtualFileProvider.get_entity_type_from_path(path)
+                filename = path.split("/")[-1]
+                entity_id = VirtualFileProvider.extract_id_from_filename(filename)
+
+                if entity_type and entity_id:
+                    provider = VirtualFileProvider(self.db)
+                    vf = await provider.get_virtual_file_by_id(entity_type, entity_id)
+                    if vf and vf.content:
+                        return vf.content.decode("utf-8", errors="replace")
+                return None
+
+            # Regular workspace file
+            file_storage = FileStorageService(self.db)
+            content, _ = await file_storage.read_file(path)
+            return content.decode("utf-8", errors="replace")
+        except Exception as e:
+            logger.debug(f"Failed to get local content for {path}: {e}")
+            return None
+
+    async def get_remote_content(self, path: str) -> str | None:
+        """
+        Get file content from GitHub.
+
+        Clones the repo to a temp directory and reads the file.
+        Uses shallow clone for efficiency.
+
+        Args:
+            path: File path to fetch content for
+
+        Returns:
+            File content as string, or None if not found
+        """
+        clone_dir: str | None = None
+        try:
+            clone_dir = self._clone_to_temp()
+            clone_path = Path(clone_dir)
+            file_path = clone_path / path
+
+            if not file_path.exists():
+                return None
+
+            content = file_path.read_bytes()
+            return content.decode("utf-8", errors="replace")
+        except Exception as e:
+            logger.debug(f"Failed to get remote content for {path}: {e}")
+            return None
+        finally:
+            if clone_dir:
+                try:
+                    shutil.rmtree(clone_dir, ignore_errors=True)
+                except Exception:
+                    pass
+
     async def _get_local_file_shas(self) -> dict[str, str | None]:
         """
         Get path -> github_sha mapping from DB (no S3 read).

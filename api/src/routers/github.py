@@ -26,6 +26,8 @@ from src.models import (
     GitHubReposResponse,
     GitHubSetupResponse,
     GitRefreshStatusResponse,
+    SyncContentRequest,
+    SyncContentResponse,
     SyncExecuteRequest,
     SyncExecuteResponse,
     SyncPreviewResponse,
@@ -38,6 +40,7 @@ from src.services.github_config import (
     get_github_config,
     save_github_config,
 )
+from src.services.github_sync_entity_metadata import extract_entity_metadata
 
 logger = logging.getLogger(__name__)
 
@@ -689,6 +692,14 @@ async def get_sync_preview(
                     remote_content=c.remote_content,
                     local_sha=c.local_sha,
                     remote_sha=c.remote_sha,
+                    display_name=(
+                        metadata := extract_entity_metadata(
+                            c.path,
+                            (c.remote_content or c.local_content or "").encode("utf-8"),
+                        )
+                    ).display_name,
+                    entity_type=metadata.entity_type,
+                    parent_slug=metadata.parent_slug,
                 )
                 for c in preview.conflicts
             ],
@@ -813,4 +824,67 @@ async def execute_sync(
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Failed to queue sync execute: {str(e)}",
+        )
+
+
+@router.post(
+    "/sync/content",
+    response_model=SyncContentResponse,
+    summary="Get content for diff preview",
+    description="Fetch local or remote content for a file to display in diff view",
+)
+async def get_sync_content(
+    request: SyncContentRequest,
+    ctx: Context,
+    user: CurrentSuperuser,
+    db: DbSession,
+) -> SyncContentResponse:
+    """
+    Fetch file content for diff preview.
+
+    - source="local": Read from database (serialized entity)
+    - source="remote": Read from GitHub repo
+    """
+    from src.services.github_sync import GitHubSyncService
+
+    try:
+        config = await get_github_config(db, ctx.org_id)
+
+        if not config or not config.token:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="GitHub not configured",
+            )
+
+        if not config.repo_url:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="GitHub repository not configured",
+            )
+
+        repo = _extract_repo_from_url(config.repo_url)
+
+        sync_service = GitHubSyncService(
+            db=db,
+            github_token=config.token,
+            repo=repo,
+            branch=config.branch,
+        )
+
+        if request.source == "local":
+            # Get serialized content from database
+            content = await sync_service.get_local_content(request.path)
+        else:
+            # Get content from GitHub
+            content = await sync_service.get_remote_content(request.path)
+
+        return SyncContentResponse(path=request.path, content=content)
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error fetching sync content: {e}", exc_info=True)
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Failed to fetch content",
         )

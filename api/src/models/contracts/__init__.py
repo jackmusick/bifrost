@@ -343,6 +343,8 @@ from src.models.contracts.github import (
     SyncAction,
     SyncActionType,
     SyncConflictInfo,
+    SyncContentRequest,
+    SyncContentResponse,
     SyncExecuteRequest,
     SyncExecuteResponse,
     SyncPreviewResponse,
@@ -754,6 +756,8 @@ __all__ = [
     "WorkflowReference",
     "OrphanInfo",
     "SyncPreviewResponse",
+    "SyncContentRequest",
+    "SyncContentResponse",
     "SyncExecuteRequest",
     "SyncExecuteResponse",
     # Orphan management models

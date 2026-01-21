@@ -430,6 +430,22 @@ class SyncConflictInfo(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
 
+class SyncContentRequest(BaseModel):
+    """Request to fetch content for diff preview."""
+    path: str = Field(..., description="File path to fetch content for")
+    source: Literal["local", "remote"] = Field(..., description="Which side to fetch")
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+class SyncContentResponse(BaseModel):
+    """Response with file content for diff preview."""
+    path: str = Field(..., description="File path")
+    content: str | None = Field(default=None, description="File content (null if not found)")
+
+    model_config = ConfigDict(from_attributes=True)
+
+
 class WorkflowReference(BaseModel):
     """A reference to an entity that uses a workflow."""
     type: str = Field(..., description="Entity type (form, app, agent)")
