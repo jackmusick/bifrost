@@ -1,4 +1,4 @@
-import { useParams, useNavigate, useLocation } from "react-router-dom";
+import { useParams, useNavigate } from "react-router-dom";
 import { motion, AnimatePresence } from "framer-motion";
 import {
 	ArrowLeft,
@@ -108,34 +108,14 @@ export function ExecutionDetails({
 	const { executionId: urlExecutionId } = useParams();
 	const executionId = propExecutionId || urlExecutionId;
 	const navigate = useNavigate();
-	const location = useLocation();
 	const { isPlatformAdmin } = useAuth();
 	const queryClient = useQueryClient();
 
-	// Check if we came from an execution trigger (has navigation state)
-	// If so, we defer the GET until WebSocket confirms the execution exists
-	const hasNavigationState = location.state != null;
-
-	const [signalrEnabled, setSignalrEnabled] = useState(false);
+	// Always fetch immediately - React Query handles retries for new executions
+	const [signalrEnabled, setSignalrEnabled] = useState(true);
 	const logsEndRef = useRef<HTMLDivElement>(null);
 	const logsContainerRef = useRef<HTMLDivElement>(null);
 	const [autoScroll, setAutoScroll] = useState(true);
-
-	// Fallback timer - enable fetch after 5s if WebSocket hasn't received updates
-	const [fetchFallbackEnabled, setFetchFallbackEnabled] = useState(false);
-	useEffect(() => {
-		// Reset fallback when execution ID changes (important for rerun navigation)
-		setFetchFallbackEnabled(false);
-
-		// If we have no navigation state (direct link), fetch immediately
-		if (!hasNavigationState) {
-			setFetchFallbackEnabled(true);
-			return;
-		}
-		// Otherwise, wait 5s as fallback in case WebSocket fails
-		const timer = setTimeout(() => setFetchFallbackEnabled(true), 5000);
-		return () => clearTimeout(timer);
-	}, [executionId, hasNavigationState]);
 
 	// Get streaming logs from store
 	// Use stable selector to avoid infinite loops
@@ -143,15 +123,6 @@ export function ExecutionDetails({
 		executionId ? state.streams[executionId] : undefined,
 	);
 	const streamingLogs = streamState?.streamingLogs ?? [];
-
-	// Determine if we should fetch from API
-	// Fetch when:
-	// - Stream received update (confirms DB write), OR
-	// - Fallback timer expired (5s after navigation), OR
-	// - No navigation state (direct link/refresh - fetch immediately!)
-	const hasReceivedUpdate = streamState?.hasReceivedUpdate ?? false;
-	const shouldFetchExecution =
-		hasReceivedUpdate || fetchFallbackEnabled || !hasNavigationState;
 
 	// State for confirmation dialogs
 	const [showCancelDialog, setShowCancelDialog] = useState(false);
@@ -172,16 +143,13 @@ export function ExecutionDetails({
 	const { data: metadataData } = useWorkflowsMetadata();
 	const metadata = metadataData as WorkflowsMetadataResponse | undefined;
 
-	// Fetch execution data - deferred until stream confirms DB write or fallback expires
+	// Fetch execution data immediately - React Query handles retries
 	const {
 		data: executionData,
 		isLoading,
 		isFetching,
 		error,
-	} = useExecution(
-		shouldFetchExecution ? executionId : undefined,
-		signalrEnabled,
-	);
+	} = useExecution(executionId, signalrEnabled);
 
 	// Cast execution data to the correct type
 	const execution = executionData as WorkflowExecution | undefined;
@@ -209,34 +177,12 @@ export function ExecutionDetails({
 	const isLoadingLogs = isLoading;
 	const isLoadingVariables = isLoading;
 
-	// Enable Web PubSub for running executions
-	// Only disable when stream explicitly completes (not when status changes in cache)
-	// This prevents race condition where we disconnect before completion callback fires
+	// Disable streaming when execution is complete (from API or stream)
 	useEffect(() => {
-		// If we came from an execution trigger (has navigation state), start WebSocket immediately
-		// We know the execution is fresh and will be Pending/Running
-		if (hasNavigationState) {
-			setSignalrEnabled(true);
-			return;
-		}
-		// Otherwise, enable streaming if execution is in a running state
-		if (
-			executionStatus === "Pending" ||
-			executionStatus === "Running" ||
-			executionStatus === "Cancelling"
-		) {
-			setSignalrEnabled(true);
-		}
-		// Only disable on initial load if already complete (not from stream updates)
-		// The stream's onComplete callback will handle cleanup for live executions
-	}, [executionStatus, hasNavigationState]);
-
-	// Disable streaming when stream reports completion
-	useEffect(() => {
-		if (streamState?.isComplete) {
+		if (isComplete || streamState?.isComplete) {
 			setSignalrEnabled(false);
 		}
-	}, [streamState?.isComplete]);
+	}, [isComplete, streamState?.isComplete]);
 
 	// Wrap onComplete in useCallback to prevent infinite loop
 	const handleStreamComplete = useCallback(() => {
@@ -570,46 +516,6 @@ export function ExecutionDetails({
 			);
 		}
 		return <PageLoader message="Loading execution details..." />;
-	}
-
-	// Handle case where execution is not found yet (Redis-first architecture)
-	// This "waiting" state is ONLY for fresh executions when we navigate from
-	// the execution trigger (hasNavigationState is true). For page refreshes
-	// or direct links, we should show the loading state or error state instead.
-	if (!execution && !error && hasNavigationState) {
-		if (embedded) {
-			return (
-				<div className="flex flex-col items-center justify-center h-full p-8 text-center">
-					<Loader2 className="h-12 w-12 text-muted-foreground animate-spin" />
-					<p className="text-sm text-muted-foreground mt-4">
-						Waiting for execution to start...
-					</p>
-				</div>
-			);
-		}
-		return (
-			<div className="flex items-center justify-center min-h-[60vh] p-6">
-				<motion.div
-					initial={{ opacity: 0, y: 20 }}
-					animate={{ opacity: 1, y: 0 }}
-					transition={{ duration: 0.3 }}
-					className="max-w-md w-full space-y-6"
-				>
-					<div className="flex justify-center">
-						<Loader2 className="h-16 w-16 text-muted-foreground animate-spin" />
-					</div>
-					<div className="text-center">
-						<h2 className="text-xl font-semibold">
-							Waiting for execution to start...
-						</h2>
-						<p className="text-muted-foreground mt-2">
-							The execution is being prepared. This page will
-							update automatically.
-						</p>
-					</div>
-				</motion.div>
-			</div>
-		);
 	}
 
 	if (error || !execution) {
