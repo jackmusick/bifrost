@@ -16,6 +16,7 @@ from unittest.mock import patch
 import pytest
 
 from src.services.execution.virtual_import import (
+    NamespacePackageLoader,
     VirtualModuleFinder,
     VirtualModuleLoader,
     get_virtual_finder,
@@ -145,6 +146,106 @@ class TestVirtualModuleFinder:
             assert spec is not None
             assert spec.origin == "shared.py"  # Module file, not package
 
+    def test_find_spec_namespace_package(self):
+        """Test find_spec returns namespace package when submodules exist."""
+        finder = VirtualModuleFinder()
+
+        # Simulate: modules/extensions/halopsa.py exists but no __init__.py files
+        module_index = {"modules/extensions/halopsa.py"}
+
+        with (
+            patch(
+                "src.services.execution.virtual_import.get_module_sync",
+                return_value=None,  # No module.py or __init__.py
+            ),
+            patch(
+                "src.services.execution.virtual_import.get_module_index_sync",
+                return_value=module_index,
+            ),
+        ):
+            # "modules" should become a namespace package
+            spec = finder.find_spec("modules")
+
+            assert spec is not None
+            assert spec.name == "modules"
+            assert spec.origin is None  # Namespace packages have no origin
+            assert spec.submodule_search_locations == ["modules"]
+            assert isinstance(spec.loader, NamespacePackageLoader)
+
+    def test_find_spec_nested_namespace_package(self):
+        """Test find_spec returns namespace package for nested directories."""
+        finder = VirtualModuleFinder()
+
+        # Simulate: modules/extensions/halopsa.py exists
+        module_index = {"modules/extensions/halopsa.py"}
+
+        with (
+            patch(
+                "src.services.execution.virtual_import.get_module_sync",
+                return_value=None,
+            ),
+            patch(
+                "src.services.execution.virtual_import.get_module_index_sync",
+                return_value=module_index,
+            ),
+        ):
+            # "modules.extensions" should also be a namespace package
+            spec = finder.find_spec("modules.extensions")
+
+            assert spec is not None
+            assert spec.name == "modules.extensions"
+            assert spec.origin is None
+            assert spec.submodule_search_locations == ["modules/extensions"]
+
+    def test_find_spec_no_namespace_without_submodules(self):
+        """Test find_spec returns None when no submodules exist."""
+        finder = VirtualModuleFinder()
+
+        # No modules under "nonexistent/"
+        module_index = {"other/module.py"}
+
+        with (
+            patch(
+                "src.services.execution.virtual_import.get_module_sync",
+                return_value=None,
+            ),
+            patch(
+                "src.services.execution.virtual_import.get_module_index_sync",
+                return_value=module_index,
+            ),
+        ):
+            spec = finder.find_spec("nonexistent")
+
+            assert spec is None  # Not a namespace package
+
+    def test_find_spec_prefers_explicit_init_over_namespace(self):
+        """Test that __init__.py takes precedence over namespace package."""
+        finder = VirtualModuleFinder()
+
+        module_index = {"modules/extensions/halopsa.py"}
+
+        def mock_get_module(path: str):
+            if path == "modules/__init__.py":
+                return {"content": "# explicit package", "path": "modules/__init__.py", "hash": "abc"}
+            return None
+
+        with (
+            patch(
+                "src.services.execution.virtual_import.get_module_sync",
+                side_effect=mock_get_module,
+            ),
+            patch(
+                "src.services.execution.virtual_import.get_module_index_sync",
+                return_value=module_index,
+            ),
+        ):
+            spec = finder.find_spec("modules")
+
+            assert spec is not None
+            # Should be the explicit __init__.py, not namespace package
+            assert spec.origin == "modules/__init__.py"
+            assert isinstance(spec.loader, VirtualModuleLoader)
+
     def test_find_spec_skips_stdlib_modules(self):
         """Test that stdlib modules are not looked up in cache."""
         finder = VirtualModuleFinder()
@@ -183,6 +284,49 @@ class TestVirtualModuleFinder:
         finder = VirtualModuleFinder()
         # Should not raise
         finder.invalidate_index()
+
+
+class TestNamespacePackageLoader:
+    """Tests for NamespacePackageLoader class."""
+
+    def test_create_module_returns_none(self):
+        """Test create_module returns None for default semantics."""
+        from importlib.machinery import ModuleSpec
+
+        loader = NamespacePackageLoader("modules")
+        spec = ModuleSpec("modules", loader, is_package=True)
+
+        result = loader.create_module(spec)
+
+        assert result is None
+
+    def test_exec_module_sets_path(self):
+        """Test exec_module sets __path__ for submodule resolution."""
+        loader = NamespacePackageLoader("modules/extensions")
+        module = ModuleType("modules.extensions")
+
+        loader.exec_module(module)
+
+        assert hasattr(module, "__path__")
+        assert module.__path__ == ["modules/extensions"]
+
+    def test_exec_module_sets_no_file(self):
+        """Test exec_module sets __file__ to None (namespace packages have no file)."""
+        loader = NamespacePackageLoader("modules")
+        module = ModuleType("modules")
+
+        loader.exec_module(module)
+
+        assert module.__file__ is None
+
+    def test_exec_module_sets_loader(self):
+        """Test exec_module sets __loader__ to self."""
+        loader = NamespacePackageLoader("modules")
+        module = ModuleType("modules")
+
+        loader.exec_module(module)
+
+        assert module.__loader__ is loader
 
 
 class TestVirtualModuleLoader:
@@ -452,3 +596,45 @@ class TestIntegration:
 
             assert json is not None
             assert hasattr(json, "loads")
+
+    def test_import_from_namespace_package(self):
+        """Test importing from a directory without __init__.py (namespace package)."""
+        install_virtual_import_hook()
+
+        # Simulate: virtual_test_ns/extensions/helper.py exists
+        # but no __init__.py files
+        module_index = {"virtual_test_ns/extensions/helper.py"}
+
+        def mock_get_module(path: str):
+            if path == "virtual_test_ns/extensions/helper.py":
+                return {
+                    "content": "HELPER_VALUE = 'from namespace'",
+                    "path": "virtual_test_ns/extensions/helper.py",
+                    "hash": "abc",
+                }
+            return None
+
+        with (
+            patch(
+                "src.services.execution.virtual_import.get_module_sync",
+                side_effect=mock_get_module,
+            ),
+            patch(
+                "src.services.execution.virtual_import.get_module_index_sync",
+                return_value=module_index,
+            ),
+        ):
+            # Import the nested module - parent packages become namespace packages
+            from virtual_test_ns.extensions import helper  # type: ignore[import-not-found]
+
+            assert helper.HELPER_VALUE == "from namespace"
+            assert helper.__file__ == "virtual_test_ns/extensions/helper.py"
+
+            # Parent namespace packages should have no __file__
+            import virtual_test_ns  # type: ignore[import-not-found]
+            import virtual_test_ns.extensions  # type: ignore[import-not-found]
+
+            assert virtual_test_ns.__file__ is None
+            assert virtual_test_ns.extensions.__file__ is None
+            assert hasattr(virtual_test_ns, "__path__")
+            assert hasattr(virtual_test_ns.extensions, "__path__")

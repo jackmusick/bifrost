@@ -90,6 +90,8 @@ class WorkflowIndexer:
         path: str,
         content: bytes,
         workspace_file: Any = None,
+        cached_ast: ast.Module | None = None,
+        cached_content_str: str | None = None,
     ) -> None:
         """
         Extract and index workflows/providers from Python file.
@@ -105,14 +107,19 @@ class WorkflowIndexer:
             path: File path
             content: File content bytes
             workspace_file: WorkspaceFile ORM instance (optional, not currently used)
+            cached_ast: Pre-parsed AST tree (avoids re-parsing large files)
+            cached_content_str: Pre-decoded content string (avoids re-decoding)
         """
-        content_str = content.decode("utf-8", errors="replace")
+        # Use cached values if available (avoids re-decoding/re-parsing 4MB files)
+        content_str = cached_content_str or content.decode("utf-8", errors="replace")
 
-        try:
-            tree = ast.parse(content_str, filename=path)
-        except SyntaxError as e:
-            logger.warning(f"Syntax error parsing {path}: {e}")
-            return
+        tree = cached_ast
+        if tree is None:
+            try:
+                tree = ast.parse(content_str, filename=path)
+            except SyntaxError as e:
+                logger.warning(f"Syntax error parsing {path}: {e}")
+                return
 
         now = datetime.utcnow()
 

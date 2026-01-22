@@ -30,7 +30,7 @@ from pathlib import Path
 from types import ModuleType
 from typing import Any
 
-from src.core.module_cache_sync import get_module_sync
+from src.core.module_cache_sync import get_module_index_sync, get_module_sync
 
 logger = logging.getLogger(__name__)
 
@@ -156,6 +156,45 @@ STDLIB_PREFIXES = frozenset([
     "pytest",
 ])
 
+
+
+class NamespacePackageLoader(Loader):
+    """
+    Loader for namespace packages (directories without __init__.py).
+
+    Creates an empty module with __path__ set so submodule imports work.
+    This enables PEP 420 namespace packages for virtual imports, allowing
+    users to organize modules in folders without requiring __init__.py files.
+
+    Example:
+        If Redis cache has "modules/extensions/halopsa.py" but no
+        "modules/__init__.py" or "modules/extensions/__init__.py",
+        both "modules" and "modules.extensions" become namespace packages.
+    """
+
+    def __init__(self, path: str):
+        """
+        Initialize with the directory path.
+
+        Args:
+            path: Directory path (e.g., "modules" or "modules/extensions")
+        """
+        self.path = path
+
+    def create_module(self, spec: ModuleSpec) -> ModuleType | None:
+        """Return None to use default module creation semantics."""
+        return None
+
+    def exec_module(self, module: ModuleType) -> None:
+        """
+        Initialize the namespace package module.
+
+        Namespace packages have no code to execute - just set __path__
+        for submodule resolution and mark as having no file.
+        """
+        module.__path__ = [self.path]
+        module.__file__ = None  # Namespace packages have no file
+        module.__loader__ = self
 
 
 class VirtualModuleLoader(Loader):
@@ -296,6 +335,29 @@ class VirtualModuleFinder(MetaPathFinder):
             )
 
             logger.debug(f"Virtual import: {fullname} -> {file_path}")
+            return spec
+
+        # Check for namespace package (directory with submodules but no __init__.py)
+        # This enables `from modules.foo import bar` without requiring modules/__init__.py
+        # PEP 420: https://peps.python.org/pep-0420/
+        base_path = "/".join(fullname.split("."))
+        prefix = f"{base_path}/"
+
+        # Get the module index and check if any modules exist under this prefix
+        module_index = get_module_index_sync()
+        has_submodules = any(path.startswith(prefix) for path in module_index)
+
+        if has_submodules:
+            # Create a namespace package spec (empty module with __path__)
+            loader = NamespacePackageLoader(base_path)
+            spec = ModuleSpec(
+                fullname,
+                loader,
+                is_package=True,
+                origin=None,  # Namespace packages have no origin
+            )
+            spec.submodule_search_locations = [base_path]
+            logger.debug(f"Virtual namespace package: {fullname} -> {base_path}/")
             return spec
 
         # Not in our cache - let filesystem finder handle it

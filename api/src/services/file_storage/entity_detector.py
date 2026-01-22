@@ -13,7 +13,18 @@ Regular files go to S3.
 """
 
 import ast
+from dataclasses import dataclass
 from typing import Any
+
+
+@dataclass
+class PythonEntityDetectionResult:
+    """Result of Python entity detection, including cached AST for reuse."""
+    entity_type: str | None  # "workflow", "module", or None
+    ast_tree: ast.Module | None  # Parsed AST tree (None if parse failed or not needed)
+    content_str: str | None  # Decoded content string
+    has_decorators: bool = False  # True if file has @workflow/@data_provider/@tool decorators
+    syntax_error: str | None = None  # Syntax error message if parse failed
 
 
 def detect_platform_entity_type(path: str, content: bytes) -> str | None:
@@ -53,11 +64,8 @@ def detect_python_entity_type(content: bytes) -> str | None:
     """
     Check if Python content has SDK decorators (@workflow, @data_provider).
 
-    Uses fast regex check first, then AST verification if needed.
-    Returns "workflow" if decorators are found (includes data_provider since
-    it's stored in the workflows table). Returns "module" for all other
-    Python files (helper modules, utilities, etc.) - these are stored in
-    workspace_files.content instead of S3.
+    Simple wrapper around detect_python_entity_type_with_ast that returns
+    just the entity type string for backward compatibility.
 
     Args:
         content: Python file content
@@ -65,28 +73,70 @@ def detect_python_entity_type(content: bytes) -> str | None:
     Returns:
         "workflow" if SDK decorators found, "module" for other Python files
     """
+    result = detect_python_entity_type_with_ast(content)
+    return result.entity_type
+
+
+def detect_python_entity_type_with_ast(content: bytes) -> PythonEntityDetectionResult:
+    """
+    Check if Python content has SDK decorators, returning cached AST for reuse.
+
+    Uses fast regex check first, then AST verification only if needed.
+    For modules without decorators, skips AST parsing entirely to save memory
+    (~100MB for a 4MB Python file).
+
+    Args:
+        content: Python file content
+
+    Returns:
+        PythonEntityDetectionResult with entity_type, ast_tree, content_str,
+        has_decorators flag, and syntax_error if applicable
+    """
+    import logging
+    logger = logging.getLogger(__name__)
+
     try:
         content_str = content.decode("utf-8", errors="replace")
     except Exception:
         # Non-decodable content - not a valid Python module
-        return None
+        return PythonEntityDetectionResult(
+            entity_type=None,
+            ast_tree=None,
+            content_str=None,
+            has_decorators=False,
+        )
 
     # Fast regex check - if no decorator-like patterns, it's a module
+    # SKIP AST parsing entirely - modules don't need indexing
     if (
         "@workflow" not in content_str
         and "@data_provider" not in content_str
         and "@tool" not in content_str
     ):
-        return "module"
+        logger.info(f"Skipping AST parse - no decorator patterns found (content size: {len(content_str)} bytes)")
+        return PythonEntityDetectionResult(
+            entity_type="module",
+            ast_tree=None,  # No AST needed for plain modules
+            content_str=content_str,
+            has_decorators=False,
+        )
 
-    # AST verification - confirm decorators are actually used
+    # Has decorator-like patterns - need AST to verify they're actual decorators
     try:
         tree = ast.parse(content_str)
-    except SyntaxError:
-        # Syntax error but still Python - store as module
-        # The _index_python_file will report the syntax error
-        return "module"
+    except SyntaxError as e:
+        # Syntax error - store as module, propagate error info
+        error_msg = f"{e.msg}" if e.msg else str(e)
+        logger.warning(f"Syntax error during entity detection: {error_msg}")
+        return PythonEntityDetectionResult(
+            entity_type="module",
+            ast_tree=None,
+            content_str=content_str,
+            has_decorators=True,  # Had patterns, couldn't verify
+            syntax_error=error_msg,
+        )
 
+    # Walk AST to verify decorators are actually used on functions
     for node in ast.walk(tree):
         if not isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
             continue
@@ -95,12 +145,23 @@ def detect_python_entity_type(content: bytes) -> str | None:
             decorator_info = _parse_decorator(decorator)
             if decorator_info:
                 decorator_name, _ = decorator_info
-                if decorator_name in ("workflow", "data_provider"):
-                    return "workflow"  # Both are in workflows table
+                if decorator_name in ("workflow", "data_provider", "tool"):
+                    return PythonEntityDetectionResult(
+                        entity_type="workflow",
+                        ast_tree=tree,
+                        content_str=content_str,
+                        has_decorators=True,
+                    )
 
-    # Has @workflow/@data_provider in content but not as actual decorators
+    # Has @workflow/@data_provider/@tool in content but not as actual decorators
     # (e.g., in comments, strings, or as variable names) - treat as module
-    return "module"
+    # Keep AST since we already parsed it and it might be useful
+    return PythonEntityDetectionResult(
+        entity_type="module",
+        ast_tree=tree,
+        content_str=content_str,
+        has_decorators=False,
+    )
 
 
 def _parse_decorator(decorator: ast.AST) -> tuple[str, dict[str, Any]] | None:

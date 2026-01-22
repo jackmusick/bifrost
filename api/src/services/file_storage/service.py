@@ -5,6 +5,7 @@ This service composes all sub-services and provides the same public API
 as the original monolithic FileStorageService.
 """
 
+import ast
 import logging
 from pathlib import Path
 from typing import Callable, Awaitable, TYPE_CHECKING
@@ -326,6 +327,8 @@ class FileStorageService:
         content: bytes,
         force_deactivation: bool = False,
         replacements: dict[str, str] | None = None,
+        cached_ast: "ast.Module | None" = None,
+        cached_content_str: str | None = None,
     ) -> tuple[
         bytes,
         bool,
@@ -338,15 +341,43 @@ class FileStorageService:
         """
         Extract metadata from file with full deactivation protection (for write ops).
 
+        Args:
+            path: File path
+            content: Raw file content bytes
+            force_deactivation: Skip deactivation protection
+            replacements: Workflow ID replacement map
+            cached_ast: Pre-parsed AST tree (avoids re-parsing large files)
+            cached_content_str: Pre-decoded content string (avoids re-decoding)
+
         Returns:
             Tuple of (final_content, content_modified, needs_indexing, conflicts, diagnostics,
                       pending_deactivations, available_replacements)
         """
         try:
             if path.endswith(".py"):
-                # Python files: do deactivation check then index
+                # For modules without decorators, skip indexing entirely
+                # The has_decorators flag is set by detect_python_entity_type_with_ast
+                # and indicates whether we need to process this file for workflows
+                if cached_ast is None and cached_content_str is not None:
+                    # No AST means no decorators were found - skip indexing
+                    # Still need to run deactivation check in case file previously had workflows
+                    if force_deactivation:
+                        await self._deactivation.deactivate_removed_workflows(path, set())
+                    else:
+                        pending, available = await self._deactivation.detect_pending_deactivations(
+                            path=path,
+                            new_function_names=set(),
+                            new_decorator_info={},
+                        )
+                        if pending:
+                            return content, False, False, None, [], pending, available
+                    logger.info(f"Skipping indexing for module without decorators: {path}")
+                    return content, False, False, None, [], None, None
+
+                # Python files with decorators: do deactivation check then index
                 return await self._index_python_file_full(
-                    path, content, force_deactivation, replacements
+                    path, content, force_deactivation, replacements,
+                    cached_ast=cached_ast, cached_content_str=cached_content_str
                 )
             elif path.endswith(".form.json"):
                 # Index the form and return proper tuple
@@ -366,6 +397,8 @@ class FileStorageService:
         content: bytes,
         force_deactivation: bool = False,
         replacements: dict[str, str] | None = None,
+        cached_ast: ast.Module | None = None,
+        cached_content_str: str | None = None,
     ) -> tuple[
         bytes,
         bool,
@@ -380,25 +413,35 @@ class FileStorageService:
 
         For write operations, checks if workflows would be deactivated
         before actually indexing.
-        """
-        import ast
 
-        content_str = content.decode("utf-8", errors="replace")
+        Args:
+            path: File path
+            content: Raw file content bytes
+            force_deactivation: Skip deactivation protection
+            replacements: Workflow ID replacement map
+            cached_ast: Pre-parsed AST tree (avoids re-parsing large files)
+            cached_content_str: Pre-decoded content string (avoids re-decoding)
+        """
         diagnostics: list[FileDiagnosticInfo] = []
 
-        # Parse the AST
-        try:
-            tree = ast.parse(content_str, filename=path)
-        except SyntaxError as e:
-            logger.warning(f"Syntax error parsing {path}: {e}")
-            diagnostics.append(FileDiagnosticInfo(
-                severity="error",
-                message=f"Syntax error: {e.msg}" if e.msg else str(e),
-                line=e.lineno,
-                column=e.offset,
-                source="syntax",
-            ))
-            return content, False, False, None, diagnostics, None, None
+        # Use cached content string if available (avoids re-decoding 4MB files)
+        content_str = cached_content_str or content.decode("utf-8", errors="replace")
+
+        # Use cached AST if available (avoids re-parsing - saves ~100MB for 4MB files)
+        tree = cached_ast
+        if tree is None:
+            try:
+                tree = ast.parse(content_str, filename=path)
+            except SyntaxError as e:
+                logger.warning(f"Syntax error parsing {path}: {e}")
+                diagnostics.append(FileDiagnosticInfo(
+                    severity="error",
+                    message=f"Syntax error: {e.msg}" if e.msg else str(e),
+                    line=e.lineno,
+                    column=e.offset,
+                    source="syntax",
+                ))
+                return content, False, False, None, diagnostics, None, None
 
         # Pre-scan: collect all decorated function names and their info
         new_function_names: set[str] = set()
@@ -449,7 +492,10 @@ class FileStorageService:
             await self._deactivation.deactivate_removed_workflows(path, new_function_names)
 
         # No deactivation issues - proceed with indexing
-        await self._workflow_indexer.index_python_file(path, content)
+        # Pass cached AST and content string to avoid re-parsing
+        await self._workflow_indexer.index_python_file(
+            path, content, cached_ast=tree, cached_content_str=content_str
+        )
 
         return content, False, False, None, [], None, None
 

@@ -12,6 +12,7 @@ Key principles:
 """
 
 import base64
+import gc
 import hashlib
 import json
 import logging
@@ -35,6 +36,7 @@ from src.services.github_sync_entity_metadata import extract_entity_metadata
 from src.services.github_sync_virtual_files import (
     SerializationError,
     VirtualFileProvider,
+    VirtualFileResult,
 )
 
 if TYPE_CHECKING:
@@ -579,6 +581,28 @@ class GitHubSyncService:
         """Compute SHA-256 hash of content."""
         return hashlib.sha256(content).hexdigest()
 
+    def _log_identity_map_stats(self, tag: str) -> None:
+        """Log SQLAlchemy identity map size and top class counts."""
+        try:
+            identity_map = getattr(self.db, "identity_map", None)
+            if identity_map is None:
+                identity_map = self.db.sync_session.identity_map
+            total = len(identity_map)
+            if total == 0:
+                logger.info(f"[mem] identity_map=0 {tag}")
+                return
+
+            class_counts: dict[str, int] = {}
+            for obj in identity_map.values():
+                name = obj.__class__.__name__
+                class_counts[name] = class_counts.get(name, 0) + 1
+
+            top = sorted(class_counts.items(), key=lambda item: item[1], reverse=True)[:5]
+            top_str = ", ".join(f"{name}={count}" for name, count in top)
+            logger.info(f"[mem] identity_map={total} top={top_str} {tag}")
+        except Exception:
+            logger.debug("Failed to log identity map stats", exc_info=True)
+
     async def get_local_content(self, path: str) -> str | None:
         """
         Get serialized content for a file from the database.
@@ -681,15 +705,16 @@ class GitHubSyncService:
             if not row.path.endswith("/")  # Skip folders
         }
 
-    async def _get_virtual_file_shas(
+    async def _get_virtual_files_for_preview(
         self,
         workflow_map: dict[str, str] | None = None,
-    ) -> tuple[dict[str, str], list[SerializationError]]:
+    ) -> tuple[dict[str, str], VirtualFileResult]:
         """
-        Get path -> computed_sha mapping for virtual platform files.
+        Get virtual files for sync preview with SHA-only mode to reduce memory.
 
         Virtual files are platform entities (apps, forms, agents) serialized
-        to JSON with portable workflow refs.
+        to JSON with portable workflow refs. Content is NOT included to save
+        memory during preview - use get_virtual_file_content() for lazy loading.
 
         Args:
             workflow_map: Optional mapping of workflow UUID -> portable_ref for export.
@@ -698,10 +723,13 @@ class GitHubSyncService:
         Returns:
             Tuple of:
             - Dict mapping path to computed git blob SHA
-            - List of serialization errors encountered
+            - VirtualFileResult with files (content=None) and errors
         """
         provider = VirtualFileProvider(self.db)
-        result = await provider.get_all_virtual_files(workflow_map=workflow_map)
+        result = await provider.get_all_virtual_files(
+            workflow_map=workflow_map,
+            include_content=False,  # Memory optimization: SHA only
+        )
 
         shas = {
             vf.path: vf.computed_sha
@@ -709,7 +737,7 @@ class GitHubSyncService:
             if vf.computed_sha is not None
         }
 
-        return shas, result.errors
+        return shas, result
 
     def _clone_to_temp(self) -> str:
         """
@@ -842,24 +870,29 @@ class GitHubSyncService:
             await report("cloning", 1, 1)
 
             # 2. Walk clone to get remote files and compute their git SHAs
+            # Stream files one at a time to avoid memory accumulation
             await report("scanning", 0, 0)
             await log("info", "Scanning remote files...")
             remote_files: dict[str, str] = {}  # path -> git_sha
 
-            # First pass: count files for progress reporting
-            all_files = [f for f in clone_path.rglob("*") if f.is_file()]
-            total_files = len(all_files)
-
-            for i, file_path in enumerate(all_files):
+            # Stream through files without building a full list in memory
+            file_count = 0
+            for file_path in clone_path.rglob("*"):
+                if not file_path.is_file():
+                    continue
                 rel_path = str(file_path.relative_to(clone_path))
                 # Skip .git directory and excluded paths
                 if rel_path.startswith(".git/") or is_excluded_path(rel_path):
                     continue
                 content = file_path.read_bytes()
                 remote_files[rel_path] = compute_git_blob_sha(content)
-                # Report progress every 50 files or at the end
-                if i % 50 == 0 or i == total_files - 1:
-                    await report("scanning", i + 1, total_files, rel_path)
+                del content  # Explicit release to help GC
+                file_count += 1
+                # Report progress every 50 files
+                if file_count % 50 == 0:
+                    await report("scanning", file_count, 0, rel_path)
+
+            await report("scanning", file_count, file_count, None)
 
             logger.info(f"Found {len(remote_files)} files in remote")
             await log("info", f"Found {len(remote_files)} files in remote")
@@ -934,14 +967,16 @@ class GitHubSyncService:
 
             # 3b. Get virtual platform file SHAs (and collect serialization errors)
             # Build workflow_map once for all virtual file serialization
+            # Use SHA-only mode (include_content=False) to reduce memory usage
             from src.services.file_storage.ref_translation import build_workflow_ref_map
 
             await report("serializing", 0, 0)
             await log("info", "Serializing virtual files...")
             workflow_map = await build_workflow_ref_map(self.db)
-            virtual_shas, serialization_errors = await self._get_virtual_file_shas(
+            virtual_shas, local_virtual_result = await self._get_virtual_files_for_preview(
                 workflow_map=workflow_map
             )
+            serialization_errors = local_virtual_result.errors
             logger.info(f"Found {len(virtual_shas)} virtual platform files")
             await log("info", f"Found {len(virtual_shas)} virtual platform files")
             if serialization_errors:
@@ -978,12 +1013,14 @@ class GitHubSyncService:
 
                 if local_info is None:
                     # New file in remote - pull it
-                    # Read content from clone for entity metadata extraction
+                    # Only read content for JSON files that need name extraction
+                    # (Python files just use filename for display_name)
                     remote_content: bytes | None = None
-                    try:
-                        remote_content = (clone_path / path).read_bytes()
-                    except Exception:
-                        pass
+                    if path.endswith(".json"):
+                        try:
+                            remote_content = (clone_path / path).read_bytes()
+                        except Exception:
+                            pass
                     to_pull.append(_enrich_sync_action(
                         path=path,
                         action=SyncActionType.ADD,
@@ -1007,21 +1044,12 @@ class GitHubSyncService:
                         # User needs to decide: keep remote version or confirm delete
                         conflict_paths.add(path)
 
-                        # Read remote content for conflict info
-                        remote_content_str = None
-                        remote_content: bytes | None = None
-                        try:
-                            remote_file = clone_path / path
-                            remote_content = remote_file.read_bytes()
-                            remote_content_str = remote_content.decode("utf-8", errors="replace")
-                        except Exception:
-                            pass
-
-                        conflict_metadata = extract_entity_metadata(path, remote_content)
+                        # Don't load content during preview - use lazy loading endpoints
+                        conflict_metadata = extract_entity_metadata(path, None)
                         conflicts.append(ConflictInfo(
                             path=path,
                             local_content=None,  # Deleted locally
-                            remote_content=remote_content_str,
+                            remote_content=None,  # Lazy load via get_remote_content()
                             local_sha="",  # Deleted
                             remote_sha=remote_sha,
                             display_name=conflict_metadata.display_name,
@@ -1036,33 +1064,23 @@ class GitHubSyncService:
                     logger.warning(f"File {path} exists in remote but local has no SHA")
                     conflict_paths.add(path)
 
-                    remote_content_str = None
-                    local_content_str = None
-                    remote_content: bytes | None = None
-                    local_content: bytes | None = None
-
-                    try:
-                        remote_file = clone_path / path
-                        remote_content = remote_file.read_bytes()
-                        remote_content_str = remote_content.decode("utf-8", errors="replace")
-                    except Exception:
-                        pass
-
+                    # Don't load content during preview - use lazy loading endpoints
+                    # We need to compute local SHA for comparison though
+                    local_computed_sha = ""
                     try:
                         file_storage = FileStorageService(self.db)
                         local_content, _ = await file_storage.read_file(path)
-                        local_content_str = local_content.decode("utf-8", errors="replace")
+                        local_computed_sha = compute_git_blob_sha(local_content)
+                        del local_content  # Release memory immediately
                     except Exception:
                         pass
 
-                    conflict_metadata = extract_entity_metadata(
-                        path, local_content if local_content else remote_content
-                    )
+                    conflict_metadata = extract_entity_metadata(path, None)
                     conflicts.append(ConflictInfo(
                         path=path,
-                        local_content=local_content_str,
-                        remote_content=remote_content_str,
-                        local_sha=compute_git_blob_sha(local_content) if local_content else "",
+                        local_content=None,  # Lazy load via get_local_content()
+                        remote_content=None,  # Lazy load via get_remote_content()
+                        local_sha=local_computed_sha,
                         remote_sha=remote_sha,
                         display_name=conflict_metadata.display_name,
                         entity_type=conflict_metadata.entity_type,
@@ -1074,11 +1092,13 @@ class GitHubSyncService:
                     # SHA differs - use git_status to determine if conflict or just pull
                     if local_status == GitStatus.SYNCED:
                         # File not modified locally, remote changed - safe to pull
+                        # Only read content for JSON files that need name extraction
                         remote_content: bytes | None = None
-                        try:
-                            remote_content = (clone_path / path).read_bytes()
-                        except Exception:
-                            pass
+                        if path.endswith(".json"):
+                            try:
+                                remote_content = (clone_path / path).read_bytes()
+                            except Exception:
+                                pass
                         to_pull.append(_enrich_sync_action(
                             path=path,
                             action=SyncActionType.MODIFY,
@@ -1089,36 +1109,22 @@ class GitHubSyncService:
                         # File modified locally (MODIFIED status) AND remote changed - conflict
                         conflict_paths.add(path)
 
-                        # Read content from clone and from S3 for conflict info (lazy read)
-                        remote_content_str = None
-                        local_content_str = None
+                        # Don't load content during preview - use lazy loading endpoints
+                        # We need to compute local SHA for comparison though
                         local_computed_sha = ""
-                        remote_content: bytes | None = None
-                        local_content: bytes | None = None
-
-                        try:
-                            remote_file = clone_path / path
-                            remote_content = remote_file.read_bytes()
-                            remote_content_str = remote_content.decode("utf-8", errors="replace")
-                        except Exception:
-                            pass
-
                         try:
                             file_storage = FileStorageService(self.db)
                             local_content, _ = await file_storage.read_file(path)
-                            local_content_str = local_content.decode("utf-8", errors="replace")
                             local_computed_sha = compute_git_blob_sha(local_content)
+                            del local_content  # Release memory immediately
                         except Exception:
                             pass
 
-                        # Extract entity metadata for UI display
-                        conflict_metadata = extract_entity_metadata(
-                            path, local_content if local_content else remote_content
-                        )
+                        conflict_metadata = extract_entity_metadata(path, None)
                         conflicts.append(ConflictInfo(
                             path=path,
-                            local_content=local_content_str,
-                            remote_content=remote_content_str,
+                            local_content=None,  # Lazy load via get_local_content()
+                            remote_content=None,  # Lazy load via get_remote_content()
                             local_sha=local_computed_sha,
                             remote_sha=remote_sha,
                             display_name=conflict_metadata.display_name,
@@ -1148,24 +1154,22 @@ class GitHubSyncService:
                         ))
                     else:
                         # File modified locally, deleted remotely - conflict
-                        # Read local content for conflict info
-                        local_content_str = None
+                        # Don't load content during preview - use lazy loading endpoints
+                        # We need to compute local SHA for comparison though
                         local_computed_sha = ""
-                        local_content_bytes: bytes | None = None
                         try:
                             file_storage = FileStorageService(self.db)
                             local_content_bytes, _ = await file_storage.read_file(path)
-                            local_content_str = local_content_bytes.decode("utf-8", errors="replace")
                             local_computed_sha = compute_git_blob_sha(local_content_bytes)
+                            del local_content_bytes  # Release memory immediately
                         except Exception:
                             pass
 
-                        # Extract entity metadata for UI display
-                        conflict_metadata = extract_entity_metadata(path, local_content_bytes)
+                        conflict_metadata = extract_entity_metadata(path, None)
                         conflict_paths.add(path)
                         conflicts.append(ConflictInfo(
                             path=path,
-                            local_content=local_content_str,
+                            local_content=None,  # Lazy load via get_local_content()
                             remote_content=None,  # Deleted remotely
                             local_sha=local_computed_sha,
                             remote_sha="",  # Deleted
@@ -1175,13 +1179,15 @@ class GitHubSyncService:
                         ))
                 else:
                     # New local file (never synced, UNTRACKED) - push
-                    # Read local content for entity metadata extraction
+                    # Only read content for JSON files that need name extraction
+                    # (Python files just use filename for display_name)
                     local_file_content: bytes | None = None
-                    try:
-                        file_storage = FileStorageService(self.db)
-                        local_file_content, _ = await file_storage.read_file(path)
-                    except Exception:
-                        pass
+                    if path.endswith(".json"):
+                        try:
+                            file_storage = FileStorageService(self.db)
+                            local_file_content, _ = await file_storage.read_file(path)
+                        except Exception:
+                            pass
                     to_push.append(_enrich_sync_action(
                         path=path,
                         action=SyncActionType.ADD,
@@ -1190,18 +1196,14 @@ class GitHubSyncService:
 
             # 5. Compare virtual files by entity ID
             # Virtual files use entity ID as stable identifier, not path
-            # Re-use workflow_map built above for consistency
-            provider = VirtualFileProvider(self.db)
-            local_virtual_result = await provider.get_all_virtual_files(
-                workflow_map=workflow_map
-            )
+            # Reuse local_virtual_result from step 3b (already fetched with include_content=False)
 
             # Build local map by entity ID for comparison
             local_virtual_by_id = {
                 vf.entity_id: vf
                 for vf in local_virtual_result.files
             }
-            # Note: errors already captured via _get_virtual_file_shas() above
+            # Note: errors already captured in serialization_errors above
 
             # Virtual files in local but not in remote -> push
             for entity_id, vf in local_virtual_by_id.items():
@@ -1236,21 +1238,13 @@ class GitHubSyncService:
                         # Conflict - different content
                         conflict_paths.add(vf.path)
 
-                        # Get content for conflict display
-                        local_content_str = vf.content.decode("utf-8", errors="replace") if vf.content else None
-                        remote_content_str = None
-                        try:
-                            remote_file = clone_path / remote_path
-                            remote_content = remote_file.read_bytes()
-                            remote_content_str = remote_content.decode("utf-8", errors="replace")
-                        except Exception:
-                            pass
-
-                        metadata = extract_entity_metadata(vf.path, vf.content)
+                        # Don't load content during preview - use lazy loading endpoints
+                        # (get_local_content/get_remote_content) when user views conflict
+                        metadata = extract_entity_metadata(vf.path, None)
                         conflicts.append(ConflictInfo(
                             path=vf.path,  # Use local path (consistent UUID-based naming)
-                            local_content=local_content_str,
-                            remote_content=remote_content_str,
+                            local_content=None,  # Lazy load via get_local_content()
+                            remote_content=None,  # Lazy load via get_remote_content()
                             local_sha=vf.computed_sha or "",
                             remote_sha=remote_sha,
                             display_name=metadata.display_name,
@@ -1274,34 +1268,21 @@ class GitHubSyncService:
                     push_action = next((a for a in to_push if a.path == collision_path), None)
 
                     if pull_action and push_action:
-                        # Get content and SHA for conflict display
-                        remote_content_str = None
-                        local_content_str = None
+                        # Get SHA for comparison (don't load content for display)
                         local_computed_sha = ""
 
                         try:
-                            remote_file = clone_path / collision_path
-                            if remote_file.exists():
-                                remote_content = remote_file.read_bytes()
-                                remote_content_str = remote_content.decode("utf-8", errors="replace")
-                        except Exception:
-                            pass
-
-                        try:
-                            # Try virtual file first
+                            # Try virtual file first (already have SHA from earlier fetch)
                             if VirtualFileProvider.is_virtual_file_path(collision_path):
                                 # Find matching virtual file by path
                                 matching_vf = next((vf for vf in local_virtual_result.files if vf.path == collision_path), None)
-                                if matching_vf:
-                                    if matching_vf.content:
-                                        local_content_str = matching_vf.content.decode("utf-8", errors="replace")
-                                    if matching_vf.computed_sha:
-                                        local_computed_sha = matching_vf.computed_sha
+                                if matching_vf and matching_vf.computed_sha:
+                                    local_computed_sha = matching_vf.computed_sha
                             else:
                                 collision_file_storage = FileStorageService(self.db)
                                 local_file_content, _ = await collision_file_storage.read_file(collision_path)
-                                local_content_str = local_file_content.decode("utf-8", errors="replace")
                                 local_computed_sha = compute_git_blob_sha(local_file_content)
+                                del local_file_content  # Release memory immediately
                         except Exception:
                             pass
 
@@ -1313,15 +1294,14 @@ class GitHubSyncService:
                             to_push = [a for a in to_push if a.path != collision_path]
                             continue
 
-                        # Get entity metadata for display
-                        content_for_metadata = local_content_str.encode("utf-8") if local_content_str else None
-                        metadata = extract_entity_metadata(collision_path, content_for_metadata)
+                        # Don't load content during preview - use lazy loading endpoints
+                        metadata = extract_entity_metadata(collision_path, None)
 
                         # Move to conflicts
                         conflicts.append(ConflictInfo(
                             path=collision_path,
-                            local_content=local_content_str,
-                            remote_content=remote_content_str,
+                            local_content=None,  # Lazy load via get_local_content()
+                            remote_content=None,  # Lazy load via get_remote_content()
                             local_sha=local_computed_sha,
                             remote_sha=pull_action.sha or "",
                             display_name=metadata.display_name,
@@ -1463,6 +1443,10 @@ class GitHubSyncService:
                             last_path=path,
                             used_by=used_by,
                         ))
+
+                # Release large file content immediately to prevent memory buildup
+                # across multiple modified files (e.g., 10 x 4MB = 40MB without this)
+                del new_content
 
         return orphans
 
@@ -1772,6 +1756,7 @@ class GitHubSyncService:
                             logger.warning(f"File not in clone: {action.path}")
                             continue
                         content = local_file.read_bytes()
+                        content_size = len(content)
 
                         # Check if this is a virtual file (app, form, agent)
                         if VirtualFileProvider.is_virtual_file_path(action.path):
@@ -1782,7 +1767,7 @@ class GitHubSyncService:
                             # Virtual files don't need github_sha update (no workspace_file entry)
                         else:
                             # Regular file - use file storage
-                            await file_storage.write_file(
+                            result = await file_storage.write_file(
                                 path=action.path,
                                 content=content,
                                 updated_by="github_sync",
@@ -1790,6 +1775,23 @@ class GitHubSyncService:
                             )
                             # Update github_sha for this file
                             await self._update_github_sha(action.path, action.sha)
+                            # Expire the file record from session to free memory
+                            # (large modules like halopsa.py are 4MB+ and accumulate)
+                            self.db.expire(result.file_record)
+                            del result  # Release WriteResult reference
+
+                        # Release large file content immediately to prevent memory buildup
+                        # (e.g., syncing 4MB+ Python modules like halopsa.py, sageintacct.py)
+                        del content
+
+                        # Force garbage collection for large files to prevent OOM
+                        # (AST parsing creates ~100MB objects for 4MB Python files)
+                        if content_size > 1_000_000:  # 1MB threshold
+                            gc.collect()
+                            self._log_identity_map_stats(
+                                f"after_pull path={action.path} size={content_size}"
+                            )
+
                         logger.debug(f"Pulled file: {action.path}")
                     pulled += 1
                 except Exception as e:
@@ -1819,6 +1821,7 @@ class GitHubSyncService:
                             local_file = Path(clone_dir) / path
                             if local_file.exists():
                                 content = local_file.read_bytes()
+                                content_size = len(content)
 
                                 # Check if this is a virtual file (app, form, agent)
                                 if VirtualFileProvider.is_virtual_file_path(path):
@@ -1828,13 +1831,27 @@ class GitHubSyncService:
                                     )
                                 else:
                                     # Regular file - use file storage
-                                    await file_storage.write_file(
+                                    result = await file_storage.write_file(
                                         path=path,
                                         content=content,
                                         updated_by="github_sync",
                                         force_deactivation=True,
                                     )
                                     await self._update_github_sha(path, conflict.remote_sha)
+                                    # Expire the file record from session to free memory
+                                    self.db.expire(result.file_record)
+                                    del result  # Release WriteResult reference
+
+                                # Release large file content immediately
+                                del content
+
+                                # Force garbage collection for large files
+                                if content_size > 1_000_000:
+                                    gc.collect()
+                                    self._log_identity_map_stats(
+                                        f"after_conflict_pull path={path} size={content_size}"
+                                    )
+
                                 logger.debug(f"Resolved conflict (keep remote): {path}")
                                 pulled += 1
                         except Exception as e:
@@ -1967,11 +1984,9 @@ class GitHubSyncService:
         current_commit = await self.github.get_commit(self.repo, current_sha)
         base_tree_sha = current_commit["tree"]["sha"]
 
-        # 2. Pre-fetch all virtual files for efficient lookup
-        # Virtual files include apps, app_files, forms, and agents
+        # 2. Create virtual file provider for lazy content loading
+        # Memory optimization: load content per-file instead of pre-fetching all
         vf_provider = VirtualFileProvider(self.db)
-        all_vf_result = await vf_provider.get_all_virtual_files(workflow_map=workflow_map)
-        virtual_files_by_path = {vf.path: vf for vf in all_vf_result.files}
 
         # 3. Create blobs for each file
         tree_items: list[dict] = []
@@ -1991,21 +2006,17 @@ class GitHubSyncService:
                     "sha": None,
                 })
             else:
-                # Read local content - check for virtual files first
+                # Read local content - load lazily per-file to reduce memory
                 content: bytes | None = None
                 try:
-                    if action.path in virtual_files_by_path:
-                        # Get content from pre-fetched virtual files
-                        vf = virtual_files_by_path[action.path]
-                        if vf.content:
-                            content = vf.content
-                        else:
-                            logger.warning(f"Virtual file has no content: {action.path}")
+                    if VirtualFileProvider.is_virtual_file_path(action.path):
+                        # Load virtual file content lazily
+                        content = await vf_provider.get_virtual_file_content(
+                            action.path, workflow_map
+                        )
+                        if content is None:
+                            logger.warning(f"Virtual file not found: {action.path}")
                             continue
-                    elif VirtualFileProvider.is_virtual_file_path(action.path):
-                        # Virtual file path but not in our list - shouldn't happen
-                        logger.warning(f"Virtual file not found in provider: {action.path}")
-                        continue
                     else:
                         # Regular file - read from file storage
                         content, _ = await file_storage.read_file(action.path)
@@ -2016,6 +2027,7 @@ class GitHubSyncService:
                 # Create blob
                 blob_sha = await self.github.create_blob(self.repo, content)
                 blob_shas[action.path] = blob_sha
+                del content  # Explicit release to help GC
 
                 tree_items.append({
                     "path": action.path,

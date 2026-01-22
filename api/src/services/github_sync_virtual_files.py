@@ -133,6 +133,7 @@ class VirtualFileProvider:
     async def get_all_virtual_files(
         self,
         workflow_map: dict[str, str] | None = None,
+        include_content: bool = True,
     ) -> VirtualFileResult:
         """
         Get all platform entities as virtual files.
@@ -145,6 +146,10 @@ class VirtualFileProvider:
             workflow_map: Optional pre-built workflow ref map. If not provided,
                           will be built internally. Pass this to avoid redundant
                           database queries when the caller already has the map.
+            include_content: If True (default), include serialized content in each
+                          VirtualFile. If False, only compute SHA and set content
+                          to None. Use False to reduce memory usage when only
+                          comparing SHAs (e.g., during sync preview).
 
         Returns:
             VirtualFileResult containing files and any errors encountered
@@ -157,10 +162,10 @@ class VirtualFileProvider:
         virtual_files: list[VirtualFile] = []
         errors: list[SerializationError] = []
 
-        # Get all entity types, passing workflow_map through
-        form_result = await self._get_form_files(workflow_map)
-        agent_result = await self._get_agent_files(workflow_map)
-        app_result = await self._get_app_files(workflow_map)
+        # Get all entity types, passing workflow_map and include_content through
+        form_result = await self._get_form_files(workflow_map, include_content)
+        agent_result = await self._get_agent_files(workflow_map, include_content)
+        app_result = await self._get_app_files(workflow_map, include_content)
 
         virtual_files.extend(form_result.files)
         virtual_files.extend(agent_result.files)
@@ -180,7 +185,9 @@ class VirtualFileProvider:
         return VirtualFileResult(files=virtual_files, errors=errors)
 
     async def _get_form_files(
-        self, workflow_map: dict[str, str]
+        self,
+        workflow_map: dict[str, str],
+        include_content: bool = True,
     ) -> VirtualFileResult:
         """
         Generate virtual files for all forms.
@@ -190,6 +197,8 @@ class VirtualFileProvider:
 
         Args:
             workflow_map: Mapping of workflow UUID -> "path::function_name"
+            include_content: If True, include content in VirtualFile. If False,
+                          compute SHA only and set content to None.
 
         Returns:
             VirtualFileResult with files and any serialization errors
@@ -217,7 +226,7 @@ class VirtualFileProvider:
                         path=virtual_path,
                         entity_type="form",
                         entity_id=str(form.id),
-                        content=content,
+                        content=content if include_content else None,
                         computed_sha=computed_sha,
                     )
                 )
@@ -236,7 +245,9 @@ class VirtualFileProvider:
         return VirtualFileResult(files=virtual_files, errors=errors)
 
     async def _get_agent_files(
-        self, workflow_map: dict[str, str]
+        self,
+        workflow_map: dict[str, str],
+        include_content: bool = True,
     ) -> VirtualFileResult:
         """
         Generate virtual files for all agents.
@@ -250,6 +261,8 @@ class VirtualFileProvider:
 
         Args:
             workflow_map: Mapping of workflow UUID -> "path::function_name"
+            include_content: If True, include content in VirtualFile. If False,
+                          compute SHA only and set content to None.
 
         Returns:
             VirtualFileResult with files and any serialization errors
@@ -286,7 +299,7 @@ class VirtualFileProvider:
                         path=virtual_path,
                         entity_type="agent",
                         entity_id=str(agent.id),
-                        content=content,
+                        content=content if include_content else None,
                         computed_sha=computed_sha,
                     )
                 )
@@ -307,6 +320,7 @@ class VirtualFileProvider:
     async def _get_app_files(
         self,
         workflow_map: dict[str, str],
+        include_content: bool = True,
     ) -> VirtualFileResult:
         """
         Generate virtual files for all applications.
@@ -320,6 +334,8 @@ class VirtualFileProvider:
 
         Args:
             workflow_map: Mapping of workflow UUID -> "path::function_name"
+            include_content: If True, include content in VirtualFile. If False,
+                          compute SHA only and set content to None.
         """
 
         # Query apps with their versions and files eagerly loaded
@@ -356,7 +372,7 @@ class VirtualFileProvider:
                         path=f"{app_dir}/app.json",
                         entity_type="app",
                         entity_id=app_entity_id,
-                        content=app_json_content,
+                        content=app_json_content if include_content else None,
                         computed_sha=app_json_sha,
                     )
                 )
@@ -389,7 +405,7 @@ class VirtualFileProvider:
                             path=file_path,
                             entity_type="app_file",
                             entity_id=file_path,
-                            content=file_content,
+                            content=file_content if include_content else None,
                             computed_sha=file_sha,
                         )
                     )
@@ -500,6 +516,125 @@ class VirtualFileProvider:
         except Exception as e:
             logger.warning(f"Failed to serialize agent {agent.id}: {e}")
             return None
+
+    async def get_virtual_file_content(
+        self,
+        path: str,
+        workflow_map: dict[str, str] | None = None,
+    ) -> bytes | None:
+        """
+        Load content for a single virtual file by path.
+
+        This is a lazy loading method for fetching virtual file content on-demand,
+        rather than pre-loading all virtual file content at once. Use this when
+        you need content for specific files (e.g., during push phase).
+
+        Args:
+            path: Virtual file path, e.g., "forms/{uuid}.form.json" or "apps/{slug}/pages/index.tsx"
+            workflow_map: Optional pre-built workflow ref map. If not provided,
+                          will be built internally.
+
+        Returns:
+            File content as bytes, or None if not found or serialization fails
+        """
+        if not self.is_virtual_file_path(path):
+            return None
+
+        # Build workflow ref map if not provided
+        if workflow_map is None:
+            workflow_map = await build_workflow_ref_map(self.db)
+
+        entity_type = self.get_entity_type_from_path(path)
+
+        if entity_type == "form":
+            filename = path.split("/")[-1]
+            entity_id = self.extract_id_from_filename(filename)
+            if entity_id:
+                try:
+                    vf = await self._get_form_file_by_id(UUID(entity_id), workflow_map)
+                    return vf.content if vf else None
+                except ValueError:
+                    return None
+
+        elif entity_type == "agent":
+            filename = path.split("/")[-1]
+            entity_id = self.extract_id_from_filename(filename)
+            if entity_id:
+                try:
+                    vf = await self._get_agent_file_by_id(UUID(entity_id), workflow_map)
+                    return vf.content if vf else None
+                except ValueError:
+                    return None
+
+        elif entity_type == "app":
+            # App metadata file - need to look up app by slug
+            slug = self.extract_app_slug_from_path(path)
+            if slug:
+                return await self._get_app_json_content(slug)
+
+        elif entity_type == "app_file":
+            # App code file - need to look up by slug and path within app
+            slug = self.extract_app_slug_from_path(path)
+            file_rel_path = self.extract_app_file_path(path)
+            if slug and file_rel_path:
+                return await self._get_app_file_content(slug, file_rel_path, workflow_map)
+
+        return None
+
+    async def _get_app_json_content(self, slug: str) -> bytes | None:
+        """Get app.json content for a specific app by slug."""
+        stmt = select(Application).where(Application.slug == slug)
+        result = await self.db.execute(stmt)
+        app = result.scalar_one_or_none()
+
+        if not app:
+            return None
+
+        try:
+            return _serialize_app_to_json(app)
+        except Exception as e:
+            logger.warning(f"Failed to serialize app {slug}: {e}")
+            return None
+
+    async def _get_app_file_content(
+        self,
+        slug: str,
+        file_rel_path: str,
+        workflow_map: dict[str, str],
+    ) -> bytes | None:
+        """Get content for a specific app file."""
+        stmt = (
+            select(Application)
+            .options(
+                selectinload(Application.active_version).selectinload(AppVersion.files),
+                selectinload(Application.draft_version_ref).selectinload(AppVersion.files),
+            )
+            .where(Application.slug == slug)
+        )
+        result = await self.db.execute(stmt)
+        app = result.scalar_one_or_none()
+
+        if not app:
+            return None
+
+        # Use active_version if published, otherwise draft
+        version = app.active_version or app.draft_version_ref
+        if not version:
+            return None
+
+        # Find the file with matching path
+        for file in version.files:
+            if file.path == file_rel_path:
+                try:
+                    transformed_source, _ = transform_app_source_uuids_to_refs(
+                        file.source, workflow_map
+                    )
+                    return transformed_source.encode("utf-8")
+                except Exception as e:
+                    logger.warning(f"Failed to serialize app file {file.path}: {e}")
+                    return None
+
+        return None
 
     @staticmethod
     def extract_id_from_filename(filename: str) -> str | None:

@@ -226,7 +226,24 @@ class FileOperationsService:
 
         # Detect if this is a platform entity (workflow, form, app, agent)
         # Platform entities are stored in the database, not S3
-        platform_entity_type = self._detect_platform_entity_type(path, content)
+        #
+        # For Python files, we use detect_python_entity_type_with_ast to get
+        # the cached AST tree and decoded content string. This avoids parsing
+        # the AST multiple times (was 3x before, now 1x) - critical for large
+        # files like halopsa.py (4MB) where each parse uses ~100MB.
+        cached_ast = None
+        cached_content_str = None
+        if path.endswith(".py"):
+            from src.services.file_storage.entity_detector import (
+                detect_python_entity_type_with_ast,
+            )
+            detection_result = detect_python_entity_type_with_ast(content)
+            platform_entity_type = detection_result.entity_type
+            cached_ast = detection_result.ast_tree
+            cached_content_str = detection_result.content_str
+        else:
+            platform_entity_type = self._detect_platform_entity_type(path, content)
+
         is_platform_entity = platform_entity_type is not None
         logger.info(f"write_file({path}): platform_entity_type={platform_entity_type}")
 
@@ -249,7 +266,8 @@ class FileOperationsService:
         # Other entity types store content in their respective tables
         module_content: str | None = None
         if platform_entity_type == "module":
-            module_content = content.decode("utf-8")
+            # Reuse cached decoded string if available (avoids another decode)
+            module_content = cached_content_str or content.decode("utf-8")
 
         stmt = insert(WorkspaceFile).values(
             path=path,
@@ -287,8 +305,11 @@ class FileOperationsService:
         if platform_entity_type == "module" and module_content:
             await set_module(path, module_content, content_hash)
             logger.info(f"write_file({path}): cached module in Redis")
+            # Release the decoded string copy - can be 4MB+ for large modules
+            del module_content
 
         # Extract metadata for workflows/forms/agents
+        # Pass cached AST and content_str to avoid re-parsing large Python files
         (
             final_content,
             content_modified,
@@ -297,7 +318,15 @@ class FileOperationsService:
             diagnostics,
             pending_deactivations,
             available_replacements,
-        ) = await self._extract_metadata(path, content, force_deactivation, replacements)
+        ) = await self._extract_metadata(
+            path, content, force_deactivation, replacements,
+            cached_ast=cached_ast, cached_content_str=cached_content_str
+        )
+
+        # Release cached AST and content string to free memory
+        # (AST for 4MB Python file uses ~100MB, content_str is another 4MB)
+        del cached_ast
+        del cached_content_str
 
         # If there are pending deactivations, return early (caller should raise 409)
         if pending_deactivations:
