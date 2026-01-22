@@ -55,15 +55,15 @@ class VirtualFile:
     """
     A virtual file representing a platform entity.
 
-    Virtual files are generated on-the-fly from database entities (forms, agents)
+    Virtual files are generated on-the-fly from database entities (forms, agents, apps)
     and can participate in GitHub sync without being stored in workspace_files.
 
     Attributes:
-        path: Virtual file path, e.g., "forms/{uuid}.form.json"
-        entity_type: Type of entity - "form" or "agent"
-        entity_id: UUID of the entity
-        content: Serialized JSON content as bytes (None if not yet computed)
-        computed_sha: Git blob SHA of content (None if not yet computed)
+        path: Virtual file path, e.g., "forms/{uuid}.form.json" or "apps/{slug}/app.json"
+        entity_type: Type of entity - "form", "agent", "app", or "app_file"
+        entity_id: Stable identifier - UUID for forms/agents, "app::{uuid}" for apps, path for app_files
+        content: Serialized content as bytes
+        computed_sha: Git blob SHA of content
     """
 
     path: str
@@ -331,21 +331,20 @@ class VirtualFileProvider:
                 continue
 
             app_dir = f"apps/{app.slug}"
+            app_entity_id = f"app::{app.id}"  # Stable ID regardless of slug/directory
 
             # 1. Serialize app.json (portable metadata only)
-            # Use app_dir as entity_id for slug-based matching (apps are matched by slug
-            # during import, not by UUID, so entity_id should be consistent with that)
             try:
-                content = _serialize_app_to_json(app)
-                computed_sha = compute_git_blob_sha(content)
+                app_json_content = _serialize_app_to_json(app)
+                app_json_sha = compute_git_blob_sha(app_json_content)
 
                 virtual_files.append(
                     VirtualFile(
                         path=f"{app_dir}/app.json",
                         entity_type="app",
-                        entity_id=app_dir,  # Use slug-based path for matching
-                        content=content,
-                        computed_sha=computed_sha,
+                        entity_id=app_entity_id,
+                        content=app_json_content,
+                        computed_sha=app_json_sha,
                     )
                 )
             except Exception as e:
@@ -353,7 +352,7 @@ class VirtualFileProvider:
                 errors.append(
                     SerializationError(
                         entity_type="app",
-                        entity_id=app_dir,
+                        entity_id=app_entity_id,
                         entity_name=app.name,
                         path=f"{app_dir}/app.json",
                         error=str(e),
@@ -369,19 +368,16 @@ class VirtualFileProvider:
                     transformed_source, _ = transform_app_source_uuids_to_refs(
                         file.source, workflow_map
                     )
-                    content = transformed_source.encode("utf-8")
-                    computed_sha = compute_git_blob_sha(content)
+                    file_content = transformed_source.encode("utf-8")
+                    file_sha = compute_git_blob_sha(file_content)
 
                     virtual_files.append(
                         VirtualFile(
                             path=file_path,
                             entity_type="app_file",
-                            # Use path as entity_id for stable cross-environment matching
-                            # App files don't have UUIDs in their filenames, so path-based
-                            # matching is more reliable than trying to extract entity IDs
                             entity_id=file_path,
-                            content=content,
-                            computed_sha=computed_sha,
+                            content=file_content,
+                            computed_sha=file_sha,
                         )
                     )
                 except Exception as e:

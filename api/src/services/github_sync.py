@@ -13,6 +13,7 @@ Key principles:
 
 import base64
 import hashlib
+import json
 import logging
 import shutil
 import subprocess
@@ -826,25 +827,39 @@ class GitHubSyncService:
             # 2b. Identify virtual files in remote and extract entity IDs
             # Virtual files are platform entities (apps, forms, agents) that can be synced
             remote_virtual_files: dict[str, tuple[str, str, str]] = {}  # entity_id -> (path, sha, entity_type)
+
             for path, sha in list(remote_files.items()):
                 if VirtualFileProvider.is_virtual_file_path(path):
                     entity_type = VirtualFileProvider.get_entity_type_from_path(path)
 
-                    # App files use path as stable identifier (no UUID in filename)
-                    # This matches how local app_files use file_path as entity_id
+                    # App files use path as stable identifier
                     if entity_type == "app_file":
                         remote_virtual_files[path] = (path, sha, entity_type)
                         del remote_files[path]
                         continue
 
-                    # Apps use slug-based matching (apps/{slug}/app.json)
-                    # Apps are matched by slug during import, not by UUID
+                    # Apps: extract UUID from app.json for stable matching
                     if entity_type == "app":
-                        # Extract app_dir from path: apps/{slug}/app.json -> apps/{slug}
                         app_slug = VirtualFileProvider.extract_app_slug_from_path(path)
                         if app_slug:
                             app_dir = f"apps/{app_slug}"
-                            remote_virtual_files[app_dir] = (path, sha, entity_type)
+                            # Read app.json to extract UUID
+                            try:
+                                app_json_path = clone_path / path
+                                app_json_content = app_json_path.read_bytes()
+                                app_data = json.loads(app_json_content.decode("utf-8"))
+                                app_uuid = app_data.get("id")
+                                if app_uuid:
+                                    # Use app::{uuid} as stable entity ID
+                                    entity_id = f"app::{app_uuid}"
+                                    remote_virtual_files[entity_id] = (path, sha, entity_type)
+                                else:
+                                    # Fallback to app_dir if no UUID
+                                    remote_virtual_files[app_dir] = (path, sha, entity_type)
+                            except Exception as e:
+                                # Fallback to app_dir on error
+                                logger.debug(f"Failed to read app.json for {path}: {e}")
+                                remote_virtual_files[app_dir] = (path, sha, entity_type)
                             del remote_files[path]
                         continue
 
@@ -1131,7 +1146,12 @@ class GitHubSyncService:
             # Virtual files use entity ID as stable identifier, not path
             provider = VirtualFileProvider(self.db)
             local_virtual_result = await provider.get_all_virtual_files()
-            local_virtual_by_id = {vf.entity_id: vf for vf in local_virtual_result.files}
+
+            # Build local map by entity ID for comparison
+            local_virtual_by_id = {
+                vf.entity_id: vf
+                for vf in local_virtual_result.files
+            }
             # Note: errors already captured via _get_virtual_file_shas() above
 
             # Virtual files in local but not in remote -> push
@@ -1410,8 +1430,6 @@ class GitHubSyncService:
         Returns:
             List of UnresolvedRefInfo for refs that couldn't be resolved
         """
-        import json
-
         from src.models.contracts.agents import AgentPublic
         from src.models.contracts.forms import FormPublic
         from src.models.contracts.refs import get_workflow_ref_paths
