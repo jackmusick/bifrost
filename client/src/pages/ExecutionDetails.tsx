@@ -86,10 +86,12 @@ interface ExecutionResultData {
 
 // Type for execution log entry
 interface ExecutionLogEntry {
+	id?: number; // Unique log ID for exact deduplication
 	level?: string;
 	message?: string;
 	timestamp?: string;
 	data?: Record<string, unknown>;
+	sequence?: number; // For ordering and range-based deduplication
 }
 
 interface ExecutionDetailsProps {
