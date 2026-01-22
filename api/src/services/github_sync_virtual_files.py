@@ -130,7 +130,10 @@ class VirtualFileProvider:
         """
         self.db = db
 
-    async def get_all_virtual_files(self) -> VirtualFileResult:
+    async def get_all_virtual_files(
+        self,
+        workflow_map: dict[str, str] | None = None,
+    ) -> VirtualFileResult:
         """
         Get all platform entities as virtual files.
 
@@ -138,20 +141,26 @@ class VirtualFileProvider:
         to JSON/source with portable workflow refs, and returns them as VirtualFile
         objects with computed git SHAs. Also collects any serialization errors.
 
+        Args:
+            workflow_map: Optional pre-built workflow ref map. If not provided,
+                          will be built internally. Pass this to avoid redundant
+                          database queries when the caller already has the map.
+
         Returns:
             VirtualFileResult containing files and any errors encountered
         """
-        # Build workflow ref map for portable refs
-        workflow_map = await build_workflow_ref_map(self.db)
-        logger.debug(f"Built workflow ref map with {len(workflow_map)} entries")
+        # Build workflow ref map if not provided
+        if workflow_map is None:
+            workflow_map = await build_workflow_ref_map(self.db)
+        logger.debug(f"Using workflow ref map with {len(workflow_map)} entries")
 
         virtual_files: list[VirtualFile] = []
         errors: list[SerializationError] = []
 
-        # Get all entity types
+        # Get all entity types, passing workflow_map through
         form_result = await self._get_form_files(workflow_map)
         agent_result = await self._get_agent_files(workflow_map)
-        app_result = await self._get_app_files()
+        app_result = await self._get_app_files(workflow_map)
 
         virtual_files.extend(form_result.files)
         virtual_files.extend(agent_result.files)
@@ -295,7 +304,10 @@ class VirtualFileProvider:
 
         return VirtualFileResult(files=virtual_files, errors=errors)
 
-    async def _get_app_files(self) -> VirtualFileResult:
+    async def _get_app_files(
+        self,
+        workflow_map: dict[str, str],
+    ) -> VirtualFileResult:
         """
         Generate virtual files for all applications.
 
@@ -305,9 +317,10 @@ class VirtualFileProvider:
 
         Uses the app's active_version if published, otherwise draft_version.
         Code files have useWorkflow UUIDs transformed to portable refs.
+
+        Args:
+            workflow_map: Mapping of workflow UUID -> "path::function_name"
         """
-        # Build workflow ref map for transforming UUIDs to portable refs
-        workflow_map = await build_workflow_ref_map(self.db)
 
         # Query apps with their versions and files eagerly loaded
         stmt = (
