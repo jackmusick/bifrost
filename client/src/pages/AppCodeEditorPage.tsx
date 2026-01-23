@@ -20,8 +20,8 @@ import {
 	DialogFooter,
 	DialogHeader,
 	DialogTitle,
-	DialogTrigger,
 } from "@/components/ui/dialog";
+import { AppInfoDialog } from "@/components/app-builder/AppInfoDialog";
 import { toast } from "sonner";
 import { AppCodeEditorLayout } from "@/components/app-code-editor/AppCodeEditorLayout";
 import {
@@ -265,39 +265,18 @@ export function AppCodeEditorPage() {
 
 				<div className="flex items-center gap-2">
 					{/* Settings */}
-					<Dialog open={isSettingsOpen} onOpenChange={setIsSettingsOpen}>
-						<DialogTrigger asChild>
-							<Button variant="ghost" size="icon">
-								<Settings className="h-4 w-4" />
-							</Button>
-						</DialogTrigger>
-						<DialogContent>
-							<DialogHeader>
-								<DialogTitle>Application Settings</DialogTitle>
-								<DialogDescription>
-									Configure your code application settings.
-								</DialogDescription>
-							</DialogHeader>
-							<div className="mt-2 space-y-4">
-								<div className="space-y-2">
-									<Label>Name</Label>
-									<Input value={existingApp?.name || ""} disabled />
-								</div>
-								<div className="space-y-2">
-									<Label>Slug</Label>
-									<Input value={existingApp?.slug || ""} disabled />
-								</div>
-								<div className="space-y-2">
-									<Label>Description</Label>
-									<Textarea
-										value={existingApp?.description || ""}
-										disabled
-										rows={3}
-									/>
-								</div>
-							</div>
-						</DialogContent>
-					</Dialog>
+					<Button
+						variant="ghost"
+						size="icon"
+						onClick={() => setIsSettingsOpen(true)}
+					>
+						<Settings className="h-4 w-4" />
+					</Button>
+					<AppInfoDialog
+						appId={existingApp?.slug}
+						open={isSettingsOpen}
+						onOpenChange={setIsSettingsOpen}
+					/>
 
 					{/* Publish */}
 					{hasDraft && (
