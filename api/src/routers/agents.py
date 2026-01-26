@@ -117,7 +117,6 @@ def _agent_to_public(agent: Agent) -> AgentPublic:
         access_level=agent.access_level,
         organization_id=agent.organization_id,
         is_active=agent.is_active,
-        is_coding_mode=agent.is_coding_mode,
         is_system=agent.is_system,
         created_by=agent.created_by,
         created_at=agent.created_at,
@@ -127,6 +126,9 @@ def _agent_to_public(agent: Agent) -> AgentPublic:
         role_ids=[str(r.id) for r in agent.roles],
         knowledge_sources=agent.knowledge_sources or [],
         system_tools=agent.system_tools or [],
+        llm_model=agent.llm_model,
+        llm_max_tokens=agent.llm_max_tokens,
+        llm_temperature=agent.llm_temperature,
     )
 
 
@@ -225,9 +227,11 @@ async def create_agent(
         access_level=agent_data.access_level,
         organization_id=agent_data.organization_id,
         is_active=True,
-        is_coding_mode=agent_data.is_coding_mode,
         knowledge_sources=agent_data.knowledge_sources or [],
         system_tools=agent_data.system_tools or [],
+        llm_model=agent_data.llm_model,
+        llm_max_tokens=agent_data.llm_max_tokens,
+        llm_temperature=agent_data.llm_temperature,
         created_by=user.email,
         created_at=now,
         updated_at=now,
@@ -394,12 +398,16 @@ async def update_agent(
         agent.organization_id = agent_data.organization_id
     if agent_data.is_active is not None:
         agent.is_active = agent_data.is_active
-    if agent_data.is_coding_mode is not None:
-        agent.is_coding_mode = agent_data.is_coding_mode
     if agent_data.knowledge_sources is not None:
         agent.knowledge_sources = agent_data.knowledge_sources
     if agent_data.system_tools is not None:
         agent.system_tools = agent_data.system_tools
+    if agent_data.llm_model is not None:
+        agent.llm_model = agent_data.llm_model if agent_data.llm_model else None
+    if agent_data.llm_max_tokens is not None:
+        agent.llm_max_tokens = agent_data.llm_max_tokens if agent_data.llm_max_tokens else None
+    if agent_data.llm_temperature is not None:
+        agent.llm_temperature = agent_data.llm_temperature if agent_data.llm_temperature else None
 
     agent.updated_at = datetime.utcnow()
 
