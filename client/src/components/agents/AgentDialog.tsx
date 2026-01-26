@@ -52,6 +52,7 @@ import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { Badge } from "@/components/ui/badge";
 import { Checkbox } from "@/components/ui/checkbox";
+import { Slider } from "@/components/ui/slider";
 import { cn } from "@/lib/utils";
 import {
 	useAgent,
@@ -62,6 +63,7 @@ import {
 import { useToolsGrouped } from "@/hooks/useTools";
 import { useRoles } from "@/hooks/useRoles";
 import { useKnowledgeNamespaces } from "@/hooks/useKnowledge";
+import { useLLMModels } from "@/hooks/useLLMConfig";
 import { useAuth } from "@/contexts/AuthContext";
 import { OrganizationSelect } from "@/components/forms/OrganizationSelect";
 import type { components } from "@/lib/v1";
@@ -132,6 +134,7 @@ export function AgentDialog({ agentId, open, onOpenChange }: AgentDialogProps) {
 	const { data: allAgents } = useAgents();
 	const { data: toolsGrouped } = useToolsGrouped();
 	const { data: roles } = useRoles();
+	const { models: availableModels } = useLLMModels();
 	const createAgent = useCreateAgent();
 	const updateAgent = useUpdateAgent();
 
@@ -140,6 +143,7 @@ export function AgentDialog({ agentId, open, onOpenChange }: AgentDialogProps) {
 	const [delegationsOpen, setDelegationsOpen] = useState(false);
 	const [rolesOpen, setRolesOpen] = useState(false);
 	const [knowledgeOpen, setKnowledgeOpen] = useState(false);
+	const [modelSettingsOpen, setModelSettingsOpen] = useState(false);
 
 	// Default organization_id for org users is their org, for platform admins it's null (global)
 	const defaultOrgId = isPlatformAdmin
@@ -1676,6 +1680,207 @@ export function AgentDialog({ agentId, open, onOpenChange }: AgentDialogProps) {
 											</FormItem>
 										)}
 									/>
+
+									{/* Model Settings - Collapsible */}
+									<div className="border rounded-md">
+										<button
+											type="button"
+											onClick={() =>
+												setModelSettingsOpen(
+													!modelSettingsOpen,
+												)
+											}
+											className="w-full flex items-center justify-between p-4 text-left"
+										>
+											<div>
+												<span className="font-medium">
+													Model Settings
+												</span>
+												<span className="text-xs text-muted-foreground ml-2">
+													(Optional)
+												</span>
+											</div>
+											<ChevronsUpDown
+												className={cn(
+													"h-4 w-4 transition-transform",
+													modelSettingsOpen &&
+														"rotate-180",
+												)}
+											/>
+										</button>
+
+										{modelSettingsOpen && (
+											<div className="px-4 pb-4 space-y-4 border-t pt-4">
+												<p className="text-sm text-muted-foreground">
+													Leave empty to use platform
+													default settings.
+												</p>
+
+												{/* Model Select */}
+												<FormField
+													control={form.control}
+													name="llm_model"
+													render={({ field }) => (
+														<FormItem>
+															<FormLabel>
+																Model
+															</FormLabel>
+															<Select
+																onValueChange={(
+																	value,
+																) =>
+																	field.onChange(
+																		value ===
+																			"__default__"
+																			? null
+																			: value,
+																	)
+																}
+																value={
+																	field.value ??
+																	"__default__"
+																}
+															>
+																<FormControl>
+																	<SelectTrigger>
+																		<SelectValue placeholder="Use platform default" />
+																	</SelectTrigger>
+																</FormControl>
+																<SelectContent>
+																	<SelectItem value="__default__">
+																		Use
+																		platform
+																		default
+																	</SelectItem>
+																	{availableModels.map(
+																		(
+																			model,
+																		) => (
+																			<SelectItem
+																				key={
+																					model.id
+																				}
+																				value={
+																					model.id
+																				}
+																			>
+																				{
+																					model.display_name
+																				}
+																			</SelectItem>
+																		),
+																	)}
+																</SelectContent>
+															</Select>
+															<FormMessage />
+														</FormItem>
+													)}
+												/>
+
+												{/* Max Tokens */}
+												<FormField
+													control={form.control}
+													name="llm_max_tokens"
+													render={({ field }) => (
+														<FormItem>
+															<FormLabel>
+																Max Tokens
+															</FormLabel>
+															<FormControl>
+																<Input
+																	type="number"
+																	placeholder="Use platform default"
+																	value={
+																		field.value ??
+																		""
+																	}
+																	onChange={(
+																		e,
+																	) => {
+																		const val =
+																			e
+																				.target
+																				.value;
+																		field.onChange(
+																			val
+																				? parseInt(
+																						val,
+																						10,
+																					)
+																				: null,
+																		);
+																	}}
+																/>
+															</FormControl>
+															<FormDescription>
+																Maximum response
+																length
+																(1-200,000)
+															</FormDescription>
+															<FormMessage />
+														</FormItem>
+													)}
+												/>
+
+												{/* Temperature */}
+												<FormField
+													control={form.control}
+													name="llm_temperature"
+													render={({ field }) => (
+														<FormItem>
+															<FormLabel>
+																Temperature:{" "}
+																{field.value?.toFixed(
+																	1,
+																) ?? "default"}
+															</FormLabel>
+															<FormControl>
+																<div className="flex items-center gap-4">
+																	<Slider
+																		min={0}
+																		max={2}
+																		step={
+																			0.1
+																		}
+																		value={[
+																			field.value ??
+																				0.7,
+																		]}
+																		onValueChange={([
+																			val,
+																		]) =>
+																			field.onChange(
+																				val,
+																			)
+																		}
+																		className="flex-1"
+																	/>
+																	<Button
+																		type="button"
+																		variant="ghost"
+																		size="sm"
+																		onClick={() =>
+																			field.onChange(
+																				null,
+																			)
+																		}
+																	>
+																		Reset
+																	</Button>
+																</div>
+															</FormControl>
+															<FormDescription>
+																0 =
+																deterministic, 2
+																= creative
+															</FormDescription>
+															<FormMessage />
+														</FormItem>
+													)}
+												/>
+											</div>
+										)}
+									</div>
 								</div>
 							</div>
 
