@@ -9,6 +9,11 @@ from dataclasses import dataclass, field
 from enum import Enum
 from typing import Any, Callable, Coroutine
 
+from mcp.types import CallToolResult
+
+# Tools can return either str (legacy) or CallToolResult (new standard)
+ToolReturnType = str | CallToolResult
+
 
 class ToolCategory(str, Enum):
     """Categories for grouping system tools."""
@@ -53,7 +58,7 @@ class SystemToolMetadata:
     )
 
     # Implementation reference (set by decorator)
-    implementation: Callable[..., Coroutine[Any, Any, str]] | None = None
+    implementation: Callable[..., Coroutine[Any, Any, ToolReturnType]] | None = None
 
 
 # Global registry - populated by @system_tool decorator

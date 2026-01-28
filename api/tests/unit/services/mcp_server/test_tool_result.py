@@ -233,7 +233,11 @@ class TestDeleteContentResult:
 
         assert isinstance(result, CallToolResult)
         assert result.isError is False
-        assert "Deleted features/test.py" in result.content[0].text
+        # Type narrow to TextContent for .text access
+        content = result.content[0]
+        assert hasattr(content, "text")
+        assert "Deleted features/test.py" in content.text  # type: ignore[union-attr]
+        assert result.structuredContent is not None
         assert result.structuredContent["success"] is True
         assert result.structuredContent["path"] == "features/test.py"
 
@@ -274,5 +278,8 @@ class TestDeleteContentResult:
 
         assert isinstance(result, CallToolResult)
         assert result.isError is True
-        assert "Error:" in result.content[0].text
-        assert "not found" in result.content[0].text.lower()
+        # Type narrow to TextContent for .text access
+        content = result.content[0]
+        assert hasattr(content, "text")
+        assert "Error:" in content.text  # type: ignore[union-attr]
+        assert "not found" in content.text.lower()  # type: ignore[union-attr]

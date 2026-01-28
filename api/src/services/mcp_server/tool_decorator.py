@@ -11,10 +11,11 @@ from typing import Any, Callable, Coroutine, TypeVar
 from src.services.mcp_server.tool_registry import (
     SystemToolMetadata,
     ToolCategory,
+    ToolReturnType,
     register_tool,
 )
 
-F = TypeVar("F", bound=Callable[..., Coroutine[Any, Any, str]])
+F = TypeVar("F", bound=Callable[..., Coroutine[Any, Any, ToolReturnType]])
 
 
 def system_tool(
@@ -84,7 +85,7 @@ def system_tool(
 
         # Preserve the original function with metadata attached
         @wraps(func)
-        async def wrapper(*args: Any, **kwargs: Any) -> str:
+        async def wrapper(*args: Any, **kwargs: Any) -> ToolReturnType:
             return await func(*args, **kwargs)
 
         # Attach metadata to function for introspection
