@@ -111,7 +111,7 @@ anthropic  # Anthropic Claude API client
 # =============================================================================
 # MCP (Model Context Protocol)
 # =============================================================================
-mcp>=1.3  # Model Context Protocol SDK - required peer dependency for fastmcp
+mcp>=1.26.0  # Model Context Protocol SDK - structuredContent support requires 1.26+
 fastmcp>=2.0,<3  # FastMCP for MCP server (internal + external access)
 
 # =============================================================================
