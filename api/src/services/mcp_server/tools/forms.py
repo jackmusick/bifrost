@@ -4,7 +4,6 @@ Form MCP Tools
 Tools for listing, creating, validating, and managing forms.
 """
 
-import json
 import logging
 from typing import Any
 from uuid import UUID

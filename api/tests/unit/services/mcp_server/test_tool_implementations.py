@@ -47,41 +47,39 @@ class TestSearchKnowledgeImpl:
 
     @pytest.mark.asyncio
     async def test_returns_error_when_query_empty(self, context):
-        """Should return JSON error when query is empty."""
-        import json
-
+        """Should return error CallToolResult when query is empty."""
         from src.services.mcp_server.tools.knowledge import search_knowledge
 
         result = await search_knowledge(context, "")
-        parsed = json.loads(result)
-        assert parsed["error"] == "query is required"
+        assert result.isError is True
+        assert result.structuredContent is not None
+        assert result.structuredContent["error"] == "query is required"
 
     @pytest.mark.asyncio
     async def test_returns_empty_when_no_namespaces_accessible(self, context):
         """Should return empty results when user has no accessible namespaces."""
-        import json
-
         from src.services.mcp_server.tools.knowledge import search_knowledge
 
         # Context has empty accessible_namespaces by default
         result = await search_knowledge(context, "test query")
-        parsed = json.loads(result)
-        assert parsed["results"] == []
-        assert parsed["count"] == 0
-        assert "No knowledge sources available" in parsed["message"]
+        assert result.isError is False
+        assert result.structuredContent is not None
+        assert result.structuredContent["results"] == []
+        assert result.structuredContent["count"] == 0
+        # Check display text for message
+        assert "No knowledge sources available" in result.content[0].text  # type: ignore[union-attr]
 
     @pytest.mark.asyncio
     async def test_returns_access_denied_for_unauthorized_namespace(self, context):
         """Should deny access to namespace not in accessible list."""
-        import json
-
         from src.services.mcp_server.tools.knowledge import search_knowledge
 
         context.accessible_namespaces = ["allowed-ns"]
         result = await search_knowledge(context, "test query", namespace="forbidden-ns")
-        parsed = json.loads(result)
-        assert "Access denied" in parsed["error"]
-        assert "forbidden-ns" in parsed["error"]
+        assert result.isError is True
+        assert result.structuredContent is not None
+        assert "Access denied" in result.structuredContent["error"]
+        assert "forbidden-ns" in result.structuredContent["error"]
 
 
 # ==================== Workflow Tool Tests ====================
@@ -149,14 +147,13 @@ class TestGetExecutionImpl:
 
     @pytest.mark.asyncio
     async def test_returns_error_when_id_empty(self, context):
-        """Should return JSON error when execution_id is empty."""
-        import json
-
+        """Should return error CallToolResult when execution_id is empty."""
         from src.services.mcp_server.tools.execution import get_execution
 
         result = await get_execution(context, "")
-        parsed = json.loads(result)
-        assert parsed["error"] == "execution_id is required"
+        assert result.isError is True
+        assert result.structuredContent is not None
+        assert result.structuredContent["error"] == "execution_id is required"
 
 
 # ==================== Integration Test Models ====================

@@ -513,7 +513,7 @@ async def publish_app(context: Any, app_id: str) -> CallToolResult:
     Creates a new version by copying all files from the draft version,
     then sets this new version as the active (live) version.
     """
-    from datetime import datetime, timezone
+    from datetime import datetime
     from uuid import UUID
 
     from sqlalchemy import select
