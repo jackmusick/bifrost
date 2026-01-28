@@ -15,10 +15,13 @@ Usage:
     app = fastmcp_server.http_app()
 """
 
+import json
 import logging
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any
 from uuid import UUID
+
+from mcp.types import CallToolResult
 
 if TYPE_CHECKING:
     from fastmcp import FastMCP
@@ -28,6 +31,7 @@ import src.services.mcp_server.tools  # noqa: F401
 
 from src.services.mcp_server.generators import register_fastmcp_tools
 from src.services.mcp_server.tool_registry import get_all_tool_ids
+from src.services.mcp_server.tool_result import error_result, success_result
 
 logger = logging.getLogger(__name__)
 
@@ -397,7 +401,6 @@ _WorkflowTool: type | None = None
 
 if HAS_FASTMCP:
     from fastmcp.tools import Tool as _FastMCPTool  # type: ignore[import-not-found]
-    from fastmcp.tools.tool import ToolResult as _ToolResult  # type: ignore[import-not-found]
 
     class WorkflowTool(_FastMCPTool):
         """
@@ -412,6 +415,12 @@ if HAS_FASTMCP:
 
         The execution context is retrieved dynamically from the authenticated
         token at runtime via _get_context_from_token().
+
+        Results are auto-wrapped in CallToolResult:
+        - If result is already CallToolResult, pass through
+        - If result is a JSON string, parse and wrap
+        - If result has {"error": ...}, return error_result
+        - Otherwise format as display text with structured data
         """
 
         workflow_id: str
@@ -419,20 +428,49 @@ if HAS_FASTMCP:
 
         model_config = {"arbitrary_types_allowed": True}
 
-        async def run(self, arguments: dict[str, Any]) -> "_ToolResult":
-            """Execute the workflow with the given arguments."""
+        async def run(self, arguments: dict[str, Any]) -> CallToolResult:
+            """Execute the workflow and wrap result in CallToolResult."""
             try:
                 context = _get_context_from_token()
             except Exception as e:
-                return _ToolResult(content=[{"type": "text", "text": f"Authentication error: {e}"}])
+                return error_result(f"Authentication error: {e}")
 
-            result = await _execute_workflow_tool_impl(
-                context,
-                self.workflow_id,
-                self.workflow_name,
-                **arguments,
-            )
-            return _ToolResult(content=[{"type": "text", "text": result}])
+            try:
+                result = await _execute_workflow_tool_impl(
+                    context,
+                    self.workflow_id,
+                    self.workflow_name,
+                    **arguments,
+                )
+
+                # If user returned CallToolResult, pass through unchanged
+                if isinstance(result, CallToolResult):
+                    return result
+
+                # Parse JSON string if needed (legacy workflow returns)
+                if isinstance(result, str):
+                    try:
+                        parsed = json.loads(result)
+                        result = parsed
+                    except json.JSONDecodeError:
+                        # Plain string result - return as success
+                        return success_result(result, {"result": result})
+
+                # Auto-wrap dict results
+                if isinstance(result, dict):
+                    if result.get("error"):
+                        return error_result(str(result["error"]), result)
+                    # Format as pretty JSON for display
+                    display = json.dumps(result, indent=2, default=str)
+                    return success_result(display, result)
+
+                # Fallback for other types
+                display = str(result)
+                return success_result(display, {"result": result})
+
+            except Exception as e:
+                logger.exception(f"Error executing workflow tool {self.workflow_name}: {e}")
+                return error_result(str(e))
 
     _WorkflowTool = WorkflowTool
 
