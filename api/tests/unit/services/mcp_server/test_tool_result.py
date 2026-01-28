@@ -283,3 +283,148 @@ class TestDeleteContentResult:
         assert hasattr(content, "text")
         assert "Error:" in content.text  # type: ignore[union-attr]
         assert "not found" in content.text.lower()  # type: ignore[union-attr]
+
+
+class TestPatchContentResult:
+    """Tests for patch_content tool returning CallToolResult."""
+
+    @pytest.mark.asyncio
+    async def test_success_returns_diff_format(self):
+        """patch_content should return diff-style display on success."""
+        from unittest.mock import AsyncMock, patch
+        from uuid import uuid4
+
+        from mcp.types import CallToolResult
+
+        from src.services.mcp_server.server import MCPContext
+        from src.services.mcp_server.tools.code_editor import patch_content
+
+        context = MCPContext(
+            user_id=uuid4(),
+            org_id=None,
+            is_platform_admin=True,
+            user_email="test@test.com",
+            user_name="Test",
+        )
+
+        with patch(
+            "src.services.mcp_server.tools.code_editor._get_content_by_entity"
+        ) as mock_get:
+            mock_get.return_value = (
+                "def hello():\n    return 'hello'\n",
+                {"path": "test.py"},
+                None,
+            )
+
+            with patch(
+                "src.services.mcp_server.tools.code_editor._persist_content"
+            ) as mock_persist:
+                mock_persist.return_value = None
+
+                result = await patch_content(
+                    context=context,
+                    entity_type="workflow",
+                    path="test.py",
+                    old_string="return 'hello'",
+                    new_string="return 'world'",
+                )
+
+        assert isinstance(result, CallToolResult)
+        assert result.isError is False
+        # Type narrow to TextContent for .text access
+        content = result.content[0]
+        assert hasattr(content, "text")
+        assert "Updated test.py" in content.text  # type: ignore[union-attr]
+        assert "-  return 'hello'" in content.text  # type: ignore[union-attr]
+        assert "+  return 'world'" in content.text  # type: ignore[union-attr]
+        assert result.structuredContent is not None
+        assert result.structuredContent["success"] is True
+
+    @pytest.mark.asyncio
+    async def test_not_found_returns_error(self):
+        """patch_content should return error when old_string not found."""
+        from unittest.mock import AsyncMock, patch
+        from uuid import uuid4
+
+        from mcp.types import CallToolResult
+
+        from src.services.mcp_server.server import MCPContext
+        from src.services.mcp_server.tools.code_editor import patch_content
+
+        context = MCPContext(
+            user_id=uuid4(),
+            org_id=None,
+            is_platform_admin=True,
+            user_email="test@test.com",
+            user_name="Test",
+        )
+
+        with patch(
+            "src.services.mcp_server.tools.code_editor._get_content_by_entity"
+        ) as mock_get:
+            mock_get.return_value = (
+                "completely different content",
+                {"path": "test.py"},
+                None,
+            )
+
+            result = await patch_content(
+                context=context,
+                entity_type="workflow",
+                path="test.py",
+                old_string="this does not exist",
+                new_string="replacement",
+            )
+
+        assert isinstance(result, CallToolResult)
+        assert result.isError is True
+        # Type narrow to TextContent for .text access
+        content = result.content[0]
+        assert hasattr(content, "text")
+        assert "not found" in content.text.lower()  # type: ignore[union-attr]
+
+    @pytest.mark.asyncio
+    async def test_multiple_matches_returns_error_with_locations(self):
+        """patch_content should return error with locations when multiple matches."""
+        from unittest.mock import AsyncMock, patch
+        from uuid import uuid4
+
+        from mcp.types import CallToolResult
+
+        from src.services.mcp_server.server import MCPContext
+        from src.services.mcp_server.tools.code_editor import patch_content
+
+        context = MCPContext(
+            user_id=uuid4(),
+            org_id=None,
+            is_platform_admin=True,
+            user_email="test@test.com",
+            user_name="Test",
+        )
+
+        with patch(
+            "src.services.mcp_server.tools.code_editor._get_content_by_entity"
+        ) as mock_get:
+            # Content with 'return' appearing twice
+            mock_get.return_value = (
+                "def a():\n    return 1\ndef b():\n    return 2\n",
+                {"path": "test.py"},
+                None,
+            )
+
+            result = await patch_content(
+                context=context,
+                entity_type="workflow",
+                path="test.py",
+                old_string="return",
+                new_string="yield",
+            )
+
+        assert isinstance(result, CallToolResult)
+        assert result.isError is True
+        # Type narrow to TextContent for .text access
+        content = result.content[0]
+        assert hasattr(content, "text")
+        assert "2 locations" in content.text or "matches" in content.text.lower()  # type: ignore[union-attr]
+        assert result.structuredContent is not None
+        assert "match_locations" in result.structuredContent

@@ -34,7 +34,7 @@ from src.models.orm.workspace import WorkspaceFile
 from src.services.file_storage import FileStorageService
 from src.services.mcp_server.tool_decorator import system_tool
 from src.services.mcp_server.tool_registry import ToolCategory
-from src.services.mcp_server.tool_result import error_result, success_result
+from src.services.mcp_server.tool_result import error_result, format_diff, success_result
 
 logger = logging.getLogger(__name__)
 
@@ -1343,27 +1343,27 @@ async def patch_content(
     new_string: str,
     app_id: str | None = None,
     organization_id: str | None = None,
-) -> str:
+) -> CallToolResult:
     """Make a surgical edit by replacing a unique string."""
     logger.info(f"MCP patch_content: entity_type={entity_type}, path={path}")
 
     if not path:
-        return json.dumps({"error": "path is required"})
+        return error_result("path is required")
     if not old_string:
-        return json.dumps({"error": "old_string is required"})
+        return error_result("old_string is required")
     if entity_type not in ("app_file", "workflow", "module", "text"):
-        return json.dumps({"error": f"Invalid entity_type: {entity_type}"})
+        return error_result(f"Invalid entity_type: {entity_type}")
     if entity_type == "app_file" and not app_id:
-        return json.dumps({"error": "app_id is required for app_file entity type"})
+        return error_result("app_id is required for app_file entity type")
 
     content_result, metadata_result, error = await _get_content_by_entity(
         entity_type, path, app_id, organization_id, context
     )
 
     if error:
-        return json.dumps({"error": error})
+        return error_result(error)
     if content_result is None or metadata_result is None:
-        return json.dumps({"error": "Failed to retrieve content"})
+        return error_result("Failed to retrieve content")
 
     content_str = _normalize_line_endings(content_result)
     old_string = _normalize_line_endings(old_string)
@@ -1373,18 +1373,14 @@ async def patch_content(
     match_count = content_str.count(old_string)
 
     if match_count == 0:
-        return json.dumps({
-            "success": False,
-            "error": "old_string not found in file",
-        })
+        return error_result("old_string not found in file")
 
     if match_count > 1:
         locations = _find_match_locations(content_str, old_string)
-        return json.dumps({
-            "success": False,
-            "error": f"old_string matches {match_count} locations. Include more context to make it unique.",
-            "match_locations": locations,
-        })
+        return error_result(
+            f"old_string matches {match_count} locations. Include more context to make it unique.",
+            {"match_locations": locations},
+        )
 
     # Perform replacement
     new_content = content_str.replace(old_string, new_string, 1)
@@ -1400,18 +1396,25 @@ async def patch_content(
             entity_type, path, new_content, app_id, organization_id, context
         )
 
-        return json.dumps({
-            "success": True,
-            "path": metadata_result["path"],
-            "lines_changed": lines_changed,
-        })
+        # Format diff-style display
+        display = format_diff(
+            metadata_result["path"],
+            old_string.split("\n"),
+            new_string.split("\n"),
+        )
+
+        return success_result(
+            display,
+            {
+                "success": True,
+                "path": metadata_result["path"],
+                "lines_changed": lines_changed,
+            },
+        )
 
     except Exception as e:
         logger.exception(f"Error persisting patch: {e}")
-        return json.dumps({
-            "success": False,
-            "error": f"Failed to save changes: {str(e)}",
-        })
+        return error_result(f"Failed to save changes: {str(e)}")
 
 
 # =============================================================================
