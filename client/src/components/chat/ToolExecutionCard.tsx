@@ -43,6 +43,7 @@ import {
 	CollapsibleTrigger,
 } from "@/components/ui/collapsible";
 import { PrettyInputDisplay } from "@/components/execution/PrettyInputDisplay";
+import { ToolOutputDisplay } from "@/components/chat/ToolOutputDisplay";
 import type { components } from "@/lib/v1";
 
 type ToolCall = components["schemas"]["ToolCall"];
@@ -165,6 +166,42 @@ const statusConfig: Record<
 		badgeVariant: "outline",
 	},
 };
+
+/**
+ * Check if result is a CallToolResult structure and extract content.
+ */
+function extractMcpContent(
+	result: unknown
+): { text: string; structured: unknown } | null {
+	if (!result || typeof result !== "object") {
+		return null;
+	}
+
+	const mcpResult = result as {
+		content?: Array<{ type: string; text?: string }>;
+		structuredContent?: unknown;
+	};
+
+	// Check for CallToolResult structure
+	if (!mcpResult.content || !Array.isArray(mcpResult.content)) {
+		return null;
+	}
+
+	// Extract text from TextContent blocks
+	const textContent = mcpResult.content
+		.filter((c) => c.type === "text" && typeof c.text === "string")
+		.map((c) => c.text)
+		.join("\n");
+
+	if (!textContent) {
+		return null;
+	}
+
+	return {
+		text: textContent,
+		structured: mcpResult.structuredContent,
+	};
+}
 
 export function ToolExecutionCard({
 	executionId,
@@ -451,29 +488,76 @@ export function ToolExecutionCard({
 									<div className="border-t">
 										{/* Result Section */}
 										<div className="px-3 py-2 max-h-64 overflow-auto">
-											{typeof result === "object" &&
-											result !== null ? (
-												<PrettyInputDisplay
-													inputData={
-														result as Record<
-															string,
-															unknown
-														>
-													}
-													showToggle={true}
-													defaultView="pretty"
-												/>
-											) : (
-												<pre className="text-xs font-mono whitespace-pre-wrap text-muted-foreground">
-													{typeof result === "string"
-														? result
-														: JSON.stringify(
-																result,
-																null,
-																2,
-															)}
-												</pre>
-											)}
+											{(() => {
+												const mcpContent =
+													extractMcpContent(result);
+												if (mcpContent) {
+													return (
+														<div className="space-y-2">
+															<ToolOutputDisplay
+																text={
+																	mcpContent.text
+																}
+															/>
+															{mcpContent.structured !==
+																undefined &&
+																mcpContent.structured !==
+																	null && (
+																	<details className="text-xs">
+																		<summary className="cursor-pointer text-muted-foreground hover:text-foreground">
+																			View
+																			raw
+																			data
+																		</summary>
+																		<PrettyInputDisplay
+																			inputData={
+																				mcpContent.structured as Record<
+																					string,
+																					unknown
+																				>
+																			}
+																			showToggle={
+																				false
+																			}
+																			defaultView="tree"
+																		/>
+																	</details>
+																)}
+														</div>
+													);
+												}
+												// Legacy: render as before
+												if (
+													typeof result ===
+														"object" &&
+													result !== null
+												) {
+													return (
+														<PrettyInputDisplay
+															inputData={
+																result as Record<
+																	string,
+																	unknown
+																>
+															}
+															showToggle={true}
+															defaultView="pretty"
+														/>
+													);
+												}
+												return (
+													<pre className="text-xs font-mono whitespace-pre-wrap text-muted-foreground">
+														{typeof result ===
+														"string"
+															? result
+															: JSON.stringify(
+																	result,
+																	null,
+																	2
+																)}
+													</pre>
+												);
+											})()}
 										</div>
 										{/* Logs Section */}
 										{displayLogs.length > 0 && (
