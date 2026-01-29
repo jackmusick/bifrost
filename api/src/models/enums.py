@@ -92,6 +92,7 @@ class MessageRole(str, Enum):
     ASSISTANT = "assistant"
     SYSTEM = "system"
     TOOL = "tool"
+    TOOL_CALL = "tool_call"
 
 
 class AgentChannel(str, Enum):
