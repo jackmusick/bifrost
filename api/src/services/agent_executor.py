@@ -336,22 +336,24 @@ IMPORTANT: When the user's request can be fulfilled using one of your tools, you
                     final_content = collected_content
                     break
 
-                # Save assistant message with tool calls
-                assistant_tool_calls = [
-                    {"id": tc.id, "name": tc.name, "arguments": tc.arguments}
-                    for tc in collected_tool_calls
-                ]
-                await self._save_message(
-                    conversation_id=conversation.id,
-                    role=MessageRole.ASSISTANT,
-                    content=collected_content if collected_content else None,
-                    tool_calls=assistant_tool_calls,
-                    token_count_input=chunk_input_tokens,
-                    token_count_output=chunk_output_tokens,
-                    model=llm_client.model_name,
-                )
+                # Save text content as its own message BEFORE tools (no tool_calls embedded)
+                # This ensures text appears before tools in timeline after refresh
+                if collected_content:
+                    text_msg = await self._save_message(
+                        conversation_id=conversation.id,
+                        role=MessageRole.ASSISTANT,
+                        content=collected_content,
+                        token_count_input=chunk_input_tokens,
+                        token_count_output=chunk_output_tokens,
+                        model=llm_client.model_name,
+                    )
+                    if stream:
+                        yield ChatStreamChunk(
+                            type="assistant_message_end",
+                            message_id=str(text_msg.id),
+                        )
 
-                # Add assistant message to history
+                # Add assistant message to history (text + tool_calls for LLM context)
                 messages.append(
                     LLMMessage(
                         role="assistant",
