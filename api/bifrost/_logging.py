@@ -16,7 +16,10 @@ import json
 import logging
 import threading
 from datetime import datetime
-from typing import Any
+from typing import TYPE_CHECKING, Any
+
+if TYPE_CHECKING:
+    from sqlalchemy.ext.asyncio import AsyncSession
 from uuid import UUID
 
 import redis as redis_sync
@@ -386,7 +389,10 @@ def close_thread_redis() -> None:
 # =============================================================================
 
 
-async def flush_logs_to_postgres(execution_id: str | UUID) -> int:
+async def flush_logs_to_postgres(
+    execution_id: str | UUID,
+    session: "AsyncSession | None" = None,
+) -> int:
     """
     Flush all logs from Redis Stream to Postgres.
 
@@ -395,11 +401,12 @@ async def flush_logs_to_postgres(execution_id: str | UUID) -> int:
 
     Args:
         execution_id: Execution UUID
+        session: Optional database session. If provided, uses it and
+                 caller is responsible for commit. If None, creates own session.
 
     Returns:
         Number of logs persisted
     """
-    from src.core.database import get_session_factory
     from src.models.orm import ExecutionLog
 
     exec_id = str(execution_id)
@@ -443,10 +450,17 @@ async def flush_logs_to_postgres(execution_id: str | UUID) -> int:
                 return 0
 
             # Batch insert to Postgres
-            session_factory = get_session_factory()
-            async with session_factory() as db:
-                db.add_all(logs_to_insert)
-                await db.commit()
+            if session is not None:
+                # Use provided session (caller manages commit)
+                session.add_all(logs_to_insert)
+            else:
+                # Create own session
+                from src.core.database import get_session_factory
+
+                session_factory = get_session_factory()
+                async with session_factory() as db:
+                    db.add_all(logs_to_insert)
+                    await db.commit()
 
             # Clear the stream after successful persistence
             await r.delete(stream_key)
