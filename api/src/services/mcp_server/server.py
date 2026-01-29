@@ -350,23 +350,102 @@ class BifrostMCPServer:
         return [f"mcp__{self._name}__{t}" for t in tools]
 
 
-def get_system_tools() -> list[dict[str, str]]:
+def get_system_tools() -> list[dict[str, Any]]:
     """
     Get system tool metadata from tool modules.
 
-    Returns list of dicts with id, name, description for each tool.
-    Used by /api/tools endpoint.
+    Returns list of dicts with id, name, description, and parameters for each tool.
+    Used by /api/tools endpoint and agent executor for LLM tool definitions.
     """
+    import inspect
+    from typing import get_origin, get_args, Union
+
+    def python_type_to_json_schema(annotation: Any) -> dict[str, Any]:
+        """Convert Python type annotation to JSON Schema."""
+        if annotation is inspect.Parameter.empty or annotation is None:
+            return {"type": "string"}
+
+        # Handle Optional types (Union[X, None])
+        origin = get_origin(annotation)
+        if origin is Union:
+            args = [a for a in get_args(annotation) if a is not type(None)]
+            if len(args) == 1:
+                return python_type_to_json_schema(args[0])
+
+        # Basic type mappings
+        if annotation is str:
+            return {"type": "string"}
+        elif annotation is int:
+            return {"type": "integer"}
+        elif annotation is float:
+            return {"type": "number"}
+        elif annotation is bool:
+            return {"type": "boolean"}
+        elif annotation is dict or origin is dict:
+            return {"type": "object"}
+        elif annotation is list or origin is list:
+            return {"type": "array"}
+
+        return {"type": "string"}
+
     tools = []
     for module in TOOL_MODULES:
         if hasattr(module, "TOOLS"):
+            # Build a mapping of tool_id -> function for this module
+            tool_funcs: dict[str, Any] = {}
+            for attr_name in dir(module):
+                attr = getattr(module, attr_name)
+                if callable(attr) and not attr_name.startswith("_"):
+                    tool_funcs[attr_name] = attr
+
             for tool_id, name, description in module.TOOLS:
+                # Get the function and extract parameters
+                func = tool_funcs.get(tool_id)
+                parameters: dict[str, Any] = {
+                    "type": "object",
+                    "properties": {},
+                    "required": [],
+                }
+
+                if func:
+                    sig = inspect.signature(func)
+                    params = list(sig.parameters.items())
+                    # Skip first param (context)
+                    for param_name, param in params[1:]:
+                        prop = python_type_to_json_schema(param.annotation)
+                        parameters["properties"][param_name] = prop
+                        # Required if no default value
+                        if param.default is inspect.Parameter.empty:
+                            parameters["required"].append(param_name)
+
                 tools.append({
                     "id": tool_id,
                     "name": name,
                     "description": description,
+                    "parameters": parameters,
                 })
     return tools
+
+
+def get_system_tool_function(tool_id: str) -> Any | None:
+    """
+    Get the callable function for a system tool by ID.
+
+    Args:
+        tool_id: The tool ID (e.g., "execute_workflow", "list_agents")
+
+    Returns:
+        The async callable function, or None if not found.
+    """
+    for module in TOOL_MODULES:
+        if hasattr(module, "TOOLS"):
+            # Check if this tool is in this module
+            tool_ids_in_module = [t[0] for t in module.TOOLS]
+            if tool_id in tool_ids_in_module:
+                # Get the function from the module
+                if hasattr(module, tool_id):
+                    return getattr(module, tool_id)
+    return None
 
 
 # =============================================================================

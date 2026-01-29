@@ -568,9 +568,9 @@ IMPORTANT: When the user's request can be fulfilled using one of your tools, you
 
     def _get_system_tool_definitions(self, tool_ids: list[str]) -> list[ToolDefinition]:
         """Get ToolDefinition objects for system tools by ID."""
-        from src.services.mcp_server.server import get_system_tool_definitions
+        from src.services.mcp_server.server import get_system_tools
 
-        all_system_tools = get_system_tool_definitions()
+        all_system_tools = get_system_tools()
         tool_map = {t["id"]: t for t in all_system_tools}
 
         definitions = []
