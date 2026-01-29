@@ -111,45 +111,35 @@ export function useChatStream({
 				case "message_start": {
 					const convId = currentConversationIdRef.current;
 					if (convId && chunk.assistant_message_id) {
-						const currentStreamingId =
-							useChatStore.getState().streamingMessageIds[convId];
+						// NOTE: We do NOT clear optimistic messages here.
+						// Let integrateMessages() handle deduplication when React Query fetches server data.
+						// Clearing here causes a race condition where the optimistic message disappears
+						// before the server message arrives, causing visible flicker.
 
-						if (currentStreamingId) {
-							// Update the message with the real ID from backend
-							const messages =
-								useChatStore.getState().messagesByConversation[
-									convId
-								] || [];
-							const msgIndex = messages.findIndex(
-								(m) => m.id === currentStreamingId,
+						// Create assistant message now (with server-provided ID and current timestamp)
+						// This ensures assistant message has a later timestamp than the user message
+						const assistantMessage: UnifiedMessage = {
+							id: chunk.assistant_message_id,
+							conversation_id: convId,
+							role: "assistant",
+							content: "",
+							sequence: Date.now(),
+							created_at: new Date().toISOString(),
+							isStreaming: true,
+							isOptimistic: false, // Not optimistic - we have server ID
+						};
+						addMessage(convId, assistantMessage);
+
+						// Track which message is streaming
+						useChatStore
+							.getState()
+							.setStreamingMessageIdForConversation(
+								convId,
+								chunk.assistant_message_id,
 							);
-
-							if (msgIndex >= 0) {
-								const updatedMessages = [
-									...messages,
-								] as UnifiedMessage[];
-								updatedMessages[msgIndex] = {
-									...updatedMessages[msgIndex],
-									id: chunk.assistant_message_id,
-									isOptimistic: false,
-								};
-								useChatStore
-									.getState()
-									.setMessages(
-										convId,
-										updatedMessages as typeof messages,
-									);
-								useChatStore
-									.getState()
-									.setStreamingMessageIdForConversation(
-										convId,
-										chunk.assistant_message_id,
-									);
-							}
-						}
 					}
 
-					// Invalidate to fetch user message
+					// Invalidate to fetch user message (server-confirmed)
 					const convIdForInvalidate = currentConversationIdRef.current;
 					if (convIdForInvalidate) {
 						queryClient.invalidateQueries({
@@ -191,22 +181,24 @@ export function useChatStream({
 					break;
 
 				case "tool_call":
-					if (chunk.tool_call) {
+					if (chunk.tool_call && chunk.message_id) {
 						const convId = currentConversationIdRef.current;
-						const streamingId = convId
-							? useChatStore.getState().streamingMessageIds[convId]
-							: null;
-
-						if (convId && streamingId) {
-							const messages =
-								useChatStore.getState().messagesByConversation[convId] || [];
-							const msg = messages.find((m) => m.id === streamingId);
-
-							if (msg) {
-								useChatStore.getState().updateMessage(convId, streamingId, {
-									tool_calls: [...(msg.tool_calls || []), chunk.tool_call],
-								});
-							}
+						if (convId) {
+							// Add TOOL_CALL message directly
+							const toolCallMessage: UnifiedMessage = {
+								id: chunk.message_id,
+								conversation_id: convId,
+								role: "tool_call",
+								content: null,
+								tool_name: chunk.tool_call.name,
+								tool_input: chunk.tool_call.arguments,
+								tool_state: "running",
+								tool_call_id: chunk.tool_call.id,
+								execution_id: chunk.execution_id || null,
+								sequence: Date.now(),
+								created_at: new Date().toISOString(),
+							};
+							addMessage(convId, toolCallMessage);
 						}
 					}
 					break;
@@ -217,7 +209,19 @@ export function useChatStream({
 					break;
 
 				case "tool_result":
-					// Tool results are reflected in the API messages when done
+					if (chunk.tool_result && chunk.message_id) {
+						const convId = currentConversationIdRef.current;
+						if (convId) {
+							// Update the TOOL_CALL message with result
+							useChatStore.getState().updateMessage(convId, chunk.message_id, {
+								tool_state: chunk.tool_result.error ? "error" : "completed",
+								tool_result: chunk.tool_result.error
+									? { error: chunk.tool_result.error }
+									: chunk.tool_result.result,
+								duration_ms: chunk.tool_result.duration_ms,
+							});
+						}
+					}
 					break;
 
 				case "assistant_message_start":
@@ -265,6 +269,17 @@ export function useChatStream({
 						queryClient.invalidateQueries({
 							queryKey: ["get", "/api/chat/conversations"],
 						});
+
+						// Safety net: Clear any stale optimistic user messages after React Query settles.
+						// Normally integrateMessages() handles deduplication, but this catches edge cases.
+						const convIdCaptured = convId;
+						setTimeout(() => {
+							const msgs = (useChatStore.getState().messagesByConversation[convIdCaptured] || []) as UnifiedMessage[];
+							const cleaned = msgs.filter(m => !(m.isOptimistic && m.role === "user"));
+							if (cleaned.length !== msgs.length) {
+								useChatStore.getState().setMessages(convIdCaptured, cleaned);
+							}
+						}, 500);
 					}
 					break;
 				}
@@ -339,6 +354,7 @@ export function useChatStream({
 			onError,
 			onAgentSwitch,
 			addSystemEvent,
+			addMessage,
 			setTodos,
 		],
 	);
@@ -377,42 +393,19 @@ export function useChatStream({
 			};
 			addMessage(conversationId, userMessage);
 
-			// Generate ID for assistant message (will be replaced by backend ID on message_start)
-			const assistantMessageId = generateMessageId();
-
-			// Add placeholder streaming message for assistant
-			const assistantMessage: UnifiedMessage = {
-				id: assistantMessageId,
-				conversation_id: conversationId,
-				role: "assistant",
-				content: "",
-				sequence: Date.now() + 1,
-				created_at: now,
-				isStreaming: true,
-				isOptimistic: true,
-			};
-			addMessage(conversationId, assistantMessage);
-
-			// Track which message is streaming
-			useChatStore
-				.getState()
-				.setStreamingMessageIdForConversation(
-					conversationId,
-					assistantMessageId,
-				);
-
-			// Start streaming state
+			// Start streaming state (no assistant placeholder yet - created on message_start)
 			startStreaming();
 
-			// Send the chat message
+			// Send the chat message with localId for deduplication
 			const sent = webSocketService.sendChatMessage(
 				conversationId,
 				message,
+				userMessageId,
 			);
 			if (!sent) {
 				try {
 					await webSocketService.connectToChat(conversationId);
-					webSocketService.sendChatMessage(conversationId, message);
+					webSocketService.sendChatMessage(conversationId, message, userMessageId);
 				} catch (error) {
 					console.error(
 						"[useChatStream] Failed to send message:",
