@@ -27,12 +27,17 @@ class SyncError(Exception):
     pass
 
 
-async def flush_pending_changes(execution_id: str) -> int:
+async def flush_pending_changes(
+    execution_id: str,
+    session: "AsyncSession | None" = None,
+) -> int:
     """
     Flush all pending changes for an execution to Postgres.
 
     Args:
         execution_id: Execution ID to flush
+        session: Optional database session. If provided, uses it and
+                 caller is responsible for commit. If None, creates own session.
 
     Returns:
         int: Number of changes applied
@@ -40,8 +45,6 @@ async def flush_pending_changes(execution_id: str) -> int:
     Raises:
         SyncError: If flush fails after retries
     """
-    from src.core.database import get_session_factory
-
     r = await get_shared_redis()
     redis_key = pending_changes_key(execution_id)
 
@@ -58,14 +61,23 @@ async def flush_pending_changes(execution_id: str) -> int:
 
     changes.sort(key=lambda c: c.get("sequence", 0))
 
-    session_factory = get_session_factory()
+    async def _apply_all(db: "AsyncSession") -> None:
+        for change in changes:
+            await _apply_change(db, change)
 
     for attempt in range(3):
         try:
-            async with session_factory() as db:
-                for change in changes:
-                    await _apply_change(db, change)
-                await db.commit()
+            if session is not None:
+                # Use provided session (caller manages commit)
+                await _apply_all(session)
+            else:
+                # Create own session
+                from src.core.database import get_session_factory
+
+                session_factory = get_session_factory()
+                async with session_factory() as db:
+                    await _apply_all(db)
+                    await db.commit()
 
             await r.delete(redis_key)
             logger.info(f"Flushed {len(changes)} changes for {execution_id}")
