@@ -43,6 +43,21 @@ from src.services.tool_registry import ToolRegistry
 logger = logging.getLogger(__name__)
 
 
+def _serialize_for_json(value: Any) -> str:
+    """Serialize a value to JSON string, handling Pydantic models.
+
+    Uses pydantic_core for robust serialization that handles nested models,
+    falling back to str() for unknown types.
+    """
+    if value is None:
+        return ""
+    if isinstance(value, str):
+        return value
+    import pydantic_core
+
+    return pydantic_core.to_json(value, fallback=str).decode()
+
+
 # Maximum tool call iterations to prevent infinite loops
 MAX_TOOL_ITERATIONS = 10
 
@@ -117,6 +132,7 @@ class AgentExecutor:
         stream: bool = True,
         enable_routing: bool = True,
         is_platform_admin: bool = False,
+        local_id: str | None = None,
     ) -> AsyncIterator[ChatStreamChunk]:
         """
         Process a user message and generate a response.
@@ -171,6 +187,7 @@ class AgentExecutor:
                 conversation_id=conversation.id,
                 role=MessageRole.USER,
                 content=user_message,
+                local_id=local_id,
             )
 
             # 3b. Generate assistant message ID upfront and send message_start
@@ -179,6 +196,7 @@ class AgentExecutor:
                 type="message_start",
                 user_message_id=str(user_msg.id),
                 assistant_message_id=str(assistant_message_id),
+                local_id=local_id,
             )
 
             # 4. Get tool definitions for this agent (empty if agentless)
@@ -354,7 +372,27 @@ IMPORTANT: When the user's request can be fulfilled using one of your tools, you
                     # Generate execution_id for this tool call (for log streaming)
                     execution_id = str(uuid4())
 
-                    # Emit running status with execution_id
+                    # Save TOOL_CALL message with state "running"
+                    tool_call_msg = await self._save_message(
+                        conversation_id=conversation.id,
+                        role=MessageRole.TOOL_CALL,
+                        tool_name=tc.name,
+                        tool_input=tc.arguments,
+                        tool_state="running",
+                        tool_call_id=tc.id,
+                        execution_id=execution_id,
+                    )
+
+                    # Emit tool_call event with message ID
+                    if stream:
+                        yield ChatStreamChunk(
+                            type="tool_call",
+                            tool_call=tool_call,
+                            execution_id=execution_id,
+                            message_id=str(tool_call_msg.id),
+                        )
+
+                    # Emit running status
                     if stream:
                         yield ChatStreamChunk(
                             type="tool_progress",
@@ -368,28 +406,37 @@ IMPORTANT: When the user's request can be fulfilled using one of your tools, you
                     # Execute the tool with pre-generated execution_id
                     tool_result = await self._execute_tool(tc, agent, conversation, execution_id=execution_id)
 
+                    # Update TOOL_CALL message with result and state
+                    await self._update_tool_call_message(
+                        message_id=tool_call_msg.id,
+                        tool_state="completed" if not tool_result.error else "error",
+                        tool_result=tool_result.result if not tool_result.error else {"error": tool_result.error},
+                        duration_ms=tool_result.duration_ms,
+                    )
+
                     if stream:
                         yield ChatStreamChunk(
                             type="tool_result",
                             tool_result=tool_result,
+                            message_id=str(tool_call_msg.id),
                         )
 
-                    # Save tool result message with execution_id for log retrieval
+                    # Still save TOOL message for Anthropic API compatibility (history reconstruction)
                     await self._save_message(
                         conversation_id=conversation.id,
                         role=MessageRole.TOOL,
-                        content=json.dumps(tool_result.result) if tool_result.result else tool_result.error,
+                        content=_serialize_for_json(tool_result.result) if tool_result.result else tool_result.error,
                         tool_call_id=tc.id,
                         tool_name=tc.name,
                         execution_id=execution_id,
                         duration_ms=tool_result.duration_ms,
                     )
 
-                    # Add tool result to message history
+                    # Add tool result to message history for LLM
                     messages.append(
                         LLMMessage(
                             role="tool",
-                            content=json.dumps(tool_result.result) if tool_result.result else tool_result.error,
+                            content=_serialize_for_json(tool_result.result) if tool_result.result else tool_result.error,
                             tool_call_id=tc.id,
                             tool_name=tc.name,
                         )
@@ -444,61 +491,151 @@ IMPORTANT: When the user's request can be fulfilled using one of your tools, you
             )
 
     async def _get_agent_tools(self, agent: Agent) -> list[ToolDefinition]:
-        """Get tool definitions for an agent from its assigned tools."""
-        tools: list[ToolDefinition] = []
+        """
+        Get tool definitions for an agent from its assigned tools.
 
-        # Get workflow IDs from agent_tools junction table
+        Tool Priority (for conflict resolution):
+        1. System tools (unprefixed, e.g., "execute_workflow", "search_knowledge")
+        2. Workflow tools (prefixed, e.g., "halopsa_list_tickets", "wf_add_comment")
+
+        When a workflow tool's normalized name collides with a system tool,
+        the system tool wins and a notification is created.
+        """
+        tools: list[ToolDefinition] = []
+        seen_names: dict[str, str] = {}  # name → source description for conflict tracking
+        conflicts: list[tuple[str, str, str]] = []  # (name, loser_source, winner_source)
+
+        # 1. System tools first (they always win conflicts)
+        system_tool_ids = list(agent.system_tools or [])
+
+        # Auto-add search_knowledge when agent has knowledge sources
+        if agent.knowledge_sources and "search_knowledge" not in system_tool_ids:
+            system_tool_ids.append("search_knowledge")
+            logger.info(
+                f"Agent '{agent.name}' has knowledge sources {agent.knowledge_sources}, "
+                "auto-adding search_knowledge system tool"
+            )
+
+        if system_tool_ids:
+            system_tool_defs = self._get_system_tool_definitions(system_tool_ids)
+            for tool in system_tool_defs:
+                seen_names[tool.name] = f"system tool '{tool.name}'"
+                tools.append(tool)
+            logger.info(f"Agent '{agent.name}' has {len(system_tool_defs)} system tools")
+
+        # 2. Workflow tools (sorted by ID for determinism)
         tool_ids = [tool.id for tool in agent.tools]
-        logger.debug(f"Agent '{agent.name}' has {len(agent.tools)} assigned tools: {tool_ids}")
+        logger.debug(f"Agent '{agent.name}' has {len(agent.tools)} assigned workflow tools: {tool_ids}")
 
         if tool_ids:
             tool_definitions = await self.tool_registry.get_tool_definitions(tool_ids)
             logger.debug(f"Tool registry returned {len(tool_definitions)} definitions for IDs {tool_ids}")
 
-            tools.extend([
-                ToolDefinition(
-                    name=td.name,
-                    description=td.description,
-                    parameters=td.parameters,
-                )
-                for td in tool_definitions
-            ])
+            # Sort by ID for deterministic conflict resolution
+            tool_definitions_sorted = sorted(tool_definitions, key=lambda t: str(t.id))
+
+            for td in tool_definitions_sorted:
+                if td.name in seen_names:
+                    # Conflict: this workflow tool's name collides with existing tool
+                    conflicts.append((
+                        td.name,
+                        f"workflow '{td.workflow_name}'",
+                        seen_names[td.name],
+                    ))
+                    logger.warning(
+                        f"Tool name conflict: workflow '{td.workflow_name}' ({td.name}) "
+                        f"hidden by {seen_names[td.name]}"
+                    )
+                else:
+                    seen_names[td.name] = f"workflow '{td.workflow_name}'"
+                    tools.append(
+                        ToolDefinition(
+                            name=td.name,
+                            description=td.description,
+                            parameters=td.parameters,
+                        )
+                    )
         else:
             logger.info(f"Agent '{agent.name}' has no workflow tools assigned")
 
-        # Add knowledge search tool if agent has knowledge sources
-        if agent.knowledge_sources:
-            knowledge_tool = self._get_knowledge_tool(agent.knowledge_sources)
-            tools.append(knowledge_tool)
-            logger.info(f"Agent '{agent.name}' has knowledge sources: {agent.knowledge_sources}")
+        # 3. Notify about conflicts (async, non-blocking)
+        if conflicts:
+            await self._notify_tool_conflicts(agent, conflicts)
 
         return tools
 
-    def _get_knowledge_tool(self, namespaces: list[str]) -> ToolDefinition:
-        """
-        Create the built-in knowledge search tool definition.
+    def _get_system_tool_definitions(self, tool_ids: list[str]) -> list[ToolDefinition]:
+        """Get ToolDefinition objects for system tools by ID."""
+        from src.services.mcp_server.server import get_system_tool_definitions
 
-        This tool allows agents to search their configured knowledge namespaces.
+        all_system_tools = get_system_tool_definitions()
+        tool_map = {t["id"]: t for t in all_system_tools}
+
+        definitions = []
+        for tool_id in tool_ids:
+            if tool_id in tool_map:
+                t = tool_map[tool_id]
+                definitions.append(
+                    ToolDefinition(
+                        name=t["id"],
+                        description=t["description"],
+                        parameters=t["parameters"],
+                    )
+                )
+
+        return definitions
+
+    async def _notify_tool_conflicts(
+        self,
+        agent: Agent,
+        conflicts: list[tuple[str, str, str]],
+    ) -> None:
         """
-        ns_list = ", ".join(namespaces)
-        return ToolDefinition(
-            name="search_knowledge",
-            description=f"Search the knowledge base for relevant information. Searches these namespaces: {ns_list}. Use this tool when you need to find information from stored documents, policies, FAQs, or other knowledge sources.",
-            parameters={
-                "type": "object",
-                "properties": {
-                    "query": {
-                        "type": "string",
-                        "description": "The search query to find relevant documents",
-                    },
-                    "limit": {
-                        "type": "integer",
-                        "description": "Maximum number of results to return (default: 5)",
-                    },
-                },
-                "required": ["query"],
-            },
+        Create system notification for tool name conflicts.
+
+        Args:
+            agent: The agent with conflicting tools
+            conflicts: List of (name, loser_source, winner_source) tuples
+        """
+        from src.models.contracts.notifications import (
+            NotificationCategory,
+            NotificationCreate,
         )
+        from src.services.notification_service import get_notification_service
+
+        try:
+            conflict_msgs = [
+                f"'{name}' ({loser}) hidden by {winner}"
+                for name, loser, winner in conflicts
+            ]
+            description = "; ".join(conflict_msgs)
+
+            # Truncate if too long (max 500 chars per NotificationCreate)
+            if len(description) > 480:
+                description = description[:477] + "..."
+
+            notification_service = get_notification_service()
+            await notification_service.create_notification(
+                user_id="system",
+                request=NotificationCreate(
+                    category=NotificationCategory.SYSTEM,
+                    title=f"Tool conflicts in agent '{agent.name}'",
+                    description=description,
+                    metadata={
+                        "agent_id": str(agent.id),
+                        "agent_name": agent.name,
+                        "conflicts": [
+                            {"name": name, "loser": loser, "winner": winner}
+                            for name, loser, winner in conflicts
+                        ],
+                    },
+                ),
+                for_admins=True,  # Notify platform admins
+            )
+            logger.info(f"Created notification for {len(conflicts)} tool conflicts in agent '{agent.name}'")
+        except Exception as e:
+            # Don't fail the agent execution just because notification failed
+            logger.warning(f"Failed to create tool conflict notification: {e}")
 
     async def _build_message_history(
         self, agent: Agent | None, conversation: Conversation
@@ -736,6 +873,12 @@ IMPORTANT: When the user's request can be fulfilled using one of your tools, you
         model: str | None = None,
         duration_ms: int | None = None,
         message_id: UUID | None = None,
+        # New fields for TOOL_CALL messages
+        tool_state: str | None = None,
+        tool_result: Any | None = None,
+        tool_input: dict[str, Any] | None = None,
+        # Client-generated ID for optimistic update reconciliation
+        local_id: str | None = None,
     ) -> Message:
         """Save a message to the conversation."""
         # Get next sequence number
@@ -760,6 +903,12 @@ IMPORTANT: When the user's request can be fulfilled using one of your tools, you
             model=model,
             duration_ms=duration_ms,
             sequence=next_sequence,
+            # New fields for TOOL_CALL messages
+            tool_state=tool_state,
+            tool_result=tool_result,
+            tool_input=tool_input,
+            # Client-generated ID for optimistic update reconciliation
+            local_id=local_id,
         )
         self.session.add(message)
         await self.session.flush()
@@ -774,6 +923,23 @@ IMPORTANT: When the user's request can be fulfilled using one of your tools, you
 
         return message
 
+    async def _update_tool_call_message(
+        self,
+        message_id: UUID,
+        tool_state: str,
+        tool_result: Any | None = None,
+        duration_ms: int | None = None,
+    ) -> None:
+        """Update a TOOL_CALL message with execution result."""
+        result = await self.session.execute(
+            select(Message).where(Message.id == message_id)
+        )
+        message = result.scalar_one()
+        message.tool_state = tool_state
+        message.tool_result = tool_result
+        message.duration_ms = duration_ms
+        await self.session.flush()
+
     async def _execute_tool(
         self,
         tool_call: ToolCallRequest,
@@ -782,10 +948,10 @@ IMPORTANT: When the user's request can be fulfilled using one of your tools, you
         execution_id: str | None = None,
     ) -> ToolResult:
         """
-        Execute a tool (workflow, delegation, or knowledge search) and return the result.
+        Execute a tool (workflow, delegation, system tool, or knowledge search) and return the result.
 
         This integrates with the existing workflow execution system
-        and handles agent delegation and built-in knowledge search.
+        and handles agent delegation, system tools, and built-in knowledge search.
         """
         start_time = time.time()
 
@@ -796,6 +962,10 @@ IMPORTANT: When the user's request can be fulfilled using one of your tools, you
         # Check if this is a delegation tool call
         if tool_call.name.startswith("delegate_to_") and agent:
             return await self._execute_delegation(tool_call, agent)
+
+        # Check if this is a system tool call
+        if agent and tool_call.name in (agent.system_tools or []):
+            return await self._execute_system_tool(tool_call, agent, conversation)
 
         try:
             # Get the workflow for this tool
@@ -1106,6 +1276,77 @@ IMPORTANT: When the user's request can be fulfilled using one of your tools, you
 
         except Exception as e:
             logger.error(f"Delegation error for {tool_call.name}: {e}", exc_info=True)
+            return ToolResult(
+                tool_call_id=tool_call.id,
+                tool_name=tool_call.name,
+                result=None,
+                error=str(e),
+                duration_ms=int((time.time() - start_time) * 1000),
+            )
+
+    async def _execute_system_tool(
+        self,
+        tool_call: ToolCallRequest,
+        agent: Agent,
+        conversation: Conversation | None,
+    ) -> ToolResult:
+        """Execute a system tool and return the result."""
+        from src.services.mcp_server.server import MCPContext, get_system_tool_function
+
+        start_time = time.time()
+
+        func = get_system_tool_function(tool_call.name)
+        if not func:
+            return ToolResult(
+                tool_call_id=tool_call.id,
+                tool_name=tool_call.name,
+                result=None,
+                error=f"System tool '{tool_call.name}' not found",
+                duration_ms=int((time.time() - start_time) * 1000),
+            )
+
+        try:
+            # Get user from conversation (same pattern as workflow tool execution)
+            user = conversation.user if conversation else None
+
+            # Create context from agent/conversation/user
+            context = MCPContext(
+                user_id=str(user.id) if user else "",
+                org_id=str(agent.organization_id) if agent.organization_id else None,
+                is_platform_admin=user.is_superuser if user else False,
+                user_email=user.email if user else "",
+                user_name=user.name if user else "",
+            )
+
+            # Call the tool function
+            result = await func(context, **tool_call.arguments)
+
+            duration_ms = int((time.time() - start_time) * 1000)
+
+            # Extract result from ToolResult (FastMCP format)
+            # FastMCP ToolResult has 'content' (list[ContentBlock]) and 'structured_content' (dict)
+            # ContentBlock items are Pydantic models (TextContent, etc.) - must serialize them
+            import pydantic_core
+
+            if hasattr(result, "content") and hasattr(result, "structured_content"):
+                result_data = {
+                    "content": pydantic_core.to_jsonable_python(result.content),
+                    "structured_content": result.structured_content,
+                }
+            elif hasattr(result, "content"):
+                result_data = pydantic_core.to_jsonable_python(result.content)
+            else:
+                result_data = str(result)
+
+            return ToolResult(
+                tool_call_id=tool_call.id,
+                tool_name=tool_call.name,
+                result=result_data,
+                error=None,
+                duration_ms=duration_ms,
+            )
+        except Exception as e:
+            logger.exception(f"System tool execution failed: {tool_call.name}")
             return ToolResult(
                 tool_call_id=tool_call.id,
                 tool_name=tool_call.name,

@@ -213,6 +213,10 @@ class MessagePublic(BaseModel):
     tool_call_id: str | None = None
     tool_name: str | None = None
     execution_id: str | None = Field(default=None, description="Execution ID for tool results (for fetching logs)")
+    # New fields for TOOL_CALL messages
+    tool_state: Literal["running", "completed", "error"] | None = Field(default=None, description="Tool execution state")
+    tool_result: Any | None = Field(default=None, description="Result from tool execution")
+    tool_input: dict[str, Any] | None = Field(default=None, description="Input arguments for tool call")
     token_count_input: int | None = None
     token_count_output: int | None = None
     model: str | None = None
@@ -319,6 +323,7 @@ class ChatStreamChunk(BaseModel):
     message_id: str | None = None
     user_message_id: str | None = Field(default=None, description="Real UUID of user message (sent in message_start)")
     assistant_message_id: str | None = Field(default=None, description="Real UUID of assistant message (sent in message_start)")
+    local_id: str | None = Field(default=None, description="Client-generated ID echoed back for optimistic update reconciliation")
 
     # Conversation ID (for routing chunks to correct conversation)
     conversation_id: str | None = None

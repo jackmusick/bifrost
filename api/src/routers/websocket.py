@@ -401,6 +401,7 @@ async def websocket_connect(
                 # Handle chat message - process and stream response
                 conversation_id = data.get("conversation_id")
                 message_text = data.get("message", "")
+                local_id = data.get("local_id")  # Client-generated ID for dedup
 
                 if not conversation_id or not message_text:
                     await websocket.send_json({
@@ -425,6 +426,7 @@ async def websocket_connect(
                         user=user,
                         conversation_id=conversation_id,
                         message=message_text,
+                        local_id=local_id,
                     )
                 )
 
@@ -530,6 +532,7 @@ async def _process_chat_message(
     user: UserPrincipal,
     conversation_id: str,
     message: str,
+    local_id: str | None = None,
 ) -> None:
     """
     Process a chat message and stream the response.
@@ -580,6 +583,7 @@ async def _process_chat_message(
                 user_message=message,
                 stream=True,
                 is_platform_admin=user.is_superuser,
+                local_id=local_id,
             ):
                 # Send chunk to WebSocket with conversation_id for client routing
                 chunk_data = chunk.model_dump(exclude_none=True)
