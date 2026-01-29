@@ -24,7 +24,7 @@ Execution Model:
 import asyncio
 import logging
 from datetime import datetime
-from typing import Any
+from typing import Any, Awaitable, cast
 
 from src.core.pubsub import publish_execution_update, publish_history_update
 from src.core.redis_client import get_redis_client
@@ -101,7 +101,7 @@ class WorkflowExecutionConsumer(BaseConsumer):
         redis_conn = await self._redis_client._get_redis()
 
         # O(1) check - does index have any members?
-        count = await redis_conn.scard("bifrost:module:index")
+        count = await cast(Awaitable[int], redis_conn.scard("bifrost:module:index"))
 
         if count == 0:
             logger.warning("Module cache empty, re-warming from DB")

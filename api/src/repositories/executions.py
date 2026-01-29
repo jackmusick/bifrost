@@ -9,10 +9,13 @@ import json
 import logging
 from datetime import datetime
 from decimal import Decimal
-from typing import Any
+from typing import TYPE_CHECKING, Any
 from uuid import UUID
 
 from sqlalchemy import desc, func, select, update
+
+if TYPE_CHECKING:
+    from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.core.auth import UserPrincipal
 from src.models import (
@@ -613,6 +616,7 @@ async def create_execution(
     status: ExecutionStatus = ExecutionStatus.RUNNING,
     is_local_execution: bool = False,
     execution_model: str | None = None,
+    session: "AsyncSession | None" = None,
 ) -> None:
     """
     Create a new execution record in PostgreSQL.
@@ -621,12 +625,15 @@ async def create_execution(
 
     Args:
         execution_model: Which system ran the execution ('process' or 'thread')
+        session: Optional database session. If provided, uses it and
+                 caller is responsible for commit. If None, creates own session.
     """
+    from sqlalchemy.ext.asyncio import AsyncSession as AsyncSessionType
+
     from src.core.database import get_session_factory
 
-    session_factory = get_session_factory()
-    async with session_factory() as session:
-        repo = ExecutionRepository(session)
+    async def _do_create(db: AsyncSessionType) -> None:
+        repo = ExecutionRepository(db)
         await repo.create_execution(
             execution_id=execution_id,
             workflow_name=workflow_name,
@@ -640,7 +647,16 @@ async def create_execution(
             is_local_execution=is_local_execution,
             execution_model=execution_model,
         )
-        await session.commit()
+
+    if session is not None:
+        # Use provided session (caller manages commit)
+        await _do_create(session)
+    else:
+        # Backward compatible: create own session
+        session_factory = get_session_factory()
+        async with session_factory() as db:
+            await _do_create(db)
+            await db.commit()
 
 
 async def update_execution(
@@ -655,17 +671,23 @@ async def update_execution(
     metrics: dict | None = None,
     time_saved: int | None = None,
     value: float | None = None,
+    session: "AsyncSession | None" = None,
 ) -> None:
     """
     Update an execution record with results.
 
     Standalone function for workers/consumers that manage their own DB sessions.
+
+    Args:
+        session: Optional database session. If provided, uses it and
+                 caller is responsible for commit. If None, creates own session.
     """
+    from sqlalchemy.ext.asyncio import AsyncSession as AsyncSessionType
+
     from src.core.database import get_session_factory
 
-    session_factory = get_session_factory()
-    async with session_factory() as session:
-        repo = ExecutionRepository(session)
+    async def _do_update(db: AsyncSessionType) -> None:
+        repo = ExecutionRepository(db)
         await repo.update_execution(
             execution_id=execution_id,
             status=status,
@@ -679,4 +701,13 @@ async def update_execution(
             time_saved=time_saved,
             value=value,
         )
-        await session.commit()
+
+    if session is not None:
+        # Use provided session (caller manages commit)
+        await _do_update(session)
+    else:
+        # Backward compatible: create own session
+        session_factory = get_session_factory()
+        async with session_factory() as db:
+            await _do_update(db)
+            await db.commit()
