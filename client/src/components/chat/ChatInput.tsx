@@ -257,7 +257,7 @@ export function ChatInput({
 									? "Add a message..."
 									: placeholder
 							}
-							disabled={disabled || isLoading}
+							disabled={disabled}
 							className={cn(
 								"w-full bg-transparent resize-none outline-none",
 								"text-base placeholder:text-muted-foreground",
