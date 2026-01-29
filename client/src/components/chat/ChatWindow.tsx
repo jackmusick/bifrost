@@ -219,23 +219,42 @@ export function ChatWindow({
 	// Create a unified timeline of messages and system events
 	type TimelineItem =
 		| { type: "message"; data: MessagePublic; timestamp: string }
+		| { type: "tool_group"; data: MessagePublic[]; timestamp: string }
 		| { type: "event"; data: SystemEvent; timestamp: string };
 
 	const timeline = useMemo<TimelineItem[]>(() => {
 		const items: TimelineItem[] = [];
+		let currentToolGroup: MessagePublic[] = [];
 
-		// Add messages (but filter out tool result messages - they render as part of tool cards)
+		const flushToolGroup = () => {
+			if (currentToolGroup.length > 0) {
+				items.push({
+					type: "tool_group",
+					data: [...currentToolGroup],
+					timestamp: currentToolGroup[0].created_at,
+				});
+				currentToolGroup = [];
+			}
+		};
+
 		for (const msg of messages) {
-			// Skip tool result messages - they're rendered as part of ToolExecutionCard
-			if (msg.tool_call_id) {
+			// Skip role: "tool" messages - they're for API compatibility only
+			if (msg.role === "tool") {
 				continue;
 			}
-			items.push({
-				type: "message",
-				data: msg,
-				timestamp: msg.created_at,
-			});
+
+			if (msg.role === "tool_call") {
+				currentToolGroup.push(msg);
+			} else {
+				flushToolGroup();
+				items.push({
+					type: "message",
+					data: msg,
+					timestamp: msg.created_at,
+				});
+			}
 		}
+		flushToolGroup();
 
 		// Add system events
 		for (const event of systemEvents) {
@@ -341,25 +360,63 @@ export function ChatWindow({
 			>
 				<div className="max-w-4xl mx-auto pt-8">
 					{/* Unified message and event rendering */}
-					{timeline.map((item) =>
-						item.type === "message" ? (
+					{timeline.map((item) => {
+						if (item.type === "event") {
+							return (
+								<ChatSystemEvent
+									key={item.data.id}
+									event={item.data}
+								/>
+							);
+						}
+
+						if (item.type === "tool_group") {
+							return (
+								<ToolExecutionGroup key={`tools-${item.data[0].id}`}>
+									{item.data.map((tc) => (
+										<ToolExecutionBadge
+											key={tc.id}
+											toolCall={{
+												id: tc.tool_call_id || tc.id,
+												name: tc.tool_name || "unknown",
+												arguments: tc.tool_input || {},
+											}}
+											status={
+												tc.tool_state === "completed"
+													? "success"
+													: tc.tool_state === "error"
+														? "failed"
+														: "pending"
+											}
+											result={tc.tool_result}
+											error={
+												tc.tool_state === "error"
+													? (tc.tool_result as { error?: string })?.error
+													: undefined
+											}
+											durationMs={tc.duration_ms || undefined}
+										/>
+									))}
+								</ToolExecutionGroup>
+							);
+						}
+
+						const msg = item.data;
+
+						// Render user/assistant messages normally
+						return (
 							<MessageWithToolCards
-								key={item.data.id}
-								message={item.data}
+								key={msg.id}
+								message={msg}
 								toolResultMessages={toolResultMessages}
 								conversationId={conversationId}
 								isStreaming={
-									(item.data as UnifiedMessage).isStreaming ||
-									item.data.id === streamingMessageId
+									(msg as UnifiedMessage).isStreaming ||
+									msg.id === streamingMessageId
 								}
 							/>
-						) : (
-							<ChatSystemEvent
-								key={item.data.id}
-								event={item.data}
-							/>
-						),
-					)}
+						);
+					})}
 
 					{/* Todo List - persistent checklist from SDK */}
 					{todos.length > 0 && (
