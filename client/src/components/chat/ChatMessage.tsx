@@ -6,10 +6,9 @@
  * Supports full markdown rendering for AI responses.
  */
 
-import { Bot, Wrench } from "lucide-react";
+import { Bot } from "lucide-react";
 import { cn } from "@/lib/utils";
 import type { components } from "@/lib/v1";
-import { Badge } from "@/components/ui/badge";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import rehypeRaw from "rehype-raw";
@@ -17,7 +16,6 @@ import { Prism as SyntaxHighlighter } from "react-syntax-highlighter";
 import { oneDark } from "react-syntax-highlighter/dist/esm/styles/prism";
 
 type MessagePublic = components["schemas"]["MessagePublic"];
-type ToolCall = components["schemas"]["ToolCall"];
 
 /**
  * Detect if text is a progress/status update rather than the final result.
@@ -79,15 +77,11 @@ function MentionBadge({ name }: { name: string }) {
 interface ChatMessageProps {
 	message: MessagePublic;
 	isStreaming?: boolean;
-	onToolCallClick?: (toolCall: ToolCall) => void;
-	hideToolBadges?: boolean;
 }
 
 export function ChatMessage({
 	message,
 	isStreaming,
-	onToolCallClick,
-	hideToolBadges,
 }: ChatMessageProps) {
 	const isUser = message.role === "user";
 
@@ -297,25 +291,6 @@ export function ChatMessage({
 						{message.content || ""}
 					</ReactMarkdown>
 				</div>
-
-				{/* Tool Calls - inline badges (hidden when cards are rendered separately) */}
-				{!hideToolBadges &&
-					message.tool_calls &&
-					message.tool_calls.length > 0 && (
-						<div className="mt-3 flex flex-wrap gap-2">
-							{message.tool_calls.map((tc) => (
-								<Badge
-									key={tc.id}
-									variant="secondary"
-									className="cursor-pointer hover:bg-secondary/80 transition-colors"
-									onClick={() => onToolCallClick?.(tc)}
-								>
-									<Wrench className="h-3 w-3 mr-1" />
-									{tc.name}
-								</Badge>
-							))}
-						</div>
-					)}
 
 				{/* Token Usage - shown on hover */}
 				{(message.token_count_input || message.token_count_output) && (

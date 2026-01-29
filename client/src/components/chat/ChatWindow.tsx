@@ -23,7 +23,6 @@ import type { components } from "@/lib/v1";
 import { integrateMessages, type UnifiedMessage } from "@/lib/chat-utils";
 
 type MessagePublic = components["schemas"]["MessagePublic"];
-type ToolCall = components["schemas"]["ToolCall"];
 
 // Stable empty array to prevent re-render loops in Zustand selectors
 const EMPTY_MESSAGES: MessagePublic[] = [];
@@ -36,7 +35,6 @@ interface MessageWithToolCardsProps {
 	toolResultMessages: Map<string, MessagePublic>;
 	/** Conversation ID for retrieving saved tool execution state */
 	conversationId: string;
-	onToolCallClick?: (toolCall: ToolCall) => void;
 	isStreaming?: boolean;
 }
 
@@ -44,7 +42,6 @@ function MessageWithToolCards({
 	message,
 	toolResultMessages,
 	conversationId,
-	onToolCallClick,
 	isStreaming,
 }: MessageWithToolCardsProps) {
 	// Get saved tool executions for this conversation
@@ -56,7 +53,6 @@ function MessageWithToolCards({
 		return (
 			<ChatMessage
 				message={message}
-				onToolCallClick={onToolCallClick}
 				isStreaming={isStreaming}
 			/>
 		);
@@ -129,8 +125,6 @@ function MessageWithToolCards({
 			{message.content && message.content.trim().length > 0 && (
 				<ChatMessage
 					message={message}
-					onToolCallClick={onToolCallClick}
-					hideToolBadges={true}
 					isStreaming={isStreaming && !hasToolCalls}
 				/>
 			)}
@@ -141,7 +135,6 @@ function MessageWithToolCards({
 interface ChatWindowProps {
 	conversationId: string | undefined;
 	agentName?: string | null;
-	onToolCallClick?: (toolCall: ToolCall) => void;
 }
 
 // Threshold in pixels - if within this distance from bottom, consider "at bottom"
@@ -150,7 +143,6 @@ const SCROLL_THRESHOLD = 100;
 export function ChatWindow({
 	conversationId,
 	agentName,
-	onToolCallClick,
 }: ChatWindowProps) {
 	const messagesEndRef = useRef<HTMLDivElement>(null);
 	const containerRef = useRef<HTMLDivElement>(null);
@@ -356,7 +348,6 @@ export function ChatWindow({
 								message={item.data}
 								toolResultMessages={toolResultMessages}
 								conversationId={conversationId}
-								onToolCallClick={onToolCallClick}
 								isStreaming={
 									(item.data as UnifiedMessage).isStreaming ||
 									item.data.id === streamingMessageId

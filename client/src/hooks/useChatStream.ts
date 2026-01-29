@@ -186,7 +186,7 @@ export function useChatStream({
 						const convId = currentConversationIdRef.current;
 						if (!convId) break;
 
-						let streamingId = useChatStore.getState().streamingMessageIds[convId];
+						const streamingId = useChatStore.getState().streamingMessageIds[convId];
 
 						// If no streaming message exists (after assistant_message_end), create new one
 						if (!streamingId) {

@@ -14,18 +14,13 @@ import { useChatStore } from "@/stores/chatStore";
 import { useConversation, useConversationStats } from "@/hooks/useChat";
 import { useUserPermissions } from "@/hooks/useUserPermissions";
 import { cn } from "@/lib/utils";
-import type { components } from "@/lib/v1";
-
-type ToolCall = components["schemas"]["ToolCall"];
 
 interface ChatLayoutProps {
 	initialConversationId?: string;
-	onToolCallClick?: (toolCall: ToolCall) => void;
 }
 
 export function ChatLayout({
 	initialConversationId,
-	onToolCallClick,
 }: ChatLayoutProps) {
 	const [isSidebarOpen, setIsSidebarOpen] = useState(true);
 
@@ -212,7 +207,6 @@ export function ChatLayout({
 				<ChatWindow
 					conversationId={activeConversationId ?? undefined}
 					agentName={conversation?.agent_name}
-					onToolCallClick={onToolCallClick}
 				/>
 			</div>
 		</div>
