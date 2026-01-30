@@ -11,6 +11,7 @@ For real-time streaming, use the WebSocket endpoint at /ws/connect
 import json
 import logging
 from datetime import datetime
+from typing import Literal, cast
 from uuid import UUID, uuid4
 
 from fastapi import APIRouter, HTTPException, status
@@ -26,6 +27,7 @@ from src.models.contracts.agents import (
     ConversationPublic,
     ConversationSummary,
     MessagePublic,
+    ToolCall,
 )
 from src.models.enums import AgentAccessLevel
 from src.models.orm import Agent, AgentRole, Conversation, Message
@@ -283,17 +285,21 @@ async def get_messages(
             role=m.role,
             content=m.content,
             tool_calls=[
-                {
-                    "id": tc["id"],
-                    "name": tc["name"],
-                    "arguments": json.loads(tc.get("arguments", "{}"))
+                ToolCall(
+                    id=tc["id"],
+                    name=tc["name"],
+                    arguments=json.loads(tc.get("arguments", "{}"))
                     if isinstance(tc.get("arguments"), str)
                     else tc.get("arguments", {}),
-                }
+                )
                 for tc in (m.tool_calls or [])
             ] if m.tool_calls else None,
             tool_call_id=m.tool_call_id,
             tool_name=m.tool_name,
+            execution_id=m.execution_id,
+            tool_state=cast(Literal["running", "completed", "error"] | None, m.tool_state),
+            tool_result=m.tool_result,
+            tool_input=m.tool_input,
             token_count_input=m.token_count_input,
             token_count_output=m.token_count_output,
             model=m.model,

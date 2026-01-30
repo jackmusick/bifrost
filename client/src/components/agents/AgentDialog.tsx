@@ -870,13 +870,6 @@ export function AgentDialog({ agentId, open, onOpenChange }: AgentDialogProps) {
 																			) =>
 																				t.id ===
 																				toolId,
-																		) ||
-																		toolsGrouped?.restricted.find(
-																			(
-																				t,
-																			) =>
-																				t.id ===
-																				toolId,
 																		);
 																	// Skip non-existent tools (orphaned references)
 																	if (!tool)
@@ -1040,85 +1033,6 @@ export function AgentDialog({ agentId, open, onOpenChange }: AgentDialogProps) {
 														<CommandEmpty>
 															No tools found.
 														</CommandEmpty>
-
-														{/* Restricted System Tools Group */}
-														{toolsGrouped?.restricted &&
-															toolsGrouped
-																.restricted
-																.length > 0 && (
-																<CommandGroup heading="Restricted System Tools">
-																	<p className="text-xs text-muted-foreground px-2 pb-2">
-																		Never
-																		available
-																		to
-																		non-admins
-																	</p>
-																	{toolsGrouped.restricted.map(
-																		(
-																			tool,
-																		) => (
-																			<CommandItem
-																				key={
-																					tool.id
-																				}
-																				value={`restricted-${tool.name}`}
-																				onSelect={() => {
-																					const current =
-																						systemTools ||
-																						[];
-																					if (
-																						current.includes(
-																							tool.id,
-																						)
-																					) {
-																						form.setValue(
-																							"system_tools",
-																							current.filter(
-																								(
-																									id,
-																								) =>
-																									id !==
-																									tool.id,
-																							),
-																						);
-																					} else {
-																						form.setValue(
-																							"system_tools",
-																							[
-																								...current,
-																								tool.id,
-																							],
-																						);
-																					}
-																				}}
-																			>
-																				<Check
-																					className={cn(
-																						"mr-2 h-4 w-4",
-																						systemTools?.includes(
-																							tool.id,
-																						)
-																							? "opacity-100"
-																							: "opacity-0",
-																					)}
-																				/>
-																				<div className="flex flex-col">
-																					<span className="font-mono text-sm">
-																						{
-																							tool.id
-																						}
-																					</span>
-																					<span className="text-xs text-muted-foreground">
-																						{
-																							tool.description
-																						}
-																					</span>
-																				</div>
-																			</CommandItem>
-																		),
-																	)}
-																</CommandGroup>
-															)}
 
 														{/* System Tools Group */}
 														{toolsGrouped?.system &&

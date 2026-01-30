@@ -29,6 +29,14 @@ export function generateMessageId(): string {
 }
 
 /**
+ * Generate a local ID for client-side deduplication
+ * This is sent to the server and echoed back to match optimistic messages
+ */
+export function generateLocalId(): string {
+  return `local-${crypto.randomUUID()}`;
+}
+
+/**
  * Normalize content for comparison (trim whitespace, collapse multiple spaces)
  * Helps match optimistic messages to server messages even with minor formatting differences
  */
@@ -73,52 +81,31 @@ export function mergeMessages(
 
 /**
  * Integrate incoming messages into existing array
- * - Uses localId for optimistic -> server message reconciliation
- * - Merges by ID for updates
- * - Maintains stable sort order
+ * - Deduplication is now handled by the chat store's dedupStateByConversation
+ * - This function just merges and sorts for consistency
  */
 export function integrateMessages(
   existing: UnifiedMessage[],
   incoming: UnifiedMessage[]
 ): UnifiedMessage[] {
   const byId = new Map<string, UnifiedMessage>();
-  const byLocalId = new Map<string, UnifiedMessage>();
 
-  // 1. Index existing messages
+  // Index existing messages
   existing.forEach((m) => {
     byId.set(m.id, m);
-    if (m.localId) {
-      byLocalId.set(m.localId, m);
-    }
   });
 
-  // 2. Process incoming messages
+  // Merge incoming (updates existing, adds new)
   incoming.forEach((m) => {
-    // If incoming has localId matching an existing optimistic message,
-    // this is server confirming our optimistic message - remove the optimistic
-    if (m.localId && !m.isOptimistic) {
-      const optimistic = byLocalId.get(m.localId);
-      if (optimistic && optimistic.isOptimistic) {
-        byId.delete(optimistic.id); // Remove optimistic by its temporary ID
-        byLocalId.delete(m.localId);
-      }
-    }
-
-    // Merge or add
     const existingMsg = byId.get(m.id);
     if (existingMsg) {
       byId.set(m.id, mergeMessages(existingMsg, m));
     } else {
       byId.set(m.id, m);
     }
-
-    // Track by localId for future dedup
-    if (m.localId) {
-      byLocalId.set(m.localId, m);
-    }
   });
 
-  // 3. Sort by createdAt + ID for stability
+  // Sort by createdAt + ID for stability
   return Array.from(byId.values()).sort((a, b) => {
     const timeDiff =
       new Date(a.created_at).getTime() - new Date(b.created_at).getTime();

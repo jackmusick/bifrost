@@ -262,7 +262,8 @@ export interface ChatStreamChunk {
 		| "ask_user_question"
 		| "assistant_message_start"
 		| "assistant_message_end"
-		| "todo_update";
+		| "todo_update"
+		| "context_warning";
 	conversation_id?: string;
 	content?: string | null;
 	tool_call?: ChatToolCall | null;

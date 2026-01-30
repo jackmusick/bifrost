@@ -28,6 +28,15 @@ type MessagePublic = components["schemas"]["MessagePublic"];
 export type { ToolExecutionState, ToolExecutionStatus, ToolExecutionLog };
 
 
+/**
+ * Persistent dedup state per conversation
+ * Similar to Happy's ReducerState - tracks processed messages to prevent duplicates
+ */
+interface DedupState {
+	processedIds: Set<string>; // All message IDs we've processed
+	localIdToServerId: Map<string, string>; // localId -> server ID mapping
+}
+
 interface ChatState {
 	// Active selections
 	activeConversationId: string | null;
@@ -49,6 +58,9 @@ interface ChatState {
 		string,
 		Record<string, ToolExecutionState>
 	>;
+
+	// Persistent dedup state per conversation (prevents duplicate messages)
+	dedupStateByConversation: Record<string, DedupState>;
 
 	// Streaming state
 	isStreaming: boolean;
@@ -133,6 +145,19 @@ interface ChatActions {
 		messageId: string | null,
 	) => void;
 
+	// Dedup state actions
+	markMessageProcessed: (conversationId: string, messageId: string) => void;
+	mapLocalIdToServerId: (
+		conversationId: string,
+		localId: string,
+		serverId: string,
+	) => void;
+	isMessageProcessed: (conversationId: string, messageId: string) => boolean;
+	getServerIdForLocalId: (
+		conversationId: string,
+		localId: string,
+	) => string | undefined;
+
 	// Reset
 	reset: () => void;
 }
@@ -146,6 +171,7 @@ const initialState: ChatState = {
 	conversations: [],
 	systemEventsByConversation: {},
 	toolExecutionsByConversation: {},
+	dedupStateByConversation: {},
 	messagesByConversation: {},
 	isStreaming: false,
 	isStudioMode: false,
@@ -218,24 +244,69 @@ export const useChatStore = create<ChatStore>((set, get) => ({
 
 	// Message actions
 	setMessages: (conversationId, messages) => {
-		set((state) => ({
-			messagesByConversation: {
-				...state.messagesByConversation,
-				[conversationId]: messages,
-			},
-		}));
+		set((state) => {
+			// Deduplicate by ID - keep first occurrence
+			const seen = new Set<string>();
+			const deduped = messages.filter((m) => {
+				if (seen.has(m.id)) return false;
+				seen.add(m.id);
+				return true;
+			});
+
+			// Preserve existing localIdToServerId mappings
+			const existingDedup = state.dedupStateByConversation[conversationId];
+
+			return {
+				messagesByConversation: {
+					...state.messagesByConversation,
+					[conversationId]: deduped,
+				},
+				dedupStateByConversation: {
+					...state.dedupStateByConversation,
+					[conversationId]: {
+						processedIds: seen,
+						localIdToServerId:
+							existingDedup?.localIdToServerId || new Map(),
+					},
+				},
+			};
+		});
 	},
 
 	addMessage: (conversationId, message) => {
-		set((state) => ({
-			messagesByConversation: {
-				...state.messagesByConversation,
-				[conversationId]: [
-					...(state.messagesByConversation[conversationId] || []),
-					message,
-				],
-			},
-		}));
+		set((state) => {
+			const existing = state.messagesByConversation[conversationId] || [];
+			const dedupState = state.dedupStateByConversation[conversationId];
+
+			// Check if already processed by ID
+			if (dedupState?.processedIds.has(message.id)) {
+				return {}; // Skip - already have this message
+			}
+
+			// Check if message already exists in array (fallback check)
+			if (existing.some((m) => m.id === message.id)) {
+				return {}; // Skip - already exists
+			}
+
+			// Add message and mark as processed
+			const newProcessedIds = new Set(dedupState?.processedIds || []);
+			newProcessedIds.add(message.id);
+
+			return {
+				messagesByConversation: {
+					...state.messagesByConversation,
+					[conversationId]: [...existing, message],
+				},
+				dedupStateByConversation: {
+					...state.dedupStateByConversation,
+					[conversationId]: {
+						processedIds: newProcessedIds,
+						localIdToServerId:
+							dedupState?.localIdToServerId || new Map(),
+					},
+				},
+			};
+		});
 	},
 
 	updateMessage: (conversationId, messageId, updates) => {
@@ -363,6 +434,56 @@ export const useChatStore = create<ChatStore>((set, get) => ({
 				[conversationId]: messageId,
 			},
 		}));
+	},
+
+	// Dedup state actions
+	markMessageProcessed: (conversationId, messageId) => {
+		set((state) => {
+			const existing = state.dedupStateByConversation[conversationId];
+			const newProcessedIds = new Set(existing?.processedIds || []);
+			newProcessedIds.add(messageId);
+
+			return {
+				dedupStateByConversation: {
+					...state.dedupStateByConversation,
+					[conversationId]: {
+						processedIds: newProcessedIds,
+						localIdToServerId:
+							existing?.localIdToServerId || new Map(),
+					},
+				},
+			};
+		});
+	},
+
+	mapLocalIdToServerId: (conversationId, localId, serverId) => {
+		set((state) => {
+			const existing = state.dedupStateByConversation[conversationId];
+			const newLocalIdToServerId = new Map(
+				existing?.localIdToServerId || [],
+			);
+			newLocalIdToServerId.set(localId, serverId);
+
+			return {
+				dedupStateByConversation: {
+					...state.dedupStateByConversation,
+					[conversationId]: {
+						processedIds: existing?.processedIds || new Set(),
+						localIdToServerId: newLocalIdToServerId,
+					},
+				},
+			};
+		});
+	},
+
+	isMessageProcessed: (conversationId, messageId) => {
+		const dedupState = get().dedupStateByConversation[conversationId];
+		return dedupState?.processedIds.has(messageId) ?? false;
+	},
+
+	getServerIdForLocalId: (conversationId, localId) => {
+		const dedupState = get().dedupStateByConversation[conversationId];
+		return dedupState?.localIdToServerId.get(localId);
 	},
 
 	// Reset

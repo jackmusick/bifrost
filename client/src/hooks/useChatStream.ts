@@ -117,6 +117,11 @@ export function useChatStream({
 
 					// If we have a localId and user_message_id, update the optimistic message with server ID
 					if (localId && chunk.user_message_id) {
+						// Map localId to server ID for future dedup
+						useChatStore
+							.getState()
+							.mapLocalIdToServerId(convId, localId, chunk.user_message_id);
+
 						const messages =
 							useChatStore.getState().messagesByConversation[convId] || [];
 						const optimistic = messages.find(

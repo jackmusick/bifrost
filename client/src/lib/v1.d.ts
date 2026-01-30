@@ -3121,22 +3121,22 @@ export interface paths {
          * Execute workflow via API key
          * @description Execute an endpoint-enabled workflow using an API key for authentication
          */
-        get: operations["execute_endpoint_api_endpoints__workflow_name__delete"];
+        get: operations["execute_endpoint_api_endpoints__workflow_name__post"];
         /**
          * Execute workflow via API key
          * @description Execute an endpoint-enabled workflow using an API key for authentication
          */
-        put: operations["execute_endpoint_api_endpoints__workflow_name__delete"];
+        put: operations["execute_endpoint_api_endpoints__workflow_name__post"];
         /**
          * Execute workflow via API key
          * @description Execute an endpoint-enabled workflow using an API key for authentication
          */
-        post: operations["execute_endpoint_api_endpoints__workflow_name__delete"];
+        post: operations["execute_endpoint_api_endpoints__workflow_name__post"];
         /**
          * Execute workflow via API key
          * @description Execute an endpoint-enabled workflow using an API key for authentication
          */
-        delete: operations["execute_endpoint_api_endpoints__workflow_name__delete"];
+        delete: operations["execute_endpoint_api_endpoints__workflow_name__post"];
         options?: never;
         head?: never;
         patch?: never;
@@ -15702,7 +15702,7 @@ export interface components {
         };
         /**
          * UserCreate
-         * @description User creation request model.
+         * @description Input for creating a user.
          */
         UserCreate: {
             /**
@@ -15710,10 +15710,22 @@ export interface components {
              * Format: email
              */
             email: string;
-            /** Password */
-            password: string;
             /** Name */
             name?: string | null;
+            /** Password */
+            password?: string | null;
+            /**
+             * Is Active
+             * @default true
+             */
+            is_active: boolean;
+            /**
+             * Is Superuser
+             * @default false
+             */
+            is_superuser: boolean;
+            /** Organization Id */
+            organization_id?: string | null;
         };
         /**
          * UserFormsResponse
@@ -16683,33 +16695,6 @@ export interface components {
             organization_id?: string | null;
         };
         /**
-         * UserCreate
-         * @description Input for creating a user.
-         */
-        src__models__contracts__users__UserCreate: {
-            /**
-             * Email
-             * Format: email
-             */
-            email: string;
-            /** Name */
-            name?: string | null;
-            /** Password */
-            password?: string | null;
-            /**
-             * Is Active
-             * @default true
-             */
-            is_active: boolean;
-            /**
-             * Is Superuser
-             * @default false
-             */
-            is_superuser: boolean;
-            /** Organization Id */
-            organization_id?: string | null;
-        };
-        /**
          * MFASetupResponse
          * @description MFA setup response with secret.
          */
@@ -16729,6 +16714,21 @@ export interface components {
              * @default false
              */
             is_existing: boolean;
+        };
+        /**
+         * UserCreate
+         * @description User creation request model.
+         */
+        src__routers__auth__UserCreate: {
+            /**
+             * Email
+             * Format: email
+             */
+            email: string;
+            /** Password */
+            password: string;
+            /** Name */
+            name?: string | null;
         };
         /**
          * MFAVerifyRequest
@@ -17066,7 +17066,7 @@ export interface operations {
         };
         requestBody: {
             content: {
-                "application/json": components["schemas"]["UserCreate"];
+                "application/json": components["schemas"]["src__routers__auth__UserCreate"];
             };
         };
         responses: {
@@ -18012,7 +18012,7 @@ export interface operations {
         };
         requestBody: {
             content: {
-                "application/json": components["schemas"]["src__models__contracts__users__UserCreate"];
+                "application/json": components["schemas"]["UserCreate"];
             };
         };
         responses: {
@@ -21521,7 +21521,7 @@ export interface operations {
             };
         };
     };
-    execute_endpoint_api_endpoints__workflow_name__delete: {
+    execute_endpoint_api_endpoints__workflow_name__post: {
         parameters: {
             query?: never;
             header: {
@@ -21554,7 +21554,7 @@ export interface operations {
             };
         };
     };
-    execute_endpoint_api_endpoints__workflow_name__delete: {
+    execute_endpoint_api_endpoints__workflow_name__post: {
         parameters: {
             query?: never;
             header: {
@@ -21587,7 +21587,7 @@ export interface operations {
             };
         };
     };
-    execute_endpoint_api_endpoints__workflow_name__delete: {
+    execute_endpoint_api_endpoints__workflow_name__post: {
         parameters: {
             query?: never;
             header: {
@@ -21620,7 +21620,7 @@ export interface operations {
             };
         };
     };
-    execute_endpoint_api_endpoints__workflow_name__delete: {
+    execute_endpoint_api_endpoints__workflow_name__post: {
         parameters: {
             query?: never;
             header: {

@@ -35,16 +35,13 @@ export function useToolsGrouped() {
 	const { data, ...rest } = useTools();
 
 	const grouped = {
-		restricted: [] as ToolInfo[],
 		system: [] as ToolInfo[],
 		workflow: [] as ToolInfo[],
 	};
 
 	if (data?.tools) {
 		for (const tool of data.tools) {
-			if (tool.is_restricted) {
-				grouped.restricted.push(tool);
-			} else if (tool.type === "system") {
+			if (tool.type === "system") {
 				grouped.system.push(tool);
 			} else if (tool.type === "workflow") {
 				grouped.workflow.push(tool);
