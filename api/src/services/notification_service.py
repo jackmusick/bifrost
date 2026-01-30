@@ -12,7 +12,7 @@ Redis Key Structure:
 
 import json
 import logging
-from datetime import datetime, timezone
+from datetime import datetime
 from typing import Awaitable, cast
 from uuid import uuid4
 
@@ -88,7 +88,7 @@ class NotificationService:
         """
         redis_client = await self._get_redis()
         notification_id = str(uuid4())
-        now = datetime.now(timezone.utc)
+        now = datetime.utcnow()
 
         notification = NotificationPublic(
             id=notification_id,
@@ -160,7 +160,7 @@ class NotificationService:
             return None
 
         notification_dict = json.loads(data)
-        now = datetime.now(timezone.utc)
+        now = datetime.utcnow()
 
         # Update fields
         if update.status is not None:

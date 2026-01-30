@@ -6,7 +6,7 @@ Manages MCP server configuration stored in the system_configs table.
 
 import logging
 from dataclasses import dataclass
-from datetime import datetime, timezone
+from datetime import datetime
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -121,7 +121,7 @@ class MCPConfigService:
         )
         existing = result.scalars().first()
 
-        now = datetime.now(timezone.utc)
+        now = datetime.utcnow()
 
         if existing:
             # Update existing
@@ -195,7 +195,7 @@ async def get_mcp_config_cached(session: AsyncSession) -> MCPConfig:
     """
     global _cached_config, _cache_time
 
-    now = datetime.now(timezone.utc)
+    now = datetime.utcnow()
 
     # Check if cache is valid
     if _cached_config is not None and _cache_time is not None:

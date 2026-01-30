@@ -11,7 +11,7 @@ organization_id, role_ids, timestamps) - these are set to safe defaults on impor
 
 import json
 import logging
-from datetime import datetime, timezone
+from datetime import datetime
 from typing import Any
 from uuid import UUID, uuid4
 
@@ -132,7 +132,7 @@ class AppIndexer:
             )
 
         # Use naive UTC datetime - columns defined without timezone
-        now = datetime.now(timezone.utc).replace(tzinfo=None)
+        now = datetime.utcnow()
 
         # Check if app already exists by slug
         existing_app = await self._get_app_by_slug(slug)
@@ -264,7 +264,7 @@ class AppIndexer:
             logger.warning(f"Failed to create notification for unresolved refs in {path}: {e}")
 
         # Use naive UTC datetime - columns defined without timezone
-        now = datetime.now(timezone.utc).replace(tzinfo=None)
+        now = datetime.utcnow()
 
         # Upsert the file with transformed source
         file_id = uuid4()
@@ -426,7 +426,7 @@ class AppIndexer:
         app_uuid_str = app_data.get("id")
 
         # Use naive UTC datetime - columns defined without timezone
-        now = datetime.now(timezone.utc).replace(tzinfo=None)
+        now = datetime.utcnow()
 
         # Build ref map once for all file transformations (if not provided)
         if ref_to_uuid is None:

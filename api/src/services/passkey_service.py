@@ -7,7 +7,7 @@ using the py_webauthn library for WebAuthn protocol compliance.
 
 import json
 import secrets
-from datetime import datetime, timezone
+from datetime import datetime
 from uuid import UUID
 
 from sqlalchemy import select
@@ -298,7 +298,7 @@ class PasskeyService:
 
         # Update sign count and last used (prevents replay attacks)
         passkey.sign_count = verification.new_sign_count
-        passkey.last_used_at = datetime.now(timezone.utc)
+        passkey.last_used_at = datetime.utcnow()
         await self.db.flush()
 
         # Get and return the user

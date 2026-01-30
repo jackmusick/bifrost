@@ -10,7 +10,7 @@ documents whose content has actually changed since the last indexing run.
 
 import hashlib
 import logging
-from datetime import datetime, timezone
+from datetime import datetime
 from pathlib import Path
 from typing import Any
 
@@ -80,7 +80,7 @@ async def index_platform_docs() -> dict[str, Any]:
     if not doc_files:
         return {"status": "skipped", "reason": "no documentation files found"}
 
-    indexed_at = datetime.now(timezone.utc).isoformat()
+    indexed_at = datetime.utcnow().isoformat()
     current_keys: set[str] = set()  # All keys from current files (for orphan detection)
     indexed_count = 0
     skipped_count = 0

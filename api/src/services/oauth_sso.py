@@ -14,7 +14,7 @@ import hashlib
 import logging
 import secrets
 from dataclasses import dataclass
-from datetime import datetime, timezone
+from datetime import datetime
 from typing import Any
 from urllib.parse import urlencode
 from uuid import UUID
@@ -399,7 +399,7 @@ class OAuthService:
 
         if existing:
             # Update last login timestamp
-            existing.last_login = datetime.now(timezone.utc)
+            existing.last_login = datetime.utcnow()
             await self.db.flush()
             return existing
 

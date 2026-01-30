@@ -33,7 +33,7 @@ import signal
 import subprocess
 import uuid
 from dataclasses import dataclass
-from datetime import datetime, timezone
+from datetime import datetime
 from enum import Enum
 from multiprocessing import Queue as MPQueue
 from queue import Empty
@@ -102,7 +102,7 @@ class ExecutionInfo:
     @property
     def elapsed_seconds(self) -> float:
         """Seconds since execution started."""
-        return (datetime.now(timezone.utc) - self.started_at).total_seconds()
+        return (datetime.utcnow() - self.started_at).total_seconds()
 
     @property
     def is_timed_out(self) -> bool:
@@ -146,7 +146,7 @@ class ProcessHandle:
     @property
     def uptime_seconds(self) -> float:
         """Seconds since process was started."""
-        return (datetime.now(timezone.utc) - self.started_at).total_seconds()
+        return (datetime.utcnow() - self.started_at).total_seconds()
 
 
 # Type alias for result callback
@@ -284,7 +284,7 @@ class ProcessPoolManager:
             state=ProcessState.IDLE,
             work_queue=work_queue,
             result_queue=result_queue,
-            started_at=datetime.now(timezone.utc),
+            started_at=datetime.utcnow(),
             current_execution=None,
             executions_completed=0,
         )
@@ -554,7 +554,7 @@ class ProcessPoolManager:
         idle.state = ProcessState.BUSY
         idle.current_execution = ExecutionInfo(
             execution_id=execution_id,
-            started_at=datetime.now(timezone.utc),
+            started_at=datetime.utcnow(),
             timeout_seconds=timeout,
         )
 
@@ -1242,7 +1242,7 @@ class ProcessPoolManager:
                 if h.state == ProcessState.IDLE
             ]
             # Sort by started_at to remove oldest first
-            idle_handles.sort(key=lambda h: h.started_at or datetime.min.replace(tzinfo=timezone.utc))
+            idle_handles.sort(key=lambda h: h.started_at or datetime.min)
 
             to_remove = idle_handles[:excess]
 
@@ -1430,7 +1430,7 @@ class ProcessPoolManager:
         await r.hset(  # type: ignore[misc]
             redis_key,
             mapping={
-                "started_at": datetime.now(timezone.utc).isoformat(),
+                "started_at": datetime.utcnow().isoformat(),
                 "status": "online",
                 "hostname": os.environ.get("HOSTNAME", "unknown"),
                 "min_workers": str(self.min_workers),
@@ -1488,7 +1488,7 @@ class ProcessPoolManager:
                 await publish_worker_event({
                     "type": "worker_offline",
                     "worker_id": self.worker_id,
-                    "timestamp": datetime.now(timezone.utc).isoformat(),
+                    "timestamp": datetime.utcnow().isoformat(),
                 })
             except Exception as e:
                 logger.warning(f"Failed to publish worker_offline event: {e}")
@@ -1530,7 +1530,7 @@ class ProcessPoolManager:
             "worker_id": self.worker_id,
             "hostname": os.environ.get("HOSTNAME", "unknown"),
             "status": "online",
-            "timestamp": datetime.now(timezone.utc).isoformat(),
+            "timestamp": datetime.utcnow().isoformat(),
             "processes": processes,
             "pool_size": len(self.processes),
             "idle_count": idle_count,

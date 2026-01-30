@@ -357,9 +357,7 @@ class WebhookAdapter(ABC):
     @staticmethod
     def expiration_datetime(days: int = 3) -> str:
         """Get ISO format datetime for subscription expiration."""
-        from datetime import timezone
-
-        dt = datetime.now(timezone.utc) + timedelta(days=days)
+        dt = datetime.utcnow() + timedelta(days=days)
         return dt.isoformat()
 
     @staticmethod

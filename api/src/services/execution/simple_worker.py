@@ -35,7 +35,7 @@ import os
 import resource
 import signal
 import sys
-from datetime import datetime, timezone
+from datetime import datetime
 from multiprocessing import Queue
 from queue import Empty
 from typing import Any
@@ -337,7 +337,7 @@ async def _execute_async(execution_id: str, worker_id: str) -> dict[str, Any]:
     Returns:
         Result dict with execution outcome
     """
-    start_time = datetime.now(timezone.utc)
+    start_time = datetime.utcnow()
 
     # 1. Read context from Redis
     context = await _read_context_from_redis(execution_id)
@@ -359,7 +359,7 @@ async def _execute_async(execution_id: str, worker_id: str) -> dict[str, Any]:
         result = await _run_execution(execution_id, context)
 
         # Calculate duration
-        duration_ms = int((datetime.now(timezone.utc) - start_time).total_seconds() * 1000)
+        duration_ms = int((datetime.utcnow() - start_time).total_seconds() * 1000)
 
         # Determine success from result
         status = result.get("status", "Failed")
@@ -387,7 +387,7 @@ async def _execute_async(execution_id: str, worker_id: str) -> dict[str, Any]:
         }
 
     except Exception as e:
-        duration_ms = int((datetime.now(timezone.utc) - start_time).total_seconds() * 1000)
+        duration_ms = int((datetime.utcnow() - start_time).total_seconds() * 1000)
         logger.exception(f"Execution {execution_id} failed in engine: {e}")
         return {
             "execution_id": execution_id,
