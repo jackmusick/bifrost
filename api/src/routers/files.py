@@ -11,7 +11,7 @@ Auth: CurrentSuperuser (platform admins and workflow engine)
 import base64
 import hashlib
 import logging
-from datetime import datetime, timezone
+from datetime import datetime
 from typing import Literal
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
@@ -334,7 +334,7 @@ async def list_files_editor(
                 type=FileType.FOLDER if is_folder else FileType.FILE,
                 size=wf.size_bytes if not is_folder else None,
                 extension=wf.path.split(".")[-1] if "." in wf.path and not is_folder else None,
-                modified=wf.updated_at.isoformat() if wf.updated_at else datetime.now(timezone.utc).isoformat(),
+                modified=wf.updated_at.isoformat() if wf.updated_at else datetime.utcnow().isoformat(),
                 entity_type=wf.entity_type if not is_folder else None,  # type: ignore[arg-type]
                 entity_id=entity_id_str if not is_folder else None,
                 organization_id=org_map.get(entity_id_str) if entity_id_str and not is_folder else None,
@@ -383,7 +383,7 @@ async def get_file_content_editor(
             encoding=encoding,
             size=len(content),
             etag=etag,
-            modified=file_record.updated_at.isoformat() if file_record else datetime.now(timezone.utc).isoformat(),
+            modified=file_record.updated_at.isoformat() if file_record else datetime.utcnow().isoformat(),
         )
 
     except ValueError as e:
@@ -580,7 +580,7 @@ async def create_folder_editor(
             type=FileType.FOLDER,
             size=None,
             extension=None,
-            modified=folder_record.updated_at.isoformat() if folder_record.updated_at else datetime.now(timezone.utc).isoformat(),
+            modified=folder_record.updated_at.isoformat() if folder_record.updated_at else datetime.utcnow().isoformat(),
         )
 
     except ValueError as e:

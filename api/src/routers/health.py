@@ -4,7 +4,7 @@ Health Check Router
 Provides endpoints for monitoring application health.
 """
 
-from datetime import datetime, timezone
+from datetime import datetime
 
 from fastapi import APIRouter, Depends
 from pydantic import BaseModel
@@ -45,7 +45,7 @@ async def health_check() -> HealthCheck:
     settings = get_settings()
     return HealthCheck(
         status="healthy",
-        timestamp=datetime.now(timezone.utc),
+        timestamp=datetime.utcnow(),
         environment=settings.environment,
     )
 
@@ -96,7 +96,7 @@ async def detailed_health_check(
 
     return DetailedHealthCheck(
         status=overall_status,
-        timestamp=datetime.now(timezone.utc),
+        timestamp=datetime.utcnow(),
         environment=settings.environment,
         components=components,
     )
