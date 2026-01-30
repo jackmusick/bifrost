@@ -15,7 +15,7 @@ from __future__ import annotations
 import hashlib
 import json
 import logging
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timedelta
 from typing import Any
 
 from src.core.cache.redis_client import get_redis, CacheError
@@ -115,7 +115,7 @@ async def get_cached_result(
             expires_at_str = cached_entry.get("expires_at")
             if expires_at_str:
                 expires_at = datetime.fromisoformat(expires_at_str.replace("Z", "+00:00"))
-                if datetime.now(timezone.utc) >= expires_at:
+                if datetime.utcnow() >= expires_at:
                     # Expired - Redis TTL should have handled this, but be safe
                     logger.debug(f"Cache expired for data provider: {name}")
                     await r.delete(cache_key)
@@ -155,7 +155,7 @@ async def cache_result(
     """
     param_hash = compute_param_hash(parameters)
     cache_key = data_provider_cache_key(org_id, name, param_hash)
-    expires_at = datetime.now(timezone.utc) + timedelta(seconds=ttl_seconds)
+    expires_at = datetime.utcnow() + timedelta(seconds=ttl_seconds)
 
     cache_entry = {
         "data": result,

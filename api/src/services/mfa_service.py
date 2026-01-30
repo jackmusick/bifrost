@@ -6,7 +6,7 @@ Handles TOTP secret generation, verification, recovery codes, and trusted device
 
 import hashlib
 import secrets
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timedelta
 from uuid import UUID
 
 import pyotp
@@ -50,7 +50,7 @@ class MFAService:
         if not force_new:
             existing = await self._get_pending_totp(user.id)
             if existing and existing.created_at:
-                age = datetime.now(timezone.utc) - existing.created_at.replace(tzinfo=timezone.utc)
+                age = datetime.utcnow() - existing.created_at
                 if age < timedelta(minutes=pending_validity_minutes):
                     # Return existing pending setup instead of regenerating
                     if existing.encrypted_secret:
@@ -133,7 +133,7 @@ class MFAService:
 
         # Activate method
         mfa_method.status = MFAMethodStatus.ACTIVE
-        mfa_method.verified_at = datetime.now(timezone.utc)
+        mfa_method.verified_at = datetime.utcnow()
 
         # Enable MFA on user
         user.mfa_enabled = True
@@ -174,7 +174,7 @@ class MFAService:
             return False
 
         # Update last used
-        mfa_method.last_used_at = datetime.now(timezone.utc)
+        mfa_method.last_used_at = datetime.utcnow()
         await self.db.flush()
 
         return True
@@ -290,7 +290,7 @@ class MFAService:
             if verify_password(normalized, recovery_code.code_hash):
                 # Mark as used
                 recovery_code.is_used = True
-                recovery_code.used_at = datetime.now(timezone.utc)
+                recovery_code.used_at = datetime.utcnow()
                 recovery_code.used_from_ip = ip_address
                 await self.db.flush()
                 return True
@@ -354,10 +354,10 @@ class MFAService:
         existing = await self._get_trusted_device(user_id, fingerprint)
         if existing:
             # Update expiry
-            existing.expires_at = datetime.now(timezone.utc) + timedelta(
+            existing.expires_at = datetime.utcnow() + timedelta(
                 days=self.settings.mfa_trusted_device_days
             )
-            existing.last_used_at = datetime.now(timezone.utc)
+            existing.last_used_at = datetime.utcnow()
             existing.last_ip_address = ip_address
             await self.db.flush()
             return existing
@@ -366,7 +366,7 @@ class MFAService:
             user_id=user_id,
             device_fingerprint=fingerprint,
             device_name=device_name,
-            expires_at=datetime.now(timezone.utc) + timedelta(
+            expires_at=datetime.utcnow() + timedelta(
                 days=self.settings.mfa_trusted_device_days
             ),
             last_ip_address=ip_address,
@@ -397,11 +397,11 @@ class MFAService:
         if not device:
             return False
 
-        if device.expires_at < datetime.now(timezone.utc):
+        if device.expires_at < datetime.utcnow():
             return False
 
         # Update last used
-        device.last_used_at = datetime.now(timezone.utc)
+        device.last_used_at = datetime.utcnow()
         device.last_ip_address = ip_address
         await self.db.flush()
 

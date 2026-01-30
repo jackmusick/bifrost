@@ -494,7 +494,7 @@ async def publish_app_draft_update(
         entity_id: ID of the changed entity
         page_id: Page ID (for component changes)
     """
-    from datetime import datetime, timezone
+    from datetime import datetime
 
     channel = f"app:draft:{app_id}"
     message = {
@@ -505,7 +505,7 @@ async def publish_app_draft_update(
         "pageId": page_id,
         "userId": user_id,
         "userName": user_name,
-        "timestamp": datetime.now(timezone.utc).isoformat(),
+        "timestamp": datetime.utcnow().isoformat(),
     }
     await manager.broadcast(channel, message)
 
@@ -534,7 +534,7 @@ async def publish_app_code_file_update(
         compiled: Compiled JS content (None for delete or if not compiled)
         action: Type of change ('create', 'update', 'delete')
     """
-    from datetime import datetime, timezone
+    from datetime import datetime
 
     channel = f"app:draft:{app_id}"
     message = {
@@ -546,7 +546,7 @@ async def publish_app_code_file_update(
         "compiled": compiled,
         "userId": user_id,
         "userName": user_name,
-        "timestamp": datetime.now(timezone.utc).isoformat(),
+        "timestamp": datetime.utcnow().isoformat(),
     }
     await manager.broadcast(channel, message)
 
@@ -569,7 +569,7 @@ async def publish_app_published(
         user_name: Display name of the user
         new_version_id: ID of the newly published version
     """
-    from datetime import datetime, timezone
+    from datetime import datetime
 
     channel = f"app:live:{app_id}"
     message = {
@@ -578,7 +578,7 @@ async def publish_app_published(
         "newVersionId": new_version_id,
         "userId": user_id,
         "userName": user_name,
-        "timestamp": datetime.now(timezone.utc).isoformat(),
+        "timestamp": datetime.utcnow().isoformat(),
     }
     await manager.broadcast(channel, message)
 
@@ -887,7 +887,7 @@ async def publish_pool_config_changed(
         new_min: New minimum workers
         new_max: New maximum workers
     """
-    from datetime import datetime, timezone
+    from datetime import datetime
 
     message = {
         "type": "pool_config_changed",
@@ -896,7 +896,7 @@ async def publish_pool_config_changed(
         "old_max": old_max,
         "new_min": new_min,
         "new_max": new_max,
-        "timestamp": datetime.now(timezone.utc).isoformat(),
+        "timestamp": datetime.utcnow().isoformat(),
     }
     await manager.broadcast("platform_workers", message)
 
@@ -916,14 +916,14 @@ async def publish_pool_scaling(
         action: Scaling action ('scale_up', 'scale_down', 'recycle_all')
         processes_affected: Number of processes affected by this action
     """
-    from datetime import datetime, timezone
+    from datetime import datetime
 
     message = {
         "type": "pool_scaling",
         "worker_id": worker_id,
         "action": action,
         "processes_affected": processes_affected,
-        "timestamp": datetime.now(timezone.utc).isoformat(),
+        "timestamp": datetime.utcnow().isoformat(),
     }
     await manager.broadcast("platform_workers", message)
 
@@ -950,7 +950,7 @@ async def publish_pool_progress(
         total: Total processes to be affected
         message: Human-readable progress message
     """
-    from datetime import datetime, timezone
+    from datetime import datetime
 
     payload = {
         "type": "pool_progress",
@@ -959,6 +959,6 @@ async def publish_pool_progress(
         "current": current,
         "total": total,
         "message": message,
-        "timestamp": datetime.now(timezone.utc).isoformat(),
+        "timestamp": datetime.utcnow().isoformat(),
     }
     await manager.broadcast("platform_workers", payload)

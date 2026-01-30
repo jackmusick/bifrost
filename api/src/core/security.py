@@ -9,7 +9,7 @@ Uses pwdlib (modern replacement for unmaintained passlib) for password hashing.
 
 import base64
 import secrets
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timedelta
 from typing import Any
 
 import jwt
@@ -73,9 +73,9 @@ def create_access_token(
     to_encode = data.copy()
 
     if expires_delta:
-        expire = datetime.now(timezone.utc) + expires_delta
+        expire = datetime.utcnow() + expires_delta
     else:
-        expire = datetime.now(timezone.utc) + timedelta(
+        expire = datetime.utcnow() + timedelta(
             minutes=settings.access_token_expire_minutes
         )
 
@@ -120,9 +120,9 @@ def create_refresh_token(
     to_encode = data.copy()
 
     if expires_delta:
-        expire = datetime.now(timezone.utc) + expires_delta
+        expire = datetime.utcnow() + expires_delta
     else:
-        expire = datetime.now(timezone.utc) + timedelta(
+        expire = datetime.utcnow() + timedelta(
             days=settings.refresh_token_expire_days
         )
 
@@ -199,7 +199,7 @@ def create_mfa_token(user_id: str, purpose: str = "mfa_verify") -> str:
     else:
         expire_minutes = settings.mfa_verify_token_expire_minutes
 
-    expire = datetime.now(timezone.utc) + timedelta(minutes=expire_minutes)
+    expire = datetime.utcnow() + timedelta(minutes=expire_minutes)
 
     to_encode = {
         "sub": user_id,
@@ -378,7 +378,7 @@ def authenticate_engine() -> None:
     api_url = os.getenv("BIFROST_API_URL", "http://api:8000")
 
     # Calculate expiration timestamp
-    expires_at = datetime.now(timezone.utc) + timedelta(days=30)
+    expires_at = datetime.utcnow() + timedelta(days=30)
 
     # Save to credentials file - SDK will find this automatically
     save_credentials(

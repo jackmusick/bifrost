@@ -6,7 +6,7 @@ Handles CRUD operations for CLISession table.
 """
 
 import logging
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timedelta
 from typing import Any
 from uuid import UUID
 
@@ -54,7 +54,7 @@ class CLISessionRepository(BaseRepository[CLISession]):
         Returns:
             Created or updated CLISession
         """
-        now = datetime.now(timezone.utc)
+        now = datetime.utcnow()
         expires_at = now + timedelta(hours=SESSION_TTL_HOURS)
 
         # Check if session already exists
@@ -133,7 +133,7 @@ class CLISessionRepository(BaseRepository[CLISession]):
         if not include_expired:
             query = query.where(
                 (CLISession.expires_at.is_(None)) |
-                (CLISession.expires_at > datetime.now(timezone.utc))
+                (CLISession.expires_at > datetime.utcnow())
             )
 
         result = await self.session.execute(query)
@@ -151,8 +151,8 @@ class CLISessionRepository(BaseRepository[CLISession]):
         """
         session = await self.get_by_id(session_id)
         if session:
-            session.last_seen = datetime.now(timezone.utc)
-            session.expires_at = datetime.now(timezone.utc) + timedelta(hours=SESSION_TTL_HOURS)
+            session.last_seen = datetime.utcnow()
+            session.expires_at = datetime.utcnow() + timedelta(hours=SESSION_TTL_HOURS)
             await self.session.flush()
             return session
         return None
@@ -181,7 +181,7 @@ class CLISessionRepository(BaseRepository[CLISession]):
             session.selected_workflow = workflow_name
             session.params = params
             session.pending = True
-            session.expires_at = datetime.now(timezone.utc) + timedelta(hours=SESSION_TTL_HOURS)
+            session.expires_at = datetime.utcnow() + timedelta(hours=SESSION_TTL_HOURS)
             await self.session.flush()
             return session
         return None
@@ -199,7 +199,7 @@ class CLISessionRepository(BaseRepository[CLISession]):
         session = await self.get_by_id(session_id)
         if session:
             session.pending = False
-            session.expires_at = datetime.now(timezone.utc) + timedelta(hours=SESSION_TTL_HOURS)
+            session.expires_at = datetime.utcnow() + timedelta(hours=SESSION_TTL_HOURS)
             await self.session.flush()
             return session
         return None
@@ -242,7 +242,7 @@ class CLISessionRepository(BaseRepository[CLISession]):
         """
         if session.last_seen is None:
             return False
-        threshold = datetime.now(timezone.utc) - timedelta(seconds=SESSION_CONNECTED_THRESHOLD_SECONDS)
+        threshold = datetime.utcnow() - timedelta(seconds=SESSION_CONNECTED_THRESHOLD_SECONDS)
         return session.last_seen > threshold
 
     async def cleanup_expired_sessions(self) -> int:
@@ -254,7 +254,7 @@ class CLISessionRepository(BaseRepository[CLISession]):
         """
         from sqlalchemy import delete
 
-        now = datetime.now(timezone.utc)
+        now = datetime.utcnow()
         result = await self.session.execute(
             delete(CLISession).where(
                 CLISession.expires_at.is_not(None),
