@@ -22,6 +22,7 @@ import {
 	Edit2,
 	RefreshCw,
 	Loader2,
+	Building2,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
@@ -96,6 +97,7 @@ export function FileTree({
 	config: userConfig,
 	className,
 	refreshTrigger,
+	onChangeScope,
 }: FileTreeProps) {
 	// Memoize config to avoid recreating on every render
 	const config: ResolvedConfig = useMemo(
@@ -121,10 +123,6 @@ export function FileTree({
 	const [fileToDelete, setFileToDelete] = useState<FileNode | null>(null);
 	const [dragOverFolder, setDragOverFolder] = useState<string | null>(null);
 	const [isProcessing, setIsProcessing] = useState(false);
-	const [pendingOrgMove, setPendingOrgMove] = useState<{
-		file: FileNode;
-		targetOrg: FileNode;
-	} | null>(null);
 
 	const inputRef = useRef<HTMLInputElement>(null);
 	const renameInputRef = useRef<HTMLInputElement>(null);
@@ -495,7 +493,7 @@ export function FileTree({
 	}, []);
 
 	const handleDrop = useCallback(
-		async (e: React.DragEvent, targetFolder?: string, targetFolderNode?: FileNode) => {
+		async (e: React.DragEvent, targetFolder?: string) => {
 			e.preventDefault();
 			setDragOverFolder(null);
 
@@ -504,65 +502,7 @@ export function FileTree({
 			// Internal move operation
 			try {
 				const draggedPath = e.dataTransfer.getData("text/plain");
-				const draggedFileJson = e.dataTransfer.getData("application/json");
 				if (!draggedPath) return;
-
-				// Parse dragged file for metadata checks
-				let draggedFile: FileNode | null = null;
-				try {
-					draggedFile = draggedFileJson ? JSON.parse(draggedFileJson) : null;
-				} catch {
-					// Ignore parse errors
-				}
-
-				// Check if this is a cross-org move by comparing org prefixes in paths
-				// Paths look like "org:global/..." or "org:uuid/..."
-				const getOrgFromPath = (path: string): { id: string | null; name: string } | null => {
-					if (!path.startsWith("org:")) return null;
-					const withoutPrefix = path.slice(4); // Remove "org:"
-					const slashIdx = withoutPrefix.indexOf("/");
-					const orgPart = slashIdx === -1 ? withoutPrefix : withoutPrefix.slice(0, slashIdx);
-					if (orgPart === "global") {
-						return { id: null, name: "Global" };
-					}
-					return { id: orgPart, name: orgPart }; // Name will be resolved from metadata if available
-				};
-
-				const sourceOrg = getOrgFromPath(draggedPath);
-				const targetPath = targetFolder || "";
-				const targetOrg = getOrgFromPath(targetPath);
-
-				// If both have org prefixes and they differ, it's a cross-org move
-				if (sourceOrg && targetOrg && sourceOrg.id !== targetOrg.id) {
-					// Check if file is an entity (can be moved between orgs)
-					if (!draggedFile?.entityType) {
-						toast.error("Only entities can be moved between organizations");
-						return;
-					}
-
-					// Get target org name from the folder node metadata or use the extracted name
-					const targetOrgName = targetFolderNode?.metadata?.isOrgContainer
-						? targetFolderNode.name
-						: targetOrg.name;
-
-					// Create synthetic org container for the confirmation dialog
-					const syntheticTargetOrg: FileNode = {
-						path: `org:${targetOrg.id ?? "global"}`,
-						name: targetOrgName,
-						type: "folder",
-						size: null,
-						extension: null,
-						modified: new Date().toISOString(),
-						metadata: {
-							isOrgContainer: true,
-							organizationId: targetOrg.id,
-						},
-					};
-
-					// Show confirmation dialog
-					setPendingOrgMove({ file: draggedFile, targetOrg: syntheticTargetOrg });
-					return;
-				}
 
 				// Don't allow dropping on itself
 				if (draggedPath === targetFolder) return;
@@ -617,26 +557,6 @@ export function FileTree({
 		},
 		[loadFiles, editor, operations, config],
 	);
-
-	const handleConfirmOrgMove = useCallback(async () => {
-		if (!pendingOrgMove) return;
-
-		const { file, targetOrg } = pendingOrgMove;
-		setPendingOrgMove(null);
-
-		try {
-			setIsProcessing(true);
-
-			// The adapter's rename() handles cross-org moves specially
-			await operations.rename(file.path, targetOrg.path);
-			toast.success(`Moved to ${targetOrg.name}`);
-			await refreshAll();
-		} catch (error) {
-			toast.error(error instanceof Error ? error.message : "Failed to move");
-		} finally {
-			setIsProcessing(false);
-		}
-	}, [pendingOrgMove, operations, refreshAll]);
 
 	return (
 		<div className={cn("flex h-full flex-col", className)}>
@@ -749,6 +669,7 @@ export function FileTree({
 								onRename={handleRename}
 								onCreateFile={handleCreateFile}
 								onCreateFolder={handleCreateFolder}
+								onChangeScope={onChangeScope}
 								isExpanded={isFolderExpanded(file.path)}
 								onDragStart={handleDragStart}
 								onDragOver={handleDragOver}
@@ -805,30 +726,6 @@ export function FileTree({
 				</AlertDialogContent>
 			</AlertDialog>
 
-			{/* Cross-Org Move Confirmation Dialog */}
-			<AlertDialog
-				open={!!pendingOrgMove}
-				onOpenChange={(open) => !open && setPendingOrgMove(null)}
-			>
-				<AlertDialogContent>
-					<AlertDialogHeader>
-						<AlertDialogTitle>
-							Move to {pendingOrgMove?.targetOrg.name}?
-						</AlertDialogTitle>
-						<AlertDialogDescription>
-							Move "{pendingOrgMove?.file.name}" to{" "}
-							{pendingOrgMove?.targetOrg.name}? This will change which
-							organization has access to this entity.
-						</AlertDialogDescription>
-					</AlertDialogHeader>
-					<AlertDialogFooter>
-						<AlertDialogCancel>Cancel</AlertDialogCancel>
-						<AlertDialogAction onClick={handleConfirmOrgMove}>
-							Move
-						</AlertDialogAction>
-					</AlertDialogFooter>
-				</AlertDialogContent>
-			</AlertDialog>
 		</div>
 	);
 }
@@ -844,11 +741,12 @@ interface FileTreeItemProps {
 	onRename: (file: FileNode) => void;
 	onCreateFile: (folderPath?: string) => void;
 	onCreateFolder: (folderPath?: string) => void;
+	onChangeScope?: (file: FileNode) => void;
 	isExpanded: boolean;
 	onDragStart: (e: React.DragEvent, file: FileNode) => void;
 	onDragOver: (e: React.DragEvent, targetFolder?: string) => void;
 	onDragLeave: () => void;
-	onDrop: (e: React.DragEvent, targetFolder?: string, targetFolderNode?: FileNode) => void;
+	onDrop: (e: React.DragEvent, targetFolder?: string) => void;
 	isDragOver: boolean;
 	creatingItem: CreatingItemType;
 	creatingInFolder: string | null;
@@ -877,6 +775,7 @@ const FileTreeItem = memo(function FileTreeItem({
 	onRename,
 	onCreateFile,
 	onCreateFolder,
+	onChangeScope,
 	isExpanded,
 	onDragStart,
 	onDragOver,
@@ -902,10 +801,10 @@ const FileTreeItem = memo(function FileTreeItem({
 	const level = file.level;
 	const isRenaming = renamingFile?.path === file.path;
 	const isSelected = editor?.isFileSelected?.(file.path) ?? false;
-	const isOrgContainer = file.metadata?.isOrgContainer === true;
+	const organizationName = file.metadata?.organizationName as string | undefined;
 
-	// Don't allow dragging org containers
-	const canDrag = config.enableDragMove && !isOrgContainer;
+	// Can drag any file/folder
+	const canDrag = config.enableDragMove;
 
 	// Get icon from resolver
 	const { icon: FileIcon, className: iconClassName } = iconResolver(file);
@@ -967,7 +866,7 @@ const FileTreeItem = memo(function FileTreeItem({
 							onDrop={(e) => {
 								if (isFolder) {
 									e.stopPropagation();
-									onDrop(e, file.path, file);
+									onDrop(e, file.path);
 								}
 							}}
 							className={cn(
@@ -993,11 +892,19 @@ const FileTreeItem = memo(function FileTreeItem({
 									<FileIcon className={cn("h-4 w-4 flex-shrink-0", iconClassName)} />
 								</>
 							)}
-							<span className="flex-1 truncate">{file.name}</span>
+							<div className="flex-1 min-w-0">
+								<span className="block truncate">{file.name}</span>
+								{/* Scope indicator for org-scoped files */}
+								{organizationName && !isFolder && (
+									<span className="block text-xs text-muted-foreground italic truncate">
+										{organizationName}
+									</span>
+								)}
+							</div>
 						</button>
 					</ContextMenuTrigger>
 					<ContextMenuContent className="z-[101]">
-						{isFolder && config.enableCreate && !isOrgContainer && (
+						{isFolder && config.enableCreate && (
 							<>
 								<ContextMenuItem onClick={() => onCreateFile(file.path)}>
 									<FilePlus className="mr-2 h-4 w-4" />
@@ -1010,21 +917,31 @@ const FileTreeItem = memo(function FileTreeItem({
 								<ContextMenuSeparator />
 							</>
 						)}
-						{config.enableRename && !isOrgContainer && (
+						{config.enableRename && (
 							<ContextMenuItem onClick={() => onRename(file)}>
 								<Edit2 className="mr-2 h-4 w-4" />
 								Rename
 							</ContextMenuItem>
 						)}
-						{config.enableDelete && !isOrgContainer && (
+						{config.enableDelete && (
 							<>
-								{config.enableRename && !isOrgContainer && <ContextMenuSeparator />}
+								{config.enableRename && <ContextMenuSeparator />}
 								<ContextMenuItem
 									onClick={() => onDelete(file)}
 									className="text-destructive focus:text-destructive"
 								>
 									<Trash2 className="mr-2 h-4 w-4" />
 									Delete
+								</ContextMenuItem>
+							</>
+						)}
+						{/* Change Scope option for entity files */}
+						{file.entityType && onChangeScope && (
+							<>
+								<ContextMenuSeparator />
+								<ContextMenuItem onClick={() => onChangeScope(file)}>
+									<Building2 className="mr-2 h-4 w-4" />
+									Change Scope...
 								</ContextMenuItem>
 							</>
 						)}

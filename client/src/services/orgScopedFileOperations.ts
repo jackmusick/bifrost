@@ -1,12 +1,12 @@
 /**
  * Org-Scoped File Operations Adapter
  *
- * Wraps the workspace fileService and transforms the flat file list into
- * an org-grouped structure with virtual org containers at the root.
+ * Wraps the workspace fileService and provides organization-scoped filtering.
+ * Files are displayed in a flat VS Code-style folder hierarchy with organization
+ * scope shown as metadata on each file.
  *
- * Path convention:
- * - Root lists org containers: "org:global", "org:{uuid}"
- * - Within org: "org:global/workflows/file.py" -> real path "workflows/file.py"
+ * Unlike the previous version, this no longer uses virtual "org:xxx" path prefixes.
+ * Instead, paths are the real file paths and organization info is in metadata.
  */
 
 import type {
@@ -22,49 +22,23 @@ export interface Organization {
 	name: string;
 }
 
-const ORG_PREFIX = "org:";
-const GLOBAL_ORG_ID = "global";
-
-/**
- * Extract org ID from virtual path
- * "org:global/workflows/file.py" -> "global"
- * "org:abc123/forms/test.json" -> "abc123"
- */
-function extractOrgId(path: string): string | null {
-	if (!path.startsWith(ORG_PREFIX)) return null;
-	const withoutPrefix = path.slice(ORG_PREFIX.length);
-	const slashIdx = withoutPrefix.indexOf("/");
-	return slashIdx === -1 ? withoutPrefix : withoutPrefix.slice(0, slashIdx);
+export interface OrgScopedFilterOptions {
+	/** Selected organization ID to filter by, null for global only, undefined for all */
+	selectedOrgId?: string | null;
+	/** Whether to include global-scoped files when filtering by org (default true) */
+	includeGlobal?: boolean;
 }
 
 /**
- * Extract real path from virtual path
- * "org:global/workflows/file.py" -> "workflows/file.py"
- * "org:abc123" -> ""
+ * Convert FileMetadata to FileNode with organization metadata
  */
-function extractRealPath(path: string): string {
-	if (!path.startsWith(ORG_PREFIX)) return path;
-	const withoutPrefix = path.slice(ORG_PREFIX.length);
-	const slashIdx = withoutPrefix.indexOf("/");
-	return slashIdx === -1 ? "" : withoutPrefix.slice(slashIdx + 1);
-}
-
-/**
- * Build virtual path from org ID and real path
- */
-function buildVirtualPath(orgId: string | null, realPath: string): string {
-	const orgPart = orgId ?? GLOBAL_ORG_ID;
-	return realPath
-		? `${ORG_PREFIX}${orgPart}/${realPath}`
-		: `${ORG_PREFIX}${orgPart}`;
-}
-
-/**
- * Convert FileMetadata to FileNode with virtual path
- */
-function toFileNode(file: FileMetadata, orgId: string | null): FileNode {
+function toFileNode(
+	file: FileMetadata,
+	orgId: string | null,
+	orgName: string | null,
+): FileNode {
 	return {
-		path: buildVirtualPath(orgId, file.path),
+		path: file.path,
 		name: file.name,
 		type: file.type,
 		size: file.size ?? null,
@@ -73,26 +47,8 @@ function toFileNode(file: FileMetadata, orgId: string | null): FileNode {
 		entityType: file.entity_type,
 		entityId: file.entity_id,
 		metadata: {
-			realPath: file.path,
 			organizationId: orgId,
-		},
-	};
-}
-
-/**
- * Create org container FileNode
- */
-function createOrgContainer(orgId: string | null, orgName: string): FileNode {
-	return {
-		path: `${ORG_PREFIX}${orgId ?? GLOBAL_ORG_ID}`,
-		name: orgName,
-		type: "folder",
-		size: null,
-		extension: null,
-		modified: new Date().toISOString(),
-		metadata: {
-			isOrgContainer: true,
-			organizationId: orgId,
+			organizationName: orgName,
 		},
 	};
 }
@@ -136,58 +92,71 @@ async function updateEntityOrganization(
  * Create org-scoped file operations adapter
  *
  * @param organizations - List of available organizations
- * @returns FileOperations implementation with org grouping
+ * @param filterOptions - Optional filter options for org filtering
+ * @returns FileOperations implementation with org filtering
  */
 export function createOrgScopedFileOperations(
 	organizations: Organization[],
+	filterOptions?: OrgScopedFilterOptions,
 ): FileOperations {
 	// Build org name lookup
 	const orgNames = new Map<string, string>(
 		organizations.map((org) => [org.id, org.name]),
 	);
-	orgNames.set(GLOBAL_ORG_ID, "Global");
+
+	// Get filter settings with defaults
+	const selectedOrgId = filterOptions?.selectedOrgId;
+	const includeGlobal = filterOptions?.includeGlobal ?? true;
+
+	/**
+	 * Check if a file's organization matches the current filter
+	 */
+	function matchesOrgFilter(fileOrgId: string | null): boolean {
+		// If no filter is set (undefined), show all files
+		if (selectedOrgId === undefined) {
+			return true;
+		}
+
+		// If filtering by global (null), only show global files
+		if (selectedOrgId === null) {
+			return fileOrgId === null;
+		}
+
+		// Filtering by a specific org
+		if (fileOrgId === selectedOrgId) {
+			return true;
+		}
+
+		// Include global files if includeGlobal is true
+		if (includeGlobal && fileOrgId === null) {
+			return true;
+		}
+
+		return false;
+	}
+
+	/**
+	 * Get the display name for an organization
+	 */
+	function getOrgName(orgId: string | null): string | null {
+		if (orgId === null) {
+			return "Global";
+		}
+		return orgNames.get(orgId) ?? null;
+	}
 
 	return {
 		async list(path: string): Promise<FileNode[]> {
-			// Root: return org containers for all organizations
-			if (path === "") {
-				// Build org containers (Global first, then others alphabetically)
-				const containers: FileNode[] = [
-					createOrgContainer(null, "Global"),
-				];
-
-				const sortedOrgs = [...organizations].sort((a, b) =>
-					a.name.localeCompare(b.name),
-				);
-
-				for (const org of sortedOrgs) {
-					containers.push(createOrgContainer(org.id, org.name));
-				}
-
-				return containers;
-			}
-
-			// Within an org container
-			const orgId = extractOrgId(path);
-			if (orgId === null) {
-				// Shouldn't happen, but fallback to direct listing
-				const files = await fileService.listFiles(path);
-				return files.map((f) => toFileNode(f, null));
-			}
-
-			const realPath = extractRealPath(path);
-			const dbOrgId = orgId === GLOBAL_ORG_ID ? null : orgId;
-
-			// Fetch all files recursively to determine which folders have content for this org
+			// Fetch all files recursively to determine which folders have content
 			const allFilesRecursive = await fileService.listFiles("", true);
 
-			// Build a set of folder paths that contain files for this org
+			// Build a set of folder paths that contain files matching the filter
 			const foldersWithContent = new Set<string>();
 
 			for (const file of allFilesRecursive) {
 				if (file.type === "folder") continue;
 				const fileOrgId = file.organization_id ?? null;
-				if (fileOrgId !== dbOrgId) continue;
+				if (!matchesOrgFilter(fileOrgId)) continue;
 
 				// Add all parent folder paths
 				const parts = file.path.split("/");
@@ -196,31 +165,28 @@ export function createOrgScopedFileOperations(
 				}
 			}
 
-			// Fetch files at this real path
-			const files = await fileService.listFiles(realPath);
+			// Fetch files at this path
+			const files = await fileService.listFiles(path);
 
-			// Filter to only files/folders belonging to this org
+			// Filter files based on org filter
 			const filteredFiles = files.filter((file) => {
 				if (file.type === "folder") {
-					// Include folders that either:
-					// 1. Have files for this org, OR
-					// 2. Are explicit empty folders in Global (organization_id is null)
-					if (foldersWithContent.has(file.path)) return true;
-					// Folders with null organization_id belong to Global scope
-					if (dbOrgId === null && file.organization_id === null) return true;
-					return false;
+					// Include folders that have files matching the filter
+					return foldersWithContent.has(file.path);
 				}
-				// For files, check org match (null org = global)
+				// For files, check org filter match
 				const fileOrgId = file.organization_id ?? null;
-				return fileOrgId === dbOrgId;
+				return matchesOrgFilter(fileOrgId);
 			});
 
-			return filteredFiles.map((f) => toFileNode(f, dbOrgId));
+			return filteredFiles.map((f) => {
+				const fileOrgId = f.organization_id ?? null;
+				return toFileNode(f, fileOrgId, getOrgName(fileOrgId));
+			});
 		},
 
 		async read(path: string): Promise<FileContent> {
-			const realPath = extractRealPath(path);
-			const response = await fileService.readFile(realPath);
+			const response = await fileService.readFile(path);
 			return {
 				content: response.content,
 				encoding: response.encoding as "utf-8" | "base64",
@@ -234,52 +200,34 @@ export function createOrgScopedFileOperations(
 			encoding?: "utf-8" | "base64",
 			etag?: string,
 		): Promise<void> {
-			const realPath = extractRealPath(path);
-			await fileService.writeFile(realPath, content, encoding, etag);
+			await fileService.writeFile(path, content, encoding, etag);
 		},
 
 		async createFolder(path: string): Promise<void> {
-			const realPath = extractRealPath(path);
-			await fileService.createFolder(realPath);
+			await fileService.createFolder(path);
 		},
 
 		async delete(path: string): Promise<void> {
-			const realPath = extractRealPath(path);
-			await fileService.deletePath(realPath);
+			await fileService.deletePath(path);
 		},
 
 		async rename(oldPath: string, newPath: string): Promise<void> {
-			const oldOrgId = extractOrgId(oldPath);
-			const newOrgId = extractOrgId(newPath);
-			const oldRealPath = extractRealPath(oldPath);
-			const newRealPath = extractRealPath(newPath);
-
-			// Check if this is a cross-org move
-			if (oldOrgId !== newOrgId) {
-				// Cross-org move - need to update entity organization
-				// The file's metadata should have entityType and entityId
-				// We'll need to refetch the file info to get these
-				const files = await fileService.listFiles("", true);
-				const file = files.find((f) => f.path === oldRealPath);
-
-				if (file?.entity_type && file?.entity_id) {
-					const targetOrgId =
-						newOrgId === GLOBAL_ORG_ID ? null : newOrgId;
-					await updateEntityOrganization(
-						file.entity_type,
-						file.entity_id,
-						targetOrgId,
-					);
-					return;
-				}
-
-				throw new Error(
-					"Cannot move non-entity files between organizations",
-				);
-			}
-
-			// Regular rename/move within same org
-			await fileService.renamePath(oldRealPath, newRealPath);
+			await fileService.renamePath(oldPath, newPath);
 		},
 	};
+}
+
+/**
+ * Change an entity's organization scope via the API
+ *
+ * @param entityType - The type of entity (workflow, form, agent)
+ * @param entityId - The entity's ID
+ * @param organizationId - The target organization ID (null for global)
+ */
+export async function changeEntityOrganization(
+	entityType: string,
+	entityId: string,
+	organizationId: string | null,
+): Promise<void> {
+	await updateEntityOrganization(entityType, entityId, organizationId);
 }

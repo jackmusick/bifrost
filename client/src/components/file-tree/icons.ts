@@ -24,8 +24,6 @@ import {
 	Layout,
 	Component,
 	Route,
-	Building2,
-	Globe,
 } from "lucide-react";
 import type { FileNode, FileIconConfig, FileIconResolver } from "./types";
 
@@ -176,28 +174,6 @@ export const appCodeIconResolver: FileIconResolver = (file: FileNode): FileIconC
 	return defaultIconResolver(file);
 };
 
-/**
- * Organization-scoped icon resolver
- *
- * Extends default resolver with organization container icons.
- * Uses metadata.isOrgContainer to identify org containers.
- * - Globe icon for "Global" (null organizationId)
- * - Building2 icon for named organizations
- */
-export const orgScopedIconResolver: FileIconResolver = (file: FileNode): FileIconConfig => {
-	// Organization container folders
-	if (file.metadata?.isOrgContainer) {
-		// Global org (null organizationId) gets globe icon
-		if (file.metadata.organizationId === null) {
-			return { icon: Globe, className: "text-blue-500" };
-		}
-		// Named orgs get building icon
-		return { icon: Building2, className: "text-orange-500" };
-	}
-
-	// Fall back to default resolver
-	return defaultIconResolver(file);
-};
 
 /**
  * Create a composite icon resolver that tries multiple resolvers in order

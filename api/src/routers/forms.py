@@ -129,9 +129,9 @@ async def _validate_form_references(
         workflow = result.scalar_one_or_none()
         if workflow is None:
             errors.append(f"workflow_id '{workflow_id}' does not reference an active workflow")
-        elif workflow.type != "workflow":
+        elif workflow.type not in ("workflow", "tool"):
             errors.append(
-                f"workflow_id '{workflow_id}' references a {workflow.type}, not a workflow"
+                f"workflow_id '{workflow_id}' references a {workflow.type}, not a workflow or tool"
             )
 
     # Validate launch_workflow_id
@@ -147,9 +147,9 @@ async def _validate_form_references(
             errors.append(
                 f"launch_workflow_id '{launch_workflow_id}' does not reference an active workflow"
             )
-        elif launch_workflow.type != "workflow":
+        elif launch_workflow.type not in ("workflow", "tool"):
             errors.append(
-                f"launch_workflow_id '{launch_workflow_id}' references a {launch_workflow.type}, not a workflow"
+                f"launch_workflow_id '{launch_workflow_id}' references a {launch_workflow.type}, not a workflow or tool"
             )
 
     # Validate data_provider_id references in form fields

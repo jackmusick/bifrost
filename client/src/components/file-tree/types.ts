@@ -201,4 +201,6 @@ export interface FileTreeProps {
 	className?: string;
 	/** Optional trigger to refresh the file tree - change this value to trigger a refresh */
 	refreshTrigger?: number;
+	/** Optional callback when user requests to change a file's organization scope */
+	onChangeScope?: (file: FileNode) => void;
 }

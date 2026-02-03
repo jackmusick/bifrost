@@ -59,7 +59,6 @@ export {
 export {
 	defaultIconResolver,
 	appCodeIconResolver,
-	orgScopedIconResolver,
 	createCompositeResolver,
 	ENTITY_TYPE_ICONS,
 	EXTENSION_ICONS,

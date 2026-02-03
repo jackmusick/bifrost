@@ -7,6 +7,7 @@
  */
 
 import { Building2, Globe, Star } from "lucide-react";
+import { cn } from "@/lib/utils";
 import {
 	Select,
 	SelectContent,
@@ -37,6 +38,10 @@ export interface OrganizationSelectProps {
 	showAll?: boolean;
 	/** Placeholder text when nothing is selected */
 	placeholder?: string;
+	/** Custom className for the SelectTrigger */
+	triggerClassName?: string;
+	/** Custom className for the SelectContent dropdown (useful for z-index overrides) */
+	contentClassName?: string;
 }
 
 // Special values for the Select (since null/undefined aren't valid values)
@@ -50,6 +55,8 @@ export function OrganizationSelect({
 	showGlobal = true,
 	showAll = false,
 	placeholder = "Select organization...",
+	triggerClassName,
+	contentClassName,
 }: OrganizationSelectProps) {
 	const { data: organizations, isLoading } = useOrganizations();
 
@@ -84,7 +91,7 @@ export function OrganizationSelect({
 			onValueChange={handleValueChange}
 			disabled={disabled || isLoading}
 		>
-			<SelectTrigger className="w-full">
+			<SelectTrigger className={cn("w-full", triggerClassName)}>
 				<SelectValue
 					placeholder={isLoading ? "Loading..." : placeholder}
 				>
@@ -114,7 +121,7 @@ export function OrganizationSelect({
 					)}
 				</SelectValue>
 			</SelectTrigger>
-			<SelectContent>
+			<SelectContent className={contentClassName}>
 				{showAll && (
 					<>
 						<SelectGroup>

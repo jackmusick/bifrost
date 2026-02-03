@@ -193,7 +193,15 @@
       "mcp__bifrost__get_sdk_schema",
       "mcp__bifrost__patch_content",
       "mcp__bifrost__replace_content",
-      "mcp__bifrost__delete_content"
+      "mcp__bifrost__delete_content",
+      "Bash(grep:*)",
+      "Bash(git -C /home/jack/GitHub/bifrost log --oneline -10)",
+      "Bash(git stash:*)",
+      "Bash(git add:*)",
+      "Bash(git commit:*)",
+      "Bash(python3:*)",
+      "WebFetch(domain:raw.githubusercontent.com)",
+      "Bash(npx get-shit-done-cc --global)"
     ],
     "deny": [],
     "ask": [],

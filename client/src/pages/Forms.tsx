@@ -15,7 +15,11 @@ import {
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Switch } from "@/components/ui/switch";
-import { Label } from "@/components/ui/label";
+import {
+	Tooltip,
+	TooltipContent,
+	TooltipTrigger,
+} from "@/components/ui/tooltip";
 import {
 	Card,
 	CardContent,
@@ -55,6 +59,18 @@ import type { components } from "@/lib/v1";
 
 type FormPublic = components["schemas"]["FormPublic"];
 type Organization = components["schemas"]["OrganizationPublic"];
+
+/**
+ * Returns a Tailwind font size class based on title length.
+ * Shorter titles get larger fonts; longer titles shrink to fit on one line.
+ */
+function getTitleFontSize(title: string): string {
+	const len = title.length;
+	if (len <= 20) return "text-lg"; // ~18px - short titles
+	if (len <= 30) return "text-base"; // ~16px - medium titles
+	if (len <= 40) return "text-sm"; // ~14px - longer titles
+	return "text-xs"; // ~12px - very long titles
+}
 
 export function Forms() {
 	const navigate = useNavigate();
@@ -323,83 +339,63 @@ export function Forms() {
 								className="hover:border-primary transition-colors flex flex-col"
 							>
 								<CardHeader className="pb-3">
-									<div className="flex items-start justify-between gap-3">
-										<div className="flex-1 min-w-0">
-											<div className="flex items-center gap-2 flex-wrap">
-												<CardTitle className="text-base break-all">
-													{form.name}
-												</CardTitle>
-												{!formValidation.get(form.id)
-													?.valid &&
-													canManageForms && (
-														<Badge
-															variant="destructive"
-															className="gap-1"
-														>
-															<AlertTriangle className="h-3 w-3" />
-															Invalid
-														</Badge>
-													)}
-											</div>
-											<CardDescription className="mt-1.5 text-sm break-words">
-												{form.description || (
-													<span className="italic text-muted-foreground/60">
-														No description
-													</span>
-												)}
-											</CardDescription>
-										</div>
+									{/* Title row with toggle */}
+									<div className="flex items-center justify-between gap-2">
+										<CardTitle
+											className={`${getTitleFontSize(form.name)} truncate`}
+											title={form.name}
+										>
+											{form.name}
+										</CardTitle>
 										{canManageForms && (
-											<div className="flex items-center gap-2 shrink-0">
-												<Switch
-													checked={form.is_active}
-													onCheckedChange={() =>
-														handleToggleActive(
-															form.id,
-															form.name,
-															form.is_active,
-														)
-													}
-													id={`form-active-${form.id}`}
-												/>
-												<Label
-													htmlFor={`form-active-${form.id}`}
-													className="text-xs text-muted-foreground cursor-pointer"
-												>
+											<Tooltip>
+												<TooltipTrigger asChild>
+													<div className="shrink-0">
+														<Switch
+															checked={
+																form.is_active
+															}
+															onCheckedChange={() =>
+																handleToggleActive(
+																	form.id,
+																	form.name,
+																	form.is_active,
+																)
+															}
+															id={`form-active-${form.id}`}
+														/>
+													</div>
+												</TooltipTrigger>
+												<TooltipContent>
 													{form.is_active
-														? "Enabled"
-														: "Disabled"}
-												</Label>
-											</div>
+														? "Enabled - click to disable"
+														: "Disabled - click to enable"}
+												</TooltipContent>
+											</Tooltip>
 										)}
 									</div>
+									{/* Invalid badge on its own line if needed */}
+									{!formValidation.get(form.id)?.valid &&
+										canManageForms && (
+											<Badge
+												variant="destructive"
+												className="gap-1 w-fit mt-1"
+											>
+												<AlertTriangle className="h-3 w-3" />
+												Invalid
+											</Badge>
+										)}
+									{/* Description */}
+									<CardDescription className="mt-1.5 text-sm line-clamp-2">
+										{form.description || (
+											<span className="italic text-muted-foreground/60">
+												No description
+											</span>
+										)}
+									</CardDescription>
 								</CardHeader>
 								<CardContent className="flex-1 flex flex-col pt-0">
-									{/* Organization badge (platform admins only) */}
-									{isPlatformAdmin && (
-										<div className="mb-2">
-											{form.organization_id ? (
-												<Badge
-													variant="outline"
-													className="text-xs"
-												>
-													<Building2 className="mr-1 h-3 w-3" />
-													{getOrgName(
-														form.organization_id,
-													)}
-												</Badge>
-											) : (
-												<Badge
-													variant="default"
-													className="text-xs"
-												>
-													<Globe className="mr-1 h-3 w-3" />
-													Global
-												</Badge>
-											)}
-										</div>
-									)}
-
+									{/* Validation warnings */}
 									{!formValidation.get(form.id)?.valid &&
 										canManageForms && (
 											<div className="mb-3 pb-3 border-b">
@@ -424,7 +420,36 @@ export function Forms() {
 											</div>
 										)}
 
-									<div className="flex gap-2 mt-auto">
+									{/* Spacer to push bottom content down */}
+									<div className="flex-1" />
+
+									{/* Scope badge - fixed position above buttons */}
+									{isPlatformAdmin && (
+										<div className="mb-3">
+											{form.organization_id ? (
+												<Badge
+													variant="outline"
+													className="text-xs"
+												>
+													<Building2 className="mr-1 h-3 w-3" />
+													{getOrgName(
+														form.organization_id,
+													)}
+												</Badge>
+											) : (
+												<Badge
+													variant="default"
+													className="text-xs"
+												>
+													<Globe className="mr-1 h-3 w-3" />
+													Global
+												</Badge>
+											)}
+										</div>
+									)}
+
+									{/* Action buttons */}
+									<div className="flex gap-2">
 										<Button
 											className="flex-1"
 											onClick={() =>
@@ -539,29 +564,30 @@ export function Forms() {
 											</DataTableCell>
 											<DataTableCell>
 												{canManageForms ? (
-													<div className="flex items-center gap-2">
-														<Switch
-															checked={
-																form.is_active
-															}
-															onCheckedChange={() =>
-																handleToggleActive(
-																	form.id,
-																	form.name,
-																	form.is_active,
-																)
-															}
-															id={`form-active-table-${form.id}`}
-														/>
-														<Label
-															htmlFor={`form-active-table-${form.id}`}
-															className="text-xs text-muted-foreground cursor-pointer"
-														>
+													<Tooltip>
+														<TooltipTrigger asChild>
+															<div className="w-fit">
+																<Switch
+																	checked={
+																		form.is_active
+																	}
+																	onCheckedChange={() =>
+																		handleToggleActive(
+																			form.id,
+																			form.name,
+																			form.is_active,
+																		)
+																	}
+																	id={`form-active-table-${form.id}`}
+																/>
+															</div>
+														</TooltipTrigger>
+														<TooltipContent>
 															{form.is_active
-																? "Enabled"
-																: "Disabled"}
-														</Label>
-													</div>
+																? "Enabled - click to disable"
+																: "Disabled - click to enable"}
+														</TooltipContent>
+													</Tooltip>
 												) : (
 													<Badge
 														variant={
