@@ -12,6 +12,8 @@ import json
 import logging
 from typing import Any, TYPE_CHECKING
 
+from sqlalchemy.ext.asyncio import AsyncSession
+
 from src.models import ConfigType
 
 if TYPE_CHECKING:
@@ -153,7 +155,9 @@ class ConfigResolver:
         except (ValueError, TypeError, json.JSONDecodeError) as e:
             raise ValueError(f"Could not parse value '{value}' as type '{config_type}': {e}") from e
 
-    async def get_organization(self, org_id: str) -> "Organization | None":
+    async def get_organization(
+        self, org_id: str, db: AsyncSession | None = None
+    ) -> "Organization | None":
         """
         Get organization by ID.
 
@@ -161,6 +165,7 @@ class ConfigResolver:
 
         Args:
             org_id: Organization ID (UUID or "ORG:uuid" format)
+            db: Optional AsyncSession. If not provided, creates its own.
 
         Returns:
             Organization object or None if not found
@@ -198,10 +203,9 @@ class ConfigResolver:
         from src.models import Organization as OrgModel
 
         org_uuid_obj = UUID(org_uuid)
-        session_factory = get_session_factory()
 
-        async with session_factory() as db:
-            result = await db.execute(
+        async def _fetch(session: AsyncSession) -> "Organization | None":
+            result = await session.execute(
                 select(OrgModel).where(OrgModel.id == org_uuid_obj)
             )
             org_entity = result.scalar_one_or_none()
@@ -223,6 +227,13 @@ class ConfigResolver:
                 name=org_entity.name,
                 is_active=org_entity.is_active,
             )
+
+        if db is not None:
+            return await _fetch(db)
+        else:
+            session_factory = get_session_factory()
+            async with session_factory() as session:
+                return await _fetch(session)
 
     async def _get_org_from_cache(self, org_id: str) -> dict[str, Any] | None:
         """
@@ -277,7 +288,9 @@ class ConfigResolver:
         except Exception as e:
             logger.warning(f"Failed to populate org cache: {e}")
 
-    async def load_config_for_scope(self, scope: str) -> dict[str, Any]:
+    async def load_config_for_scope(
+        self, scope: str, db: AsyncSession | None = None
+    ) -> dict[str, Any]:
         """
         Load all config for a scope (org_id or "GLOBAL").
 
@@ -288,6 +301,7 @@ class ConfigResolver:
 
         Args:
             scope: "GLOBAL" or organization ID
+            db: Optional AsyncSession. If not provided, creates its own.
 
         Returns:
             Configuration dictionary
@@ -315,16 +329,20 @@ class ConfigResolver:
         from src.core.database import get_session_factory
         from src.models import Config
 
-        session_factory = get_session_factory()
-        config_dict: dict[str, Any] = {}
+        async def _fetch(session: AsyncSession) -> dict[str, Any]:
+            config_dict: dict[str, Any] = {}
 
-        async with session_factory() as db:
             # For GLOBAL, get configs with no organization_id
             # For org scope, get global + org-specific configs (org overrides global)
             if scope == "GLOBAL":
-                result = await db.execute(
+                result = await session.execute(
                     select(Config).where(Config.organization_id.is_(None))
                 )
+                for config in result.scalars():
+                    config_dict[config.key] = {
+                        "value": config.value.get("value") if isinstance(config.value, dict) else config.value,
+                        "type": config.config_type.value if config.config_type else "string",
+                    }
             else:
                 try:
                     org_uuid_obj = UUID(org_id_for_cache) if org_id_for_cache else None
@@ -333,7 +351,7 @@ class ConfigResolver:
                     return config_dict
 
                 # Get global configs first
-                global_result = await db.execute(
+                global_result = await session.execute(
                     select(Config).where(Config.organization_id.is_(None))
                 )
                 for config in global_result.scalars():
@@ -343,20 +361,26 @@ class ConfigResolver:
                     }
 
                 # Get org-specific configs (these override global)
-                result = await db.execute(
+                result = await session.execute(
                     select(Config).where(Config.organization_id == org_uuid_obj)
                 )
+                for config in result.scalars():
+                    config_dict[config.key] = {
+                        "value": config.value.get("value") if isinstance(config.value, dict) else config.value,
+                        "type": config.config_type.value if config.config_type else "string",
+                    }
 
-            for config in result.scalars():
-                config_dict[config.key] = {
-                    "value": config.value.get("value") if isinstance(config.value, dict) else config.value,
-                    "type": config.config_type.value if config.config_type else "string",
-                }
+            # Populate cache for next time
+            await self._set_config_cache(org_id_for_cache, config_dict)
 
-        # Populate cache for next time
-        await self._set_config_cache(org_id_for_cache, config_dict)
+            return config_dict
 
-        return config_dict
+        if db is not None:
+            return await _fetch(db)
+        else:
+            session_factory = get_session_factory()
+            async with session_factory() as session:
+                return await _fetch(session)
 
     async def _get_config_from_cache(self, org_id: str | None) -> dict[str, Any] | None:
         """

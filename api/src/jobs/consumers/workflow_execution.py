@@ -24,11 +24,13 @@ Execution Model:
 import asyncio
 import logging
 from datetime import datetime
-from typing import TYPE_CHECKING, Any, Awaitable, cast
+from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
     from sqlalchemy.ext.asyncio import AsyncSession
 
+from src.core.database import get_session_factory
+from src.core.module_cache import set_module
 from src.core.pubsub import publish_execution_update, publish_history_update
 from src.core.redis_client import get_redis_client
 from src.jobs.rabbitmq import BaseConsumer
@@ -73,10 +75,18 @@ class WorkflowExecutionConsumer(BaseConsumer):
         self._pool.on_result = self._handle_result
         self._pool_started = False
 
+        # Persistent DB session for read operations
+        self._session_factory = get_session_factory()
+        self._db_session: "AsyncSession | None" = None
+
     async def start(self) -> None:
         """Start the consumer and process pool."""
         # Call parent start to set up RabbitMQ connection
         await super().start()
+
+        # Create persistent DB session for read operations
+        self._db_session = self._session_factory()
+        logger.info("Persistent DB session created")
 
         # Start process pool
         await self._pool.start()
@@ -91,26 +101,100 @@ class WorkflowExecutionConsumer(BaseConsumer):
             self._pool_started = False
             logger.info("Process pool stopped")
 
+        # Close persistent DB session
+        if self._db_session:
+            await self._db_session.close()
+            self._db_session = None
+            logger.info("Persistent DB session closed")
+
         # Call parent stop
         await super().stop()
 
-    async def _ensure_module_cache(self) -> None:
+    async def _get_db_session(self) -> "AsyncSession":
         """
-        Verify module cache exists, re-warm if empty.
+        Get the persistent DB session, reconnecting if needed.
 
-        Called before dispatching to worker to ensure modules are available.
-        Uses O(1) Redis SCARD to check if index has any members.
+        Performs a health check and reconnects if the connection is stale.
+        This is important for long-running consumers where connections may drop.
+
+        Returns:
+            Healthy AsyncSession instance
         """
+        from sqlalchemy import text
+
+        # Create session if None
+        if self._db_session is None:
+            self._db_session = self._session_factory()
+            logger.debug("Created new persistent DB session")
+
+        # Health check - try a simple query
+        try:
+            await self._db_session.execute(text("SELECT 1"))
+        except Exception as e:
+            logger.warning(f"DB session stale ({type(e).__name__}), reconnecting...")
+            try:
+                await self._db_session.close()
+            except Exception:
+                pass  # Ignore close errors on stale session
+            self._db_session = self._session_factory()
+            logger.info("Reconnected persistent DB session")
+
+        return self._db_session
+
+    async def _sync_module_cache(self, org_id: str | None = None) -> None:
+        """
+        Sync module cache from DB, adding any missing modules.
+
+        Unlike the old _ensure_module_cache() which only checked if the index
+        was empty, this method:
+        1. Queries all modules from DB
+        2. Checks each module's content key exists in Redis
+        3. Re-caches any modules with missing/expired content
+
+        Args:
+            org_id: Organization ID (currently unused, modules are global)
+        """
+        from sqlalchemy import select
+        from src.models.orm.workspace import WorkspaceFile
+
+        db = await self._get_db_session()
         redis_conn = await self._redis_client._get_redis()
 
-        # O(1) check - does index have any members?
-        count = await cast(Awaitable[int], redis_conn.scard("bifrost:module:index"))
+        # Get all modules from DB
+        stmt = select(WorkspaceFile).where(
+            WorkspaceFile.entity_type == "module",
+            WorkspaceFile.is_deleted == False,  # noqa: E712
+            WorkspaceFile.content.isnot(None),
+        )
+        result = await db.execute(stmt)
+        db_modules = result.scalars().all()
 
-        if count == 0:
-            logger.warning("Module cache empty, re-warming from DB")
-            from src.core.module_cache import warm_cache_from_db
-            await warm_cache_from_db()
-            logger.info("Module cache re-warmed")
+        if not db_modules:
+            logger.debug("No modules in database, cache sync complete")
+            return
+
+        # Check each DB module
+        modules_added = 0
+        for module in db_modules:
+            cache_key = f"bifrost:module:{module.path}"
+
+            # Check if content key exists (not just in index)
+            key_exists = await redis_conn.exists(cache_key)
+
+            if not key_exists:
+                # Module missing or expired - re-cache it
+                await set_module(
+                    path=module.path,
+                    content=module.content,
+                    content_hash=module.content_hash or "",
+                )
+                modules_added += 1
+                logger.debug(f"Re-cached module: {module.path}")
+
+        if modules_added > 0:
+            logger.info(f"Module cache sync: added {modules_added} missing modules")
+        else:
+            logger.debug("Module cache sync: all modules present")
 
     async def _handle_result(self, result: dict[str, Any]) -> None:
         """
@@ -471,6 +555,9 @@ class WorkflowExecutionConsumer(BaseConsumer):
         """Process a workflow execution message."""
         from src.services.execution.queue_tracker import remove_from_queue
 
+        # Get persistent session for read operations
+        db = await self._get_db_session()
+
         execution_id = message_data.get("execution_id", "")
         workflow_id = message_data.get("workflow_id")
         code_base64 = message_data.get("code")
@@ -581,7 +668,7 @@ class WorkflowExecutionConsumer(BaseConsumer):
 
                 try:
                     # Get full workflow data including code for DB-first execution
-                    workflow_data = await get_workflow_for_execution(workflow_id)
+                    workflow_data = await get_workflow_for_execution(workflow_id, db=db)
                     workflow_name = workflow_data["name"]
                     workflow_function_name = workflow_data["function_name"]
                     file_path = workflow_data["path"]  # Used for __file__ injection
@@ -688,8 +775,8 @@ class WorkflowExecutionConsumer(BaseConsumer):
                 from src.core.config_resolver import ConfigResolver
 
                 resolver = ConfigResolver()
-                org = await resolver.get_organization(org_id)
-                config = await resolver.load_config_for_scope(org_id)
+                org = await resolver.get_organization(org_id, db=db)
+                config = await resolver.load_config_for_scope(org_id, db=db)
                 if org:
                     org_data = {
                         "id": org.id,
@@ -700,7 +787,7 @@ class WorkflowExecutionConsumer(BaseConsumer):
                 from src.core.config_resolver import ConfigResolver
 
                 resolver = ConfigResolver()
-                config = await resolver.load_config_for_scope("GLOBAL")
+                config = await resolver.load_config_for_scope("GLOBAL", db=db)
 
             # Build context for worker process
             context_data = {
@@ -747,7 +834,7 @@ class WorkflowExecutionConsumer(BaseConsumer):
                 logger.warning(f"Failed to pre-warm SDK cache: {e}")
 
             # Ensure module cache is warm before dispatching to worker
-            await self._ensure_module_cache()
+            await self._sync_module_cache(org_id)
 
             # Route to process pool
             # Results are handled asynchronously via _handle_result callback

@@ -17,6 +17,8 @@ import logging
 import uuid
 from typing import TYPE_CHECKING, Any, Callable
 
+from sqlalchemy.ext.asyncio import AsyncSession
+
 from src.services.execution.module_loader import WorkflowMetadata, exec_from_db
 from src.models import WorkflowExecutionResponse
 from src.models.enums import ExecutionStatus
@@ -123,6 +125,7 @@ async def get_workflow_metadata_only(
 
 async def get_workflow_for_execution(
     workflow_id: str,
+    db: AsyncSession | None = None,
 ) -> dict[str, Any]:
     """
     Get workflow data needed for subprocess execution.
@@ -135,6 +138,7 @@ async def get_workflow_for_execution(
 
     Args:
         workflow_id: Workflow UUID from database
+        db: Optional AsyncSession. If not provided, creates its own.
 
     Returns:
         Dict with keys:
@@ -154,31 +158,37 @@ async def get_workflow_for_execution(
     from src.core.database import get_session_factory
     from src.models import Workflow as WorkflowORM
 
-    session_factory = get_session_factory()
-    async with session_factory() as db:
+    async def _fetch(session: AsyncSession) -> dict[str, Any]:
         stmt = select(WorkflowORM).where(
             WorkflowORM.id == workflow_id,
             WorkflowORM.is_active == True,  # noqa: E712
         )
-        result = await db.execute(stmt)
+        result = await session.execute(stmt)
         workflow_record = result.scalar_one_or_none()
 
-    if not workflow_record:
-        raise WorkflowNotFoundError(f"Workflow with ID '{workflow_id}' not found")
+        if not workflow_record:
+            raise WorkflowNotFoundError(f"Workflow with ID '{workflow_id}' not found")
 
-    logger.debug(f"Loaded workflow for execution: {workflow_id} -> {workflow_record.name}")
+        logger.debug(f"Loaded workflow for execution: {workflow_id} -> {workflow_record.name}")
 
-    return {
-        "name": workflow_record.name,
-        "function_name": workflow_record.function_name,
-        "path": workflow_record.path,
-        "code": workflow_record.code,  # May be None for legacy workflows
-        "timeout_seconds": workflow_record.timeout_seconds or 1800,
-        "time_saved": workflow_record.time_saved or 0,
-        "value": float(workflow_record.value) if workflow_record.value else 0.0,
-        "execution_mode": workflow_record.execution_mode or "async",
-        "organization_id": str(workflow_record.organization_id) if workflow_record.organization_id else None,
-    }
+        return {
+            "name": workflow_record.name,
+            "function_name": workflow_record.function_name,
+            "path": workflow_record.path,
+            "code": workflow_record.code,  # May be None for legacy workflows
+            "timeout_seconds": workflow_record.timeout_seconds or 1800,
+            "time_saved": workflow_record.time_saved or 0,
+            "value": float(workflow_record.value) if workflow_record.value else 0.0,
+            "execution_mode": workflow_record.execution_mode or "async",
+            "organization_id": str(workflow_record.organization_id) if workflow_record.organization_id else None,
+        }
+
+    if db is not None:
+        return await _fetch(db)
+    else:
+        session_factory = get_session_factory()
+        async with session_factory() as session:
+            return await _fetch(session)
 
 
 async def get_workflow_by_id(
