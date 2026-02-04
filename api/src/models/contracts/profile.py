@@ -14,9 +14,9 @@ class ProfileUpdate(BaseModel):
 
 
 class PasswordChange(BaseModel):
-    """Request model for changing password."""
+    """Request model for changing or setting password."""
 
-    current_password: str = Field(..., min_length=1, description="Current password")
+    current_password: str | None = Field(default=None, min_length=1, description="Current password (required if user has a password set)")
     new_password: str = Field(..., min_length=8, description="New password (minimum 8 characters)")
 
 
@@ -27,5 +27,6 @@ class ProfileResponse(BaseModel):
     email: str
     name: str | None
     has_avatar: bool
+    has_password: bool
     organization_id: UUID | None
     is_superuser: bool

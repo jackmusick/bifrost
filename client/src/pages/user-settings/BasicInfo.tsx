@@ -170,12 +170,14 @@ export function BasicInfo() {
 		}
 	}, []);
 
-	// Handle password change
+	// Handle password change/set
 	const handleChangePassword = async () => {
 		setPasswordError(null);
 
+		const hasPassword = profile?.has_password ?? false;
+
 		// Validate passwords
-		if (!currentPassword) {
+		if (hasPassword && !currentPassword) {
 			setPasswordError("Current password is required");
 			return;
 		}
@@ -194,12 +196,22 @@ export function BasicInfo() {
 
 		setChangingPassword(true);
 		try {
-			await profileService.changePassword(currentPassword, newPassword);
-			toast.success("Password changed successfully");
-			// Clear form
+			await profileService.changePassword(
+				hasPassword ? currentPassword : null,
+				newPassword,
+			);
+			toast.success(
+				hasPassword
+					? "Password changed successfully"
+					: "Password set successfully",
+			);
+			// Clear form and update profile state
 			setCurrentPassword("");
 			setNewPassword("");
 			setConfirmPassword("");
+			// Refresh profile to get updated has_password
+			const updatedProfile = await profileService.getProfile();
+			setProfile(updatedProfile);
 		} catch (err) {
 			console.error("Failed to change password:", err);
 			const errorMessage =
@@ -392,12 +404,16 @@ export function BasicInfo() {
 				</CardContent>
 			</Card>
 
-			{/* Change Password */}
+			{/* Change/Set Password */}
 			<Card>
 				<CardHeader>
-					<CardTitle>Change Password</CardTitle>
+					<CardTitle>
+						{profile?.has_password ? "Change Password" : "Set Password"}
+					</CardTitle>
 					<CardDescription>
-						Update your account password
+						{profile?.has_password
+							? "Update your account password"
+							: "Add a password to your account for email/password login"}
 					</CardDescription>
 				</CardHeader>
 				<CardContent className="space-y-4">
@@ -408,47 +424,51 @@ export function BasicInfo() {
 						</Alert>
 					)}
 
-					<div className="space-y-2">
-						<Label htmlFor="current-password">
-							Current Password
-						</Label>
-						<div className="relative">
-							<Input
-								id="current-password"
-								type={showCurrentPassword ? "text" : "password"}
-								value={currentPassword}
-								onChange={(e) =>
-									setCurrentPassword(e.target.value)
-								}
-								placeholder="Enter current password"
-							/>
-							<Button
-								type="button"
-								variant="ghost"
-								size="icon"
-								className="absolute right-0 top-0 h-full px-3 hover:bg-transparent"
-								onClick={() =>
-									setShowCurrentPassword(!showCurrentPassword)
-								}
-							>
-								{showCurrentPassword ? (
-									<EyeOff className="h-4 w-4 text-muted-foreground" />
-								) : (
-									<Eye className="h-4 w-4 text-muted-foreground" />
-								)}
-							</Button>
+					{profile?.has_password && (
+						<div className="space-y-2">
+							<Label htmlFor="current-password">
+								Current Password
+							</Label>
+							<div className="relative">
+								<Input
+									id="current-password"
+									type={showCurrentPassword ? "text" : "password"}
+									value={currentPassword}
+									onChange={(e) =>
+										setCurrentPassword(e.target.value)
+									}
+									placeholder="Enter current password"
+								/>
+								<Button
+									type="button"
+									variant="ghost"
+									size="icon"
+									className="absolute right-0 top-0 h-full px-3 hover:bg-transparent"
+									onClick={() =>
+										setShowCurrentPassword(!showCurrentPassword)
+									}
+								>
+									{showCurrentPassword ? (
+										<EyeOff className="h-4 w-4 text-muted-foreground" />
+									) : (
+										<Eye className="h-4 w-4 text-muted-foreground" />
+									)}
+								</Button>
+							</div>
 						</div>
-					</div>
+					)}
 
 					<div className="space-y-2">
-						<Label htmlFor="new-password">New Password</Label>
+						<Label htmlFor="new-password">
+							{profile?.has_password ? "New Password" : "Password"}
+						</Label>
 						<div className="relative">
 							<Input
 								id="new-password"
 								type={showNewPassword ? "text" : "password"}
 								value={newPassword}
 								onChange={(e) => setNewPassword(e.target.value)}
-								placeholder="Enter new password"
+								placeholder={profile?.has_password ? "Enter new password" : "Enter password"}
 							/>
 							<Button
 								type="button"
@@ -473,7 +493,7 @@ export function BasicInfo() {
 
 					<div className="space-y-2">
 						<Label htmlFor="confirm-password">
-							Confirm New Password
+							Confirm Password
 						</Label>
 						<div className="relative">
 							<Input
@@ -483,7 +503,7 @@ export function BasicInfo() {
 								onChange={(e) =>
 									setConfirmPassword(e.target.value)
 								}
-								placeholder="Confirm new password"
+								placeholder="Confirm password"
 							/>
 							<Button
 								type="button"
@@ -508,7 +528,7 @@ export function BasicInfo() {
 							onClick={handleChangePassword}
 							disabled={
 								changingPassword ||
-								!currentPassword ||
+								(profile?.has_password && !currentPassword) ||
 								!newPassword ||
 								!confirmPassword
 							}
@@ -516,10 +536,12 @@ export function BasicInfo() {
 							{changingPassword ? (
 								<>
 									<Loader2 className="h-4 w-4 mr-2 animate-spin" />
-									Changing...
+									{profile?.has_password ? "Changing..." : "Setting..."}
 								</>
-							) : (
+							) : profile?.has_password ? (
 								"Change Password"
+							) : (
+								"Set Password"
 							)}
 						</Button>
 					</div>

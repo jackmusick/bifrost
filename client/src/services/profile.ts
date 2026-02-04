@@ -9,6 +9,7 @@ export interface ProfileResponse {
 	email: string;
 	name: string | null;
 	has_avatar: boolean;
+	has_password: boolean;
 	organization_id: string | null;
 	is_superuser: boolean;
 }
@@ -18,7 +19,7 @@ export interface ProfileUpdate {
 }
 
 export interface PasswordChange {
-	current_password: string;
+	current_password?: string | null;
 	new_password: string;
 }
 
@@ -100,19 +101,23 @@ export function getAvatarUrl(): string {
 }
 
 /**
- * Change password
+ * Change or set password
+ * @param currentPassword - Required if user already has a password, null/undefined otherwise
+ * @param newPassword - The new password to set
  */
 export async function changePassword(
-	currentPassword: string,
+	currentPassword: string | null | undefined,
 	newPassword: string,
 ): Promise<void> {
+	const body: PasswordChange = { new_password: newPassword };
+	if (currentPassword) {
+		body.current_password = currentPassword;
+	}
+
 	const response = await authFetch("/api/profile/password", {
 		method: "POST",
 		headers: { "Content-Type": "application/json" },
-		body: JSON.stringify({
-			current_password: currentPassword,
-			new_password: newPassword,
-		}),
+		body: JSON.stringify(body),
 	});
 	if (!response.ok) {
 		const error = await response.json().catch(() => ({}));

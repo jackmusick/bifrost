@@ -1,13 +1,14 @@
 /**
- * Security Settings - Passkeys Management
+ * Security Settings - Passkeys & TOTP Management
  *
  * Allows users to:
  * - Register new passkeys (Face ID, Touch ID, etc.)
  * - View and manage existing passkeys
- * - Delete passkeys
+ * - Set up and manage TOTP (authenticator app)
+ * - View and regenerate recovery codes
  */
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import {
 	Card,
 	CardContent,
@@ -50,10 +51,25 @@ import {
 	Clock,
 	ShieldCheck,
 	AlertTriangle,
+	Shield,
+	Copy,
+	Download,
+	CheckCircle,
+	Key,
+	RefreshCw,
 } from "lucide-react";
 import { usePasskeys, usePasskeySupport } from "@/hooks/usePasskeys";
 import type { PasskeyPublic } from "@/services/passkeys";
+import {
+	mfaService,
+	type MFAStatus,
+	type MFASetupResponse,
+} from "@/services/mfa";
+import { QRCode } from "@/components/ui/QRCode";
 import { formatDistanceToNow } from "date-fns";
+import { toast } from "sonner";
+
+type TOTPSetupStep = "idle" | "setup" | "verify" | "recovery-codes";
 
 export function Security() {
 	const support = usePasskeySupport();
@@ -68,12 +84,58 @@ export function Security() {
 		isDeleting,
 	} = usePasskeys();
 
-	// Dialog state
+	// Passkey dialog state
 	const [showAddDialog, setShowAddDialog] = useState(false);
 	const [deviceName, setDeviceName] = useState("");
 	const [passkeyToDelete, setPasskeyToDelete] =
 		useState<PasskeyPublic | null>(null);
 
+	// MFA state
+	const [mfaStatus, setMfaStatus] = useState<MFAStatus | null>(null);
+	const [mfaLoading, setMfaLoading] = useState(true);
+	const [mfaError, setMfaError] = useState<string | null>(null);
+
+	// TOTP setup state
+	const [totpStep, setTotpStep] = useState<TOTPSetupStep>("idle");
+	const [totpSetup, setTotpSetup] = useState<MFASetupResponse | null>(null);
+	const [totpCode, setTotpCode] = useState("");
+	const [totpLoading, setTotpLoading] = useState(false);
+	const [totpError, setTotpError] = useState<string | null>(null);
+	const [secretCopied, setSecretCopied] = useState(false);
+
+	// Recovery codes state
+	const [recoveryCodes, setRecoveryCodes] = useState<string[]>([]);
+	const [recoveryCodesSaved, setRecoveryCodesSaved] = useState(false);
+	const [showRegenerateDialog, setShowRegenerateDialog] = useState(false);
+	const [regenerateCode, setRegenerateCode] = useState("");
+	const [regenerateLoading, setRegenerateLoading] = useState(false);
+
+	// Remove MFA state
+	const [showRemoveDialog, setShowRemoveDialog] = useState(false);
+	const [removeCode, setRemoveCode] = useState("");
+	const [removeLoading, setRemoveLoading] = useState(false);
+
+	// Load MFA status
+	useEffect(() => {
+		loadMFAStatus();
+	}, []);
+
+	const loadMFAStatus = async () => {
+		setMfaLoading(true);
+		setMfaError(null);
+		try {
+			const status = await mfaService.getMFAStatus();
+			setMfaStatus(status);
+		} catch (err) {
+			setMfaError(
+				err instanceof Error ? err.message : "Failed to load MFA status",
+			);
+		} finally {
+			setMfaLoading(false);
+		}
+	};
+
+	// Passkey handlers
 	const handleRegister = () => {
 		register(deviceName || undefined, {
 			onSuccess: () => {
@@ -100,7 +162,125 @@ export function Security() {
 		return <Smartphone className="h-5 w-5 text-gray-500" />;
 	};
 
-	// Show loading state
+	// TOTP handlers
+	const handleStartTOTPSetup = async () => {
+		setTotpLoading(true);
+		setTotpError(null);
+		try {
+			const setup = await mfaService.setupTOTP();
+			setTotpSetup(setup);
+			setTotpStep("setup");
+		} catch (err) {
+			setTotpError(
+				err instanceof Error ? err.message : "Failed to start TOTP setup",
+			);
+			toast.error("Failed to start TOTP setup");
+		} finally {
+			setTotpLoading(false);
+		}
+	};
+
+	const handleVerifyTOTP = async (e: React.FormEvent) => {
+		e.preventDefault();
+		setTotpLoading(true);
+		setTotpError(null);
+		try {
+			const result = await mfaService.verifyTOTPSetup(totpCode);
+			if (result.success && result.recovery_codes) {
+				setRecoveryCodes(result.recovery_codes);
+				setTotpStep("recovery-codes");
+				toast.success("TOTP setup complete!");
+			}
+		} catch (err) {
+			setTotpError(
+				err instanceof Error ? err.message : "Invalid verification code",
+			);
+		} finally {
+			setTotpLoading(false);
+		}
+	};
+
+	const handleCompleteTOTPSetup = () => {
+		setTotpStep("idle");
+		setTotpSetup(null);
+		setTotpCode("");
+		setRecoveryCodes([]);
+		setRecoveryCodesSaved(false);
+		loadMFAStatus();
+	};
+
+	const handleRemoveMFA = async () => {
+		setRemoveLoading(true);
+		try {
+			await mfaService.removeMFA({ mfa_code: removeCode });
+			toast.success("Two-factor authentication removed");
+			setShowRemoveDialog(false);
+			setRemoveCode("");
+			loadMFAStatus();
+		} catch (err) {
+			toast.error(
+				err instanceof Error ? err.message : "Failed to remove MFA",
+			);
+		} finally {
+			setRemoveLoading(false);
+		}
+	};
+
+	const handleRegenerateRecoveryCodes = async () => {
+		setRegenerateLoading(true);
+		try {
+			const result = await mfaService.regenerateRecoveryCodes(regenerateCode);
+			setRecoveryCodes(result.recovery_codes);
+			setShowRegenerateDialog(false);
+			setRegenerateCode("");
+			setTotpStep("recovery-codes");
+			toast.success("Recovery codes regenerated");
+		} catch (err) {
+			toast.error(
+				err instanceof Error ? err.message : "Failed to regenerate codes",
+			);
+		} finally {
+			setRegenerateLoading(false);
+		}
+	};
+
+	const copySecret = async () => {
+		if (totpSetup?.secret) {
+			await navigator.clipboard.writeText(totpSetup.secret);
+			setSecretCopied(true);
+			toast.success("Secret copied to clipboard");
+			setTimeout(() => setSecretCopied(false), 2000);
+		}
+	};
+
+	const copyRecoveryCodes = async () => {
+		const text = recoveryCodes.join("\n");
+		await navigator.clipboard.writeText(text);
+		toast.success("Recovery codes copied to clipboard");
+	};
+
+	const downloadRecoveryCodes = () => {
+		const text = `Bifrost Recovery Codes
+Generated: ${new Date().toISOString()}
+
+These codes can be used to access your account if you lose your authenticator device.
+Each code can only be used once.
+
+${recoveryCodes.join("\n")}
+
+Keep these codes in a secure location.
+`;
+		const blob = new Blob([text], { type: "text/plain" });
+		const url = URL.createObjectURL(blob);
+		const a = document.createElement("a");
+		a.href = url;
+		a.download = "bifrost-recovery-codes.txt";
+		a.click();
+		URL.revokeObjectURL(url);
+		toast.success("Recovery codes downloaded");
+	};
+
+	// Show loading state for passkeys
 	if (support.isLoading) {
 		return (
 			<Card>
@@ -115,36 +295,304 @@ export function Security() {
 		);
 	}
 
-	// Show unsupported message
-	if (!support.supported) {
-		return (
-			<Card>
-				<CardHeader>
-					<CardTitle className="flex items-center gap-2">
-						<Fingerprint className="h-5 w-5" />
-						Passkeys
-					</CardTitle>
-					<CardDescription>
-						Sign in faster with Face ID, Touch ID, or security keys
-					</CardDescription>
-				</CardHeader>
-				<CardContent>
-					<Alert variant="default">
-						<AlertTriangle className="h-4 w-4" />
-						<AlertTitle>Passkeys not supported</AlertTitle>
-						<AlertDescription>
-							Your browser doesn't support passkeys. Try using a
-							modern browser like Chrome, Safari, or Edge on a
-							device with biometric authentication.
-						</AlertDescription>
-					</Alert>
-				</CardContent>
-			</Card>
-		);
-	}
-
 	return (
 		<div className="space-y-6">
+			{/* Two-Factor Authentication Section */}
+			<Card>
+				<CardHeader>
+					<div className="flex items-center justify-between">
+						<div>
+							<CardTitle className="flex items-center gap-2">
+								<Shield className="h-5 w-5" />
+								Two-Factor Authentication
+							</CardTitle>
+							<CardDescription className="mt-1">
+								Add an extra layer of security with an
+								authenticator app
+							</CardDescription>
+						</div>
+						{!mfaLoading && mfaStatus && !mfaStatus.mfa_enabled && (
+							<Button
+								onClick={handleStartTOTPSetup}
+								disabled={totpLoading}
+							>
+								{totpLoading ? (
+									<Loader2 className="h-4 w-4 mr-2 animate-spin" />
+								) : (
+									<Plus className="h-4 w-4 mr-2" />
+								)}
+								Set Up
+							</Button>
+						)}
+					</div>
+				</CardHeader>
+				<CardContent>
+					{/* Loading state */}
+					{mfaLoading && (
+						<div className="space-y-3">
+							<Skeleton className="h-16 w-full" />
+						</div>
+					)}
+
+					{/* Error state */}
+					{mfaError && (
+						<Alert variant="destructive">
+							<AlertTriangle className="h-4 w-4" />
+							<AlertDescription>{mfaError}</AlertDescription>
+						</Alert>
+					)}
+
+					{/* MFA not enabled */}
+					{!mfaLoading && mfaStatus && !mfaStatus.mfa_enabled && totpStep === "idle" && (
+						<div className="text-center py-8 text-muted-foreground">
+							<Shield className="h-12 w-12 mx-auto mb-4 opacity-50" />
+							<p className="font-medium">
+								Two-factor authentication not enabled
+							</p>
+							<p className="text-sm mt-1">
+								Protect your account with an authenticator app
+							</p>
+						</div>
+					)}
+
+					{/* MFA enabled */}
+					{!mfaLoading && mfaStatus && mfaStatus.mfa_enabled && totpStep === "idle" && (
+						<div className="space-y-4">
+							<div className="flex items-center justify-between p-4 border rounded-lg">
+								<div className="flex items-center gap-4">
+									<div className="p-2 bg-green-100 dark:bg-green-900 rounded-full">
+										<ShieldCheck className="h-5 w-5 text-green-600 dark:text-green-400" />
+									</div>
+									<div>
+										<div className="flex items-center gap-2">
+											<span className="font-medium">
+												Authenticator App
+											</span>
+											<Badge
+												variant="secondary"
+												className="text-xs bg-green-100 text-green-700 dark:bg-green-900 dark:text-green-400"
+											>
+												Enabled
+											</Badge>
+										</div>
+										<p className="text-sm text-muted-foreground mt-1">
+											{mfaStatus.recovery_codes_remaining}{" "}
+											recovery codes remaining
+										</p>
+									</div>
+								</div>
+								<div className="flex gap-2">
+									<Button
+										variant="outline"
+										size="sm"
+										onClick={() => setShowRegenerateDialog(true)}
+									>
+										<Key className="h-4 w-4 mr-2" />
+										Recovery Codes
+									</Button>
+									<Button
+										variant="outline"
+										size="sm"
+										className="text-destructive hover:text-destructive"
+										onClick={() => setShowRemoveDialog(true)}
+									>
+										<Trash2 className="h-4 w-4 mr-2" />
+										Remove
+									</Button>
+								</div>
+							</div>
+						</div>
+					)}
+
+					{/* TOTP Setup Flow */}
+					{totpStep === "setup" && totpSetup && (
+						<div className="space-y-4">
+							<Alert>
+								<Info className="h-4 w-4" />
+								<AlertDescription>
+									Scan this QR code with your authenticator app
+									(Google Authenticator, Authy, 1Password, etc.)
+								</AlertDescription>
+							</Alert>
+
+							<div className="flex items-center justify-center p-4 bg-white rounded-lg">
+								<QRCode
+									data={totpSetup.qr_code_uri}
+									size={200}
+									alt="TOTP QR Code"
+								/>
+							</div>
+
+							<div className="text-center space-y-2">
+								<p className="text-xs text-muted-foreground">
+									Or enter this code manually:
+								</p>
+								<div className="flex items-center justify-center gap-2">
+									<code className="text-sm bg-muted px-2 py-1 rounded font-mono">
+										{totpSetup.secret}
+									</code>
+									<Button
+										variant="ghost"
+										size="sm"
+										onClick={copySecret}
+										className="h-7 px-2"
+									>
+										{secretCopied ? (
+											<CheckCircle className="h-3 w-3 text-green-500" />
+										) : (
+											<Copy className="h-3 w-3" />
+										)}
+									</Button>
+								</div>
+							</div>
+
+							<div className="flex gap-2">
+								<Button
+									variant="outline"
+									className="flex-1"
+									onClick={() => {
+										setTotpStep("idle");
+										setTotpSetup(null);
+									}}
+								>
+									Cancel
+								</Button>
+								<Button
+									className="flex-1"
+									onClick={() => setTotpStep("verify")}
+								>
+									Continue
+								</Button>
+							</div>
+						</div>
+					)}
+
+					{/* TOTP Verify Step */}
+					{totpStep === "verify" && (
+						<form onSubmit={handleVerifyTOTP} className="space-y-4">
+							{totpError && (
+								<Alert variant="destructive">
+									<AlertTriangle className="h-4 w-4" />
+									<AlertDescription>{totpError}</AlertDescription>
+								</Alert>
+							)}
+
+							<div className="space-y-2">
+								<Label htmlFor="totp-code">Verification Code</Label>
+								<Input
+									id="totp-code"
+									type="text"
+									inputMode="numeric"
+									pattern="[0-9]*"
+									placeholder="Enter 6-digit code"
+									value={totpCode}
+									onChange={(e) =>
+										setTotpCode(e.target.value.replace(/\D/g, ""))
+									}
+									className="text-center text-lg tracking-widest"
+									maxLength={6}
+									autoFocus
+								/>
+								<p className="text-xs text-muted-foreground text-center">
+									Enter the code from your authenticator app
+								</p>
+							</div>
+
+							<div className="flex gap-2">
+								<Button
+									type="button"
+									variant="outline"
+									className="flex-1"
+									onClick={() => setTotpStep("setup")}
+									disabled={totpLoading}
+								>
+									Back
+								</Button>
+								<Button
+									type="submit"
+									className="flex-1"
+									disabled={totpLoading || totpCode.length !== 6}
+								>
+									{totpLoading ? (
+										<Loader2 className="h-4 w-4 mr-2 animate-spin" />
+									) : null}
+									Verify
+								</Button>
+							</div>
+						</form>
+					)}
+
+					{/* Recovery Codes Step */}
+					{totpStep === "recovery-codes" && (
+						<div className="space-y-4">
+							<Alert>
+								<AlertTriangle className="h-4 w-4" />
+								<AlertTitle>Save your recovery codes</AlertTitle>
+								<AlertDescription>
+									These codes can be used to access your account if
+									you lose your authenticator. Each code can only be
+									used once. Store them securely.
+								</AlertDescription>
+							</Alert>
+
+							<div className="grid grid-cols-2 gap-2 p-4 bg-muted rounded-lg font-mono text-sm">
+								{recoveryCodes.map((code, i) => (
+									<div key={i} className="text-center py-1">
+										{code}
+									</div>
+								))}
+							</div>
+
+							<div className="flex gap-2">
+								<Button
+									variant="outline"
+									className="flex-1"
+									onClick={copyRecoveryCodes}
+								>
+									<Copy className="h-4 w-4 mr-2" />
+									Copy
+								</Button>
+								<Button
+									variant="outline"
+									className="flex-1"
+									onClick={downloadRecoveryCodes}
+								>
+									<Download className="h-4 w-4 mr-2" />
+									Download
+								</Button>
+							</div>
+
+							<div className="flex items-center space-x-2">
+								<input
+									type="checkbox"
+									id="savedCodes"
+									checked={recoveryCodesSaved}
+									onChange={(e) =>
+										setRecoveryCodesSaved(e.target.checked)
+									}
+									className="rounded border-gray-300"
+								/>
+								<Label
+									htmlFor="savedCodes"
+									className="text-sm font-normal"
+								>
+									I have saved my recovery codes
+								</Label>
+							</div>
+
+							<Button
+								onClick={handleCompleteTOTPSetup}
+								className="w-full"
+								disabled={!recoveryCodesSaved}
+							>
+								<CheckCircle className="h-4 w-4 mr-2" />
+								Done
+							</Button>
+						</div>
+					)}
+				</CardContent>
+			</Card>
+
 			{/* Passkeys Section */}
 			<Card>
 				<CardHeader>
@@ -159,116 +607,135 @@ export function Security() {
 								security keys
 							</CardDescription>
 						</div>
-						<Button onClick={() => setShowAddDialog(true)}>
-							<Plus className="h-4 w-4 mr-2" />
-							Add Passkey
-						</Button>
+						{support.supported && (
+							<Button onClick={() => setShowAddDialog(true)}>
+								<Plus className="h-4 w-4 mr-2" />
+								Add Passkey
+							</Button>
+						)}
 					</div>
 				</CardHeader>
 				<CardContent>
-					{/* Info banner */}
-					<Alert className="mb-6">
-						<ShieldCheck className="h-4 w-4" />
-						<AlertTitle>Passwordless login</AlertTitle>
-						<AlertDescription>
-							Passkeys let you sign in without a password using
-							biometrics or your device PIN. They're phishing
-							resistant and more secure than passwords.
-						</AlertDescription>
-					</Alert>
-
-					{/* Loading state */}
-					{isLoading && (
-						<div className="space-y-3">
-							<Skeleton className="h-16 w-full" />
-							<Skeleton className="h-16 w-full" />
-						</div>
-					)}
-
-					{/* Error state */}
-					{isError && (
-						<Alert variant="destructive">
+					{/* Unsupported browser */}
+					{!support.supported && (
+						<Alert variant="default">
 							<AlertTriangle className="h-4 w-4" />
+							<AlertTitle>Passkeys not supported</AlertTitle>
 							<AlertDescription>
-								Failed to load passkeys. Please try again.
+								Your browser doesn't support passkeys. Try using a
+								modern browser like Chrome, Safari, or Edge on a
+								device with biometric authentication.
 							</AlertDescription>
 						</Alert>
 					)}
 
-					{/* Empty state */}
-					{!isLoading && !isError && passkeyCount === 0 && (
-						<div className="text-center py-8 text-muted-foreground">
-							<Fingerprint className="h-12 w-12 mx-auto mb-4 opacity-50" />
-							<p className="font-medium">No passkeys yet</p>
-							<p className="text-sm mt-1">
-								Add a passkey to enable passwordless sign-in
-							</p>
-						</div>
-					)}
+					{support.supported && (
+						<>
+							{/* Info banner */}
+							<Alert className="mb-6">
+								<ShieldCheck className="h-4 w-4" />
+								<AlertTitle>Passwordless login</AlertTitle>
+								<AlertDescription>
+									Passkeys let you sign in without a password using
+									biometrics or your device PIN. They're phishing
+									resistant and more secure than passwords.
+								</AlertDescription>
+							</Alert>
 
-					{/* Passkey list */}
-					{!isLoading && !isError && passkeyCount > 0 && (
-						<div className="space-y-3">
-							{passkeys.map((passkey) => (
-								<div
-									key={passkey.id}
-									className="flex items-center justify-between p-4 border rounded-lg hover:bg-muted/50 transition-colors"
-								>
-									<div className="flex items-center gap-4">
-										{getDeviceIcon(passkey.device_type)}
-										<div>
-											<div className="flex items-center gap-2">
-												<span className="font-medium">
-													{passkey.name}
-												</span>
-												{passkey.backed_up && (
-													<Badge
-														variant="secondary"
-														className="text-xs"
-													>
-														<Cloud className="h-3 w-3 mr-1" />
-														Synced
-													</Badge>
-												)}
-											</div>
-											<div className="flex items-center gap-3 text-sm text-muted-foreground mt-1">
-												<span className="flex items-center gap-1">
-													<Clock className="h-3 w-3" />
-													Created{" "}
-													{formatDistanceToNow(
-														new Date(
-															passkey.created_at,
-														),
-														{ addSuffix: true },
-													)}
-												</span>
-												{passkey.last_used_at && (
-													<span>
-														Last used{" "}
-														{formatDistanceToNow(
-															new Date(
-																passkey.last_used_at,
-															),
-															{ addSuffix: true },
-														)}
-													</span>
-												)}
-											</div>
-										</div>
-									</div>
-									<Button
-										variant="ghost"
-										size="icon"
-										className="text-destructive hover:text-destructive hover:bg-destructive/10"
-										onClick={() =>
-											setPasskeyToDelete(passkey)
-										}
-									>
-										<Trash2 className="h-4 w-4" />
-									</Button>
+							{/* Loading state */}
+							{isLoading && (
+								<div className="space-y-3">
+									<Skeleton className="h-16 w-full" />
+									<Skeleton className="h-16 w-full" />
 								</div>
-							))}
-						</div>
+							)}
+
+							{/* Error state */}
+							{isError && (
+								<Alert variant="destructive">
+									<AlertTriangle className="h-4 w-4" />
+									<AlertDescription>
+										Failed to load passkeys. Please try again.
+									</AlertDescription>
+								</Alert>
+							)}
+
+							{/* Empty state */}
+							{!isLoading && !isError && passkeyCount === 0 && (
+								<div className="text-center py-8 text-muted-foreground">
+									<Fingerprint className="h-12 w-12 mx-auto mb-4 opacity-50" />
+									<p className="font-medium">No passkeys yet</p>
+									<p className="text-sm mt-1">
+										Add a passkey to enable passwordless sign-in
+									</p>
+								</div>
+							)}
+
+							{/* Passkey list */}
+							{!isLoading && !isError && passkeyCount > 0 && (
+								<div className="space-y-3">
+									{passkeys.map((passkey) => (
+										<div
+											key={passkey.id}
+											className="flex items-center justify-between p-4 border rounded-lg hover:bg-muted/50 transition-colors"
+										>
+											<div className="flex items-center gap-4">
+												{getDeviceIcon(passkey.device_type)}
+												<div>
+													<div className="flex items-center gap-2">
+														<span className="font-medium">
+															{passkey.name}
+														</span>
+														{passkey.backed_up && (
+															<Badge
+																variant="secondary"
+																className="text-xs"
+															>
+																<Cloud className="h-3 w-3 mr-1" />
+																Synced
+															</Badge>
+														)}
+													</div>
+													<div className="flex items-center gap-3 text-sm text-muted-foreground mt-1">
+														<span className="flex items-center gap-1">
+															<Clock className="h-3 w-3" />
+															Created{" "}
+															{formatDistanceToNow(
+																new Date(
+																	passkey.created_at,
+																),
+																{ addSuffix: true },
+															)}
+														</span>
+														{passkey.last_used_at && (
+															<span>
+																Last used{" "}
+																{formatDistanceToNow(
+																	new Date(
+																		passkey.last_used_at,
+																	),
+																	{ addSuffix: true },
+																)}
+															</span>
+														)}
+													</div>
+												</div>
+											</div>
+											<Button
+												variant="ghost"
+												size="icon"
+												className="text-destructive hover:text-destructive hover:bg-destructive/10"
+												onClick={() =>
+													setPasskeyToDelete(passkey)
+												}
+											>
+												<Trash2 className="h-4 w-4" />
+											</Button>
+										</div>
+									))}
+								</div>
+							)}
+						</>
 					)}
 				</CardContent>
 			</Card>
@@ -351,7 +818,7 @@ export function Security() {
 				</DialogContent>
 			</Dialog>
 
-			{/* Delete Confirmation Dialog */}
+			{/* Delete Passkey Confirmation Dialog */}
 			<AlertDialog
 				open={!!passkeyToDelete}
 				onOpenChange={() => setPasskeyToDelete(null)}
@@ -386,6 +853,134 @@ export function Security() {
 					</AlertDialogFooter>
 				</AlertDialogContent>
 			</AlertDialog>
+
+			{/* Remove MFA Dialog */}
+			<Dialog open={showRemoveDialog} onOpenChange={setShowRemoveDialog}>
+				<DialogContent>
+					<DialogHeader>
+						<DialogTitle>Remove Two-Factor Authentication</DialogTitle>
+						<DialogDescription>
+							Enter your current authenticator code to remove
+							two-factor authentication from your account.
+						</DialogDescription>
+					</DialogHeader>
+
+					<div className="space-y-4 py-4">
+						<div className="space-y-2">
+							<Label htmlFor="remove-code">Authenticator Code</Label>
+							<Input
+								id="remove-code"
+								type="text"
+								inputMode="numeric"
+								pattern="[0-9]*"
+								placeholder="Enter 6-digit code"
+								value={removeCode}
+								onChange={(e) =>
+									setRemoveCode(e.target.value.replace(/\D/g, ""))
+								}
+								className="text-center text-lg tracking-widest"
+								maxLength={6}
+							/>
+						</div>
+
+						<Alert variant="destructive">
+							<AlertTriangle className="h-4 w-4" />
+							<AlertDescription>
+								Removing two-factor authentication will make your
+								account less secure.
+							</AlertDescription>
+						</Alert>
+					</div>
+
+					<DialogFooter>
+						<Button
+							variant="outline"
+							onClick={() => {
+								setShowRemoveDialog(false);
+								setRemoveCode("");
+							}}
+							disabled={removeLoading}
+						>
+							Cancel
+						</Button>
+						<Button
+							variant="destructive"
+							onClick={handleRemoveMFA}
+							disabled={removeLoading || removeCode.length !== 6}
+						>
+							{removeLoading ? (
+								<Loader2 className="h-4 w-4 mr-2 animate-spin" />
+							) : null}
+							Remove MFA
+						</Button>
+					</DialogFooter>
+				</DialogContent>
+			</Dialog>
+
+			{/* Regenerate Recovery Codes Dialog */}
+			<Dialog
+				open={showRegenerateDialog}
+				onOpenChange={setShowRegenerateDialog}
+			>
+				<DialogContent>
+					<DialogHeader>
+						<DialogTitle>Regenerate Recovery Codes</DialogTitle>
+						<DialogDescription>
+							Enter your authenticator code to generate new recovery
+							codes. Your old codes will no longer work.
+						</DialogDescription>
+					</DialogHeader>
+
+					<div className="space-y-4 py-4">
+						<div className="space-y-2">
+							<Label htmlFor="regenerate-code">
+								Authenticator Code
+							</Label>
+							<Input
+								id="regenerate-code"
+								type="text"
+								inputMode="numeric"
+								pattern="[0-9]*"
+								placeholder="Enter 6-digit code"
+								value={regenerateCode}
+								onChange={(e) =>
+									setRegenerateCode(
+										e.target.value.replace(/\D/g, ""),
+									)
+								}
+								className="text-center text-lg tracking-widest"
+								maxLength={6}
+							/>
+						</div>
+					</div>
+
+					<DialogFooter>
+						<Button
+							variant="outline"
+							onClick={() => {
+								setShowRegenerateDialog(false);
+								setRegenerateCode("");
+							}}
+							disabled={regenerateLoading}
+						>
+							Cancel
+						</Button>
+						<Button
+							onClick={handleRegenerateRecoveryCodes}
+							disabled={
+								regenerateLoading || regenerateCode.length !== 6
+							}
+						>
+							{regenerateLoading ? (
+								<Loader2 className="h-4 w-4 mr-2 animate-spin" />
+							) : (
+								<RefreshCw className="h-4 w-4 mr-2" />
+							)}
+							Regenerate
+						</Button>
+					</DialogFooter>
+				</DialogContent>
+			</Dialog>
 		</div>
 	);
 }

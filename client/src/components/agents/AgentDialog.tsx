@@ -50,6 +50,7 @@ import {
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
+import { TiptapEditor } from "@/components/ui/tiptap-editor";
 import { Badge } from "@/components/ui/badge";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Slider } from "@/components/ui/slider";
@@ -317,10 +318,10 @@ export function AgentDialog({ agentId, open, onOpenChange }: AgentDialogProps) {
 													System Prompt
 												</FormLabel>
 												<FormControl className="flex-1 min-h-0">
-													<Textarea
+													<TiptapEditor
+														content={field.value}
+														onChange={field.onChange}
 														placeholder="You are a helpful sales assistant..."
-														className="resize-none font-mono text-sm h-full min-h-[200px]"
-														{...field}
 													/>
 												</FormControl>
 												<FormDescription>

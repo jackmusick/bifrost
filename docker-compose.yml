@@ -204,6 +204,8 @@ services:
       BIFROST_MFA_ENABLED: ${BIFROST_MFA_ENABLED:-true}
       BIFROST_MFA_TOTP_ISSUER: ${BIFROST_MFA_TOTP_ISSUER:-Bifrost}
       # WebAuthn/Passkeys (comma-separated for multiple origins, e.g., localhost + ngrok)
+      BIFROST_WEBAUTHN_RP_ID: ${BIFROST_WEBAUTHN_RP_ID:-localhost}
+      BIFROST_WEBAUTHN_RP_NAME: ${BIFROST_WEBAUTHN_RP_NAME:-Bifrost}
       BIFROST_WEBAUTHN_ORIGIN: ${BIFROST_WEBAUTHN_ORIGIN:-http://localhost:3000}
       # Default admin user (optional - set in .env to skip setup wizard)
       BIFROST_DEFAULT_USER_EMAIL: ${BIFROST_DEFAULT_USER_EMAIL:-}

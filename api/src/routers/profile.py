@@ -59,6 +59,7 @@ async def get_profile(
         email=user.email,
         name=user.name,
         has_avatar=user.avatar_data is not None,
+        has_password=user.hashed_password is not None,
         organization_id=user.organization_id,
         is_superuser=user.is_superuser,
     )
@@ -105,6 +106,7 @@ async def update_profile(
         email=user.email,
         name=user.name,
         has_avatar=user.avatar_data is not None,
+        has_password=user.hashed_password is not None,
         organization_id=user.organization_id,
         is_superuser=user.is_superuser,
     )
@@ -193,6 +195,7 @@ async def upload_avatar(
         email=user.email,
         name=user.name,
         has_avatar=True,
+        has_password=user.hashed_password is not None,
         organization_id=user.organization_id,
         is_superuser=user.is_superuser,
     )
@@ -229,6 +232,7 @@ async def delete_avatar(
         email=user.email,
         name=user.name,
         has_avatar=False,
+        has_password=user.hashed_password is not None,
         organization_id=user.organization_id,
         is_superuser=user.is_superuser,
     )
@@ -241,8 +245,8 @@ async def delete_avatar(
 
 @router.post(
     "/password",
-    summary="Change password",
-    description="Change the authenticated user's password",
+    summary="Change or set password",
+    description="Change the authenticated user's password, or set one if they don't have one (passkey/OAuth users)",
     status_code=status.HTTP_204_NO_CONTENT,
 )
 async def change_password(
@@ -250,7 +254,7 @@ async def change_password(
     current_user: CurrentUser,
     db: Annotated[AsyncSession, Depends(get_db)],
 ) -> None:
-    """Change user's password."""
+    """Change or set user's password."""
     # Load user to verify current password
     stmt = select(User).where(User.id == current_user.user_id)
     result = await db.execute(stmt)
@@ -262,19 +266,18 @@ async def change_password(
             detail="User not found",
         )
 
-    # Check if user has a password set (might be OAuth-only user)
-    if not user.hashed_password:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Cannot change password for OAuth-only accounts",
-        )
-
-    # Verify current password
-    if not verify_password(request.current_password, user.hashed_password):
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Current password is incorrect",
-        )
+    # If user has a password, require current_password and verify it
+    if user.hashed_password:
+        if not request.current_password:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Current password is required",
+            )
+        if not verify_password(request.current_password, user.hashed_password):
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Current password is incorrect",
+            )
 
     # Hash and update new password
     new_hashed = get_password_hash(request.new_password)
@@ -285,4 +288,7 @@ async def change_password(
     )
     await db.commit()
 
-    logger.info(f"Password changed for user {user.email}")
+    if user.hashed_password:
+        logger.info(f"Password changed for user {user.email}")
+    else:
+        logger.info(f"Password set for user {user.email}")
