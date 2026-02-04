@@ -254,9 +254,10 @@ async def create_workflow(context: Any, file_path: str, code: str) -> ToolResult
             {"line": e.lineno, "message": e.msg},
         )
 
-    # Check for workflow decorator
-    if "@workflow" not in code:
-        return error_result("Missing @workflow decorator. Your code must include a function decorated with @workflow.")
+    # Check for workflow/tool/data_provider decorator
+    has_decorator = "@workflow" in code or "@data_provider" in code or "@tool" in code
+    if not has_decorator:
+        return error_result("Missing decorator. Your code must include a function decorated with @workflow, @data_provider, or @tool.")
 
     # Ensure .py extension
     if not file_path.endswith(".py"):

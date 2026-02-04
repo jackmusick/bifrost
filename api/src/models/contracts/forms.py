@@ -29,10 +29,14 @@ class FormFieldValidation(BaseModel):
 
 class DataProviderInputConfig(BaseModel):
     """Configuration for a single data provider input parameter (T006)"""
-    mode: DataProviderInputMode
-    value: str | None = None
-    field_name: str | None = None
-    expression: str | None = None
+    mode: DataProviderInputMode = Field(
+        ..., description="How to resolve the value: 'static' (fixed value), 'fieldRef' (from another form field), or 'expression' (JavaScript)")
+    value: str | None = Field(
+        default=None, description="Fixed value to pass (required when mode='static')")
+    field_name: str | None = Field(
+        default=None, description="Name of another form field to get value from (required when mode='fieldRef')")
+    expression: str | None = Field(
+        default=None, description="JavaScript expression like 'context.field.org_id' (required when mode='expression')")
 
     @model_validator(mode='after')
     def validate_mode_data(self):

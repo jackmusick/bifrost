@@ -77,7 +77,7 @@ async def list_forms(context: Any) -> ToolResult:
 
 async def get_form_schema(context: Any) -> ToolResult:
     """Get form schema documentation generated from Pydantic models."""
-    from src.models.contracts.forms import FormCreate, FormUpdate, FormField, FormSchema
+    from src.models.contracts.forms import FormCreate, FormUpdate, FormField, FormSchema, DataProviderInputConfig
     from src.services.mcp_server.schema_utils import models_to_markdown
 
     schema_doc = models_to_markdown([
@@ -85,6 +85,7 @@ async def get_form_schema(context: Any) -> ToolResult:
         (FormUpdate, "FormUpdate (for updating forms)"),
         (FormSchema, "FormSchema (fields container)"),
         (FormField, "FormField (field definition)"),
+        (DataProviderInputConfig, "DataProviderInputConfig (for cascading dropdowns)"),
     ], "Form Schema Documentation")
 
     return success_result("Form schema documentation", {"schema": schema_doc})
@@ -388,6 +389,7 @@ async def get_form(
                         "default_value": field.default_value,
                         "options": field.options,
                         "data_provider_id": field.data_provider_id,
+                        "data_provider_inputs": field.data_provider_inputs,
                         "position": field.position,
                     }
                     for field in sorted_fields

@@ -126,9 +126,11 @@ function FormRendererInner({
 	);
 
 	// Helper to evaluate data provider inputs (T040, T055, T075 - All three modes)
+	// Accepts optional fieldOverrides to use fresh values before context has updated
 	const evaluateDataProviderInputs = useCallback(
 		(
 			field: FormField,
+			fieldOverrides?: Record<string, unknown>,
 		): {
 			inputs: Record<string, unknown> | null;
 			hasAllRequired: boolean;
@@ -138,6 +140,11 @@ function FormRendererInner({
 
 			const inputValues: Record<string, unknown> = {};
 			let hasAllRequired = true;
+
+			// Merge context.field with any overrides (overrides take precedence)
+			const fieldValues = fieldOverrides
+				? { ...context.field, ...fieldOverrides }
+				: context.field;
 
 			Object.entries(field.data_provider_inputs).forEach(
 				([key, config]: [string, DataProviderInputConfig]) => {
@@ -155,12 +162,11 @@ function FormRendererInner({
 						case "fieldRef":
 							if (
 								config.field_name &&
-								context.field[config.field_name] !==
-									undefined &&
-								context.field[config.field_name] !== ""
+								fieldValues[config.field_name] !== undefined &&
+								fieldValues[config.field_name] !== ""
 							) {
 								inputValues[key] =
-									context.field[config.field_name];
+									fieldValues[config.field_name];
 							} else {
 								hasAllRequired = false;
 							}
@@ -171,11 +177,18 @@ function FormRendererInner({
 								try {
 									// Simple expression evaluation using Function constructor
 									// context.field.fieldName or context.workflow.property
+									// Use a merged context with the field overrides
+									const evalContext = fieldOverrides
+										? {
+												...context,
+												field: fieldValues,
+											}
+										: context;
 									const evalFunc = new Function(
 										"context",
 										`return ${config.expression}`,
 									);
-									const result = evalFunc(context);
+									const result = evalFunc(evalContext);
 									if (result && result !== "") {
 										inputValues[key] = result;
 									} else {
@@ -200,103 +213,110 @@ function FormRendererInner({
 	);
 
 	// Function to load data providers (called on mount and blur events)
-	const loadDataProviders = useCallback(async () => {
-		const selectFields = fields.filter(
-			(field: FormField) => field.data_provider_id,
-		);
+	// Accepts optional fieldOverrides to use fresh values before context has updated
+	const loadDataProviders = useCallback(
+		async (fieldOverrides?: Record<string, unknown>) => {
+			const selectFields = fields.filter(
+				(field: FormField) => field.data_provider_id,
+			);
 
-		for (const field of selectFields) {
-			if (
-				!field.data_provider_id ||
-				typeof field.data_provider_id !== "string"
-			)
-				continue;
+			for (const field of selectFields) {
+				if (
+					!field.data_provider_id ||
+					typeof field.data_provider_id !== "string"
+				)
+					continue;
 
-			const providerId = field.data_provider_id as string;
-			const cacheKey = `${providerId}_${field.name}`;
+				const providerId = field.data_provider_id as string;
+				const cacheKey = `${providerId}_${field.name}`;
 
-			// Evaluate inputs to check if all required fields are available
-			const { inputs, hasAllRequired } =
-				evaluateDataProviderInputs(field);
-
-			// Skip if we don't have all required inputs
-			if (!hasAllRequired) {
-				// Clear any existing options and errors
-				setDataProviderState((prev) => ({
-					...prev,
-					options: {
-						...prev.options,
-						[cacheKey]: undefined,
-					} as Record<string, DataProviderOption[]>,
-					errors: { ...prev.errors, [cacheKey]: undefined } as Record<
-						string,
-						string
-					>,
-				}));
-				continue;
-			}
-
-			// Create a hash of the inputs to detect changes
-			const inputsHash = JSON.stringify(inputs || {});
-
-			// Skip if we've already loaded with these exact inputs
-			if (loadedInputsRef.current[cacheKey] === inputsHash) {
-				continue;
-			}
-
-			// Skip if already loading
-			if (dataProviderState.loading[cacheKey]) {
-				continue;
-			}
-
-			try {
-				// Set loading state
-				setDataProviderState((prev) => ({
-					...prev,
-					loading: { ...prev.loading, [cacheKey]: true },
-					errors: { ...prev.errors, [cacheKey]: undefined } as Record<
-						string,
-						string
-					>,
-				}));
-
-				const options = await getDataProviderOptions(
-					providerId,
-					inputs || undefined,
+				// Evaluate inputs to check if all required fields are available
+				// Pass fieldOverrides to use fresh values
+				const { inputs, hasAllRequired } = evaluateDataProviderInputs(
+					field,
+					fieldOverrides,
 				);
 
-				loadedInputsRef.current[cacheKey] = inputsHash;
+				// Skip if we don't have all required inputs
+				if (!hasAllRequired) {
+					// Clear any existing options and errors
+					setDataProviderState((prev) => ({
+						...prev,
+						options: {
+							...prev.options,
+							[cacheKey]: undefined,
+						} as Record<string, DataProviderOption[]>,
+						errors: {
+							...prev.errors,
+							[cacheKey]: undefined,
+						} as Record<string, string>,
+					}));
+					continue;
+				}
 
-				// Update all state in one batch
-				setDataProviderState((prev) => {
-					const newSuccessfullyLoaded = new Set(
-						prev.successfullyLoaded,
+				// Create a hash of the inputs to detect changes
+				const inputsHash = JSON.stringify(inputs || {});
+
+				// Skip if we've already loaded with these exact inputs
+				if (loadedInputsRef.current[cacheKey] === inputsHash) {
+					continue;
+				}
+
+				// Skip if already loading
+				if (dataProviderState.loading[cacheKey]) {
+					continue;
+				}
+
+				try {
+					// Set loading state
+					setDataProviderState((prev) => ({
+						...prev,
+						loading: { ...prev.loading, [cacheKey]: true },
+						errors: {
+							...prev.errors,
+							[cacheKey]: undefined,
+						} as Record<string, string>,
+					}));
+
+					const options = await getDataProviderOptions(
+						providerId,
+						inputs || undefined,
 					);
-					newSuccessfullyLoaded.add(cacheKey);
-					return {
-						options: { ...prev.options, [cacheKey]: options },
+
+					loadedInputsRef.current[cacheKey] = inputsHash;
+
+					// Update all state in one batch
+					setDataProviderState((prev) => {
+						const newSuccessfullyLoaded = new Set(
+							prev.successfullyLoaded,
+						);
+						newSuccessfullyLoaded.add(cacheKey);
+						return {
+							options: { ...prev.options, [cacheKey]: options },
+							loading: { ...prev.loading, [cacheKey]: false },
+							errors: prev.errors,
+							successfullyLoaded: newSuccessfullyLoaded,
+						};
+					});
+				} catch {
+					// Update error state in one batch
+					setDataProviderState((prev) => ({
+						...prev,
 						loading: { ...prev.loading, [cacheKey]: false },
-						errors: prev.errors,
-						successfullyLoaded: newSuccessfullyLoaded,
-					};
-				});
-			} catch {
-				// Update error state in one batch
-				setDataProviderState((prev) => ({
-					...prev,
-					loading: { ...prev.loading, [cacheKey]: false },
-					errors: {
-						...prev.errors,
-						[cacheKey]: "Unable to load data",
-					},
-					options: {
-						...prev.options,
-						[cacheKey]: undefined,
-					} as Record<string, DataProviderOption[]>,
-				}));
+						errors: {
+							...prev.errors,
+							[cacheKey]: "Unable to load data",
+						},
+						options: {
+							...prev.options,
+							[cacheKey]: undefined,
+						} as Record<string, DataProviderOption[]>,
+					}));
+				}
 			}
-		}
-	}, [fields, evaluateDataProviderInputs, dataProviderState.loading]);
+		},
+		[fields, evaluateDataProviderInputs, dataProviderState.loading],
+	);
 
 	// Load data providers on mount and when fieldBlurTrigger changes
 	useEffect(() => {
@@ -506,7 +526,7 @@ function FormRendererInner({
 				);
 			});
 
-			// Clear data for dependent fields
+			// Clear data for dependent fields and reload them
 			if (fieldsToClear.length > 0) {
 				setDataProviderState((prev) => {
 					const newOptions = { ...prev.options };
@@ -517,6 +537,8 @@ function FormRendererInner({
 					fieldsToClear.forEach((cacheKey) => {
 						delete newOptions[cacheKey];
 						newSuccessfullyLoaded.delete(cacheKey);
+						// Also clear from loadedInputsRef so loadDataProviders will reload
+						delete loadedInputsRef.current[cacheKey];
 					});
 
 					return {
@@ -525,9 +547,13 @@ function FormRendererInner({
 						successfullyLoaded: newSuccessfullyLoaded,
 					};
 				});
+
+				// Trigger reload of dependent data providers
+				// Pass current formValues as overrides since context.field may not be updated yet
+				loadDataProviders(formValues);
 			}
 		}
-	}, [formValues, setFieldValue, fields]);
+	}, [formValues, setFieldValue, fields, loadDataProviders]);
 
 	const onSubmit = async (data: Record<string, unknown>) => {
 		setIsNavigating(true);
