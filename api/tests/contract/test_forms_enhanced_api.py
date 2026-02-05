@@ -293,30 +293,30 @@ class TestDataProviderInputsValidation:
         assert field.data_provider_inputs["org"].mode == DataProviderInputMode.STATIC
         assert field.data_provider_inputs["org"].value == "my-org"
 
-    def test_data_provider_inputs_without_data_provider_fails(self):
+    def test_data_provider_inputs_without_data_provider_cleared(self):
         """
-        Test that data_provider_inputs cannot be set without data_provider_id.
+        Test that data_provider_inputs is silently cleared when data_provider_id is not set.
 
         Expected behavior:
-        - Setting data_provider_inputs without data_provider_id should raise ValidationError
+        - Setting data_provider_inputs without data_provider_id silently clears the inputs
+          (handles the edge case where a data provider was deleted via FK SET NULL)
         """
-        with pytest.raises(ValidationError) as exc_info:
-            FormField(
-                name="invalid_field",
-                label="Invalid Field",
-                type=FormFieldType.SELECT,
-                required=False,
-                # No data_provider_id set!
-                data_provider_inputs={
-                    "param": DataProviderInputConfig(
-                        mode=DataProviderInputMode.STATIC,
-                        value="test"
-                    )
-                }
-            )
+        field = FormField(
+            name="invalid_field",
+            label="Invalid Field",
+            type=FormFieldType.SELECT,
+            required=False,
+            # No data_provider_id set!
+            data_provider_inputs={
+                "param": DataProviderInputConfig(
+                    mode=DataProviderInputMode.STATIC,
+                    value="test"
+                )
+            }
+        )
 
-        errors = exc_info.value.errors()
-        assert any("data_provider_inputs requires data_provider_id" in str(e.get("ctx", {}).get("error", "")) for e in errors)
+        # Validator silently clears data_provider_inputs when no data_provider_id
+        assert field.data_provider_inputs is None
 
     def test_static_input_mode_validation(self):
         """

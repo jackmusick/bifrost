@@ -56,7 +56,7 @@ class TestAppFileExportPortableRefs:
             mock_db.execute = AsyncMock(return_value=mock_result)
 
             provider = VirtualFileProvider(mock_db)
-            result = await provider._get_app_files()
+            result = await provider._get_app_files(workflow_map={workflow_id: portable_ref})
 
             # Find the tsx file in results
             tsx_file = next(

@@ -12,18 +12,9 @@ from typing import Any, Generator
 
 import pytest
 
+from tests.helpers.polling import poll_until  # noqa: F401 — re-exported for dependents
+
 logger = logging.getLogger(__name__)
-
-
-def poll_until(check_fn, max_wait: float = 30.0, interval: float = 0.5):
-    """Poll until check_fn returns a truthy value or timeout."""
-    start = time.time()
-    while (time.time() - start) < max_wait:
-        result = check_fn()
-        if result:
-            return result
-        time.sleep(interval)
-    return None
 
 
 @pytest.fixture

@@ -15,7 +15,6 @@ Note: The MCP tools are implemented as decorated functions in src/services/mcp/t
 We test the tool functions directly.
 """
 
-import json
 from datetime import datetime
 from unittest.mock import AsyncMock, MagicMock, patch
 from uuid import uuid4
@@ -123,32 +122,35 @@ class TestGetFormSchema:
     async def test_documentation_content(self, org_user_context):
         """Should return comprehensive form schema documentation."""
         result = await get_form_schema(org_user_context)
+        schema = result.structured_content["schema"]
 
         # Check that documentation contains key sections (generated from Pydantic models)
-        assert "Form Schema Documentation" in result
-        assert "FormCreate" in result
-        assert "FormField" in result
-        assert "| Field |" in result  # Table format
+        assert "Form Schema Documentation" in schema
+        assert "FormCreate" in schema
+        assert "FormField" in schema
+        assert "| Field |" in schema  # Table format
 
     @pytest.mark.asyncio
     async def test_includes_field_definitions(self, org_user_context):
         """Should include documentation for form fields."""
         result = await get_form_schema(org_user_context)
+        schema = result.structured_content["schema"]
 
         # Verify common form fields are documented
-        assert "name" in result
-        assert "type" in result
-        assert "label" in result
-        assert "required" in result
+        assert "name" in schema
+        assert "type" in schema
+        assert "label" in schema
+        assert "required" in schema
 
     @pytest.mark.asyncio
     async def test_includes_model_tables(self, org_user_context):
         """Should include model documentation in table format."""
         result = await get_form_schema(org_user_context)
+        schema = result.structured_content["schema"]
 
         # Schema is now generated from Pydantic models with markdown tables
-        assert "| Field | Type | Required | Description |" in result
-        assert "FormSchema" in result
+        assert "| Field | Type | Required | Description |" in schema
+        assert "FormSchema" in schema
 
 
 # ==================== list_workflows Tests ====================
@@ -175,8 +177,8 @@ class TestListWorkflows:
 
                 result = await list_workflows(org_user_context)
 
-        # Result is JSON
-        data = json.loads(result)
+        # Result is a ToolResult with structured_content
+        data = result.structured_content
         assert "workflows" in data
         assert len(data["workflows"]) == 1
         assert data["workflows"][0]["name"] == "test_workflow"
@@ -203,7 +205,7 @@ class TestListWorkflows:
 
                 result = await list_workflows(org_user_context)
 
-        data = json.loads(result)
+        data = result.structured_content
         assert data["workflows"] == []
         assert data["count"] == 0
         assert data["total_count"] == 0
@@ -244,7 +246,7 @@ class TestListWorkflows:
 
             result = await list_workflows(org_user_context)
 
-        data = json.loads(result)
+        data = result.structured_content
         assert "error" in data
         assert "Error listing workflows" in data["error"]
 
@@ -270,8 +272,8 @@ class TestListForms:
 
                 result = await list_forms(org_user_context)
 
-        # Result is JSON
-        data = json.loads(result)
+        # Result is a ToolResult with structured_content
+        data = result.structured_content
         assert "forms" in data
         assert len(data["forms"]) == 1
         assert data["forms"][0]["name"] == "Test Form"
@@ -296,7 +298,7 @@ class TestListForms:
 
                 result = await list_forms(platform_admin_context)
 
-        data = json.loads(result)
+        data = result.structured_content
         assert "forms" in data
         assert data["forms"][0]["name"] == "Test Form"
 
@@ -315,7 +317,7 @@ class TestListForms:
 
                 result = await list_forms(org_user_context)
 
-        data = json.loads(result)
+        data = result.structured_content
         assert data["forms"] == []
         assert data["count"] == 0
 
@@ -330,7 +332,7 @@ class TestListForms:
 
             result = await list_forms(org_user_context)
 
-        data = json.loads(result)
+        data = result.structured_content
         assert "error" in data
         assert "Error listing forms" in data["error"]
 
@@ -372,8 +374,8 @@ class TestSearchKnowledge:
                         org_user_context, "SDK documentation"
                     )
 
-        # Result is JSON
-        data = json.loads(result)
+        # Result is a ToolResult with structured_content
+        data = result.structured_content
         assert "results" in data
         assert len(data["results"]) == 1
         assert data["results"][0]["content"] == "This is documentation about the SDK"
@@ -408,7 +410,7 @@ class TestSearchKnowledge:
                         org_user_context, "nonexistent topic"
                     )
 
-        data = json.loads(result)
+        data = result.structured_content
         assert data["results"] == []
         assert data["count"] == 0
         assert "No results found" in data["message"]
@@ -417,7 +419,7 @@ class TestSearchKnowledge:
     async def test_handles_missing_query(self, org_user_context):
         """Should return error when query is empty."""
         result = await search_knowledge(org_user_context, "")
-        data = json.loads(result)
+        data = result.structured_content
         assert "error" in data
         assert "query is required" in data["error"]
 
@@ -439,7 +441,7 @@ class TestSearchKnowledge:
 
                 result = await search_knowledge(org_user_context, "test query")
 
-        data = json.loads(result)
+        data = result.structured_content
         assert "error" in data
         assert "Error searching knowledge" in data["error"]
 
@@ -477,8 +479,8 @@ class TestListIntegrations:
 
             result = await list_integrations(platform_admin_context)
 
-        # Result is JSON
-        data = json.loads(result)
+        # Result is a ToolResult with structured_content
+        data = result.structured_content
         assert "integrations" in data
         assert len(data["integrations"]) == 1
         assert data["integrations"][0]["name"] == "Microsoft Graph"
@@ -501,7 +503,7 @@ class TestListIntegrations:
 
             result = await list_integrations(org_user_context)
 
-        data = json.loads(result)
+        data = result.structured_content
         assert "integrations" in data
         assert data["integrations"][0]["name"] == "Microsoft Graph"
 
@@ -518,7 +520,7 @@ class TestListIntegrations:
 
             result = await list_integrations(org_user_context)
 
-        data = json.loads(result)
+        data = result.structured_content
         assert data["integrations"] == []
         assert data["count"] == 0
 
@@ -533,7 +535,7 @@ class TestListIntegrations:
 
             result = await list_integrations(org_user_context)
 
-        data = json.loads(result)
+        data = result.structured_content
         assert "error" in data
         assert "Error listing integrations" in data["error"]
 
@@ -581,8 +583,8 @@ class TestExecuteWorkflow:
                         {"key": "value"},
                     )
 
-        # Result is JSON
-        data = json.loads(result)
+        # Result is a ToolResult with structured_content
+        data = result.structured_content
         assert data["success"] is True
         assert data["workflow_name"] == "test_workflow"
         assert data["duration_ms"] == 150
@@ -611,7 +613,7 @@ class TestExecuteWorkflow:
                     workflow_id,
                 )
 
-        data = json.loads(result)
+        data = result.structured_content
         assert "error" in data
         assert "not found" in data["error"]
         assert workflow_id in data["error"]
@@ -625,7 +627,7 @@ class TestExecuteWorkflow:
             "not-a-valid-uuid",
         )
 
-        data = json.loads(result)
+        data = result.structured_content
         assert "error" in data
         assert "not a valid UUID" in data["error"]
         assert "list_workflows" in data["error"]
@@ -666,7 +668,7 @@ class TestExecuteWorkflow:
                         str(mock_workflow.id),
                     )
 
-        data = json.loads(result)
+        data = result.structured_content
         assert data["success"] is False
         assert data["status"] == "Failed"
         assert data["error"] == "Division by zero"
@@ -676,7 +678,7 @@ class TestExecuteWorkflow:
     async def test_handles_missing_workflow_id(self, org_user_context):
         """Should return error when workflow_id is empty."""
         result = await execute_workflow(org_user_context, "")
-        data = json.loads(result)
+        data = result.structured_content
         assert "error" in data
         assert "workflow_id is required" in data["error"]
 
@@ -694,7 +696,7 @@ class TestExecuteWorkflow:
                 str(mock_workflow.id),
             )
 
-        data = json.loads(result)
+        data = result.structured_content
         assert "error" in data
         assert "Error executing workflow" in data["error"]
 

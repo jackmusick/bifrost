@@ -203,7 +203,6 @@ class WorkflowIndexer:
 
                     category = kwargs.get("category", "General")
                     tags = kwargs.get("tags", [])
-                    schedule = kwargs.get("schedule")
                     endpoint_enabled = kwargs.get("endpoint_enabled", False)
                     allowed_methods = kwargs.get("allowed_methods", ["POST"])
                     # Apply same logic as decorator: endpoints default to sync, others to async
@@ -236,7 +235,6 @@ class WorkflowIndexer:
                         category=category,
                         parameters_schema=parameters_schema,
                         tags=tags,
-                        schedule=schedule,
                         endpoint_enabled=endpoint_enabled,
                         allowed_methods=allowed_methods,
                         execution_mode=execution_mode,
@@ -259,7 +257,6 @@ class WorkflowIndexer:
                             "category": category,
                             "parameters_schema": parameters_schema,
                             "tags": tags,
-                            "schedule": schedule,
                             "endpoint_enabled": endpoint_enabled,
                             "allowed_methods": allowed_methods,
                             "execution_mode": execution_mode,

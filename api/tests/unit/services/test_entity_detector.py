@@ -72,10 +72,10 @@ def helper():
         result = detect_platform_entity_type("config.json", b"{}")
         assert result is None
 
-    def test_text_file_returns_none(self):
-        """Text files return None (stored in S3)."""
+    def test_text_file_returns_text(self):
+        """Text files return 'text' (stored in workspace_files.content)."""
         result = detect_platform_entity_type("readme.txt", b"Hello world")
-        assert result is None
+        assert result == "text"
 
     def test_csv_file_returns_none(self):
         """CSV files return None (stored in S3)."""

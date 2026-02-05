@@ -13,7 +13,6 @@ Issue: MultipleResultsFound error when same name exists in both scopes
 Fix: Use ORDER BY organization_id DESC NULLS LAST LIMIT 1 for name-based lookups
 """
 
-import json
 import pytest
 import pytest_asyncio
 from datetime import datetime
@@ -308,7 +307,7 @@ class TestGetAgentScopedLookup:
 
         # Call get_agent by name
         result = await get_agent(context, agent_name="shared_agent")
-        data = json.loads(result)
+        data = result.structured_content
 
         # Should return org-specific agent, not global
         assert "error" not in data
@@ -341,7 +340,7 @@ class TestGetAgentScopedLookup:
 
         # Call get_agent by name
         result = await get_agent(context, agent_name="unique_global_agent")
-        data = json.loads(result)
+        data = result.structured_content
 
         # Should return global agent
         assert "error" not in data
@@ -372,7 +371,7 @@ class TestGetAgentScopedLookup:
 
         # Call get_agent by ID
         result = await get_agent(context, agent_id=str(org_agent.id))
-        data = json.loads(result)
+        data = result.structured_content
 
         # Should return the agent by ID
         assert "error" not in data
@@ -403,7 +402,7 @@ class TestGetAgentScopedLookup:
 
         # Call get_agent by name
         result = await get_agent(context, agent_name="shared_agent")
-        data = json.loads(result)
+        data = result.structured_content
 
         # Should return global agent (can't access org-specific)
         assert "error" not in data
@@ -435,7 +434,7 @@ class TestGetAgentScopedLookup:
 
         # Platform admin by ID should work
         result = await get_agent(context, agent_id=str(org_agent.id))
-        data = json.loads(result)
+        data = result.structured_content
         assert "error" not in data
         assert data["id"] == str(org_agent.id)
 
@@ -473,7 +472,7 @@ class TestGetFormScopedLookup:
 
         # Call get_form by name
         result = await get_form(context, form_name="shared_form")
-        data = json.loads(result)
+        data = result.structured_content
 
         # Should return org-specific form, not global
         assert "error" not in data
@@ -506,7 +505,7 @@ class TestGetFormScopedLookup:
 
         # Call get_form by name
         result = await get_form(context, form_name="unique_global_form")
-        data = json.loads(result)
+        data = result.structured_content
 
         # Should return global form
         assert "error" not in data
@@ -537,7 +536,7 @@ class TestGetFormScopedLookup:
 
         # Call get_form by ID
         result = await get_form(context, form_id=str(org_form.id))
-        data = json.loads(result)
+        data = result.structured_content
 
         # Should return the form by ID
         assert "error" not in data
@@ -567,7 +566,7 @@ class TestGetFormScopedLookup:
 
         # Call get_form by name
         result = await get_form(context, form_name="shared_form")
-        data = json.loads(result)
+        data = result.structured_content
 
         # Should return global form (can't access org-specific)
         assert "error" not in data
@@ -597,7 +596,7 @@ class TestGetFormScopedLookup:
 
         # Platform admin by ID should work
         result = await get_form(context, form_id=str(org_form.id))
-        data = json.loads(result)
+        data = result.structured_content
         assert "error" not in data
         assert data["id"] == str(org_form.id)
 
@@ -629,7 +628,7 @@ class TestScopedLookupErrorCases:
         )
 
         result = await get_agent(context, agent_name="nonexistent_agent")
-        data = json.loads(result)
+        data = result.structured_content
 
         assert "error" in data
         assert "not found" in data["error"].lower()
@@ -653,7 +652,7 @@ class TestScopedLookupErrorCases:
         )
 
         result = await get_form(context, form_name="nonexistent_form")
-        data = json.loads(result)
+        data = result.structured_content
 
         assert "error" in data
         assert "not found" in data["error"].lower()
@@ -676,7 +675,7 @@ class TestScopedLookupErrorCases:
         )
 
         result = await get_agent(context, agent_id="not-a-uuid")
-        data = json.loads(result)
+        data = result.structured_content
 
         assert "error" in data
         assert "not a valid UUID" in data["error"]
@@ -699,7 +698,7 @@ class TestScopedLookupErrorCases:
         )
 
         result = await get_form(context, form_id="not-a-uuid")
-        data = json.loads(result)
+        data = result.structured_content
 
         assert "error" in data
         assert "not a valid UUID" in data["error"]

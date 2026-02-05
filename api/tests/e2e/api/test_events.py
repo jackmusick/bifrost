@@ -1066,6 +1066,7 @@ class TestScheduleSourceCRUD:
             headers=platform_admin.headers,
             json={
                 "schedule": {
+                    "cron_expression": schedule_source["schedule"]["cron_expression"],
                     "enabled": False,
                 },
             },

@@ -236,7 +236,7 @@ class TestWorkflowParameterExecution:
         assert result["expected"] == "value1"
         # Extra params should be accessible via context.parameters
         assert result["extra_from_context"] == "value2"
-        assert result["all_extra_params"] == {"extra_param": "value2"}
+        assert result["all_extra_params"] == {"expected_param": "value1", "extra_param": "value2"}
         # Extra params should also be captured in variables for execution details
         assert "extra_param" in captured_vars
         assert captured_vars["extra_param"] == "value2"

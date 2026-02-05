@@ -574,9 +574,9 @@ async def list_logs(
     parsed_start = None
     parsed_end = None
     if start_date:
-        parsed_start = datetime.fromisoformat(start_date.replace("Z", "+00:00"))
+        parsed_start = datetime.fromisoformat(start_date.replace("Z", "+00:00")).replace(tzinfo=None)
     if end_date:
-        parsed_end = datetime.fromisoformat(end_date.replace("Z", "+00:00"))
+        parsed_end = datetime.fromisoformat(end_date.replace("Z", "+00:00")).replace(tzinfo=None)
 
     # Get logs from repository
     logs_repo = ExecutionLogRepository(ctx.db)

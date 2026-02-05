@@ -17,51 +17,12 @@ Note: pytest_plugins moved to tests/conftest.py (root) as required by pytest.
 """
 
 import os
-import time
-from typing import Callable, TypeVar
 
 import pytest
 import httpx
 
-
-T = TypeVar("T")
-
-
-def poll_until(
-    condition: Callable[[], T | None],
-    max_wait: float = 5.0,
-    interval: float = 0.1,
-    backoff: float = 1.5,
-    max_interval: float = 1.0,
-) -> T | None:
-    """
-    Poll until condition returns truthy value or timeout.
-
-    Uses exponential backoff starting at `interval`, multiplying by `backoff`
-    each iteration, capped at `max_interval`.
-
-    Args:
-        condition: Callable that returns truthy value on success, None/falsy on failure
-        max_wait: Maximum total time to wait in seconds
-        interval: Initial polling interval in seconds
-        backoff: Multiplier for interval after each attempt
-        max_interval: Maximum interval between attempts
-
-    Returns:
-        The truthy value returned by condition, or None if timeout.
-    """
-    elapsed = 0.0
-    current_interval = interval
-
-    while elapsed < max_wait:
-        result = condition()
-        if result:
-            return result
-        time.sleep(current_interval)
-        elapsed += current_interval
-        current_interval = min(current_interval * backoff, max_interval)
-
-    return None
+# Re-export so existing ``from tests.e2e.conftest import poll_until`` still works.
+from tests.helpers.polling import poll_until  # noqa: F401
 
 
 # E2E test API URL (from docker-compose.test.yml)

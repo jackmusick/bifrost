@@ -45,6 +45,7 @@ async def test_user_datetime_roundtrip(db_session: AsyncSession):
         id=uuid4(),
         email=f"test-{uuid4()}@example.com",
         name="Test User",
+        is_superuser=True,
     )
     db_session.add(user)
     await db_session.commit()

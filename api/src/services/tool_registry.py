@@ -19,13 +19,27 @@ from src.models.orm import Workflow
 logger = logging.getLogger(__name__)
 
 
-def _normalize_tool_name(name: str) -> str:
+def _normalize_tool_name(name: str, category: str | None = None) -> str:
     """
-    Convert workflow name to valid API tool name.
+    Convert workflow name to valid API tool name with category prefix.
 
     Anthropic API requires tool names to match ^[a-zA-Z0-9_-]{1,128}$
-    This converts names like "Add Comment (Demo)" to "add_comment_demo".
+    This converts names like "Add Comment (Demo)" to "halopsa_add_comment_demo"
+    when category="HaloPSA", or "wf_add_comment_demo" when category is None/General.
+
+    The prefix prevents collisions between workflow tools and system tools
+    (e.g., a workflow named "Execute Workflow" won't shadow the system tool).
     """
+    # Determine prefix from category
+    if category and category.lower() != "general":
+        prefix = category.lower().strip()
+        prefix = re.sub(r"[\s\-]+", "_", prefix)
+        prefix = re.sub(r"[^a-z0-9_]", "", prefix)
+        prefix = re.sub(r"_+", "_", prefix)
+        prefix = prefix.strip("_")
+    else:
+        prefix = "wf"
+
     name = name.lower().strip()
     # Replace spaces and hyphens with underscores
     name = re.sub(r"[\s\-]+", "_", name)
@@ -35,7 +49,7 @@ def _normalize_tool_name(name: str) -> str:
     name = re.sub(r"_+", "_", name)
     # Strip leading/trailing underscores
     name = name.strip("_")
-    return name
+    return f"{prefix}_{name}"
 
 
 @dataclass
@@ -47,6 +61,7 @@ class ToolDefinition:
     description: str
     parameters: dict[str, Any]  # JSON Schema format
     workflow_name: str  # Original workflow name for execution
+    category: str | None = None
 
 
 @dataclass
@@ -219,10 +234,11 @@ class ToolRegistry:
 
         return ToolDefinition(
             id=tool.id,
-            name=_normalize_tool_name(tool.name),
+            name=_normalize_tool_name(tool.name, category=tool.category),
             description=tool.description,
             parameters=parameters_schema,
             workflow_name=tool.name,  # Keep original for execution lookup
+            category=tool.category,
         )
 
     def _map_type_to_json_schema(self, param_type: str) -> str:

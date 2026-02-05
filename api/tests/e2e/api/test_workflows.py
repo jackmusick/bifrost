@@ -91,7 +91,7 @@ async def e2e_test_validation(name: str, count: int = 1) -> dict:
         assert len(data["metadata"]["parameters"]) == 2
 
     def test_validate_workflow_with_roi(self, e2e_client, platform_admin):
-        """Validate workflow with time_saved and value fields."""
+        """Validate workflow with time_saved and value fields (set via API, not decorator)."""
         workflow_with_roi = '''
 """Test workflow with ROI"""
 
@@ -100,8 +100,6 @@ from bifrost import workflow
 @workflow(
     category="automation",
     tags=["test", "roi"],
-    time_saved=30,
-    value=150.50,
 )
 async def workflow_with_roi(task: str) -> dict:
     """A workflow that saves time and provides value."""
@@ -117,14 +115,13 @@ async def workflow_with_roi(task: str) -> dict:
         )
         assert response.status_code == 200, f"Validation failed: {response.text}"
         data = response.json()
-        # Debug: print the response if test fails
-        if not data["valid"]:
-            print(f"Validation failed. Response: {data}")
         assert data["valid"] is True, f"Validation should be valid. Issues: {data.get('issues', [])}"
         assert data["metadata"] is not None
         assert data["metadata"]["name"] == "workflow_with_roi"
-        assert data["metadata"]["time_saved"] == 30
-        assert data["metadata"]["value"] == 150.50
+        # time_saved and value are managed via API/UI, not decorator kwargs
+        # They default to 0 during validation
+        assert data["metadata"]["time_saved"] == 0
+        assert data["metadata"]["value"] == 0
 
     def test_validate_workflow_with_syntax_error(self, e2e_client, platform_admin):
         """Validation catches syntax errors."""

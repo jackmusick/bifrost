@@ -277,8 +277,8 @@ async def content_test_workflow(value: int = 1) -> dict:
         assert any("File not found" in i.message for i in result.issues)
 
     @pytest.mark.asyncio
-    async def test_invalid_execution_mode_fails_validation(self):
-        """Test that invalid execution mode is caught"""
+    async def test_invalid_execution_mode_silently_defaults(self):
+        """Test that invalid execution_mode in decorator is silently ignored (defaults to async)."""
         workflow_content = '''
 """Invalid execution mode"""
 
@@ -297,8 +297,8 @@ async def test_workflow(name: str) -> dict:
             content=workflow_content
         )
 
-        assert result.valid is False
-        assert any("Invalid execution mode" in i.message for i in result.issues)
+        # execution_mode is no longer a decorator param; unknown kwargs are silently ignored
+        assert result.valid is True
 
     @pytest.mark.asyncio
     async def test_missing_description_warning(self):

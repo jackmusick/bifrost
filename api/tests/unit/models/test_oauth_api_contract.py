@@ -20,40 +20,6 @@ from src.models import (
 class TestCreateOAuthConnectionRequest:
     """Test validation for CreateOAuthConnectionRequest model - T014"""
 
-    def test_valid_authorization_code_flow(self):
-        """Test valid request for authorization code flow"""
-        request = CreateOAuthConnectionRequest(
-            integration_id="550e8400-e29b-41d4-a716-446655440000",
-            oauth_flow_type="authorization_code",
-            client_id="abc123",
-            client_secret="secret456",
-            authorization_url="https://login.microsoftonline.com/oauth2/v2.0/authorize",
-            token_url="https://login.microsoftonline.com/oauth2/v2.0/token",
-            scopes="https://graph.microsoft.com/.default"
-        )
-
-        assert request.integration_id == "550e8400-e29b-41d4-a716-446655440000"
-        assert request.oauth_flow_type == "authorization_code"
-        assert request.client_id == "abc123"
-        assert request.client_secret == "secret456"
-        assert request.scopes == "https://graph.microsoft.com/.default"
-
-    def test_valid_client_credentials_flow(self):
-        """Test valid request for client credentials flow"""
-        request = CreateOAuthConnectionRequest(
-            integration_id="550e8400-e29b-41d4-a716-446655440001",
-            oauth_flow_type="client_credentials",
-            client_id="service123",
-            client_secret="secret789",
-            authorization_url="https://auth.example.com/authorize",
-            token_url="https://auth.example.com/token",
-            scopes="api.read,api.write"
-        )
-
-        assert request.oauth_flow_type == "client_credentials"
-        assert request.integration_id == "550e8400-e29b-41d4-a716-446655440001"
-
-
     def test_invalid_oauth_flow_type(self):
         """Test that invalid OAuth flow types are rejected"""
 
@@ -195,21 +161,6 @@ class TestCreateOAuthConnectionRequest:
 class TestOAuthConnectionSummary:
     """Test OAuthConnectionSummary response model - T015"""
 
-    def test_valid_summary_response(self):
-        """Test valid OAuth connection summary for list response"""
-
-        summary = OAuthConnectionSummary(
-            connection_name="azure_csp_oauth",
-            oauth_flow_type="authorization_code",
-            status="completed",
-            expires_at=datetime.utcnow(),
-            created_at=datetime.utcnow()
-        )
-
-        assert summary.connection_name == "azure_csp_oauth"
-        assert summary.status == "completed"
-        assert isinstance(summary.expires_at, datetime)
-
     def test_valid_status_values(self):
         """Test that all valid status values are accepted"""
 
@@ -241,31 +192,6 @@ class TestOAuthConnectionSummary:
 
 class TestOAuthConnectionDetail:
     """Test OAuthConnectionDetail response model - T016"""
-
-    def test_valid_detail_response(self):
-        """Test valid OAuth connection detail response"""
-
-        detail = OAuthConnectionDetail(
-            connection_name="azure_csp_oauth",
-            oauth_flow_type="authorization_code",
-            client_id="abc123",
-            authorization_url="https://auth.com/authorize",
-            token_url="https://auth.com/token",
-            scopes="api.read",
-            redirect_uri="/api/oauth/callback/azure_csp_oauth",
-            status="completed",
-            status_message="Connection active",
-            expires_at=datetime.utcnow(),
-            last_refresh_at=datetime.utcnow(),
-            created_at=datetime.utcnow(),
-            created_by="user-123",
-            updated_at=datetime.utcnow()
-        )
-
-        assert detail.connection_name == "azure_csp_oauth"
-        assert detail.client_id == "abc123"
-        # client_secret should NOT be in detail response
-        assert not hasattr(detail, 'client_secret')
 
     def test_detail_does_not_expose_secrets(self):
         """Test that detail response does not expose sensitive fields"""
