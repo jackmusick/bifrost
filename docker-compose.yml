@@ -210,8 +210,8 @@ services:
       # Default admin user (optional - set in .env to skip setup wizard)
       BIFROST_DEFAULT_USER_EMAIL: ${BIFROST_DEFAULT_USER_EMAIL:-}
       BIFROST_DEFAULT_USER_PASSWORD: ${BIFROST_DEFAULT_USER_PASSWORD:-}
-      # MCP - Set this to your public address (https://bifrost.yourdomain.com)
-      BIFROST_MCP_BASE_URL: ${BIFROST_MCP_BASE_URL:-}
+      # Public URL - Set this to your public address (https://bifrost.yourdomain.com)
+      BIFROST_PUBLIC_URL: ${BIFROST_PUBLIC_URL:-}
     # Note: API port 8000 not exposed - access via client proxy at http://localhost:3000
     # Debug port (5678) only exposed in docker-compose.dev.yml
     depends_on:

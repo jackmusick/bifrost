@@ -226,7 +226,6 @@ class FileOperationsService:
             raise ValueError(f"Path is excluded from workspace: {path}")
 
         content_hash = self._compute_hash(content)
-        git_sha = compute_git_blob_sha(content)
         content_type = self._guess_content_type(path)
         size_bytes = len(content)
 
@@ -275,10 +274,14 @@ class FileOperationsService:
             # Reuse cached decoded string if available (avoids another decode)
             inline_content = cached_content_str or content.decode("utf-8")
 
+        # Note: github_sha is NOT set here - it should only be set by the GitHub sync
+        # process when a file is actually pushed to or pulled from GitHub. Setting it
+        # here would confuse the sync logic into thinking the file was synced when it wasn't.
+        # git_status=MODIFIED indicates the file has local changes that need to be pushed.
         stmt = insert(WorkspaceFile).values(
             path=path,
             content_hash=content_hash,
-            github_sha=git_sha,
+            # github_sha intentionally omitted - defaults to None for new files
             size_bytes=size_bytes,
             content_type=content_type,
             git_status=GitStatus.MODIFIED,
@@ -291,7 +294,7 @@ class FileOperationsService:
             index_elements=[WorkspaceFile.path],
             set_={
                 "content_hash": content_hash,
-                "github_sha": git_sha,
+                # github_sha intentionally NOT updated - preserve existing sync state
                 "size_bytes": size_bytes,
                 "content_type": content_type,
                 "git_status": GitStatus.MODIFIED,

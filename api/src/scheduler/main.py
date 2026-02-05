@@ -18,7 +18,6 @@ import logging
 import shutil
 import signal
 import sys
-import time
 from datetime import datetime
 from pathlib import Path
 
@@ -73,9 +72,9 @@ class Scheduler:
         self._scheduler: AsyncIOScheduler | None = None
         self._pubsub_listener: ResilientPubSubListener | None = None
 
-        # Clone cache for GitHub sync: org_id -> (clone_path, commit_sha, timestamp)
-        self._sync_clone_cache: dict[str, tuple[Path, str, float]] = {}
-        self._clone_cache_ttl = 300  # 5 minutes
+        # Single clone directory for GitHub sync (reused between preview and execute)
+        self._sync_clone_path: Path | None = None
+        self._sync_clone_sha: str | None = None
 
     async def start(self) -> None:
         """Start the scheduler."""
@@ -440,13 +439,8 @@ class Scheduler:
                 async def log_callback(level: str, message: str) -> None:
                     await publish_git_sync_log(job_id, level, message)
 
-                # Check for cached clone
-                cached_clone_path: Path | None = None
-                if org_id and org_id in self._sync_clone_cache:
-                    path, sha, ts = self._sync_clone_cache[org_id]
-                    if time.time() - ts < self._clone_cache_ttl and path.exists():
-                        cached_clone_path = path
-                        logger.info(f"Using cached clone for org {org_id}")
+                # Use cached clone from preview if available
+                cached_clone_path = self._sync_clone_path
 
                 # Execute the sync
                 try:
@@ -459,13 +453,12 @@ class Scheduler:
                         cached_clone_path=cached_clone_path,
                     )
                 finally:
-                    # Clear cache after execute (regardless of success/failure)
-                    if org_id and org_id in self._sync_clone_cache:
-                        # Clean up the cached clone directory
-                        path, _, _ = self._sync_clone_cache.pop(org_id)
-                        if path.exists():
-                            shutil.rmtree(path, ignore_errors=True)
-                            logger.debug(f"Cleaned up cached clone for org {org_id}")
+                    # Always clean up clone after execute
+                    if self._sync_clone_path and self._sync_clone_path.exists():
+                        shutil.rmtree(self._sync_clone_path, ignore_errors=True)
+                        logger.debug("Cleaned up sync clone directory")
+                    self._sync_clone_path = None
+                    self._sync_clone_sha = None
 
                 # Publish completion
                 if sync_result.success:
@@ -770,13 +763,14 @@ class Scheduler:
                 )
 
                 # Cache the clone path for potential execute
-                if preview.clone_path and org_id:
-                    self._sync_clone_cache[org_id] = (
-                        Path(preview.clone_path),
-                        preview.commit_sha or "",
-                        time.time(),
-                    )
-                    logger.debug(f"Cached clone for org {org_id}")
+                # Clean up any previous clone first
+                if self._sync_clone_path and self._sync_clone_path.exists():
+                    shutil.rmtree(self._sync_clone_path, ignore_errors=True)
+
+                if preview.clone_path:
+                    self._sync_clone_path = Path(preview.clone_path)
+                    self._sync_clone_sha = preview.commit_sha
+                    logger.debug(f"Cached clone at {self._sync_clone_path}")
 
         except SyncError as e:
             logger.error(f"Git sync preview job {job_id} failed: {e}")

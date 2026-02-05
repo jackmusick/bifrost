@@ -18,7 +18,6 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from src.config import Settings
 from src.models import WorkspaceFile
 from src.models.enums import GitStatus
-from .file_ops import compute_git_blob_sha
 
 if TYPE_CHECKING:
     from src.models.contracts.maintenance import ReindexResult
@@ -92,15 +91,16 @@ class WorkspaceReindexService:
                     )
                     content = await response["Body"].read()
                     content_hash = self._compute_hash(content)
-                    git_sha = compute_git_blob_sha(content)
                     content_type = self._guess_content_type(key)
 
                     # Upsert index
+                    # Note: github_sha is NOT set here - it should only be set by the
+                    # GitHub sync process. Reindexing doesn't mean the file is synced.
                     now = datetime.utcnow()
                     stmt = insert(WorkspaceFile).values(
                         path=key,
                         content_hash=content_hash,
-                        github_sha=git_sha,
+                        # github_sha intentionally omitted - defaults to None
                         size_bytes=size,
                         content_type=content_type,
                         git_status=GitStatus.UNTRACKED,
@@ -111,7 +111,7 @@ class WorkspaceReindexService:
                         index_elements=[WorkspaceFile.path],
                         set_={
                             "content_hash": content_hash,
-                            "github_sha": git_sha,
+                            # github_sha intentionally NOT updated - preserve sync state
                             "size_bytes": size,
                             "content_type": content_type,
                             "is_deleted": False,

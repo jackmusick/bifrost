@@ -107,6 +107,10 @@ async def list_tools(
         default=None,
         description="Filter scope for workflows: omit for all, 'global' for global only, or org UUID",
     ),
+    include_inactive: bool = Query(
+        default=False,
+        description="Include deactivated workflows (for agent editor to show orphaned refs)",
+    ),
 ) -> ToolsResponse:
     """
     List all available tools.
@@ -132,9 +136,9 @@ async def list_tools(
             return ToolsResponse(tools=tools)
 
         # Query workflows that are tools
-        query = (
-            select(Workflow).where(Workflow.type == "tool").where(Workflow.is_active.is_(True))
-        )
+        query = select(Workflow).where(Workflow.type == "tool")
+        if not include_inactive:
+            query = query.where(Workflow.is_active.is_(True))
 
         # Apply org filter
         if filter_type == "org" and filter_org_id:
@@ -155,6 +159,7 @@ async def list_tools(
                     type="workflow",
                     category=workflow.category,
                     default_enabled_for_coding_agent=False,
+                    is_active=workflow.is_active,
                 )
             )
 

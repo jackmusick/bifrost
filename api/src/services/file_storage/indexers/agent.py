@@ -62,6 +62,11 @@ def _serialize_agent_to_json(
     if workflow_map:
         agent_data = transform_refs_for_export(agent_data, AgentPublic, workflow_map)
 
+    # Sort list fields for deterministic serialization (DB query order is non-deterministic)
+    for key in ["tool_ids", "delegated_agent_ids", "role_ids", "knowledge_sources", "system_tools", "channels"]:
+        if key in agent_data and isinstance(agent_data[key], list):
+            agent_data[key] = sorted(agent_data[key])
+
     return json.dumps(agent_data, indent=2).encode("utf-8")
 
 

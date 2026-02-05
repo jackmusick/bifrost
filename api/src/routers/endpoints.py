@@ -195,6 +195,8 @@ async def execute_endpoint(
         pass  # No JSON body or invalid JSON
 
     # Create execution context using system user (API key executions)
+    from src.config import get_settings
+
     context = ExecutionContext(
         user_id=SYSTEM_USER_ID,
         name="API Key",
@@ -204,6 +206,7 @@ async def execute_endpoint(
         is_platform_admin=False,
         is_function_key=True,
         execution_id=str(uuid4()),
+        public_url=get_settings().public_url,
     )
 
     # Check execution mode

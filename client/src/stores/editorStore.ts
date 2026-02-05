@@ -77,6 +77,7 @@ export interface DiffPreviewState {
 	localContent: string | null;
 	remoteContent: string | null;
 	isConflict: boolean;
+	isLoading?: boolean;
 	resolution?: "keep_local" | "keep_remote";
 	onResolve?: (resolution: "keep_local" | "keep_remote") => void;
 }

@@ -303,11 +303,11 @@ class Settings(BaseSettings):
         return [o.strip() for o in self.webauthn_origin.split(",") if o.strip()]
 
     # ==========================================================================
-    # MCP (Model Context Protocol)
+    # Public URL (used for MCP OAuth, workflow URLs, external links)
     # ==========================================================================
-    mcp_base_url: str = Field(
+    public_url: str = Field(
         default="http://localhost:8000",
-        description="Public URL for MCP OAuth endpoints (e.g., ngrok URL for external access)"
+        description="Public URL for the Bifrost platform (used for MCP OAuth, workflow URLs, etc.)"
     )
 
     # ==========================================================================

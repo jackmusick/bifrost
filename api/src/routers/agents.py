@@ -110,8 +110,11 @@ async def _validate_agent_references(
 def _agent_to_public(agent: Agent) -> AgentPublic:
     """Convert Agent ORM to AgentPublic with relationships.
 
-    Filters out orphaned references:
-    - tool_ids: Only includes active workflows
+    Includes all referenced tools/agents, even if deactivated.
+    The UI uses /api/tools?include_inactive=true to resolve names
+    and show deactivated tools with warning badges.
+
+    Filters:
     - system_tools: Only includes tools that exist in the registry
     """
     # Get valid system tool IDs from registry
@@ -130,7 +133,8 @@ def _agent_to_public(agent: Agent) -> AgentPublic:
         created_by=agent.created_by,
         created_at=agent.created_at,
         updated_at=agent.updated_at,
-        tool_ids=[str(t.id) for t in agent.tools if t.is_active],
+        # Include all tools - UI shows deactivated ones with warning badges
+        tool_ids=[str(t.id) for t in agent.tools],
         delegated_agent_ids=[str(a.id) for a in agent.delegated_agents],
         role_ids=[str(r.id) for r in agent.roles],
         knowledge_sources=agent.knowledge_sources or [],

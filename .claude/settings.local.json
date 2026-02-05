@@ -201,7 +201,8 @@
       "Bash(git commit:*)",
       "Bash(python3:*)",
       "WebFetch(domain:raw.githubusercontent.com)",
-      "Bash(npx get-shit-done-cc --global)"
+      "Bash(npx get-shit-done-cc --global)",
+      "mcp__ide__getDiagnostics"
     ],
     "deny": [],
     "ask": [],

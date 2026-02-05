@@ -281,6 +281,8 @@ async def send_email(
             )
 
         # Build execution context for system-level email sending
+        from src.config import get_settings
+
         context = ExecutionContext(
             user_id="system",
             email="system@internal.gobifrost.com",
@@ -290,6 +292,7 @@ async def send_email(
             is_platform_admin=True,
             is_function_key=False,
             execution_id=str(uuid4()),
+            public_url=get_settings().public_url,
         )
 
         # Execute the workflow synchronously

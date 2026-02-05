@@ -385,6 +385,10 @@ class ToolInfo(BaseModel):
         default=False,
         description="Whether this tool is enabled by default for coding agents"
     )
+    is_active: bool = Field(
+        default=True,
+        description="Whether the workflow tool is active (always true for system tools)"
+    )
 
 
 class ToolsResponse(BaseModel):

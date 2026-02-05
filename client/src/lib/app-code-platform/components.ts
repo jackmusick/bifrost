@@ -43,6 +43,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
+import { Combobox } from "@/components/ui/combobox";
 
 // =============================================================================
 // Display Components
@@ -167,6 +168,7 @@ export const APP_CODE_COMPONENTS = {
 	Switch,
 	RadioGroup,
 	RadioGroupItem,
+	Combobox,
 
 	// Display
 	Badge,
@@ -271,6 +273,7 @@ export { Textarea };
 export { Label };
 export { Switch };
 export { RadioGroup, RadioGroupItem };
+export { Combobox };
 
 // Display
 export { Badge };

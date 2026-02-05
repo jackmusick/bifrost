@@ -692,6 +692,9 @@ async def _register_workflow_tools(mcp: "FastMCP", context: MCPContext) -> int:
                     f"{list(duplicates.keys())}"
                 )
 
+            # Get native tool names to avoid collisions
+            native_tool_names = {tool_id for m in TOOL_MODULES for tool_id, _, _ in m.TOOLS}
+
             # Assign unique tool names and register
             count = 0
             for base_name, workflows in name_groups.items():
@@ -700,8 +703,15 @@ async def _register_workflow_tools(mcp: "FastMCP", context: MCPContext) -> int:
                     workflow_name = tool.name
                     description = tool.description or f"Execute the {workflow_name} workflow"
 
-                    # First workflow gets clean name, duplicates get suffix
-                    if i == 0:
+                    # Avoid collision with native tools by adding "_workflow" suffix
+                    # For duplicates among workflows, add random suffix
+                    if base_name in native_tool_names:
+                        # Collides with native tool - add "_workflow" suffix
+                        if i == 0:
+                            tool_name = f"{base_name}_workflow"
+                        else:
+                            tool_name = f"{base_name}_workflow_{_generate_short_suffix()}"
+                    elif i == 0:
                         tool_name = base_name
                     else:
                         tool_name = f"{base_name}_{_generate_short_suffix()}"

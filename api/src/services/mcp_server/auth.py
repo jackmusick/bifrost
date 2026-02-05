@@ -73,7 +73,7 @@ class BifrostAuthProvider:
             self.base_url = base_url.rstrip("/")
         else:
             from src.config import get_settings
-            self.base_url = get_settings().mcp_base_url.rstrip("/")
+            self.base_url = get_settings().public_url.rstrip("/")
         self.issuer = self.base_url
         self.required_scopes: list[str] = ["mcp:access"]
 

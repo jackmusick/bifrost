@@ -31,5 +31,5 @@ data:
   BIFROST_WEBAUTHN_RP_NAME: "Bifrost"
   BIFROST_WEBAUTHN_ORIGIN: "https://bifrost.example.com"
 
-  # MCP
-  BIFROST_MCP_BASE_URL: "https://bifrost.example.com"
+  # Public URL
+  BIFROST_PUBLIC_URL: "https://bifrost.example.com"

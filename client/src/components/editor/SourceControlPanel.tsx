@@ -83,7 +83,12 @@ export function SourceControlPanel() {
 		resolution?: "keep_local" | "keep_remote",
 		onResolve?: (res: "keep_local" | "keep_remote") => void
 	) => {
-		// Set preview immediately with available content
+		// Determine if we need to fetch content
+		const needsLocalFetch = localContent === null;
+		const needsRemoteFetch = remoteContent === null;
+		const needsFetch = needsLocalFetch || needsRemoteFetch;
+
+		// Set preview immediately with available content and loading state
 		setDiffPreview({
 			path,
 			displayName,
@@ -91,39 +96,52 @@ export function SourceControlPanel() {
 			localContent,
 			remoteContent,
 			isConflict,
+			isLoading: needsFetch,
 			resolution,
 			onResolve,
 		});
 
-		// If missing content and not a conflict (conflicts have content), fetch it
+		// If missing content, fetch it (both regular items and conflicts use lazy loading)
 		// Use functional updates to avoid race conditions when both fetches complete
-		if (localContent === null && !isConflict) {
-			try {
-				const response = await apiClient.POST("/api/github/sync/content", {
+		const fetchPromises: Promise<void>[] = [];
+
+		if (needsLocalFetch) {
+			fetchPromises.push(
+				apiClient.POST("/api/github/sync/content", {
 					body: { path, source: "local" },
-				});
-				if (response.data?.content !== undefined) {
-					setDiffPreview((prev) =>
-						prev ? { ...prev, localContent: response.data?.content ?? null } : null
-					);
-				}
-			} catch (error) {
-				console.error("Failed to fetch local content:", error);
-			}
+				}).then((response) => {
+					if (response.data?.content !== undefined) {
+						setDiffPreview((prev) =>
+							prev ? { ...prev, localContent: response.data?.content ?? null } : null
+						);
+					}
+				}).catch((error) => {
+					console.error("Failed to fetch local content:", error);
+				})
+			);
 		}
-		if (remoteContent === null && !isConflict) {
-			try {
-				const response = await apiClient.POST("/api/github/sync/content", {
+		if (needsRemoteFetch) {
+			fetchPromises.push(
+				apiClient.POST("/api/github/sync/content", {
 					body: { path, source: "remote" },
-				});
-				if (response.data?.content !== undefined) {
-					setDiffPreview((prev) =>
-						prev ? { ...prev, remoteContent: response.data?.content ?? null } : null
-					);
-				}
-			} catch (error) {
-				console.error("Failed to fetch remote content:", error);
-			}
+				}).then((response) => {
+					if (response.data?.content !== undefined) {
+						setDiffPreview((prev) =>
+							prev ? { ...prev, remoteContent: response.data?.content ?? null } : null
+						);
+					}
+				}).catch((error) => {
+					console.error("Failed to fetch remote content:", error);
+				})
+			);
+		}
+
+		// Clear loading state when all fetches complete
+		if (fetchPromises.length > 0) {
+			await Promise.all(fetchPromises);
+			setDiffPreview((prev) =>
+				prev ? { ...prev, isLoading: false } : null
+			);
 		}
 	};
 
@@ -532,6 +550,16 @@ export function SourceControlPanel() {
 		}));
 	};
 
+	// Handle bulk conflict resolution (all local or all remote)
+	const handleResolveAllConflicts = (resolution: "keep_local" | "keep_remote") => {
+		if (!syncPreview?.conflicts) return;
+		const allResolutions: Record<string, "keep_local" | "keep_remote"> = {};
+		for (const conflict of syncPreview.conflicts) {
+			allResolutions[conflict.path] = resolution;
+		}
+		setConflictResolutions(allResolutions);
+	};
+
 	// Show loading state while fetching initial status
 	if (isLoading || !status) {
 		return (
@@ -795,6 +823,7 @@ export function SourceControlPanel() {
 								conflicts={syncPreview.conflicts ?? []}
 								resolutions={conflictResolutions}
 								onResolve={handleResolveConflict}
+								onResolveAll={handleResolveAllConflicts}
 								onShowDiff={handleShowDiff}
 							/>
 						)}
@@ -902,11 +931,13 @@ function ConflictList({
 	conflicts,
 	resolutions,
 	onResolve,
+	onResolveAll,
 	onShowDiff,
 }: {
 	conflicts: SyncConflictInfo[];
 	resolutions: Record<string, "keep_local" | "keep_remote">;
 	onResolve: (path: string, resolution: "keep_local" | "keep_remote") => void;
+	onResolveAll: (resolution: "keep_local" | "keep_remote") => void;
 	onShowDiff: (
 		path: string,
 		displayName: string,
@@ -924,28 +955,55 @@ function ConflictList({
 
 	return (
 		<div className={cn("border-t flex flex-col min-h-0", expanded && "flex-1")}>
-			<button
-				onClick={() => setExpanded(!expanded)}
-				className="w-full px-4 py-2 flex items-center gap-2 hover:bg-muted/30 transition-colors text-left flex-shrink-0"
-			>
-				{expanded ? (
-					<ChevronDown className="h-4 w-4 flex-shrink-0" />
-				) : (
-					<ChevronRight className="h-4 w-4 flex-shrink-0" />
-				)}
-				<AlertCircle className="h-4 w-4 text-orange-500 flex-shrink-0" />
-				<span className="text-sm font-medium flex-1 truncate">Conflicts</span>
-				<span
-					className={cn(
-						"text-xs w-10 text-center py-0.5 rounded-full flex-shrink-0",
-						resolvedCount === conflicts.length
-							? "bg-green-500/20 text-green-700"
-							: "bg-orange-500/20 text-orange-700"
-					)}
+			<div className="flex items-center px-4 py-2 hover:bg-muted/30 transition-colors flex-shrink-0">
+				<button
+					onClick={() => setExpanded(!expanded)}
+					className="flex items-center gap-2 flex-1 text-left"
 				>
-					{resolvedCount}/{conflicts.length}
-				</span>
-			</button>
+					{expanded ? (
+						<ChevronDown className="h-4 w-4 flex-shrink-0" />
+					) : (
+						<ChevronRight className="h-4 w-4 flex-shrink-0" />
+					)}
+					<AlertCircle className="h-4 w-4 text-orange-500 flex-shrink-0" />
+					<span className="text-sm font-medium flex-1 truncate">Conflicts</span>
+					<span
+						className={cn(
+							"text-xs w-10 text-center py-0.5 rounded-full flex-shrink-0",
+							resolvedCount === conflicts.length
+								? "bg-green-500/20 text-green-700"
+								: "bg-orange-500/20 text-orange-700"
+						)}
+					>
+						{resolvedCount}/{conflicts.length}
+					</span>
+				</button>
+				{/* Bulk resolution buttons */}
+				{conflicts.length > 1 && (
+					<div className="flex gap-1 ml-2">
+						<button
+							onClick={(e) => {
+								e.stopPropagation();
+								onResolveAll("keep_local");
+							}}
+							className="px-2 py-0.5 text-xs rounded bg-muted hover:bg-muted/80 transition-colors"
+							title="Keep all local versions"
+						>
+							All Local
+						</button>
+						<button
+							onClick={(e) => {
+								e.stopPropagation();
+								onResolveAll("keep_remote");
+							}}
+							className="px-2 py-0.5 text-xs rounded bg-muted hover:bg-muted/80 transition-colors"
+							title="Accept all incoming versions"
+						>
+							All Remote
+						</button>
+					</div>
+				)}
+			</div>
 			{expanded && (
 				<div className="flex-1 overflow-y-auto px-4 pb-2 min-h-0">
 					{groupedConflicts.map((group) => {

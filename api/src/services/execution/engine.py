@@ -241,6 +241,8 @@ async def execute(request: ExecutionRequest) -> ExecutionResult:
         roi.time_saved = request.roi.get("time_saved", 0)
         roi.value = request.roi.get("value", 0.0)
 
+    from src.config import get_settings
+
     context = ExecutionContext(
         user_id=request.caller.user_id,
         email=request.caller.email,
@@ -250,6 +252,7 @@ async def execute(request: ExecutionRequest) -> ExecutionResult:
         is_platform_admin=request.is_platform_admin,
         is_function_key=False,  # Engine executions are not function key based
         execution_id=request.execution_id,
+        public_url=get_settings().public_url,
         _config=request.config,
         startup=request.startup,  # Launch workflow results (from form execution)
         roi=roi,

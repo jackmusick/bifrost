@@ -9,7 +9,7 @@ import { useEffect, useState } from "react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import * as z from "zod";
-import { Loader2, Check, ChevronsUpDown, X } from "lucide-react";
+import { Loader2, Check, ChevronsUpDown, X, AlertTriangle } from "lucide-react";
 import {
 	Dialog,
 	DialogContent,
@@ -133,7 +133,7 @@ export function AgentDialog({ agentId, open, onOpenChange }: AgentDialogProps) {
 		agentId ?? undefined,
 	);
 	const { data: allAgents } = useAgents();
-	const { data: toolsGrouped } = useToolsGrouped();
+	const { data: toolsGrouped } = useToolsGrouped({ include_inactive: true });
 	const { data: roles } = useRoles();
 	const { models: availableModels } = useLLMModels();
 	const createAgent = useCreateAgent();
@@ -952,14 +952,27 @@ export function AgentDialog({ agentId, open, onOpenChange }: AgentDialogProps) {
 																	// Skip non-existent tools (orphaned references)
 																	if (!tool)
 																		return null;
+																	const isDeactivated =
+																		!tool.is_active;
 																	return (
 																		<Badge
 																			key={
 																				toolId
 																			}
-																			variant="secondary"
-																			className="mr-1"
+																			variant={
+																				isDeactivated
+																					? "outline"
+																					: "secondary"
+																			}
+																			className={cn(
+																				"mr-1",
+																				isDeactivated &&
+																					"bg-amber-500/10 border-amber-500/30",
+																			)}
 																		>
+																			{isDeactivated && (
+																				<AlertTriangle className="h-3 w-3 mr-1 text-amber-500" />
+																			)}
 																			{
 																				tool.name
 																			}

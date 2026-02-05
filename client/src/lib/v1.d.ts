@@ -8286,12 +8286,22 @@ export interface components {
          * @description Configuration for a single data provider input parameter (T006)
          */
         DataProviderInputConfig: {
+            /** @description How to resolve the value: 'static' (fixed value), 'fieldRef' (from another form field), or 'expression' (JavaScript) */
             mode: components["schemas"]["DataProviderInputMode"];
-            /** Value */
+            /**
+             * Value
+             * @description Fixed value to pass (required when mode='static')
+             */
             value?: string | null;
-            /** Field Name */
+            /**
+             * Field Name
+             * @description Name of another form field to get value from (required when mode='fieldRef')
+             */
             field_name?: string | null;
-            /** Expression */
+            /**
+             * Expression
+             * @description JavaScript expression like 'context.field.org_id' (required when mode='expression')
+             */
             expression?: string | null;
         };
         /**
@@ -11654,11 +11664,6 @@ export interface components {
             issuer: string;
             /** Account Name */
             account_name: string;
-            /**
-             * Is Existing
-             * @default false
-             */
-            is_existing: boolean;
         };
         /**
          * MFAStatusResponse
@@ -11678,20 +11683,11 @@ export interface components {
         };
         /**
          * MFAVerifyRequest
-         * @description Request to verify MFA code during login.
+         * @description Request to verify MFA code.
          */
         MFAVerifyRequest: {
-            /** Mfa Token */
-            mfa_token: string;
             /** Code */
             code: string;
-            /**
-             * Trust Device
-             * @default false
-             */
-            trust_device: boolean;
-            /** Device Name */
-            device_name?: string | null;
         };
         /**
          * MFAVerifyResponse
@@ -14394,6 +14390,11 @@ export interface components {
              * @description Organization scope: None=context default, UUID=specific org, 'global'=global scope
              */
             scope?: string | null;
+            /**
+             * Oauth Scope
+             * @description Override OAuth scope for token request (e.g., 'https://outlook.office365.com/.default'). When provided, triggers fresh token fetch for client_credentials flows.
+             */
+            oauth_scope?: string | null;
         };
         /**
          * SDKIntegrationsGetResponse
@@ -15439,6 +15440,12 @@ export interface components {
              * @default false
              */
             default_enabled_for_coding_agent: boolean;
+            /**
+             * Is Active
+             * @description Whether the workflow tool is active (always true for system tools)
+             * @default true
+             */
+            is_active: boolean;
         };
         /**
          * ToolsResponse
@@ -15709,7 +15716,7 @@ export interface components {
         };
         /**
          * UserCreate
-         * @description Input for creating a user.
+         * @description User creation request model.
          */
         UserCreate: {
             /**
@@ -15717,22 +15724,10 @@ export interface components {
              * Format: email
              */
             email: string;
+            /** Password */
+            password: string;
             /** Name */
             name?: string | null;
-            /** Password */
-            password?: string | null;
-            /**
-             * Is Active
-             * @default true
-             */
-            is_active: boolean;
-            /**
-             * Is Superuser
-             * @default false
-             */
-            is_superuser: boolean;
-            /** Organization Id */
-            organization_id?: string | null;
         };
         /**
          * UserFormsResponse
@@ -16703,24 +16698,36 @@ export interface components {
         };
         /**
          * UserCreate
-         * @description User creation request model.
+         * @description Input for creating a user.
          */
-        src__routers__auth__UserCreate: {
+        src__models__contracts__users__UserCreate: {
             /**
              * Email
              * Format: email
              */
             email: string;
-            /** Password */
-            password: string;
             /** Name */
             name?: string | null;
+            /** Password */
+            password?: string | null;
+            /**
+             * Is Active
+             * @default true
+             */
+            is_active: boolean;
+            /**
+             * Is Superuser
+             * @default false
+             */
+            is_superuser: boolean;
+            /** Organization Id */
+            organization_id?: string | null;
         };
         /**
          * MFASetupResponse
          * @description MFA setup response with secret.
          */
-        src__routers__mfa__MFASetupResponse: {
+        src__routers__auth__MFASetupResponse: {
             /** Secret */
             secret: string;
             /** Qr Code Uri */
@@ -16731,14 +16738,28 @@ export interface components {
             issuer: string;
             /** Account Name */
             account_name: string;
+            /**
+             * Is Existing
+             * @default false
+             */
+            is_existing: boolean;
         };
         /**
          * MFAVerifyRequest
-         * @description Request to verify MFA code.
+         * @description Request to verify MFA code during login.
          */
-        src__routers__mfa__MFAVerifyRequest: {
+        src__routers__auth__MFAVerifyRequest: {
+            /** Mfa Token */
+            mfa_token: string;
             /** Code */
             code: string;
+            /**
+             * Trust Device
+             * @default false
+             */
+            trust_device: boolean;
+            /** Device Name */
+            device_name?: string | null;
         };
         /**
          * OAuthProviderInfo
@@ -16853,7 +16874,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["MFASetupResponse"];
+                    "application/json": components["schemas"]["src__routers__auth__MFASetupResponse"];
                 };
             };
             /** @description Validation Error */
@@ -16896,7 +16917,7 @@ export interface operations {
         };
         requestBody: {
             content: {
-                "application/json": components["schemas"]["MFAVerifyRequest"];
+                "application/json": components["schemas"]["src__routers__auth__MFAVerifyRequest"];
             };
         };
         responses: {
@@ -17068,7 +17089,7 @@ export interface operations {
         };
         requestBody: {
             content: {
-                "application/json": components["schemas"]["src__routers__auth__UserCreate"];
+                "application/json": components["schemas"]["UserCreate"];
             };
         };
         responses: {
@@ -17299,7 +17320,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["src__routers__mfa__MFASetupResponse"];
+                    "application/json": components["schemas"]["MFASetupResponse"];
                 };
             };
         };
@@ -17313,7 +17334,7 @@ export interface operations {
         };
         requestBody: {
             content: {
-                "application/json": components["schemas"]["src__routers__mfa__MFAVerifyRequest"];
+                "application/json": components["schemas"]["MFAVerifyRequest"];
             };
         };
         responses: {
@@ -18014,7 +18035,7 @@ export interface operations {
         };
         requestBody: {
             content: {
-                "application/json": components["schemas"]["UserCreate"];
+                "application/json": components["schemas"]["src__models__contracts__users__UserCreate"];
             };
         };
         responses: {
@@ -25521,6 +25542,8 @@ export interface operations {
                 type?: ("system" | "workflow") | null;
                 /** @description Filter scope for workflows: omit for all, 'global' for global only, or org UUID */
                 scope?: string | null;
+                /** @description Include deactivated workflows (for agent editor to show orphaned refs) */
+                include_inactive?: boolean;
             };
             header?: never;
             path?: never;

@@ -608,7 +608,103 @@ const workflow = useWorkflow("list_csp_tenants");
 
 Get workflow IDs using `list_workflows` before building the app.
 
-The hook returns: `{ result, loading, error, execute }`
+### Hook Return Value
+
+The hook returns an object with these properties:
+
+| Property | Type | Description |
+|----------|------|-------------|
+| `execute` | `(params?) => Promise<string>` | Start workflow execution. Returns execution ID (NOT the result). |
+| `executionId` | `string \| null` | Current execution ID (null if not started) |
+| `status` | `string \| null` | Execution status: `Pending`, `Running`, `Success`, `Failed`, `Timeout`, `Cancelled` |
+| `loading` | `boolean` | True while workflow is Pending or Running |
+| `completed` | `boolean` | True when workflow completed successfully (status === 'Success') |
+| `failed` | `boolean` | True when workflow failed (status is Failed/Timeout/Cancelled) |
+| `result` | `T \| null` | The workflow result data (null until completed) |
+| `error` | `string \| null` | Error message if workflow failed |
+| `logs` | `StreamingLog[]` | Streaming logs array (updates in real-time) |
+
+### Usage Patterns
+
+**Pattern 1: Load on mount (simple)**
+
+Best for workflows that load data when the page loads.
+
+```tsx
+const workflow = useWorkflow("workflow-id");
+
+useEffect(() => {
+  workflow.execute();
+}, []);
+
+if (workflow.loading) return <Skeleton />;
+if (workflow.failed) return <Alert>{workflow.error}</Alert>;
+
+// Access result directly - it updates when workflow completes
+const data = workflow.result?.items || [];
+```
+
+**Pattern 2: Button trigger with loading state**
+
+Best for user-triggered actions where you just need loading feedback.
+
+```tsx
+const workflow = useWorkflow("create-item-workflow");
+
+<Button onClick={() => workflow.execute({ name: "New Item" })} disabled={workflow.loading}>
+  {workflow.loading ? <Loader2 className="animate-spin" /> : "Create"}
+</Button>
+```
+
+**Pattern 3: Async action with result handling**
+
+Best when you need to do something with the result (e.g., close dialog, update state).
+**IMPORTANT:** `execute()` returns the execution ID, NOT the result. Use a useEffect to handle completion.
+
+```tsx
+const workflow = useWorkflow("create-item-workflow");
+const [pendingAction, setPendingAction] = useState(false);
+
+// Handle completion
+useEffect(() => {
+  if (!pendingAction) return;
+
+  if (workflow.completed && workflow.result) {
+    const newItem = workflow.result.item;
+    setItems(prev => [...prev, newItem]);
+    setDialogOpen(false);
+    setPendingAction(false);
+  } else if (workflow.failed) {
+    console.error("Failed:", workflow.error);
+    setPendingAction(false);
+  }
+}, [workflow.completed, workflow.failed, workflow.result, pendingAction]);
+
+const handleCreate = async () => {
+  setPendingAction(true);
+  try {
+    await workflow.execute({ name: "New Item" });
+    // Don't try to use the result here - it's handled in useEffect
+  } catch (error) {
+    setPendingAction(false);
+  }
+};
+```
+
+### Common Mistakes
+
+```tsx
+// WRONG - execute() returns execution ID, not result
+const result = await workflow.execute({ name: "test" });
+if (result.success) { ... }  // result is a string (execution ID)!
+
+// CORRECT - use useEffect to handle async result
+useEffect(() => {
+  if (workflow.completed && workflow.result) {
+    // Now workflow.result has the actual data
+  }
+}, [workflow.completed, workflow.result]);
+```
 
 ## Layout Pattern
 

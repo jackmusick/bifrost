@@ -19,6 +19,7 @@ These tools mirror Claude Code's precision editing workflow:
 
 import logging
 import re
+from dataclasses import dataclass
 from typing import Any
 from uuid import UUID
 
@@ -38,6 +39,70 @@ from src.services.mcp_server.tool_result import (
     format_grep_matches,
     success_result,
 )
+
+
+def _format_deactivation_result(
+    path: str,
+    pending_deactivations: list[dict[str, Any]],
+    available_replacements: list[dict[str, Any]] | None,
+) -> ToolResult:
+    """
+    Format a deactivation protection result for Claude to handle.
+
+    Returns a ToolResult that tells Claude:
+    1. Which workflows would be deactivated
+    2. What entities (forms, agents) reference them
+    3. Available replacement functions (for renames)
+    4. How to proceed (apply replacements or force deactivation)
+    """
+    lines = [
+        f"⚠️ Saving {path} would deactivate {len(pending_deactivations)} workflow(s):",
+        "",
+    ]
+
+    for pd in pending_deactivations:
+        lines.append(f"  • {pd['function_name']} ({pd['decorator_type']})")
+        if pd["has_executions"]:
+            lines.append(f"    - Has execution history (last: {pd['last_execution_at'] or 'unknown'})")
+        if pd["schedule"]:
+            lines.append(f"    - Has schedule: {pd['schedule']}")
+        if pd["endpoint_enabled"]:
+            lines.append("    - Has API endpoint enabled")
+        if pd["affected_entities"]:
+            lines.append("    - Referenced by:")
+            for ae in pd["affected_entities"][:5]:  # Limit to 5
+                lines.append(f"      - {ae['entity_type']}: {ae['name']} ({ae['reference_type']})")
+            if len(pd["affected_entities"]) > 5:
+                lines.append(f"      - ... and {len(pd['affected_entities']) - 5} more")
+
+    if available_replacements:
+        lines.append("")
+        lines.append("Possible renames detected:")
+        for ar in available_replacements[:3]:  # Top 3 suggestions
+            lines.append(f"  • {ar['function_name']} (similarity: {ar['similarity_score']:.0%})")
+
+    lines.extend([
+        "",
+        "To proceed, you can:",
+        "1. Apply replacements: Re-call with replacements={\"<old_workflow_id>\": \"<new_function_name>\"}",
+        "2. Force deactivation: Re-call with force_deactivation=true",
+        "3. Abort: Do not save this file",
+    ])
+
+    return ToolResult(
+        content="\n".join(lines),
+        structured_content={
+            "status": "pending_deactivations",
+            "path": path,
+            "pending_deactivations": pending_deactivations,
+            "available_replacements": available_replacements or [],
+            "resolution_options": {
+                "apply_replacements": "Re-call with replacements parameter mapping old workflow IDs to new function names",
+                "force_deactivation": "Re-call with force_deactivation=true to proceed anyway",
+                "abort": "Do not save the file",
+            },
+        },
+    )
 
 logger = logging.getLogger(__name__)
 
@@ -331,10 +396,39 @@ async def _replace_app_file(
         return created
 
 
+@dataclass
+class WorkspaceWriteResult:
+    """Result of writing a workspace file."""
+
+    created: bool
+    pending_deactivations: list[dict[str, Any]] | None = None
+    available_replacements: list[dict[str, Any]] | None = None
+
+
 async def _replace_workspace_file(
-    context: Any, entity_type: str, path: str, content: str, organization_id: str | None
-) -> bool:
-    """Replace or create a workflow/module file. Returns True if created, False if updated."""
+    context: Any,
+    entity_type: str,
+    path: str,
+    content: str,
+    organization_id: str | None,
+    force_deactivation: bool = False,
+    replacements: dict[str, str] | None = None,
+) -> WorkspaceWriteResult:
+    """
+    Replace or create a workflow/module file.
+
+    Args:
+        context: Request context
+        entity_type: Type of entity ("workflow" or "module")
+        path: File path
+        content: File content
+        organization_id: Optional organization ID
+        force_deactivation: If True, bypass deactivation protection
+        replacements: Mapping of old_workflow_id -> new_function_name for renames
+
+    Returns:
+        WorkspaceWriteResult with created status and any pending deactivations
+    """
     async with get_db_context() as db:
         service = FileStorageService(db)
 
@@ -345,15 +439,49 @@ async def _replace_workspace_file(
         except FileNotFoundError:
             created = True
 
-        # Write through FileStorageService for validation
-        await service.write_file(
+        # Write through FileStorageService with deactivation protection
+        write_result = await service.write_file(
             path=path,
             content=content.encode("utf-8"),
             updated_by=context.user_email or "mcp",
-            force_deactivation=True,
+            force_deactivation=force_deactivation,
+            replacements=replacements,
         )
 
-        return created
+        # Check for pending deactivations
+        if write_result.pending_deactivations:
+            pending = [
+                {
+                    "id": pd.id,
+                    "name": pd.name,
+                    "function_name": pd.function_name,
+                    "path": pd.path,
+                    "description": pd.description,
+                    "decorator_type": pd.decorator_type,
+                    "has_executions": pd.has_executions,
+                    "last_execution_at": pd.last_execution_at,
+                    "schedule": pd.schedule,
+                    "endpoint_enabled": pd.endpoint_enabled,
+                    "affected_entities": pd.affected_entities,
+                }
+                for pd in write_result.pending_deactivations
+            ]
+            available = [
+                {
+                    "function_name": ar.function_name,
+                    "name": ar.name,
+                    "decorator_type": ar.decorator_type,
+                    "similarity_score": ar.similarity_score,
+                }
+                for ar in (write_result.available_replacements or [])
+            ]
+            return WorkspaceWriteResult(
+                created=created,
+                pending_deactivations=pending,
+                available_replacements=available,
+            )
+
+        return WorkspaceWriteResult(created=created)
 
 
 async def _replace_text_file(
@@ -405,8 +533,26 @@ async def _persist_content(
     app_id: str | None,
     organization_id: str | None,
     context: Any,
-) -> None:
-    """Persist content changes to the database."""
+    force_deactivation: bool = False,
+    replacements: dict[str, str] | None = None,
+) -> WorkspaceWriteResult | None:
+    """
+    Persist content changes to the database.
+
+    Args:
+        entity_type: Type of entity
+        path: File path
+        content: New content
+        app_id: App ID for app_file entity type
+        organization_id: Organization ID
+        context: Request context
+        force_deactivation: If True, bypass deactivation protection
+        replacements: Mapping of old_workflow_id -> new_function_name for renames
+
+    Returns:
+        WorkspaceWriteResult if entity is workflow/module with pending deactivations,
+        None otherwise
+    """
     async with get_db_context() as db:
         if entity_type == "app_file":
             from src.core.pubsub import publish_app_code_file_update
@@ -443,16 +589,55 @@ async def _persist_content(
             )
 
             await db.commit()
+            return None
 
         elif entity_type in ("workflow", "module"):
-            # Route through FileStorageService for validation
+            # Route through FileStorageService with deactivation protection
             service = FileStorageService(db)
-            await service.write_file(
+            write_result = await service.write_file(
                 path=path,
                 content=content.encode("utf-8"),
                 updated_by=context.user_email or "mcp",
-                force_deactivation=True,  # Allow changes
+                force_deactivation=force_deactivation,
+                replacements=replacements,
             )
+
+            # Check for pending deactivations
+            if write_result.pending_deactivations:
+                pending = [
+                    {
+                        "id": pd.id,
+                        "name": pd.name,
+                        "function_name": pd.function_name,
+                        "path": pd.path,
+                        "description": pd.description,
+                        "decorator_type": pd.decorator_type,
+                        "has_executions": pd.has_executions,
+                        "last_execution_at": pd.last_execution_at,
+                        "schedule": pd.schedule,
+                        "endpoint_enabled": pd.endpoint_enabled,
+                        "affected_entities": pd.affected_entities,
+                    }
+                    for pd in write_result.pending_deactivations
+                ]
+                available = [
+                    {
+                        "function_name": ar.function_name,
+                        "name": ar.name,
+                        "decorator_type": ar.decorator_type,
+                        "similarity_score": ar.similarity_score,
+                    }
+                    for ar in (write_result.available_replacements or [])
+                ]
+                return WorkspaceWriteResult(
+                    created=False,
+                    pending_deactivations=pending,
+                    available_replacements=available,
+                )
+
+            return None
+
+        return None
 
 
 # =============================================================================
@@ -1191,8 +1376,27 @@ async def patch_content(
     new_string: str,
     app_id: str | None = None,
     organization_id: str | None = None,
+    force_deactivation: bool = False,
+    replacements: dict[str, str] | None = None,
 ) -> ToolResult:
-    """Make a surgical edit by replacing a unique string."""
+    """
+    Make a surgical edit by replacing a unique string.
+
+    For workflow files, if the edit would deactivate existing workflows (e.g., function
+    was renamed or removed), the tool returns information about affected workflows
+    instead of proceeding. See replace_content for resolution options.
+
+    Args:
+        context: Request context
+        entity_type: Type of entity (app_file, workflow, module, text)
+        path: File path
+        old_string: String to find and replace (must be unique in file)
+        new_string: Replacement string
+        app_id: App ID (required for app_file)
+        organization_id: Organization ID
+        force_deactivation: If True, proceed even if workflows would be deactivated
+        replacements: Mapping of old_workflow_id -> new_function_name for renames
+    """
     logger.info(f"MCP patch_content: entity_type={entity_type}, path={path}")
 
     if not path:
@@ -1240,9 +1444,24 @@ async def patch_content(
 
     # Persist the change
     try:
-        await _persist_content(
-            entity_type, path, new_content, app_id, organization_id, context
+        result = await _persist_content(
+            entity_type,
+            path,
+            new_content,
+            app_id,
+            organization_id,
+            context,
+            force_deactivation=force_deactivation,
+            replacements=replacements,
         )
+
+        # Check for pending deactivations
+        if result and result.pending_deactivations:
+            return _format_deactivation_result(
+                path,
+                result.pending_deactivations,
+                result.available_replacements,
+            )
 
         # Format diff-style display
         display = format_diff(
@@ -1277,8 +1496,29 @@ async def replace_content(
     content: str,
     app_id: str | None = None,
     organization_id: str | None = None,
+    force_deactivation: bool = False,
+    replacements: dict[str, str] | None = None,
 ) -> ToolResult:
-    """Replace entire file content or create a new file."""
+    """
+    Replace entire file content or create a new file.
+
+    For workflow files, if the save would deactivate existing workflows (e.g., function
+    was renamed or removed), the tool returns information about affected workflows
+    instead of proceeding. The caller can then:
+    1. Apply replacements: Pass replacements={old_workflow_id: new_function_name}
+    2. Force deactivation: Pass force_deactivation=True
+    3. Abort: Don't save the file
+
+    Args:
+        context: Request context
+        entity_type: Type of entity (app_file, workflow, module, text)
+        path: File path
+        content: New file content
+        app_id: App ID (required for app_file)
+        organization_id: Organization ID
+        force_deactivation: If True, proceed even if workflows would be deactivated
+        replacements: Mapping of old_workflow_id -> new_function_name for renames
+    """
     logger.info(f"MCP replace_content: entity_type={entity_type}, path={path}")
 
     if not path:
@@ -1306,9 +1546,25 @@ async def replace_content(
             if validation_error:
                 return error_result(validation_error)
 
-            created = await _replace_workspace_file(
-                context, entity_type, path, content, organization_id
+            result = await _replace_workspace_file(
+                context,
+                entity_type,
+                path,
+                content,
+                organization_id,
+                force_deactivation=force_deactivation,
+                replacements=replacements,
             )
+
+            # Check for pending deactivations
+            if result.pending_deactivations:
+                return _format_deactivation_result(
+                    path,
+                    result.pending_deactivations,
+                    result.available_replacements,
+                )
+
+            created = result.created
 
         action = "Created" if created else "Updated"
         return success_result(

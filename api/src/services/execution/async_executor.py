@@ -208,6 +208,8 @@ async def enqueue_system_workflow_execution(
     # Generate execution_id once - used for both context and Redis
     execution_id = str(uuid.uuid4())
 
+    from src.config import get_settings
+
     context = ExecutionContext(
         user_id=SYSTEM_USER_ID,
         email=SYSTEM_USER_EMAIL,
@@ -217,6 +219,7 @@ async def enqueue_system_workflow_execution(
         is_platform_admin=True,
         is_function_key=False,
         execution_id=execution_id,
+        public_url=get_settings().public_url,
     )
 
     return await enqueue_workflow_execution(

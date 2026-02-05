@@ -13,14 +13,31 @@ export type ToolInfo = components["schemas"]["ToolInfo"];
 export type ToolsResponse = components["schemas"]["ToolsResponse"];
 
 /**
+ * Options for fetching tools
+ */
+export interface GetToolsOptions {
+	type?: "system" | "workflow";
+	include_inactive?: boolean;
+}
+
+/**
  * Fetch all available tools
- * @param type - Filter by tool type: 'system' or 'workflow'
+ * @param options - Filter options for tools
  */
 export async function getTools(
-	type?: "system" | "workflow",
+	options?: GetToolsOptions | "system" | "workflow",
 ): Promise<ToolsResponse> {
+	// Support legacy signature where just type was passed
+	const opts: GetToolsOptions =
+		typeof options === "string" ? { type: options } : options ?? {};
+
+	const query: { type?: "system" | "workflow"; include_inactive?: boolean } =
+		{};
+	if (opts.type) query.type = opts.type;
+	if (opts.include_inactive) query.include_inactive = opts.include_inactive;
+
 	const { data, error } = await apiClient.GET("/api/tools", {
-		params: { query: type ? { type } : {} },
+		params: { query },
 	});
 
 	if (error) {

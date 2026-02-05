@@ -171,6 +171,7 @@ import * as AlertDialogModule from "@/components/ui/alert-dialog";
 import * as ContextMenuModule from "@/components/ui/context-menu";
 import * as SheetModule from "@/components/ui/sheet";
 import * as SeparatorModule from "@/components/ui/separator";
+import * as ComboboxModule from "@/components/ui/combobox";
 
 /**
  * The $ registry - contains EVERYTHING available to user code
@@ -236,6 +237,7 @@ export const $: Record<string, unknown> = {
 	...ContextMenuModule,
 	...SheetModule,
 	...SeparatorModule,
+	...ComboboxModule,
 };
 
 /**

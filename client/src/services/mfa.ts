@@ -7,7 +7,7 @@ import type { components } from "@/lib/v1";
 
 // Re-export types from generated schema
 export type MFAStatus = components["schemas"]["MFAStatusResponse"];
-export type MFASetupResponse = components["schemas"]["src__routers__mfa__MFASetupResponse"];
+export type MFASetupResponse = components["schemas"]["MFASetupResponse"];
 export type MFAVerifyResponse = components["schemas"]["MFAVerifyResponse"];
 export type MFARemoveRequest = components["schemas"]["MFARemoveRequest"];
 export type RecoveryCodesResponse = components["schemas"]["RecoveryCodesResponse"];

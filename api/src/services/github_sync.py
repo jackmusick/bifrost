@@ -16,6 +16,7 @@ import gc
 import hashlib
 import json
 import logging
+import os
 import shutil
 import subprocess
 import tempfile
@@ -741,18 +742,22 @@ class GitHubSyncService:
 
     def _clone_to_temp(self) -> str:
         """
-        Clone repository to a temporary directory using git CLI.
+        Clone repository to a fixed temporary directory using git CLI.
 
-        Uses shallow clone (--depth 1) for speed. The clone is ephemeral
-        and should be cleaned up after use with shutil.rmtree().
+        Uses shallow clone (--depth 1) for speed. Reuses a fixed directory
+        to avoid accumulating temp directories.
 
         Returns:
-            Path to the temporary directory containing the clone
+            Path to the clone directory
 
         Raises:
             SyncError: If git clone fails
         """
-        temp_dir = tempfile.mkdtemp(prefix="bifrost-git-")
+        temp_dir = "/tmp/bifrost-git-sync"
+
+        # Clean up existing directory if it exists
+        if os.path.exists(temp_dir):
+            shutil.rmtree(temp_dir, ignore_errors=True)
 
         # Clone with token in URL for auth (x-access-token is GitHub's convention)
         clone_url = f"https://x-access-token:{self.github.token}@github.com/{self.repo}.git"

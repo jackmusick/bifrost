@@ -100,7 +100,7 @@ class TestBifrostAuthProviderInit:
     def test_falls_back_to_settings(self, mock_get_settings):
         """Should fall back to settings.mcp_base_url if no base_url provided."""
         mock_settings = MagicMock()
-        mock_settings.mcp_base_url = "https://settings.example.com"
+        mock_settings.public_url = "https://settings.example.com"
         mock_get_settings.return_value = mock_settings
 
         provider = BifrostAuthProvider()
@@ -276,7 +276,7 @@ class TestCreateBifrostAuthProvider:
     def test_creates_provider_with_defaults(self, mock_get_settings):
         """Should create provider with default settings when no base_url provided."""
         mock_settings = MagicMock()
-        mock_settings.mcp_base_url = "https://default.example.com"
+        mock_settings.public_url = "https://default.example.com"
         mock_get_settings.return_value = mock_settings
 
         provider = create_bifrost_auth_provider()

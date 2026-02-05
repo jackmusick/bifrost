@@ -131,11 +131,12 @@ async def build_workflow_ref_map(db: AsyncSession) -> dict[str, str]:
     """
     Build mapping of workflow UUID -> portable_ref for export.
 
-    Now uses the portable_ref column directly instead of computing refs.
+    INCLUDES INACTIVE WORKFLOWS for serialization consistency.
+    This prevents false conflicts when agents/forms reference
+    workflows that were deactivated after the last sync.
 
-    Note: This function is kept for backward compatibility during the transition
-    to direct lookups. New code should use get_portable_ref_for_workflow() or
-    batch lookups via the portable_ref column.
+    Note: Import operations should use build_ref_to_uuid_map() which
+    filters to active workflows only (don't resolve to deactivated).
 
     Args:
         db: Database session
@@ -144,8 +145,8 @@ async def build_workflow_ref_map(db: AsyncSession) -> dict[str, str]:
         Dict mapping UUID string -> portable_ref (without "workflow::" prefix for compatibility)
     """
     stmt = select(Workflow.id, Workflow.portable_ref).where(
-        Workflow.is_active == True,  # noqa: E712
         Workflow.portable_ref.isnot(None),
+        # No is_active filter - include all for consistent serialization
     )
     result = await db.execute(stmt)
     rows = result.all()
@@ -157,7 +158,7 @@ async def build_workflow_ref_map(db: AsyncSession) -> dict[str, str]:
         if row.portable_ref
     }
 
-    logger.debug(f"Built workflow ref map with {len(workflow_map)} entries")
+    logger.debug(f"Built workflow ref map with {len(workflow_map)} entries (includes inactive)")
     return workflow_map
 
 

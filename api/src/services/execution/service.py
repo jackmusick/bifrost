@@ -523,6 +523,9 @@ async def execute_tool(
     # Use provided execution_id or generate a new one
     if not execution_id:
         execution_id = str(uuid.uuid4())
+
+    from src.config import get_settings
+
     context = ExecutionContext(
         user_id=user_id,
         email=user_email,
@@ -532,6 +535,7 @@ async def execute_tool(
         is_platform_admin=is_platform_admin,
         is_function_key=False,
         execution_id=execution_id,
+        public_url=get_settings().public_url,
     )
 
     # Execute synchronously via queue

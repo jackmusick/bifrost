@@ -95,6 +95,10 @@ class ExecutionContext:
     # ==================== EXECUTION ====================
     execution_id: str
 
+    # ==================== PLATFORM ====================
+    # Public URL for constructing external links (e.g., workflow URLs, execution URLs)
+    public_url: str = field(default="http://localhost:8000")
+
     # ==================== DATABASE SESSION ====================
     # Database session for SDK operations (injected during execution)
     _db: "AsyncSession | None" = field(default=None, repr=False)

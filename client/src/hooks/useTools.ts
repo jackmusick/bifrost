@@ -4,15 +4,19 @@
 
 import { useQuery } from "@tanstack/react-query";
 import { getTools, getSystemTools } from "@/services/tools";
-import type { ToolInfo } from "@/services/tools";
+import type { ToolInfo, GetToolsOptions } from "@/services/tools";
 
 /**
  * Fetch all available tools (system + workflow)
  */
-export function useTools(type?: "system" | "workflow") {
+export function useTools(options?: GetToolsOptions | "system" | "workflow") {
+	// Normalize options for query key
+	const opts: GetToolsOptions =
+		typeof options === "string" ? { type: options } : options ?? {};
+
 	return useQuery({
-		queryKey: ["tools", type],
-		queryFn: () => getTools(type),
+		queryKey: ["tools", opts.type, opts.include_inactive],
+		queryFn: () => getTools(opts),
 		staleTime: 5 * 60 * 1000, // 5 minutes
 	});
 }
@@ -29,10 +33,20 @@ export function useSystemTools() {
 }
 
 /**
+ * Options for useToolsGrouped hook
+ */
+export interface UseToolsGroupedOptions {
+	/** Include deactivated workflow tools (for agent editor to show orphaned refs) */
+	include_inactive?: boolean;
+}
+
+/**
  * Get tools grouped by type
  */
-export function useToolsGrouped() {
-	const { data, ...rest } = useTools();
+export function useToolsGrouped(options?: UseToolsGroupedOptions) {
+	const { data, ...rest } = useTools({
+		include_inactive: options?.include_inactive,
+	});
 
 	const grouped = {
 		system: [] as ToolInfo[],

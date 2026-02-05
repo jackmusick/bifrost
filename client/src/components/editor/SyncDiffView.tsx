@@ -5,7 +5,7 @@
  * For conflicts, includes resolution buttons.
  */
 
-import { useEffect, useRef } from "react";
+import { useRef, useCallback } from "react";
 import { DiffEditor, type DiffOnMount } from "@monaco-editor/react";
 import { useTheme } from "@/contexts/ThemeContext";
 import type * as Monaco from "monaco-editor";
@@ -25,22 +25,21 @@ const ENTITY_ICONS = {
 
 interface SyncDiffViewProps {
 	preview: DiffPreviewState;
-	isLoading?: boolean;
 }
 
-export function SyncDiffView({ preview, isLoading = false }: SyncDiffViewProps) {
+export function SyncDiffView({ preview }: SyncDiffViewProps) {
+	// Use loading state from preview (set by SourceControlPanel during fetch)
+	const isLoading = preview.isLoading ?? false;
 	const { theme } = useTheme();
 	const editorRef = useRef<Monaco.editor.IStandaloneDiffEditor | null>(null);
 	const clearDiffPreview = useEditorStore((state) => state.clearDiffPreview);
 
-	const handleMount: DiffOnMount = (editor) => {
+	// Store editor reference on mount
+	// Note: We don't manually dispose - Monaco's DiffEditor component handles its own lifecycle.
+	// Manual disposal causes "TextModel got disposed before DiffEditorWidget model got reset"
+	// when rapidly switching between items because models are disposed while still referenced.
+	const handleMount: DiffOnMount = useCallback((editor) => {
 		editorRef.current = editor;
-	};
-
-	useEffect(() => {
-		return () => {
-			editorRef.current?.dispose();
-		};
 	}, []);
 
 	// Get entity icon

@@ -240,7 +240,7 @@ The scheduler must run as a singleton to prevent duplicate job executions.
 | `BIFROST_WEBAUTHN_RP_ID` | (required) | WebAuthn relying party ID (your domain) |
 | `BIFROST_WEBAUTHN_RP_NAME` | `Bifrost` | WebAuthn display name |
 | `BIFROST_WEBAUTHN_ORIGIN` | (required) | WebAuthn origin URL (e.g., https://bifrost.example.com) |
-| `BIFROST_MCP_BASE_URL` | (required) | Base URL for MCP OAuth endpoints |
+| `BIFROST_PUBLIC_URL` | (required) | Public URL for the Bifrost platform |
 
 ## Troubleshooting
 
