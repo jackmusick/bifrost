@@ -1,5 +1,5 @@
 import { useState, useMemo, useEffect } from "react";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, useSearchParams } from "react-router-dom";
 import {
 	CheckCircle,
 	XCircle,
@@ -47,8 +47,16 @@ import {
 	DialogTitle,
 	DialogTrigger,
 } from "@/components/ui/dialog";
+import {
+	Select,
+	SelectContent,
+	SelectItem,
+	SelectTrigger,
+	SelectValue,
+} from "@/components/ui/select";
 import { useExecutions, cancelExecution } from "@/hooks/useExecutions";
 import { useExecutionHistory } from "@/hooks/useExecutionStream";
+import { useWorkflows } from "@/hooks/useWorkflows";
 import { useScopeStore } from "@/stores/scopeStore";
 import { useAuth } from "@/contexts/AuthContext";
 import { useOrganizations } from "@/hooks/useOrganizations";
@@ -96,9 +104,13 @@ interface StuckExecution {
 
 export function ExecutionHistory() {
 	const navigate = useNavigate();
+	const [searchParams, setSearchParams] = useSearchParams();
 	const { isPlatformAdmin, user } = useAuth();
 	const [filterOrgId, setFilterOrgId] = useState<string | null | undefined>(
 		undefined,
+	);
+	const [workflowIdFilter, setWorkflowIdFilter] = useState(
+		searchParams.get("workflow") || "",
 	);
 	const [statusFilter, setStatusFilter] = useState<ExecutionStatus | "all">(
 		"all",
@@ -132,6 +144,9 @@ export function ExecutionHistory() {
 		undefined,
 	);
 
+	// Fetch workflow names for dropdown filter
+	const { data: workflows } = useWorkflows();
+
 	// Fetch organizations for the org name lookup (platform admins only)
 	const { data: organizations } = useOrganizations({
 		enabled: isPlatformAdmin,
@@ -152,6 +167,11 @@ export function ExecutionHistory() {
 		// Add excludeLocal filter (inverse of showLocal)
 		baseFilters.excludeLocal = !showLocal;
 
+		// Add workflow ID filter
+		if (workflowIdFilter) {
+			baseFilters.workflow_id = workflowIdFilter;
+		}
+
 		if (dateRange?.from) {
 			// Set start to beginning of day (00:00:00)
 			const startDate = new Date(dateRange.from);
@@ -170,7 +190,7 @@ export function ExecutionHistory() {
 		}
 
 		return baseFilters;
-	}, [statusFilter, dateRange, showLocal]);
+	}, [statusFilter, dateRange, showLocal, workflowIdFilter]);
 
 	// Pass filterOrgId to backend for filtering (undefined = all, null = global only)
 	// For platform admins, undefined means show all. For non-admins, backend handles filtering.
@@ -370,7 +390,7 @@ export function ExecutionHistory() {
 	useEffect(() => {
 		setPageStack([]);
 		setCurrentToken(undefined);
-	}, [statusFilter, dateRange, showLocal, filterOrgId]);
+	}, [statusFilter, dateRange, showLocal, filterOrgId, workflowIdFilter]);
 
 	return (
 		<div className="h-[calc(100vh-8rem)] flex flex-col space-y-6">
@@ -558,6 +578,34 @@ export function ExecutionHistory() {
 						: "Search by workflow name, user, or execution ID..."}
 					className="flex-1 max-w-2xl"
 				/>
+				<Select
+					value={workflowIdFilter || "__all__"}
+					onValueChange={(value) => {
+						const newFilter = value === "__all__" ? "" : value;
+						setWorkflowIdFilter(newFilter);
+						setSearchParams((prev) => {
+							const next = new URLSearchParams(prev);
+							if (newFilter) {
+								next.set("workflow", newFilter);
+							} else {
+								next.delete("workflow");
+							}
+							return next;
+						}, { replace: true });
+					}}
+				>
+					<SelectTrigger className="w-48">
+						<SelectValue placeholder="All workflows" />
+					</SelectTrigger>
+					<SelectContent>
+						<SelectItem value="__all__">All workflows</SelectItem>
+						{workflows?.map((w) => (
+							<SelectItem key={w.id ?? w.name} value={w.id ?? ""}>
+								{w.name}
+							</SelectItem>
+						))}
+					</SelectContent>
+				</Select>
 				<DateRangePicker
 					dateRange={dateRange}
 					onDateRangeChange={setDateRange}

@@ -19,6 +19,7 @@ import {
 	Shield,
 	Users,
 	Loader2,
+	History,
 } from "lucide-react";
 import { useIsDesktop } from "@/hooks/useMediaQuery";
 import type { CategoryCount } from "@/components/workflows/WorkflowSidebar";
@@ -454,6 +455,19 @@ export function Workflows() {
 															<Button
 																variant="outline"
 																size="icon-sm"
+																onClick={() => navigate(`/history?workflow=${workflow.id ?? ""}`)}
+																title="View history"
+															>
+																<History className="h-3.5 w-3.5" />
+															</Button>
+														</TooltipTrigger>
+														<TooltipContent>View history</TooltipContent>
+													</Tooltip>
+													<Tooltip>
+														<TooltipTrigger asChild>
+															<Button
+																variant="outline"
+																size="icon-sm"
 																onClick={() => handleOpenInEditor(workflow)}
 																disabled={openingWorkflowId === (workflow.id ?? workflow.name)}
 																title="Open in editor"
@@ -825,6 +839,19 @@ export function Workflows() {
 												</DataTableCell>
 												<DataTableCell className="text-right">
 													<div className="flex items-center justify-end gap-1">
+														<Tooltip>
+															<TooltipTrigger asChild>
+																<Button
+																	variant="outline"
+																	size="sm"
+																	onClick={() => navigate(`/history?workflow=${workflow.id ?? ""}`)}
+																	title="View history"
+																>
+																	<History className="h-4 w-4" />
+																</Button>
+															</TooltipTrigger>
+															<TooltipContent>View history</TooltipContent>
+														</Tooltip>
 														<Tooltip>
 															<TooltipTrigger asChild>
 																<Button

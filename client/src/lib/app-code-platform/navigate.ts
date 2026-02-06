@@ -94,7 +94,6 @@ export function clearNavigateRef(): void {
  *
  * // This imperative version works in callbacks:
  * const handleSuccess = async () => {
- *   await runWorkflow('save_client', data);
  *   navigate('/clients'); // Imperative navigation
  * };
  * ```

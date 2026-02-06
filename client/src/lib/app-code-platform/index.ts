@@ -14,12 +14,10 @@
  * const user = useUser();
  * const params = useParams();
  * navigate('/clients');
- * await runWorkflow('save_client', { name: 'Acme' });
  * ```
  */
 
 // Workflow execution
-export { runWorkflow } from "./runWorkflow";
 export { useWorkflow } from "./useWorkflow";
 
 // Router utilities

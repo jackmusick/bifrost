@@ -19,8 +19,8 @@ from sqlalchemy import select
 from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from src.models import Application, AppFile, AppFileDependency, AppVersion
-from src.services.app_dependencies import parse_dependencies
+from src.models import Application, AppFile, AppVersion
+from src.services.app_dependencies import sync_file_dependencies
 from src.services.file_storage.diagnostics import DiagnosticsService
 from src.services.file_storage.ref_translation import (
     build_ref_to_uuid_map,
@@ -288,7 +288,7 @@ class AppIndexer:
         actual_file_id = result.scalar_one()
 
         # Sync dependencies for this file (uses transformed source with UUIDs)
-        await self._sync_file_dependencies(actual_file_id, transformed_source)
+        await sync_file_dependencies(self.db, actual_file_id, transformed_source)
 
         logger.debug(f"Indexed app file: {relative_path} in app {slug}")
         return False
@@ -537,7 +537,7 @@ class AppIndexer:
             actual_file_id = result.scalar_one()
 
             # Sync dependencies
-            await self._sync_file_dependencies(actual_file_id, transformed_source)
+            await sync_file_dependencies(self.db, actual_file_id, transformed_source)
 
         # Create diagnostics for unresolved refs if any
         if all_unresolved_refs:
@@ -554,30 +554,3 @@ class AppIndexer:
         logger.info(f"Imported app atomically with {len(files) - 1} code files: {slug}")
         return app
 
-    async def _sync_file_dependencies(self, file_id: UUID, source: str) -> None:
-        """
-        Parse source code and sync dependencies for a file.
-
-        Erase-and-replace pattern: delete existing dependencies, then insert new ones.
-        """
-        from sqlalchemy import delete as sql_delete
-
-        # Delete existing dependencies for this file
-        await self.db.execute(
-            sql_delete(AppFileDependency).where(AppFileDependency.app_file_id == file_id)
-        )
-
-        # Parse new dependencies from source
-        dependencies = parse_dependencies(source)
-
-        # Insert new dependencies
-        for dep_type, dep_id in dependencies:
-            dependency = AppFileDependency(
-                app_file_id=file_id,
-                dependency_type=dep_type,
-                dependency_id=dep_id,
-            )
-            self.db.add(dependency)
-
-        if dependencies:
-            logger.debug(f"Synced {len(dependencies)} dependencies for file {file_id}")

@@ -203,7 +203,10 @@
       "WebFetch(domain:raw.githubusercontent.com)",
       "Bash(npx get-shit-done-cc --global)",
       "mcp__ide__getDiagnostics",
-      "Bash(/home/jack/GitHub/bifrost/.venv/bin/pyright:*)"
+      "Bash(/home/jack/GitHub/bifrost/.venv/bin/pyright:*)",
+      "Bash(sort:*)",
+      "Bash(python -m pyright:*)",
+      "Bash(docker ps:*)"
     ],
     "deny": [],
     "ask": [],

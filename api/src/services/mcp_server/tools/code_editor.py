@@ -340,6 +340,7 @@ async def _replace_app_file(
 ) -> bool:
     """Replace or create an app file. Returns True if created, False if updated."""
     from src.core.pubsub import publish_app_code_file_update
+    from src.services.app_dependencies import sync_file_dependencies
 
     async with get_db_context() as db:
         app_uuid = UUID(app_id)
@@ -380,6 +381,9 @@ async def _replace_app_file(
             action = "create"
 
         await db.flush()
+
+        # Sync dependencies (parse source for workflow references)
+        await sync_file_dependencies(db, file.id, content)
 
         # Publish update for real-time preview
         await publish_app_code_file_update(
@@ -555,6 +559,7 @@ async def _persist_content(
     async with get_db_context() as db:
         if entity_type == "app_file":
             from src.core.pubsub import publish_app_code_file_update
+            from src.services.app_dependencies import sync_file_dependencies
 
             if not app_id:
                 raise ValueError("app_id is required for app_file entity type")
@@ -575,6 +580,9 @@ async def _persist_content(
 
             file.source = content
             await db.flush()
+
+            # Sync dependencies (parse source for workflow references)
+            await sync_file_dependencies(db, file.id, content)
 
             # Publish update for real-time preview
             await publish_app_code_file_update(

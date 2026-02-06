@@ -328,51 +328,6 @@ export declare function useAppState<T>(
 // =============================================================================
 
 /**
- * Execute a workflow and return the result.
- * Used for mutations or one-off workflow calls where you don't need
- * loading/error state management. For data fetching, use useWorkflow instead.
- *
- * @template T - The type of data returned by the workflow
- * @param workflowId - The workflow ID or name to execute
- * @param params - Optional parameters to pass to the workflow
- * @returns Promise that resolves to the workflow result data
- * @throws Error if workflow execution fails
- *
- * @example
- * ```jsx
- * // In a button click handler
- * const handleSave = async () => {
- *   try {
- *     await runWorkflow('update_client', { id: clientId, name: newName });
- *     toast.success('Saved!');
- *     refresh(); // Refresh the data
- *   } catch (error) {
- *     toast.error('Failed to save: ' + error.message);
- *   }
- * };
- *
- * return (
- *   <Button onClick={handleSave} disabled={isSaving}>
- *     Save Changes
- *   </Button>
- * );
- * ```
- *
- * @example
- * ```jsx
- * // Create a new record and navigate
- * const handleCreate = async () => {
- *   const newClient = await runWorkflow('create_client', { name: 'Acme Corp' });
- *   navigate(`/clients/${newClient.id}`);
- * };
- * ```
- */
-export declare function runWorkflow<T = unknown>(
-	workflowId: string,
-	params?: Record<string, unknown>,
-): Promise<T>;
-
-/**
  * Navigate to a page path programmatically.
  *
  * Note: This is an imperative function. For navigation within components,
@@ -389,7 +344,6 @@ export declare function runWorkflow<T = unknown>(
  *
  * // This imperative version works in async callbacks:
  * const handleSuccess = async () => {
- *   await runWorkflow('save_client', data);
  *   navigate('/clients'); // Imperative navigation after async work
  * };
  * ```
@@ -705,7 +659,6 @@ export interface PlatformScope {
 	useLocation: typeof useLocation;
 
 	// Platform utilities
-	runWorkflow: typeof runWorkflow;
 	navigate: typeof navigate;
 	cn: typeof cn;
 	formatDate: typeof formatDate;

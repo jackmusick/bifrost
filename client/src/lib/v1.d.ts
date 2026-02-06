@@ -2390,26 +2390,6 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/api/schedules": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /**
-         * List scheduled workflows
-         * @description List all workflows that have a schedule configured with enriched metadata (Platform admin only)
-         */
-        get: operations["list_schedules_api_schedules_get"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
     "/api/workflow-keys": {
         parameters: {
             query?: never;
@@ -11300,6 +11280,13 @@ export interface components {
              * @description Error message if failed
              */
             error?: string | null;
+            /**
+             * Preview
+             * @description Sync preview data
+             */
+            preview?: {
+                [key: string]: unknown;
+            } | null;
         };
         /**
          * KnowledgeStorageTrend
@@ -11758,11 +11745,6 @@ export interface components {
             issuer: string;
             /** Account Name */
             account_name: string;
-            /**
-             * Is Existing
-             * @default false
-             */
-            is_existing: boolean;
         };
         /**
          * MFAStatusResponse
@@ -11782,11 +11764,20 @@ export interface components {
         };
         /**
          * MFAVerifyRequest
-         * @description Request to verify MFA code.
+         * @description Request to verify MFA code during login.
          */
         MFAVerifyRequest: {
+            /** Mfa Token */
+            mfa_token: string;
             /** Code */
             code: string;
+            /**
+             * Trust Device
+             * @default false
+             */
+            trust_device: boolean;
+            /** Device Name */
+            device_name?: string | null;
         };
         /**
          * MFAVerifyResponse
@@ -12184,29 +12175,15 @@ export interface components {
         };
         /**
          * OAuthCallbackRequest
-         * @description Request model for OAuth callback endpoint
+         * @description OAuth callback request (for when frontend handles callback).
          */
         OAuthCallbackRequest: {
-            /**
-             * Code
-             * @description Authorization code from OAuth provider
-             */
+            /** Provider */
+            provider: string;
+            /** Code */
             code: string;
-            /**
-             * State
-             * @description State parameter for CSRF protection
-             */
-            state?: string | null;
-            /**
-             * Redirect Uri
-             * @description Redirect URI used in authorization request
-             */
-            redirect_uri?: string | null;
-            /**
-             * Organization Id
-             * @description Organization ID for org-specific token storage (optional, for org overrides)
-             */
-            organization_id?: string | null;
+            /** State */
+            state: string;
         };
         /**
          * OAuthCallbackResponse
@@ -13194,11 +13171,6 @@ export interface components {
              * @description Last execution timestamp (ISO 8601)
              */
             last_execution_at?: string | null;
-            /**
-             * Schedule
-             * @description CRON schedule if any
-             */
-            schedule?: string | null;
             /**
              * Endpoint Enabled
              * @description Whether HTTP endpoint is enabled
@@ -14833,98 +14805,6 @@ export interface components {
             app?: string | null;
         };
         /**
-         * ScheduleMetadata
-         * @description Workflow metadata enriched with computed schedule-specific fields.
-         *
-         *     Extends WorkflowMetadata with validation, timing, and execution history.
-         *     Used by the /api/schedules endpoint to return workflows with schedules.
-         */
-        ScheduleMetadata: {
-            /**
-             * Id
-             * @description Workflow UUID
-             */
-            id: string;
-            /**
-             * Name
-             * @description Workflow name (snake_case)
-             */
-            name: string;
-            /**
-             * Description
-             * @description Human-readable description
-             */
-            description?: string | null;
-            /**
-             * Category
-             * @description Category for organization
-             * @default General
-             */
-            category: string;
-            /**
-             * Tags
-             * @description Tags for categorization
-             */
-            tags?: string[];
-            /**
-             * Schedule
-             * @description CRON expression
-             */
-            schedule?: string | null;
-            /**
-             * Source File Path
-             * @description Full file path
-             */
-            source_file_path?: string | null;
-            /**
-             * Relative File Path
-             * @description Workspace-relative path
-             */
-            relative_file_path?: string | null;
-            /**
-             * Validation Status
-             * @description CRON validation status
-             */
-            validation_status?: ("valid" | "warning" | "error") | null;
-            /**
-             * Validation Message
-             * @description Validation error/warning message
-             */
-            validation_message?: string | null;
-            /**
-             * Human Readable
-             * @description Human-readable schedule (e.g., 'Every day at 9:00 AM')
-             */
-            human_readable?: string | null;
-            /**
-             * Next Run At
-             * @description Next scheduled execution time
-             */
-            next_run_at?: string | null;
-            /**
-             * Is Overdue
-             * @description Whether schedule is overdue (next_run_at <= now)
-             * @default false
-             */
-            is_overdue: boolean;
-            /**
-             * Last Run At
-             * @description Last execution completion time
-             */
-            last_run_at?: string | null;
-            /**
-             * Last Execution Id
-             * @description ID of most recent execution
-             */
-            last_execution_id?: string | null;
-            /**
-             * Execution Count
-             * @description Total number of executions
-             * @default 0
-             */
-            execution_count: number;
-        };
-        /**
          * ScheduleSourceConfig
          * @description Schedule-specific configuration for creating an event source.
          */
@@ -15873,7 +15753,7 @@ export interface components {
         };
         /**
          * UserCreate
-         * @description Input for creating a user.
+         * @description User creation request model.
          */
         UserCreate: {
             /**
@@ -15881,22 +15761,10 @@ export interface components {
              * Format: email
              */
             email: string;
+            /** Password */
+            password: string;
             /** Name */
             name?: string | null;
-            /** Password */
-            password?: string | null;
-            /**
-             * Is Active
-             * @default true
-             */
-            is_active: boolean;
-            /**
-             * Is Superuser
-             * @default false
-             */
-            is_superuser: boolean;
-            /** Organization Id */
-            organization_id?: string | null;
         };
         /**
          * UserFormsResponse
@@ -16195,6 +16063,8 @@ export interface components {
             execution_id: string;
             /** Workflow Name */
             workflow_name: string;
+            /** Workflow Id */
+            workflow_id?: string | null;
             /** Org Id */
             org_id?: string | null;
             /** Org Name */
@@ -16538,11 +16408,6 @@ export interface components {
             timeout_seconds: number;
             /** @description Retry configuration */
             retry_policy?: components["schemas"]["RetryPolicy"] | null;
-            /**
-             * Schedule
-             * @description Cron expression for scheduled execution
-             */
-            schedule?: string | null;
             /**
              * Endpoint Enabled
              * @description Whether workflow is exposed as HTTP endpoint
@@ -16907,42 +16772,63 @@ export interface components {
             metadata?: components["schemas"]["WorkflowMetadata"] | null;
         };
         /**
-         * MFAVerifyRequest
-         * @description Request to verify MFA code during login.
+         * OAuthCallbackRequest
+         * @description Request model for OAuth callback endpoint
          */
-        src__routers__auth__MFAVerifyRequest: {
-            /** Mfa Token */
-            mfa_token: string;
-            /** Code */
+        src__models__contracts__oauth__OAuthCallbackRequest: {
+            /**
+             * Code
+             * @description Authorization code from OAuth provider
+             */
             code: string;
             /**
-             * Trust Device
-             * @default false
+             * State
+             * @description State parameter for CSRF protection
              */
-            trust_device: boolean;
-            /** Device Name */
-            device_name?: string | null;
+            state?: string | null;
+            /**
+             * Redirect Uri
+             * @description Redirect URI used in authorization request
+             */
+            redirect_uri?: string | null;
+            /**
+             * Organization Id
+             * @description Organization ID for org-specific token storage (optional, for org overrides)
+             */
+            organization_id?: string | null;
         };
         /**
          * UserCreate
-         * @description User creation request model.
+         * @description Input for creating a user.
          */
-        src__routers__auth__UserCreate: {
+        src__models__contracts__users__UserCreate: {
             /**
              * Email
              * Format: email
              */
             email: string;
-            /** Password */
-            password: string;
             /** Name */
             name?: string | null;
+            /** Password */
+            password?: string | null;
+            /**
+             * Is Active
+             * @default true
+             */
+            is_active: boolean;
+            /**
+             * Is Superuser
+             * @default false
+             */
+            is_superuser: boolean;
+            /** Organization Id */
+            organization_id?: string | null;
         };
         /**
          * MFASetupResponse
          * @description MFA setup response with secret.
          */
-        src__routers__mfa__MFASetupResponse: {
+        src__routers__auth__MFASetupResponse: {
             /** Secret */
             secret: string;
             /** Qr Code Uri */
@@ -16953,18 +16839,19 @@ export interface components {
             issuer: string;
             /** Account Name */
             account_name: string;
+            /**
+             * Is Existing
+             * @default false
+             */
+            is_existing: boolean;
         };
         /**
-         * OAuthCallbackRequest
-         * @description OAuth callback request (for when frontend handles callback).
+         * MFAVerifyRequest
+         * @description Request to verify MFA code.
          */
-        src__routers__oauth_sso__OAuthCallbackRequest: {
-            /** Provider */
-            provider: string;
+        src__routers__mfa__MFAVerifyRequest: {
             /** Code */
             code: string;
-            /** State */
-            state: string;
         };
         /**
          * OAuthProviderInfo
@@ -17079,7 +16966,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["MFASetupResponse"];
+                    "application/json": components["schemas"]["src__routers__auth__MFASetupResponse"];
                 };
             };
             /** @description Validation Error */
@@ -17122,7 +17009,7 @@ export interface operations {
         };
         requestBody: {
             content: {
-                "application/json": components["schemas"]["src__routers__auth__MFAVerifyRequest"];
+                "application/json": components["schemas"]["MFAVerifyRequest"];
             };
         };
         responses: {
@@ -17294,7 +17181,7 @@ export interface operations {
         };
         requestBody: {
             content: {
-                "application/json": components["schemas"]["src__routers__auth__UserCreate"];
+                "application/json": components["schemas"]["UserCreate"];
             };
         };
         responses: {
@@ -17525,7 +17412,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["src__routers__mfa__MFASetupResponse"];
+                    "application/json": components["schemas"]["MFASetupResponse"];
                 };
             };
         };
@@ -17539,7 +17426,7 @@ export interface operations {
         };
         requestBody: {
             content: {
-                "application/json": components["schemas"]["MFAVerifyRequest"];
+                "application/json": components["schemas"]["src__routers__mfa__MFAVerifyRequest"];
             };
         };
         responses: {
@@ -17789,7 +17676,7 @@ export interface operations {
         };
         requestBody: {
             content: {
-                "application/json": components["schemas"]["src__routers__oauth_sso__OAuthCallbackRequest"];
+                "application/json": components["schemas"]["OAuthCallbackRequest"];
             };
         };
         responses: {
@@ -18240,7 +18127,7 @@ export interface operations {
         };
         requestBody: {
             content: {
-                "application/json": components["schemas"]["UserCreate"];
+                "application/json": components["schemas"]["src__models__contracts__users__UserCreate"];
             };
         };
         responses: {
@@ -18858,6 +18745,8 @@ export interface operations {
                 scope?: string | null;
                 /** @description Filter by workflow name */
                 workflowName?: string | null;
+                /** @description Filter by workflow UUID */
+                workflowId?: string | null;
                 /** @description Filter by execution status */
                 status?: string | null;
                 /** @description Filter by start date (ISO format) */
@@ -20610,26 +20499,6 @@ export interface operations {
             };
         };
     };
-    list_schedules_api_schedules_get: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ScheduleMetadata"][];
-                };
-            };
-        };
-    };
     list_keys_api_workflow_keys_get: {
         parameters: {
             query?: never;
@@ -21687,7 +21556,7 @@ export interface operations {
         };
         requestBody: {
             content: {
-                "application/json": components["schemas"]["OAuthCallbackRequest"];
+                "application/json": components["schemas"]["src__models__contracts__oauth__OAuthCallbackRequest"];
             };
         };
         responses: {

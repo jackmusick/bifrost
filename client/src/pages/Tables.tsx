@@ -115,7 +115,10 @@ export function Tables() {
 	};
 
 	const handleViewDocuments = (table: TablePublic) => {
-		navigate(`/tables/${table.name}`);
+		const params = table.organization_id
+			? `?scope=${table.organization_id}`
+			: "";
+		navigate(`/tables/${table.name}${params}`);
 	};
 
 	const handleDialogClose = () => {

@@ -1,5 +1,5 @@
 import { useState, useMemo } from "react";
-import { useParams, Link } from "react-router-dom";
+import { useParams, useSearchParams, Link } from "react-router-dom";
 import {
 	ArrowLeft,
 	ChevronLeft,
@@ -58,6 +58,8 @@ const PAGE_SIZES = [10, 25, 50, 100];
 
 export function TableDetail() {
 	const { tableName } = useParams<{ tableName: string }>();
+	const [searchParams] = useSearchParams();
+	const scope = searchParams.get("scope") || undefined;
 	const [selectedDocument, setSelectedDocument] = useState<
 		DocumentPublic | undefined
 	>();
@@ -88,12 +90,12 @@ export function TableDetail() {
 		[whereClause, pageSize, currentPage],
 	);
 
-	const { data: table, isLoading: tableLoading } = useTable(tableName || "");
+	const { data: table, isLoading: tableLoading } = useTable(tableName || "", scope);
 	const {
 		data: documentsData,
 		isLoading: documentsLoading,
 		refetch,
-	} = useDocuments(tableName || "", query);
+	} = useDocuments(tableName || "", query, scope);
 	const deleteDocument = useDeleteDocument();
 
 	const documents = useMemo(
@@ -131,6 +133,7 @@ export function TableDetail() {
 		await deleteDocument.mutateAsync({
 			params: {
 				path: { name: tableName, doc_id: documentToDelete.id },
+				query: scope ? { scope } : undefined,
 			},
 		});
 		setIsDeleteDialogOpen(false);
@@ -568,6 +571,7 @@ export function TableDetail() {
 					tableName={tableName}
 					open={isDialogOpen}
 					onClose={handleDialogClose}
+					scope={scope}
 				/>
 			)}
 

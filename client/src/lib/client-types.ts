@@ -17,6 +17,7 @@ export interface ExecutionLog {
 export interface ExecutionFilters {
 	status?: components["schemas"]["ExecutionStatus"];
 	workflow_name?: string;
+	workflow_id?: string;
 	start_date?: string;
 	end_date?: string;
 	limit?: number;

@@ -36,7 +36,9 @@ export function useExecutions(
 	}
 	// undefined = don't send scope (show all)
 
-	if (filters?.workflow_name)
+	if (filters?.workflow_id)
+		queryParams["workflowId"] = filters.workflow_id;
+	else if (filters?.workflow_name)
 		queryParams["workflow_name"] = filters.workflow_name;
 	if (filters?.status) queryParams["status"] = filters.status;
 	if (filters?.start_date) queryParams["startDate"] = filters.start_date;

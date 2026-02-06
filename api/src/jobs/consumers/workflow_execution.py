@@ -629,6 +629,7 @@ class WorkflowExecutionConsumer(BaseConsumer):
                     api_key_id=api_key_id,
                     status=ExecutionStatus.CANCELLED,
                     execution_model="process",
+                    workflow_id=workflow_id,
                 )
                 await update_execution(
                     execution_id=execution_id,
@@ -703,6 +704,7 @@ class WorkflowExecutionConsumer(BaseConsumer):
                         api_key_id=api_key_id,
                         status=ExecutionStatus.FAILED,
                         execution_model="process",
+                        workflow_id=workflow_id,
                     )
                     await update_execution(
                         execution_id=execution_id,
@@ -754,6 +756,7 @@ class WorkflowExecutionConsumer(BaseConsumer):
                 api_key_id=api_key_id,
                 status=ExecutionStatus.RUNNING,
                 execution_model="process",
+                workflow_id=workflow_id,
             )
             await publish_execution_update(execution_id, "Running")
             await publish_history_update(

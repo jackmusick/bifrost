@@ -61,6 +61,7 @@ class ExecutionRepository:
         user: UserPrincipal,
         org_id: UUID | None,
         workflow_name: str | None = None,
+        workflow_id: UUID | None = None,
         status_filter: str | None = None,
         start_date: str | None = None,
         end_date: str | None = None,
@@ -80,7 +81,9 @@ class ExecutionRepository:
             query = query.where(ExecutionModel.executed_by == user.user_id)
 
         # Filters
-        if workflow_name:
+        if workflow_id:
+            query = query.where(ExecutionModel.workflow_id == workflow_id)
+        elif workflow_name:
             query = query.where(ExecutionModel.workflow_name == workflow_name)
 
         if status_filter:
@@ -240,6 +243,7 @@ class ExecutionRepository:
         return WorkflowExecution(
             execution_id=str(execution.id),
             workflow_name=execution.workflow_name,
+            workflow_id=str(execution.workflow_id) if execution.workflow_id else None,
             org_id=str(execution.organization_id) if execution.organization_id else None,
             org_name=org_name,
             form_id=str(execution.form_id) if execution.form_id else None,
@@ -439,6 +443,7 @@ class ExecutionRepository:
         return WorkflowExecution(
             execution_id=str(execution.id),
             workflow_name=execution.workflow_name,
+            workflow_id=str(execution.workflow_id) if execution.workflow_id else None,
             org_id=str(execution.organization_id) if execution.organization_id else None,
             org_name=org_name,
             form_id=str(execution.form_id) if execution.form_id else None,
@@ -477,6 +482,7 @@ async def list_executions(
         "or org UUID for specific org + global."
     ),
     workflowName: str | None = Query(None, description="Filter by workflow name"),
+    workflowId: str | None = Query(None, description="Filter by workflow UUID"),
     status_filter: str | None = Query(None, alias="status", description="Filter by execution status"),
     startDate: str | None = Query(None, description="Filter by start date (ISO format)"),
     endDate: str | None = Query(None, description="Filter by end date (ISO format)"),
@@ -517,10 +523,14 @@ async def list_executions(
         except ValueError:
             pass
 
+    # Parse workflowId to UUID if provided
+    parsed_workflow_id = UUID(workflowId) if workflowId else None
+
     executions, next_token = await repo.list_executions(
         user=ctx.user,
         org_id=org_filter,
         workflow_name=workflowName,
+        workflow_id=parsed_workflow_id,
         status_filter=status_filter,
         start_date=startDate,
         end_date=endDate,

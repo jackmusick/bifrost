@@ -29,7 +29,7 @@ import { useAuth } from "@/contexts/AuthContext";
 import { useCreateTable, useUpdateTable } from "@/services/tables";
 import type { TablePublic } from "@/services/tables";
 
-const tableNameRegex = /^[a-z][a-z0-9_]*$/;
+const tableNameRegex = /^[a-z][a-z0-9_-]*$/;
 
 const formSchema = z.object({
 	name: z
@@ -38,7 +38,7 @@ const formSchema = z.object({
 		.max(255, "Name too long")
 		.regex(
 			tableNameRegex,
-			"Name must start with a lowercase letter and contain only lowercase letters, numbers, and underscores",
+			"Name must start with a lowercase letter and contain only lowercase letters, numbers, underscores, and hyphens",
 		),
 	description: z.string().optional(),
 	schema: z.string().optional(),

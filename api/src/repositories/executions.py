@@ -74,6 +74,7 @@ class ExecutionRepository(BaseRepository[Execution]):
         status: ExecutionStatus = ExecutionStatus.RUNNING,
         is_local_execution: bool = False,
         execution_model: str | None = None,
+        workflow_id: str | None = None,
     ) -> Execution:
         """
         Create a new execution record.
@@ -114,9 +115,13 @@ class ExecutionRepository(BaseRepository[Execution]):
         # Parse api_key_id if present
         parsed_api_key_id = UUID(api_key_id) if api_key_id else None
 
+        # Parse workflow_id if present
+        parsed_workflow_id = UUID(workflow_id) if workflow_id else None
+
         execution = Execution(
             id=UUID(execution_id),
             workflow_name=workflow_name,
+            workflow_id=parsed_workflow_id,
             status=status,
             parameters=parameters,
             executed_by=parsed_user_id,
@@ -408,6 +413,7 @@ class ExecutionRepository(BaseRepository[Execution]):
         return WorkflowExecution(
             execution_id=str(execution.id),
             workflow_name=execution.workflow_name,
+            workflow_id=str(execution.workflow_id) if execution.workflow_id else None,
             org_id=str(execution.organization_id) if execution.organization_id else None,
             form_id=str(execution.form_id) if execution.form_id else None,
             executed_by=str(execution.executed_by),
@@ -581,6 +587,7 @@ class ExecutionRepository(BaseRepository[Execution]):
         return WorkflowExecution(
             execution_id=str(execution.id),
             workflow_name=execution.workflow_name,
+            workflow_id=str(execution.workflow_id) if execution.workflow_id else None,
             org_id=str(execution.organization_id) if execution.organization_id else None,
             form_id=str(execution.form_id) if execution.form_id else None,
             executed_by=str(execution.executed_by),
@@ -616,6 +623,7 @@ async def create_execution(
     status: ExecutionStatus = ExecutionStatus.RUNNING,
     is_local_execution: bool = False,
     execution_model: str | None = None,
+    workflow_id: str | None = None,
     session: "AsyncSession | None" = None,
 ) -> None:
     """
@@ -646,6 +654,7 @@ async def create_execution(
             status=status,
             is_local_execution=is_local_execution,
             execution_model=execution_model,
+            workflow_id=workflow_id,
         )
 
     if session is not None:

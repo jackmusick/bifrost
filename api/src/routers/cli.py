@@ -1191,6 +1191,14 @@ async def continue_cli_session(
             detail=f"Workflow '{request.workflow_name}' not found. Available: {workflow_names}",
         )
 
+    # Resolve workflow ID from name
+    from src.models.orm.workflows import Workflow as WorkflowORM
+    wf_result = await db.execute(
+        select(WorkflowORM.id).where(WorkflowORM.name == request.workflow_name).limit(1)
+    )
+    wf_row = wf_result.scalar_one_or_none()
+    resolved_workflow_id = str(wf_row) if wf_row else None
+
     # Create a real Execution record
     execution_id = str(uuid4())
     exec_repo = ExecutionRepository(db)
@@ -1204,6 +1212,7 @@ async def continue_cli_session(
         user_name=current_user.name or current_user.email,
         status=ExecutionStatus.PENDING,
         is_local_execution=True,
+        workflow_id=resolved_workflow_id,
     )
 
     # Link execution to session

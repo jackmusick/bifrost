@@ -71,6 +71,7 @@ class WorkflowExecution(BaseModel):
     """Workflow execution entity"""
     execution_id: str
     workflow_name: str
+    workflow_id: str | None = None  # FK to workflows table (null for inline scripts/legacy)
     org_id: str | None = None  # Organization ID for display/filtering
     org_name: str | None = None  # Organization name for display (effective scope)
     form_id: str | None = None
