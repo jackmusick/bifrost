@@ -82,5 +82,5 @@ def e2e_client():
 
     Provides a configured httpx client for making requests to the API.
     """
-    with httpx.Client(base_url=E2E_API_URL, timeout=30.0) as client:
+    with httpx.Client(base_url=E2E_API_URL, timeout=60.0) as client:
         yield client

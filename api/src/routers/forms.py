@@ -118,62 +118,81 @@ async def _validate_form_references(
     """
     errors: list[str] = []
 
+    def _is_valid_uuid(val: str) -> bool:
+        try:
+            UUID(str(val))
+            return True
+        except (ValueError, AttributeError):
+            return False
+
     # Validate workflow_id
     if workflow_id:
-        result = await db.execute(
-            select(WorkflowORM).where(
-                WorkflowORM.id == workflow_id,
-                WorkflowORM.is_active == True,  # noqa: E712
+        if not _is_valid_uuid(workflow_id):
+            errors.append(f"workflow_id '{workflow_id}' is not a valid UUID")
+        else:
+            result = await db.execute(
+                select(WorkflowORM).where(
+                    WorkflowORM.id == workflow_id,
+                    WorkflowORM.is_active == True,  # noqa: E712
+                )
             )
-        )
-        workflow = result.scalar_one_or_none()
-        if workflow is None:
-            errors.append(f"workflow_id '{workflow_id}' does not reference an active workflow")
-        elif workflow.type not in ("workflow", "tool"):
-            errors.append(
-                f"workflow_id '{workflow_id}' references a {workflow.type}, not a workflow or tool"
-            )
+            workflow = result.scalar_one_or_none()
+            if workflow is None:
+                errors.append(f"workflow_id '{workflow_id}' does not reference an active workflow")
+            elif workflow.type not in ("workflow", "tool"):
+                errors.append(
+                    f"workflow_id '{workflow_id}' references a {workflow.type}, not a workflow or tool"
+                )
 
     # Validate launch_workflow_id
     if launch_workflow_id:
-        result = await db.execute(
-            select(WorkflowORM).where(
-                WorkflowORM.id == launch_workflow_id,
-                WorkflowORM.is_active == True,  # noqa: E712
+        if not _is_valid_uuid(launch_workflow_id):
+            errors.append(f"launch_workflow_id '{launch_workflow_id}' is not a valid UUID")
+        else:
+            result = await db.execute(
+                select(WorkflowORM).where(
+                    WorkflowORM.id == launch_workflow_id,
+                    WorkflowORM.is_active == True,  # noqa: E712
+                )
             )
-        )
-        launch_workflow = result.scalar_one_or_none()
-        if launch_workflow is None:
-            errors.append(
-                f"launch_workflow_id '{launch_workflow_id}' does not reference an active workflow"
-            )
-        elif launch_workflow.type not in ("workflow", "tool"):
-            errors.append(
-                f"launch_workflow_id '{launch_workflow_id}' references a {launch_workflow.type}, not a workflow or tool"
-            )
+            launch_workflow = result.scalar_one_or_none()
+            if launch_workflow is None:
+                errors.append(
+                    f"launch_workflow_id '{launch_workflow_id}' does not reference an active workflow"
+                )
+            elif launch_workflow.type not in ("workflow", "tool"):
+                errors.append(
+                    f"launch_workflow_id '{launch_workflow_id}' references a {launch_workflow.type}, not a workflow or tool"
+                )
 
     # Validate data_provider_id references in form fields
     if form_schema and "fields" in form_schema:
         for field in form_schema["fields"]:
             dp_id = field.get("data_provider_id")
             if dp_id:
-                result = await db.execute(
-                    select(WorkflowORM).where(
-                        WorkflowORM.id == dp_id,
-                        WorkflowORM.is_active == True,  # noqa: E712
-                    )
-                )
-                data_provider = result.scalar_one_or_none()
-                if data_provider is None:
+                if not _is_valid_uuid(dp_id):
                     errors.append(
                         f"Field '{field.get('name', 'unknown')}' has invalid data_provider_id "
-                        f"'{dp_id}' - no active data provider found"
+                        f"'{dp_id}' - not a valid UUID"
                     )
-                elif data_provider.type != "data_provider":
-                    errors.append(
-                        f"Field '{field.get('name', 'unknown')}' has data_provider_id "
-                        f"'{dp_id}' that references a {data_provider.type}, not a data_provider"
+                else:
+                    result = await db.execute(
+                        select(WorkflowORM).where(
+                            WorkflowORM.id == dp_id,
+                            WorkflowORM.is_active == True,  # noqa: E712
+                        )
                     )
+                    data_provider = result.scalar_one_or_none()
+                    if data_provider is None:
+                        errors.append(
+                            f"Field '{field.get('name', 'unknown')}' has invalid data_provider_id "
+                            f"'{dp_id}' - no active data provider found"
+                        )
+                    elif data_provider.type != "data_provider":
+                        errors.append(
+                            f"Field '{field.get('name', 'unknown')}' has data_provider_id "
+                            f"'{dp_id}' that references a {data_provider.type}, not a data_provider"
+                        )
 
     if errors:
         raise HTTPException(

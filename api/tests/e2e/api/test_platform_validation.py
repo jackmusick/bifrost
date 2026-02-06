@@ -330,8 +330,8 @@ class TestAgentReferenceValidation:
 class TestWorkflowTypeValidation:
     """Test that workflow type validation is enforced."""
 
-    def test_form_rejects_tool_as_workflow_id(self, e2e_client, platform_admin):
-        """Form workflow_id must reference a workflow type, not a tool."""
+    def test_form_accepts_tool_as_workflow_id(self, e2e_client, platform_admin):
+        """Form workflow_id accepts both workflow and tool types."""
         # Create a tool via editor API with index=true for synchronous discovery
         tool_content = '''"""Test Tool for Validation"""
 from bifrost import tool
@@ -362,15 +362,11 @@ async def validation_test_tool(query: str) -> str:
         assert workflows_response.status_code == 200
         workflows = workflows_response.json()
 
-        # Debug: print what we got
-        tools_found = [w for w in workflows if w.get("type") == "tool"]
-        all_names = [w.get("name") for w in workflows]
-
         tool = next((w for w in workflows if w.get("name") == "validation_test_tool"), None)
-        assert tool is not None, f"Tool should have been created. Found tools: {tools_found}. All names: {all_names}"
+        assert tool is not None, f"Tool should have been created"
         assert tool.get("type") == "tool", f"Should be type='tool', got {tool.get('type')}"
 
-        # Try to create form with tool ID as workflow_id
+        # Create form with tool ID as workflow_id — tools are valid workflow targets
         response = e2e_client.post(
             "/api/forms",
             headers=platform_admin.headers,
@@ -381,13 +377,14 @@ async def validation_test_tool(query: str) -> str:
                 "access_level": "authenticated",
             },
         )
-        assert response.status_code == 422, f"Expected 422, got {response.status_code}: {response.text}"
-        data = response.json()
-        assert "errors" in data.get("detail", {}), f"Expected errors: {data}"
-        # Should mention that it's a tool, not a workflow
-        assert any("tool" in err.lower() for err in data["detail"]["errors"])
+        assert response.status_code == 201, f"Expected 201, got {response.status_code}: {response.text}"
+        form_id = response.json()["id"]
 
         # Cleanup
+        e2e_client.delete(
+            f"/api/forms/{form_id}",
+            headers=platform_admin.headers,
+        )
         e2e_client.delete(
             "/api/files/editor?path=validation_test_tool.py",
             headers=platform_admin.headers,

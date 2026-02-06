@@ -507,13 +507,12 @@ def handle_run(args: list[str]) -> int:
                 print("Error: --params requires --workflow when multiple workflows exist", file=sys.stderr)
                 return 1
 
-        # Ensure auth is available (triggers interactive login if needed)
-        # This allows workflows to use SDK features like knowledge, ai, etc.
+        # Try to authenticate for SDK features (knowledge, ai, etc.)
+        # but don't require it — standalone mode can run without API access
         try:
             BifrostClient.get_instance(require_auth=True)
-        except RuntimeError as e:
-            print(f"Authentication required: {e}", file=sys.stderr)
-            return 1
+        except (RuntimeError, Exception):
+            pass  # Standalone mode works without auth
 
         print(f"Running in standalone mode: {selected_workflow}")
         workflow_fn = workflows[selected_workflow]

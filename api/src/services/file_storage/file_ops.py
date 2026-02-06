@@ -516,6 +516,11 @@ class FileOperationsService:
                 await set_module(new_path, file_record.content, file_record.content_hash or "")
             logger.info(f"Module path update: {old_path} -> {new_path}")
 
+        elif entity_type == "text":
+            # Text content is stored in workspace_files.content
+            # No entity table to update, just workspace_files path (handled below)
+            logger.info(f"Text file path update: {old_path} -> {new_path}")
+
         else:
             # Regular file: copy in S3
             async with self._s3_client.get_client() as s3:

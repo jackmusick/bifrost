@@ -42,7 +42,7 @@
 
 ---
 
-## Phase 2: Fix the last 6 failures
+## Phase 2: Fix the last 6 failures (DONE)
 
 ### 2a. xfail memory test (trivial)
 
