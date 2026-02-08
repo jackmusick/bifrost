@@ -78,6 +78,7 @@ class AgentAccessLevel(str, Enum):
     """Agent access control levels"""
     AUTHENTICATED = "authenticated"
     ROLE_BASED = "role_based"
+    PRIVATE = "private"
 
 
 class AppAccessLevel(str, Enum):

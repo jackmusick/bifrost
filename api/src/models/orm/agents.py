@@ -44,6 +44,9 @@ class Agent(Base):
     organization_id: Mapped[UUID | None] = mapped_column(
         ForeignKey("organizations.id"), default=None
     )
+    owner_user_id: Mapped[UUID | None] = mapped_column(
+        ForeignKey("users.id"), default=None
+    )
     is_active: Mapped[bool] = mapped_column(Boolean, default=True)
     is_system: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
     # Knowledge namespaces this agent can search (RAG)
@@ -71,6 +74,7 @@ class Agent(Base):
 
     # Relationships
     organization: Mapped["Organization | None"] = relationship(back_populates="agents")
+    owner: Mapped["User | None"] = relationship(foreign_keys=[owner_user_id])
     conversations: Mapped[list["Conversation"]] = relationship(
         back_populates="agent", cascade="all, delete-orphan"
     )
@@ -95,6 +99,7 @@ class Agent(Base):
     __table_args__ = (
         Index("ix_agents_organization_id", "organization_id"),
         Index("ix_agents_is_active", "is_active"),
+        Index("ix_agents_owner_user_id", "owner_user_id"),
     )
 
     # Computed properties for Pydantic from_attributes compatibility
