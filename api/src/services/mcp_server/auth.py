@@ -133,6 +133,17 @@ class BifrostAuthProvider:
                 self._protected_resource_metadata,
                 methods=["GET"],
             ),
+            # Agent-scoped discovery (for /mcp/{agent_id} endpoints)
+            Route(
+                "/.well-known/oauth-authorization-server/mcp/{agent_id}",
+                self._authorization_server_metadata,
+                methods=["GET"],
+            ),
+            Route(
+                "/.well-known/oauth-protected-resource/mcp/{agent_id}",
+                self._protected_resource_metadata,
+                methods=["GET"],
+            ),
             Route("/authorize", self._authorize, methods=["GET"]),
             Route("/token", self._token, methods=["POST"]),
             Route("/register", self._register, methods=["POST"]),

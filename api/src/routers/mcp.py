@@ -202,11 +202,15 @@ def get_mcp_asgi_app():
         else:
             yield
 
+    # Wrap with agent-scoping middleware to handle /mcp/{agent_id} paths
+    from src.services.mcp_server.agent_scope import AgentScopeMCPMiddleware
+    agent_scoped_app = AgentScopeMCPMiddleware(mcp_app)
+
     # Wrap with CORS middleware to expose Mcp-Session-Id header
     # Required for browser-based clients like MCP Inspector to read session ID
     # Without this, CORS policy prevents JavaScript from reading the header
     cors_app = CORSMiddleware(
-        mcp_app,
+        agent_scoped_app,
         allow_origins=["*"],  # MCP clients can come from anywhere
         allow_methods=["GET", "POST", "OPTIONS"],
         allow_headers=["*"],

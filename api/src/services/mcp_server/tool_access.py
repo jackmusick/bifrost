@@ -31,6 +31,17 @@ class MCPToolAccessResult:
     accessible_namespaces: list[str]  # Knowledge namespaces from accessible agents
 
 
+@dataclass
+class AgentScopedToolResult:
+    """Result of computing tools for a specific agent."""
+
+    tools: list[ToolInfo]
+    agent_id: UUID
+    agent_name: str
+    system_prompt: str
+    accessible_namespaces: list[str]
+
+
 class MCPToolAccessService:
     """
     Service for computing which MCP tools a user can access.
@@ -141,6 +152,115 @@ class MCPToolAccessService:
             accessible_agent_ids=[agent.id for agent in accessible_agents],
             accessible_namespaces=list(seen_namespaces),
         )
+
+    async def get_tools_for_agent(
+        self,
+        agent_id: UUID | str,
+        user_roles: list[str],
+        is_superuser: bool,
+    ) -> AgentScopedToolResult | None:
+        """
+        Get MCP tools for a specific agent, verifying user access.
+
+        Args:
+            agent_id: The agent UUID to scope to
+            user_roles: List of role names the user has (from JWT claims)
+            is_superuser: Whether user is platform admin
+
+        Returns:
+            AgentScopedToolResult if agent exists and user has access, None otherwise
+        """
+        # Query the specific agent with tools and roles eagerly loaded
+        query = (
+            select(Agent)
+            .options(
+                selectinload(Agent.tools),
+                selectinload(Agent.roles),
+            )
+            .where(Agent.id == str(agent_id))
+            .where(Agent.is_active.is_(True))
+        )
+
+        result = await self.session.execute(query)
+        agent = result.scalars().unique().first()
+
+        if not agent:
+            logger.warning(f"Agent {agent_id} not found or inactive")
+            return None
+
+        # Check access using same rules as _get_accessible_agents
+        if not self._check_agent_access(agent, user_roles, is_superuser):
+            logger.warning(f"User denied access to agent {agent_id}")
+            return None
+
+        # Collect tools from this agent
+        tools: list[ToolInfo] = []
+
+        for system_tool_id in agent.system_tools or []:
+            if system_tool_id in self._SYSTEM_TOOL_MAP:
+                tools.append(self._SYSTEM_TOOL_MAP[system_tool_id])
+            else:
+                logger.warning(f"Unknown system tool '{system_tool_id}' in agent '{agent.name}'")
+                tools.append(
+                    ToolInfo(
+                        id=system_tool_id,
+                        name=system_tool_id.replace("_", " ").title(),
+                        description=f"System tool: {system_tool_id}",
+                        type="system",
+                    )
+                )
+
+        for workflow in agent.tools or []:
+            from src.services.mcp_server.server import get_registered_tool_name
+
+            workflow_id = str(workflow.id)
+            registered_name = get_registered_tool_name(workflow_id)
+            tool_id = registered_name if registered_name else workflow_id
+
+            tools.append(
+                ToolInfo(
+                    id=tool_id,
+                    name=workflow.name,
+                    description=workflow.tool_description or workflow.description or "",
+                    type="workflow",
+                    category=workflow.category,
+                    default_enabled_for_coding_agent=False,
+                )
+            )
+
+        # Apply global config filters
+        config_service = MCPConfigService(self.session)
+        config = await config_service.get_config()
+        tools = self._apply_config_filters(tools, config)
+
+        # Collect knowledge namespaces
+        namespaces = list(agent.knowledge_sources or [])
+
+        return AgentScopedToolResult(
+            tools=tools,
+            agent_id=agent.id,
+            agent_name=agent.name,
+            system_prompt=agent.system_prompt,
+            accessible_namespaces=namespaces,
+        )
+
+    @staticmethod
+    def _check_agent_access(
+        agent: Agent,
+        user_roles: list[str],
+        is_superuser: bool,
+    ) -> bool:
+        """Check if user has access to a specific agent (same rules as _get_accessible_agents)."""
+        if agent.access_level == AgentAccessLevel.AUTHENTICATED:
+            return True
+
+        if agent.access_level == AgentAccessLevel.ROLE_BASED:
+            agent_role_names = {role.name for role in agent.roles}
+            if not agent_role_names:
+                return is_superuser
+            return bool(set(user_roles) & agent_role_names)
+
+        return False
 
     async def _get_accessible_agents(
         self,

@@ -17,6 +17,8 @@ import {
 	LayoutGrid,
 	Table as TableIcon,
 	MessageSquare,
+	Copy,
+	Check,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Switch } from "@/components/ui/switch";
@@ -56,6 +58,7 @@ import { SearchBox } from "@/components/search/SearchBox";
 import { useSearch } from "@/hooks/useSearch";
 import { AgentDialog } from "@/components/agents/AgentDialog";
 import { OrganizationSelect } from "@/components/forms/OrganizationSelect";
+import { toast } from "sonner";
 import type { components } from "@/lib/v1";
 
 // Extended type to include organization_id (supported by backend, pending type regeneration)
@@ -78,6 +81,7 @@ export function Agents() {
 		null,
 	);
 	const [editAgentId, setEditAgentId] = useState<string | null>(null);
+	const [copiedId, setCopiedId] = useState<string | null>(null);
 
 	// Pass filterOrgId to backend for filtering (undefined = all, null = global only)
 	// For platform admins, undefined means show all. For non-admins, backend handles filtering.
@@ -145,6 +149,14 @@ export function Agents() {
 			params: { path: { agent_id: agent.id } },
 			body: { is_active: !agent.is_active, clear_roles: false },
 		});
+	};
+
+	const handleCopyMcpUrl = (agentId: string) => {
+		const url = `${window.location.origin}/mcp/${agentId}`;
+		navigator.clipboard.writeText(url);
+		setCopiedId(agentId);
+		toast.success("MCP URL copied to clipboard");
+		setTimeout(() => setCopiedId(null), 2000);
 	};
 
 	const handleDialogClose = () => {
@@ -369,6 +381,20 @@ export function Agents() {
 												variant="outline"
 												size="sm"
 												onClick={() =>
+													agent.id && handleCopyMcpUrl(agent.id)
+												}
+												title="Copy MCP URL"
+											>
+												{copiedId === agent.id ? (
+													<Check className="h-3 w-3" />
+												) : (
+													<Copy className="h-3 w-3" />
+												)}
+											</Button>
+											<Button
+												variant="outline"
+												size="sm"
+												onClick={() =>
 													handleDelete(agent)
 												}
 											>
@@ -468,6 +494,20 @@ export function Agents() {
 													}
 												>
 													<Pencil className="h-4 w-4" />
+												</Button>
+												<Button
+													variant="ghost"
+													size="icon-sm"
+													onClick={() =>
+														agent.id && handleCopyMcpUrl(agent.id)
+													}
+													title="Copy MCP URL"
+												>
+													{copiedId === agent.id ? (
+														<Check className="h-4 w-4" />
+													) : (
+														<Copy className="h-4 w-4" />
+													)}
 												</Button>
 												<Button
 													variant="ghost"
