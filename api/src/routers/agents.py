@@ -458,7 +458,7 @@ async def get_accessible_knowledge(
 ) -> list[AccessibleKnowledgeSource]:
     """Get knowledge sources the current user can assign to their agents."""
     from src.models.orm.users import UserRole
-    from src.models.orm.knowledge_sources import KnowledgeSource, KnowledgeSourceRole
+    from src.models.orm.knowledge_sources import KnowledgeNamespaceRole
 
     result = await db.execute(
         select(UserRole.role_id).where(UserRole.user_id == user.user_id)
@@ -469,17 +469,15 @@ async def get_accessible_knowledge(
         return []
 
     result = await db.execute(
-        select(KnowledgeSource)
-        .join(KnowledgeSourceRole, KnowledgeSourceRole.knowledge_source_id == KnowledgeSource.id)
-        .where(KnowledgeSource.is_active.is_(True))
-        .where(KnowledgeSourceRole.role_id.in_(role_ids))
+        select(KnowledgeNamespaceRole.namespace)
+        .where(KnowledgeNamespaceRole.role_id.in_(role_ids))
         .distinct()
     )
-    sources = result.scalars().all()
+    accessible_namespaces = list(result.scalars().all())
 
     return [
-        AccessibleKnowledgeSource(id=str(s.id), name=s.name, namespace=s.namespace, description=s.description)
-        for s in sources
+        AccessibleKnowledgeSource(id=ns, name=ns, namespace=ns, description=None)
+        for ns in sorted(accessible_namespaces)
     ]
 
 

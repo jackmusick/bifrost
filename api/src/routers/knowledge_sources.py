@@ -1,472 +1,413 @@
 """
 Knowledge Sources Router
 
-CRUD for knowledge sources and their documents.
-Admin-only for source management, role-based access for reading.
+Namespace-based knowledge management.
+Namespaces are derived from the knowledge_store table.
 Documents are stored via the KnowledgeRepository with embeddings.
+Role assignments use the knowledge_namespace_roles table.
 """
 
 import logging
-import re
 from datetime import datetime
 from uuid import UUID
 
 from fastapi import APIRouter, HTTPException, Query, status
-from sqlalchemy import delete, select
-from sqlalchemy.orm import selectinload
+from sqlalchemy import delete, or_, select, update
 
 from src.core.auth import CurrentActiveUser, CurrentSuperuser
 from src.core.database import DbSession
 from src.core.org_filter import OrgFilterType, resolve_org_filter
 from src.models.contracts.knowledge import (
+    KnowledgeDocumentBulkScopeUpdate,
     KnowledgeDocumentCreate,
     KnowledgeDocumentPublic,
     KnowledgeDocumentSummary,
     KnowledgeDocumentUpdate,
-    KnowledgeSourceCreate,
-    KnowledgeSourcePublic,
-    KnowledgeSourceSummary,
-    KnowledgeSourceUpdate,
+    KnowledgeNamespaceInfo,
+    KnowledgeNamespaceRoleCreate,
+    KnowledgeNamespaceRolePublic,
 )
-from src.models.orm.knowledge_sources import KnowledgeSource, KnowledgeSourceRole
-from src.models.orm.users import Role
 from src.models.orm.knowledge import KnowledgeStore
+from src.models.orm.knowledge_sources import KnowledgeNamespaceRole
+from src.models.orm.users import Role
 from src.repositories.knowledge import KnowledgeRepository
-from src.repositories.knowledge_sources import KnowledgeSourceRepository
 
 logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/api/knowledge-sources", tags=["Knowledge Sources"])
 
 
-def generate_namespace(name: str) -> str:
-    """Generate a URL-safe namespace key from a name."""
-    slug = re.sub(r"[^a-z0-9]+", "-", name.lower()).strip("-")
-    return slug or "default"
-
-
-def _source_to_public(source: KnowledgeSource) -> KnowledgeSourcePublic:
-    """Convert KnowledgeSource ORM to public response."""
-    return KnowledgeSourcePublic(
-        id=source.id,
-        name=source.name,
-        namespace=source.namespace,
-        description=source.description,
-        organization_id=source.organization_id,
-        access_level=source.access_level,
-        is_active=source.is_active,
-        document_count=source.document_count,
-        role_ids=[str(r.id) for r in source.roles] if source.roles else [],
-        created_by=source.created_by,
-        created_at=source.created_at,
-        updated_at=source.updated_at,
-    )
-
-
 # =============================================================================
-# Knowledge Source CRUD
+# Namespace Listing
 # =============================================================================
 
 
 @router.get("")
-async def list_knowledge_sources(
+async def list_namespaces(
     db: DbSession,
     user: CurrentActiveUser,
     scope: str | None = Query(default=None),
-    active_only: bool = True,
-) -> list[KnowledgeSourceSummary]:
-    """List knowledge sources the user has access to."""
+) -> list[KnowledgeNamespaceInfo]:
+    """List knowledge namespaces derived from knowledge_store."""
     try:
         filter_type, filter_org_id = resolve_org_filter(user, scope)
     except ValueError as e:
         raise HTTPException(status_code=422, detail=str(e))
 
-    is_admin = user.is_superuser or any(
-        role in ["Platform Admin", "Platform Owner"] for role in user.roles
-    )
+    repo = KnowledgeRepository(session=db, org_id=filter_org_id)
 
-    repo = KnowledgeSourceRepository(
-        session=db,
-        org_id=filter_org_id,
-        user_id=user.user_id,
-        is_superuser=is_admin,
-    )
-
-    if is_admin:
-        # Build query with filter type
-        query = select(KnowledgeSource).options(selectinload(KnowledgeSource.roles))
-
-        if filter_type == OrgFilterType.GLOBAL_ONLY:
-            query = query.where(KnowledgeSource.organization_id.is_(None))
-        elif filter_type == OrgFilterType.ORG_ONLY:
-            if filter_org_id:
-                query = query.where(KnowledgeSource.organization_id == filter_org_id)
-        elif filter_type == OrgFilterType.ORG_PLUS_GLOBAL:
-            if filter_org_id:
-                query = query.where(
-                    (KnowledgeSource.organization_id == filter_org_id) |
-                    (KnowledgeSource.organization_id.is_(None))
-                )
-            else:
-                query = query.where(KnowledgeSource.organization_id.is_(None))
-
-        if active_only:
-            query = query.where(KnowledgeSource.is_active.is_(True))
-
-        query = query.order_by(KnowledgeSource.name)
-        result = await db.execute(query)
-        sources = list(result.scalars().unique().all())
+    if filter_type == OrgFilterType.ALL:
+        # Superuser with no scope filter — show ALL namespaces
+        ns_list = await repo.list_all_namespaces()
+    elif filter_type == OrgFilterType.GLOBAL_ONLY:
+        ns_list = await repo.list_namespaces(organization_id=None, include_global=True)
+    elif filter_type == OrgFilterType.ORG_ONLY:
+        ns_list = await repo.list_namespaces(organization_id=filter_org_id, include_global=False)
     else:
-        sources = await repo.list(is_active=True) if active_only else await repo.list()
+        # ORG_PLUS_GLOBAL
+        ns_list = await repo.list_namespaces(organization_id=filter_org_id, include_global=True)
 
-    return [KnowledgeSourceSummary.model_validate(s) for s in sources]
-
-
-@router.post("", status_code=status.HTTP_201_CREATED)
-async def create_knowledge_source(
-    data: KnowledgeSourceCreate,
-    db: DbSession,
-    user: CurrentSuperuser,
-) -> KnowledgeSourcePublic:
-    """Create a new knowledge source (admin only)."""
-    namespace = data.namespace or generate_namespace(data.name)
-
-    # Check for namespace uniqueness within org
-    existing = await db.execute(
-        select(KnowledgeSource).where(
-            KnowledgeSource.namespace == namespace,
-            KnowledgeSource.organization_id == data.organization_id,
+    return [
+        KnowledgeNamespaceInfo(
+            namespace=ns.namespace,
+            document_count=ns.scopes.get("total", 0),
+            global_count=ns.scopes.get("global", 0),
+            org_count=ns.scopes.get("org", 0),
         )
-    )
-    if existing.scalar_one_or_none():
-        raise HTTPException(409, f"Knowledge source with namespace '{namespace}' already exists in this scope")
-
-    source = KnowledgeSource(
-        name=data.name,
-        namespace=namespace,
-        description=data.description,
-        organization_id=data.organization_id,
-        access_level=data.access_level,
-        created_by=user.email,
-    )
-    db.add(source)
-    await db.flush()
-
-    # Add role assignments
-    if data.role_ids:
-        for role_id in data.role_ids:
-            try:
-                role_uuid = UUID(role_id)
-                result = await db.execute(
-                    select(Role).where(Role.id == role_uuid).where(Role.is_active.is_(True))
-                )
-                role = result.scalar_one_or_none()
-                if role:
-                    db.add(KnowledgeSourceRole(
-                        knowledge_source_id=source.id,
-                        role_id=role.id,
-                        assigned_by=user.email,
-                    ))
-            except ValueError:
-                logger.warning(f"Invalid role ID: {role_id}")
-
-    await db.flush()
-
-    # Reload with relationships
-    result = await db.execute(
-        select(KnowledgeSource)
-        .options(selectinload(KnowledgeSource.roles))
-        .where(KnowledgeSource.id == source.id)
-    )
-    source = result.scalar_one()
-    return _source_to_public(source)
-
-
-@router.get("/{source_id}")
-async def get_knowledge_source(
-    source_id: UUID,
-    db: DbSession,
-    user: CurrentActiveUser,
-) -> KnowledgeSourcePublic:
-    """Get a knowledge source by ID."""
-    is_admin = user.is_superuser or any(
-        role in ["Platform Admin", "Platform Owner"] for role in user.roles
-    )
-
-    repo = KnowledgeSourceRepository(
-        session=db,
-        org_id=user.organization_id,
-        user_id=user.user_id,
-        is_superuser=is_admin,
-    )
-
-    # Load with roles
-    result = await db.execute(
-        select(KnowledgeSource)
-        .options(selectinload(KnowledgeSource.roles))
-        .where(KnowledgeSource.id == source_id)
-    )
-    source = result.scalar_one_or_none()
-    if not source:
-        raise HTTPException(404, f"Knowledge source {source_id} not found")
-
-    # Access check for non-admins
-    if not is_admin:
-        if not await repo._can_access_entity(source):
-            raise HTTPException(404, f"Knowledge source {source_id} not found")
-
-    return _source_to_public(source)
-
-
-@router.put("/{source_id}")
-async def update_knowledge_source(
-    source_id: UUID,
-    data: KnowledgeSourceUpdate,
-    db: DbSession,
-    user: CurrentSuperuser,
-) -> KnowledgeSourcePublic:
-    """Update a knowledge source (admin only)."""
-    result = await db.execute(
-        select(KnowledgeSource)
-        .options(selectinload(KnowledgeSource.roles))
-        .where(KnowledgeSource.id == source_id)
-    )
-    source = result.scalar_one_or_none()
-    if not source:
-        raise HTTPException(404, f"Knowledge source {source_id} not found")
-
-    if data.name is not None:
-        source.name = data.name
-    if data.description is not None:
-        source.description = data.description
-    if data.access_level is not None:
-        source.access_level = data.access_level
-    if data.is_active is not None:
-        source.is_active = data.is_active
-
-    source.updated_at = datetime.utcnow()
-
-    # Update role assignments if provided
-    if data.role_ids is not None:
-        await db.execute(
-            delete(KnowledgeSourceRole).where(
-                KnowledgeSourceRole.knowledge_source_id == source_id
-            )
-        )
-        for role_id in data.role_ids:
-            try:
-                role_uuid = UUID(role_id)
-                result = await db.execute(
-                    select(Role).where(Role.id == role_uuid).where(Role.is_active.is_(True))
-                )
-                role = result.scalar_one_or_none()
-                if role:
-                    db.add(KnowledgeSourceRole(
-                        knowledge_source_id=source_id,
-                        role_id=role.id,
-                        assigned_by=user.email,
-                    ))
-            except ValueError:
-                logger.warning(f"Invalid role ID: {role_id}")
-
-    await db.flush()
-
-    # Reload
-    result = await db.execute(
-        select(KnowledgeSource)
-        .options(selectinload(KnowledgeSource.roles))
-        .where(KnowledgeSource.id == source_id)
-    )
-    source = result.scalar_one()
-    return _source_to_public(source)
-
-
-@router.delete("/{source_id}", status_code=status.HTTP_204_NO_CONTENT)
-async def delete_knowledge_source(
-    source_id: UUID,
-    db: DbSession,
-    user: CurrentSuperuser,
-) -> None:
-    """Soft delete a knowledge source (admin only)."""
-    result = await db.execute(
-        select(KnowledgeSource).where(KnowledgeSource.id == source_id)
-    )
-    source = result.scalar_one_or_none()
-    if not source:
-        raise HTTPException(404, f"Knowledge source {source_id} not found")
-
-    source.is_active = False
-    source.updated_at = datetime.utcnow()
-    await db.flush()
+        for ns in ns_list
+    ]
 
 
 # =============================================================================
-# Role Assignment
+# Namespace Role Assignments
+# (Must be registered before /{namespace} routes to avoid path conflicts)
 # =============================================================================
 
 
-@router.get("/{source_id}/roles")
-async def get_knowledge_source_roles(
-    source_id: UUID,
+@router.get("/roles")
+async def list_namespace_roles(
     db: DbSession,
     user: CurrentSuperuser,
-) -> dict:
-    """Get roles assigned to a knowledge source."""
-    result = await db.execute(
-        select(KnowledgeSource)
-        .options(selectinload(KnowledgeSource.roles))
-        .where(KnowledgeSource.id == source_id)
-    )
-    source = result.scalar_one_or_none()
-    if not source:
-        raise HTTPException(404, f"Knowledge source {source_id} not found")
+) -> list[KnowledgeNamespaceRolePublic]:
+    """List all namespace role assignments."""
+    result = await db.execute(select(KnowledgeNamespaceRole))
+    assignments = result.scalars().all()
 
-    return {"role_ids": [str(r.id) for r in source.roles]}
+    return [
+        KnowledgeNamespaceRolePublic(
+            id=str(a.id),
+            namespace=a.namespace,
+            organization_id=str(a.organization_id) if a.organization_id else None,
+            role_id=str(a.role_id),
+            assigned_by=a.assigned_by,
+        )
+        for a in assignments
+    ]
 
 
-@router.post("/{source_id}/roles", status_code=status.HTTP_201_CREATED)
-async def assign_roles_to_knowledge_source(
-    source_id: UUID,
-    data: dict,
+@router.post("/roles", status_code=status.HTTP_201_CREATED)
+async def assign_namespace_roles(
+    data: KnowledgeNamespaceRoleCreate,
     db: DbSession,
     user: CurrentSuperuser,
-) -> dict:
-    """Assign roles to a knowledge source."""
-    result = await db.execute(
-        select(KnowledgeSource).where(KnowledgeSource.id == source_id)
-    )
-    source = result.scalar_one_or_none()
-    if not source:
-        raise HTTPException(404, f"Knowledge source {source_id} not found")
+) -> list[KnowledgeNamespaceRolePublic]:
+    """Assign roles to a namespace."""
+    org_id = UUID(data.organization_id) if data.organization_id else None
+    created = []
 
-    role_ids = data.get("role_ids", [])
-    added = []
-    for role_id in role_ids:
+    for role_id_str in data.role_ids:
         try:
-            role_uuid = UUID(role_id)
-            result = await db.execute(
-                select(Role).where(Role.id == role_uuid).where(Role.is_active.is_(True))
-            )
-            role = result.scalar_one_or_none()
-            if role:
-                existing = await db.execute(
-                    select(KnowledgeSourceRole).where(
-                        KnowledgeSourceRole.knowledge_source_id == source_id,
-                        KnowledgeSourceRole.role_id == role.id,
-                    )
-                )
-                if not existing.scalar_one_or_none():
-                    db.add(KnowledgeSourceRole(
-                        knowledge_source_id=source_id,
-                        role_id=role.id,
-                        assigned_by=user.email,
-                    ))
-                    added.append(str(role.id))
+            role_uuid = UUID(role_id_str)
         except ValueError:
-            pass
+            logger.warning(f"Invalid role ID: {role_id_str}")
+            continue
 
-    await db.flush()
-    return {"added_role_ids": added}
+        # Verify role exists
+        result = await db.execute(
+            select(Role).where(Role.id == role_uuid, Role.is_active.is_(True))
+        )
+        if not result.scalar_one_or_none():
+            continue
+
+        # Check for existing assignment
+        existing = await db.execute(
+            select(KnowledgeNamespaceRole).where(
+                KnowledgeNamespaceRole.namespace == data.namespace,
+                KnowledgeNamespaceRole.organization_id == org_id,
+                KnowledgeNamespaceRole.role_id == role_uuid,
+            )
+        )
+        if existing.scalar_one_or_none():
+            continue
+
+        assignment = KnowledgeNamespaceRole(
+            namespace=data.namespace,
+            organization_id=org_id,
+            role_id=role_uuid,
+            assigned_by=user.email,
+        )
+        db.add(assignment)
+        await db.flush()
+
+        created.append(KnowledgeNamespaceRolePublic(
+            id=str(assignment.id),
+            namespace=assignment.namespace,
+            organization_id=str(assignment.organization_id) if assignment.organization_id else None,
+            role_id=str(assignment.role_id),
+            assigned_by=assignment.assigned_by,
+        ))
+
+    return created
 
 
-@router.delete("/{source_id}/roles/{role_id}", status_code=status.HTTP_204_NO_CONTENT)
-async def remove_role_from_knowledge_source(
-    source_id: UUID,
-    role_id: UUID,
+@router.delete("/roles/{assignment_id}", status_code=status.HTTP_204_NO_CONTENT)
+async def remove_namespace_role(
+    assignment_id: UUID,
     db: DbSession,
     user: CurrentSuperuser,
 ) -> None:
-    """Remove a role from a knowledge source."""
+    """Remove a namespace role assignment."""
+    result = await db.execute(
+        select(KnowledgeNamespaceRole).where(KnowledgeNamespaceRole.id == assignment_id)
+    )
+    if not result.scalar_one_or_none():
+        raise HTTPException(404, f"Assignment {assignment_id} not found")
+
     await db.execute(
-        delete(KnowledgeSourceRole).where(
-            KnowledgeSourceRole.knowledge_source_id == source_id,
-            KnowledgeSourceRole.role_id == role_id,
-        )
+        delete(KnowledgeNamespaceRole).where(KnowledgeNamespaceRole.id == assignment_id)
     )
     await db.flush()
 
 
 # =============================================================================
-# Document CRUD
+# Document listing (all namespaces)
+# (Must be registered before /{namespace} routes to avoid path conflicts)
 # =============================================================================
 
 
-@router.get("/{source_id}/documents")
-async def list_documents(
-    source_id: UUID,
+@router.get("/documents")
+async def list_all_documents(
     db: DbSession,
     user: CurrentActiveUser,
-    limit: int = Query(default=50, le=200),
+    scope: str | None = Query(default=None),
+    namespace: str | None = Query(default=None),
+    search: str | None = Query(default=None),
+    limit: int = Query(default=100, le=500),
     offset: int = Query(default=0, ge=0),
 ) -> list[KnowledgeDocumentSummary]:
-    """List documents in a knowledge source."""
-    is_admin = user.is_superuser or any(
-        role in ["Platform Admin", "Platform Owner"] for role in user.roles
-    )
+    """List all documents across namespaces with optional filters.
 
-    # Verify source exists and user has access
-    result = await db.execute(
-        select(KnowledgeSource)
-        .options(selectinload(KnowledgeSource.roles))
-        .where(KnowledgeSource.id == source_id)
-    )
-    source = result.scalar_one_or_none()
-    if not source:
-        raise HTTPException(404, f"Knowledge source {source_id} not found")
+    Scope parameter (consistent with workflows, forms, agents):
+    - Omitted: show all (superusers only)
+    - "global": show only global documents (organization_id IS NULL)
+    - UUID string: show only that org's documents (no global fallback)
+    """
 
-    if not is_admin:
-        repo = KnowledgeSourceRepository(
-            session=db,
-            org_id=user.organization_id,
-            user_id=user.user_id,
-            is_superuser=False,
+
+    try:
+        filter_type, filter_org_id = resolve_org_filter(user, scope)
+    except ValueError as e:
+        raise HTTPException(status_code=422, detail=str(e))
+
+    stmt = select(KnowledgeStore)
+
+    # Apply org scope filter (same pattern as workflows router)
+    if filter_type == OrgFilterType.ALL:
+        pass  # No org filter - show everything
+    elif filter_type == OrgFilterType.GLOBAL_ONLY:
+        stmt = stmt.where(KnowledgeStore.organization_id.is_(None))
+    elif filter_type == OrgFilterType.ORG_ONLY:
+        stmt = stmt.where(KnowledgeStore.organization_id == filter_org_id)
+    else:  # ORG_PLUS_GLOBAL
+        stmt = stmt.where(
+            or_(
+                KnowledgeStore.organization_id == filter_org_id,
+                KnowledgeStore.organization_id.is_(None),
+            )
         )
-        if not await repo._can_access_entity(source):
-            raise HTTPException(404, f"Knowledge source {source_id} not found")
 
-    # Query documents from knowledge_store by namespace
-    result = await db.execute(
-        select(KnowledgeStore)
-        .where(KnowledgeStore.namespace == source.namespace)
-        .where(
-            (KnowledgeStore.organization_id == source.organization_id) |
-            (KnowledgeStore.organization_id.is_(None))
-            if source.organization_id
-            else KnowledgeStore.organization_id.is_(None)
+    if namespace:
+        stmt = stmt.where(KnowledgeStore.namespace == namespace)
+    if search:
+        stmt = stmt.where(
+            KnowledgeStore.content.ilike(f"%{search}%")
+            | KnowledgeStore.key.ilike(f"%{search}%")
         )
-        .order_by(KnowledgeStore.created_at.desc())
-        .offset(offset)
-        .limit(limit)
-    )
+
+    stmt = stmt.order_by(KnowledgeStore.created_at.desc()).offset(offset).limit(limit)
+    result = await db.execute(stmt)
     docs = result.scalars().all()
 
     return [
         KnowledgeDocumentSummary(
-            id=str(doc.id),
-            namespace=doc.namespace,
-            key=doc.key,
-            content_preview=doc.content[:200] if doc.content else "",
-            metadata=doc.doc_metadata or {},
-            created_at=doc.created_at,
+            id=str(d.id),
+            namespace=d.namespace,
+            key=d.key,
+            content_preview=d.content[:200] if d.content else "",
+            metadata=d.doc_metadata or {},
+            organization_id=str(d.organization_id) if d.organization_id else None,
+            created_at=d.created_at,
         )
-        for doc in docs
+        for d in docs
     ]
 
 
-@router.post("/{source_id}/documents", status_code=status.HTTP_201_CREATED)
+# =============================================================================
+# Bulk Document Operations
+# =============================================================================
+
+
+@router.patch("/documents/scope")
+async def bulk_update_document_scope(
+    data: KnowledgeDocumentBulkScopeUpdate,
+    db: DbSession,
+    user: CurrentSuperuser,
+) -> dict:
+    """Bulk update scope for multiple documents. Superuser only.
+
+    When replace=true in the request body, conflicting documents in the
+    target scope are deleted before moving.
+    """
+    from src.core.org_filter import resolve_target_org
+    try:
+        target_org_id = resolve_target_org(user, data.scope)
+    except ValueError as e:
+        raise HTTPException(status_code=422, detail=str(e))
+
+    doc_uuids = []
+    for did in data.document_ids:
+        try:
+            doc_uuids.append(UUID(did))
+        except ValueError:
+            raise HTTPException(422, f"Invalid document ID: {did}")
+
+    # Check for conflicts: docs being moved that have keys matching
+    # existing docs in the target scope
+    source_docs = await db.execute(
+        select(KnowledgeStore).where(KnowledgeStore.id.in_(doc_uuids))
+    )
+    keyed_docs = [
+        d for d in source_docs.scalars().all()
+        if d.key and d.organization_id != target_org_id
+    ]
+
+    if keyed_docs:
+        keys = [d.key for d in keyed_docs]
+        namespaces_set = {d.namespace for d in keyed_docs}
+        conflicts = await db.execute(
+            select(KnowledgeStore).where(
+                KnowledgeStore.namespace.in_(namespaces_set),
+                KnowledgeStore.organization_id == target_org_id,
+                KnowledgeStore.key.in_(keys),
+                ~KnowledgeStore.id.in_(doc_uuids),
+            )
+        )
+        conflicting = conflicts.scalars().all()
+        if conflicting:
+            if data.replace:
+                conflict_ids = [c.id for c in conflicting]
+                await db.execute(
+                    delete(KnowledgeStore).where(KnowledgeStore.id.in_(conflict_ids))
+                )
+            else:
+                conflict_keys = [f"{c.namespace}/{c.key}" for c in conflicting]
+                raise HTTPException(
+                    status_code=409,
+                    detail={
+                        "error": "conflict",
+                        "message": f"{len(conflicting)} document(s) already exist in the target scope with matching keys",
+                        "conflicting_keys": conflict_keys,
+                    },
+                )
+
+    stmt = (
+        update(KnowledgeStore)
+        .where(KnowledgeStore.id.in_(doc_uuids))
+        .values(organization_id=target_org_id, updated_at=datetime.utcnow())
+    )
+    result = await db.execute(stmt)
+    await db.flush()
+
+    return {"updated": result.rowcount}
+
+
+# =============================================================================
+# Document CRUD (namespace-based paths)
+# =============================================================================
+
+
+@router.get("/{namespace}/documents")
+async def list_documents(
+    namespace: str,
+    db: DbSession,
+    user: CurrentActiveUser,
+    scope: str | None = Query(default=None),
+    search: str | None = Query(default=None),
+    limit: int = Query(default=50, le=200),
+    offset: int = Query(default=0, ge=0),
+) -> list[KnowledgeDocumentSummary]:
+    """List documents in a namespace."""
+
+
+    try:
+        filter_type, filter_org_id = resolve_org_filter(user, scope)
+    except ValueError as e:
+        raise HTTPException(status_code=422, detail=str(e))
+
+    stmt = select(KnowledgeStore).where(KnowledgeStore.namespace == namespace)
+
+    if filter_type == OrgFilterType.ALL:
+        pass
+    elif filter_type == OrgFilterType.GLOBAL_ONLY:
+        stmt = stmt.where(KnowledgeStore.organization_id.is_(None))
+    elif filter_type == OrgFilterType.ORG_ONLY:
+        stmt = stmt.where(KnowledgeStore.organization_id == filter_org_id)
+    else:  # ORG_PLUS_GLOBAL
+        stmt = stmt.where(
+            or_(
+                KnowledgeStore.organization_id == filter_org_id,
+                KnowledgeStore.organization_id.is_(None),
+            )
+        )
+
+    if search:
+        stmt = stmt.where(
+            KnowledgeStore.content.ilike(f"%{search}%")
+            | KnowledgeStore.key.ilike(f"%{search}%")
+        )
+
+    stmt = stmt.order_by(KnowledgeStore.created_at.desc()).offset(offset).limit(limit)
+    result = await db.execute(stmt)
+    docs = result.scalars().all()
+
+    return [
+        KnowledgeDocumentSummary(
+            id=str(d.id),
+            namespace=d.namespace,
+            key=d.key,
+            content_preview=d.content[:200] if d.content else "",
+            metadata=d.doc_metadata or {},
+            organization_id=str(d.organization_id) if d.organization_id else None,
+            created_at=d.created_at,
+        )
+        for d in docs
+    ]
+
+
+@router.post("/{namespace}/documents", status_code=status.HTTP_201_CREATED)
 async def create_document(
-    source_id: UUID,
+    namespace: str,
     data: KnowledgeDocumentCreate,
     db: DbSession,
     user: CurrentSuperuser,
+    scope: str | None = Query(default=None),
 ) -> KnowledgeDocumentPublic:
-    """Create a document in a knowledge source with embedding."""
-    result = await db.execute(
-        select(KnowledgeSource).where(KnowledgeSource.id == source_id)
-    )
-    source = result.scalar_one_or_none()
-    if not source:
-        raise HTTPException(404, f"Knowledge source {source_id} not found")
+    """Create a document in a namespace with embedding."""
+    from src.core.org_filter import resolve_target_org
+    try:
+        target_org_id = resolve_target_org(user, scope)
+    except ValueError as e:
+        raise HTTPException(status_code=422, detail=str(e))
 
     # Generate embedding
     try:
@@ -476,25 +417,16 @@ async def create_document(
     except ValueError as e:
         raise HTTPException(503, f"Embedding service unavailable: {e}")
 
-    # Store via KnowledgeRepository
-    knowledge_repo = KnowledgeRepository(
-        session=db,
-        org_id=source.organization_id,
-    )
-
-    doc_id = await knowledge_repo.store(
+    repo = KnowledgeRepository(session=db, org_id=target_org_id)
+    doc_id = await repo.store(
         content=data.content,
         embedding=embedding,
-        namespace=source.namespace,
+        namespace=namespace,
         key=data.key,
         metadata=data.metadata,
-        organization_id=source.organization_id,
+        organization_id=target_org_id,
         created_by=user.user_id,
     )
-
-    # Increment document count
-    source.document_count = (source.document_count or 0) + 1
-    source.updated_at = datetime.utcnow()
     await db.flush()
 
     # Load the created document
@@ -515,79 +447,48 @@ async def create_document(
     )
 
 
-@router.get("/{source_id}/documents/{doc_id}")
+@router.get("/{namespace}/documents/{doc_id}")
 async def get_document(
-    source_id: UUID,
+    namespace: str,
     doc_id: UUID,
     db: DbSession,
     user: CurrentActiveUser,
 ) -> KnowledgeDocumentPublic:
-    """Get a document by ID."""
-    is_admin = user.is_superuser or any(
-        role in ["Platform Admin", "Platform Owner"] for role in user.roles
-    )
+    """Get a document by UUID."""
+    repo = KnowledgeRepository(session=db, org_id=user.organization_id)
+    doc = await repo.get_by_id(doc_id)
 
-    # Verify source access
-    result = await db.execute(
-        select(KnowledgeSource)
-        .options(selectinload(KnowledgeSource.roles))
-        .where(KnowledgeSource.id == source_id)
-    )
-    source = result.scalar_one_or_none()
-    if not source:
-        raise HTTPException(404, f"Knowledge source {source_id} not found")
-
-    if not is_admin:
-        repo = KnowledgeSourceRepository(
-            session=db,
-            org_id=user.organization_id,
-            user_id=user.user_id,
-            is_superuser=False,
-        )
-        if not await repo._can_access_entity(source):
-            raise HTTPException(404, f"Knowledge source {source_id} not found")
-
-    result = await db.execute(
-        select(KnowledgeStore).where(KnowledgeStore.id == doc_id)
-    )
-    doc = result.scalar_one_or_none()
-    if not doc or doc.namespace != source.namespace:
-        raise HTTPException(404, f"Document {doc_id} not found")
+    if not doc or doc.namespace != namespace:
+        raise HTTPException(404, f"Document {doc_id} not found in namespace {namespace}")
 
     return KnowledgeDocumentPublic(
-        id=str(doc.id),
+        id=doc.id,
         namespace=doc.namespace,
         key=doc.key,
         content=doc.content,
-        metadata=doc.doc_metadata or {},
-        organization_id=str(doc.organization_id) if doc.organization_id else None,
+        metadata=doc.metadata,
+        organization_id=doc.organization_id,
         created_at=doc.created_at,
-        updated_at=doc.updated_at,
     )
 
 
-@router.put("/{source_id}/documents/{doc_id}")
+@router.put("/{namespace}/documents/{doc_id}")
 async def update_document(
-    source_id: UUID,
+    namespace: str,
     doc_id: UUID,
     data: KnowledgeDocumentUpdate,
     db: DbSession,
     user: CurrentSuperuser,
+    scope: str | None = Query(default=None),
+    replace: bool = Query(default=False),
 ) -> KnowledgeDocumentPublic:
-    """Update a document and re-embed."""
-    result = await db.execute(
-        select(KnowledgeSource).where(KnowledgeSource.id == source_id)
-    )
-    source = result.scalar_one_or_none()
-    if not source:
-        raise HTTPException(404, f"Knowledge source {source_id} not found")
-
+    """Update a document and re-embed. Optionally change scope."""
     result = await db.execute(
         select(KnowledgeStore).where(KnowledgeStore.id == doc_id)
     )
     doc = result.scalar_one_or_none()
-    if not doc or doc.namespace != source.namespace:
-        raise HTTPException(404, f"Document {doc_id} not found")
+    if not doc or doc.namespace != namespace:
+        raise HTTPException(404, f"Document {doc_id} not found in namespace {namespace}")
 
     # Re-embed
     try:
@@ -603,6 +504,44 @@ async def update_document(
         doc.doc_metadata = data.metadata
     doc.updated_at = datetime.utcnow()
 
+    # Update scope if provided
+    if scope is not None:
+        from src.core.org_filter import resolve_target_org
+        try:
+            target_org_id = resolve_target_org(user, scope)
+        except ValueError as e:
+            raise HTTPException(status_code=422, detail=str(e))
+
+        # Pre-check for unique constraint conflict when changing scope
+        if doc.key and target_org_id != doc.organization_id:
+            conflict = await db.execute(
+                select(KnowledgeStore.id).where(
+                    KnowledgeStore.namespace == namespace,
+                    KnowledgeStore.organization_id == target_org_id,
+                    KnowledgeStore.key == doc.key,
+                    KnowledgeStore.id != doc_id,
+                )
+            )
+            conflicting_id = conflict.scalar_one_or_none()
+            if conflicting_id:
+                if replace:
+                    await db.execute(
+                        delete(KnowledgeStore).where(KnowledgeStore.id == conflicting_id)
+                    )
+                else:
+                    raise HTTPException(
+                        status_code=409,
+                        detail={
+                            "error": "conflict",
+                            "message": f"A document with key '{doc.key}' already exists in namespace '{namespace}' for the target scope",
+                            "conflicting_id": str(conflicting_id),
+                            "key": doc.key,
+                            "namespace": namespace,
+                        },
+                    )
+
+        doc.organization_id = target_org_id
+
     await db.flush()
 
     return KnowledgeDocumentPublic(
@@ -617,33 +556,51 @@ async def update_document(
     )
 
 
-@router.delete("/{source_id}/documents/{doc_id}", status_code=status.HTTP_204_NO_CONTENT)
+@router.delete("/{namespace}/documents/{doc_id}", status_code=status.HTTP_204_NO_CONTENT)
 async def delete_document(
-    source_id: UUID,
+    namespace: str,
     doc_id: UUID,
     db: DbSession,
     user: CurrentSuperuser,
 ) -> None:
-    """Delete a document from a knowledge source."""
-    result = await db.execute(
-        select(KnowledgeSource).where(KnowledgeSource.id == source_id)
-    )
-    source = result.scalar_one_or_none()
-    if not source:
-        raise HTTPException(404, f"Knowledge source {source_id} not found")
-
+    """Delete a document."""
     result = await db.execute(
         select(KnowledgeStore).where(KnowledgeStore.id == doc_id)
     )
     doc = result.scalar_one_or_none()
-    if not doc or doc.namespace != source.namespace:
-        raise HTTPException(404, f"Document {doc_id} not found")
+    if not doc or doc.namespace != namespace:
+        raise HTTPException(404, f"Document {doc_id} not found in namespace {namespace}")
 
     await db.execute(
         delete(KnowledgeStore).where(KnowledgeStore.id == doc_id)
     )
+    await db.flush()
 
-    # Decrement document count
-    source.document_count = max(0, (source.document_count or 0) - 1)
-    source.updated_at = datetime.utcnow()
+
+@router.delete("/{namespace}", status_code=status.HTTP_204_NO_CONTENT)
+async def delete_namespace(
+    namespace: str,
+    db: DbSession,
+    user: CurrentSuperuser,
+    scope: str | None = Query(default=None),
+) -> None:
+    """Delete all documents in a namespace."""
+    from src.core.org_filter import resolve_target_org
+    try:
+        target_org_id = resolve_target_org(user, scope)
+    except ValueError as e:
+        raise HTTPException(status_code=422, detail=str(e))
+
+    repo = KnowledgeRepository(session=db, org_id=target_org_id)
+    deleted = await repo.delete_namespace(namespace=namespace, organization_id=target_org_id)
+
+    if deleted == 0:
+        raise HTTPException(404, f"Namespace '{namespace}' not found or empty")
+
+    # Also clean up any role assignments for this namespace
+    await db.execute(
+        delete(KnowledgeNamespaceRole).where(
+            KnowledgeNamespaceRole.namespace == namespace
+        )
+    )
     await db.flush()

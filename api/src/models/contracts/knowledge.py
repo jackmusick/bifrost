@@ -1,82 +1,37 @@
 """
-Knowledge source and document contract models for Bifrost.
+Knowledge namespace and document contract models for Bifrost.
 """
 
 from datetime import datetime
-from uuid import UUID
 
-from pydantic import BaseModel, ConfigDict, Field, field_serializer
-
-
-# ==================== KNOWLEDGE SOURCE MODELS ====================
+from pydantic import BaseModel, Field
 
 
-class KnowledgeSourceCreate(BaseModel):
-    """Request model for creating a knowledge source."""
-    name: str = Field(..., min_length=1, max_length=255)
-    namespace: str | None = Field(default=None, max_length=255, description="Namespace key (auto-generated from name if omitted)")
-    description: str | None = Field(default=None, max_length=2000)
-    organization_id: UUID | None = Field(default=None, description="Organization ID (null = global)")
-    access_level: str = Field(default="role_based", description="authenticated or role_based")
-    role_ids: list[str] = Field(default_factory=list, description="Role IDs for role_based access")
+# ==================== KNOWLEDGE NAMESPACE MODELS ====================
 
 
-class KnowledgeSourceUpdate(BaseModel):
-    """Request model for updating a knowledge source."""
-    name: str | None = Field(default=None, min_length=1, max_length=255)
-    description: str | None = Field(default=None, max_length=2000)
-    access_level: str | None = None
-    is_active: bool | None = None
-    role_ids: list[str] | None = None
-
-
-class KnowledgeSourcePublic(BaseModel):
-    """Knowledge source output for API responses."""
-    model_config = ConfigDict(from_attributes=True)
-
-    id: UUID
-    name: str
+class KnowledgeNamespaceInfo(BaseModel):
+    """Namespace info derived from knowledge_store document counts."""
     namespace: str
-    description: str | None = None
-    organization_id: UUID | None = None
-    access_level: str
-    is_active: bool
     document_count: int = 0
-    role_ids: list[str] = Field(default_factory=list)
-    created_by: str | None = None
-    created_at: datetime | None = None
-    updated_at: datetime | None = None
-
-    @field_serializer("id", "organization_id")
-    def serialize_uuid(self, v: UUID | None) -> str | None:
-        return str(v) if v else None
-
-    @field_serializer("created_at", "updated_at")
-    def serialize_dt(self, dt: datetime | None) -> str | None:
-        return dt.isoformat() if dt else None
+    global_count: int = 0
+    org_count: int = 0
 
 
-class KnowledgeSourceSummary(BaseModel):
-    """Lightweight knowledge source summary for listings."""
-    model_config = ConfigDict(from_attributes=True)
-
-    id: UUID
-    name: str
+class KnowledgeNamespaceRolePublic(BaseModel):
+    """Knowledge namespace role assignment output."""
+    id: str
     namespace: str
-    description: str | None = None
-    organization_id: UUID | None = None
-    access_level: str
-    is_active: bool
-    document_count: int = 0
-    created_at: datetime
+    organization_id: str | None = None
+    role_id: str
+    assigned_by: str | None = None
 
-    @field_serializer("id", "organization_id")
-    def serialize_uuid(self, v: UUID | None) -> str | None:
-        return str(v) if v else None
 
-    @field_serializer("created_at")
-    def serialize_dt(self, dt: datetime) -> str:
-        return dt.isoformat()
+class KnowledgeNamespaceRoleCreate(BaseModel):
+    """Request model for assigning roles to a namespace."""
+    namespace: str
+    role_ids: list[str]
+    organization_id: str | None = None
 
 
 # ==================== KNOWLEDGE DOCUMENT MODELS ====================
@@ -108,6 +63,13 @@ class KnowledgeDocumentPublic(BaseModel):
     updated_at: datetime | None = None
 
 
+class KnowledgeDocumentBulkScopeUpdate(BaseModel):
+    """Request model for bulk-updating document scope."""
+    document_ids: list[str] = Field(..., min_length=1, max_length=500)
+    scope: str = Field(..., description="Target scope: 'global' or an org UUID")
+    replace: bool = Field(default=False, description="Replace conflicting documents in target scope")
+
+
 class KnowledgeDocumentSummary(BaseModel):
     """Lightweight document summary (no full content)."""
 
@@ -116,4 +78,5 @@ class KnowledgeDocumentSummary(BaseModel):
     key: str | None = None
     content_preview: str = Field(default="", description="First ~200 chars of content")
     metadata: dict = Field(default_factory=dict)
+    organization_id: str | None = None
     created_at: datetime | None = None

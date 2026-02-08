@@ -85,6 +85,7 @@ def upgrade() -> None:
 def downgrade() -> None:
     op.drop_table('knowledge_source_roles')
     op.drop_table('knowledge_sources')
+    op.execute("DROP TYPE IF EXISTS knowledge_source_access_level")
     op.drop_column('roles', 'permissions')
     op.drop_index('ix_agents_owner_user_id', table_name='agents')
     op.drop_column('agents', 'owner_user_id')
@@ -111,7 +112,6 @@ git commit -m "feat: add migration for private agents, role permissions, knowled
 - Modify: `api/src/models/enums.py:77-81`
 - Modify: `api/src/models/orm/agents.py:25-98`
 - Modify: `api/src/models/orm/users.py:85-116`
-- Modify: `api/src/models/orm/__init__.py`
 
 **Step 1: Add PRIVATE to AgentAccessLevel enum**
 
@@ -345,7 +345,7 @@ Update its UUID serializer:
         return str(v) if v else None
 ```
 
-**Step 3: Add AgentPromoteRequest**
+**Step 3: Add AgentPromoteRequest and accessible-resource models**
 
 Add after `AgentUpdate`:
 
@@ -360,6 +360,21 @@ class AgentPromoteRequest(BaseModel):
         default_factory=list,
         description="Role IDs for role_based access"
     )
+
+
+class AccessibleTool(BaseModel):
+    """A tool the current user can assign to their agents."""
+    id: str
+    name: str
+    description: str | None = None
+
+
+class AccessibleKnowledgeSource(BaseModel):
+    """A knowledge source the current user can assign to their agents."""
+    id: str
+    name: str
+    namespace: str
+    description: str | None = None
 ```
 
 **Step 4: Update Role contracts**
@@ -613,6 +628,7 @@ Also update `get_agent_with_access_check` to handle private agents — after the
                 selectinload(self.model.tools),
                 selectinload(self.model.delegated_agents),
                 selectinload(self.model.roles),
+                selectinload(self.model.owner),
             )
             .where(self.model.id == agent_id)
         )
@@ -721,17 +737,29 @@ async def _validate_user_tool_access(
         except ValueError:
             raise HTTPException(422, f"Invalid tool ID: {tool_id}")
 
-        # Get workflow's role IDs
+        # Load the workflow to check access_level
+        result = await db.execute(
+            select(Workflow).where(Workflow.id == workflow_uuid)
+        )
+        workflow = result.scalar_one_or_none()
+        if not workflow:
+            raise HTTPException(422, f"Tool '{tool_id}' not found")
+        if not workflow.is_active:
+            raise HTTPException(422, f"Tool '{workflow.name}' is inactive")
+
+        # Check access: 'authenticated' tools are open to all authenticated users
+        if workflow.access_level == "authenticated":
+            continue
+
+        # For 'role_based': user must share at least one role with the workflow
         result = await db.execute(
             select(WorkflowRole.role_id).where(WorkflowRole.workflow_id == workflow_uuid)
         )
         workflow_role_ids = set(result.scalars().all())
 
-        # If workflow has roles, user must share at least one
-        if workflow_role_ids and not workflow_role_ids.intersection(user_role_ids):
-            result = await db.execute(select(Workflow.name).where(Workflow.id == workflow_uuid))
-            name = result.scalar_one_or_none() or tool_id
-            raise HTTPException(403, f"You do not have role access to tool '{name}'")
+        # role_based with no roles = admin-only; role_based with roles = must intersect
+        if not workflow_role_ids or not workflow_role_ids.intersection(user_role_ids):
+            raise HTTPException(403, f"You do not have role access to tool '{workflow.name}'")
 
 
 async def _user_has_permission(
@@ -792,7 +820,14 @@ def _agent_to_public(agent: Agent) -> AgentPublic:
     )
 ```
 
-Eagerly load `owner` in queries where `_agent_to_public` is called — add `selectinload(Agent.owner)` to the relevant queries.
+Eagerly load `owner` in queries where `_agent_to_public` is called — add `selectinload(Agent.owner)` to **all** of these locations:
+1. `list_agents` in the agents router (the query that builds the agent list for regular users)
+2. `list_all_in_scope` in the agents router (the admin listing path)
+3. `get_agent` endpoint (the single-agent GET)
+4. `create_agent` endpoint (the reload query after insert)
+5. `update_agent` endpoint (the reload query after update)
+6. `promote_agent` endpoint (already included in this plan's code)
+7. `get_agent_with_access_check` in the repository (already updated in Task 6)
 
 **Step 3: Update `create_agent` endpoint**
 
@@ -981,7 +1016,7 @@ Note: This must be defined BEFORE the `/{agent_id}` route to avoid path conflict
 async def get_accessible_tools(
     db: DbSession,
     user: CurrentActiveUser,
-) -> list[dict]:
+) -> list[AccessibleTool]:
     """Get tools the current user can assign to their agents (via role intersection)."""
     from src.models.orm.users import UserRole
     from src.models.orm.workflow_roles import WorkflowRole
@@ -1006,10 +1041,12 @@ async def get_accessible_tools(
     tools = result.scalars().all()
 
     return [
-        {"id": str(t.id), "name": t.name, "description": t.tool_description or t.description}
+        AccessibleTool(id=str(t.id), name=t.name, description=t.tool_description or t.description)
         for t in tools
     ]
 ```
+
+Import `AccessibleTool` and `AccessibleKnowledgeSource` at the top alongside the other agent contract imports.
 
 **Step 8: Add accessible-knowledge endpoint**
 
@@ -1018,7 +1055,7 @@ async def get_accessible_tools(
 async def get_accessible_knowledge(
     db: DbSession,
     user: CurrentActiveUser,
-) -> list[dict]:
+) -> list[AccessibleKnowledgeSource]:
     """Get knowledge sources the current user can assign to their agents."""
     from src.models.orm.users import UserRole
     from src.models.orm.knowledge_sources import KnowledgeSource, KnowledgeSourceRole
@@ -1041,7 +1078,7 @@ async def get_accessible_knowledge(
     sources = result.scalars().all()
 
     return [
-        {"id": str(s.id), "name": s.name, "namespace": s.namespace, "description": s.description}
+        AccessibleKnowledgeSource(id=str(s.id), name=s.name, namespace=s.namespace, description=s.description)
         for s in sources
     ]
 ```
@@ -1080,7 +1117,20 @@ Key endpoints:
 - Role assignment: `GET/POST/DELETE /api/knowledge-sources/{id}/roles`
 - Document CRUD: `GET/POST /api/knowledge-sources/{id}/documents`, `GET/PUT/DELETE /api/knowledge-sources/{id}/documents/{doc_id}`
 
-Document create/update generates embeddings immediately using `get_embedding_client()` from `api/src/services/embeddings/factory.py` and stores via `KnowledgeRepository.store()` from `api/src/repositories/knowledge.py`.
+**Namespace auto-generation:** When creating a knowledge source, if `namespace` is omitted, generate it from the name by lowercasing, replacing spaces/special chars with hyphens, and stripping leading/trailing hyphens. Example: `"Company Policies"` → `"company-policies"`. Use a helper like:
+
+```python
+import re
+
+def generate_namespace(name: str) -> str:
+    """Generate a URL-safe namespace key from a name."""
+    slug = re.sub(r"[^a-z0-9]+", "-", name.lower()).strip("-")
+    return slug or "default"
+```
+
+**Document count sync:** When creating a document, increment `knowledge_source.document_count += 1`. When deleting a document, decrement `knowledge_source.document_count -= 1` (floor at 0). Do this in the document create/delete handlers, not via a trigger.
+
+**Embedding:** Document create/update generates embeddings immediately using `get_embedding_client()` from `api/src/services/embeddings/factory.py` and stores via `KnowledgeRepository.store()` from `api/src/repositories/knowledge.py`.
 
 This is a large file — implement it following the exact patterns from the agents router for CRUD, scoping, and role assignment.
 
@@ -1158,14 +1208,19 @@ git commit -m "test: add tests for private agent creation, access control, promo
 
 **Files:**
 - Modify: `client/src/components/layout/Sidebar.tsx:86-98`
+- Modify: `client/src/App.tsx` (route protection)
 - Modify: `client/src/pages/Agents.tsx`
 - Modify: `client/src/components/agents/AgentDialog.tsx`
 
-**Step 1: Update sidebar**
+**Step 1: Update sidebar and route protection**
 
 In `client/src/components/layout/Sidebar.tsx`:
 
 Remove `requiresPlatformAdmin` from the Agents nav item (so all users can access it).
+
+In `client/src/App.tsx`:
+
+Change the Agents route from `<ProtectedRoute requirePlatformAdmin>` to just `<ProtectedRoute>` so non-admin authenticated users can access the page. Without this change, the backend permission loosening is useless — users would get blocked at the route level.
 
 Add Knowledge to the Data section:
 ```typescript
@@ -1208,8 +1263,8 @@ Expected: No errors
 **Step 6: Commit**
 
 ```bash
-git add client/src/components/layout/Sidebar.tsx client/src/pages/Agents.tsx client/src/components/agents/AgentDialog.tsx client/src/lib/v1.d.ts
-git commit -m "feat: update sidebar and agents UI for private agents and knowledge nav"
+git add client/src/App.tsx client/src/components/layout/Sidebar.tsx client/src/pages/Agents.tsx client/src/components/agents/AgentDialog.tsx client/src/lib/v1.d.ts
+git commit -m "feat: update sidebar, routing, and agents UI for private agents and knowledge nav"
 ```
 
 ---

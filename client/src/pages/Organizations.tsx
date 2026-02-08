@@ -190,9 +190,9 @@ export function Organizations() {
 					))}
 				</div>
 			) : filteredOrgs && filteredOrgs.length > 0 ? (
-				<div className="flex-1 min-h-0 overflow-auto rounded-md border">
-					<DataTable>
-						<DataTableHeader className="sticky top-0 bg-background z-10">
+				<div className="flex-1 min-h-0">
+					<DataTable className="max-h-full">
+						<DataTableHeader>
 							<DataTableRow>
 								<DataTableHead>Name</DataTableHead>
 								<DataTableHead>Domain</DataTableHead>

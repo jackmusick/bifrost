@@ -439,6 +439,132 @@ class KnowledgeRepository(OrgScopedRepository[KnowledgeStore]):
             if doc.key is not None
         }
 
+    async def get_by_id(
+        self,
+        doc_id: UUID,
+    ) -> KnowledgeDocument | None:
+        """Get a document by its UUID."""
+        stmt = select(KnowledgeStore).where(KnowledgeStore.id == doc_id)
+        result = await self.session.execute(stmt)
+        doc = result.scalar_one_or_none()
+
+        if not doc:
+            return None
+
+        return KnowledgeDocument(
+            id=str(doc.id),
+            namespace=doc.namespace,
+            content=doc.content,
+            metadata=doc.doc_metadata,
+            organization_id=str(doc.organization_id) if doc.organization_id else None,
+            key=doc.key,
+            created_at=doc.created_at,
+        )
+
+    async def list_documents_by_namespace(
+        self,
+        namespace: str | None = None,
+        organization_id: UUID | None = None,
+        include_global: bool = True,
+        limit: int = 50,
+        offset: int = 0,
+        search: str | None = None,
+    ) -> list[KnowledgeDocument]:
+        """
+        List documents with optional namespace and org scoping.
+
+        Args:
+            namespace: Namespace to filter by (None for all namespaces)
+            organization_id: Organization scope. Defaults to self.org_id.
+            include_global: If True, also include global docs
+            limit: Max results
+            offset: Pagination offset
+            search: Optional text to filter by key or content (case-insensitive)
+
+        Returns:
+            List of KnowledgeDocument
+        """
+        target_org_id = organization_id if organization_id is not None else self.org_id
+        stmt = select(KnowledgeStore)
+
+        if namespace:
+            stmt = stmt.where(KnowledgeStore.namespace == namespace)
+
+        if search:
+            stmt = stmt.where(
+                KnowledgeStore.content.ilike(f"%{search}%")
+                | KnowledgeStore.key.ilike(f"%{search}%")
+            )
+
+        if target_org_id and include_global:
+            stmt = stmt.where(
+                (KnowledgeStore.organization_id == target_org_id) |
+                (KnowledgeStore.organization_id.is_(None))
+            )
+        elif target_org_id:
+            stmt = stmt.where(KnowledgeStore.organization_id == target_org_id)
+        else:
+            stmt = stmt.where(KnowledgeStore.organization_id.is_(None))
+
+        stmt = stmt.order_by(KnowledgeStore.created_at.desc())
+        stmt = stmt.offset(offset).limit(limit)
+
+        result = await self.session.execute(stmt)
+        docs = result.scalars().all()
+
+        return [
+            KnowledgeDocument(
+                id=str(doc.id),
+                namespace=doc.namespace,
+                content=doc.content,
+                metadata=doc.doc_metadata,
+                organization_id=str(doc.organization_id) if doc.organization_id else None,
+                key=doc.key,
+                created_at=doc.created_at,
+            )
+            for doc in docs
+        ]
+
+    async def list_all_namespaces(self) -> list[NamespaceInfo]:
+        """
+        List ALL namespaces across all orgs (superuser/unfiltered view).
+
+        Returns:
+            List of NamespaceInfo with scope counts
+        """
+        stmt = select(
+            KnowledgeStore.namespace,
+            KnowledgeStore.organization_id,
+            func.count(KnowledgeStore.id).label("count"),
+        ).group_by(
+            KnowledgeStore.namespace,
+            KnowledgeStore.organization_id,
+        )
+
+        result = await self.session.execute(stmt)
+        rows = result.all()
+
+        namespace_data: dict[str, dict[str, int]] = {}
+        for row in rows:
+            ns = row[0]
+            org_id = row[1]
+            count = row[2]
+
+            if ns not in namespace_data:
+                namespace_data[ns] = {"global": 0, "org": 0, "total": 0}
+
+            if org_id is None:
+                namespace_data[ns]["global"] = count
+            else:
+                namespace_data[ns]["org"] = count
+
+            namespace_data[ns]["total"] += count
+
+        return [
+            NamespaceInfo(namespace=ns, scopes=scopes)
+            for ns, scopes in sorted(namespace_data.items())
+        ]
+
     async def delete_orphaned_docs(
         self,
         namespace: str,
