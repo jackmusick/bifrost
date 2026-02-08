@@ -377,7 +377,7 @@ async def create_code_file(
     await ctx.db.refresh(code_file)
 
     # Sync dependencies (parse source and update dependency index)
-    await sync_file_dependencies(ctx.db, code_file.id, code_file.source)
+    await sync_file_dependencies(ctx.db, code_file.id, code_file.source, app.organization_id)
 
     # Emit event for real-time updates with full content
     await publish_app_code_file_update(
@@ -428,7 +428,7 @@ async def update_code_file(
 
     # Sync dependencies only if source changed
     if source_changed:
-        await sync_file_dependencies(ctx.db, code_file.id, code_file.source)
+        await sync_file_dependencies(ctx.db, code_file.id, code_file.source, app.organization_id)
 
     # Emit event for real-time updates with full content
     await publish_app_code_file_update(

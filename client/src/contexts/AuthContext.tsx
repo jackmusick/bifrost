@@ -10,6 +10,7 @@ import {
 	useContext,
 	useCallback,
 	useEffect,
+	useMemo,
 	useState,
 	type ReactNode,
 } from "react";
@@ -155,11 +156,21 @@ export function AuthProvider({ children }: AuthProviderProps) {
 			}
 
 			// Check for existing token
-			const token = localStorage.getItem(ACCESS_TOKEN_KEY);
+			let token = localStorage.getItem(ACCESS_TOKEN_KEY);
 			if (!token) {
-				setUser(null);
-				setIsLoading(false);
-				return;
+				// No access token in localStorage, but refresh_token cookie may still be valid
+				const refreshed = await refreshTokenInternal();
+				if (!refreshed) {
+					setUser(null);
+					setIsLoading(false);
+					return;
+				}
+				token = localStorage.getItem(ACCESS_TOKEN_KEY);
+				if (!token) {
+					setUser(null);
+					setIsLoading(false);
+					return;
+				}
 			}
 
 			// Check if token is expired
@@ -173,8 +184,9 @@ export function AuthProvider({ children }: AuthProviderProps) {
 				}
 			}
 
-			// Parse user from token
-			const payload = parseJwt(token);
+			// Parse user from token (re-read in case it was refreshed)
+			const currentToken = localStorage.getItem(ACCESS_TOKEN_KEY);
+			const payload = parseJwt(currentToken || token);
 			if (payload) {
 				const extractedUser = extractUser(payload);
 				setUser(extractedUser);
@@ -444,22 +456,25 @@ export function AuthProvider({ children }: AuthProviderProps) {
 		}
 	}, [isLoading, user, needsSetup, location.pathname, navigate]);
 
-	const value: AuthContextValue = {
-		user,
-		isAuthenticated: !!user,
-		isLoading,
-		needsSetup,
-		isPlatformAdmin: user?.roles.includes("PlatformAdmin") ?? false,
-		isOrgUser: user?.roles.includes("OrgUser") ?? false,
-		hasRole: (role: string) => user?.roles.includes(role) ?? false,
-		login,
-		loginWithMfa,
-		loginWithOAuth,
-		loginWithPasskey,
-		logout,
-		refreshToken,
-		checkAuthStatus,
-	};
+	const value: AuthContextValue = useMemo(
+		() => ({
+			user,
+			isAuthenticated: !!user,
+			isLoading,
+			needsSetup,
+			isPlatformAdmin: user?.roles.includes("PlatformAdmin") ?? false,
+			isOrgUser: user?.roles.includes("OrgUser") ?? false,
+			hasRole: (role: string) => user?.roles.includes(role) ?? false,
+			login,
+			loginWithMfa,
+			loginWithOAuth,
+			loginWithPasskey,
+			logout,
+			refreshToken,
+			checkAuthStatus,
+		}),
+		[user, isLoading, needsSetup, login, loginWithMfa, loginWithOAuth, loginWithPasskey, logout, refreshToken, checkAuthStatus],
+	);
 
 	return (
 		<AuthContext.Provider value={value}>{children}</AuthContext.Provider>

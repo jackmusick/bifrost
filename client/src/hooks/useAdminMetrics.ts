@@ -33,7 +33,6 @@ export function useResourceMetrics(days: number = 7, enabled: boolean = true) {
 			queryKey: ["resource-metrics", days],
 			enabled,
 			staleTime: 60000, // 1 minute
-			refetchInterval: 60000,
 		},
 	);
 }
@@ -57,7 +56,6 @@ export function useOrganizationMetrics(
 			queryKey: ["organization-metrics", days, limit],
 			enabled,
 			staleTime: 60000,
-			refetchInterval: 60000,
 		},
 	);
 }
@@ -82,7 +80,6 @@ export function useWorkflowMetrics(
 			queryKey: ["workflow-metrics", days, sortBy, limit],
 			enabled,
 			staleTime: 60000,
-			refetchInterval: 60000,
 		},
 	);
 }

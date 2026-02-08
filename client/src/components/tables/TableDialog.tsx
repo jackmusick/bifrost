@@ -1,5 +1,5 @@
-import { useEffect, useState } from "react";
-import { useForm } from "react-hook-form";
+import { useEffect, useMemo } from "react";
+import { useForm, useWatch } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import * as z from "zod";
 import { AlertTriangle } from "lucide-react";
@@ -59,8 +59,8 @@ export function TableDialog({ table, open, onClose }: TableDialogProps) {
 	const { isPlatformAdmin, user } = useAuth();
 	const isEditing = !!table;
 
-	// Track original organization_id to detect scope changes
-	const [originalOrgId, setOriginalOrgId] = useState<string | null>(null);
+	// Derive original organization_id from the table prop
+	const originalOrgId = useMemo(() => table?.organization_id ?? null, [table]);
 
 	// Default organization_id for org users is their org, for platform admins it's null (global)
 	const defaultOrgId = isPlatformAdmin
@@ -78,23 +78,20 @@ export function TableDialog({ table, open, onClose }: TableDialogProps) {
 	});
 
 	// Watch organization_id to detect scope changes
-	const watchedOrgId = form.watch("organization_id");
+	const watchedOrgId = useWatch({ control: form.control, name: "organization_id" });
 	const scopeChanged = isEditing && watchedOrgId !== originalOrgId;
 
 	useEffect(() => {
 		if (table) {
-			const orgId = table.organization_id ?? null;
-			setOriginalOrgId(orgId);
 			form.reset({
 				name: table.name,
 				description: table.description || "",
 				schema: table.schema
 					? JSON.stringify(table.schema, null, 2)
 					: "",
-				organization_id: orgId,
+				organization_id: table.organization_id ?? null,
 			});
 		} else {
-			setOriginalOrgId(null);
 			form.reset({
 				name: "",
 				description: "",

@@ -384,7 +384,7 @@ async def _replace_app_file(
         await db.flush()
 
         # Sync dependencies (parse source for workflow references)
-        await sync_file_dependencies(db, file.id, content)
+        await sync_file_dependencies(db, file.id, content, app.organization_id)
 
         # Publish update for real-time preview
         await publish_app_code_file_update(
@@ -584,7 +584,7 @@ async def _persist_content(
             await db.flush()
 
             # Sync dependencies (parse source for workflow references)
-            await sync_file_dependencies(db, file.id, content)
+            await sync_file_dependencies(db, file.id, content, app.organization_id)
 
             # Publish update for real-time preview
             await publish_app_code_file_update(

@@ -18,6 +18,9 @@ import {
 	Calendar,
 	Loader2,
 	Network,
+	Link,
+	Trash2,
+	AlertTriangle,
 } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -42,6 +45,7 @@ import {
 import {
 	Dialog,
 	DialogContent,
+	DialogDescription,
 	DialogHeader,
 	DialogTitle,
 } from "@/components/ui/dialog";
@@ -58,11 +62,13 @@ import {
 	type GraphEdge,
 } from "@/hooks/useDependencyGraph";
 import { DependencyGraph } from "@/components/dependencies/DependencyGraph";
+import { WorkflowDeactivationDialog } from "@/components/editor/WorkflowDeactivationDialog";
 import {
 	draggable,
 	dropTargetForElements,
 } from "@atlaskit/pragmatic-drag-and-drop/element/adapter";
 import { setCustomNativeDragPreview } from "@atlaskit/pragmatic-drag-and-drop/element/set-custom-native-drag-preview";
+import { authFetch } from "@/lib/api-client";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
 import { formatDateShort } from "@/lib/utils";
@@ -85,6 +91,7 @@ interface EntityWithScope {
 	organizationId: string | null;
 	accessLevel: string | null;
 	createdAt: string;
+	usedByCount: number | null; // null means count not available for this entity type
 	original: WorkflowMetadata | FormPublic | AgentSummary | ApplicationPublic;
 }
 
@@ -115,6 +122,7 @@ function normalizeEntities(
 			organizationId: w.organization_id ?? null,
 			accessLevel: w.access_level ?? null,
 			createdAt: w.created_at,
+			usedByCount: w.used_by_count ?? 0,
 			original: w,
 		});
 	}
@@ -130,6 +138,7 @@ function normalizeEntities(
 			organizationId: null, // Forms don't expose organization_id in API response
 			accessLevel: "role_based", // Default access level
 			createdAt: new Date().toISOString(), // Forms don't expose created_at in API response
+			usedByCount: null,
 			original: f,
 		});
 	}
@@ -143,6 +152,7 @@ function normalizeEntities(
 			organizationId: (a as { organization_id?: string | null }).organization_id ?? null,
 			accessLevel: (a as { access_level?: string | null }).access_level ?? null,
 			createdAt: a.created_at,
+			usedByCount: null,
 			original: a,
 		});
 	}
@@ -155,6 +165,7 @@ function normalizeEntities(
 			organizationId: app.organization_id ?? null,
 			accessLevel: app.access_level ?? null,
 			createdAt: app.created_at ?? new Date().toISOString(),
+			usedByCount: null,
 			original: app,
 		});
 	}
@@ -215,6 +226,7 @@ interface EntityCardProps {
 	selected: boolean;
 	onSelect: (selected: boolean) => void;
 	onShowRelationships: (entityId: string, entityType: EntityType, entityName: string) => void;
+	onDelete?: (entityId: string, entityName: string, entityType: EntityType) => void;
 	organizations: Organization[];
 	selectedIds: Set<string>;
 	allEntities: EntityWithScope[];
@@ -225,6 +237,7 @@ function EntityCard({
 	selected,
 	onSelect,
 	onShowRelationships,
+	onDelete,
 	organizations,
 	selectedIds,
 	allEntities,
@@ -324,6 +337,20 @@ function EntityCard({
 							>
 								<Network className="h-4 w-4" />
 							</Button>
+							{onDelete && (
+								<Button
+									variant="outline"
+									size="icon"
+									onClick={(e) => {
+										e.stopPropagation();
+										onDelete(entity.id, entity.name, entity.entityType);
+									}}
+									title={`Delete ${config.label.toLowerCase()}`}
+									className="text-destructive hover:text-destructive hover:bg-destructive/10"
+								>
+									<Trash2 className="h-4 w-4" />
+								</Button>
+							)}
 						</div>
 					</div>
 
@@ -337,7 +364,7 @@ function EntityCard({
 						<span>{orgName}</span>
 					</div>
 
-					{/* Row 3: Access Level + Date */}
+					{/* Row 3: Access Level + Date + Used By Count */}
 					<div className="flex items-center gap-4 text-xs text-muted-foreground">
 						<span className="flex items-center gap-1">
 							<Shield className="h-3 w-3 shrink-0" />
@@ -347,6 +374,21 @@ function EntityCard({
 							<Calendar className="h-3 w-3 shrink-0" />
 							{formatDateShort(entity.createdAt)}
 						</span>
+						{entity.usedByCount !== null && (
+							<span
+								className={cn(
+									"flex items-center gap-1",
+									entity.usedByCount === 0
+										? "text-muted-foreground/50"
+										: "text-muted-foreground",
+								)}
+							>
+								<Link className="h-3 w-3 shrink-0" />
+								{entity.usedByCount === 0
+									? "No refs"
+									: `${entity.usedByCount} ref${entity.usedByCount === 1 ? "" : "s"}`}
+							</span>
+						)}
 					</div>
 				</div>
 			</div>
@@ -513,6 +555,8 @@ interface FilterPopoverProps {
 	setOrgFilter: (v: string) => void;
 	accessFilter: string;
 	setAccessFilter: (v: string) => void;
+	usageFilter: string;
+	setUsageFilter: (v: string) => void;
 	organizations: Organization[];
 	activeFilterCount: number;
 	onClearFilters: () => void;
@@ -525,6 +569,8 @@ function FilterPopover({
 	setOrgFilter,
 	accessFilter,
 	setAccessFilter,
+	usageFilter,
+	setUsageFilter,
 	organizations,
 	activeFilterCount,
 	onClearFilters,
@@ -549,6 +595,12 @@ function FilterPopover({
 		{ value: "all", label: "All Access Levels" },
 		{ value: "authenticated", label: "Authenticated" },
 		{ value: "role_based", label: "Role-based" },
+	];
+
+	const usageOptions = [
+		{ value: "all", label: "All Usage" },
+		{ value: "unused", label: "Unused (0 refs)" },
+		{ value: "in_use", label: "In Use" },
 	];
 
 	return (
@@ -621,6 +673,26 @@ function FilterPopover({
 										className={cn(
 											"mr-2 h-4 w-4",
 											accessFilter === option.value
+												? "opacity-100"
+												: "opacity-0",
+										)}
+									/>
+									{option.label}
+								</CommandItem>
+							))}
+						</CommandGroup>
+						<CommandSeparator />
+						<CommandGroup heading="Usage">
+							{usageOptions.map((option) => (
+								<CommandItem
+									key={option.value}
+									value={option.label}
+									onSelect={() => setUsageFilter(option.value)}
+								>
+									<Check
+										className={cn(
+											"mr-2 h-4 w-4",
+											usageFilter === option.value
 												? "opacity-100"
 												: "opacity-0",
 										)}
@@ -730,13 +802,34 @@ export function EntityManagement() {
 	const [typeFilter, setTypeFilter] = useState<string>("all");
 	const [orgFilter, setOrgFilter] = useState<string>("all");
 	const [accessFilter, setAccessFilter] = useState<string>("all");
+	const [usageFilter, setUsageFilter] = useState<string>("all");
 	const [sortBy, setSortBy] = useState<SortOption>("name");
 	const [sortAsc, setSortAsc] = useState(true);
 	const [isUpdating, setIsUpdating] = useState(false);
+	const [updatingMessage, setUpdatingMessage] = useState("Updating...");
 
 	// Relationship filter state
 	const [relationshipFilter, setRelationshipFilter] = useState<RelationshipFilter | null>(null);
 	const [isGraphDialogOpen, setIsGraphDialogOpen] = useState(false);
+
+	// Confirm delete state (for non-workflow entities: forms, agents, apps)
+	const [confirmDeleteOpen, setConfirmDeleteOpen] = useState(false);
+	const [confirmDeleteEntities, setConfirmDeleteEntities] = useState<
+		{ id: string; name: string; entityType: EntityType; slug?: string }[]
+	>([]);
+	const [isDeleting, setIsDeleting] = useState(false);
+
+	// Workflow delete state
+	const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
+	const [deletingWorkflowId, setDeletingWorkflowId] = useState<string | null>(null);
+	const [pendingDeactivations, setPendingDeactivations] = useState<
+		components["schemas"]["PendingDeactivation"][]
+	>([]);
+	const [availableReplacements, setAvailableReplacements] = useState<
+		components["schemas"]["AvailableReplacement"][]
+	>([]);
+	// Track workflow IDs that returned 409 during bulk delete (for Phase 2)
+	const [conflictWorkflowIds, setConflictWorkflowIds] = useState<string[]>([]);
 
 	// Fetch all entity types
 	const {
@@ -829,6 +922,16 @@ export function EntityManagement() {
 			result = result.filter((e) => e.accessLevel === accessFilter);
 		}
 
+		if (usageFilter !== "all") {
+			if (usageFilter === "unused") {
+				result = result.filter((e) => e.usedByCount === 0);
+			} else if (usageFilter === "in_use") {
+				result = result.filter(
+					(e) => e.usedByCount !== null && e.usedByCount > 0,
+				);
+			}
+		}
+
 		if (searchTerm) {
 			const term = searchTerm.toLowerCase();
 			result = result.filter((e) => e.name.toLowerCase().includes(term));
@@ -858,6 +961,7 @@ export function EntityManagement() {
 		typeFilter,
 		orgFilter,
 		accessFilter,
+		usageFilter,
 		searchTerm,
 		sortBy,
 		sortAsc,
@@ -866,12 +970,14 @@ export function EntityManagement() {
 	const activeFilterCount =
 		(typeFilter !== "all" ? 1 : 0) +
 		(orgFilter !== "all" ? 1 : 0) +
-		(accessFilter !== "all" ? 1 : 0);
+		(accessFilter !== "all" ? 1 : 0) +
+		(usageFilter !== "all" ? 1 : 0);
 
 	const handleClearFilters = () => {
 		setTypeFilter("all");
 		setOrgFilter("all");
 		setAccessFilter("all");
+		setUsageFilter("all");
 	};
 
 	const handleRefresh = () => {
@@ -913,6 +1019,311 @@ export function EntityManagement() {
 		setRelationshipFilter(null);
 	}, []);
 
+	// Delete workflow handlers
+	const handleDeleteWorkflow = useCallback(
+		async (workflowId: string) => {
+			setDeletingWorkflowId(workflowId);
+
+			try {
+				// First call without force — check for deactivation conflicts
+				const response = await authFetch(`/api/workflows/${workflowId}`, {
+					method: "DELETE",
+					headers: { "Content-Type": "application/json" },
+					body: JSON.stringify({}),
+				});
+
+				if (response.status === 409) {
+					// Workflow has dependencies/history — show deactivation dialog
+					const conflict = await response.json();
+					setPendingDeactivations(conflict.pending_deactivations ?? []);
+					setAvailableReplacements(conflict.available_replacements ?? []);
+					setDeleteDialogOpen(true);
+				} else if (response.ok) {
+					// Deleted successfully (no conflicts)
+					toast.success("Workflow deleted");
+					refetchWorkflows();
+					setDeletingWorkflowId(null);
+				} else {
+					const error = await response.json();
+					toast.error(error.detail || "Failed to delete workflow");
+					setDeletingWorkflowId(null);
+				}
+			} catch {
+				toast.error("Failed to delete workflow");
+				setDeletingWorkflowId(null);
+			}
+		},
+		[refetchWorkflows],
+	);
+
+	const handleForceDeactivate = useCallback(async () => {
+		// Determine which workflow IDs to process: bulk conflicts or single delete
+		const idsToProcess = conflictWorkflowIds.length > 0
+			? conflictWorkflowIds
+			: deletingWorkflowId ? [deletingWorkflowId] : [];
+
+		if (idsToProcess.length === 0) return;
+
+		setDeleteDialogOpen(false);
+		setUpdatingMessage(`Deleting ${idsToProcess.length} workflow${idsToProcess.length > 1 ? "s" : ""}...`);
+		setIsUpdating(true);
+
+		let successCount = 0;
+		const deletedIds: string[] = [];
+
+		try {
+			for (const id of idsToProcess) {
+				try {
+					const response = await authFetch(`/api/workflows/${id}`, {
+						method: "DELETE",
+						headers: { "Content-Type": "application/json" },
+						body: JSON.stringify({ force_deactivation: true }),
+					});
+					if (response.ok) {
+						successCount++;
+						deletedIds.push(id);
+					} else {
+						const error = await response.json();
+						toast.error(error.detail || "Failed to delete workflow");
+					}
+				} catch {
+					toast.error("Failed to delete workflow");
+				}
+			}
+
+			if (successCount > 0) {
+				toast.success(`Deleted ${successCount} workflow${successCount > 1 ? "s" : ""}`);
+				refetchWorkflows();
+				setSelectedIds((prev) => {
+					const s = new Set(prev);
+					for (const id of deletedIds) s.delete(id);
+					return s;
+				});
+			}
+		} finally {
+			setDeletingWorkflowId(null);
+			setConflictWorkflowIds([]);
+			setPendingDeactivations([]);
+			setAvailableReplacements([]);
+			setIsUpdating(false);
+		}
+	}, [conflictWorkflowIds, deletingWorkflowId, refetchWorkflows]);
+
+	const handleApplyReplacements = useCallback(
+		async (replacements: Record<string, string>) => {
+			// Determine which workflow IDs to process: bulk conflicts or single delete
+			const idsToProcess = conflictWorkflowIds.length > 0
+				? conflictWorkflowIds
+				: deletingWorkflowId ? [deletingWorkflowId] : [];
+
+			if (idsToProcess.length === 0) return;
+
+			setDeleteDialogOpen(false);
+			setUpdatingMessage(`Deleting ${idsToProcess.length} workflow${idsToProcess.length > 1 ? "s" : ""}...`);
+			setIsUpdating(true);
+
+			let successCount = 0;
+			const deletedIds: string[] = [];
+
+			try {
+				for (const id of idsToProcess) {
+					try {
+						const response = await authFetch(`/api/workflows/${id}`, {
+							method: "DELETE",
+							headers: { "Content-Type": "application/json" },
+							body: JSON.stringify({ replacements }),
+						});
+						if (response.ok) {
+							successCount++;
+							deletedIds.push(id);
+						} else {
+							const error = await response.json();
+							toast.error(error.detail || "Failed to delete workflow");
+						}
+					} catch {
+						toast.error("Failed to delete workflow");
+					}
+				}
+
+				if (successCount > 0) {
+					toast.success(
+						`Deleted ${successCount} workflow${successCount > 1 ? "s" : ""} with replacements applied`,
+					);
+					refetchWorkflows();
+					setSelectedIds((prev) => {
+						const s = new Set(prev);
+						for (const id of deletedIds) s.delete(id);
+						return s;
+					});
+				}
+			} finally {
+				setDeletingWorkflowId(null);
+				setConflictWorkflowIds([]);
+				setPendingDeactivations([]);
+				setAvailableReplacements([]);
+				setIsUpdating(false);
+			}
+		},
+		[conflictWorkflowIds, deletingWorkflowId, refetchWorkflows],
+	);
+
+	const handleCancelDelete = useCallback(() => {
+		setDeleteDialogOpen(false);
+		setDeletingWorkflowId(null);
+		setConflictWorkflowIds([]);
+		setPendingDeactivations([]);
+		setAvailableReplacements([]);
+	}, []);
+
+	// Unified delete handler that dispatches by entity type
+	const handleDeleteEntity = useCallback(
+		(entityId: string, entityName: string, entityType: EntityType) => {
+			if (entityType === "workflow") {
+				handleDeleteWorkflow(entityId);
+				return;
+			}
+			// For non-workflow types, find the entity to get slug if it's an app
+			const entity = allEntities.find((e) => e.id === entityId);
+			const slug =
+				entityType === "app" && entity
+					? (entity.original as ApplicationPublic).slug
+					: undefined;
+			setConfirmDeleteEntities([{ id: entityId, name: entityName, entityType, slug }]);
+			setConfirmDeleteOpen(true);
+		},
+		[handleDeleteWorkflow, allEntities],
+	);
+
+	// Bulk delete handler
+	const handleBulkDelete = useCallback(() => {
+		const selectedEntities = allEntities.filter((e) => selectedIds.has(e.id));
+
+		const entitiesToDelete = selectedEntities.map((e) => ({
+			id: e.id,
+			name: e.name,
+			entityType: e.entityType,
+			slug: e.entityType === "app" ? (e.original as ApplicationPublic).slug : undefined,
+		}));
+
+		setConfirmDeleteEntities(entitiesToDelete);
+		setConfirmDeleteOpen(true);
+	}, [allEntities, selectedIds]);
+
+	// Execute confirmed deletes
+	const handleConfirmDelete = useCallback(async () => {
+		setIsDeleting(true);
+		const totalCount = confirmDeleteEntities.length;
+		// Capture before closing the dialog
+		const nonWorkflows = confirmDeleteEntities.filter((e) => e.entityType !== "workflow");
+		const workflows = confirmDeleteEntities.filter((e) => e.entityType === "workflow");
+
+		// Close the confirm dialog immediately and show progress in the selection bar
+		setConfirmDeleteOpen(false);
+		setConfirmDeleteEntities([]);
+		setIsDeleting(false);
+		setUpdatingMessage(`Deleting ${totalCount} ${totalCount === 1 ? "entity" : "entities"}...`);
+		setIsUpdating(true);
+
+		let successCount = 0;
+		let failCount = 0;
+		const deletedIds: string[] = [];
+
+		try {
+			if (nonWorkflows.length > 0) {
+				const results = await Promise.allSettled(
+					nonWorkflows.map(async (entity) => {
+						let url: string;
+						if (entity.entityType === "form") {
+							url = `/api/forms/${entity.id}`;
+						} else if (entity.entityType === "agent") {
+							url = `/api/agents/${entity.id}`;
+						} else if (entity.entityType === "app") {
+							url = `/api/applications/${entity.slug}`;
+						} else {
+							return;
+						}
+						const response = await authFetch(url, { method: "DELETE" });
+						if (!response.ok) {
+							throw new Error(`Failed to delete ${entity.name}`);
+						}
+						deletedIds.push(entity.id);
+					}),
+				);
+
+				for (const result of results) {
+					if (result.status === "fulfilled") successCount++;
+					else failCount++;
+				}
+			}
+
+			// Process workflows sequentially — they may share source files, so
+			// parallel deletes cause race conditions (read-modify-write conflicts)
+			if (workflows.length > 0) {
+				const allConflictDeactivations: components["schemas"]["PendingDeactivation"][] = [];
+				const allConflictReplacements: components["schemas"]["AvailableReplacement"][] = [];
+				const conflictIds: string[] = [];
+
+				for (const wf of workflows) {
+					try {
+						const response = await authFetch(`/api/workflows/${wf.id}`, {
+							method: "DELETE",
+							headers: { "Content-Type": "application/json" },
+							body: JSON.stringify({}),
+						});
+
+						if (response.status === 409) {
+							const conflict = await response.json();
+							conflictIds.push(wf.id);
+							allConflictDeactivations.push(
+								...(conflict.pending_deactivations ?? []),
+							);
+							allConflictReplacements.push(
+								...(conflict.available_replacements ?? []),
+							);
+						} else if (response.ok) {
+							successCount++;
+							deletedIds.push(wf.id);
+						} else {
+							failCount++;
+						}
+					} catch {
+						failCount++;
+					}
+				}
+
+				// If there are conflicts, show a single combined deactivation dialog
+				if (conflictIds.length > 0) {
+					setConflictWorkflowIds(conflictIds);
+					setPendingDeactivations(allConflictDeactivations);
+					setAvailableReplacements(allConflictReplacements);
+					setDeleteDialogOpen(true);
+				}
+			}
+
+			if (successCount > 0) {
+				toast.success(
+					`Deleted ${successCount} of ${totalCount} ${totalCount === 1 ? "entity" : "entities"}`,
+				);
+				refetchForms();
+				refetchAgents();
+				refetchApps();
+				refetchWorkflows();
+				setSelectedIds((prev) => {
+					const next = new Set(prev);
+					for (const id of deletedIds) {
+						next.delete(id);
+					}
+					return next;
+				});
+			}
+			if (failCount > 0) {
+				toast.error(`Failed to delete ${failCount} ${failCount === 1 ? "entity" : "entities"}`);
+			}
+		} finally {
+			setIsUpdating(false);
+		}
+	}, [confirmDeleteEntities, refetchForms, refetchAgents, refetchApps, refetchWorkflows]);
+
 	const allSelected =
 		filteredEntities.length > 0 &&
 		filteredEntities.every((e) => selectedIds.has(e.id));
@@ -927,6 +1338,7 @@ export function EntityManagement() {
 
 	const handleOrgDrop = useCallback(
 		async (entityIds: string[], orgId: string | null) => {
+			setUpdatingMessage("Updating...");
 			setIsUpdating(true);
 			try {
 				for (const entityId of entityIds) {
@@ -971,6 +1383,7 @@ export function EntityManagement() {
 
 	const handleRoleDrop = useCallback(
 		async (entityIds: string[], roleIdOrAccessLevel: string) => {
+			setUpdatingMessage("Updating...");
 			setIsUpdating(true);
 			const isAccessLevel = roleIdOrAccessLevel === "authenticated";
 			const isClearRoles = roleIdOrAccessLevel === "clear-roles";
@@ -1170,6 +1583,8 @@ export function EntityManagement() {
 							setOrgFilter={setOrgFilter}
 							accessFilter={accessFilter}
 							setAccessFilter={setAccessFilter}
+							usageFilter={usageFilter}
+							setUsageFilter={setUsageFilter}
 							organizations={organizations ?? []}
 							activeFilterCount={activeFilterCount}
 							onClearFilters={handleClearFilters}
@@ -1215,18 +1630,29 @@ export function EntityManagement() {
 							)}
 							<span>
 								{isUpdating
-									? "Updating..."
+									? updatingMessage
 									: `${selectedIds.size} selected`}
 							</span>
 							{selectedIds.size > 0 && !isUpdating && (
-								<Button
-									variant="ghost"
-									size="sm"
-									className="h-6 px-2 text-xs"
-									onClick={() => setSelectedIds(new Set())}
-								>
-									Clear
-								</Button>
+								<>
+									<Button
+										variant="ghost"
+										size="sm"
+										className="h-6 px-2 text-xs"
+										onClick={() => setSelectedIds(new Set())}
+									>
+										Clear
+									</Button>
+									<Button
+										variant="ghost"
+										size="sm"
+										className="h-6 px-2 text-xs text-destructive hover:text-destructive hover:bg-destructive/10"
+										onClick={handleBulkDelete}
+									>
+										<Trash2 className="h-3 w-3 mr-1" />
+										Delete
+									</Button>
+								</>
 							)}
 						</div>
 					)}
@@ -1250,6 +1676,7 @@ export function EntityManagement() {
 											handleSelectEntity(entity.id, selected)
 										}
 										onShowRelationships={handleShowRelationships}
+										onDelete={handleDeleteEntity}
 										organizations={organizations ?? []}
 										selectedIds={selectedIds}
 										allEntities={allEntities}
@@ -1281,9 +1708,9 @@ export function EntityManagement() {
 				</div>
 
 				{/* Right Column: Drop Targets */}
-				<div className="lg:col-span-3 flex flex-col gap-4">
+				<div className="lg:col-span-3 flex flex-col gap-4 min-h-0">
 					{/* Organizations Section */}
-					<div className="max-h-[50%] flex flex-col">
+					<div className="flex-1 min-h-0 flex flex-col">
 						<div className="flex items-center gap-2 mb-3">
 							<Building2 className="h-5 w-5 text-muted-foreground" />
 							<h3 className="text-lg font-semibold">Organizations</h3>
@@ -1301,7 +1728,7 @@ export function EntityManagement() {
 					</div>
 
 					{/* Access Levels Section */}
-					<div className="max-h-[50%] flex flex-col">
+					<div className="flex-1 min-h-0 flex flex-col">
 						<div className="flex items-center gap-2 mb-3">
 							<Shield className="h-5 w-5 text-muted-foreground" />
 							<h3 className="text-lg font-semibold">Access Levels</h3>
@@ -1330,6 +1757,79 @@ export function EntityManagement() {
 				graphData={graphData ?? null}
 				isLoading={loadingGraph}
 			/>
+
+			{/* Workflow Deactivation Dialog (for delete confirmation) */}
+			<WorkflowDeactivationDialog
+				pendingDeactivations={pendingDeactivations}
+				availableReplacements={availableReplacements}
+				open={deleteDialogOpen}
+				onForceDeactivate={handleForceDeactivate}
+				onApplyReplacements={handleApplyReplacements}
+				onCancel={handleCancelDelete}
+			/>
+
+			{/* Confirm Delete Dialog */}
+			<Dialog open={confirmDeleteOpen} onOpenChange={(open) => {
+				if (!open && !isDeleting) {
+					setConfirmDeleteOpen(false);
+					setConfirmDeleteEntities([]);
+				}
+			}}>
+				<DialogContent>
+					<DialogHeader>
+						<DialogTitle className="flex items-center gap-2">
+							<AlertTriangle className="h-5 w-5 text-destructive" />
+							Confirm Delete
+						</DialogTitle>
+						<DialogDescription>
+							This action cannot be undone for workflows and apps. Forms and agents will be deactivated.
+						</DialogDescription>
+					</DialogHeader>
+					<div className="space-y-3">
+						<div className="space-y-2 max-h-60 overflow-y-auto">
+							{confirmDeleteEntities.map((entity) => {
+								const config = ENTITY_CONFIG[entity.entityType];
+								return (
+									<div
+										key={entity.id}
+										className="flex items-center gap-2 p-2 rounded border"
+									>
+										<Badge variant="outline" className={cn(config.color)}>
+											{config.label}
+										</Badge>
+										<span className="text-sm truncate">{entity.name}</span>
+									</div>
+								);
+							})}
+						</div>
+						{confirmDeleteEntities.some((e) => e.entityType === "app") && (
+							<p className="text-sm text-destructive">
+								Apps will be permanently deleted.
+							</p>
+						)}
+						<div className="flex justify-end gap-2 pt-2">
+							<Button
+								variant="outline"
+								onClick={() => {
+									setConfirmDeleteOpen(false);
+									setConfirmDeleteEntities([]);
+								}}
+								disabled={isDeleting}
+							>
+								Cancel
+							</Button>
+							<Button
+								variant="destructive"
+								onClick={handleConfirmDelete}
+								disabled={isDeleting}
+							>
+								{isDeleting && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
+								Delete {confirmDeleteEntities.length === 1 ? confirmDeleteEntities[0].name : `${confirmDeleteEntities.length} entities`}
+							</Button>
+						</div>
+					</div>
+				</DialogContent>
+			</Dialog>
 		</div>
 	);
 }

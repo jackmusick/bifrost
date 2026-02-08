@@ -1757,7 +1757,11 @@ export interface paths {
         get?: never;
         put?: never;
         post?: never;
-        delete?: never;
+        /**
+         * Delete a workflow
+         * @description Delete a workflow by removing its function from the source file. Returns 409 with deactivation details if the workflow has history or dependencies.
+         */
+        delete: operations["delete_workflow_api_workflows__workflow_id__delete"];
         options?: never;
         head?: never;
         /**
@@ -3121,22 +3125,22 @@ export interface paths {
          * Execute workflow via API key
          * @description Execute an endpoint-enabled workflow using an API key for authentication
          */
-        get: operations["execute_endpoint_api_endpoints__workflow_name__post"];
+        get: operations["execute_endpoint_api_endpoints__workflow_name__delete"];
         /**
          * Execute workflow via API key
          * @description Execute an endpoint-enabled workflow using an API key for authentication
          */
-        put: operations["execute_endpoint_api_endpoints__workflow_name__post"];
+        put: operations["execute_endpoint_api_endpoints__workflow_name__delete"];
         /**
          * Execute workflow via API key
          * @description Execute an endpoint-enabled workflow using an API key for authentication
          */
-        post: operations["execute_endpoint_api_endpoints__workflow_name__post"];
+        post: operations["execute_endpoint_api_endpoints__workflow_name__delete"];
         /**
          * Execute workflow via API key
          * @description Execute an endpoint-enabled workflow using an API key for authentication
          */
-        delete: operations["execute_endpoint_api_endpoints__workflow_name__post"];
+        delete: operations["execute_endpoint_api_endpoints__workflow_name__delete"];
         options?: never;
         head?: never;
         patch?: never;
@@ -8422,6 +8426,29 @@ export interface components {
             decorators: components["schemas"]["DecoratorInfo"][];
         };
         /**
+         * DeleteWorkflowRequest
+         * @description Request body for DELETE /api/workflows/{workflow_id}.
+         *
+         *     On first call (without flags), the endpoint performs a deactivation check
+         *     and returns 409 if the workflow has history or dependencies.
+         *     The client then re-calls with force_deactivation=True or replacements.
+         */
+        DeleteWorkflowRequest: {
+            /**
+             * Force Deactivation
+             * @description Skip deactivation protection and allow the workflow to be removed
+             * @default false
+             */
+            force_deactivation: boolean;
+            /**
+             * Replacements
+             * @description Map of workflow_id -> new_function_name to transfer identity before removal
+             */
+            replacements?: {
+                [key: string]: string;
+            } | null;
+        };
+        /**
          * DependencyGraphResponse
          * @description Complete dependency graph for visualization.
          */
@@ -11745,6 +11772,11 @@ export interface components {
             issuer: string;
             /** Account Name */
             account_name: string;
+            /**
+             * Is Existing
+             * @default false
+             */
+            is_existing: boolean;
         };
         /**
          * MFAStatusResponse
@@ -12166,15 +12198,29 @@ export interface components {
         };
         /**
          * OAuthCallbackRequest
-         * @description OAuth callback request (for when frontend handles callback).
+         * @description Request model for OAuth callback endpoint
          */
         OAuthCallbackRequest: {
-            /** Provider */
-            provider: string;
-            /** Code */
+            /**
+             * Code
+             * @description Authorization code from OAuth provider
+             */
             code: string;
-            /** State */
-            state: string;
+            /**
+             * State
+             * @description State parameter for CSRF protection
+             */
+            state?: string | null;
+            /**
+             * Redirect Uri
+             * @description Redirect URI used in authorization request
+             */
+            redirect_uri?: string | null;
+            /**
+             * Organization Id
+             * @description Organization ID for org-specific token storage (optional, for org overrides)
+             */
+            organization_id?: string | null;
         };
         /**
          * OAuthCallbackResponse
@@ -15744,7 +15790,7 @@ export interface components {
         };
         /**
          * UserCreate
-         * @description User creation request model.
+         * @description Input for creating a user.
          */
         UserCreate: {
             /**
@@ -15752,10 +15798,22 @@ export interface components {
              * Format: email
              */
             email: string;
-            /** Password */
-            password: string;
             /** Name */
             name?: string | null;
+            /** Password */
+            password?: string | null;
+            /**
+             * Is Active
+             * @default true
+             */
+            is_active: boolean;
+            /**
+             * Is Superuser
+             * @default false
+             */
+            is_superuser: boolean;
+            /** Organization Id */
+            organization_id?: string | null;
         };
         /**
          * UserFormsResponse
@@ -16452,6 +16510,12 @@ export interface components {
              */
             value: number;
             /**
+             * Used By Count
+             * @description Number of entities (forms, agents, apps) that reference this workflow
+             * @default 0
+             */
+            used_by_count: number;
+            /**
              * Source File Path
              * @description Full file path to the workflow source code
              */
@@ -16763,80 +16827,6 @@ export interface components {
             metadata?: components["schemas"]["WorkflowMetadata"] | null;
         };
         /**
-         * OAuthCallbackRequest
-         * @description Request model for OAuth callback endpoint
-         */
-        src__models__contracts__oauth__OAuthCallbackRequest: {
-            /**
-             * Code
-             * @description Authorization code from OAuth provider
-             */
-            code: string;
-            /**
-             * State
-             * @description State parameter for CSRF protection
-             */
-            state?: string | null;
-            /**
-             * Redirect Uri
-             * @description Redirect URI used in authorization request
-             */
-            redirect_uri?: string | null;
-            /**
-             * Organization Id
-             * @description Organization ID for org-specific token storage (optional, for org overrides)
-             */
-            organization_id?: string | null;
-        };
-        /**
-         * UserCreate
-         * @description Input for creating a user.
-         */
-        src__models__contracts__users__UserCreate: {
-            /**
-             * Email
-             * Format: email
-             */
-            email: string;
-            /** Name */
-            name?: string | null;
-            /** Password */
-            password?: string | null;
-            /**
-             * Is Active
-             * @default true
-             */
-            is_active: boolean;
-            /**
-             * Is Superuser
-             * @default false
-             */
-            is_superuser: boolean;
-            /** Organization Id */
-            organization_id?: string | null;
-        };
-        /**
-         * MFASetupResponse
-         * @description MFA setup response with secret.
-         */
-        src__routers__auth__MFASetupResponse: {
-            /** Secret */
-            secret: string;
-            /** Qr Code Uri */
-            qr_code_uri: string;
-            /** Provisioning Uri */
-            provisioning_uri: string;
-            /** Issuer */
-            issuer: string;
-            /** Account Name */
-            account_name: string;
-            /**
-             * Is Existing
-             * @default false
-             */
-            is_existing: boolean;
-        };
-        /**
          * MFAVerifyRequest
          * @description Request to verify MFA code during login.
          */
@@ -16852,6 +16842,49 @@ export interface components {
             trust_device: boolean;
             /** Device Name */
             device_name?: string | null;
+        };
+        /**
+         * UserCreate
+         * @description User creation request model.
+         */
+        src__routers__auth__UserCreate: {
+            /**
+             * Email
+             * Format: email
+             */
+            email: string;
+            /** Password */
+            password: string;
+            /** Name */
+            name?: string | null;
+        };
+        /**
+         * MFASetupResponse
+         * @description MFA setup response with secret.
+         */
+        src__routers__mfa__MFASetupResponse: {
+            /** Secret */
+            secret: string;
+            /** Qr Code Uri */
+            qr_code_uri: string;
+            /** Provisioning Uri */
+            provisioning_uri: string;
+            /** Issuer */
+            issuer: string;
+            /** Account Name */
+            account_name: string;
+        };
+        /**
+         * OAuthCallbackRequest
+         * @description OAuth callback request (for when frontend handles callback).
+         */
+        src__routers__oauth_sso__OAuthCallbackRequest: {
+            /** Provider */
+            provider: string;
+            /** Code */
+            code: string;
+            /** State */
+            state: string;
         };
         /**
          * OAuthProviderInfo
@@ -16966,7 +16999,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["src__routers__auth__MFASetupResponse"];
+                    "application/json": components["schemas"]["MFASetupResponse"];
                 };
             };
             /** @description Validation Error */
@@ -17181,7 +17214,7 @@ export interface operations {
         };
         requestBody: {
             content: {
-                "application/json": components["schemas"]["UserCreate"];
+                "application/json": components["schemas"]["src__routers__auth__UserCreate"];
             };
         };
         responses: {
@@ -17412,7 +17445,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["MFASetupResponse"];
+                    "application/json": components["schemas"]["src__routers__mfa__MFASetupResponse"];
                 };
             };
         };
@@ -17676,7 +17709,7 @@ export interface operations {
         };
         requestBody: {
             content: {
-                "application/json": components["schemas"]["OAuthCallbackRequest"];
+                "application/json": components["schemas"]["src__routers__oauth_sso__OAuthCallbackRequest"];
             };
         };
         responses: {
@@ -18127,7 +18160,7 @@ export interface operations {
         };
         requestBody: {
             content: {
-                "application/json": components["schemas"]["src__models__contracts__users__UserCreate"];
+                "application/json": components["schemas"]["UserCreate"];
             };
         };
         responses: {
@@ -19215,6 +19248,57 @@ export interface operations {
                 content: {
                     "application/json": components["schemas"]["WorkflowValidationResponse"];
                 };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    delete_workflow_api_workflows__workflow_id__delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                workflow_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: {
+            content: {
+                "application/json": components["schemas"]["DeleteWorkflowRequest"] | null;
+            };
+        };
+        responses: {
+            /** @description Workflow deleted successfully */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: string;
+                    };
+                };
+            };
+            /** @description Workflow not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Workflow has dependencies or history, confirmation required */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
             };
             /** @description Validation Error */
             422: {
@@ -21556,7 +21640,7 @@ export interface operations {
         };
         requestBody: {
             content: {
-                "application/json": components["schemas"]["src__models__contracts__oauth__OAuthCallbackRequest"];
+                "application/json": components["schemas"]["OAuthCallbackRequest"];
             };
         };
         responses: {
@@ -21651,7 +21735,7 @@ export interface operations {
             };
         };
     };
-    execute_endpoint_api_endpoints__workflow_name__post: {
+    execute_endpoint_api_endpoints__workflow_name__delete: {
         parameters: {
             query?: never;
             header: {
@@ -21684,7 +21768,7 @@ export interface operations {
             };
         };
     };
-    execute_endpoint_api_endpoints__workflow_name__post: {
+    execute_endpoint_api_endpoints__workflow_name__delete: {
         parameters: {
             query?: never;
             header: {
@@ -21717,7 +21801,7 @@ export interface operations {
             };
         };
     };
-    execute_endpoint_api_endpoints__workflow_name__post: {
+    execute_endpoint_api_endpoints__workflow_name__delete: {
         parameters: {
             query?: never;
             header: {
@@ -21750,7 +21834,7 @@ export interface operations {
             };
         };
     };
-    execute_endpoint_api_endpoints__workflow_name__post: {
+    execute_endpoint_api_endpoints__workflow_name__delete: {
         parameters: {
             query?: never;
             header: {

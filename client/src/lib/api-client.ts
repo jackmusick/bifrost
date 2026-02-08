@@ -128,8 +128,8 @@ function handleAuthFailure(): void {
 async function ensureValidToken(): Promise<boolean> {
 	const token = localStorage.getItem(ACCESS_TOKEN_KEY);
 
-	// No token at all - user needs to log in
-	if (!token) return false;
+	// No access token in localStorage, but HttpOnly refresh cookie may be valid
+	if (!token) return refreshAccessToken();
 
 	// Token is still valid - proceed
 	if (!isTokenExpiringSoon(token)) return true;

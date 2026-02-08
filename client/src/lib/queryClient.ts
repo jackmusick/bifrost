@@ -2,13 +2,20 @@
  * React Query client configuration
  */
 
-import { QueryClient } from "@tanstack/react-query";
+import { QueryClient, focusManager } from "@tanstack/react-query";
+
+// Use Page Visibility API so all interval-based polling pauses when the tab is hidden
+focusManager.setEventListener((handleFocus) => {
+	const onVisibilityChange = () => handleFocus(!document.hidden);
+	document.addEventListener("visibilitychange", onVisibilityChange);
+	return () => document.removeEventListener("visibilitychange", onVisibilityChange);
+});
 
 export const queryClient = new QueryClient({
 	defaultOptions: {
 		queries: {
-			// Don't refetch on window focus by default
-			refetchOnWindowFocus: false,
+			// Refetch when tab becomes visible again (works with focusManager above)
+			refetchOnWindowFocus: true,
 			// Disable retries for all queries
 			retry: false,
 			// No caching - always refetch fresh data

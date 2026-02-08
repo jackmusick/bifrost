@@ -20,7 +20,7 @@ from uuid import UUID
 from datetime import datetime
 
 from fastapi import APIRouter, HTTPException, Query, status
-from sqlalchemy import delete, distinct, func, or_, select
+from sqlalchemy import delete, distinct, func, or_, select, union_all
 
 # Import existing Pydantic models for API compatibility
 from src.models import (
@@ -28,6 +28,7 @@ from src.models import (
     CompatibleReplacement,
     CompatibleReplacementsResponse,
     DeactivateWorkflowResponse,
+    DeleteWorkflowRequest,
     EntityUsage,
     OrphanedWorkflowInfo,
     OrphanedWorkflowsResponse,
@@ -50,6 +51,7 @@ from src.models.orm.workflow_roles import WorkflowRole
 from src.models.orm.forms import Form, FormField
 from src.models.orm.applications import Application
 from src.models.orm.agents import Agent, AgentTool
+from src.models.orm.app_file_dependencies import AppFileDependency
 from src.models.orm.developer import DeveloperContext
 from src.models.orm.users import Role
 from src.services.workflow_validation import _extract_relative_path
@@ -68,7 +70,7 @@ router = APIRouter(prefix="/api/workflows", tags=["Workflows"])
 # =============================================================================
 
 
-def _convert_workflow_orm_to_schema(workflow: WorkflowORM) -> WorkflowMetadata:
+def _convert_workflow_orm_to_schema(workflow: WorkflowORM, used_by_count: int = 0) -> WorkflowMetadata:
     """Convert ORM model to Pydantic schema for API response."""
     from typing import Literal
     from src.models.contracts.workflows import ExecutableType
@@ -109,6 +111,7 @@ def _convert_workflow_orm_to_schema(workflow: WorkflowORM) -> WorkflowMetadata:
         cache_ttl_seconds=workflow.cache_ttl_seconds or 300,
         time_saved=workflow.time_saved or 0,
         value=float(workflow.value or 0.0),
+        used_by_count=used_by_count,
         source_file_path=workflow.path,
         relative_file_path=_extract_relative_path(workflow.path),
         created_at=workflow.created_at,
@@ -198,13 +201,84 @@ async def _get_app_workflow_ids(db: DbSession, app_id: UUID) -> set[UUID]:
     """
     Get all workflow IDs referenced by an app.
 
-    Note: The component engine has been removed. This function now returns
-    an empty set as apps no longer reference workflows through pages/components.
-    Code engine apps reference workflows through their code files, which is
-    not tracked in the database.
+    Queries the app_file_dependencies table for all workflow references
+    across all versions of the app.
     """
-    # Component engine removed - apps no longer have pages/components that reference workflows
-    return set()
+    from src.models.orm.app_file_dependencies import AppFileDependency
+    from src.models.orm.applications import AppFile, AppVersion
+
+    result = await db.execute(
+        select(AppFileDependency.dependency_id)
+        .join(AppFile, AppFileDependency.app_file_id == AppFile.id)
+        .join(AppVersion, AppFile.app_version_id == AppVersion.id)
+        .where(
+            AppVersion.application_id == app_id,
+            AppFileDependency.dependency_type == "workflow",
+        )
+        .distinct()
+    )
+    return {row[0] for row in result.all()}
+
+
+async def _compute_used_by_counts(db: DbSession, workflow_ids: list[UUID]) -> dict[UUID, int]:
+    """
+    Batch-compute how many entities reference each workflow.
+
+    Counts references from:
+    - forms.workflow_id (main execution workflow)
+    - forms.launch_workflow_id (pre-execution workflow)
+    - form_fields.data_provider_id (dynamic data providers)
+    - agent_tools.workflow_id (agent tool bindings)
+    - app_file_dependencies.dependency_id (app code references)
+
+    Returns a dict mapping workflow UUID -> count of referencing entities.
+    """
+    # Build individual reference queries. Form.workflow_id/launch_workflow_id
+    # are String(255) while others are proper UUID columns, so cast form
+    # columns to UUID for a consistent union.
+    from sqlalchemy.dialects.postgresql import UUID as PG_UUID
+
+    refs_form_wf = (
+        select(Form.workflow_id.cast(PG_UUID(as_uuid=True)).label("wf_id"))
+        .where(
+            Form.is_active == True,  # noqa: E712
+            Form.workflow_id.isnot(None),
+        )
+    )
+    refs_form_launch = (
+        select(Form.launch_workflow_id.cast(PG_UUID(as_uuid=True)).label("wf_id"))
+        .where(
+            Form.is_active == True,  # noqa: E712
+            Form.launch_workflow_id.isnot(None),
+        )
+    )
+    refs_form_dp = (
+        select(FormField.data_provider_id.label("wf_id"))
+        .where(FormField.data_provider_id.isnot(None))
+    )
+    refs_agent = (
+        select(AgentTool.workflow_id.label("wf_id"))
+    )
+    refs_app = (
+        select(AppFileDependency.dependency_id.label("wf_id"))
+    )
+
+    # Union all reference sources and count per workflow
+    all_refs = union_all(
+        refs_form_wf, refs_form_launch, refs_form_dp, refs_agent, refs_app
+    ).subquery("all_refs")
+
+    count_query = (
+        select(
+            all_refs.c.wf_id,
+            func.count().label("cnt"),
+        )
+        .where(all_refs.c.wf_id.in_(workflow_ids))
+        .group_by(all_refs.c.wf_id)
+    )
+
+    result = await db.execute(count_query)
+    return {row.wf_id: row.cnt for row in result.all()}
 
 
 # =============================================================================
@@ -335,11 +409,21 @@ async def list_workflows(
         result = await db.execute(query)
         workflows = result.scalars().all()
 
+        # Batch-compute used_by_count for all workflows in a single query.
+        # Counts references from: forms (workflow_id, launch_workflow_id),
+        # form_fields (data_provider_id), agent_tools, and app_file_dependencies.
+        workflow_ids = [w.id for w in workflows]
+        used_by_counts: dict[UUID, int] = {}
+        if workflow_ids:
+            used_by_counts = await _compute_used_by_counts(db, workflow_ids)
+
         # Convert ORM models to Pydantic schemas
         workflow_list = []
         for w in workflows:
             try:
-                workflow_list.append(_convert_workflow_orm_to_schema(w))
+                workflow_list.append(
+                    _convert_workflow_orm_to_schema(w, used_by_count=used_by_counts.get(w.id, 0))
+                )
             except Exception as e:
                 logger.error(f"Failed to convert workflow '{w.name}': {e}")
 
@@ -475,29 +559,38 @@ async def get_workflow_usage_stats(
         ]
 
         # =========================================================================
-        # Apps: Component engine has been removed
-        # Note: Apps no longer have pages/components that reference workflows.
-        # Code engine apps reference workflows through their code files, which is
-        # not tracked in the database.
+        # Apps: via app_file_dependencies table
         # =========================================================================
-        apps_query = select(
-            Application.id,
-            Application.name,
-        ).order_by(Application.name)
+        from src.models.orm.app_file_dependencies import AppFileDependency
+        from src.models.orm.applications import AppFile, AppVersion
+
+        apps_query = (
+            select(
+                Application.id,
+                Application.name,
+                func.count(distinct(AppFileDependency.dependency_id)).label("workflow_count"),
+            )
+            .outerjoin(AppVersion, AppVersion.application_id == Application.id)
+            .outerjoin(AppFile, AppFile.app_version_id == AppVersion.id)
+            .outerjoin(
+                AppFileDependency,
+                (AppFileDependency.app_file_id == AppFile.id)
+                & (AppFileDependency.dependency_type == "workflow"),
+            )
+            .group_by(Application.id, Application.name)
+            .order_by(Application.name)
+        )
         if org_filter:
             apps_query = apps_query.where(Application.organization_id == org_filter)
 
         apps_result = await db.execute(apps_query)
-        apps_list = apps_result.all()
-
-        # All apps return 0 workflow count since component engine is removed
         apps: list[EntityUsage] = [
             EntityUsage(
-                id=str(app_row.id),
-                name=app_row.name,
-                workflow_count=0,
+                id=str(row.id),
+                name=row.name,
+                workflow_count=row.workflow_count or 0,
             )
-            for app_row in apps_list
+            for row in apps_result.all()
         ]
 
         return WorkflowUsageStats(forms=forms, apps=apps, agents=agents)
@@ -1383,3 +1476,172 @@ async def remove_role_from_workflow(
         )
 
     logger.info(f"Removed role {role_id} from workflow {workflow_id}")
+
+
+@router.delete(
+    "/{workflow_id}",
+    summary="Delete a workflow",
+    description="Delete a workflow by removing its function from the source file. "
+                "Returns 409 with deactivation details if the workflow has history or dependencies.",
+    responses={
+        200: {"description": "Workflow deleted successfully"},
+        404: {"description": "Workflow not found"},
+        409: {"description": "Workflow has dependencies or history, confirmation required"},
+    },
+)
+async def delete_workflow(
+    workflow_id: UUID,
+    user: CurrentSuperuser,
+    db: DbSession,
+    request: DeleteWorkflowRequest | None = None,
+) -> dict[str, str]:
+    """Delete a workflow by removing its function from the workspace source file.
+
+    Two-phase flow (same pattern as the code editor's deactivation protection):
+    1. First call (no flags): checks for dependencies/history and returns 409
+       with PendingDeactivation details if any are found.
+    2. Second call (with force_deactivation=True or replacements): performs the
+       actual deletion — either deleting the file (single-function) or removing
+       the function block (multi-function file).
+    """
+    from fastapi.responses import JSONResponse
+    from src.services.file_storage.deactivation import DeactivationProtectionService
+    from src.services.file_storage.code_surgery import remove_function_from_source
+
+    if request is None:
+        request = DeleteWorkflowRequest()
+
+    # 1. Find the workflow
+    result = await db.execute(
+        select(WorkflowORM).where(WorkflowORM.id == workflow_id)
+    )
+    workflow = result.scalar_one_or_none()
+
+    if not workflow:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Workflow with ID '{workflow_id}' not found",
+        )
+
+    if not workflow.path:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Workflow has no source file path — cannot delete",
+        )
+
+    # 2. Run deactivation check (unless force or replacements provided)
+    if not request.force_deactivation and not request.replacements:
+        deactivation_svc = DeactivationProtectionService(db)
+
+        # We're removing this one function, so the "new" function names are
+        # all existing functions at this path minus the target
+        from src.models import Workflow as WfORM
+        path_wf_result = await db.execute(
+            select(WfORM).where(
+                WfORM.path == workflow.path,
+                WfORM.is_active == True,  # noqa: E712
+            )
+        )
+        path_workflows = list(path_wf_result.scalars().all())
+        remaining_names = {
+            wf.function_name for wf in path_workflows
+            if wf.id != workflow_id
+        }
+
+        # Build decorator info for remaining functions (for replacement suggestions)
+        new_decorator_info: dict[str, tuple[str, str]] = {}
+        for wf in path_workflows:
+            if wf.id != workflow_id:
+                new_decorator_info[wf.function_name] = (
+                    wf.type or "workflow",
+                    wf.name,
+                )
+
+        pending, replacements_available = await deactivation_svc.detect_pending_deactivations(
+            path=workflow.path,
+            new_function_names=remaining_names,
+            new_decorator_info=new_decorator_info,
+        )
+
+        # Only return 409 when there are actual entity references (affected_entities).
+        # Execution history alone is not a conflict — it's linked by workflow_name
+        # and doesn't break when the record is deactivated.
+        conflicted = [pd for pd in pending if pd.affected_entities]
+        if conflicted:
+            from src.models.contracts.editor import (
+                PendingDeactivation,
+                AvailableReplacement,
+                AffectedEntity,
+            )
+
+            conflict_response = {
+                "reason": "workflows_would_deactivate",
+                "message": f"Workflow '{workflow.name}' has dependencies that need resolution.",
+                "pending_deactivations": [
+                    PendingDeactivation(
+                        id=pd.id,
+                        name=pd.name,
+                        function_name=pd.function_name,
+                        path=pd.path,
+                        description=pd.description,
+                        decorator_type=pd.decorator_type,
+                        has_executions=pd.has_executions,
+                        last_execution_at=pd.last_execution_at,
+                        endpoint_enabled=pd.endpoint_enabled,
+                        affected_entities=[
+                            AffectedEntity(**e) for e in pd.affected_entities
+                        ],
+                    ).model_dump()
+                    for pd in conflicted
+                ],
+                "available_replacements": [
+                    AvailableReplacement(
+                        function_name=r.function_name,
+                        name=r.name,
+                        decorator_type=r.decorator_type,
+                        similarity_score=r.similarity_score,
+                    ).model_dump()
+                    for r in replacements_available
+                ],
+            }
+            return JSONResponse(status_code=409, content=conflict_response)
+
+    # 3. Apply replacements if provided
+    if request.replacements:
+        deactivation_svc = DeactivationProtectionService(db)
+        await deactivation_svc.apply_workflow_replacements(request.replacements)
+
+    # 4. Perform the actual file surgery
+    from src.services.file_storage import FileStorageService
+
+    file_svc = FileStorageService(db)
+
+    # Read the current file content — workflow.code stores the source snapshot,
+    # but we read from storage for the authoritative version
+    try:
+        content_bytes, _ = await file_svc.read_file(workflow.path)
+        source_content = content_bytes.decode("utf-8", errors="replace")
+    except FileNotFoundError:
+        # File already gone — just deactivate the workflow record
+        workflow.is_active = False
+        await db.commit()
+        return {"status": "deleted", "detail": "Source file not found, workflow deactivated"}
+
+    # Determine: single-function file or multi-function file
+    new_source = remove_function_from_source(source_content, workflow.function_name)
+
+    if new_source is None:
+        # Only function in file — delete the entire file
+        await file_svc.delete_file(workflow.path)
+        logger.info(f"Deleted file {workflow.path} (contained only workflow '{workflow.name}')")
+    else:
+        # Multi-function file — write back without the removed function
+        await file_svc.write_file(
+            path=workflow.path,
+            content=new_source.encode("utf-8"),
+            force_deactivation=True,
+        )
+        logger.info(f"Removed function '{workflow.function_name}' from {workflow.path}")
+
+    await db.commit()
+    return {"status": "deleted", "detail": f"Workflow '{workflow.name}' has been removed"}

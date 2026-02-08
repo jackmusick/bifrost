@@ -97,6 +97,9 @@ class WorkflowMetadata(BaseModel):
     time_saved: int = Field(default=0, description="Minutes saved per execution")
     value: float = Field(default=0.0, description="Flexible value unit (e.g., cost savings, revenue)")
 
+    # Dependency tracking
+    used_by_count: int = Field(default=0, description="Number of entities (forms, agents, apps) that reference this workflow")
+
     # Source tracking
     source_file_path: str | None = Field(default=None, description="Full file path to the workflow source code")
     relative_file_path: str | None = Field(default=None, description="Workspace-relative file path with /workspace/ prefix (e.g., '/workspace/workflows/my_workflow.py')")
@@ -331,3 +334,25 @@ class WorkflowRolesResponse(BaseModel):
 class AssignRolesToWorkflowRequest(BaseModel):
     """Request model for assigning roles to a workflow."""
     role_ids: list[str] = Field(..., min_length=1, description="List of role IDs to assign")
+
+
+# ==================== WORKFLOW DELETE ====================
+
+
+class DeleteWorkflowRequest(BaseModel):
+    """Request body for DELETE /api/workflows/{workflow_id}.
+
+    On first call (without flags), the endpoint performs a deactivation check
+    and returns 409 if the workflow has history or dependencies.
+    The client then re-calls with force_deactivation=True or replacements.
+    """
+    force_deactivation: bool = Field(
+        default=False,
+        description="Skip deactivation protection and allow the workflow to be removed"
+    )
+    replacements: dict[str, str] | None = Field(
+        default=None,
+        description="Map of workflow_id -> new_function_name to transfer identity before removal"
+    )
+
+    model_config = ConfigDict(from_attributes=True)

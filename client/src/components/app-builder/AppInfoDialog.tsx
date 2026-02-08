@@ -6,7 +6,7 @@
  */
 
 import { useEffect, useState } from "react";
-import { useForm } from "react-hook-form";
+import { useForm, useWatch } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import * as z from "zod";
 import { Loader2, Check, ChevronsUpDown, X } from "lucide-react";
@@ -139,7 +139,7 @@ export function AppInfoDialog({
 		},
 	});
 
-	const accessLevel = form.watch("access_level");
+	const accessLevel = useWatch({ control: form.control, name: "access_level" });
 
 	// Load existing app data when editing
 	useEffect(() => {
@@ -152,7 +152,6 @@ export function AppInfoDialog({
 				access_level: (existingApp.access_level as "authenticated" | "role_based") || "authenticated",
 				role_ids: existingApp.role_ids ?? [],
 			});
-			setSlugManuallyEdited(true); // Don't auto-generate slug when editing
 		} else if (!isEditing && open) {
 			form.reset({
 				name: "",
@@ -162,7 +161,6 @@ export function AppInfoDialog({
 				access_level: "role_based",
 				role_ids: [],
 			});
-			setSlugManuallyEdited(false);
 		}
 	}, [existingApp, isEditing, form, open, defaultOrgId]);
 
@@ -264,7 +262,7 @@ export function AppInfoDialog({
 	};
 
 	const isPending = createApplication.isPending || updateApplication.isPending;
-	const selectedRoleIds = form.watch("role_ids");
+	const selectedRoleIds = useWatch({ control: form.control, name: "role_ids" });
 
 	return (
 		<Dialog open={open} onOpenChange={handleClose}>

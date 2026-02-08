@@ -288,7 +288,7 @@ class AppIndexer:
         actual_file_id = result.scalar_one()
 
         # Sync dependencies for this file (uses transformed source with UUIDs)
-        await sync_file_dependencies(self.db, actual_file_id, transformed_source)
+        await sync_file_dependencies(self.db, actual_file_id, transformed_source, app.organization_id)
 
         logger.debug(f"Indexed app file: {relative_path} in app {slug}")
         return False
@@ -537,7 +537,7 @@ class AppIndexer:
             actual_file_id = result.scalar_one()
 
             # Sync dependencies
-            await sync_file_dependencies(self.db, actual_file_id, transformed_source)
+            await sync_file_dependencies(self.db, actual_file_id, transformed_source, app.organization_id)
 
         # Create diagnostics for unresolved refs if any
         if all_unresolved_refs:

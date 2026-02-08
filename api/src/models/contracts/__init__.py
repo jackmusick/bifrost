@@ -212,6 +212,7 @@ from src.models.contracts.workflows import (
     WorkflowValidationResponse,
     EntityUsage,
     WorkflowUsageStats,
+    DeleteWorkflowRequest,
 )
 
 # Data Providers
@@ -796,6 +797,7 @@ __all__ = [
     "WorkflowUsageStats",
     "WorkflowRolesResponse",
     "AssignRolesToWorkflowRequest",
+    "DeleteWorkflowRequest",
     "DataProviderRequest",
     "DataProviderOption",
     "DataProviderResponse",

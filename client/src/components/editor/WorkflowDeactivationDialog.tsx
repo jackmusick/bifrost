@@ -160,7 +160,7 @@ export function WorkflowDeactivationDialog({
 
 	return (
 		<Dialog open={open} onOpenChange={(open) => !open && onCancel()}>
-			<DialogContent className="sm:max-w-[700px] max-h-[80vh] overflow-hidden flex flex-col">
+			<DialogContent className="z-[100] sm:max-w-[700px] max-h-[80vh] overflow-hidden flex flex-col">
 				<DialogHeader>
 					<DialogTitle className="flex items-center gap-2">
 						<AlertTriangle className="h-5 w-5 text-amber-500" />
@@ -269,7 +269,7 @@ export function WorkflowDeactivationDialog({
 											<SelectTrigger className="w-full">
 												<SelectValue placeholder="Select a replacement function..." />
 											</SelectTrigger>
-											<SelectContent>
+											<SelectContent className="z-[101]">
 												{compatibleReplacements
 													.sort(
 														(a, b) =>

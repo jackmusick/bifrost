@@ -1,6 +1,8 @@
 import {
 	createContext,
+	useCallback,
 	useContext,
+	useMemo,
 	useState,
 	useEffect,
 	useRef,
@@ -54,9 +56,9 @@ export function OrgScopeProvider({ children }: { children: ReactNode }) {
 	const [refreshTrigger, setRefreshTrigger] = useState(0);
 
 	// Function to trigger a branding refresh
-	const refreshBranding = () => {
+	const refreshBranding = useCallback(() => {
 		setRefreshTrigger((prev) => prev + 1);
-	};
+	}, []);
 
 	// Persist to localStorage when scope changes
 	useEffect(() => {
@@ -157,19 +159,22 @@ export function OrgScopeProvider({ children }: { children: ReactNode }) {
 
 	const isGlobalScope = scope.type === "global";
 
+	const value = useMemo(
+		() => ({
+			scope,
+			setScope,
+			isGlobalScope,
+			brandingLoaded,
+			logoLoaded,
+			squareLogoUrl,
+			rectangleLogoUrl,
+			refreshBranding,
+		}),
+		[scope, setScope, isGlobalScope, brandingLoaded, logoLoaded, squareLogoUrl, rectangleLogoUrl, refreshBranding],
+	);
+
 	return (
-		<OrgScopeContext.Provider
-			value={{
-				scope,
-				setScope,
-				isGlobalScope,
-				brandingLoaded,
-				logoLoaded,
-				squareLogoUrl,
-				rectangleLogoUrl,
-				refreshBranding,
-			}}
-		>
+		<OrgScopeContext.Provider value={value}>
 			{children}
 		</OrgScopeContext.Provider>
 	);

@@ -46,7 +46,7 @@ export function WorkflowIdConflictDialog({
 }: WorkflowIdConflictDialogProps) {
 	return (
 		<Dialog open={open} onOpenChange={(open) => !open && onCancel()}>
-			<DialogContent className="sm:max-w-[600px]">
+			<DialogContent className="z-[100] sm:max-w-[600px]">
 				<DialogHeader>
 					<DialogTitle className="flex items-center gap-2">
 						<AlertTriangle className="h-5 w-5 text-yellow-500" />

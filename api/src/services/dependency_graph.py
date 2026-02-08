@@ -228,18 +228,18 @@ class DependencyGraphService:
         """
         Check if an application uses a specific workflow.
 
-        Uses the app_file_dependencies table to check if any file in the app's
-        active version references this workflow via useWorkflow() hook.
+        Uses the app_file_dependencies table to check if any file in any
+        version of the app references this workflow via useWorkflow() hook.
+        Checks all versions (not just active) for consistency with
+        _get_dependencies().
         """
-        if not app.active_version_id:
-            return False
-
-        # Query the dependencies table for this workflow reference
+        # Query the dependencies table across all versions of this app
         result = await self.db.execute(
             select(AppFileDependency.id)
             .join(AppFile, AppFileDependency.app_file_id == AppFile.id)
+            .join(AppVersion, AppFile.app_version_id == AppVersion.id)
             .where(
-                AppFile.app_version_id == app.active_version_id,
+                AppVersion.application_id == app.id,
                 AppFileDependency.dependency_type == "workflow",
                 AppFileDependency.dependency_id == workflow_id,
             )
@@ -337,16 +337,12 @@ class DependencyGraphService:
             for form_id in forms_result.scalars().all():
                 dependencies.append(("form", form_id, "used_by"))
 
-            # Check apps that might reference this workflow (via pages/components)
+            # Check apps that might reference this workflow (via code file dependencies)
             # This is expensive but dependency graph is rarely called
-            apps_result = await self.db.execute(
-                select(Application).options(selectinload(Application.active_version))
-            )
+            apps_result = await self.db.execute(select(Application))
             for app in apps_result.scalars().all():
-                if app.active_version_id:
-                    # Check if this app uses the workflow
-                    if await self._app_uses_workflow(app, entity_id):
-                        dependencies.append(("app", app.id, "used_by"))
+                if await self._app_uses_workflow(app, entity_id):
+                    dependencies.append(("app", app.id, "used_by"))
 
             # Check agents directly (via agent_tools)
             result = await self.db.execute(

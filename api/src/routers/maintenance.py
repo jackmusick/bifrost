@@ -34,10 +34,9 @@ from src.models.orm import (
     AppFile,
     AppFileDependency,
     Application,
-    Form,
     Workflow,
 )
-from src.services.app_dependencies import parse_dependencies
+from src.services.app_dependencies import sync_file_dependencies
 from src.services.notification_service import get_notification_service
 
 logger = logging.getLogger(__name__)
@@ -420,16 +419,10 @@ async def scan_app_dependencies(
     Returns:
         AppDependencyScanResponse with rebuild results
     """
-    from sqlalchemy import delete as sql_delete
-
     from src.models.orm.applications import AppVersion
 
     try:
-        # Step 1: Clear all existing app file dependencies
-        await db.execute(sql_delete(AppFileDependency))
-        logger.info("Cleared existing AppFileDependency records")
-
-        # Step 2: Get all app files with their app info
+        # Step 1: Get all app files with their app info
         files_result = await db.execute(
             select(AppFile, Application)
             .join(AppVersion, AppFile.app_version_id == AppVersion.id)
@@ -446,65 +439,50 @@ async def scan_app_dependencies(
             apps_seen.add(str(app.id))
             files_scanned += 1
 
-            # Parse dependencies from source code
             if not file.source:
                 continue
 
-            dependencies = parse_dependencies(file.source)
+            # Step 2: Sync dependencies using DB-aware resolution
+            # This deletes existing deps for the file and inserts new ones
+            count = await sync_file_dependencies(
+                db, file.id, file.source, app.organization_id
+            )
+            total_deps_rebuilt += count
 
-            for dep_type, dep_id in dependencies:
-                # Step 3: Insert new dependency record
-                dependency = AppFileDependency(
-                    app_file_id=file.id,
-                    dependency_type=dep_type,
-                    dependency_id=dep_id,
+        # Step 3: Validate — check for dependencies referencing non-existent workflows
+        all_deps_result = await db.execute(
+            select(
+                AppFileDependency.dependency_type,
+                AppFileDependency.dependency_id,
+                AppFile.path,
+                Application.id.label("app_id"),
+                Application.name.label("app_name"),
+                Application.slug.label("app_slug"),
+            )
+            .join(AppFile, AppFileDependency.app_file_id == AppFile.id)
+            .join(AppVersion, AppFile.app_version_id == AppVersion.id)
+            .join(Application, AppVersion.application_id == Application.id)
+        )
+
+        for row in all_deps_result.all():
+            # Check if the referenced workflow exists and is active
+            wf_result = await db.execute(
+                select(Workflow.id).where(
+                    Workflow.id == row.dependency_id,
+                    Workflow.is_active.is_(True),
                 )
-                db.add(dependency)
-                total_deps_rebuilt += 1
-
-                # Step 4: Check if the referenced entity exists
-                if dep_type == "workflow":
-                    # Workflows are in Workflow table with type='workflow'
-                    result = await db.execute(
-                        select(Workflow.id).where(
-                            Workflow.id == dep_id,
-                            Workflow.type == "workflow",
-                        )
+            )
+            if wf_result.scalar_one_or_none() is None:
+                all_issues.append(
+                    AppDependencyIssue(
+                        app_id=str(row.app_id),
+                        app_name=row.app_name,
+                        app_slug=row.app_slug,
+                        file_path=row.path,
+                        dependency_type=row.dependency_type,
+                        dependency_id=str(row.dependency_id),
                     )
-                    exists = result.scalar_one_or_none() is not None
-
-                elif dep_type == "form":
-                    # Forms are in their own table
-                    result = await db.execute(
-                        select(Form.id).where(Form.id == dep_id)
-                    )
-                    exists = result.scalar_one_or_none() is not None
-
-                elif dep_type == "data_provider":
-                    # Data providers are in Workflow table with type='data_provider'
-                    result = await db.execute(
-                        select(Workflow.id).where(
-                            Workflow.id == dep_id,
-                            Workflow.type == "data_provider",
-                        )
-                    )
-                    exists = result.scalar_one_or_none() is not None
-
-                else:
-                    # Unknown dependency type, still record it but skip validation
-                    continue
-
-                if not exists:
-                    all_issues.append(
-                        AppDependencyIssue(
-                            app_id=str(app.id),
-                            app_name=app.name,
-                            app_slug=app.slug,
-                            file_path=file.path,
-                            dependency_type=dep_type,
-                            dependency_id=str(dep_id),
-                        )
-                    )
+                )
 
         # Commit all the new dependency records
         await db.commit()

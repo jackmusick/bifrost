@@ -72,6 +72,7 @@ Clarify with the user:
 3. **If webhook:** Get sample payload
 4. **What integrations?** Use `list_integrations` to verify availability
 5. **Error handling requirements?**
+6. **If migrating from Rewst:** Use `/rewst-migration` skill for cutover guidance
 
 ## MCP Tools Reference
 
@@ -87,6 +88,9 @@ Clarify with the user:
 - `get_app_schema` - App structure documentation
 - `get_data_provider_schema` - Data provider patterns
 - `get_agent_schema` - Agent structure and channels
+- `list_event_sources` - List event sources (webhooks, schedules)
+- `get_event_source` - Get event source details
+- `list_webhook_adapters` - List available webhook adapters
 
 ### Creation (Auto-Validating)
 - `create_workflow` - Create workflow, tool, or data provider
@@ -100,6 +104,15 @@ Clarify with the user:
 - `patch_content` - Surgical string replacement
 - `replace_content` - Replace entire file
 
+### Events
+- `list_event_subscriptions` - List subscriptions for an event source
+- `create_event_source` - Create event source (webhook or schedule)
+- `update_event_source` - Update event source
+- `delete_event_source` - Delete event source
+- `create_event_subscription` - Link event source to workflow
+- `update_event_subscription` - Update subscription
+- `delete_event_subscription` - Delete subscription
+
 ### Execution
 - `execute_workflow` - Execute by workflow ID
 - `list_executions` - List recent executions
@@ -109,6 +122,40 @@ Clarify with the user:
 - `list_organizations` - List all organizations
 - `get_organization` - Get org details
 - `list_tables` - List data tables
+
+## Triggering Workflows
+
+Three patterns for connecting triggers to workflows:
+
+### Schedule
+```
+1. create_event_source(name="Daily Report", source_type="schedule", cron_expression="0 9 * * *", timezone="America/New_York")
+2. create_event_subscription(source_id=<id>, workflow_id=<id>, input_mapping={"report_type": "daily"})
+```
+
+### Webhook
+```
+1. create_event_source(name="HaloPSA Tickets", source_type="webhook", adapter_name="generic")
+   -> returns callback_url: /api/hooks/{source_id}
+2. create_event_subscription(source_id=<id>, workflow_id=<id>, event_type="ticket.created")
+3. Configure external service to POST to callback_url
+```
+
+### Form
+```
+1. Sync workflow to platform (bifrost sync or create_workflow)
+2. create_form(name="New User", workflow_id=<id>, fields=[...])
+   -> returns form URL
+```
+
+## Testing
+
+- **Workflows (local):** `bifrost run <file> --workflow <name> --params '{...}'`
+- **Workflows (remote):** `execute_workflow` with workflow ID, check `get_execution` for logs
+- **Forms:** Access at `$BIFROST_DEV_URL/forms/{form_id}`, submit, check `list_executions`
+- **Apps:** Preview at `$BIFROST_DEV_URL/apps/{slug}/preview`, publish with `publish_app`, then live at `$BIFROST_DEV_URL/apps/{slug}`
+- **Events (schedule):** Wait for next cron tick, check `list_executions` for the subscribed workflow
+- **Events (webhook):** `curl -X POST $BIFROST_DEV_URL/api/hooks/{source_id} -H 'Content-Type: application/json' -d '{...}'`, check `list_executions`
 
 ## Development Process
 

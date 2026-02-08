@@ -45,7 +45,7 @@ export function useChatStream({
 	onAgentSwitch,
 }: UseChatStreamOptions): UseChatStreamReturn {
 	const queryClient = useQueryClient();
-	const [isConnected, setIsConnected] = useState(false);
+	const [isConnected, setIsConnected] = useState(() => webSocketService.isConnected());
 	const [pendingQuestion, setPendingQuestion] =
 		useState<PendingQuestion | null>(null);
 
@@ -492,17 +492,9 @@ export function useChatStream({
 		};
 	}, [conversationId]);
 
-	// Track connection status from service
+	// Track connection status from service via event subscription
 	useEffect(() => {
-		const checkConnection = () => {
-			setIsConnected(webSocketService.isConnected());
-		};
-
-		// Check periodically (the service doesn't expose connection events directly)
-		const interval = setInterval(checkConnection, 1000);
-		checkConnection();
-
-		return () => clearInterval(interval);
+		return webSocketService.onConnectionStatusChange(setIsConnected);
 	}, []);
 
 	// Answer a pending AskUserQuestion

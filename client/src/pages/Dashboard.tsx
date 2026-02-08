@@ -9,6 +9,7 @@ import {
 	Zap,
 	Clock,
 	DollarSign,
+	RefreshCw,
 } from "lucide-react";
 import {
 	Card,
@@ -18,7 +19,7 @@ import {
 	CardTitle,
 } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-
+import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { useDashboardMetrics } from "@/hooks/useDashboardMetrics";
@@ -59,22 +60,31 @@ function formatValue(value: number): string {
 export function Dashboard() {
 	const navigate = useNavigate();
 	const { isPlatformAdmin, isOrgUser } = useAuth();
-	const { data: metrics, isLoading, error } = useDashboardMetrics();
+	const { data: metrics, isLoading, error, refetch: refetchDashboard, isFetching } = useDashboardMetrics();
 
 	// Admin-only metrics hooks
 	const [workflowSort, setWorkflowSort] = useState<
 		"executions" | "memory" | "duration" | "cpu"
 	>("memory");
 
-	const { data: resourceData, isLoading: resourceLoading } =
+	const { data: resourceData, isLoading: resourceLoading, refetch: refetchResource } =
 		useResourceMetrics(7, isPlatformAdmin);
-	const { data: orgData, isLoading: orgLoading } = useOrganizationMetrics(
+	const { data: orgData, isLoading: orgLoading, refetch: refetchOrg } = useOrganizationMetrics(
 		30,
 		10,
 		isPlatformAdmin,
 	);
-	const { data: workflowData, isLoading: workflowLoading } =
+	const { data: workflowData, isLoading: workflowLoading, refetch: refetchWorkflow } =
 		useWorkflowMetrics(30, workflowSort, 20, isPlatformAdmin);
+
+	const handleRefresh = () => {
+		refetchDashboard();
+		if (isPlatformAdmin) {
+			refetchResource();
+			refetchOrg();
+			refetchWorkflow();
+		}
+	};
 
 	// Redirect OrgUsers to /forms (their only accessible page)
 	if (isOrgUser && !isPlatformAdmin) {
@@ -108,13 +118,25 @@ export function Dashboard() {
 	return (
 		<div className="space-y-4">
 			{/* Header */}
-			<div>
-				<h1 className="scroll-m-20 text-4xl font-extrabold tracking-tight lg:text-5xl">
-					Dashboard
-				</h1>
-				<p className="leading-7 mt-2 text-muted-foreground">
-					Platform overview and metrics
-				</p>
+			<div className="flex items-center justify-between">
+				<div>
+					<h1 className="scroll-m-20 text-4xl font-extrabold tracking-tight lg:text-5xl">
+						Dashboard
+					</h1>
+					<p className="leading-7 mt-2 text-muted-foreground">
+						Platform overview and metrics
+					</p>
+				</div>
+				<Button
+					variant="outline"
+					size="icon"
+					onClick={handleRefresh}
+					disabled={isFetching}
+				>
+					<RefreshCw
+						className={`h-4 w-4 ${isFetching ? "animate-spin" : ""}`}
+					/>
+				</Button>
 			</div>
 
 			{/* Metrics Cards */}

@@ -521,6 +521,7 @@ class WebSocketService {
 		Set<AppPublishedUpdateCallback>
 	>();
 	private poolMessageCallbacks = new Set<PoolMessageCallback>();
+	private connectionStatusCallbacks = new Set<(connected: boolean) => void>();
 
 	// Track subscribed channels
 	private subscribedChannels = new Set<string>();
@@ -585,6 +586,7 @@ class WebSocketService {
 			this.ws.onopen = () => {
 				this.retryCount = 0;
 				this.startPingInterval();
+				this.connectionStatusCallbacks.forEach((cb) => cb(true));
 			};
 
 			this.ws.onmessage = (event) => {
@@ -606,6 +608,7 @@ class WebSocketService {
 			this.ws.onclose = (event) => {
 				this.ws = null;
 				this.stopPingInterval();
+				this.connectionStatusCallbacks.forEach((cb) => cb(false));
 
 				// Attempt to reconnect if not a normal closure
 				if (event.code !== 1000 && this.retryCount < this.maxRetries) {
@@ -1629,6 +1632,16 @@ class WebSocketService {
 	 */
 	isConnected(): boolean {
 		return this.ws?.readyState === WebSocket.OPEN;
+	}
+
+	/**
+	 * Subscribe to connection status changes
+	 */
+	onConnectionStatusChange(callback: (connected: boolean) => void): () => void {
+		this.connectionStatusCallbacks.add(callback);
+		return () => {
+			this.connectionStatusCallbacks.delete(callback);
+		};
 	}
 
 	/**
