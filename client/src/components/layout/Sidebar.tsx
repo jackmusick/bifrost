@@ -20,6 +20,7 @@ import {
 	Database,
 	AppWindow,
 	Network,
+	BookOpen,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useAuth } from "@/contexts/AuthContext";
@@ -80,13 +81,11 @@ const navSections: NavSection[] = [
 	},
 	{
 		title: "Automation",
-		requiresPlatformAdmin: true,
 		items: [
 			{
 				title: "Agents",
 				href: "/agents",
 				icon: Bot,
-				requiresPlatformAdmin: true,
 			},
 			{
 				title: "Workflows",
@@ -110,6 +109,12 @@ const navSections: NavSection[] = [
 				title: "Tables",
 				href: "/tables",
 				icon: Database,
+				requiresPlatformAdmin: true,
+			},
+			{
+				title: "Knowledge",
+				href: "/knowledge",
+				icon: BookOpen,
 				requiresPlatformAdmin: true,
 			},
 			{

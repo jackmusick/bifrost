@@ -19,6 +19,7 @@ import {
 	MessageSquare,
 	Copy,
 	Check,
+	Lock,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Switch } from "@/components/ui/switch";
@@ -105,8 +106,8 @@ export function Agents() {
 		return org?.name || orgId;
 	};
 
-	// Only platform admins can manage agents
-	const canManageAgents = isPlatformAdmin;
+	// All authenticated users can manage agents (create private ones)
+	const canManageAgents = true;
 
 	// Use agents from API directly (backend handles org filtering)
 	// Cast to extended type that includes organization_id (pending type regeneration)
@@ -324,6 +325,15 @@ export function Agents() {
 									</div>
 								</CardHeader>
 								<CardContent className="pt-0 mt-auto">
+									{/* Private badge */}
+									{(agent as any).access_level === "private" && (
+										<div className="mb-2">
+											<Badge variant="secondary" className="text-xs">
+												<Lock className="mr-1 h-3 w-3" />
+												Private
+											</Badge>
+										</div>
+									)}
 									{/* Organization badge (platform admins only) */}
 									{isPlatformAdmin && (
 										<div className="mb-2">

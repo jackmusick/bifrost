@@ -127,6 +127,9 @@ const DevicePage = lazy(() =>
 const Tables = lazy(() =>
 	import("@/pages/Tables").then((m) => ({ default: m.Tables })),
 );
+const Knowledge = lazy(() =>
+	import("@/pages/Knowledge").then((m) => ({ default: m.Knowledge })),
+);
 const TableDetail = lazy(() =>
 	import("@/pages/TableDetail").then((m) => ({ default: m.TableDetail })),
 );
@@ -391,12 +394,22 @@ function AppRoutes() {
 							}
 						/>
 
-						{/* Agents - PlatformAdmin only */}
+						{/* Agents - All authenticated users */}
 						<Route
 							path="agents"
 							element={
-								<ProtectedRoute requirePlatformAdmin>
+								<ProtectedRoute>
 									<Agents />
+								</ProtectedRoute>
+							}
+						/>
+
+						{/* Knowledge - PlatformAdmin only */}
+						<Route
+							path="knowledge"
+							element={
+								<ProtectedRoute requirePlatformAdmin>
+									<Knowledge />
 								</ProtectedRoute>
 							}
 						/>
