@@ -363,7 +363,7 @@ async def validation_test_tool(query: str) -> str:
         workflows = workflows_response.json()
 
         tool = next((w for w in workflows if w.get("name") == "validation_test_tool"), None)
-        assert tool is not None, f"Tool should have been created"
+        assert tool is not None, "Tool should have been created"
         assert tool.get("type") == "tool", f"Should be type='tool', got {tool.get('type')}"
 
         # Create form with tool ID as workflow_id — tools are valid workflow targets

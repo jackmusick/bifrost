@@ -72,7 +72,7 @@ def format_preview_summary(preview: dict) -> list[str]:
             name = conflict.get("display_name") or conflict["path"]
             entity_type = conflict.get("entity_type", "file")
             lines.append(f"  {conflict['path']} ({entity_type}: {name})")
-            lines.append(f"    Modified in both platform and GitHub")
+            lines.append("    Modified in both platform and GitHub")
         lines.append("")
         lines.append("To resolve conflicts, run:")
         for conflict in conflicts:

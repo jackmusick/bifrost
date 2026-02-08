@@ -4,11 +4,8 @@ Static analysis tests to enforce datetime standardization.
 These tests scan the codebase to ensure no timezone-aware datetime patterns
 are reintroduced after standardization.
 """
-import ast
-import os
 from pathlib import Path
 
-import pytest
 
 API_SRC_DIR = Path(__file__).parent.parent.parent / "src"
 API_MODELS_ORM_DIR = API_SRC_DIR / "models" / "orm"
@@ -35,8 +32,8 @@ class TestDatetimeConsistency:
                         violations.append(f"{py_file.name}:{i}")
 
         assert not violations, (
-            f"Found DateTime(timezone=True) in ORM models. "
-            f"Use DateTime() instead.\nViolations:\n" + "\n".join(violations)
+            "Found DateTime(timezone=True) in ORM models. "
+            "Use DateTime() instead.\nViolations:\n" + "\n".join(violations)
         )
 
     def test_no_datetime_now_with_timezone_utc(self):
@@ -51,8 +48,8 @@ class TestDatetimeConsistency:
                         violations.append(f"{py_file.relative_to(API_SRC_DIR)}:{i}")
 
         assert not violations, (
-            f"Found datetime.now(timezone.utc) in source code. "
-            f"Use datetime.utcnow() instead.\nViolations:\n" + "\n".join(violations)
+            "Found datetime.now(timezone.utc) in source code. "
+            "Use datetime.utcnow() instead.\nViolations:\n" + "\n".join(violations)
         )
 
     def test_no_bare_datetime_now(self):
@@ -72,8 +69,8 @@ class TestDatetimeConsistency:
                         violations.append(f"{py_file.relative_to(API_SRC_DIR)}:{i}")
 
         assert not violations, (
-            f"Found datetime.now() (local time) in source code. "
-            f"Use datetime.utcnow() instead.\nViolations:\n" + "\n".join(violations)
+            "Found datetime.now() (local time) in source code. "
+            "Use datetime.utcnow() instead.\nViolations:\n" + "\n".join(violations)
         )
 
     def test_no_lambda_datetime_defaults_in_orm(self):
@@ -88,6 +85,6 @@ class TestDatetimeConsistency:
                         violations.append(f"{py_file.name}:{i}")
 
         assert not violations, (
-            f"Found lambda datetime defaults in ORM models. "
-            f"Use default=datetime.utcnow instead.\nViolations:\n" + "\n".join(violations)
+            "Found lambda datetime defaults in ORM models. "
+            "Use default=datetime.utcnow instead.\nViolations:\n" + "\n".join(violations)
         )

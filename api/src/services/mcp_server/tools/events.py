@@ -112,7 +112,6 @@ async def create_event_source(
     from src.core.database import get_db_context
     from src.models.enums import EventSourceType
     from src.models.orm.events import EventSource, ScheduleSource, WebhookSource
-    from src.repositories.events import EventSubscriptionRepository
     from src.services.webhooks.registry import get_adapter_registry
 
     logger.info(f"MCP create_event_source called: name={name}, type={source_type}")

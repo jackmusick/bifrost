@@ -103,12 +103,12 @@ async def duplicate_test_workflow() -> str:
             headers=platform_admin.headers,
         )
 
-    def test_same_name_different_paths_allowed(
+    def test_same_name_different_paths_rejected(
         self, e2e_client, platform_admin
     ):
         """
-        Same workflow name at different paths is allowed.
-        Path + function_name is unique, not just name.
+        Same workflow name at different paths is rejected by unique name constraint.
+        The uq_workflows_global_name index ensures one active workflow per name per scope.
         """
         workflow_content = '''"""Workflow with common name"""
 from bifrost import workflow
@@ -131,7 +131,7 @@ async def common_workflow_name() -> str:
             },
         )
 
-        # Create at second path (same name, different path)
+        # Create at second path (same name, different path) — should fail to register
         e2e_client.put(
             "/api/files/editor/content",
             headers=platform_admin.headers,
@@ -142,7 +142,7 @@ async def common_workflow_name() -> str:
             },
         )
 
-        # Should have two workflows with same name
+        # Only one workflow should exist (unique name constraint blocks the second)
         response = e2e_client.get(
             "/api/workflows",
             headers=platform_admin.headers,
@@ -150,13 +150,8 @@ async def common_workflow_name() -> str:
         workflows = response.json()
         matching = [w for w in workflows if w["name"] == "common_workflow_name"]
 
-        # Both should exist
-        assert len(matching) == 2, \
-            f"Should have two workflows with same name, got {len(matching)}"
-
-        # They should have different IDs
-        ids = [w["id"] for w in matching]
-        assert len(set(ids)) == 2, "Should have unique IDs"
+        assert len(matching) == 1, \
+            f"Should have exactly one workflow (unique name constraint), got {len(matching)}"
 
         # Cleanup
         e2e_client.delete(
@@ -369,12 +364,12 @@ async def dup_test_provider():
 class TestMixedEntityDuplicates:
     """Test handling of same name across different entity types."""
 
-    def test_same_name_workflow_and_data_provider(
+    def test_same_name_workflow_and_data_provider_rejected(
         self, e2e_client, platform_admin
     ):
         """
-        Same name for workflow and data provider is allowed
-        (they are different entity types).
+        Same name for workflow and data provider is rejected.
+        The unique name constraint applies across all types in the workflows table.
         """
         # Create workflow
         workflow_content = '''"""Workflow with shared name"""
@@ -394,7 +389,7 @@ async def shared_name_entity() -> str:
             },
         )
 
-        # Create data provider with same name
+        # Create data provider with same name — should fail to register
         dp_content = '''"""Data Provider with shared name"""
 from bifrost import data_provider
 
@@ -412,7 +407,7 @@ async def shared_name_entity():
             },
         )
 
-        # Both should exist
+        # Only the workflow should exist (unique name constraint blocks the data provider)
         response = e2e_client.get(
             "/api/workflows",
             headers=platform_admin.headers,
@@ -420,6 +415,7 @@ async def shared_name_entity():
         workflows = response.json()
         wf = next((w for w in workflows if w["name"] == "shared_name_entity"), None)
         assert wf is not None, "Workflow should exist"
+        assert wf["type"] == "workflow", "First registered entity should be the workflow"
 
         response = e2e_client.get(
             "/api/workflows?type=data_provider",
@@ -427,7 +423,7 @@ async def shared_name_entity():
         )
         providers = response.json()
         dp = next((p for p in providers if p["name"] == "shared_name_entity"), None)
-        assert dp is not None, "Data provider should exist"
+        assert dp is None, "Data provider should not exist (blocked by unique name constraint)"
 
         # Cleanup
         e2e_client.delete(

@@ -1,7 +1,6 @@
 # api/tests/unit/services/mcp_server/test_tool_result.py
 """Tests for MCP tool result helpers."""
 
-import pytest
 from fastmcp.tools.tool import ToolResult
 
 from src.services.mcp_server.tool_result import (

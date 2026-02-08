@@ -6,7 +6,6 @@ These tests use synchronous verification where possible to avoid async loop issu
 """
 
 import pytest
-from dataclasses import fields
 from unittest.mock import AsyncMock
 
 from src.core.redis_reconnect import ResilientPubSubListener

@@ -4,7 +4,6 @@ Provides validation, next run calculation, and human-readable descriptions for C
 """
 
 import logging
-from datetime import datetime
 
 from croniter import croniter
 

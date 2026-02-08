@@ -107,7 +107,7 @@ class TestDistributedLockService:
 
     async def test_acquire_lock_already_held(self, lock_service, mock_redis):
         """Test lock acquisition when lock is already held."""
-        from datetime import datetime, timedelta, timezone
+        from datetime import datetime, timedelta
         from src.core.locks import LockInfo
 
         mock_redis.setnx.return_value = False
@@ -137,7 +137,7 @@ class TestDistributedLockService:
 
     async def test_release_lock_success(self, lock_service, mock_redis):
         """Test successful lock release by owner."""
-        from datetime import datetime, timedelta, timezone
+        from datetime import datetime, timedelta
         from src.core.locks import LockInfo
 
         now = datetime.utcnow()
@@ -161,7 +161,7 @@ class TestDistributedLockService:
 
     async def test_release_lock_not_owner(self, lock_service, mock_redis):
         """Test lock release denied when not owner."""
-        from datetime import datetime, timedelta, timezone
+        from datetime import datetime, timedelta
         from src.core.locks import LockInfo
 
         now = datetime.utcnow()
@@ -195,7 +195,7 @@ class TestDistributedLockService:
 
     async def test_extend_lock_success(self, lock_service, mock_redis):
         """Test successful lock extension by owner."""
-        from datetime import datetime, timedelta, timezone
+        from datetime import datetime, timedelta
         from src.core.locks import LockInfo
 
         now = datetime.utcnow()
@@ -219,7 +219,7 @@ class TestDistributedLockService:
 
     async def test_extend_lock_not_owner(self, lock_service, mock_redis):
         """Test lock extension denied when not owner."""
-        from datetime import datetime, timedelta, timezone
+        from datetime import datetime, timedelta
         from src.core.locks import LockInfo
 
         now = datetime.utcnow()
@@ -243,7 +243,7 @@ class TestDistributedLockService:
 
     async def test_get_lock_info_exists(self, lock_service, mock_redis):
         """Test getting info for existing lock."""
-        from datetime import datetime, timedelta, timezone
+        from datetime import datetime, timedelta
         from src.core.locks import LockInfo
 
         now = datetime.utcnow()
@@ -272,7 +272,7 @@ class TestDistributedLockService:
 
     async def test_is_locked_true(self, lock_service, mock_redis):
         """Test is_locked returns True when locked."""
-        from datetime import datetime, timedelta, timezone
+        from datetime import datetime, timedelta
         from src.core.locks import LockInfo
 
         now = datetime.utcnow()

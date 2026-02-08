@@ -1391,8 +1391,9 @@ async def {workflow_name}():
                 "input_data": {},
             },
         )
-        assert response.status_code == 403, (
-            f"Expected 403 Forbidden, got {response.status_code}: {response.text}"
+        # 404 is also acceptable — scoped lookup won't find another org's workflow
+        assert response.status_code in (403, 404), (
+            f"Expected 403 or 404, got {response.status_code}: {response.text}"
         )
 
     def test_superuser_can_execute_any_org_workflow(

@@ -1,7 +1,6 @@
 import types
 from typing import Annotated, Optional, Union
 
-import pytest
 from pydantic import BaseModel
 
 from src.models.contracts.refs import (

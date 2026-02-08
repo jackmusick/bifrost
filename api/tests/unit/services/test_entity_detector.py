@@ -10,7 +10,6 @@ import ast
 import pytest
 
 from src.services.file_storage.entity_detector import (
-    PythonEntityDetectionResult,
     detect_platform_entity_type,
     detect_python_entity_type,
     detect_python_entity_type_with_ast,

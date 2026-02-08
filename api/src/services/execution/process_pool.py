@@ -454,6 +454,10 @@ class ProcessPoolManager:
         Args:
             handle: ProcessHandle to terminate
         """
+        # Mark as KILLED immediately to prevent route_execution from sending
+        # work to this process during the graceful_shutdown_seconds sleep.
+        handle.state = ProcessState.KILLED
+
         if not handle.is_alive:
             return
 
@@ -479,8 +483,6 @@ class ProcessPoolManager:
             except ProcessLookupError:
                 pass
             handle.process.join(timeout=1)
-
-        handle.state = ProcessState.KILLED
 
     def _get_idle_process(self) -> ProcessHandle | None:
         """
@@ -647,6 +649,10 @@ class ProcessPoolManager:
         Args:
             handle: ProcessHandle to kill
         """
+        # Mark as KILLED immediately to prevent route_execution from sending
+        # work to this process during the graceful_shutdown_seconds sleep.
+        handle.state = ProcessState.KILLED
+
         pid = handle.pid
         if pid is None:
             return
@@ -667,8 +673,6 @@ class ProcessPoolManager:
             except ProcessLookupError:
                 pass
             handle.process.join(timeout=1)
-
-        handle.state = ProcessState.KILLED
 
     async def _report_timeout(self, exec_info: ExecutionInfo) -> None:
         """

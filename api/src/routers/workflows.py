@@ -243,6 +243,7 @@ async def _compute_used_by_counts(db: DbSession, workflow_ids: list[UUID]) -> di
         .where(
             Form.is_active == True,  # noqa: E712
             Form.workflow_id.isnot(None),
+            func.length(Form.workflow_id) == 36,  # filter non-UUID strings (e.g. portable refs)
         )
     )
     refs_form_launch = (
@@ -250,6 +251,7 @@ async def _compute_used_by_counts(db: DbSession, workflow_ids: list[UUID]) -> di
         .where(
             Form.is_active == True,  # noqa: E712
             Form.launch_workflow_id.isnot(None),
+            func.length(Form.launch_workflow_id) == 36,  # filter non-UUID strings
         )
     )
     refs_form_dp = (

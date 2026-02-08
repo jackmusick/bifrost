@@ -21,7 +21,6 @@ from src.models.orm.events import (
     EventDelivery,
     EventSource,
     EventSubscription,
-    ScheduleSource,
     WebhookSource,
 )
 from src.repositories.base import BaseRepository
