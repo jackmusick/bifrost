@@ -122,8 +122,7 @@ export function TableDialog({ table, open, onClose }: TableDialogProps) {
 		if (isEditing) {
 			await updateTable.mutateAsync({
 				params: {
-					path: { name: table.name },
-					query: scope ? { scope } : undefined,
+					path: { table_id: table.id },
 				},
 				body: {
 					description: values.description || null,

@@ -115,7 +115,7 @@ export function useCreateTable() {
 export function useUpdateTable() {
 	const queryClient = useQueryClient();
 
-	return $api.useMutation("patch", "/api/tables/{name}", {
+	return $api.useMutation("patch", "/api/tables/{table_id}", {
 		onSuccess: (data) => {
 			queryClient.invalidateQueries({ queryKey: ["get", "/api/tables"] });
 			toast.success("Table updated", {
@@ -131,13 +131,10 @@ export function useUpdateTable() {
 export function useDeleteTable() {
 	const queryClient = useQueryClient();
 
-	return $api.useMutation("delete", "/api/tables/{name}", {
-		onSuccess: (_, variables) => {
-			const tableName = variables.params.path.name;
+	return $api.useMutation("delete", "/api/tables/{table_id}", {
+		onSuccess: () => {
 			queryClient.invalidateQueries({ queryKey: ["get", "/api/tables"] });
-			toast.success("Table deleted", {
-				description: `Table "${tableName}" has been deleted`,
-			});
+			toast.success("Table deleted");
 		},
 	});
 }
@@ -299,14 +296,12 @@ export async function createTable(
  * Update a table (imperative)
  */
 export async function updateTable(
-	name: string,
+	tableId: string,
 	tableData: TableUpdate,
-	scope?: string,
 ): Promise<TablePublic> {
-	const { data, error } = await apiClient.PATCH("/api/tables/{name}", {
+	const { data, error } = await apiClient.PATCH("/api/tables/{table_id}", {
 		params: {
-			path: { name },
-			query: scope ? { scope } : undefined,
+			path: { table_id: tableId },
 		},
 		body: tableData,
 	});
@@ -317,11 +312,10 @@ export async function updateTable(
 /**
  * Delete a table (imperative)
  */
-export async function deleteTable(name: string, scope?: string): Promise<void> {
-	const { error } = await apiClient.DELETE("/api/tables/{name}", {
+export async function deleteTable(tableId: string): Promise<void> {
+	const { error } = await apiClient.DELETE("/api/tables/{table_id}", {
 		params: {
-			path: { name },
-			query: scope ? { scope } : undefined,
+			path: { table_id: tableId },
 		},
 	});
 	if (error) throw new Error("Failed to delete table");

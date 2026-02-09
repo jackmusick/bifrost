@@ -20,6 +20,7 @@ if TYPE_CHECKING:
 
 class ConfigResponse(BaseModel):
     """Configuration entity response (global or org-specific)"""
+    id: UUID | None = Field(default=None, description="Config UUID")
     key: str
     value: Any = Field(..., description="Config value. For SECRET type, this will be '[SECRET]' in list responses.")
     type: ConfigType = ConfigType.STRING

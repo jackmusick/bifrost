@@ -276,14 +276,13 @@ class ApplicationRepository(OrgScopedRepository[Application]):
 
     async def update_application(
         self,
-        slug: str,
+        app_id: UUID,
         data: ApplicationUpdate,
         updated_by: str,
         is_platform_admin: bool = False,
     ) -> Application | None:
-        """Update application metadata and access control."""
-        # Use cascade lookup to find global or org-scoped apps
-        application = await self.get_by_slug(slug)
+        """Update application metadata and access control by ID."""
+        application = await self.get_by_id(app_id)
         if not application:
             return None
 
@@ -339,20 +338,19 @@ class ApplicationRepository(OrgScopedRepository[Application]):
         await self.session.flush()
         await self.session.refresh(application)
 
-        logger.info(f"Updated application '{slug}'")
+        logger.info(f"Updated application '{app_id}'")
         return application
 
-    async def delete_application(self, slug: str) -> bool:
-        """Delete an application (cascade deletes pages and components)."""
-        # Use cascade lookup to find global or org-scoped apps
-        application = await self.get_by_slug(slug)
+    async def delete_application(self, app_id: UUID) -> bool:
+        """Delete an application by ID (cascade deletes pages and components)."""
+        application = await self.get_by_id(app_id)
         if not application:
             return False
 
         await self.session.delete(application)
         await self.session.flush()
 
-        logger.info(f"Deleted application '{slug}'")
+        logger.info(f"Deleted application '{app_id}'")
         return True
 
     async def publish(
@@ -820,29 +818,27 @@ async def get_application(
 
 
 @router.patch(
-    "/{slug}",
+    "/{app_id}",
     response_model=ApplicationPublic,
     summary="Update application metadata",
 )
 async def update_application(
-    slug: str,
+    app_id: UUID,
     data: ApplicationUpdate,
     ctx: Context,
     user: CurrentUser,
-    scope: str | None = Query(default=None),
 ) -> ApplicationPublic:
-    """Update application metadata and access control."""
-    target_org_id = _resolve_target_org_safe(ctx, scope)
+    """Update application metadata and access control by ID."""
     repo = ApplicationRepository(
         ctx.db,
-        target_org_id,
+        ctx.org_id,
         user_id=user.user_id,
         is_superuser=user.is_platform_admin,
     )
 
     try:
         application = await repo.update_application(
-            slug,
+            app_id,
             data,
             updated_by=ctx.user.email,
             is_platform_admin=user.is_platform_admin,
@@ -856,7 +852,7 @@ async def update_application(
     if not application:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
-            detail=f"Application '{slug}' not found",
+            detail=f"Application '{app_id}' not found",
         )
 
     # Emit event for real-time updates
@@ -872,30 +868,28 @@ async def update_application(
 
 
 @router.delete(
-    "/{slug}",
+    "/{app_id}",
     status_code=status.HTTP_204_NO_CONTENT,
     summary="Delete application",
 )
 async def delete_application(
-    slug: str,
+    app_id: UUID,
     ctx: Context,
     user: CurrentUser,
-    scope: str | None = Query(default=None),
 ) -> None:
-    """Delete an application."""
-    target_org_id = _resolve_target_org_safe(ctx, scope)
+    """Delete an application by ID."""
     repo = ApplicationRepository(
         ctx.db,
-        target_org_id,
+        ctx.org_id,
         user_id=user.user_id,
         is_superuser=user.is_platform_admin,
     )
-    success = await repo.delete_application(slug)
+    success = await repo.delete_application(app_id)
 
     if not success:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
-            detail=f"Application '{slug}' not found",
+            detail=f"Application '{app_id}' not found",
         )
 
 

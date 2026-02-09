@@ -1,16 +1,25 @@
 """Tests for export/import models and serialization."""
 
 import json
+from uuid import UUID
+
+import pytest
 
 from src.models.contracts.export_import import (
     BulkExportRequest,
     ConfigExportFile,
+    ConfigExportItem,
     ImportResult,
     ImportResultItem,
     IntegrationExportFile,
+    IntegrationMappingExportItem,
     KnowledgeExportFile,
+    KnowledgeExportItem,
+    OAuthProviderExportItem,
     TableExportFile,
+    TableExportItem,
 )
+from src.routers.export_import import _parse_target_org
 
 
 class TestKnowledgeExport:
@@ -159,3 +168,158 @@ class TestImportModels:
         )
         assert result.created == 5
         assert result.details[1].error == "Invalid content"
+
+
+class TestOrganizationNameBackwardsCompat:
+    """Verify old exports (without organization_name) parse correctly."""
+
+    def test_knowledge_without_org_name(self):
+        """Old knowledge export without organization_name field parses with None."""
+        old_json = json.dumps({
+            "bifrost_export_version": "1.0",
+            "entity_type": "knowledge",
+            "item_count": 1,
+            "items": [{
+                "namespace": "docs",
+                "key": "intro",
+                "content": "Hello",
+                "metadata": {},
+                "organization_id": "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee",
+            }],
+        })
+        parsed = KnowledgeExportFile.model_validate_json(old_json)
+        assert len(parsed.items) == 1
+        assert parsed.items[0].organization_name is None
+        assert parsed.items[0].organization_id == "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee"
+
+    def test_table_without_org_name(self):
+        """Old table export without organization_name parses with None."""
+        old_json = json.dumps({
+            "bifrost_export_version": "1.0",
+            "entity_type": "tables",
+            "item_count": 1,
+            "items": [{"name": "t1", "organization_id": "abc-123", "documents": []}],
+        })
+        parsed = TableExportFile.model_validate_json(old_json)
+        assert parsed.items[0].organization_name is None
+
+    def test_config_without_org_name(self):
+        """Old config export without organization_name parses with None."""
+        old_json = json.dumps({
+            "bifrost_export_version": "1.0",
+            "entity_type": "configs",
+            "item_count": 1,
+            "items": [{"key": "k", "value": "v", "config_type": "string"}],
+        })
+        parsed = ConfigExportFile.model_validate_json(old_json)
+        assert parsed.items[0].organization_name is None
+
+    def test_integration_mapping_without_org_name(self):
+        """Old integration mapping without organization_name parses with None."""
+        old_json = json.dumps({
+            "bifrost_export_version": "1.0",
+            "entity_type": "integrations",
+            "item_count": 1,
+            "items": [{
+                "name": "Test",
+                "config_schema": [],
+                "mappings": [{"entity_id": "e1", "organization_id": "org-1", "config": {}}],
+                "default_config": {},
+            }],
+        })
+        parsed = IntegrationExportFile.model_validate_json(old_json)
+        assert parsed.items[0].mappings[0].organization_name is None
+
+
+class TestOrganizationNameSerialization:
+    """Verify organization_name appears in export JSON when set."""
+
+    def test_knowledge_with_org_name(self):
+        """Knowledge export item includes organization_name in JSON."""
+        item = KnowledgeExportItem(
+            namespace="docs",
+            content="Hello",
+            organization_id="aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee",
+            organization_name="Contoso",
+        )
+        data = json.loads(item.model_dump_json())
+        assert data["organization_name"] == "Contoso"
+
+    def test_table_with_org_name(self):
+        """Table export item includes organization_name in JSON."""
+        item = TableExportItem(name="t1", organization_name="Acme Corp")
+        data = json.loads(item.model_dump_json())
+        assert data["organization_name"] == "Acme Corp"
+
+    def test_config_with_org_name(self):
+        """Config export item includes organization_name in JSON."""
+        item = ConfigExportItem(
+            key="k", value="v", config_type="string",
+            organization_name="Contoso",
+        )
+        data = json.loads(item.model_dump_json())
+        assert data["organization_name"] == "Contoso"
+
+    def test_mapping_with_org_name(self):
+        """Integration mapping export item includes organization_name in JSON."""
+        item = IntegrationMappingExportItem(
+            entity_id="e1",
+            organization_id="org-1",
+            organization_name="Contoso",
+        )
+        data = json.loads(item.model_dump_json())
+        assert data["organization_name"] == "Contoso"
+
+    def test_oauth_provider_with_org_name(self):
+        """OAuth provider export item includes organization_name in JSON."""
+        item = OAuthProviderExportItem(
+            provider_name="ms",
+            client_id="c1",
+            encrypted_client_secret="secret",
+            organization_name="Contoso",
+        )
+        data = json.loads(item.model_dump_json())
+        assert data["organization_name"] == "Contoso"
+
+    def test_knowledge_roundtrip_with_org_name(self):
+        """Knowledge export with org_name survives serialization roundtrip."""
+        export = KnowledgeExportFile(
+            item_count=1,
+            items=[{
+                "namespace": "docs",
+                "content": "Hello",
+                "organization_id": "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee",
+                "organization_name": "Contoso",
+            }],
+        )
+        json_str = export.model_dump_json()
+        parsed = KnowledgeExportFile.model_validate_json(json_str)
+        assert parsed.items[0].organization_name == "Contoso"
+
+
+class TestParseTargetOrg:
+    """Unit tests for _parse_target_org helper."""
+
+    def test_none_returns_resolve_from_file(self):
+        """None input means resolve from file."""
+        override, force_global = _parse_target_org(None)
+        assert override is None
+        assert force_global is False
+
+    def test_empty_string_returns_force_global(self):
+        """Empty string means force global scope."""
+        override, force_global = _parse_target_org("")
+        assert override is None
+        assert force_global is True
+
+    def test_uuid_string_returns_override(self):
+        """UUID string returns the parsed UUID."""
+        test_uuid = "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee"
+        override, force_global = _parse_target_org(test_uuid)
+        assert override == UUID(test_uuid)
+        assert force_global is False
+
+    def test_invalid_uuid_raises(self):
+        """Invalid UUID string raises ValueError."""
+        with pytest.raises(ValueError):
+            _parse_target_org("not-a-uuid")

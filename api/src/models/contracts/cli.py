@@ -455,14 +455,6 @@ class SDKTableListRequest(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
 
-class SDKTableDeleteRequest(BaseModel):
-    """SDK request for deleting a table."""
-    name: str = Field(..., description="Table name")
-    scope: str | None = Field(default=None, description="Organization scope")
-    app: str | None = Field(default=None, description="Application UUID")
-
-    model_config = ConfigDict(from_attributes=True)
-
 
 class SDKTableInfo(BaseModel):
     """Table info response for SDK."""

@@ -120,7 +120,7 @@ export function Config() {
 		if (!configToDelete) return;
 
 		deleteConfig.mutate(
-			{ params: { path: { key: configToDelete.key } } },
+			{ params: { path: { config_id: configToDelete.id! } } },
 			{
 				onSettled: () => {
 					setDeleteDialogOpen(false);

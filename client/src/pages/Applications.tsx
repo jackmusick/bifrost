@@ -130,7 +130,7 @@ export function Applications() {
 	const handleConfirmDelete = async () => {
 		if (!selectedApp) return;
 		await deleteApplication.mutateAsync({
-			params: { path: { slug: selectedApp.id } },
+			params: { path: { app_id: selectedApp.id } },
 		});
 		setIsDeleteDialogOpen(false);
 		setSelectedApp(null);

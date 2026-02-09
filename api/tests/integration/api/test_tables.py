@@ -97,7 +97,9 @@ class TestTableRepositoryIntegration:
             description="Updated description",
             schema={"type": "object"},
         )
-        updated = await repo.update_table(table_data.name, update_data)
+        table = await repo.get_by_name(table_data.name)
+        assert table is not None
+        updated = await repo.update_table(table.id, update_data)
 
         assert updated is not None
         assert updated.description == "Updated description"
@@ -112,9 +114,9 @@ class TestTableRepositoryIntegration:
         table_data = TableCreate(
             name=f"test_delete_{uuid4().hex[:8]}",
         )
-        await repo.create_table(table_data, created_by=test_user_email)
+        table = await repo.create_table(table_data, created_by=test_user_email)
 
-        success = await repo.delete_table(table_data.name)
+        success = await repo.delete_table(table.id)
         assert success is True
 
         retrieved = await repo.get_by_name(table_data.name)
@@ -453,7 +455,7 @@ class TestTableCascadeDelete:
         doc2 = await doc_repo.insert({"name": "Doc2"}, created_by=test_user_email)
         doc_ids = [doc1.id, doc2.id]
 
-        success = await table_repo.delete_table(table_data.name)
+        success = await table_repo.delete_table(table.id)
         assert success is True
 
         stmt = select(Document).where(Document.id.in_(doc_ids))

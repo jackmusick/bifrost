@@ -130,11 +130,13 @@ class TableRepository(OrgScopedRepository[Table]):
 
     async def update_table(
         self,
-        name: str,
+        table_id: UUID,
         data: TableUpdate,
     ) -> Table | None:
-        """Update a table."""
-        table = await self.get_by_name_strict(name)
+        """Update a table by ID."""
+        query = select(self.model).where(self.model.id == table_id)
+        result = await self.session.execute(query)
+        table = result.scalar_one_or_none()
         if not table:
             return None
 
@@ -146,19 +148,21 @@ class TableRepository(OrgScopedRepository[Table]):
         await self.session.flush()
         await self.session.refresh(table)
 
-        logger.info(f"Updated table '{name}'")
+        logger.info(f"Updated table '{table.name}' (id={table_id})")
         return table
 
-    async def delete_table(self, name: str) -> bool:
-        """Delete a table and all its documents (cascade)."""
-        table = await self.get_by_name_strict(name)
+    async def delete_table(self, table_id: UUID) -> bool:
+        """Delete a table and all its documents (cascade) by ID."""
+        query = select(self.model).where(self.model.id == table_id)
+        result = await self.session.execute(query)
+        table = result.scalar_one_or_none()
         if not table:
             return False
 
         await self.session.delete(table)
         await self.session.flush()
 
-        logger.info(f"Deleted table '{name}'")
+        logger.info(f"Deleted table '{table.name}' (id={table_id})")
         return True
 
 
@@ -477,51 +481,47 @@ async def get_table(
 
 
 @router.patch(
-    "/{name}",
+    "/{table_id}",
     response_model=TablePublic,
     summary="Update table",
 )
 async def update_table(
-    name: str,
+    table_id: UUID,
     data: TableUpdate,
     ctx: Context,
     user: CurrentSuperuser,
-    scope: str | None = Query(default=None),
 ) -> TablePublic:
-    """Update table metadata (platform admin only)."""
-    target_org_id = _resolve_target_org_safe(ctx, scope)
-    repo = TableRepository(ctx.db, target_org_id, is_superuser=True)
-    table = await repo.update_table(name, data)
+    """Update table metadata by ID (platform admin only)."""
+    repo = TableRepository(ctx.db, ctx.org_id, is_superuser=True)
+    table = await repo.update_table(table_id, data)
 
     if not table:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
-            detail=f"Table '{name}' not found",
+            detail=f"Table '{table_id}' not found",
         )
 
     return TablePublic.model_validate(table)
 
 
 @router.delete(
-    "/{name}",
+    "/{table_id}",
     status_code=status.HTTP_204_NO_CONTENT,
     summary="Delete table",
 )
 async def delete_table(
-    name: str,
+    table_id: UUID,
     ctx: Context,
     user: CurrentSuperuser,
-    scope: str | None = Query(default=None),
 ) -> None:
-    """Delete a table and all its documents (platform admin only)."""
-    target_org_id = _resolve_target_org_safe(ctx, scope)
-    repo = TableRepository(ctx.db, target_org_id, is_superuser=True)
-    success = await repo.delete_table(name)
+    """Delete a table and all its documents by ID (platform admin only)."""
+    repo = TableRepository(ctx.db, ctx.org_id, is_superuser=True)
+    success = await repo.delete_table(table_id)
 
     if not success:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
-            detail=f"Table '{name}' not found",
+            detail=f"Table '{table_id}' not found",
         )
 
 

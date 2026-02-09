@@ -142,17 +142,13 @@ class tables:
 
     @staticmethod
     async def delete(
-        name: str,
-        scope: str | None = None,
-        app: str | None = None,
+        table_id: str,
     ) -> bool:
         """
         Delete a table and all its documents.
 
         Args:
-            name: Table name
-            scope: Organization scope
-            app: Application UUID
+            table_id: Table UUID
 
         Returns:
             bool: True if deleted successfully
@@ -163,17 +159,11 @@ class tables:
 
         Example:
             >>> from bifrost import tables
-            >>> await tables.delete("old_customers")
+            >>> await tables.delete("table-uuid-here")
         """
         client = get_client()
-        effective_scope = _resolve_scope(scope)
-        response = await client.post(
-            "/api/cli/tables/delete",
-            json={
-                "name": name,
-                "scope": effective_scope,
-                "app": app,
-            }
+        response = await client.delete(
+            f"/api/tables/{table_id}",
         )
         response.raise_for_status()
         return True

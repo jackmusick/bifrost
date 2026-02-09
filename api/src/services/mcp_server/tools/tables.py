@@ -453,6 +453,58 @@ async def update_table(
         return error_result(f"Error updating table: {str(e)}")
 
 
+async def delete_table(
+    context: Any,
+    table_id: str,
+) -> ToolResult:
+    """Delete a table and all its documents by ID."""
+    from sqlalchemy import select
+
+    from src.core.database import get_db_context
+    from src.models.orm.tables import Table
+
+    logger.info(f"MCP delete_table called with id={table_id}")
+
+    if not table_id:
+        return error_result("table_id is required")
+
+    try:
+        table_uuid = UUID(table_id)
+    except ValueError:
+        return error_result(f"Invalid table_id format: {table_id}")
+
+    try:
+        async with get_db_context() as db:
+            query = select(Table).where(Table.id == table_uuid)
+
+            # Non-admins can only delete their org's tables
+            if not context.is_platform_admin and context.org_id:
+                query = query.where(
+                    (Table.organization_id == context.org_id)
+                )
+
+            result = await db.execute(query)
+            table = result.scalar_one_or_none()
+
+            if not table:
+                return error_result(f"Table not found: {table_id}")
+
+            table_name = table.name
+            await db.delete(table)
+            await db.commit()
+
+            display_text = f"Deleted table: {table_name}"
+            return success_result(display_text, {
+                "success": True,
+                "id": table_id,
+                "name": table_name,
+            })
+
+    except Exception as e:
+        logger.exception(f"Error deleting table via MCP: {e}")
+        return error_result(f"Error deleting table: {str(e)}")
+
+
 # Tool metadata for registration
 TOOLS = [
     ("list_tables", "List Tables", "List tables in the platform. Platform admin only."),
@@ -460,6 +512,7 @@ TOOLS = [
     ("get_table_schema", "Get Table Schema Documentation", "Get documentation about table structure, column types, and scope options."),
     ("create_table", "Create Table", "Create a new table with specified scope. Requires platform admin for global scope."),
     ("update_table", "Update Table", "Update table properties including name, description, scope, and columns."),
+    ("delete_table", "Delete Table", "Delete a table and all its documents by ID."),
 ]
 
 
@@ -473,6 +526,7 @@ def register_tools(mcp: Any, get_context_fn: Any) -> None:
         "get_table_schema": get_table_schema,
         "create_table": create_table,
         "update_table": update_table,
+        "delete_table": delete_table,
     }
 
     for tool_id, name, description in TOOLS:

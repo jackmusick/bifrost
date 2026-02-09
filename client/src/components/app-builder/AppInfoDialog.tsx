@@ -189,16 +189,13 @@ export function AppInfoDialog({
 
 	const onSubmit = async (values: FormValues) => {
 		try {
-			if (isEditing && appId) {
+			if (isEditing && appId && existingApp) {
 				// Check if slug changed - we'll need to update the URL
-				const slugChanged = existingApp && values.slug !== existingApp.slug;
+				const slugChanged = values.slug !== existingApp.slug;
 
 				await updateApplication.mutateAsync({
 					params: {
-						path: { slug: appId },
-						query: values.organization_id
-							? { scope: values.organization_id }
-							: undefined,
+						path: { app_id: existingApp.id },
 					},
 					body: {
 						name: values.name,
@@ -206,7 +203,7 @@ export function AppInfoDialog({
 						description: values.description || null,
 						access_level: values.access_level,
 						role_ids: values.role_ids,
-						// scope is passed via query params for platform admins
+						// scope is passed in body for platform admins
 						scope: isPlatformAdmin
 							? (values.organization_id ?? "global")
 							: undefined,

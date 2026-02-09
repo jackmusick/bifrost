@@ -8,6 +8,7 @@ Uses OrgScopedRepository for standardized org scoping.
 
 import logging
 from datetime import datetime
+from uuid import UUID
 
 from fastapi import APIRouter, HTTPException, Query, status
 from sqlalchemy import select
@@ -104,6 +105,7 @@ class ConfigRepository(OrgScopedRepository[ConfigModel]):  # type: ignore[type-v
 
             schemas.append(
                 ConfigResponse(
+                    id=c.id,
                     key=c.key,
                     value=display_value,
                     type=ConfigType(c.config_type.value) if c.config_type else ConfigType.STRING,
@@ -186,6 +188,7 @@ class ConfigRepository(OrgScopedRepository[ConfigModel]):  # type: ignore[type-v
         # Extract value from JSONB for response
         stored_value = config.value.get("value") if isinstance(config.value, dict) else config.value
         return ConfigResponse(
+            id=config.id,
             key=config.key,
             value=stored_value,
             type=request.type if request.type else ConfigType.STRING,
@@ -196,18 +199,20 @@ class ConfigRepository(OrgScopedRepository[ConfigModel]):  # type: ignore[type-v
             updated_by=config.updated_by,
         )
 
-    async def delete_config(self, key: str) -> bool:
-        """Delete config from current org scope."""
-        config = await self.get_config_strict(key)
+    async def delete_config(self, config_id: UUID) -> ConfigModel | None:
+        """Delete config by ID. Returns the deleted config or None if not found."""
+        query = select(self.model).where(self.model.id == config_id)
+        result = await self.session.execute(query)
+        config = result.scalar_one_or_none()
         if not config:
-            return False
+            return None
 
-        # In SQLAlchemy 2.0 async, delete() is async
+        key = config.key
         await self.session.delete(config)
         await self.session.flush()
 
-        logger.info(f"Deleted config {key}")
-        return True
+        logger.info(f"Deleted config {key} (id={config_id})")
+        return config
 
 
 # =============================================================================
@@ -303,22 +308,22 @@ async def set_config(
 
 
 @router.delete(
-    "/api/config/{key}",
+    "/api/config/{config_id}",
     status_code=status.HTTP_204_NO_CONTENT,
     summary="Delete configuration value",
-    description="Delete a configuration value by key",
+    description="Delete a configuration value by ID",
 )
 async def delete_config(
-    key: str,
+    config_id: UUID,
     ctx: Context,
     user: CurrentSuperuser,
 ) -> None:
-    """Delete a configuration key."""
+    """Delete a configuration by ID."""
     # Config endpoints are superuser-only, so is_superuser=True (no role checks)
     repo = ConfigRepository(ctx.db, org_id=ctx.org_id, is_superuser=True)
 
-    success = await repo.delete_config(key)
-    if not success:
+    deleted = await repo.delete_config(config_id)
+    if not deleted:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="Configuration not found",
@@ -326,5 +331,5 @@ async def delete_config(
 
     # Invalidate cache after successful delete
     if CACHE_AVAILABLE and invalidate_config:
-        org_id_str = str(ctx.org_id) if ctx.org_id else None
-        await invalidate_config(org_id_str, key)
+        org_id_str = str(deleted.organization_id) if deleted.organization_id else None
+        await invalidate_config(org_id_str, deleted.key)

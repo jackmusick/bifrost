@@ -67,12 +67,10 @@ export function useSetConfig() {
 export function useDeleteConfig() {
 	const queryClient = useQueryClient();
 
-	return $api.useMutation("delete", "/api/config/{key}", {
-		onSuccess: (_, variables) => {
+	return $api.useMutation("delete", "/api/config/{config_id}", {
+		onSuccess: () => {
 			queryClient.invalidateQueries({ queryKey: ["get", "/api/config"] });
-			toast.success("Configuration deleted", {
-				description: `Config key "${variables.params.path.key}" has been removed`,
-			});
+			toast.success("Configuration deleted");
 		},
 		onError: (error) => {
 			const errorMessage =

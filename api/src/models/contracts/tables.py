@@ -233,13 +233,6 @@ class SDKTableListRequest(BaseModel):
     )
 
 
-class SDKTableDeleteRequest(BaseModel):
-    """SDK request for deleting a table."""
-
-    name: str
-    scope: str | None = None
-    app: str | None = None
-
 
 class SDKDocumentInsertRequest(BaseModel):
     """SDK request for inserting a document."""

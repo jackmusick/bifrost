@@ -65,7 +65,6 @@ from src.models.contracts.cli import (
     SDKIntegrationsMappingItem,
     SDKTableCreateRequest,
     SDKTableListRequest,
-    SDKTableDeleteRequest,
     SDKTableInfo,
     SDKDocumentInsertRequest,
     SDKDocumentUpsertRequest,
@@ -2315,40 +2314,6 @@ async def cli_list_tables(
         )
         for t in tables
     ]
-
-
-@router.post(
-    "/tables/delete",
-    summary="Delete a table",
-)
-async def cli_delete_table(
-    request: SDKTableDeleteRequest,
-    current_user: CurrentUser,
-    db: AsyncSession = Depends(get_db),
-) -> bool:
-    """Delete a table and all its documents via SDK."""
-    from src.models.orm.tables import Table
-
-    org_id = await _get_cli_org_id(current_user.user_id, request.scope, db)
-    org_uuid = UUID(org_id) if org_id else None
-    app_uuid = UUID(request.app) if request.app else None
-
-    stmt = select(Table).where(
-        Table.name == request.name,
-        Table.organization_id == org_uuid,
-        Table.application_id == app_uuid,
-    )
-    result = await db.execute(stmt)
-    table = result.scalar_one_or_none()
-
-    if not table:
-        return False
-
-    await db.delete(table)
-    await db.commit()
-
-    logger.info(f"CLI deleted table '{request.name}' for user {current_user.email}")
-    return True
 
 
 async def _find_table_for_sdk(

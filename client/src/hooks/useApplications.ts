@@ -117,7 +117,7 @@ export function useCreateApplication() {
 export function useUpdateApplication() {
 	const queryClient = useQueryClient();
 
-	return $api.useMutation("patch", "/api/applications/{slug}", {
+	return $api.useMutation("patch", "/api/applications/{app_id}", {
 		onSuccess: (data) => {
 			queryClient.invalidateQueries({
 				queryKey: ["get", "/api/applications"],
@@ -143,15 +143,12 @@ export function useUpdateApplication() {
 export function useDeleteApplication() {
 	const queryClient = useQueryClient();
 
-	return $api.useMutation("delete", "/api/applications/{slug}", {
-		onSuccess: (_, variables) => {
-			const slug = variables.params.path.slug;
+	return $api.useMutation("delete", "/api/applications/{app_id}", {
+		onSuccess: () => {
 			queryClient.invalidateQueries({
 				queryKey: ["get", "/api/applications"],
 			});
-			toast.success("Application deleted", {
-				description: `Application "${slug}" has been deleted`,
-			});
+			toast.success("Application deleted");
 		},
 		onError: (error) => {
 			toast.error("Failed to delete application", {
@@ -276,17 +273,18 @@ export async function createApplication(
  * Update an application (imperative)
  */
 export async function updateApplication(
-	slug: string,
+	appId: string,
 	appData: ApplicationUpdate,
-	scope?: string,
 ): Promise<ApplicationPublic> {
-	const { data, error } = await apiClient.PATCH("/api/applications/{slug}", {
-		params: {
-			path: { slug },
-			query: scope ? { scope } : undefined,
+	const { data, error } = await apiClient.PATCH(
+		"/api/applications/{app_id}",
+		{
+			params: {
+				path: { app_id: appId },
+			},
+			body: appData,
 		},
-		body: appData,
-	});
+	);
 	if (error)
 		throw new Error(getErrorMessage(error, "Failed to update application"));
 	return data;
@@ -295,14 +293,10 @@ export async function updateApplication(
 /**
  * Delete an application (imperative)
  */
-export async function deleteApplication(
-	slug: string,
-	scope?: string,
-): Promise<void> {
-	const { error } = await apiClient.DELETE("/api/applications/{slug}", {
+export async function deleteApplication(appId: string): Promise<void> {
+	const { error } = await apiClient.DELETE("/api/applications/{app_id}", {
 		params: {
-			path: { slug },
-			query: scope ? { scope } : undefined,
+			path: { app_id: appId },
 		},
 	});
 	if (error)

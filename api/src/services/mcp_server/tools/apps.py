@@ -527,7 +527,7 @@ async def get_app_schema(context: Any) -> ToolResult:  # noqa: ARG001
     ], "File Models")
 
     # Documentation for code-based apps
-    overview = """# App Builder Schema Documentation
+    overview = r"""# App Builder Schema Documentation
 
 Applications in Bifrost use a code-based approach with TypeScript/TSX files.
 

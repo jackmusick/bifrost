@@ -6,6 +6,7 @@ export interface ImportOptions {
 	sourceSecretKey?: string;
 	sourceFernetSalt?: string;
 	replaceExisting: boolean;
+	targetOrganizationId?: string | null; // undefined=from file, null=Global, string=org UUID
 }
 
 export interface ImportResultItem {
@@ -92,6 +93,12 @@ export async function importEntities(
 	if (options.sourceFernetSalt) {
 		formData.append("source_fernet_salt", options.sourceFernetSalt);
 	}
+	if (options.targetOrganizationId !== undefined) {
+		formData.append(
+			"target_organization_id",
+			options.targetOrganizationId ?? "",
+		);
+	}
 
 	const response = await authFetch(`/api/export-import/import/${type}`, {
 		method: "POST",
@@ -120,6 +127,12 @@ export async function importAll(
 	}
 	if (options.sourceFernetSalt) {
 		formData.append("source_fernet_salt", options.sourceFernetSalt);
+	}
+	if (options.targetOrganizationId !== undefined) {
+		formData.append(
+			"target_organization_id",
+			options.targetOrganizationId ?? "",
+		);
 	}
 
 	const response = await authFetch("/api/export-import/import/all", {

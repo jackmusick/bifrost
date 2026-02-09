@@ -23,6 +23,7 @@ class KnowledgeExportItem(BaseModel):
     content: str
     metadata: dict = Field(default_factory=dict)
     organization_id: str | None = None
+    organization_name: str | None = None
 
 
 class KnowledgeExportFile(ExportMetadata):
@@ -42,6 +43,7 @@ class TableExportItem(BaseModel):
     description: str | None = None
     schema_def: dict | None = Field(None, alias="schema")
     organization_id: str | None = None
+    organization_name: str | None = None
     documents: list[DocumentExportItem] = Field(default_factory=list)
 
     model_config = {"populate_by_name": True}
@@ -60,6 +62,7 @@ class ConfigExportItem(BaseModel):
     config_type: str  # STRING, INT, BOOL, JSON, SECRET
     description: str | None = None
     organization_id: str | None = None
+    organization_name: str | None = None
     integration_name: str | None = None  # Reference by name, not ID
 
 
@@ -81,6 +84,7 @@ class ConfigSchemaExportItem(BaseModel):
 
 class IntegrationMappingExportItem(BaseModel):
     organization_id: str | None = None
+    organization_name: str | None = None
     entity_id: str
     entity_name: str | None = None
     config: dict[str, Any] = Field(default_factory=dict)
@@ -98,6 +102,7 @@ class OAuthProviderExportItem(BaseModel):
     redirect_uri: str | None = None
     scopes: list[str] = Field(default_factory=list)
     organization_id: str | None = None
+    organization_name: str | None = None
 
 
 class IntegrationExportItem(BaseModel):

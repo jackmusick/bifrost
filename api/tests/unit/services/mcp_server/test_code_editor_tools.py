@@ -16,6 +16,7 @@ from uuid import uuid4
 
 import pytest
 from fastmcp.tools.tool import ToolResult
+from mcp.types import TextContent
 
 from src.services.mcp_server.server import MCPContext
 
@@ -27,7 +28,10 @@ def get_result_data(result: ToolResult) -> dict:
 
 def get_result_text(result: ToolResult) -> str:
     """Extract display text from a ToolResult."""
-    return result.content or ""
+    if not result.content:
+        return ""
+    texts = [block.text for block in result.content if isinstance(block, TextContent)]
+    return "\n".join(texts)
 
 
 def is_error_result(result: ToolResult) -> bool:

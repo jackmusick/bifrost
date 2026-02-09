@@ -1363,7 +1363,7 @@ export function EntityManagement() {
 						} else if (entity.entityType === "app") {
 							const app = entity.original as ApplicationPublic;
 							await updateApplication.mutateAsync({
-								params: { path: { slug: app.slug } },
+								params: { path: { app_id: app.id } },
 								body: { scope: orgId ?? "global" },
 							});
 						}
@@ -1446,7 +1446,7 @@ export function EntityManagement() {
 							const app = entity.original as ApplicationPublic;
 							if (isClearRoles) {
 								await updateApplication.mutateAsync({
-									params: { path: { slug: app.slug } },
+									params: { path: { app_id: app.id } },
 									body: {
 										access_level: "role_based",
 										role_ids: [],
@@ -1454,7 +1454,7 @@ export function EntityManagement() {
 								});
 							} else {
 								await updateApplication.mutateAsync({
-									params: { path: { slug: app.slug } },
+									params: { path: { app_id: app.id } },
 									body: {
 										access_level: isAccessLevel ? "authenticated" : "role_based",
 										role_ids: isAccessLevel ? [] : undefined,

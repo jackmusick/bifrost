@@ -2051,7 +2051,7 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/api/config/{key}": {
+    "/api/config/{config_id}": {
         parameters: {
             query?: never;
             header?: never;
@@ -2063,9 +2063,9 @@ export interface paths {
         post?: never;
         /**
          * Delete configuration value
-         * @description Delete a configuration value by key
+         * @description Delete a configuration value by ID
          */
-        delete: operations["delete_config_api_config__key__delete"];
+        delete: operations["delete_config_api_config__config_id__delete"];
         options?: never;
         head?: never;
         patch?: never;
@@ -3125,22 +3125,22 @@ export interface paths {
          * Execute workflow via API key
          * @description Execute an endpoint-enabled workflow using an API key for authentication
          */
-        get: operations["execute_endpoint_api_endpoints__workflow_name__delete"];
+        get: operations["execute_endpoint_api_endpoints__workflow_name__put"];
         /**
          * Execute workflow via API key
          * @description Execute an endpoint-enabled workflow using an API key for authentication
          */
-        put: operations["execute_endpoint_api_endpoints__workflow_name__delete"];
+        put: operations["execute_endpoint_api_endpoints__workflow_name__put"];
         /**
          * Execute workflow via API key
          * @description Execute an endpoint-enabled workflow using an API key for authentication
          */
-        post: operations["execute_endpoint_api_endpoints__workflow_name__delete"];
+        post: operations["execute_endpoint_api_endpoints__workflow_name__put"];
         /**
          * Execute workflow via API key
          * @description Execute an endpoint-enabled workflow using an API key for authentication
          */
-        delete: operations["execute_endpoint_api_endpoints__workflow_name__delete"];
+        delete: operations["execute_endpoint_api_endpoints__workflow_name__put"];
         options?: never;
         head?: never;
         patch?: never;
@@ -3773,26 +3773,6 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/api/cli/tables/delete": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /**
-         * Delete a table
-         * @description Delete a table and all its documents via SDK.
-         */
-        post: operations["cli_delete_table_api_cli_tables_delete_post"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
     "/api/cli/tables/documents/insert": {
         parameters: {
             query?: never;
@@ -4149,11 +4129,52 @@ export interface paths {
         put?: never;
         /**
          * Create Agent
-         * @description Create a new agent (platform admin only).
+         * @description Create a new agent.
          *
-         *     Creates both database record and S3 file.
+         *     Platform admins can create any agent type.
+         *     Regular users can only create private agents with tools they have access to.
          */
         post: operations["create_agent_api_agents_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/agents/accessible-tools": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Accessible Tools
+         * @description Get tools the current user can assign to their agents (via role intersection).
+         */
+        get: operations["get_accessible_tools_api_agents_accessible_tools_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/agents/accessible-knowledge": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Accessible Knowledge
+         * @description Get knowledge sources the current user can assign to their agents.
+         */
+        get: operations["get_accessible_knowledge_api_agents_accessible_knowledge_get"];
+        put?: never;
+        post?: never;
         delete?: never;
         options?: never;
         head?: never;
@@ -4174,18 +4195,38 @@ export interface paths {
         get: operations["get_agent_api_agents__agent_id__get"];
         /**
          * Update Agent
-         * @description Update an agent (platform admin only).
+         * @description Update an agent. Admins can update any agent. Users can update their own private agents.
          */
         put: operations["update_agent_api_agents__agent_id__put"];
         post?: never;
         /**
          * Delete Agent
-         * @description Soft delete an agent (platform admin only).
+         * @description Soft delete an agent. Admins can delete any agent. Users can delete their own private agents.
          *
          *     System agents can be deleted - they will be recreated on next startup
          *     if they are still defined in the system agent definitions.
          */
         delete: operations["delete_agent_api_agents__agent_id__delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/agents/{agent_id}/promote": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Promote Agent
+         * @description Promote a private agent to organization scope.
+         */
+        post: operations["promote_agent_api_agents__agent_id__promote_post"];
+        delete?: never;
         options?: never;
         head?: never;
         patch?: never;
@@ -5696,18 +5737,34 @@ export interface paths {
         get: operations["get_table_api_tables__name__get"];
         put?: never;
         post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/tables/{table_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
         /**
          * Delete table
-         * @description Delete a table and all its documents (platform admin only).
+         * @description Delete a table and all its documents by ID (platform admin only).
          */
-        delete: operations["delete_table_api_tables__name__delete"];
+        delete: operations["delete_table_api_tables__table_id__delete"];
         options?: never;
         head?: never;
         /**
          * Update table
-         * @description Update table metadata (platform admin only).
+         * @description Update table metadata by ID (platform admin only).
          */
-        patch: operations["update_table_api_tables__name__patch"];
+        patch: operations["update_table_api_tables__table_id__patch"];
         trace?: never;
     };
     "/api/tables/{name}/documents": {
@@ -5804,6 +5861,190 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/knowledge-sources": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Namespaces
+         * @description List knowledge namespaces derived from knowledge_store.
+         */
+        get: operations["list_namespaces_api_knowledge_sources_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/knowledge-sources/roles": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Namespace Roles
+         * @description List all namespace role assignments.
+         */
+        get: operations["list_namespace_roles_api_knowledge_sources_roles_get"];
+        put?: never;
+        /**
+         * Assign Namespace Roles
+         * @description Assign roles to a namespace.
+         */
+        post: operations["assign_namespace_roles_api_knowledge_sources_roles_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/knowledge-sources/roles/{assignment_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /**
+         * Remove Namespace Role
+         * @description Remove a namespace role assignment.
+         */
+        delete: operations["remove_namespace_role_api_knowledge_sources_roles__assignment_id__delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/knowledge-sources/documents": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List All Documents
+         * @description List all documents across namespaces with optional filters.
+         *
+         *     Scope parameter (consistent with workflows, forms, agents):
+         *     - Omitted: show all (superusers only)
+         *     - "global": show only global documents (organization_id IS NULL)
+         *     - UUID string: show only that org's documents (no global fallback)
+         */
+        get: operations["list_all_documents_api_knowledge_sources_documents_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/knowledge-sources/documents/scope": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        /**
+         * Bulk Update Document Scope
+         * @description Bulk update scope for multiple documents. Superuser only.
+         *
+         *     When replace=true in the request body, conflicting documents in the
+         *     target scope are deleted before moving.
+         */
+        patch: operations["bulk_update_document_scope_api_knowledge_sources_documents_scope_patch"];
+        trace?: never;
+    };
+    "/api/knowledge-sources/{namespace}/documents": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Documents
+         * @description List documents in a namespace.
+         */
+        get: operations["list_documents_api_knowledge_sources__namespace__documents_get"];
+        put?: never;
+        /**
+         * Create Document
+         * @description Create a document in a namespace with embedding.
+         */
+        post: operations["create_document_api_knowledge_sources__namespace__documents_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/knowledge-sources/{namespace}/documents/{doc_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Document
+         * @description Get a document by UUID.
+         */
+        get: operations["get_document_api_knowledge_sources__namespace__documents__doc_id__get"];
+        /**
+         * Update Document
+         * @description Update a document and re-embed. Optionally change scope.
+         */
+        put: operations["update_document_api_knowledge_sources__namespace__documents__doc_id__put"];
+        post?: never;
+        /**
+         * Delete Document
+         * @description Delete a document.
+         */
+        delete: operations["delete_document_api_knowledge_sources__namespace__documents__doc_id__delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/knowledge-sources/{namespace}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /**
+         * Delete Namespace
+         * @description Delete all documents in a namespace.
+         */
+        delete: operations["delete_namespace_api_knowledge_sources__namespace__delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/applications": {
         parameters: {
             query?: never;
@@ -5842,18 +6083,34 @@ export interface paths {
         get: operations["get_application_api_applications__slug__get"];
         put?: never;
         post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/applications/{app_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
         /**
          * Delete application
-         * @description Delete an application.
+         * @description Delete an application by ID.
          */
-        delete: operations["delete_application_api_applications__slug__delete"];
+        delete: operations["delete_application_api_applications__app_id__delete"];
         options?: never;
         head?: never;
         /**
          * Update application metadata
-         * @description Update application metadata and access control.
+         * @description Update application metadata and access control by ID.
          */
-        patch: operations["update_application_api_applications__slug__patch"];
+        patch: operations["update_application_api_applications__app_id__patch"];
         trace?: never;
     };
     "/api/applications/{app_id}/draft": {
@@ -6033,6 +6290,206 @@ export interface paths {
         get: operations["get_dependency_graph_api_dependencies__entity_type___entity_id__get"];
         put?: never;
         post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/export-import/export/knowledge": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Export Knowledge
+         * @description Export selected knowledge documents as JSON.
+         */
+        post: operations["export_knowledge_api_export_import_export_knowledge_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/export-import/export/configs": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Export Configs
+         * @description Export selected configs as JSON. Secret values exported encrypted.
+         */
+        post: operations["export_configs_api_export_import_export_configs_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/export-import/export/tables": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Export Tables
+         * @description Export selected tables with all documents as JSON.
+         */
+        post: operations["export_tables_api_export_import_export_tables_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/export-import/export/integrations": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Export Integrations
+         * @description Export selected integrations with config schema, mappings, OAuth, and default config.
+         */
+        post: operations["export_integrations_api_export_import_export_integrations_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/export-import/export/all": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Export All
+         * @description Export all selected entities as a ZIP file containing individual JSON files.
+         */
+        post: operations["export_all_api_export_import_export_all_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/export-import/import/knowledge": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Import Knowledge
+         * @description Import knowledge documents from JSON file.
+         */
+        post: operations["import_knowledge_api_export_import_import_knowledge_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/export-import/import/tables": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Import Tables
+         * @description Import tables with documents from JSON file.
+         */
+        post: operations["import_tables_api_export_import_import_tables_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/export-import/import/configs": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Import Configs
+         * @description Import configs from JSON file with optional secret re-encryption.
+         */
+        post: operations["import_configs_api_export_import_import_configs_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/export-import/import/integrations": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Import Integrations
+         * @description Import integrations from JSON file with optional secret re-encryption.
+         */
+        post: operations["import_integrations_api_export_import_import_integrations_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/export-import/import/all": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Import All
+         * @description Import all entities from a ZIP file.
+         */
+        post: operations["import_all_api_export_import_import_all_post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -6420,6 +6877,32 @@ export interface components {
             call_count: number;
         };
         /**
+         * AccessibleKnowledgeSource
+         * @description A knowledge source the current user can assign to their agents.
+         */
+        AccessibleKnowledgeSource: {
+            /** Id */
+            id: string;
+            /** Name */
+            name: string;
+            /** Namespace */
+            namespace: string;
+            /** Description */
+            description?: string | null;
+        };
+        /**
+         * AccessibleTool
+         * @description A tool the current user can assign to their agents.
+         */
+        AccessibleTool: {
+            /** Id */
+            id: string;
+            /** Name */
+            name: string;
+            /** Description */
+            description?: string | null;
+        };
+        /**
          * AdminRevokeRequest
          * @description Admin revocation request.
          */
@@ -6459,7 +6942,7 @@ export interface components {
          * @description Agent access control levels
          * @enum {string}
          */
-        AgentAccessLevel: "authenticated" | "role_based";
+        AgentAccessLevel: "authenticated" | "role_based" | "private";
         /**
          * AgentChannel
          * @description Supported agent communication channels
@@ -6528,6 +7011,22 @@ export interface components {
             llm_temperature?: number | null;
         };
         /**
+         * AgentPromoteRequest
+         * @description Request to promote a private agent to organization scope.
+         */
+        AgentPromoteRequest: {
+            /**
+             * @description Target access level (authenticated or role_based)
+             * @default role_based
+             */
+            access_level: components["schemas"]["AgentAccessLevel"];
+            /**
+             * Role Ids
+             * @description Role IDs for role_based access
+             */
+            role_ids?: string[];
+        };
+        /**
          * AgentPublic
          * @description Agent output for API responses.
          */
@@ -6554,6 +7053,10 @@ export interface components {
             is_system: boolean;
             /** Created By */
             created_by?: string | null;
+            /** Owner User Id */
+            owner_user_id?: string | null;
+            /** Owner Email */
+            owner_email?: string | null;
             /** Created At */
             created_at?: string | null;
             /** Updated At */
@@ -6593,6 +7096,8 @@ export interface components {
             access_level: components["schemas"]["AgentAccessLevel"];
             /** Organization Id */
             organization_id?: string | null;
+            /** Owner User Id */
+            owner_user_id?: string | null;
             /** Created At */
             created_at: string;
             /** Llm Model */
@@ -7066,7 +7571,7 @@ export interface components {
             /** Mfa Required For Password */
             mfa_required_for_password: boolean;
             /** Oauth Providers */
-            oauth_providers: components["schemas"]["OAuthProviderInfo"][];
+            oauth_providers: components["schemas"]["src__models__contracts__auth__OAuthProviderInfo"][];
         };
         /**
          * AuthorizeResponse
@@ -7115,6 +7620,93 @@ export interface components {
              * @description Similarity score to the deactivated workflow (0.0-1.0)
              */
             similarity_score: number;
+        };
+        /** Body_import_all_api_export_import_import_all_post */
+        Body_import_all_api_export_import_import_all_post: {
+            /**
+             * File
+             * Format: binary
+             */
+            file: string;
+            /**
+             * Replace Existing
+             * @default true
+             */
+            replace_existing: boolean;
+            /** Source Secret Key */
+            source_secret_key?: string | null;
+            /** Source Fernet Salt */
+            source_fernet_salt?: string | null;
+            /** Target Organization Id */
+            target_organization_id?: string | null;
+        };
+        /** Body_import_configs_api_export_import_import_configs_post */
+        Body_import_configs_api_export_import_import_configs_post: {
+            /**
+             * File
+             * Format: binary
+             */
+            file: string;
+            /**
+             * Replace Existing
+             * @default true
+             */
+            replace_existing: boolean;
+            /** Source Secret Key */
+            source_secret_key?: string | null;
+            /** Source Fernet Salt */
+            source_fernet_salt?: string | null;
+            /** Target Organization Id */
+            target_organization_id?: string | null;
+        };
+        /** Body_import_integrations_api_export_import_import_integrations_post */
+        Body_import_integrations_api_export_import_import_integrations_post: {
+            /**
+             * File
+             * Format: binary
+             */
+            file: string;
+            /**
+             * Replace Existing
+             * @default true
+             */
+            replace_existing: boolean;
+            /** Source Secret Key */
+            source_secret_key?: string | null;
+            /** Source Fernet Salt */
+            source_fernet_salt?: string | null;
+            /** Target Organization Id */
+            target_organization_id?: string | null;
+        };
+        /** Body_import_knowledge_api_export_import_import_knowledge_post */
+        Body_import_knowledge_api_export_import_import_knowledge_post: {
+            /**
+             * File
+             * Format: binary
+             */
+            file: string;
+            /**
+             * Replace Existing
+             * @default true
+             */
+            replace_existing: boolean;
+            /** Target Organization Id */
+            target_organization_id?: string | null;
+        };
+        /** Body_import_tables_api_export_import_import_tables_post */
+        Body_import_tables_api_export_import_import_tables_post: {
+            /**
+             * File
+             * Format: binary
+             */
+            file: string;
+            /**
+             * Replace Existing
+             * @default true
+             */
+            replace_existing: boolean;
+            /** Target Organization Id */
+            target_organization_id?: string | null;
         };
         /** Body_login_auth_login_post */
         Body_login_auth_login_post: {
@@ -7188,6 +7780,17 @@ export interface components {
              * @description Primary color (hex code, e.g., #0066CC)
              */
             primary_color?: string | null;
+        };
+        /** BulkExportRequest */
+        BulkExportRequest: {
+            /** Knowledge Ids */
+            knowledge_ids?: string[];
+            /** Table Ids */
+            table_ids?: string[];
+            /** Config Ids */
+            config_ids?: string[];
+            /** Integration Ids */
+            integration_ids?: string[];
         };
         /**
          * CLIAICompleteRequest
@@ -7915,6 +8518,11 @@ export interface components {
          * @description Configuration entity response (global or org-specific)
          */
         ConfigResponse: {
+            /**
+             * Id
+             * @description Config UUID
+             */
+            id?: string | null;
             /** Key */
             key: string;
             /**
@@ -9553,6 +10161,11 @@ export interface components {
              */
             continuation_token?: string | null;
         };
+        /** ExportRequest */
+        ExportRequest: {
+            /** Ids */
+            ids?: string[];
+        };
         /**
          * FileChange
          * @description Represents a changed file in Git
@@ -10732,6 +11345,47 @@ export interface components {
             /** Environment */
             environment: string;
         };
+        /** ImportResult */
+        ImportResult: {
+            /** Entity Type */
+            entity_type: string;
+            /**
+             * Created
+             * @default 0
+             */
+            created: number;
+            /**
+             * Updated
+             * @default 0
+             */
+            updated: number;
+            /**
+             * Skipped
+             * @default 0
+             */
+            skipped: number;
+            /**
+             * Errors
+             * @default 0
+             */
+            errors: number;
+            /** Warnings */
+            warnings?: string[];
+            /** Details */
+            details?: components["schemas"]["ImportResultItem"][];
+        };
+        /** ImportResultItem */
+        ImportResultItem: {
+            /** Name */
+            name: string;
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "created" | "updated" | "skipped" | "error";
+            /** Error */
+            error?: string | null;
+        };
         /**
          * InstallPackageRequest
          * @description Request model for installing a package
@@ -11316,6 +11970,161 @@ export interface components {
             } | null;
         };
         /**
+         * KnowledgeDocumentBulkScopeUpdate
+         * @description Request model for bulk-updating document scope.
+         */
+        KnowledgeDocumentBulkScopeUpdate: {
+            /** Document Ids */
+            document_ids: string[];
+            /**
+             * Scope
+             * @description Target scope: 'global' or an org UUID
+             */
+            scope: string;
+            /**
+             * Replace
+             * @description Replace conflicting documents in target scope
+             * @default false
+             */
+            replace: boolean;
+        };
+        /**
+         * KnowledgeDocumentCreate
+         * @description Request model for creating a knowledge document.
+         */
+        KnowledgeDocumentCreate: {
+            /**
+             * Content
+             * @description Markdown content
+             */
+            content: string;
+            /**
+             * Key
+             * @description Optional key for upsert
+             */
+            key?: string | null;
+            /** Metadata */
+            metadata?: {
+                [key: string]: unknown;
+            };
+        };
+        /**
+         * KnowledgeDocumentPublic
+         * @description Knowledge document output for API responses.
+         */
+        KnowledgeDocumentPublic: {
+            /** Id */
+            id: string;
+            /** Namespace */
+            namespace: string;
+            /** Key */
+            key?: string | null;
+            /** Content */
+            content: string;
+            /** Metadata */
+            metadata?: {
+                [key: string]: unknown;
+            };
+            /** Organization Id */
+            organization_id?: string | null;
+            /** Created At */
+            created_at?: string | null;
+            /** Updated At */
+            updated_at?: string | null;
+        };
+        /**
+         * KnowledgeDocumentSummary
+         * @description Lightweight document summary (no full content).
+         */
+        KnowledgeDocumentSummary: {
+            /** Id */
+            id: string;
+            /** Namespace */
+            namespace: string;
+            /** Key */
+            key?: string | null;
+            /**
+             * Content Preview
+             * @description First ~200 chars of content
+             * @default
+             */
+            content_preview: string;
+            /** Metadata */
+            metadata?: {
+                [key: string]: unknown;
+            };
+            /** Organization Id */
+            organization_id?: string | null;
+            /** Created At */
+            created_at?: string | null;
+        };
+        /**
+         * KnowledgeDocumentUpdate
+         * @description Request model for updating a knowledge document.
+         */
+        KnowledgeDocumentUpdate: {
+            /**
+             * Content
+             * @description Markdown content
+             */
+            content: string;
+            /** Metadata */
+            metadata?: {
+                [key: string]: unknown;
+            } | null;
+        };
+        /**
+         * KnowledgeNamespaceInfo
+         * @description Namespace info derived from knowledge_store document counts.
+         */
+        KnowledgeNamespaceInfo: {
+            /** Namespace */
+            namespace: string;
+            /**
+             * Document Count
+             * @default 0
+             */
+            document_count: number;
+            /**
+             * Global Count
+             * @default 0
+             */
+            global_count: number;
+            /**
+             * Org Count
+             * @default 0
+             */
+            org_count: number;
+        };
+        /**
+         * KnowledgeNamespaceRoleCreate
+         * @description Request model for assigning roles to a namespace.
+         */
+        KnowledgeNamespaceRoleCreate: {
+            /** Namespace */
+            namespace: string;
+            /** Role Ids */
+            role_ids: string[];
+            /** Organization Id */
+            organization_id?: string | null;
+        };
+        /**
+         * KnowledgeNamespaceRolePublic
+         * @description Knowledge namespace role assignment output.
+         */
+        KnowledgeNamespaceRolePublic: {
+            /** Id */
+            id: string;
+            /** Namespace */
+            namespace: string;
+            /** Organization Id */
+            organization_id?: string | null;
+            /** Role Id */
+            role_id: string;
+            /** Assigned By */
+            assigned_by?: string | null;
+        };
+        /**
          * KnowledgeStorageTrend
          * @description Daily knowledge storage trend data point.
          */
@@ -11772,11 +12581,6 @@ export interface components {
             issuer: string;
             /** Account Name */
             account_name: string;
-            /**
-             * Is Existing
-             * @default false
-             */
-            is_existing: boolean;
         };
         /**
          * MFAStatusResponse
@@ -11796,11 +12600,20 @@ export interface components {
         };
         /**
          * MFAVerifyRequest
-         * @description Request to verify MFA code.
+         * @description Request to verify MFA code during login.
          */
         MFAVerifyRequest: {
+            /** Mfa Token */
+            mfa_token: string;
             /** Code */
             code: string;
+            /**
+             * Trust Device
+             * @default false
+             */
+            trust_device: boolean;
+            /** Device Name */
+            device_name?: string | null;
         };
         /**
          * MFAVerifyResponse
@@ -12198,29 +13011,15 @@ export interface components {
         };
         /**
          * OAuthCallbackRequest
-         * @description Request model for OAuth callback endpoint
+         * @description OAuth callback request (for when frontend handles callback).
          */
         OAuthCallbackRequest: {
-            /**
-             * Code
-             * @description Authorization code from OAuth provider
-             */
+            /** Provider */
+            provider: string;
+            /** Code */
             code: string;
-            /**
-             * State
-             * @description State parameter for CSRF protection
-             */
-            state?: string | null;
-            /**
-             * Redirect Uri
-             * @description Redirect URI used in authorization request
-             */
-            redirect_uri?: string | null;
-            /**
-             * Organization Id
-             * @description Organization ID for org-specific token storage (optional, for org overrides)
-             */
-            organization_id?: string | null;
+            /** State */
+            state: string;
         };
         /**
          * OAuthCallbackResponse
@@ -12650,7 +13449,7 @@ export interface components {
         };
         /**
          * OAuthProviderInfo
-         * @description OAuth provider information for login page
+         * @description OAuth provider information.
          */
         OAuthProviderInfo: {
             /** Name */
@@ -12666,7 +13465,7 @@ export interface components {
          */
         OAuthProvidersResponse: {
             /** Providers */
-            providers: components["schemas"]["src__routers__oauth_sso__OAuthProviderInfo"][];
+            providers: components["schemas"]["OAuthProviderInfo"][];
         };
         /**
          * OAuthTokenResponse
@@ -14133,6 +14932,10 @@ export interface components {
              * Format: uuid
              */
             id: string;
+            /** Permissions */
+            permissions?: {
+                [key: string]: unknown;
+            };
             /** Created By */
             created_by: string;
             /** Created At */
@@ -14753,27 +15556,6 @@ export interface components {
             /**
              * App
              * @description Application UUID to scope table to an app
-             */
-            app?: string | null;
-        };
-        /**
-         * SDKTableDeleteRequest
-         * @description SDK request for deleting a table.
-         */
-        SDKTableDeleteRequest: {
-            /**
-             * Name
-             * @description Table name
-             */
-            name: string;
-            /**
-             * Scope
-             * @description Organization scope
-             */
-            scope?: string | null;
-            /**
-             * App
-             * @description Application UUID
              */
             app?: string | null;
         };
@@ -16827,21 +17609,63 @@ export interface components {
             metadata?: components["schemas"]["WorkflowMetadata"] | null;
         };
         /**
-         * MFAVerifyRequest
-         * @description Request to verify MFA code during login.
+         * OAuthProviderInfo
+         * @description OAuth provider information for login page
          */
-        src__routers__auth__MFAVerifyRequest: {
-            /** Mfa Token */
-            mfa_token: string;
-            /** Code */
+        src__models__contracts__auth__OAuthProviderInfo: {
+            /** Name */
+            name: string;
+            /** Display Name */
+            display_name: string;
+            /** Icon */
+            icon?: string | null;
+        };
+        /**
+         * OAuthCallbackRequest
+         * @description Request model for OAuth callback endpoint
+         */
+        src__models__contracts__oauth__OAuthCallbackRequest: {
+            /**
+             * Code
+             * @description Authorization code from OAuth provider
+             */
             code: string;
             /**
-             * Trust Device
+             * State
+             * @description State parameter for CSRF protection
+             */
+            state?: string | null;
+            /**
+             * Redirect Uri
+             * @description Redirect URI used in authorization request
+             */
+            redirect_uri?: string | null;
+            /**
+             * Organization Id
+             * @description Organization ID for org-specific token storage (optional, for org overrides)
+             */
+            organization_id?: string | null;
+        };
+        /**
+         * MFASetupResponse
+         * @description MFA setup response with secret.
+         */
+        src__routers__auth__MFASetupResponse: {
+            /** Secret */
+            secret: string;
+            /** Qr Code Uri */
+            qr_code_uri: string;
+            /** Provisioning Uri */
+            provisioning_uri: string;
+            /** Issuer */
+            issuer: string;
+            /** Account Name */
+            account_name: string;
+            /**
+             * Is Existing
              * @default false
              */
-            trust_device: boolean;
-            /** Device Name */
-            device_name?: string | null;
+            is_existing: boolean;
         };
         /**
          * UserCreate
@@ -16859,44 +17683,12 @@ export interface components {
             name?: string | null;
         };
         /**
-         * MFASetupResponse
-         * @description MFA setup response with secret.
+         * MFAVerifyRequest
+         * @description Request to verify MFA code.
          */
-        src__routers__mfa__MFASetupResponse: {
-            /** Secret */
-            secret: string;
-            /** Qr Code Uri */
-            qr_code_uri: string;
-            /** Provisioning Uri */
-            provisioning_uri: string;
-            /** Issuer */
-            issuer: string;
-            /** Account Name */
-            account_name: string;
-        };
-        /**
-         * OAuthCallbackRequest
-         * @description OAuth callback request (for when frontend handles callback).
-         */
-        src__routers__oauth_sso__OAuthCallbackRequest: {
-            /** Provider */
-            provider: string;
+        src__routers__mfa__MFAVerifyRequest: {
             /** Code */
             code: string;
-            /** State */
-            state: string;
-        };
-        /**
-         * OAuthProviderInfo
-         * @description OAuth provider information.
-         */
-        src__routers__oauth_sso__OAuthProviderInfo: {
-            /** Name */
-            name: string;
-            /** Display Name */
-            display_name: string;
-            /** Icon */
-            icon?: string | null;
         };
     };
     responses: never;
@@ -16999,7 +17791,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["MFASetupResponse"];
+                    "application/json": components["schemas"]["src__routers__auth__MFASetupResponse"];
                 };
             };
             /** @description Validation Error */
@@ -17042,7 +17834,7 @@ export interface operations {
         };
         requestBody: {
             content: {
-                "application/json": components["schemas"]["src__routers__auth__MFAVerifyRequest"];
+                "application/json": components["schemas"]["MFAVerifyRequest"];
             };
         };
         responses: {
@@ -17445,7 +18237,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["src__routers__mfa__MFASetupResponse"];
+                    "application/json": components["schemas"]["MFASetupResponse"];
                 };
             };
         };
@@ -17459,7 +18251,7 @@ export interface operations {
         };
         requestBody: {
             content: {
-                "application/json": components["schemas"]["MFAVerifyRequest"];
+                "application/json": components["schemas"]["src__routers__mfa__MFAVerifyRequest"];
             };
         };
         responses: {
@@ -17709,7 +18501,7 @@ export interface operations {
         };
         requestBody: {
             content: {
-                "application/json": components["schemas"]["src__routers__oauth_sso__OAuthCallbackRequest"];
+                "application/json": components["schemas"]["OAuthCallbackRequest"];
             };
         };
         responses: {
@@ -19923,12 +20715,12 @@ export interface operations {
             };
         };
     };
-    delete_config_api_config__key__delete: {
+    delete_config_api_config__config_id__delete: {
         parameters: {
             query?: never;
             header?: never;
             path: {
-                key: string;
+                config_id: string;
             };
             cookie?: never;
         };
@@ -21640,7 +22432,7 @@ export interface operations {
         };
         requestBody: {
             content: {
-                "application/json": components["schemas"]["OAuthCallbackRequest"];
+                "application/json": components["schemas"]["src__models__contracts__oauth__OAuthCallbackRequest"];
             };
         };
         responses: {
@@ -21735,7 +22527,7 @@ export interface operations {
             };
         };
     };
-    execute_endpoint_api_endpoints__workflow_name__delete: {
+    execute_endpoint_api_endpoints__workflow_name__put: {
         parameters: {
             query?: never;
             header: {
@@ -21768,7 +22560,7 @@ export interface operations {
             };
         };
     };
-    execute_endpoint_api_endpoints__workflow_name__delete: {
+    execute_endpoint_api_endpoints__workflow_name__put: {
         parameters: {
             query?: never;
             header: {
@@ -21801,7 +22593,7 @@ export interface operations {
             };
         };
     };
-    execute_endpoint_api_endpoints__workflow_name__delete: {
+    execute_endpoint_api_endpoints__workflow_name__put: {
         parameters: {
             query?: never;
             header: {
@@ -21834,7 +22626,7 @@ export interface operations {
             };
         };
     };
-    execute_endpoint_api_endpoints__workflow_name__delete: {
+    execute_endpoint_api_endpoints__workflow_name__put: {
         parameters: {
             query?: never;
             header: {
@@ -22916,39 +23708,6 @@ export interface operations {
             };
         };
     };
-    cli_delete_table_api_cli_tables_delete_post: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["SDKTableDeleteRequest"];
-            };
-        };
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": boolean;
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
     cli_insert_document_api_cli_tables_documents_insert_post: {
         parameters: {
             query?: never;
@@ -23531,6 +24290,46 @@ export interface operations {
             };
         };
     };
+    get_accessible_tools_api_agents_accessible_tools_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AccessibleTool"][];
+                };
+            };
+        };
+    };
+    get_accessible_knowledge_api_agents_accessible_knowledge_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AccessibleKnowledgeSource"][];
+                };
+            };
+        };
+    };
     get_agent_api_agents__agent_id__get: {
         parameters: {
             query?: never;
@@ -23614,6 +24413,41 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    promote_agent_api_agents__agent_id__promote_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                agent_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AgentPromoteRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AgentPublic"];
+                };
             };
             /** @description Validation Error */
             422: {
@@ -26554,14 +27388,12 @@ export interface operations {
             };
         };
     };
-    delete_table_api_tables__name__delete: {
+    delete_table_api_tables__table_id__delete: {
         parameters: {
-            query?: {
-                scope?: string | null;
-            };
+            query?: never;
             header?: never;
             path: {
-                name: string;
+                table_id: string;
             };
             cookie?: never;
         };
@@ -26585,14 +27417,12 @@ export interface operations {
             };
         };
     };
-    update_table_api_tables__name__patch: {
+    update_table_api_tables__table_id__patch: {
         parameters: {
-            query?: {
-                scope?: string | null;
-            };
+            query?: never;
             header?: never;
             path: {
-                name: string;
+                table_id: string;
             };
             cookie?: never;
         };
@@ -26833,6 +27663,394 @@ export interface operations {
             };
         };
     };
+    list_namespaces_api_knowledge_sources_get: {
+        parameters: {
+            query?: {
+                scope?: string | null;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["KnowledgeNamespaceInfo"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_namespace_roles_api_knowledge_sources_roles_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["KnowledgeNamespaceRolePublic"][];
+                };
+            };
+        };
+    };
+    assign_namespace_roles_api_knowledge_sources_roles_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["KnowledgeNamespaceRoleCreate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["KnowledgeNamespaceRolePublic"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    remove_namespace_role_api_knowledge_sources_roles__assignment_id__delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                assignment_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_all_documents_api_knowledge_sources_documents_get: {
+        parameters: {
+            query?: {
+                scope?: string | null;
+                namespace?: string | null;
+                search?: string | null;
+                limit?: number;
+                offset?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["KnowledgeDocumentSummary"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    bulk_update_document_scope_api_knowledge_sources_documents_scope_patch: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["KnowledgeDocumentBulkScopeUpdate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_documents_api_knowledge_sources__namespace__documents_get: {
+        parameters: {
+            query?: {
+                scope?: string | null;
+                search?: string | null;
+                limit?: number;
+                offset?: number;
+            };
+            header?: never;
+            path: {
+                namespace: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["KnowledgeDocumentSummary"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    create_document_api_knowledge_sources__namespace__documents_post: {
+        parameters: {
+            query?: {
+                scope?: string | null;
+            };
+            header?: never;
+            path: {
+                namespace: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["KnowledgeDocumentCreate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["KnowledgeDocumentPublic"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_document_api_knowledge_sources__namespace__documents__doc_id__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                namespace: string;
+                doc_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["KnowledgeDocumentPublic"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    update_document_api_knowledge_sources__namespace__documents__doc_id__put: {
+        parameters: {
+            query?: {
+                scope?: string | null;
+                replace?: boolean;
+            };
+            header?: never;
+            path: {
+                namespace: string;
+                doc_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["KnowledgeDocumentUpdate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["KnowledgeDocumentPublic"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    delete_document_api_knowledge_sources__namespace__documents__doc_id__delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                namespace: string;
+                doc_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    delete_namespace_api_knowledge_sources__namespace__delete: {
+        parameters: {
+            query?: {
+                scope?: string | null;
+            };
+            header?: never;
+            path: {
+                namespace: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     list_applications_api_applications_get: {
         parameters: {
             query?: {
@@ -26934,14 +28152,12 @@ export interface operations {
             };
         };
     };
-    delete_application_api_applications__slug__delete: {
+    delete_application_api_applications__app_id__delete: {
         parameters: {
-            query?: {
-                scope?: string | null;
-            };
+            query?: never;
             header?: never;
             path: {
-                slug: string;
+                app_id: string;
             };
             cookie?: never;
         };
@@ -26965,14 +28181,12 @@ export interface operations {
             };
         };
     };
-    update_application_api_applications__slug__patch: {
+    update_application_api_applications__app_id__patch: {
         parameters: {
-            query?: {
-                scope?: string | null;
-            };
+            query?: never;
             header?: never;
             path: {
-                slug: string;
+                app_id: string;
             };
             cookie?: never;
         };
@@ -27385,6 +28599,338 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["DependencyGraphResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    export_knowledge_api_export_import_export_knowledge_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ExportRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    export_configs_api_export_import_export_configs_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ExportRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    export_tables_api_export_import_export_tables_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ExportRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    export_integrations_api_export_import_export_integrations_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ExportRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    export_all_api_export_import_export_all_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["BulkExportRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    import_knowledge_api_export_import_import_knowledge_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "multipart/form-data": components["schemas"]["Body_import_knowledge_api_export_import_import_knowledge_post"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ImportResult"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    import_tables_api_export_import_import_tables_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "multipart/form-data": components["schemas"]["Body_import_tables_api_export_import_import_tables_post"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ImportResult"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    import_configs_api_export_import_import_configs_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "multipart/form-data": components["schemas"]["Body_import_configs_api_export_import_import_configs_post"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ImportResult"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    import_integrations_api_export_import_import_integrations_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "multipart/form-data": components["schemas"]["Body_import_integrations_api_export_import_import_integrations_post"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ImportResult"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    import_all_api_export_import_import_all_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "multipart/form-data": components["schemas"]["Body_import_all_api_export_import_import_all_post"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
                 };
             };
             /** @description Validation Error */

@@ -116,7 +116,7 @@ export function Tables() {
 		if (!tableToDelete) return;
 		await deleteTable.mutateAsync({
 			params: {
-				path: { name: tableToDelete.name },
+				path: { table_id: tableToDelete.id },
 			},
 		});
 		setIsDeleteDialogOpen(false);

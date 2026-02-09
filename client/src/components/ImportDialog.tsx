@@ -13,6 +13,13 @@ import { Label } from "@/components/ui/label";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Badge } from "@/components/ui/badge";
 import {
+	Select,
+	SelectContent,
+	SelectItem,
+	SelectTrigger,
+	SelectValue,
+} from "@/components/ui/select";
+import {
 	AlertTriangle,
 	CheckCircle2,
 	Upload,
@@ -25,6 +32,7 @@ import {
 	type EntityType,
 	type ImportResult,
 } from "@/services/exportImport";
+import { useOrganizations } from "@/hooks/useOrganizations";
 
 interface PreviewItem {
 	id: string;
@@ -50,8 +58,12 @@ function orgScope(orgId: unknown): string {
 	return (orgId as string) || "global";
 }
 
-/** Format org scope for display. Shows "Global" or truncated UUID. */
-function formatOrgScope(orgId: unknown): string | undefined {
+/** Format org scope for display. Prefers org name, falls back to truncated UUID. */
+function formatOrgScope(
+	orgId: unknown,
+	orgName: unknown,
+): string | undefined {
+	if (orgName) return orgName as string;
 	const id = orgId as string | null | undefined;
 	if (!id) return undefined;
 	return `org: ${id.slice(0, 8)}`;
@@ -75,7 +87,7 @@ function parseEntityJson(
 		// Group by namespace + org scope
 		const groups: Record<
 			string,
-			{ ns: string; orgId: unknown; count: number }
+			{ ns: string; orgId: unknown; orgName: unknown; count: number }
 		> = {};
 		for (const item of items) {
 			const ns = (item.namespace as string) || "default";
@@ -85,6 +97,7 @@ function parseEntityJson(
 				groups[key] = {
 					ns,
 					orgId: item.organization_id,
+					orgName: item.organization_name,
 					count: 0,
 				};
 			}
@@ -93,7 +106,7 @@ function parseEntityJson(
 		for (const [, group] of Object.entries(groups)) {
 			const scope = orgScope(group.orgId);
 			const orgLabel = multiOrg
-				? formatOrgScope(group.orgId)
+				? formatOrgScope(group.orgId, group.orgName)
 				: undefined;
 			const parts = [
 				`${group.count} document${group.count !== 1 ? "s" : ""}`,
@@ -118,7 +131,10 @@ function parseEntityJson(
 				);
 			}
 			if (multiOrg) {
-				const orgLabel = formatOrgScope(item.organization_id);
+				const orgLabel = formatOrgScope(
+					item.organization_id,
+					item.organization_name,
+				);
 				if (orgLabel) parts.push(orgLabel);
 			}
 			previewItems.push({
@@ -134,7 +150,10 @@ function parseEntityJson(
 			if (item.config_type)
 				parts.push(item.config_type as string);
 			if (multiOrg) {
-				const orgLabel = formatOrgScope(item.organization_id);
+				const orgLabel = formatOrgScope(
+					item.organization_id,
+					item.organization_name,
+				);
 				if (orgLabel) parts.push(orgLabel);
 			}
 			previewItems.push({
@@ -230,6 +249,15 @@ export function ImportDialog({
 	);
 	const [parseError, setParseError] = useState<string | null>(null);
 
+	// Target org override: undefined=from file, null=Global, string=org UUID
+	const [targetOrgId, setTargetOrgId] = useState<
+		string | null | undefined
+	>(undefined);
+	const [hasOrgScopedItems, setHasOrgScopedItems] = useState(false);
+	const { data: orgsData } = useOrganizations({
+		enabled: hasOrgScopedItems,
+	});
+
 	const parseJsonFile = async (f: File) => {
 		try {
 			setParseError(null);
@@ -244,6 +272,15 @@ export function ImportDialog({
 			setSelectedItems(
 				new Set(section.items.map((item) => item.id)),
 			);
+			// Detect org-scoped items for target org selector
+			const rawItems = (data.items ?? []) as Record<
+				string,
+				unknown
+			>[];
+			const hasOrg = rawItems.some(
+				(item) => item.organization_id,
+			);
+			setHasOrgScopedItems(hasOrg);
 		} catch {
 			setParseError("Failed to parse JSON file");
 		}
@@ -269,6 +306,8 @@ export function ImportDialog({
 			setPreviewSection(null);
 			setSelectedItems(new Set());
 			setParseError(null);
+			setTargetOrgId(undefined);
+			setHasOrgScopedItems(false);
 			detectEncryptedValues(f);
 			// Only parse JSON files for preview; ZIP files pass through
 			if (!f.name.endsWith(".zip")) {
@@ -321,6 +360,7 @@ export function ImportDialog({
 				replaceExisting,
 				sourceSecretKey: sourceSecretKey || undefined,
 				sourceFernetSalt: sourceFernetSalt || undefined,
+				targetOrganizationId: targetOrgId,
 			};
 
 			let importResult;
@@ -371,6 +411,8 @@ export function ImportDialog({
 		setShowSecretFields(false);
 		setSourceSecretKey("");
 		setSourceFernetSalt("");
+		setTargetOrgId(undefined);
+		setHasOrgScopedItems(false);
 		onOpenChange(false);
 	};
 
@@ -499,6 +541,56 @@ export function ImportDialog({
 										</label>
 									))}
 								</div>
+							</div>
+						)}
+
+						{/* Target organization selector */}
+						{hasOrgScopedItems && (
+							<div className="space-y-2">
+								<Label htmlFor="target-org">
+									Target Organization
+								</Label>
+								<Select
+									value={
+										targetOrgId === undefined
+											? "__from_file__"
+											: targetOrgId === null
+												? "__global__"
+												: targetOrgId
+									}
+									onValueChange={(v) => {
+										if (v === "__from_file__")
+											setTargetOrgId(undefined);
+										else if (v === "__global__")
+											setTargetOrgId(null);
+										else setTargetOrgId(v);
+									}}
+								>
+									<SelectTrigger id="target-org">
+										<SelectValue />
+									</SelectTrigger>
+									<SelectContent>
+										<SelectItem value="__from_file__">
+											From file (resolve by
+											name/ID)
+										</SelectItem>
+										<SelectItem value="__global__">
+											Global (no organization)
+										</SelectItem>
+										{orgsData?.data?.map((org) => (
+											<SelectItem
+												key={org.id}
+												value={org.id}
+											>
+												{org.name}
+											</SelectItem>
+										))}
+									</SelectContent>
+								</Select>
+								<p className="text-xs text-muted-foreground">
+									Override which organization imported
+									items belong to.
+								</p>
 							</div>
 						)}
 

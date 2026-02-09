@@ -20,6 +20,7 @@ from uuid import UUID
 from datetime import datetime
 
 from fastapi import APIRouter, HTTPException, Query, status
+from fastapi.responses import JSONResponse
 from sqlalchemy import delete, distinct, func, or_, select, union_all
 
 # Import existing Pydantic models for API compatibility
@@ -1490,13 +1491,14 @@ async def remove_role_from_workflow(
         404: {"description": "Workflow not found"},
         409: {"description": "Workflow has dependencies or history, confirmation required"},
     },
+    response_model=None,
 )
 async def delete_workflow(
     workflow_id: UUID,
     user: CurrentSuperuser,
     db: DbSession,
     request: DeleteWorkflowRequest | None = None,
-) -> dict[str, str]:
+) -> dict[str, str] | JSONResponse:
     """Delete a workflow by removing its function from the workspace source file.
 
     Two-phase flow (same pattern as the code editor's deactivation protection):

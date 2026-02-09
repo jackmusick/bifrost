@@ -30,6 +30,7 @@ from src.models.orm.integrations import (
 )
 from src.models.orm.knowledge import KnowledgeStore
 from src.models.orm.oauth import OAuthProvider
+from src.models.orm.organizations import Organization
 from src.models.orm.tables import Document, Table
 from src.models.contracts.export_import import (
     BulkExportRequest,
@@ -68,6 +69,94 @@ def _json_response(data: str, filename: str) -> StreamingResponse:
 
 
 # ============================================================
+# ORG NAME HELPERS
+# ============================================================
+
+
+async def _resolve_org_names(db: DbSession, org_ids: set[UUID]) -> dict[UUID, str]:
+    """Batch-resolve organization UUIDs to names."""
+    if not org_ids:
+        return {}
+    result = await db.execute(
+        select(Organization.id, Organization.name).where(Organization.id.in_(org_ids))
+    )
+    return {row.id: row.name for row in result.all()}
+
+
+async def _resolve_org_id(
+    db: DbSession,
+    item_org_id: str | None,
+    item_org_name: str | None,
+    target_org_override: UUID | None,
+    force_global: bool,
+    warnings: list[str],
+    item_label: str,
+) -> UUID | None:
+    """Resolve an organization ID for import using override, name, or UUID fallback.
+
+    Resolution priority:
+    1. force_global=True → None (global scope)
+    2. target_org_override → use that UUID directly
+    3. item_org_name match → look up by name
+    4. item_org_id UUID match → verify it exists
+    5. None + warning if org info was present but unresolvable
+    """
+    if force_global:
+        return None
+    if target_org_override is not None:
+        return target_org_override
+
+    # Try name-based resolution
+    if item_org_name:
+        result = await db.execute(
+            select(Organization.id).where(
+                Organization.name == item_org_name,
+                Organization.is_active == True,  # noqa: E712
+            )
+        )
+        org_id = result.scalar_one_or_none()
+        if org_id:
+            return org_id
+
+    # Fall back to UUID match
+    if item_org_id:
+        try:
+            uuid_val = UUID(item_org_id)
+        except ValueError:
+            warnings.append(f"{item_label}: invalid organization_id '{item_org_id}', importing as global")
+            return None
+
+        result = await db.execute(
+            select(Organization.id).where(Organization.id == uuid_val)
+        )
+        if result.scalar_one_or_none():
+            return uuid_val
+
+        # Neither name nor UUID resolved
+        warnings.append(
+            f"{item_label}: organization not found (name={item_org_name!r}, id={item_org_id}), importing as global"
+        )
+        return None
+
+    return None
+
+
+def _parse_target_org(target_organization_id: str | None) -> tuple[UUID | None, bool]:
+    """Parse the target_organization_id form field.
+
+    Returns (override_uuid, force_global):
+    - None/absent → (None, False) — resolve from file
+    - "" → (None, True) — force global
+    - UUID string → (UUID, False) — use that org
+    """
+    if target_organization_id is None:
+        return None, False
+    if target_organization_id == "":
+        return None, True
+    return UUID(target_organization_id), False
+
+
+# ============================================================
 # SHARED EXPORT HELPERS
 # ============================================================
 
@@ -83,6 +172,9 @@ async def _build_knowledge_export(
     result = await db.execute(query)
     docs = result.scalars().all()
 
+    org_ids = {doc.organization_id for doc in docs if doc.organization_id}
+    org_names = await _resolve_org_names(db, org_ids)
+
     items = [
         KnowledgeExportItem(
             namespace=doc.namespace,
@@ -90,6 +182,7 @@ async def _build_knowledge_export(
             content=doc.content,
             metadata=doc.doc_metadata or {},
             organization_id=str(doc.organization_id) if doc.organization_id else None,
+            organization_name=org_names.get(doc.organization_id) if doc.organization_id else None,
         )
         for doc in docs
     ]
@@ -108,12 +201,16 @@ async def _build_tables_export(
     result = await db.execute(query)
     tables = result.scalars().unique().all()
 
+    org_ids = {table.organization_id for table in tables if table.organization_id}
+    org_names = await _resolve_org_names(db, org_ids)
+
     items = [
         TableExportItem(
             name=table.name,
             description=table.description,
             schema=table.schema,
             organization_id=str(table.organization_id) if table.organization_id else None,
+            organization_name=org_names.get(table.organization_id) if table.organization_id else None,
             documents=[
                 DocumentExportItem(id=doc.id, data=doc.data or {})
                 for doc in table.documents
@@ -136,6 +233,9 @@ async def _build_configs_export(
     result = await db.execute(query)
     configs = result.scalars().all()
 
+    org_ids = {cfg.organization_id for cfg in configs if cfg.organization_id}
+    org_names = await _resolve_org_names(db, org_ids)
+
     has_secrets = False
     items = []
     for cfg in configs:
@@ -156,6 +256,7 @@ async def _build_configs_export(
             config_type=cfg.config_type.value if hasattr(cfg.config_type, "value") else str(cfg.config_type),
             description=cfg.description,
             organization_id=str(cfg.organization_id) if cfg.organization_id else None,
+            organization_name=org_names.get(cfg.organization_id) if cfg.organization_id else None,
             integration_name=integration_name,
         ))
 
@@ -184,6 +285,16 @@ async def _build_integrations_export(
 
     result = await db.execute(query)
     integrations = result.scalars().unique().all()
+
+    # Collect all org IDs from mappings and OAuth providers
+    all_org_ids: set[UUID] = set()
+    for integ in integrations:
+        for mapping in integ.mappings:
+            if mapping.organization_id:
+                all_org_ids.add(mapping.organization_id)
+        if integ.oauth_provider and integ.oauth_provider.organization_id:
+            all_org_ids.add(integ.oauth_provider.organization_id)
+    org_names = await _resolve_org_names(db, all_org_ids)
 
     has_secrets = False
     items = []
@@ -234,6 +345,7 @@ async def _build_integrations_export(
 
             mapping_items.append(IntegrationMappingExportItem(
                 organization_id=str(mapping.organization_id) if mapping.organization_id else None,
+                organization_name=org_names.get(mapping.organization_id) if mapping.organization_id else None,
                 entity_id=mapping.entity_id,
                 entity_name=mapping.entity_name,
                 config=config_dict,
@@ -276,6 +388,7 @@ async def _build_integrations_export(
                 redirect_uri=op.redirect_uri,
                 scopes=op.scopes or [],
                 organization_id=str(op.organization_id) if op.organization_id else None,
+                organization_name=org_names.get(op.organization_id) if op.organization_id else None,
             )
 
         items.append(IntegrationExportItem(
@@ -408,6 +521,7 @@ async def import_knowledge(
     user: CurrentSuperuser,
     file: UploadFile = File(...),
     replace_existing: bool = Form(True),
+    target_organization_id: str | None = Form(None),
 ) -> ImportResult:
     """Import knowledge documents from JSON file."""
     content = await file.read()
@@ -416,12 +530,16 @@ async def import_knowledge(
     except Exception as e:
         raise HTTPException(status_code=400, detail=f"Invalid export file: {e}")
 
+    target_override, force_global = _parse_target_org(target_organization_id)
     result = ImportResult(entity_type="knowledge")
 
     for item in export_data.items:
         item_name = f"{item.namespace}/{item.key or 'unnamed'}"
         try:
-            org_id = UUID(item.organization_id) if item.organization_id else None
+            org_id = await _resolve_org_id(
+                db, item.organization_id, item.organization_name,
+                target_override, force_global, result.warnings, item_name,
+            )
 
             existing_query = select(KnowledgeStore).where(
                 KnowledgeStore.namespace == item.namespace,
@@ -479,6 +597,7 @@ async def import_tables(
     user: CurrentSuperuser,
     file: UploadFile = File(...),
     replace_existing: bool = Form(True),
+    target_organization_id: str | None = Form(None),
 ) -> ImportResult:
     """Import tables with documents from JSON file."""
     content = await file.read()
@@ -487,11 +606,15 @@ async def import_tables(
     except Exception as e:
         raise HTTPException(status_code=400, detail=f"Invalid export file: {e}")
 
+    target_override, force_global = _parse_target_org(target_organization_id)
     result = ImportResult(entity_type="tables")
 
     for item in export_data.items:
         try:
-            org_id = UUID(item.organization_id) if item.organization_id else None
+            org_id = await _resolve_org_id(
+                db, item.organization_id, item.organization_name,
+                target_override, force_global, result.warnings, item.name,
+            )
 
             existing_query = select(Table).where(Table.name == item.name)
             if org_id:
@@ -570,6 +693,7 @@ async def import_configs(
     replace_existing: bool = Form(True),
     source_secret_key: str | None = Form(None),
     source_fernet_salt: str | None = Form(None),
+    target_organization_id: str | None = Form(None),
 ) -> ImportResult:
     """Import configs from JSON file with optional secret re-encryption."""
     content = await file.read()
@@ -584,11 +708,15 @@ async def import_configs(
             detail="This file contains encrypted values. Provide source_secret_key and source_fernet_salt to re-encrypt for this instance.",
         )
 
+    target_override, force_global = _parse_target_org(target_organization_id)
     result = ImportResult(entity_type="configs")
 
     for item in export_data.items:
         try:
-            org_id = UUID(item.organization_id) if item.organization_id else None
+            org_id = await _resolve_org_id(
+                db, item.organization_id, item.organization_name,
+                target_override, force_global, result.warnings, item.key,
+            )
             value = item.value
 
             # Re-encrypt secrets
@@ -673,6 +801,7 @@ async def import_integrations(
     replace_existing: bool = Form(True),
     source_secret_key: str | None = Form(None),
     source_fernet_salt: str | None = Form(None),
+    target_organization_id: str | None = Form(None),
 ) -> ImportResult:
     """Import integrations from JSON file with optional secret re-encryption."""
     content = await file.read()
@@ -687,6 +816,7 @@ async def import_integrations(
             detail="This file contains encrypted values. Provide source_secret_key and source_fernet_salt to re-encrypt for this instance.",
         )
 
+    target_override, force_global = _parse_target_org(target_organization_id)
     result = ImportResult(entity_type="integrations")
 
     for item in export_data.items:
@@ -771,7 +901,11 @@ async def import_integrations(
 
             # Import mappings with their config
             for mapping_item in item.mappings:
-                org_id = UUID(mapping_item.organization_id) if mapping_item.organization_id else None
+                org_id = await _resolve_org_id(
+                    db, mapping_item.organization_id, mapping_item.organization_name,
+                    target_override, force_global, result.warnings,
+                    f"{item.name}/mapping/{mapping_item.entity_id}",
+                )
 
                 # Check for existing mapping
                 mapping_query = select(IntegrationMapping).where(
@@ -817,6 +951,7 @@ async def import_integrations(
                 await _import_oauth_provider(
                     db, integ, item.oauth_provider,
                     source_secret_key, source_fernet_salt, result,
+                    target_override, force_global,
                 )
 
         except Exception as e:
@@ -837,6 +972,7 @@ async def import_all(
     replace_existing: bool = Form(True),
     source_secret_key: str | None = Form(None),
     source_fernet_salt: str | None = Form(None),
+    target_organization_id: str | None = Form(None),
 ) -> dict:
     """Import all entities from a ZIP file."""
     content = await file.read()
@@ -862,18 +998,26 @@ async def import_all(
                 )
 
                 if entity_type == "knowledge":
-                    r = await import_knowledge(db, user, temp_file, replace_existing)
+                    r = await import_knowledge(
+                        db, user, temp_file, replace_existing,
+                        target_organization_id,
+                    )
                 elif entity_type == "tables":
-                    r = await import_tables(db, user, temp_file, replace_existing)
+                    r = await import_tables(
+                        db, user, temp_file, replace_existing,
+                        target_organization_id,
+                    )
                 elif entity_type == "configs":
                     r = await import_configs(
                         db, user, temp_file, replace_existing,
                         source_secret_key, source_fernet_salt,
+                        target_organization_id,
                     )
                 elif entity_type == "integrations":
                     r = await import_integrations(
                         db, user, temp_file, replace_existing,
                         source_secret_key, source_fernet_salt,
+                        target_organization_id,
                     )
                 else:
                     continue
@@ -999,9 +1143,15 @@ async def _import_oauth_provider(
     source_secret_key: str | None,
     source_fernet_salt: str | None,
     result: ImportResult,
+    target_override: UUID | None = None,
+    force_global: bool = False,
 ) -> None:
     """Import OAuth provider for an integration."""
-    org_id = UUID(oauth_item.organization_id) if oauth_item.organization_id else None
+    org_id = await _resolve_org_id(
+        db, oauth_item.organization_id, oauth_item.organization_name,
+        target_override, force_global, result.warnings,
+        f"{integration.name}/oauth/{oauth_item.provider_name}",
+    )
 
     # Decode encrypted secret
     encrypted_secret_bytes = base64.b64decode(oauth_item.encrypted_client_secret) if oauth_item.encrypted_client_secret else b""
