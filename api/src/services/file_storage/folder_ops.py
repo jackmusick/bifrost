@@ -16,6 +16,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.config import Settings
 from src.models.orm.file_index import FileIndex
+from src.services.repo_storage import REPO_PREFIX
 
 logger = logging.getLogger(__name__)
 
@@ -120,23 +121,21 @@ class FolderOperationsService:
         result = await self.db.execute(stmt)
         child_paths = [row[0] for row in result.fetchall()]
 
-        # Delete children from S3 and clean up metadata
-        from src.services.file_storage.entity_detector import detect_platform_entity_type
+        # Delete children from S3 _repo/ and clean up metadata
         async with self._s3_client.get_client() as s3:
             for child_path in child_paths:
                 if child_path.endswith("/"):
                     continue
 
-                # Only delete from S3 if not a platform entity
-                platform_type = detect_platform_entity_type(child_path, b"")
-                if platform_type is None:
-                    try:
-                        await s3.delete_object(
-                            Bucket=self.settings.s3_bucket,
-                            Key=child_path,
-                        )
-                    except Exception as e:
-                        logger.warning(f"Failed to delete S3 object {child_path}: {e}")
+                # Delete from S3 _repo/ prefix for all files
+                s3_key = f"{REPO_PREFIX}{child_path}"
+                try:
+                    await s3.delete_object(
+                        Bucket=self.settings.s3_bucket,
+                        Key=s3_key,
+                    )
+                except Exception as e:
+                    logger.warning(f"Failed to delete S3 object {child_path}: {e}")
 
                 await self._remove_metadata(child_path)
 

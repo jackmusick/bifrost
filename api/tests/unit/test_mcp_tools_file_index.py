@@ -1,68 +1,66 @@
-"""Tests for MCP tools file_index fallback."""
+"""Tests for MCP tools _read_from_cache_or_s3."""
 import pytest
 from unittest.mock import AsyncMock, MagicMock, patch
 
 
 @pytest.mark.asyncio
-async def test_file_index_fallback_returns_content():
-    """When file_index has the content, fallback should return it."""
-    from src.services.mcp_server.tools.code_editor import _try_file_index_fallback
+async def test_cache_or_s3_returns_content_from_redis():
+    """When Redis cache has the content, it should be returned directly."""
+    from src.services.mcp_server.tools.code_editor import _read_from_cache_or_s3
 
-    mock_row = MagicMock()
-    mock_row.content = "def hello(): pass"
-    mock_row.content_hash = "abc123"
+    with patch(
+        "src.core.module_cache.get_module",
+        new_callable=AsyncMock,
+        return_value={"content": "def hello(): pass"},
+    ):
+        result = await _read_from_cache_or_s3("workflows/test.py")
 
-    mock_result = MagicMock()
-    mock_result.one_or_none.return_value = mock_row
-
-    mock_db = AsyncMock()
-    mock_db.execute = AsyncMock(return_value=mock_result)
-
-    with patch("src.services.mcp_server.tools.code_editor.get_db_context") as mock_ctx:
-        mock_ctx.return_value.__aenter__ = AsyncMock(return_value=mock_db)
-        mock_ctx.return_value.__aexit__ = AsyncMock(return_value=False)
-
-        content, metadata, error = await _try_file_index_fallback("workflows/test.py")
-
-    assert content == "def hello(): pass"
-    assert metadata is not None
-    assert metadata["source"] == "file_index"
-    assert error is None
+    assert result == "def hello(): pass"
 
 
 @pytest.mark.asyncio
-async def test_file_index_fallback_returns_none_when_not_found():
-    """When file_index has no content, fallback should return None."""
-    from src.services.mcp_server.tools.code_editor import _try_file_index_fallback
+async def test_cache_or_s3_returns_content_from_s3_fallback():
+    """When Redis cache misses, S3 fallback should return decoded content."""
+    from src.services.mcp_server.tools.code_editor import _read_from_cache_or_s3
 
-    mock_result = MagicMock()
-    mock_result.one_or_none.return_value = None
+    mock_repo = MagicMock()
+    mock_repo.read = AsyncMock(return_value=b"def hello(): pass")
 
-    mock_db = AsyncMock()
-    mock_db.execute = AsyncMock(return_value=mock_result)
+    with (
+        patch(
+            "src.core.module_cache.get_module",
+            new_callable=AsyncMock,
+            return_value=None,
+        ),
+        patch(
+            "src.services.repo_storage.RepoStorage",
+            return_value=mock_repo,
+        ),
+    ):
+        result = await _read_from_cache_or_s3("workflows/test.py")
 
-    with patch("src.services.mcp_server.tools.code_editor.get_db_context") as mock_ctx:
-        mock_ctx.return_value.__aenter__ = AsyncMock(return_value=mock_db)
-        mock_ctx.return_value.__aexit__ = AsyncMock(return_value=False)
-
-        content, metadata, error = await _try_file_index_fallback("workflows/nonexistent.py")
-
-    assert content is None
-    assert metadata is None
+    assert result == "def hello(): pass"
 
 
 @pytest.mark.asyncio
-async def test_file_index_fallback_handles_missing_table():
-    """If file_index table doesn't exist yet, fallback should not crash."""
-    from src.services.mcp_server.tools.code_editor import _try_file_index_fallback
+async def test_cache_or_s3_returns_none_when_not_found():
+    """When neither Redis nor S3 has the file, None should be returned."""
+    from src.services.mcp_server.tools.code_editor import _read_from_cache_or_s3
 
-    with patch("src.services.mcp_server.tools.code_editor.get_db_context") as mock_ctx:
-        mock_ctx.return_value.__aenter__ = AsyncMock(
-            side_effect=Exception("relation file_index does not exist")
-        )
-        mock_ctx.return_value.__aexit__ = AsyncMock(return_value=False)
+    mock_repo = MagicMock()
+    mock_repo.read = AsyncMock(side_effect=FileNotFoundError("not found"))
 
-        content, metadata, error = await _try_file_index_fallback("workflows/test.py")
+    with (
+        patch(
+            "src.core.module_cache.get_module",
+            new_callable=AsyncMock,
+            return_value=None,
+        ),
+        patch(
+            "src.services.repo_storage.RepoStorage",
+            return_value=mock_repo,
+        ),
+    ):
+        result = await _read_from_cache_or_s3("workflows/nonexistent.py")
 
-    assert content is None
-    assert metadata is None
+    assert result is None

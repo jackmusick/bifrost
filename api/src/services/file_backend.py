@@ -15,6 +15,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.core.paths import TEMP_PATH, UPLOADS_PATH
 from src.services.file_storage import FileStorageService
+from src.services.repo_storage import REPO_PREFIX
 
 Location = Literal["workspace", "temp", "uploads"]
 
@@ -151,13 +152,14 @@ class S3Backend(FileBackend):
             return f"_tmp/{path}"
         elif location == "uploads":
             return f"uploads/{path}"
-        return path  # workspace: direct path in bucket
+        return f"{REPO_PREFIX}{path}"  # workspace: _repo/ prefix in bucket
 
     async def read(self, path: str, location: Location) -> bytes:
         """Read file from S3."""
         s3_path = self._resolve_path(path, location)
         try:
-            if location == "uploads":
+            if location in ("temp", "uploads"):
+                # Direct S3 read — temp/uploads don't go through workspace index
                 return await self.storage.read_uploaded_file(s3_path)
             content, _ = await self.storage.read_file(s3_path)
             return content

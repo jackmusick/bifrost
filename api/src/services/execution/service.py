@@ -128,12 +128,13 @@ async def get_workflow_for_execution(
     db: AsyncSession | None = None,
 ) -> dict[str, Any]:
     """
-    Get workflow data needed for subprocess execution.
+    Get workflow metadata needed for subprocess execution.
 
-    Unlike get_workflow_metadata_only(), this includes the code and function_name
-    so the worker subprocess can execute directly from database without file access.
+    Returns metadata only (path, function_name, timeout, etc.) — no code.
+    Workers load code via the virtual import hook: Redis cache → S3 _repo/ fallback.
+    Content hash is pinned separately by the consumer for reproducibility.
 
-    This is DB-only (no Redis caching) since code may be updated frequently
+    This is DB-only (no Redis caching) since metadata may be updated frequently
     and we want the latest version for each execution.
 
     Args:
@@ -144,12 +145,12 @@ async def get_workflow_for_execution(
         Dict with keys:
         - name: Workflow display name
         - function_name: Python function name
-        - path: Relative path (for __file__ injection)
-        - code: Python source code (or None if not stored)
+        - path: Relative path (for __file__ injection and Redis/S3 loading)
         - timeout_seconds: Execution timeout
         - time_saved: ROI time saved value
         - value: ROI value
         - execution_mode: sync or async
+        - organization_id: Org scope (or None for global)
 
     Raises:
         WorkflowNotFoundError: If workflow doesn't exist in database
@@ -171,33 +172,10 @@ async def get_workflow_for_execution(
 
         logger.debug(f"Loaded workflow for execution: {workflow_id} -> {workflow_record.name}")
 
-        # Load code from file_index table (replaces workflows.code column)
-        code = None
-        try:
-            from src.models.orm.file_index import FileIndex
-
-            fi_result = await session.execute(
-                select(FileIndex.content).where(
-                    FileIndex.path == workflow_record.path
-                )
-            )
-            code = fi_result.scalar_one_or_none()
-            if code is None:
-                logger.info(
-                    f"No code in file_index for {workflow_record.path}, "
-                    f"worker will fall back to Redis/S3 cache"
-                )
-        except Exception as e:
-            logger.error(
-                f"Failed to load code from file_index for {workflow_record.path}: {e}",
-                exc_info=True,
-            )
-
         return {
             "name": workflow_record.name,
             "function_name": workflow_record.function_name,
             "path": workflow_record.path,
-            "code": code,
             "timeout_seconds": workflow_record.timeout_seconds or 1800,
             "time_saved": workflow_record.time_saved or 0,
             "value": float(workflow_record.value) if workflow_record.value else 0.0,
@@ -246,25 +224,32 @@ async def get_workflow_by_id(
     if not workflow_record:
         raise WorkflowNotFoundError(f"Workflow with ID '{workflow_id}' not found")
 
-    # Load code from file_index or S3 (code no longer stored in workflows table)
+    # Load code: Redis cache → S3 _repo/ fallback (same path as worker/modules)
+    # file_index is a search index only, not a code source.
     code = None
     try:
-        from src.models.orm.file_index import FileIndex
-        from sqlalchemy import select as sa_select
-        from src.core.database import get_session_factory as _get_sf
-        _sf = _get_sf()
-        async with _sf() as code_session:
-            fi_result = await code_session.execute(
-                sa_select(FileIndex.content).where(FileIndex.path == workflow_record.path)
-            )
-            code = fi_result.scalar_one_or_none()
+        from src.core.module_cache import get_module
+        cached = await get_module(workflow_record.path)
+        if cached:
+            code = cached["content"]
+            logger.debug(f"Loaded workflow code from Redis cache for {workflow_record.path}")
     except Exception as e:
-        logger.warning(f"Failed to load code from file_index: {e}")
+        logger.warning(f"Redis cache lookup failed for {workflow_record.path}: {e}")
+
+    if not code:
+        try:
+            from src.services.repo_storage import RepoStorage
+            repo = RepoStorage()
+            content_bytes = await repo.read(workflow_record.path)
+            code = content_bytes.decode("utf-8")
+            logger.info(f"Loaded workflow code from S3 _repo/ for {workflow_record.path}")
+        except Exception as e:
+            logger.warning(f"S3 _repo/ fallback failed for {workflow_record.path}: {e}")
 
     if not code:
         raise WorkflowLoadError(
-            f"Workflow '{workflow_record.name}' has no code in file_index. "
-            "Ensure the workflow file exists in _repo/."
+            f"Workflow '{workflow_record.name}' has no code in Redis or S3 _repo/. "
+            "Ensure the workflow file has been saved."
         )
 
     try:
@@ -273,9 +258,9 @@ async def get_workflow_by_id(
             path=workflow_record.path,
             function_name=workflow_record.function_name,
         )
-        logger.debug(f"Loaded workflow from file_index: {workflow_record.name}")
+        logger.debug(f"Loaded workflow: {workflow_record.name}")
     except (SyntaxError, ImportError) as e:
-        raise WorkflowLoadError(f"Failed to execute workflow from file_index: {e}")
+        raise WorkflowLoadError(f"Failed to execute workflow code: {e}")
 
     # Find the decorated function by name
     # All decorators (@workflow, @tool, @data_provider) use unified _executable_metadata

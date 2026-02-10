@@ -304,7 +304,7 @@ class TestVirtualFileRoundTrip:
             logger.info(f"Sync job {job_id} completed successfully")
 
             # 2. Verify app was pushed to GitHub
-            app_file_path = f"apps/{app_slug}/app.json"
+            app_file_path = f"apps/{app_slug}/app.yaml"
             github_content = get_github_file_content(app_file_path)
             assert github_content is not None, f"App file not found on GitHub: {app_file_path}"
             logger.info(f"App file verified on GitHub: {app_file_path}")

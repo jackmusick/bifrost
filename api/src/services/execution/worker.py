@@ -166,30 +166,21 @@ async def _run_execution(execution_id: str, context_data: dict[str, Any]) -> dic
 
             name = context_data["name"]
             function_name = context_data.get("function_name")
-            workflow_code = context_data.get("workflow_code")
             file_path = context_data.get("file_path")
             load_error: str | None = None
+            loaded_code: str | None = None
 
-            # Platform entities (workflows, tools, data providers) are stored in database
-            # The code is passed from the consumer which has DB access
-            # No filesystem fallback - platform entities must have code in database
-            if workflow_code and function_name and file_path:
-                workflow_func, metadata, load_error = load_workflow_from_db(
-                    code=workflow_code,
-                    path=file_path,
-                    function_name=function_name,
-                )
-            elif function_name and file_path:
-                # Try loading from Redis/S3 cache (new path for workspace redesign)
-                # When workflow_code is not provided in context, the code lives in
-                # S3 with Redis as a read-through cache layer
+            # Load code from Redis→S3 _repo/ cache (same path as module imports).
+            # Consumer provides metadata only; worker is self-sufficient for code loading.
+            if function_name and file_path:
                 try:
                     from src.core.module_cache_sync import get_module_sync
 
                     cached = get_module_sync(file_path)
                     if cached:
+                        loaded_code = cached["content"]
                         workflow_func, metadata, load_error = load_workflow_from_db(
-                            code=cached["content"],
+                            code=loaded_code,
                             path=file_path,
                             function_name=function_name,
                         )
@@ -198,7 +189,7 @@ async def _run_execution(execution_id: str, context_data: dict[str, Any]) -> dic
                         )
                     else:
                         logger.error(
-                            f"Workflow code not found in DB or cache: "
+                            f"Workflow code not found in cache or S3: "
                             f"function_name={function_name}, file_path={file_path}"
                         )
                 except Exception as e:
@@ -208,24 +199,23 @@ async def _run_execution(execution_id: str, context_data: dict[str, Any]) -> dic
                 # Missing required fields for execution
                 logger.error(
                     f"Missing required fields for workflow execution: "
-                    f"workflow_code={bool(workflow_code)}, "
                     f"function_name={function_name}, "
                     f"file_path={file_path}"
                 )
 
-            # Validate content hash if pinned at dispatch time (workspace redesign)
+            # Validate content hash if pinned at dispatch time
             content_hash = context_data.get("content_hash")
-            if content_hash and workflow_code:
+            if content_hash and loaded_code:
                 import hashlib
 
                 actual_hash = hashlib.sha256(
-                    workflow_code.encode("utf-8")
+                    loaded_code.encode("utf-8")
                 ).hexdigest()
                 if actual_hash != content_hash:
                     logger.warning(
                         f"Content hash mismatch for {file_path}: "
                         f"expected={content_hash[:12]}... actual={actual_hash[:12]}... "
-                        f"Code may have changed during dispatch."
+                        f"Code may have changed between dispatch and execution."
                     )
 
             if workflow_func is None:

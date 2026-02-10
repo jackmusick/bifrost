@@ -605,7 +605,6 @@ class WorkflowExecutionConsumer(BaseConsumer):
             timeout_seconds = 1800  # Default 30 minutes
             roi_time_saved = 0
             roi_value = 0.0
-            workflow_code: str | None = None  # Code from DB for exec_from_db()
             workflow_function_name: str | None = None  # Function name for exec_from_db()
             content_hash: str | None = None  # Content hash pinned at dispatch time
 
@@ -613,26 +612,23 @@ class WorkflowExecutionConsumer(BaseConsumer):
                 from src.services.execution.service import get_workflow_for_execution, WorkflowNotFoundError
 
                 try:
-                    # Get full workflow data including code for DB-first execution
+                    # Get workflow metadata (no code — worker loads via Redis→S3)
                     workflow_data = await get_workflow_for_execution(workflow_id, db=db)
                     workflow_name = workflow_data["name"]
                     workflow_function_name = workflow_data["function_name"]
-                    file_path = workflow_data["path"]  # Used for __file__ injection
-                    workflow_code = workflow_data["code"]  # Code from DB (may be None for legacy)
+                    file_path = workflow_data["path"]  # Used for __file__ injection and Redis/S3 loading
 
-                    # Pin execution to content hash for reproducibility (workspace redesign)
-                    try:
-                        from sqlalchemy import select as sa_select
-                        from src.models.orm.file_index import FileIndex
+                    # Pin execution to content hash for reproducibility.
+                    # Worker validates loaded code matches this hash.
+                    from sqlalchemy import select as sa_select
+                    from src.models.orm.file_index import FileIndex
 
-                        hash_result = await db.execute(
-                            sa_select(FileIndex.content_hash).where(
-                                FileIndex.path == file_path
-                            )
+                    hash_result = await db.execute(
+                        sa_select(FileIndex.content_hash).where(
+                            FileIndex.path == file_path
                         )
-                        content_hash = hash_result.scalar_one_or_none()
-                    except Exception:
-                        pass  # file_index may not exist yet during migration
+                    )
+                    content_hash = hash_result.scalar_one_or_none()
 
                     timeout_seconds = workflow_data["timeout_seconds"]
                     # Initialize ROI from workflow defaults
@@ -758,7 +754,6 @@ class WorkflowExecutionConsumer(BaseConsumer):
                 "workflow_id": workflow_id,
                 "name": workflow_name,
                 "function_name": workflow_function_name,  # For exec_from_db()
-                "workflow_code": workflow_code,  # Python code from DB (for exec_from_db())
                 "code": code_base64,  # Base64-encoded inline script (different from workflow_code)
                 "parameters": parameters,
                 "caller": {

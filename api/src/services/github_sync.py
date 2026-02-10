@@ -260,13 +260,20 @@ class GitHubSyncService:
         self,
         progress_callback: ProgressCallback | None = None,
         log_callback: LogCallback | None = None,
+        conflict_resolutions: dict[str, str] | None = None,
     ) -> SyncResult:
         """
         Serialize current DB state to a git working tree, commit, and push.
 
         For initial connect (empty repo): creates initial commit.
         For incremental: commits changes and pushes.
+
+        Args:
+            conflict_resolutions: Dict mapping file paths to resolution strategy
+                ("keep_local" or "keep_remote"). Files resolved as "keep_remote"
+                are excluded from the push (remote version preserved).
         """
+        resolutions = conflict_resolutions or {}
         tmp_dir = Path(tempfile.mkdtemp(prefix="bifrost-sync-push-"))
         try:
             # Clone or init
@@ -286,6 +293,15 @@ class GitHubSyncService:
 
             # Serialize platform state to working tree
             await self._serialize_platform_state(tmp_dir)
+
+            # Apply conflict resolutions: for "keep_remote" files, restore
+            # the remote version so the push doesn't overwrite it.
+            for conflict_path, resolution in resolutions.items():
+                if resolution == "keep_remote":
+                    try:
+                        repo.git.checkout("--", conflict_path)
+                    except Exception:
+                        pass  # File may not exist in remote yet
 
             # Stage everything: git add -A (handles adds, modifications, deletions)
             repo.git.add(A=True)
@@ -328,9 +344,14 @@ class GitHubSyncService:
         self,
         progress_callback: ProgressCallback | None = None,
         log_callback: LogCallback | None = None,
+        confirm_orphans: bool = False,
     ) -> SyncResult:
         """
         Pull remote changes into the platform DB and file_index.
+
+        Args:
+            confirm_orphans: If True, deactivate workflows that exist in DB
+                but were removed from the manifest. If False, skip orphan cleanup.
         """
         tmp_dir = Path(tempfile.mkdtemp(prefix="bifrost-sync-pull-"))
         try:
@@ -363,7 +384,9 @@ class GitHubSyncService:
                     await self._deactivate_workflow(mwf.id)
 
             # Deactivate workflows that exist in DB but were removed from manifest
-            await self._deactivate_missing_workflows(manifest_wf_ids)
+            # Only if user confirmed orphan cleanup
+            if confirm_orphans:
+                await self._deactivate_missing_workflows(manifest_wf_ids)
 
             # Import forms
             for _form_name, mform in manifest.forms.items():
@@ -371,6 +394,22 @@ class GitHubSyncService:
                 if form_path.exists():
                     content = form_path.read_bytes()
                     await self._import_form(mform, content)
+                    pulled += 1
+
+            # Import agents
+            for _agent_name, magent in manifest.agents.items():
+                agent_path = tmp_dir / magent.path
+                if agent_path.exists():
+                    content = agent_path.read_bytes()
+                    await self._import_agent(magent, content)
+                    pulled += 1
+
+            # Import apps
+            for _app_name, mapp in manifest.apps.items():
+                app_path = tmp_dir / mapp.path
+                if app_path.exists():
+                    content = app_path.read_bytes()
+                    await self._import_app(mapp, content)
                     pulled += 1
 
             # Update file_index: sync all files from repo, remove stale entries
@@ -625,7 +664,9 @@ class GitHubSyncService:
             index_elements=["id"],
             set_={
                 "name": manifest_name,
+                "function_name": mwf.function_name,
                 "path": mwf.path,
+                "type": getattr(mwf, "type", "workflow"),
                 "is_active": True,
                 "updated_at": datetime.now(timezone.utc),
             },
@@ -657,7 +698,68 @@ class GitHubSyncService:
             set_={
                 "name": data.get("name", ""),
                 "description": data.get("description"),
+                "workflow_id": data.get("workflow"),
                 "is_active": True,
+                "updated_at": datetime.now(timezone.utc),
+            },
+        )
+        await self.db.execute(stmt)
+
+    async def _import_agent(self, magent, content: bytes) -> None:
+        """Import an agent from repo YAML into the DB."""
+        from uuid import UUID
+
+        from sqlalchemy.dialects.postgresql import insert
+
+        from src.models.orm.agents import Agent
+
+        data = yaml.safe_load(content.decode("utf-8"))
+        if not data:
+            return
+
+        stmt = insert(Agent).values(
+            id=UUID(magent.id),
+            name=data.get("name", ""),
+            system_prompt=data.get("system_prompt", ""),
+            description=data.get("description"),
+            is_active=True,
+            created_by="git-sync",
+            organization_id=UUID(magent.organization_id) if magent.organization_id else None,
+        ).on_conflict_do_update(
+            index_elements=["id"],
+            set_={
+                "name": data.get("name", ""),
+                "system_prompt": data.get("system_prompt", ""),
+                "description": data.get("description"),
+                "is_active": True,
+                "updated_at": datetime.now(timezone.utc),
+            },
+        )
+        await self.db.execute(stmt)
+
+    async def _import_app(self, mapp, content: bytes) -> None:
+        """Import an app from repo into the DB (metadata only)."""
+        from uuid import UUID
+
+        from sqlalchemy.dialects.postgresql import insert
+
+        from src.models.orm.applications import Application
+
+        data = yaml.safe_load(content.decode("utf-8"))
+        if not data:
+            return
+
+        stmt = insert(Application).values(
+            id=UUID(mapp.id),
+            name=data.get("name", ""),
+            description=data.get("description"),
+            slug=data.get("slug", str(UUID(mapp.id))),
+            organization_id=UUID(mapp.organization_id) if mapp.organization_id else None,
+        ).on_conflict_do_update(
+            index_elements=["id"],
+            set_={
+                "name": data.get("name", ""),
+                "description": data.get("description"),
                 "updated_at": datetime.now(timezone.utc),
             },
         )

@@ -357,6 +357,8 @@ class Scheduler:
 
         job_id = data.get("jobId", "unknown")
         org_id = data.get("orgId")
+        conflict_resolutions = data.get("conflictResolutions", {})
+        confirm_orphans = data.get("confirmOrphans", False)
 
         logger.info(f"Starting git sync job {job_id} for org {org_id}")
 
@@ -439,10 +441,12 @@ class Scheduler:
                 push_result = await sync_service.push(
                     progress_callback=progress_callback,
                     log_callback=log_callback,
+                    conflict_resolutions=conflict_resolutions,
                 )
                 pull_result = await sync_service.pull(
                     progress_callback=progress_callback,
                     log_callback=log_callback,
+                    confirm_orphans=confirm_orphans,
                 )
 
                 # Store last_synced_at timestamp on success

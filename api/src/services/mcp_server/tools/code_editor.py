@@ -150,31 +150,33 @@ def _find_match_locations(content: str, search_string: str) -> list[dict[str, An
     return locations
 
 
-async def _try_file_index_fallback(path: str) -> tuple[str | None, dict[str, Any] | None, str | None]:
+async def _read_from_cache_or_s3(path: str) -> str | None:
     """
-    Try reading content from file_index table (new workspace architecture).
+    Load file content from Redis cache → S3 _repo/ fallback.
 
-    This is a fallback for when entity-specific lookups fail.
-    Returns same format as _get_content_by_entity.
+    file_index is search-only; all code reads go through this path.
+    Returns content string or None if not found.
     """
+    # Try Redis cache first (async)
     try:
-        from src.models.orm.file_index import FileIndex
-        async with get_db_context() as db:
-            result = await db.execute(
-                select(FileIndex.content, FileIndex.content_hash).where(
-                    FileIndex.path == path
-                )
-            )
-            row = result.one_or_none()
-            if row and isinstance(row.content, str) and row.content:
-                return (
-                    row.content,
-                    {"path": path, "source": "file_index"},
-                    None,
-                )
-    except Exception:
-        pass  # file_index table may not exist yet during migration
-    return None, None, None
+        from src.core.module_cache import get_module
+        cached = await get_module(path)
+        if cached:
+            return cached["content"]
+    except Exception as e:
+        logger.debug(f"Redis cache miss for {path}: {e}")
+
+    # Fall back to S3 _repo/
+    try:
+        from src.services.repo_storage import RepoStorage
+        repo = RepoStorage()
+        content_bytes = await repo.read(path)
+        return content_bytes.decode("utf-8")
+    except FileNotFoundError:
+        return None
+    except Exception as e:
+        logger.warning(f"S3 read failed for {path}: {e}")
+        return None
 
 
 async def _get_content_by_entity(
@@ -265,29 +267,17 @@ async def _get_content_by_entity(
             workflow = result.scalars().first()
 
             if not workflow:
-                # Try file_index fallback (workspace redesign migration)
-                content, metadata, _ = await _try_file_index_fallback(path)
-                if content is not None:
-                    return content, metadata, None
+                # Try Redis → S3 fallback for files not yet in workflow table
+                code = await _read_from_cache_or_s3(path)
+                if code is not None:
+                    return code, {"path": path, "source": "s3"}, None
                 return None, None, f"Workflow not found: {path}"
 
-            # Load code from file_index instead of workflows.code column
-            code = None
-            try:
-                from src.models.orm.file_index import FileIndex
-                fi_result = await db.execute(
-                    select(FileIndex.content).where(FileIndex.path == path)
-                )
-                code = fi_result.scalar_one_or_none()
-            except Exception:
-                pass
+            # Load code from Redis cache → S3 _repo/ (file_index is search-only)
+            code = await _read_from_cache_or_s3(workflow.path)
 
             if not code:
-                # Try file_index fallback (which opens its own session)
-                content, metadata, _ = await _try_file_index_fallback(path)
-                if content is not None:
-                    return content, metadata, None
-                return None, None, f"Workflow has no code: {path}"
+                return None, None, f"Workflow has no code in cache or S3: {path}"
 
             return (
                 code,
@@ -304,20 +294,17 @@ async def _get_content_by_entity(
             )
 
         elif entity_type in ("module", "text"):
-            # Query file_index for modules and text files
-            fi_result = await db.execute(
-                select(FileIndex.content).where(FileIndex.path == path)
-            )
-            fi_content = fi_result.scalar_one_or_none()
+            # Load from Redis cache → S3 _repo/ (file_index is search-only)
+            content = await _read_from_cache_or_s3(path)
 
-            if fi_content is None:
+            if content is None:
                 return None, None, f"File not found: {path}"
 
             return (
-                fi_content,
+                content,
                 {
                     "path": path,
-                    "source": "file_index",
+                    "source": "s3",
                 },
                 None,
             )

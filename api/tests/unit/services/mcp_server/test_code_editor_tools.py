@@ -378,21 +378,24 @@ class TestReadContentLines:
             mock_session = AsyncMock()
             mock_db.return_value.__aenter__.return_value = mock_session
 
-            # First execute: select(Workflow) -> returns workflow
+            # DB query: select(Workflow) -> returns workflow
             mock_wf_result = MagicMock()
             mock_wf_result.scalars.return_value.first.return_value = mock_workflow
-            # Second execute: select(FileIndex.content) -> returns code
-            mock_fi_result = MagicMock()
-            mock_fi_result.scalar_one_or_none.return_value = code
-            mock_session.execute.side_effect = [mock_wf_result, mock_fi_result]
+            mock_session.execute.return_value = mock_wf_result
 
-            result = await read_content_lines(
-                context=platform_admin_context,
-                entity_type="workflow",
-                path="workflows/sync.py",
-                start_line=3,
-                end_line=6,
-            )
+            # Code is now read from cache/S3 instead of file_index
+            with patch(
+                "src.services.mcp_server.tools.code_editor._read_from_cache_or_s3",
+                new_callable=AsyncMock,
+                return_value=code,
+            ):
+                result = await read_content_lines(
+                    context=platform_admin_context,
+                    entity_type="workflow",
+                    path="workflows/sync.py",
+                    start_line=3,
+                    end_line=6,
+                )
 
             assert isinstance(result, ToolResult)
             data = get_result_data(result)
@@ -440,19 +443,22 @@ class TestGetContent:
             mock_session = AsyncMock()
             mock_db.return_value.__aenter__.return_value = mock_session
 
-            # First execute: select(Workflow) -> returns workflow
+            # DB query: select(Workflow) -> returns workflow
             mock_wf_result = MagicMock()
             mock_wf_result.scalars.return_value.first.return_value = mock_workflow
-            # Second execute: select(FileIndex.content) -> returns code
-            mock_fi_result = MagicMock()
-            mock_fi_result.scalar_one_or_none.return_value = code
-            mock_session.execute.side_effect = [mock_wf_result, mock_fi_result]
+            mock_session.execute.return_value = mock_wf_result
 
-            result = await get_content(
-                context=platform_admin_context,
-                entity_type="workflow",
-                path="workflows/sync.py",
-            )
+            # Code is now read from cache/S3 instead of file_index
+            with patch(
+                "src.services.mcp_server.tools.code_editor._read_from_cache_or_s3",
+                new_callable=AsyncMock,
+                return_value=code,
+            ):
+                result = await get_content(
+                    context=platform_admin_context,
+                    entity_type="workflow",
+                    path="workflows/sync.py",
+                )
 
             assert isinstance(result, ToolResult)
             data = get_result_data(result)
@@ -474,11 +480,17 @@ class TestGetContent:
             mock_result.scalars.return_value.first.return_value = None
             mock_session.execute.return_value = mock_result
 
-            result = await get_content(
-                context=platform_admin_context,
-                entity_type="workflow",
-                path="workflows/nonexistent.py",
-            )
+            # When workflow not found, code also tries cache/S3 fallback
+            with patch(
+                "src.services.mcp_server.tools.code_editor._read_from_cache_or_s3",
+                new_callable=AsyncMock,
+                return_value=None,
+            ):
+                result = await get_content(
+                    context=platform_admin_context,
+                    entity_type="workflow",
+                    path="workflows/nonexistent.py",
+                )
 
             assert isinstance(result, ToolResult)
             assert is_error_result(result)
@@ -507,30 +519,34 @@ class TestPatchContent:
             mock_session = AsyncMock()
             mock_db.return_value.__aenter__.return_value = mock_session
 
-            # _get_content_by_entity: 1st execute -> Workflow, 2nd -> FileIndex
+            # DB query: select(Workflow) -> returns workflow
             mock_wf_result = MagicMock()
             mock_wf_result.scalars.return_value.first.return_value = mock_workflow
-            mock_fi_result = MagicMock()
-            mock_fi_result.scalar_one_or_none.return_value = code
-            mock_session.execute.side_effect = [mock_wf_result, mock_fi_result]
+            mock_session.execute.return_value = mock_wf_result
 
-            # Mock FileStorageService for validation
+            # Code is now read from cache/S3 instead of file_index
             with patch(
-                "src.services.mcp_server.tools.code_editor.FileStorageService"
-            ) as mock_fs:
-                mock_fs_instance = MagicMock()
-                mock_write_result = MagicMock()
-                mock_write_result.pending_deactivations = []
-                mock_fs_instance.write_file = AsyncMock(return_value=mock_write_result)
-                mock_fs.return_value = mock_fs_instance
+                "src.services.mcp_server.tools.code_editor._read_from_cache_or_s3",
+                new_callable=AsyncMock,
+                return_value=code,
+            ):
+                # Mock FileStorageService for validation
+                with patch(
+                    "src.services.mcp_server.tools.code_editor.FileStorageService"
+                ) as mock_fs:
+                    mock_fs_instance = MagicMock()
+                    mock_write_result = MagicMock()
+                    mock_write_result.pending_deactivations = []
+                    mock_fs_instance.write_file = AsyncMock(return_value=mock_write_result)
+                    mock_fs.return_value = mock_fs_instance
 
-                result = await patch_content(
-                    context=platform_admin_context,
-                    entity_type="workflow",
-                    path="workflows/sync.py",
-                    old_string='return {"status": "old"}',
-                    new_string='return {"status": "new"}',
-                )
+                    result = await patch_content(
+                        context=platform_admin_context,
+                        entity_type="workflow",
+                        path="workflows/sync.py",
+                        old_string='return {"status": "old"}',
+                        new_string='return {"status": "new"}',
+                    )
 
                 assert isinstance(result, ToolResult)
                 data = get_result_data(result)
@@ -556,19 +572,24 @@ def func2():
             mock_session = AsyncMock()
             mock_db.return_value.__aenter__.return_value = mock_session
 
+            # DB query: select(Workflow) -> returns workflow
             mock_wf_result = MagicMock()
             mock_wf_result.scalars.return_value.first.return_value = mock_workflow
-            mock_fi_result = MagicMock()
-            mock_fi_result.scalar_one_or_none.return_value = code
-            mock_session.execute.side_effect = [mock_wf_result, mock_fi_result]
+            mock_session.execute.return_value = mock_wf_result
 
-            result = await patch_content(
-                context=platform_admin_context,
-                entity_type="workflow",
-                path="workflows/sync.py",
-                old_string='return "duplicate"',
-                new_string='return "new_value"',
-            )
+            # Code is now read from cache/S3 instead of file_index
+            with patch(
+                "src.services.mcp_server.tools.code_editor._read_from_cache_or_s3",
+                new_callable=AsyncMock,
+                return_value=code,
+            ):
+                result = await patch_content(
+                    context=platform_admin_context,
+                    entity_type="workflow",
+                    path="workflows/sync.py",
+                    old_string='return "duplicate"',
+                    new_string='return "new_value"',
+                )
 
             assert isinstance(result, ToolResult)
             assert is_error_result(result)
@@ -589,19 +610,24 @@ def func2():
             mock_session = AsyncMock()
             mock_db.return_value.__aenter__.return_value = mock_session
 
+            # DB query: select(Workflow) -> returns workflow
             mock_wf_result = MagicMock()
             mock_wf_result.scalars.return_value.first.return_value = mock_workflow
-            mock_fi_result = MagicMock()
-            mock_fi_result.scalar_one_or_none.return_value = "some code here"
-            mock_session.execute.side_effect = [mock_wf_result, mock_fi_result]
+            mock_session.execute.return_value = mock_wf_result
 
-            result = await patch_content(
-                context=platform_admin_context,
-                entity_type="workflow",
-                path="workflows/sync.py",
-                old_string="nonexistent string",
-                new_string="replacement",
-            )
+            # Code is now read from cache/S3 instead of file_index
+            with patch(
+                "src.services.mcp_server.tools.code_editor._read_from_cache_or_s3",
+                new_callable=AsyncMock,
+                return_value="some code here",
+            ):
+                result = await patch_content(
+                    context=platform_admin_context,
+                    entity_type="workflow",
+                    path="workflows/sync.py",
+                    old_string="nonexistent string",
+                    new_string="replacement",
+                )
 
             assert isinstance(result, ToolResult)
             assert is_error_result(result)
@@ -1105,19 +1131,22 @@ async def get_ticket(ticket_id: str):
             mock_session = AsyncMock()
             mock_db.return_value.__aenter__.return_value = mock_session
 
-            # First execute: select(Workflow) -> returns workflow
+            # DB query: select(Workflow) -> returns workflow
             mock_wf_result = MagicMock()
             mock_wf_result.scalars.return_value.first.return_value = mock_wf1
-            # Second execute: select(FileIndex.content) -> returns code
-            mock_fi_result = MagicMock()
-            mock_fi_result.scalar_one_or_none.return_value = code
-            mock_session.execute.side_effect = [mock_wf_result, mock_fi_result]
+            mock_session.execute.return_value = mock_wf_result
 
-            result = await get_content(
-                context=platform_admin_context,
-                entity_type="workflow",
-                path="workflows/multi.py",
-            )
+            # Code is now read from cache/S3 instead of file_index
+            with patch(
+                "src.services.mcp_server.tools.code_editor._read_from_cache_or_s3",
+                new_callable=AsyncMock,
+                return_value=code,
+            ):
+                result = await get_content(
+                    context=platform_admin_context,
+                    entity_type="workflow",
+                    path="workflows/multi.py",
+                )
 
             assert isinstance(result, ToolResult)
             assert not is_error_result(result)

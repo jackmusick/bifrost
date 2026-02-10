@@ -19,6 +19,7 @@ from src.models import Workflow, Form, Agent
 from src.models.orm.applications import Application
 from src.models.orm.file_index import FileIndex
 from src.core.module_cache import set_module, invalidate_module
+from src.services.repo_storage import REPO_PREFIX
 from .models import WriteResult
 from .utils import serialize_form_to_yaml, serialize_agent_to_yaml
 from .entity_detector import detect_platform_entity_type
@@ -138,20 +139,19 @@ class FileOperationsService:
                 return serialize_agent_to_yaml(agent), None
             raise FileNotFoundError(f"Agent not found: {agent_id}")
 
-        # Everything else: try file_index first, then S3
-        fi_stmt = select(FileIndex.content).where(FileIndex.path == path)
-        fi_result = await self.db.execute(fi_stmt)
-        fi_content = fi_result.scalar_one_or_none()
+        # Everything else: Redis cache → S3 _repo/ (file_index is search-only)
+        from src.core.module_cache import get_module
+        cached = await get_module(path)
+        if cached:
+            return cached["content"].encode("utf-8"), None
 
-        if fi_content is not None:
-            return fi_content.encode("utf-8"), None
-
-        # Fallback to S3
+        # Fallback to S3 _repo/ prefix
+        s3_key = f"{REPO_PREFIX}{path}"
         async with self._s3_client.get_client() as s3:
             try:
                 response = await s3.get_object(
                     Bucket=self.settings.s3_bucket,
-                    Key=path,
+                    Key=s3_key,
                 )
                 content = await response["Body"].read()
                 return content, None
@@ -196,8 +196,8 @@ class FileOperationsService:
         content_type = self._guess_content_type(path)
         size_bytes = len(content)
 
-        # Detect if this is a platform entity (workflow, form, app, agent)
         # For Python files, use AST detection to cache the tree and decoded string.
+        # The cached AST avoids re-parsing in _extract_metadata.
         cached_ast = None
         cached_content_str = None
         if path.endswith(".py"):
@@ -205,23 +205,19 @@ class FileOperationsService:
                 detect_python_entity_type_with_ast,
             )
             detection_result = detect_python_entity_type_with_ast(content)
-            platform_entity_type = detection_result.entity_type
             cached_ast = detection_result.ast_tree
             cached_content_str = detection_result.content_str
-        else:
-            platform_entity_type = self._detect_platform_entity_type(path, content)
 
-        is_platform_entity = platform_entity_type is not None
-
-        # Only write to S3 for regular files (not platform entities)
-        if not is_platform_entity:
-            async with self._s3_client.get_client() as s3:
-                await s3.put_object(
-                    Bucket=self.settings.s3_bucket,
-                    Key=path,
-                    Body=content,
-                    ContentType=content_type,
-                )
+        # Write ALL files to S3 under _repo/ prefix — this is the durable store.
+        # Platform entities also go to S3 so the Redis→S3 fallback works for workers.
+        s3_key = f"{REPO_PREFIX}{path}"
+        async with self._s3_client.get_client() as s3:
+            await s3.put_object(
+                Bucket=self.settings.s3_bucket,
+                Key=s3_key,
+                Body=content,
+                ContentType=content_type,
+            )
 
         now = datetime.now(timezone.utc)
 
@@ -243,8 +239,9 @@ class FileOperationsService:
         await self.db.execute(fi_stmt)
         await self.db.flush()
 
-        # Update module cache in Redis for immediate availability in virtual imports
-        if platform_entity_type == "module":
+        # Update module cache in Redis for immediate availability in virtual imports.
+        # Both workflows and modules need caching — workers load code via Redis→S3.
+        if path.endswith(".py"):
             await set_module(path, content_str, content_hash)
 
         # Extract metadata for workflows/forms/agents
@@ -316,19 +313,19 @@ class FileOperationsService:
         Args:
             path: Relative path within workspace
         """
-        # Detect entity type from path to decide if S3 delete is needed
+        # Detect entity type from path (used for module cache invalidation below)
         platform_entity_type = detect_platform_entity_type(path, b"")
 
-        # Only delete from S3 if not a platform entity
-        if platform_entity_type is None:
-            async with self._s3_client.get_client() as s3:
-                try:
-                    await s3.delete_object(
-                        Bucket=self.settings.s3_bucket,
-                        Key=path,
-                    )
-                except Exception:
-                    pass  # Ignore S3 errors for idempotency
+        # Delete from S3 _repo/ prefix for all files
+        s3_key = f"{REPO_PREFIX}{path}"
+        async with self._s3_client.get_client() as s3:
+            try:
+                await s3.delete_object(
+                    Bucket=self.settings.s3_bucket,
+                    Key=s3_key,
+                )
+            except Exception:
+                pass  # Ignore S3 errors for idempotency
 
         # Delete from file_index
         from sqlalchemy import delete
@@ -371,11 +368,8 @@ class FileOperationsService:
         if fi_result2.scalar_one_or_none():
             raise FileExistsError(f"File already exists: {new_path}")
 
-        # Detect entity type from path
-        platform_entity_type = detect_platform_entity_type(old_path, b"")
-
-        # Update entity table paths
-        if platform_entity_type == "workflow" or old_path.endswith(".py"):
+        # Update entity table paths for Python files
+        if old_path.endswith(".py"):
             # Update any workflows that reference this path
             stmt = update(Workflow).where(
                 Workflow.path == old_path
@@ -385,27 +379,27 @@ class FileOperationsService:
             )
             await self.db.execute(stmt)
 
-        elif old_path.endswith(".py"):
-            # Module: update cache
+            # Update module cache
             await invalidate_module(old_path)
             if old_record.content:
                 await set_module(new_path, old_record.content, old_record.content_hash or "")
 
-        else:
-            # Regular file: copy in S3
-            async with self._s3_client.get_client() as s3:
-                try:
-                    await s3.copy_object(
-                        Bucket=self.settings.s3_bucket,
-                        CopySource={"Bucket": self.settings.s3_bucket, "Key": old_path},
-                        Key=new_path,
-                    )
-                    await s3.delete_object(
-                        Bucket=self.settings.s3_bucket,
-                        Key=old_path,
-                    )
-                except Exception as e:
-                    logger.warning(f"S3 move failed for {old_path} -> {new_path}: {e}")
+        # Move file in S3 _repo/ prefix for all file types
+        old_s3_key = f"{REPO_PREFIX}{old_path}"
+        new_s3_key = f"{REPO_PREFIX}{new_path}"
+        async with self._s3_client.get_client() as s3:
+            try:
+                await s3.copy_object(
+                    Bucket=self.settings.s3_bucket,
+                    CopySource={"Bucket": self.settings.s3_bucket, "Key": old_s3_key},
+                    Key=new_s3_key,
+                )
+                await s3.delete_object(
+                    Bucket=self.settings.s3_bucket,
+                    Key=old_s3_key,
+                )
+            except Exception as e:
+                logger.warning(f"S3 move failed for {old_path} -> {new_path}: {e}")
 
         # Update file_index: insert new path, delete old
         new_stmt = insert(FileIndex).values(
