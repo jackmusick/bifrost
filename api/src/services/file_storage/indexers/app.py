@@ -21,11 +21,6 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.models import Application, AppFile, AppVersion
 from src.services.app_dependencies import sync_file_dependencies
-from src.services.file_storage.diagnostics import DiagnosticsService
-from src.services.file_storage.ref_translation import (
-    build_ref_to_uuid_map,
-    transform_app_source_refs_to_uuids,
-)
 
 logger = logging.getLogger(__name__)
 
@@ -195,18 +190,16 @@ class AppIndexer:
         self,
         path: str,
         content: bytes,
-        ref_to_uuid: dict[str, str] | None = None,
     ) -> bool:
         """
         Parse and index an app code file.
 
         Creates or updates the AppFile record in the app's draft version.
+        UUIDs are used directly in source code for workflow references.
 
         Args:
             path: File path (e.g., "apps/my-app/pages/index.tsx")
             content: File content bytes
-            ref_to_uuid: Optional pre-built map of portable refs to UUIDs.
-                         If not provided, builds the map internally.
 
         Returns:
             True if content was modified, False otherwise
@@ -243,43 +236,22 @@ class AppIndexer:
             logger.warning(f"Invalid UTF-8 in app file: {path}")
             return False
 
-        # Transform portable workflow refs to UUIDs
-        if ref_to_uuid is None:
-            ref_to_uuid = await build_ref_to_uuid_map(self.db)
-        transformed_source, unresolved_refs = transform_app_source_refs_to_uuids(
-            source, ref_to_uuid
-        )
-
-        # Create notification for unresolved refs (or clear if resolved)
-        # Wrapped in try-except to gracefully handle notification service unavailability
-        try:
-            diagnostics = DiagnosticsService(self.db)
-            await diagnostics.scan_for_unresolved_refs(
-                path=path,
-                entity_type="app_file",
-                unresolved_refs=unresolved_refs,
-            )
-        except Exception as e:
-            # Log but don't fail indexing if notifications unavailable
-            logger.warning(f"Failed to create notification for unresolved refs in {path}: {e}")
-
-        # Use naive UTC datetime - columns defined without timezone
         now = datetime.now(timezone.utc)
 
-        # Upsert the file with transformed source
+        # Upsert the file
         file_id = uuid4()
         stmt = insert(AppFile).values(
             id=file_id,
             app_version_id=app.draft_version_id,
             path=relative_path,
-            source=transformed_source,
+            source=source,
             compiled=None,
             created_at=now,
             updated_at=now,
         ).on_conflict_do_update(
             index_elements=["app_version_id", "path"],
             set_={
-                "source": transformed_source,
+                "source": source,
                 "compiled": None,  # Clear compiled on update
                 "updated_at": now,
             },
@@ -287,8 +259,8 @@ class AppIndexer:
         result = await self.db.execute(stmt)
         actual_file_id = result.scalar_one()
 
-        # Sync dependencies for this file (uses transformed source with UUIDs)
-        await sync_file_dependencies(self.db, actual_file_id, transformed_source, app.organization_id)
+        # Sync dependencies for this file
+        await sync_file_dependencies(self.db, actual_file_id, source, app.organization_id)
 
         logger.debug(f"Indexed app file: {relative_path} in app {slug}")
         return False
@@ -374,20 +346,18 @@ class AppIndexer:
         self,
         app_dir: str,
         files: dict[str, bytes],
-        ref_to_uuid: dict[str, str] | None = None,
     ) -> Application | None:
         """
         Import an app atomically with all its files.
 
         This method processes the entire app bundle at once, eliminating
         ordering issues where app_files were imported before app.json.
+        UUIDs are used directly in source code for workflow references.
 
         Args:
             app_dir: App directory path (e.g., "apps/my-app")
             files: Dict mapping relative paths to content
                    {"app.json": content, "pages/index.tsx": content, ...}
-            ref_to_uuid: Optional pre-built map of portable refs to UUIDs.
-                         If not provided, builds the map internally.
 
         Returns:
             The created/updated Application, or None on failure
@@ -425,12 +395,7 @@ class AppIndexer:
         # Check for UUID in app.json for stable matching
         app_uuid_str = app_data.get("id")
 
-        # Use naive UTC datetime - columns defined without timezone
         now = datetime.now(timezone.utc)
-
-        # Build ref map once for all file transformations (if not provided)
-        if ref_to_uuid is None:
-            ref_to_uuid = await build_ref_to_uuid_map(self.db)
 
         # Try to find existing app by UUID first, then by slug
         existing_app = None
@@ -497,8 +462,6 @@ class AppIndexer:
             logger.warning(f"App {slug} has no draft version after creation")
             return None
 
-        all_unresolved_refs: list[str] = []
-
         for file_path, content in files.items():
             if file_path == "app.json":
                 continue  # Already processed
@@ -509,26 +472,20 @@ class AppIndexer:
                 logger.warning(f"Invalid UTF-8 in app file: {app_dir}/{file_path}")
                 continue
 
-            # Transform refs
-            transformed_source, unresolved_refs = transform_app_source_refs_to_uuids(
-                source, ref_to_uuid
-            )
-            all_unresolved_refs.extend(unresolved_refs)
-
             # Upsert the file
             file_id = uuid4()
             stmt = insert(AppFile).values(
                 id=file_id,
                 app_version_id=app.draft_version_id,
                 path=file_path,
-                source=transformed_source,
+                source=source,
                 compiled=None,
                 created_at=now,
                 updated_at=now,
             ).on_conflict_do_update(
                 index_elements=["app_version_id", "path"],
                 set_={
-                    "source": transformed_source,
+                    "source": source,
                     "compiled": None,
                     "updated_at": now,
                 },
@@ -537,19 +494,7 @@ class AppIndexer:
             actual_file_id = result.scalar_one()
 
             # Sync dependencies
-            await sync_file_dependencies(self.db, actual_file_id, transformed_source, app.organization_id)
-
-        # Create diagnostics for unresolved refs if any
-        if all_unresolved_refs:
-            try:
-                diagnostics = DiagnosticsService(self.db)
-                await diagnostics.scan_for_unresolved_refs(
-                    path=f"{app_dir}/app.json",
-                    entity_type="app",
-                    unresolved_refs=list(set(all_unresolved_refs)),
-                )
-            except Exception as e:
-                logger.warning(f"Failed to create notification for unresolved refs in {app_dir}: {e}")
+            await sync_file_dependencies(self.db, actual_file_id, source, app.organization_id)
 
         logger.info(f"Imported app atomically with {len(files) - 1} code files: {slug}")
         return app

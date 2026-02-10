@@ -244,53 +244,6 @@ async def file_exists(
 # =============================================================================
 
 
-async def _fetch_entity_org_ids(
-    db: AsyncSession,
-    entity_ids_by_type: dict[str, list[str]],
-) -> dict[str, str | None]:
-    """
-    Batch-fetch organization_id for entities grouped by type.
-
-    Returns a mapping of entity_id -> organization_id (or None for global).
-    """
-    from uuid import UUID
-    from sqlalchemy import select
-    from src.models.orm import Workflow, Form, Agent
-
-    org_map: dict[str, str | None] = {}
-
-    # Fetch workflow org IDs
-    workflow_ids = entity_ids_by_type.get("workflow", [])
-    if workflow_ids:
-        stmt = select(Workflow.id, Workflow.organization_id).where(
-            Workflow.id.in_([UUID(id) for id in workflow_ids])
-        )
-        result = await db.execute(stmt)
-        for row in result:
-            org_map[str(row.id)] = str(row.organization_id) if row.organization_id else None
-
-    # Fetch form org IDs
-    form_ids = entity_ids_by_type.get("form", [])
-    if form_ids:
-        stmt = select(Form.id, Form.organization_id).where(
-            Form.id.in_([UUID(id) for id in form_ids])
-        )
-        result = await db.execute(stmt)
-        for row in result:
-            org_map[str(row.id)] = str(row.organization_id) if row.organization_id else None
-
-    # Fetch agent org IDs
-    agent_ids = entity_ids_by_type.get("agent", [])
-    if agent_ids:
-        stmt = select(Agent.id, Agent.organization_id).where(
-            Agent.id.in_([UUID(id) for id in agent_ids])
-        )
-        result = await db.execute(stmt)
-        for row in result:
-            org_map[str(row.id)] = str(row.organization_id) if row.organization_id else None
-
-    return org_map
-
 
 @router.get(
     "/editor",
@@ -311,33 +264,20 @@ async def list_files_editor(
     """
     try:
         storage = FileStorageService(db)
-        workspace_files = await storage.list_files(path, recursive=recursive)
-
-        # Collect entity IDs by type for batch org lookup
-        entity_ids_by_type: dict[str, list[str]] = {}
-        for wf in workspace_files:
-            if wf.entity_type and wf.entity_id:
-                entity_ids_by_type.setdefault(wf.entity_type, []).append(str(wf.entity_id))
-
-        # Batch-fetch organization IDs
-        org_map = await _fetch_entity_org_ids(db, entity_ids_by_type)
+        file_entries = await storage.list_files(path, recursive=recursive)
 
         files = []
-        for wf in workspace_files:
-            is_folder = wf.path.endswith("/")
-            clean_path = wf.path.rstrip("/") if is_folder else wf.path
-            entity_id_str = str(wf.entity_id) if wf.entity_id else None
+        for entry in file_entries:
+            is_folder = entry.path.endswith("/")
+            clean_path = entry.path.rstrip("/") if is_folder else entry.path
 
             files.append(FileMetadata(
                 path=clean_path,
                 name=clean_path.split("/")[-1],
                 type=FileType.FOLDER if is_folder else FileType.FILE,
-                size=wf.size_bytes if not is_folder else None,
-                extension=wf.path.split(".")[-1] if "." in wf.path and not is_folder else None,
-                modified=wf.updated_at.isoformat() if wf.updated_at else datetime.now(timezone.utc).isoformat(),
-                entity_type=wf.entity_type if not is_folder else None,  # type: ignore[arg-type]
-                entity_id=entity_id_str if not is_folder else None,
-                organization_id=org_map.get(entity_id_str) if entity_id_str and not is_folder else None,
+                size=entry.size_bytes if not is_folder else None,
+                extension=entry.path.split(".")[-1] if "." in entry.path and not is_folder else None,
+                modified=entry.updated_at.isoformat() if entry.updated_at else datetime.now(timezone.utc).isoformat(),
             ))
         return files
 
@@ -365,7 +305,7 @@ async def get_file_content_editor(
     """
     try:
         storage = FileStorageService(db)
-        content, file_record = await storage.read_file(path)
+        content, _ = await storage.read_file(path)
 
         # Determine encoding
         encoding = "utf-8"
@@ -383,7 +323,7 @@ async def get_file_content_editor(
             encoding=encoding,
             size=len(content),
             etag=etag,
-            modified=file_record.updated_at.isoformat() if file_record else datetime.now(timezone.utc).isoformat(),
+            modified=datetime.now(timezone.utc).isoformat(),
         )
 
     except ValueError as e:
@@ -528,7 +468,7 @@ async def put_file_content_editor(
             encoding=response_encoding,
             size=response_size,
             etag=etag,
-            modified=write_result.file_record.updated_at.isoformat(),
+            modified=datetime.now(timezone.utc).isoformat(),
             content_modified=write_result.content_modified,
             needs_indexing=write_result.needs_indexing,
             workflow_id_conflicts=conflicts,
@@ -570,7 +510,7 @@ async def create_folder_editor(
     try:
         storage = FileStorageService(db)
         updated_by = user.email if user else "system"
-        folder_record = await storage.create_folder(path, updated_by)
+        await storage.create_folder(path, updated_by)
 
         clean_path = path.rstrip("/")
         return FileMetadata(
@@ -579,7 +519,7 @@ async def create_folder_editor(
             type=FileType.FOLDER,
             size=None,
             extension=None,
-            modified=folder_record.updated_at.isoformat() if folder_record.updated_at else datetime.now(timezone.utc).isoformat(),
+            modified=datetime.now(timezone.utc).isoformat(),
         )
 
     except ValueError as e:
@@ -603,21 +543,18 @@ async def delete_file_editor(
     Cloud mode only - used by browser editor.
     """
     from sqlalchemy import select
-    from src.models import WorkspaceFile
+    from src.models.orm.file_index import FileIndex
 
     try:
         storage = FileStorageService(db)
 
-        # Check if this is a folder
+        # Check if this is a folder (path ending with /)
         folder_path = path.rstrip("/") + "/"
-        stmt = select(WorkspaceFile).where(
-            WorkspaceFile.path == folder_path,
-            WorkspaceFile.is_deleted == False,  # noqa: E712
-        )
+        stmt = select(FileIndex.path).where(FileIndex.path == folder_path)
         result = await db.execute(stmt)
-        folder_record = result.scalar_one_or_none()
+        is_folder = result.scalar_one_or_none() is not None
 
-        if folder_record:
+        if is_folder:
             await storage.delete_folder(path)
         else:
             await storage.delete_file(path)
@@ -644,9 +581,9 @@ async def rename_file_editor(
     Rename or move a file or folder.
 
     For platform entities (workflows, forms, apps, agents), this updates the path
-    in both workspace_files and the entity table, preserving all metadata.
+    in file_index and the entity table, preserving all metadata.
 
-    For regular files, copies content in S3 and updates the index.
+    For regular files, copies content in S3 and updates file_index.
 
     Cloud mode only - used by browser editor.
     """
@@ -654,18 +591,16 @@ async def rename_file_editor(
         storage = FileStorageService(db)
 
         # Use move_file which preserves entity associations
-        file_record = await storage.move_file(old_path, new_path)
+        await storage.move_file(old_path, new_path)
 
         is_folder = new_path.endswith("/")
         return FileMetadata(
             path=new_path,
             name=new_path.split("/")[-1] if not is_folder else new_path.split("/")[-2],
             type=FileType.FOLDER if is_folder else FileType.FILE,
-            size=file_record.size_bytes if not is_folder else None,
+            size=None,
             extension=new_path.split(".")[-1] if "." in new_path and not is_folder else None,
-            modified=file_record.updated_at.isoformat(),
-            entity_type=file_record.entity_type if not is_folder else None,
-            entity_id=str(file_record.entity_id) if file_record.entity_id and not is_folder else None,
+            modified=datetime.now(timezone.utc).isoformat(),
         )
 
     except ValueError as e:

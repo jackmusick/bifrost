@@ -4,7 +4,7 @@ Code Editor MCP Tools - Precision Editing
 Tools for searching, reading, and editing code stored in the database:
 - app_file (TSX/TypeScript for App Builder)
 - workflow (Python workflow code)
-- module (Python helper modules via workspace_files)
+- module (Python helper modules via file_index)
 - text (Markdown, README, documentation, config files)
 
 These tools mirror Claude Code's precision editing workflow:
@@ -27,11 +27,10 @@ from fastmcp.tools.tool import ToolResult
 from sqlalchemy import select
 
 from src.core.database import get_db_context
-from src.models.enums import GitStatus
 from src.models.orm.applications import AppFile, Application
+from src.models.orm.file_index import FileIndex
 from src.models.orm.organizations import Organization
 from src.models.orm.workflows import Workflow
-from src.models.orm.workspace import WorkspaceFile
 from src.services.file_storage import FileStorageService
 from src.services.mcp_server.tool_result import (
     error_result,
@@ -304,59 +303,21 @@ async def _get_content_by_entity(
                 None,
             )
 
-        elif entity_type == "module":
-            # Query workspace_files for modules
-            query = select(WorkspaceFile).where(
-                WorkspaceFile.path == path,
-                WorkspaceFile.entity_type == "module",
-                WorkspaceFile.is_deleted == False,  # noqa: E712
+        elif entity_type in ("module", "text"):
+            # Query file_index for modules and text files
+            fi_result = await db.execute(
+                select(FileIndex.content).where(FileIndex.path == path)
             )
+            fi_content = fi_result.scalar_one_or_none()
 
-            result = await db.execute(query)
-            module = result.scalar_one_or_none()
-
-            if not module:
-                # Try file_index fallback (workspace redesign migration)
-                content, metadata, _ = await _try_file_index_fallback(path)
-                if content is not None:
-                    return content, metadata, None
-                return None, None, f"Module not found: {path}"
-
-            if not module.content:
-                return None, None, f"Module has no content: {path}"
+            if fi_content is None:
+                return None, None, f"File not found: {path}"
 
             return (
-                module.content,
+                fi_content,
                 {
-                    "path": module.path,
-                    "entity_id": str(module.id),
-                },
-                None,
-            )
-
-        elif entity_type == "text":
-            # Query workspace_files for text files (markdown, docs, config)
-            query = select(WorkspaceFile).where(
-                WorkspaceFile.path == path,
-                WorkspaceFile.entity_type == "text",
-                WorkspaceFile.is_deleted == False,  # noqa: E712
-            )
-
-            result = await db.execute(query)
-            text_file = result.scalar_one_or_none()
-
-            if not text_file:
-                # Try file_index fallback (workspace redesign migration)
-                content, metadata, _ = await _try_file_index_fallback(path)
-                if content is not None:
-                    return content, metadata, None
-                return None, None, f"Text file not found: {path}"
-
-            return (
-                text_file.content or "",
-                {
-                    "path": text_file.path,
-                    "entity_id": str(text_file.id),
+                    "path": path,
+                    "source": "file_index",
                 },
                 None,
             )
@@ -544,40 +505,22 @@ async def _replace_text_file(
     context: Any, path: str, content: str
 ) -> bool:
     """Replace or create a text file (markdown, docs, config). Returns True if created."""
-    import hashlib
-
-    # Compute content hash and size
-    content_bytes = content.encode("utf-8")
-    content_hash = hashlib.sha256(content_bytes).hexdigest()
-    size_bytes = len(content_bytes)
-
     async with get_db_context() as db:
-        # Check if file exists (including deleted ones to handle re-creation)
-        query = select(WorkspaceFile).where(WorkspaceFile.path == path)
-        result = await db.execute(query)
-        existing = result.scalar_one_or_none()
+        service = FileStorageService(db)
 
-        if existing:
-            # Update existing (or resurrect if deleted)
-            created = existing.is_deleted  # Was deleted, now resurrected
-            existing.content = content
-            existing.content_hash = content_hash
-            existing.size_bytes = size_bytes
-            existing.entity_type = "text"
-            existing.is_deleted = False
-            existing.git_status = GitStatus.MODIFIED
-        else:
-            # Create new
-            new_file = WorkspaceFile(
-                path=path,
-                entity_type="text",
-                content=content,
-                content_hash=content_hash,
-                size_bytes=size_bytes,
-                is_deleted=False,
-            )
-            db.add(new_file)
+        # Check if file exists
+        try:
+            await service.read_file(path)
+            created = False
+        except FileNotFoundError:
             created = True
+
+        # Write through FileStorageService
+        await service.write_file(
+            path=path,
+            content=content.encode("utf-8"),
+            updated_by=context.user_email or "mcp",
+        )
 
         await db.commit()
         return created
@@ -814,35 +757,6 @@ async def _list_app_files(
     return [{"path": f.path, "app_id": app_id} for f in files]
 
 
-async def _list_workflows(
-    db, context: Any, organization_id: str | None, path_prefix: str | None
-) -> list[dict[str, Any]]:
-    """List workflows."""
-    query = select(Workflow).where(Workflow.is_active == True)  # noqa: E712
-
-    if path_prefix:
-        query = query.where(Workflow.path.startswith(path_prefix))
-
-    if organization_id:
-        org_uuid = UUID(organization_id)
-        query = query.where(Workflow.organization_id == org_uuid)
-    elif not context.is_platform_admin and context.org_id:
-        query = query.where(
-            (Workflow.organization_id == context.org_id)
-            | (Workflow.organization_id.is_(None))
-        )
-
-    result = await db.execute(query)
-    workflows = result.scalars().all()
-
-    return [
-        {
-            "path": wf.path,
-            "organization_id": str(wf.organization_id) if wf.organization_id else None,
-        }
-        for wf in workflows
-    ]
-
 
 async def _list_workflows_deduped(
     db, context: Any, organization_id: str | None, path_prefix: str | None
@@ -914,37 +828,46 @@ async def _list_workflows_deduped(
 async def _list_modules(
     db, context: Any, path_prefix: str | None
 ) -> list[dict[str, Any]]:
-    """List modules."""
-    query = select(WorkspaceFile).where(
-        WorkspaceFile.entity_type == "module",
-        WorkspaceFile.is_deleted == False,  # noqa: E712
+    """List modules (Python files without workflow decorators)."""
+    from src.services.file_storage.entity_detector import detect_platform_entity_type
+
+    # Get all .py paths from file_index that are NOT workflows
+    fi_query = select(FileIndex.path).where(
+        FileIndex.path.endswith(".py"),
     )
-
     if path_prefix:
-        query = query.where(WorkspaceFile.path.startswith(path_prefix))
+        fi_query = fi_query.where(FileIndex.path.startswith(path_prefix))
 
-    result = await db.execute(query)
-    modules = result.scalars().all()
+    fi_result = await db.execute(fi_query)
+    all_py_paths = {row[0] for row in fi_result.fetchall()}
 
-    return [{"path": m.path} for m in modules]
+    # Get workflow paths to exclude
+    wf_query = select(Workflow.path).where(
+        Workflow.is_active == True,  # noqa: E712
+    ).distinct()
+    wf_result = await db.execute(wf_query)
+    wf_paths = {row[0] for row in wf_result.fetchall()}
+
+    # Modules = Python files that are not workflows
+    module_paths = sorted(all_py_paths - wf_paths)
+    return [{"path": p} for p in module_paths]
 
 
 async def _list_text_files(
     db, context: Any, path_prefix: str | None
 ) -> list[dict[str, Any]]:
-    """List text files (markdown, docs, config)."""
-    query = select(WorkspaceFile).where(
-        WorkspaceFile.entity_type == "text",
-        WorkspaceFile.is_deleted == False,  # noqa: E712
+    """List text files (non-Python, non-entity files in file_index)."""
+    query = select(FileIndex.path).where(
+        ~FileIndex.path.endswith(".py"),
+        ~FileIndex.path.endswith(".form.json"),
+        ~FileIndex.path.endswith(".agent.json"),
+        ~FileIndex.path.endswith("/"),
     )
-
     if path_prefix:
-        query = query.where(WorkspaceFile.path.startswith(path_prefix))
+        query = query.where(FileIndex.path.startswith(path_prefix))
 
     result = await db.execute(query)
-    text_files = result.scalars().all()
-
-    return [{"path": t.path} for t in text_files]
+    return [{"path": row[0]} for row in result.fetchall()]
 
 
 # =============================================================================
@@ -1198,24 +1121,30 @@ async def _search_modules(
     context_lines: int,
     max_results: int,
 ) -> list[dict[str, Any]]:
-    """Search modules for regex matches."""
-    query = select(WorkspaceFile).where(
-        WorkspaceFile.entity_type == "module",
-        WorkspaceFile.is_deleted == False,  # noqa: E712
-    )
+    """Search modules (non-workflow Python files) for regex matches."""
+    # Get workflow paths to exclude
+    wf_query = select(Workflow.path).where(
+        Workflow.is_active == True,  # noqa: E712
+    ).distinct()
+    wf_result = await db.execute(wf_query)
+    wf_paths = {row[0] for row in wf_result.fetchall()}
 
+    query = select(FileIndex.path, FileIndex.content).where(
+        FileIndex.path.endswith(".py"),
+        FileIndex.content.isnot(None),
+    )
     if path:
-        query = query.where(WorkspaceFile.path == path)
+        query = query.where(FileIndex.path == path)
 
     result = await db.execute(query)
-    modules = result.scalars().all()
+    all_files = result.all()
 
     matches = []
-    for mod in modules:
-        if not mod.content:
-            continue
+    for row in all_files:
+        if row.path in wf_paths:
+            continue  # Skip workflow files
 
-        content = _normalize_line_endings(mod.content)
+        content = _normalize_line_endings(row.content)
         lines = content.split("\n")
 
         for i, line in enumerate(lines):
@@ -1223,7 +1152,7 @@ async def _search_modules(
                 before, after = _get_lines_with_context(content, i + 1, context_lines)
                 matches.append(
                     {
-                        "path": mod.path,
+                        "path": row.path,
                         "line_number": i + 1,
                         "match": line,
                         "context_before": before,
@@ -1246,24 +1175,23 @@ async def _search_text_files(
     context_lines: int,
     max_results: int,
 ) -> list[dict[str, Any]]:
-    """Search text files for regex matches."""
-    query = select(WorkspaceFile).where(
-        WorkspaceFile.entity_type == "text",
-        WorkspaceFile.is_deleted == False,  # noqa: E712
+    """Search text files (non-Python, non-entity) for regex matches."""
+    query = select(FileIndex.path, FileIndex.content).where(
+        ~FileIndex.path.endswith(".py"),
+        ~FileIndex.path.endswith(".form.json"),
+        ~FileIndex.path.endswith(".agent.json"),
+        ~FileIndex.path.endswith("/"),
+        FileIndex.content.isnot(None),
     )
-
     if path:
-        query = query.where(WorkspaceFile.path == path)
+        query = query.where(FileIndex.path == path)
 
     result = await db.execute(query)
-    text_files = result.scalars().all()
+    all_files = result.all()
 
     matches = []
-    for tf in text_files:
-        if not tf.content:
-            continue
-
-        content = _normalize_line_endings(tf.content)
+    for row in all_files:
+        content = _normalize_line_endings(row.content)
         lines = content.split("\n")
 
         for i, line in enumerate(lines):
@@ -1271,7 +1199,7 @@ async def _search_text_files(
                 before, after = _get_lines_with_context(content, i + 1, context_lines)
                 matches.append(
                     {
-                        "path": tf.path,
+                        "path": row.path,
                         "line_number": i + 1,
                         "match": line,
                         "context_before": before,
@@ -1618,7 +1546,7 @@ async def replace_content(
             assert app_id is not None
             created = await _replace_app_file(context, app_id, path, content)
         elif entity_type == "text":
-            # Text files go directly to workspace_files without validation
+            # Text files go through FileStorageService without validation
             created = await _replace_text_file(context, path, content)
         else:
             # Validate entity_type matches content before writing (workflow/module)
@@ -1739,38 +1667,32 @@ async def _delete_workflow(
 
 
 async def _delete_module(db, context: Any, path: str) -> bool:
-    """Mark a module as deleted. Returns True if found and marked."""
-    query = select(WorkspaceFile).where(
-        WorkspaceFile.path == path,
-        WorkspaceFile.entity_type == "module",
-        WorkspaceFile.is_deleted == False,  # noqa: E712
+    """Delete a module file. Returns True if found and deleted."""
+    from sqlalchemy import delete as sql_delete
+    from src.core.module_cache import invalidate_module
+
+    result = await db.execute(
+        select(FileIndex.path).where(FileIndex.path == path)
     )
-
-    result = await db.execute(query)
-    module = result.scalar_one_or_none()
-
-    if not module:
+    if result.scalar_one_or_none() is None:
         return False
 
-    module.is_deleted = True
+    await db.execute(sql_delete(FileIndex).where(FileIndex.path == path))
+    await invalidate_module(path)
     return True
 
 
 async def _delete_text_file(db, context: Any, path: str) -> bool:
-    """Mark a text file as deleted. Returns True if found and marked."""
-    query = select(WorkspaceFile).where(
-        WorkspaceFile.path == path,
-        WorkspaceFile.entity_type == "text",
-        WorkspaceFile.is_deleted == False,  # noqa: E712
+    """Delete a text file. Returns True if found and deleted."""
+    from sqlalchemy import delete as sql_delete
+
+    result = await db.execute(
+        select(FileIndex.path).where(FileIndex.path == path)
     )
-
-    result = await db.execute(query)
-    text_file = result.scalar_one_or_none()
-
-    if not text_file:
+    if result.scalar_one_or_none() is None:
         return False
 
-    text_file.is_deleted = True
+    await db.execute(sql_delete(FileIndex).where(FileIndex.path == path))
     return True
 
 

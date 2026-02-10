@@ -26,7 +26,6 @@ import {
 } from "@/components/ui/dialog";
 import { Badge } from "@/components/ui/badge";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
-import { Checkbox } from "@/components/ui/checkbox";
 import { toast } from "sonner";
 import {
 	Loader2,
@@ -388,7 +387,6 @@ export function GitHub() {
 				body: {
 					conflict_resolutions: resolutions,
 					confirm_orphans: confirmOrphans,
-					confirm_unresolved_refs: true,
 				},
 			});
 
@@ -894,7 +892,7 @@ function SyncPreviewDialog({
 	const [resolutions, setResolutions] = useState<
 		Record<string, "keep_local" | "keep_remote">
 	>({});
-	const [orphansConfirmed, setOrphansConfirmed] = useState(false);
+
 
 	// Helper to render action badge
 	const renderActionBadge = (action: SyncAction["action"]) => {
@@ -922,12 +920,14 @@ function SyncPreviewDialog({
 
 	// Check if all conflicts are resolved and orphans confirmed (if needed)
 	const conflicts = preview?.conflicts ?? [];
-	const willOrphan = preview?.will_orphan ?? [];
+	const preflightIssues = preview?.preflight?.issues ?? [];
+	const preflightErrors = preflightIssues.filter((i) => i.severity === "error");
+	const preflightWarnings = preflightIssues.filter((i) => i.severity === "warning");
 	const canSync =
 		preview &&
 		!preview.is_empty &&
 		conflicts.every((c) => resolutions[c.path]) &&
-		(willOrphan.length === 0 || orphansConfirmed);
+		preflightErrors.length === 0;
 
 	// Check if sync is empty (nothing to do)
 	const isEmpty = preview?.is_empty;
@@ -1085,65 +1085,47 @@ function SyncPreviewDialog({
 							</div>
 						)}
 
-						{/* Orphaned Workflows Warning */}
-						{willOrphan.length > 0 && (
-							<div className="rounded-md border border-yellow-300 bg-yellow-50 dark:bg-yellow-950/30 p-4">
-								<h3 className="flex items-center gap-2 font-medium mb-3 text-yellow-800 dark:text-yellow-200">
+						{/* Preflight Errors */}
+						{preflightErrors.length > 0 && (
+							<div className="rounded-md border border-red-300 bg-red-50 dark:bg-red-950/30 p-4">
+								<h3 className="flex items-center gap-2 font-medium mb-3 text-red-800 dark:text-red-200">
 									<AlertTriangle className="h-4 w-4" />
-									<span>Workflows Will Become Orphaned</span>
+									<span>Preflight Errors (must fix before sync)</span>
 								</h3>
-								<p className="text-sm text-yellow-700 dark:text-yellow-300 mb-3">
-									The following workflows will no longer have
-									backing files after this sync. They will
-									continue to work but cannot be edited via
-									files:
-								</p>
-								<ul className="text-sm space-y-2 mb-4">
-									{willOrphan.map((orphan) => (
-										<li
-											key={orphan.workflow_id}
-											className="rounded bg-white/50 dark:bg-black/20 p-2"
-										>
-											<div className="font-medium">
-												{orphan.workflow_name}
-											</div>
-											<div className="text-xs text-muted-foreground">
-												<span className="font-mono">
-													{orphan.function_name}
-												</span>
-												{" in "}
-												<span className="font-mono">
-													{orphan.last_path}
-												</span>
-											</div>
-											{(orphan.used_by?.length ?? 0) > 0 && (
-												<div className="text-xs text-yellow-700 dark:text-yellow-300 mt-1">
-													Used by:{" "}
-													{(orphan.used_by ?? [])
-														.map((ref) => ref.name)
-														.join(", ")}
-												</div>
-											)}
+								<ul className="text-sm space-y-1">
+									{preflightErrors.map((issue, idx) => (
+										<li key={idx} className="font-mono text-xs">
+											<span className="text-red-700 dark:text-red-300">
+												{issue.path}{issue.line ? `:${issue.line}` : ""}
+											</span>
+											{" — "}
+											{issue.message}
+											<span className="ml-1 text-muted-foreground">[{issue.category}]</span>
 										</li>
 									))}
 								</ul>
-								<div className="flex items-start space-x-2">
-									<Checkbox
-										id="confirm-orphans"
-										checked={orphansConfirmed}
-										onCheckedChange={(checked) =>
-											setOrphansConfirmed(checked === true)
-										}
-									/>
-									<Label
-										htmlFor="confirm-orphans"
-										className="text-sm text-yellow-800 dark:text-yellow-200 cursor-pointer leading-tight"
-									>
-										I understand these workflows will be
-										orphaned and can be managed later in
-										Settings
-									</Label>
-								</div>
+							</div>
+						)}
+
+						{/* Preflight Warnings */}
+						{preflightWarnings.length > 0 && (
+							<div className="rounded-md border border-yellow-300 bg-yellow-50 dark:bg-yellow-950/30 p-4">
+								<h3 className="flex items-center gap-2 font-medium mb-3 text-yellow-800 dark:text-yellow-200">
+									<AlertTriangle className="h-4 w-4" />
+									<span>Preflight Warnings</span>
+								</h3>
+								<ul className="text-sm space-y-1">
+									{preflightWarnings.map((issue, idx) => (
+										<li key={idx} className="font-mono text-xs">
+											<span className="text-yellow-700 dark:text-yellow-300">
+												{issue.path}{issue.line ? `:${issue.line}` : ""}
+											</span>
+											{" — "}
+											{issue.message}
+											<span className="ml-1 text-muted-foreground">[{issue.category}]</span>
+										</li>
+									))}
+								</ul>
 							</div>
 						)}
 					</div>
@@ -1158,7 +1140,7 @@ function SyncPreviewDialog({
 					) : (
 						<Button
 							onClick={() =>
-								onConfirm(resolutions, orphansConfirmed)
+								onConfirm(resolutions, false)
 							}
 							disabled={!canSync || executing}
 						>

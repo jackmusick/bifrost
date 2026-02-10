@@ -88,7 +88,6 @@ class WorkflowIndexer:
         self,
         path: str,
         content: bytes,
-        workspace_file: Any = None,
         cached_ast: ast.Module | None = None,
         cached_content_str: str | None = None,
     ) -> None:
@@ -97,7 +96,6 @@ class WorkflowIndexer:
 
         Uses AST-based parsing to extract metadata from @workflow, @tool, and
         @data_provider decorators without importing the module.
-        Also updates workspace_files.is_workflow/is_data_provider flags.
 
         IDs are DB-only. Workflows without IDs in decorators will have IDs
         generated in the database using path + function_name as the identity key.
@@ -105,7 +103,6 @@ class WorkflowIndexer:
         Args:
             path: File path
             content: File content bytes
-            workspace_file: WorkspaceFile ORM instance (optional, not currently used)
             cached_ast: Pre-parsed AST tree (avoids re-parsing large files)
             cached_content_str: Pre-decoded content string (avoids re-decoding)
         """
@@ -122,14 +119,6 @@ class WorkflowIndexer:
 
         now = datetime.now(timezone.utc)
 
-        # Track what decorators we find to update workspace_files
-        found_workflow = False
-        found_data_provider = False
-        # Track the primary entity for this file (first workflow or data_provider found)
-        # Used to set entity_type and entity_id in workspace_files
-        primary_entity_type: str | None = None
-        primary_entity_id: str | None = None
-
         for node in ast.walk(tree):
             if not isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
                 continue
@@ -142,8 +131,6 @@ class WorkflowIndexer:
                 decorator_name, kwargs = decorator_info
 
                 if decorator_name in ("workflow", "tool"):
-                    found_workflow = True
-
                     # @tool decorator is an alias for @workflow(is_tool=True)
                     # If using @tool, force is_tool=True
                     if decorator_name == "tool":
@@ -266,11 +253,6 @@ class WorkflowIndexer:
                     workflow = result.scalar_one()
                     logger.debug(f"Indexed workflow: {workflow_name} ({function_name}) from {path}")
 
-                    # Set primary entity for workspace_files (first one wins)
-                    if primary_entity_type is None:
-                        primary_entity_type = "workflow"
-                        primary_entity_id = str(workflow.id)
-
                     # Refresh endpoint registration if endpoint_enabled
                     if endpoint_enabled:
                         await self.refresh_workflow_endpoint(workflow)
@@ -299,7 +281,6 @@ class WorkflowIndexer:
                         logger.warning(f"Failed to update caches for workflow {workflow_name}: {e}")
 
                 elif decorator_name == "data_provider":
-                    found_data_provider = True
                     # Get provider name from decorator (required)
                     provider_name = kwargs.get("name") or node.name
                     description = kwargs.get("description")
@@ -349,31 +330,8 @@ class WorkflowIndexer:
                     data_provider = dp_result.scalar_one()
                     logger.debug(f"Indexed data provider: {provider_name} ({function_name}) from {path}")
 
-                    # Set primary entity for workspace_files (first one wins)
-                    # Note: data_provider is stored in workflows table with type='data_provider'
-                    if primary_entity_type is None:
-                        primary_entity_type = "workflow"  # Use 'workflow' since it's in workflows table
-                        primary_entity_id = str(data_provider.id)
-
-        # Update workspace_files with detection results and entity routing
-        from src.models import WorkspaceFile
-        update_values: dict[str, Any] = {
-            "is_workflow": found_workflow,
-            "is_data_provider": found_data_provider,
-        }
-        # Set entity routing for platform entities
-        if primary_entity_type and primary_entity_id:
-            update_values["entity_type"] = primary_entity_type
-            update_values["entity_id"] = UUID_type(primary_entity_id)
-        else:
-            # No workflow/data_provider found - this is a regular Python module
-            # Keep entity_type="module" (set by write_file) so content is read from
-            # workspace_files.content instead of S3. Only clear entity_id.
-            update_values["entity_type"] = "module"
-            update_values["entity_id"] = None
-
-        stmt = update(WorkspaceFile).where(WorkspaceFile.path == path).values(**update_values)
-        await self.db.execute(stmt)
+        # Note: workspace_files update removed — file_index is the sole search index.
+        # Entity type/ID routing is handled by path conventions, not DB columns.
 
     async def refresh_workflow_endpoint(self, workflow: Workflow) -> None:
         """

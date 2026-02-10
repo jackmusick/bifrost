@@ -13,8 +13,8 @@ from tests.e2e.conftest import poll_until
 class TestFileOperations:
     """Test workspace file operations."""
 
-    def test_list_workspace_files(self, e2e_client, platform_admin):
-        """Platform admin can list workspace files."""
+    def test_list_files(self, e2e_client, platform_admin):
+        """Platform admin can list files via editor API."""
         response = e2e_client.get(
             "/api/files/editor?path=.",
             headers=platform_admin.headers,

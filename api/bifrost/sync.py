@@ -22,7 +22,7 @@ def format_preview_summary(preview: dict) -> list[str]:
     Format sync preview data into human-readable lines.
 
     Args:
-        preview: Preview dict with to_pull, to_push, conflicts, will_orphan, is_empty
+        preview: Preview dict with to_pull, to_push, conflicts, preflight, is_empty
 
     Returns:
         List of output lines
@@ -36,7 +36,7 @@ def format_preview_summary(preview: dict) -> list[str]:
     to_pull = preview.get("to_pull", [])
     to_push = preview.get("to_push", [])
     conflicts = preview.get("conflicts", [])
-    will_orphan = preview.get("will_orphan", [])
+    preflight = preview.get("preflight", {})
 
     # Summary counts
     parts = []
@@ -84,16 +84,24 @@ def format_preview_summary(preview: dict) -> list[str]:
             "Or manage this in the Code Editor's Source Control at your Bifrost instance."
         )
 
-    # Orphans
-    if will_orphan:
+    # Preflight issues
+    issues = preflight.get("issues", [])
+    errors = [i for i in issues if i.get("severity") == "error"]
+    warnings = [i for i in issues if i.get("severity") == "warning"]
+
+    if errors:
         lines.append("")
-        lines.append("Warning - these workflows will be orphaned:")
-        for orphan in will_orphan:
-            lines.append(f"  {orphan['workflow_name']} ({orphan['function_name']})")
-            lines.append(f"    Last path: {orphan['last_path']}")
-            if orphan.get("used_by"):
-                for ref in orphan["used_by"]:
-                    lines.append(f"    Used by {ref['type']}: {ref['name']}")
+        lines.append("Preflight errors (must fix before sync):")
+        for issue in errors:
+            line_info = f":{issue['line']}" if issue.get("line") else ""
+            lines.append(f"  {issue['path']}{line_info}: {issue['message']} [{issue['category']}]")
+
+    if warnings:
+        lines.append("")
+        lines.append("Preflight warnings:")
+        for issue in warnings:
+            line_info = f":{issue['line']}" if issue.get("line") else ""
+            lines.append(f"  {issue['path']}{line_info}: {issue['message']} [{issue['category']}]")
 
     return lines
 
@@ -154,7 +162,6 @@ def run_sync(args: list[str]) -> int:
     preview_only = False
     resolutions: dict[str, str] = {}
     confirm_orphans = False
-    confirm_unresolved_refs = False
 
     # Parse arguments
     i = 0
@@ -180,9 +187,6 @@ def run_sync(args: list[str]) -> int:
         elif arg == "--confirm-orphans":
             confirm_orphans = True
             i += 1
-        elif arg == "--confirm-unresolved-refs":
-            confirm_unresolved_refs = True
-            i += 1
         elif arg in ("--help", "-h"):
             print_sync_help()
             return EXIT_CLEAN
@@ -199,17 +203,16 @@ def run_sync(args: list[str]) -> int:
 
     # If resolutions provided, go straight to execute
     if resolutions:
-        return _execute_sync(client, resolutions, confirm_orphans, confirm_unresolved_refs)
+        return _execute_sync(client, resolutions, confirm_orphans)
 
     # Otherwise, run preview first
-    return _preview_sync(client, preview_only, confirm_orphans, confirm_unresolved_refs)
+    return _preview_sync(client, preview_only, confirm_orphans)
 
 
 def _preview_sync(
     client: BifrostClient,
     preview_only: bool,
     confirm_orphans: bool,
-    confirm_unresolved_refs: bool,
 ) -> int:
     """Run sync preview, optionally followed by execution."""
     # Queue preview
@@ -236,6 +239,12 @@ def _preview_sync(
     for line in lines:
         print(line)
 
+    # Check for preflight errors
+    preflight = preview.get("preflight", {})
+    if not preflight.get("valid", True):
+        print("\nPreflight validation failed. Fix errors before syncing.", file=sys.stderr)
+        return EXIT_ERROR
+
     # Check for conflicts
     conflicts = preview.get("conflicts", [])
     if conflicts:
@@ -246,14 +255,13 @@ def _preview_sync(
         return EXIT_CLEAN
 
     # No conflicts - auto-execute
-    return _execute_sync(client, {}, confirm_orphans, confirm_unresolved_refs)
+    return _execute_sync(client, {}, confirm_orphans)
 
 
 def _execute_sync(
     client: BifrostClient,
     resolutions: dict[str, str],
     confirm_orphans: bool,
-    confirm_unresolved_refs: bool,
 ) -> int:
     """Execute sync with conflict resolutions."""
     response = client.post_sync(
@@ -261,7 +269,6 @@ def _execute_sync(
         json={
             "conflict_resolutions": resolutions,
             "confirm_orphans": confirm_orphans,
-            "confirm_unresolved_refs": confirm_unresolved_refs,
         },
     )
 
@@ -304,15 +311,14 @@ Usage: bifrost sync [options]
 
 Sync local changes with the Bifrost platform via GitHub.
 
-Runs a sync preview first. If there are no conflicts, automatically
-executes the sync. If conflicts exist, shows them and exits with
-code 1 so you can resolve them.
+Runs a sync preview first. If there are no conflicts and preflight passes,
+automatically executes the sync. If conflicts exist, shows them and exits
+with code 1 so you can resolve them.
 
 Options:
   --preview                   Preview only, don't execute
   --resolve PATH=RESOLUTION   Resolve a conflict (keep_local, keep_remote, skip)
   --confirm-orphans           Acknowledge orphaned workflows
-  --confirm-unresolved-refs   Acknowledge unresolved workflow references
   --help, -h                  Show this help message
 
 Examples:
@@ -321,7 +327,6 @@ Examples:
   bifrost sync --resolve workflows/billing.py=keep_remote
   bifrost sync --resolve a.py=keep_local --resolve b.py=keep_remote
   bifrost sync --confirm-orphans            # Acknowledge orphan warnings
-  bifrost sync --confirm-unresolved-refs    # Acknowledge unresolved refs
 
 Exit codes:
   0  Sync completed successfully (or no changes)

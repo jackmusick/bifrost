@@ -58,7 +58,7 @@ async def clean_tables(db_session: AsyncSession):
     (each test function gets a fresh event loop with asyncio_default_fixture_loop_scope=function).
     """
     from sqlalchemy import delete
-    from src.models import Workflow, WorkspaceFile
+    from src.models import Workflow, FileIndex
     import src.services.notification_service as notification_module
     import src.core.redis_client as redis_module
 
@@ -82,7 +82,7 @@ async def clean_tables(db_session: AsyncSession):
             delete(Workflow).where(Workflow.path == path)
         )
         await db_session.execute(
-            delete(WorkspaceFile).where(WorkspaceFile.path == path)
+            delete(FileIndex).where(FileIndex.path == path)
         )
 
     # Also clean up by name patterns used in tests

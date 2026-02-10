@@ -211,19 +211,6 @@ class PullFromGitHubRequest(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
 
-class PullFromGitHubResponse(BaseModel):
-    """Response after queueing a pull from GitHub"""
-    success: bool = Field(..., description="Whether job was queued successfully")
-    job_id: str | None = Field(default=None, description="Job ID for tracking (when queued)")
-    status: str | None = Field(default=None, description="Status: 'queued', 'success', 'error'")
-    updated_files: list[str] = Field(default_factory=list, description="List of updated file paths")
-    conflicts: list[ConflictInfo] = Field(default_factory=list, description="List of conflicts (if any)")
-    unresolved_refs: list["UnresolvedRefInfo"] = Field(default_factory=list, description="Workflow refs that couldn't be resolved")
-    error: str | None = Field(default=None, description="Error message if pull failed")
-
-    model_config = ConfigDict(from_attributes=True)
-
-
 class GitHubSyncRequest(BaseModel):
     """Request to sync with GitHub (pull + push)"""
     connection_id: str | None = Field(default=None, description="WebPubSub connection ID for streaming logs")
@@ -248,39 +235,6 @@ class GitHubSetupResponse(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
 
-class UnresolvedRefInfo(BaseModel):
-    """Information about an unresolved workflow reference"""
-    file: str = Field(..., description="File containing the unresolved reference")
-    field: str = Field(..., description="Field path containing the reference")
-    ref: str = Field(..., description="The path::function_name reference that couldn't be resolved")
-
-    model_config = ConfigDict(from_attributes=True)
-
-
-class RefResolution(BaseModel):
-    """Resolution for a single unresolved reference"""
-    file: str = Field(..., description="File containing the unresolved reference")
-    field: str = Field(..., description="Field path containing the reference")
-    ref: str = Field(..., description="The original path::function_name reference")
-    resolved_workflow_id: str = Field(..., description="UUID of the workflow to resolve to")
-
-    model_config = ConfigDict(from_attributes=True)
-
-
-class ResolveRefsRequest(BaseModel):
-    """Request to resolve unresolved workflow references"""
-    resolutions: list[RefResolution] = Field(..., description="List of reference resolutions")
-
-    model_config = ConfigDict(from_attributes=True)
-
-
-class ResolveRefsResponse(BaseModel):
-    """Response after resolving workflow references"""
-    success: bool = Field(..., description="Whether all resolutions were applied successfully")
-    files_updated: int = Field(default=0, description="Number of files updated")
-    errors: list[str] = Field(default_factory=list, description="Any errors encountered")
-
-    model_config = ConfigDict(from_attributes=True)
 
 
 class CommitInfo(BaseModel):
@@ -469,23 +423,21 @@ class OrphanInfo(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
 
-class SyncUnresolvedRefInfo(BaseModel):
-    """Information about an unresolved portable workflow ref."""
-    entity_type: str = Field(..., description="Type: app, form, or agent")
-    entity_path: str = Field(..., description="File path being imported")
-    field_path: str = Field(..., description="Field containing the ref, e.g., pages.0.launch_workflow_id")
-    portable_ref: str = Field(..., description="The portable ref that couldn't be resolved")
+class PreflightIssue(BaseModel):
+    """A single issue found during preflight validation."""
+    path: str = Field(...)
+    line: int | None = Field(default=None)
+    message: str = Field(...)
+    severity: Literal["error", "warning"] = Field(...)
+    category: Literal["syntax", "lint", "ref", "orphan", "manifest"] = Field(...)
 
     model_config = ConfigDict(from_attributes=True)
 
 
-class SyncSerializationError(BaseModel):
-    """Information about an entity that failed to serialize for sync."""
-    entity_type: str = Field(..., description="Type: app, form, or agent")
-    entity_id: str = Field(..., description="Entity UUID")
-    entity_name: str = Field(..., description="Entity display name")
-    path: str = Field(..., description="Virtual file path (used as resolution key)")
-    error: str = Field(..., description="Human-readable error message")
+class PreflightResult(BaseModel):
+    """Result of preflight validation."""
+    valid: bool = Field(...)
+    issues: list[PreflightIssue] = Field(default_factory=list)
 
     model_config = ConfigDict(from_attributes=True)
 
@@ -504,17 +456,9 @@ class SyncPreviewResponse(BaseModel):
         default_factory=list,
         description="Files with conflicts"
     )
-    will_orphan: list[OrphanInfo] = Field(
-        default_factory=list,
-        description="Workflows that will become orphaned"
-    )
-    unresolved_refs: list[SyncUnresolvedRefInfo] = Field(
-        default_factory=list,
-        description="Workflow refs that couldn't be resolved"
-    )
-    serialization_errors: list[SyncSerializationError] = Field(
-        default_factory=list,
-        description="Entities that failed to serialize for sync (can be skipped)"
+    preflight: PreflightResult = Field(
+        default_factory=lambda: PreflightResult(valid=True),
+        description="Preflight validation results (syntax, lint, refs, orphans, manifest)"
     )
     is_empty: bool = Field(
         default=False,
@@ -551,10 +495,6 @@ class SyncExecuteRequest(BaseModel):
     confirm_orphans: bool = Field(
         default=False,
         description="User acknowledges orphan workflows"
-    )
-    confirm_unresolved_refs: bool = Field(
-        default=False,
-        description="User acknowledges unresolved workflow refs"
     )
 
     model_config = ConfigDict(from_attributes=True)

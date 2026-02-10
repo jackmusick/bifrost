@@ -6,7 +6,7 @@ they live in their own database tables. The VirtualFileProvider serializes these
 entities on-the-fly so they can participate in GitHub sync.
 
 Virtual files are generated from database entities with:
-- Portable workflow refs (UUID -> path::function_name)
+- UUIDs used directly for all cross-references
 - Computed git blob SHA for fast comparison
 - Standardized path patterns
 
@@ -35,10 +35,6 @@ from src.services.file_storage.file_ops import compute_git_blob_sha
 from src.services.file_storage.indexers.agent import _serialize_agent_to_json
 from src.services.file_storage.indexers.app import _serialize_app_to_json
 from src.services.file_storage.indexers.form import _serialize_form_to_json
-from src.services.file_storage.ref_translation import (
-    build_workflow_ref_map,
-    transform_app_source_uuids_to_refs,
-)
 
 logger = logging.getLogger(__name__)
 
@@ -106,19 +102,12 @@ class VirtualFileProvider:
     Provides virtual file representations of platform entities for GitHub sync.
 
     Platform entities (forms, agents) are stored in their own database tables,
-    not in workspace_files. This provider serializes them to JSON with portable
-    workflow references so they can be synced to GitHub.
+    not in workspace_files. This provider serializes them to JSON so they can
+    be synced to GitHub. UUIDs are used directly for all cross-references.
 
     Usage:
         provider = VirtualFileProvider(db)
         virtual_files = await provider.get_all_virtual_files()
-
-        # Each virtual file has:
-        # - path: e.g., "forms/abc123.form.json"
-        # - entity_type: "form" or "agent"
-        # - entity_id: UUID string
-        # - content: serialized JSON bytes
-        # - computed_sha: git blob SHA for comparison
     """
 
     def __init__(self, db: AsyncSession):
@@ -132,20 +121,15 @@ class VirtualFileProvider:
 
     async def get_all_virtual_files(
         self,
-        workflow_map: dict[str, str] | None = None,
         include_content: bool = True,
     ) -> VirtualFileResult:
         """
         Get all platform entities as virtual files.
 
         Retrieves all forms, agents, and apps from the database, serializes them
-        to JSON/source with portable workflow refs, and returns them as VirtualFile
-        objects with computed git SHAs. Also collects any serialization errors.
+        and returns them as VirtualFile objects with computed git SHAs.
 
         Args:
-            workflow_map: Optional pre-built workflow ref map. If not provided,
-                          will be built internally. Pass this to avoid redundant
-                          database queries when the caller already has the map.
             include_content: If True (default), include serialized content in each
                           VirtualFile. If False, only compute SHA and set content
                           to None. Use False to reduce memory usage when only
@@ -154,18 +138,12 @@ class VirtualFileProvider:
         Returns:
             VirtualFileResult containing files and any errors encountered
         """
-        # Build workflow ref map if not provided
-        if workflow_map is None:
-            workflow_map = await build_workflow_ref_map(self.db)
-        logger.debug(f"Using workflow ref map with {len(workflow_map)} entries")
-
         virtual_files: list[VirtualFile] = []
         errors: list[SerializationError] = []
 
-        # Get all entity types, passing workflow_map and include_content through
-        form_result = await self._get_form_files(workflow_map, include_content)
-        agent_result = await self._get_agent_files(workflow_map, include_content)
-        app_result = await self._get_app_files(workflow_map, include_content)
+        form_result = await self._get_form_files(include_content)
+        agent_result = await self._get_agent_files(include_content)
+        app_result = await self._get_app_files(include_content)
 
         virtual_files.extend(form_result.files)
         virtual_files.extend(agent_result.files)
@@ -186,24 +164,18 @@ class VirtualFileProvider:
 
     async def _get_form_files(
         self,
-        workflow_map: dict[str, str],
         include_content: bool = True,
     ) -> VirtualFileResult:
         """
         Generate virtual files for all forms.
 
-        Fetches all active forms with their fields relationship loaded,
-        serializes them to JSON with portable workflow refs.
-
         Args:
-            workflow_map: Mapping of workflow UUID -> "path::function_name"
             include_content: If True, include content in VirtualFile. If False,
                           compute SHA only and set content to None.
 
         Returns:
             VirtualFileResult with files and any serialization errors
         """
-        # Query forms with fields eagerly loaded
         stmt = (
             select(Form)
             .options(selectinload(Form.fields))
@@ -218,7 +190,7 @@ class VirtualFileProvider:
         for form in forms:
             virtual_path = f"forms/{form.id}.form.json"
             try:
-                content = _serialize_form_to_json(form, workflow_map)
+                content = _serialize_form_to_json(form)
                 computed_sha = compute_git_blob_sha(content)
 
                 virtual_files.append(
@@ -246,30 +218,22 @@ class VirtualFileProvider:
 
     async def _get_agent_files(
         self,
-        workflow_map: dict[str, str],
         include_content: bool = True,
     ) -> VirtualFileResult:
         """
         Generate virtual files for all agents.
-
-        Fetches all active agents with their tools relationship loaded,
-        serializes them to JSON with portable workflow refs.
 
         Built-in/system agents (like "Coding Assistant") are excluded from sync
         because they are auto-created on startup and shouldn't vary between
         environments.
 
         Args:
-            workflow_map: Mapping of workflow UUID -> "path::function_name"
             include_content: If True, include content in VirtualFile. If False,
                           compute SHA only and set content to None.
 
         Returns:
             VirtualFileResult with files and any serialization errors
         """
-        # Query agents with all relationships eagerly loaded
-        # (tools, delegated_agents, roles needed for AgentPublic validation)
-        # Exclude system agents (is_system=True) - they're auto-created and shouldn't be synced
         stmt = (
             select(Agent)
             .options(
@@ -291,7 +255,7 @@ class VirtualFileProvider:
         for agent in agents:
             virtual_path = f"agents/{agent.id}.agent.json"
             try:
-                content = _serialize_agent_to_json(agent, workflow_map)
+                content = _serialize_agent_to_json(agent)
                 computed_sha = compute_git_blob_sha(content)
 
                 virtual_files.append(
@@ -319,7 +283,6 @@ class VirtualFileProvider:
 
     async def _get_app_files(
         self,
-        workflow_map: dict[str, str],
         include_content: bool = True,
     ) -> VirtualFileResult:
         """
@@ -330,15 +293,11 @@ class VirtualFileProvider:
         - apps/{slug}/{path} - each code file (pages/*.tsx, components/*.tsx, etc.)
 
         Uses the app's active_version if published, otherwise draft_version.
-        Code files have useWorkflow UUIDs transformed to portable refs.
 
         Args:
-            workflow_map: Mapping of workflow UUID -> "path::function_name"
             include_content: If True, include content in VirtualFile. If False,
                           compute SHA only and set content to None.
         """
-
-        # Query apps with their versions and files eagerly loaded
         stmt = (
             select(Application)
             .options(
@@ -389,15 +348,11 @@ class VirtualFileProvider:
                 )
                 continue  # Skip files if app.json fails
 
-            # 2. Serialize each code file with UUID -> ref transformation
+            # 2. Serialize each code file (UUIDs used directly, no transformation)
             for file in version.files:
                 file_path = f"{app_dir}/{file.path}"
                 try:
-                    # Transform UUIDs to portable refs
-                    transformed_source, _ = transform_app_source_uuids_to_refs(
-                        file.source, workflow_map
-                    )
-                    file_content = transformed_source.encode("utf-8")
+                    file_content = file.source.encode("utf-8")
                     file_sha = compute_git_blob_sha(file_content)
 
                     virtual_files.append(
@@ -436,9 +391,6 @@ class VirtualFileProvider:
         Returns:
             VirtualFile if found, None otherwise
         """
-        # Build workflow ref map
-        workflow_map = await build_workflow_ref_map(self.db)
-
         try:
             entity_uuid = UUID(entity_id)
         except ValueError:
@@ -446,16 +398,14 @@ class VirtualFileProvider:
             return None
 
         if entity_type == "form":
-            return await self._get_form_file_by_id(entity_uuid, workflow_map)
+            return await self._get_form_file_by_id(entity_uuid)
         elif entity_type == "agent":
-            return await self._get_agent_file_by_id(entity_uuid, workflow_map)
+            return await self._get_agent_file_by_id(entity_uuid)
         else:
             logger.warning(f"Unknown entity type: {entity_type}")
             return None
 
-    async def _get_form_file_by_id(
-        self, form_id: UUID, workflow_map: dict[str, str]
-    ) -> VirtualFile | None:
+    async def _get_form_file_by_id(self, form_id: UUID) -> VirtualFile | None:
         """Get a specific form as a virtual file."""
         stmt = (
             select(Form)
@@ -469,7 +419,7 @@ class VirtualFileProvider:
             return None
 
         try:
-            content = _serialize_form_to_json(form, workflow_map)
+            content = _serialize_form_to_json(form)
             computed_sha = compute_git_blob_sha(content)
 
             return VirtualFile(
@@ -483,9 +433,7 @@ class VirtualFileProvider:
             logger.warning(f"Failed to serialize form {form.id}: {e}")
             return None
 
-    async def _get_agent_file_by_id(
-        self, agent_id: UUID, workflow_map: dict[str, str]
-    ) -> VirtualFile | None:
+    async def _get_agent_file_by_id(self, agent_id: UUID) -> VirtualFile | None:
         """Get a specific agent as a virtual file."""
         stmt = (
             select(Agent)
@@ -503,7 +451,7 @@ class VirtualFileProvider:
             return None
 
         try:
-            content = _serialize_agent_to_json(agent, workflow_map)
+            content = _serialize_agent_to_json(agent)
             computed_sha = compute_git_blob_sha(content)
 
             return VirtualFile(
@@ -520,29 +468,21 @@ class VirtualFileProvider:
     async def get_virtual_file_content(
         self,
         path: str,
-        workflow_map: dict[str, str] | None = None,
     ) -> bytes | None:
         """
         Load content for a single virtual file by path.
 
         This is a lazy loading method for fetching virtual file content on-demand,
-        rather than pre-loading all virtual file content at once. Use this when
-        you need content for specific files (e.g., during push phase).
+        rather than pre-loading all virtual file content at once.
 
         Args:
             path: Virtual file path, e.g., "forms/{uuid}.form.json" or "apps/{slug}/pages/index.tsx"
-            workflow_map: Optional pre-built workflow ref map. If not provided,
-                          will be built internally.
 
         Returns:
             File content as bytes, or None if not found or serialization fails
         """
         if not self.is_virtual_file_path(path):
             return None
-
-        # Build workflow ref map if not provided
-        if workflow_map is None:
-            workflow_map = await build_workflow_ref_map(self.db)
 
         entity_type = self.get_entity_type_from_path(path)
 
@@ -551,7 +491,7 @@ class VirtualFileProvider:
             entity_id = self.extract_id_from_filename(filename)
             if entity_id:
                 try:
-                    vf = await self._get_form_file_by_id(UUID(entity_id), workflow_map)
+                    vf = await self._get_form_file_by_id(UUID(entity_id))
                     return vf.content if vf else None
                 except ValueError:
                     return None
@@ -561,23 +501,21 @@ class VirtualFileProvider:
             entity_id = self.extract_id_from_filename(filename)
             if entity_id:
                 try:
-                    vf = await self._get_agent_file_by_id(UUID(entity_id), workflow_map)
+                    vf = await self._get_agent_file_by_id(UUID(entity_id))
                     return vf.content if vf else None
                 except ValueError:
                     return None
 
         elif entity_type == "app":
-            # App metadata file - need to look up app by slug
             slug = self.extract_app_slug_from_path(path)
             if slug:
                 return await self._get_app_json_content(slug)
 
         elif entity_type == "app_file":
-            # App code file - need to look up by slug and path within app
             slug = self.extract_app_slug_from_path(path)
             file_rel_path = self.extract_app_file_path(path)
             if slug and file_rel_path:
-                return await self._get_app_file_content(slug, file_rel_path, workflow_map)
+                return await self._get_app_file_content(slug, file_rel_path)
 
         return None
 
@@ -600,7 +538,6 @@ class VirtualFileProvider:
         self,
         slug: str,
         file_rel_path: str,
-        workflow_map: dict[str, str],
     ) -> bytes | None:
         """Get content for a specific app file."""
         stmt = (
@@ -626,10 +563,7 @@ class VirtualFileProvider:
         for file in version.files:
             if file.path == file_rel_path:
                 try:
-                    transformed_source, _ = transform_app_source_uuids_to_refs(
-                        file.source, workflow_map
-                    )
-                    return transformed_source.encode("utf-8")
+                    return file.source.encode("utf-8")
                 except Exception as e:
                     logger.warning(f"Failed to serialize app file {file.path}: {e}")
                     return None

@@ -15,11 +15,9 @@ NOTE: File watching and DB sync has been moved to the Discovery container.
 
 import asyncio
 import logging
-import shutil
 import signal
 import sys
 from datetime import datetime, timezone
-from pathlib import Path
 
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from apscheduler.triggers.cron import CronTrigger
@@ -71,10 +69,6 @@ class Scheduler:
         self._shutdown_event = asyncio.Event()
         self._scheduler: AsyncIOScheduler | None = None
         self._pubsub_listener: ResilientPubSubListener | None = None
-
-        # Single clone directory for GitHub sync (reused between preview and execute)
-        self._sync_clone_path: Path | None = None
-        self._sync_clone_sha: str | None = None
 
     async def start(self) -> None:
         """Start the scheduler."""
@@ -258,6 +252,41 @@ class Scheduler:
         else:
             logger.warning(f"Unknown channel: {channel}")
 
+    @staticmethod
+    def _build_clone_url(github_config: dict) -> str | None:
+        """Build an authenticated git clone URL from github config."""
+        encrypted_token = github_config.get("encrypted_token")
+        repo_url = github_config.get("repo_url")
+
+        if not repo_url:
+            return None
+
+        # Decrypt token
+        token = None
+        if encrypted_token:
+            try:
+                import base64
+                from cryptography.fernet import Fernet
+                from src.config import get_settings
+                settings = get_settings()
+                key_bytes = settings.secret_key.encode()[:32].ljust(32, b'0')
+                fernet = Fernet(base64.urlsafe_b64encode(key_bytes))
+                token = fernet.decrypt(encrypted_token.encode()).decode()
+            except Exception as e:
+                logger.warning(f"Failed to decrypt GitHub token: {e}")
+                return None
+
+        if not token:
+            return None
+
+        # Extract owner/repo from URL
+        if repo_url.startswith("https://github.com/"):
+            repo = repo_url.replace("https://github.com/", "").rstrip(".git")
+        else:
+            repo = repo_url
+
+        return f"https://x-access-token:{token}@github.com/{repo}.git"
+
     async def _handle_reindex_request(self, data: dict) -> None:
         """
         Handle reindex request from API.
@@ -317,34 +346,27 @@ class Scheduler:
         """
         Handle git sync request from API.
 
-        Runs the GitHub sync and publishes progress via WebSocket.
+        Runs push + pull and publishes progress via WebSocket.
         """
         from src.models import SystemConfig
-        from src.services.github_sync import (  # type: ignore[import-not-found]
+        from src.services.github_sync import (
             GitHubSyncService,
             ConflictError,
             OrphanError,
-            UnresolvedRefsError,
         )
 
         job_id = data.get("jobId", "unknown")
         org_id = data.get("orgId")
-        conflict_resolutions = data.get("conflictResolutions", {})
-        confirm_orphans = data.get("confirmOrphans", False)
-        confirm_unresolved_refs = data.get("confirmUnresolvedRefs", False)
 
         logger.info(f"Starting git sync job {job_id} for org {org_id}")
 
         try:
-            # Publish started status
             await publish_git_sync_log(job_id, "info", "Starting GitHub sync...")
 
             async with get_db_context() as db:
-                # Get GitHub config from database
                 from uuid import UUID
                 from sqlalchemy import select
 
-                # Parse org_id to UUID
                 org_uuid = None
                 if org_id:
                     try:
@@ -352,7 +374,6 @@ class Scheduler:
                     except ValueError:
                         pass
 
-                # Look for github integration config in system_configs table
                 stmt = select(SystemConfig).where(
                     SystemConfig.category == "github",
                     SystemConfig.key == "integration",
@@ -362,7 +383,6 @@ class Scheduler:
                 config = result.scalars().first()
 
                 if not config:
-                    # Try GLOBAL fallback (organization_id = NULL)
                     stmt = select(SystemConfig).where(
                         SystemConfig.category == "github",
                         SystemConfig.key == "integration",
@@ -380,26 +400,12 @@ class Scheduler:
                     return
 
                 github_config = config.value_json or {}
-                encrypted_token = github_config.get("encrypted_token")
                 repo_url = github_config.get("repo_url")
                 branch = github_config.get("branch", "main")
 
-                # Decrypt token if present
-                token = None
-                if encrypted_token:
-                    try:
-                        import base64
-                        from cryptography.fernet import Fernet
-                        from src.config import get_settings
-                        settings = get_settings()
-                        # Use secret_key (same as github.py pattern)
-                        key_bytes = settings.secret_key.encode()[:32].ljust(32, b'0')
-                        fernet = Fernet(base64.urlsafe_b64encode(key_bytes))
-                        token = fernet.decrypt(encrypted_token.encode()).decode()
-                    except Exception as e:
-                        logger.warning(f"Failed to decrypt GitHub token: {e}")
-
-                if not token or not repo_url:
+                # Build authenticated clone URL
+                clone_url = self._build_clone_url(github_config)
+                if not clone_url or not repo_url:
                     await publish_git_sync_completed(
                         job_id,
                         status="failed",
@@ -407,25 +413,16 @@ class Scheduler:
                     )
                     return
 
-                # Extract repo from URL (https://github.com/owner/repo -> owner/repo)
-                if repo_url.startswith("https://github.com/"):
-                    repo = repo_url.replace("https://github.com/", "").rstrip(".git")
-                else:
-                    repo = repo_url
-
                 await publish_git_sync_log(
-                    job_id, "info", f"Syncing with repository: {repo}"
+                    job_id, "info", f"Syncing with repository: {repo_url}"
                 )
 
-                # Create sync service
                 sync_service = GitHubSyncService(
                     db=db,
-                    github_token=token,
-                    repo=repo,
+                    repo_url=clone_url,
                     branch=branch,
                 )
 
-                # Define progress callback
                 async def progress_callback(progress: dict) -> None:
                     await publish_git_sync_progress(
                         job_id,
@@ -435,65 +432,56 @@ class Scheduler:
                         progress.get("path"),
                     )
 
-                # Define log callback for milestone/error logging
                 async def log_callback(level: str, message: str) -> None:
                     await publish_git_sync_log(job_id, level, message)
 
-                # Use cached clone from preview if available
-                cached_clone_path = self._sync_clone_path
-
-                # Execute the sync
-                try:
-                    sync_result = await sync_service.execute_sync(
-                        conflict_resolutions=conflict_resolutions,
-                        confirm_orphans=confirm_orphans,
-                        confirm_unresolved_refs=confirm_unresolved_refs,
-                        progress_callback=progress_callback,
-                        log_callback=log_callback,
-                        cached_clone_path=cached_clone_path,
-                    )
-                finally:
-                    # Always clean up clone after execute
-                    if self._sync_clone_path and self._sync_clone_path.exists():
-                        shutil.rmtree(self._sync_clone_path, ignore_errors=True)
-                        logger.debug("Cleaned up sync clone directory")
-                    self._sync_clone_path = None
-                    self._sync_clone_sha = None
+                # Push platform state, then pull remote changes
+                push_result = await sync_service.push(
+                    progress_callback=progress_callback,
+                    log_callback=log_callback,
+                )
+                pull_result = await sync_service.pull(
+                    progress_callback=progress_callback,
+                    log_callback=log_callback,
+                )
 
                 # Store last_synced_at timestamp on success
-                if sync_result.success and config and config.value_json:
+                if push_result.success and pull_result.success and config.value_json:
                     config.value_json = {
                         **config.value_json,
                         "last_synced_at": datetime.now(timezone.utc).isoformat(),
                     }
                     await db.commit()
 
-                # Publish completion
-                if sync_result.success:
+                total_pushed = push_result.pushed
+                total_pulled = pull_result.pulled
+                commit_sha = push_result.commit_sha or pull_result.commit_sha
+                error = push_result.error or pull_result.error
+
+                if push_result.success and pull_result.success:
                     await publish_git_sync_log(
                         job_id, "success",
-                        f"Sync complete: {sync_result.pulled} pulled, {sync_result.pushed} pushed"
+                        f"Sync complete: {total_pulled} pulled, {total_pushed} pushed"
                     )
                     await publish_git_sync_completed(
                         job_id,
                         status="success",
-                        message=f"Sync completed: {sync_result.pulled} pulled, {sync_result.pushed} pushed",
-                        pulled=sync_result.pulled,
-                        pushed=sync_result.pushed,
-                        orphaned_workflows=sync_result.orphaned_workflows,
-                        commit_sha=sync_result.commit_sha,
+                        message=f"Sync completed: {total_pulled} pulled, {total_pushed} pushed",
+                        pulled=total_pulled,
+                        pushed=total_pushed,
+                        commit_sha=commit_sha,
                     )
                     logger.info(
                         f"Git sync job {job_id} completed: "
-                        f"pulled={sync_result.pulled}, pushed={sync_result.pushed}"
+                        f"pulled={total_pulled}, pushed={total_pushed}"
                     )
                 else:
                     await publish_git_sync_completed(
                         job_id,
                         status="failed",
-                        message=sync_result.error or "Sync failed",
+                        message=error or "Sync failed",
                     )
-                    logger.error(f"Git sync job {job_id} failed: {sync_result.error}")
+                    logger.error(f"Git sync job {job_id} failed: {error}")
 
         except ConflictError as e:
             logger.warning(f"Git sync job {job_id} has conflicts: {e.conflicts}")
@@ -511,23 +499,6 @@ class Scheduler:
                 status="orphans_detected",
                 message="Must confirm orphan workflows before proceeding",
                 orphans=e.orphans,
-            )
-
-        except UnresolvedRefsError as e:
-            logger.warning(f"Git sync job {job_id} has unresolved refs: {len(e.unresolved_refs)}")
-            await publish_git_sync_completed(
-                job_id,
-                status="unresolved_refs",
-                message="Unresolved workflow refs detected. Set confirm_unresolved_refs=True to proceed.",
-                unresolved_refs=[
-                    {
-                        "entity_type": r.entity_type,
-                        "entity_path": r.entity_path,
-                        "field_path": r.field_path,
-                        "portable_ref": r.portable_ref,
-                    }
-                    for r in e.unresolved_refs
-                ],
             )
 
         except Exception as e:
@@ -553,15 +524,12 @@ class Scheduler:
         logger.info(f"Starting git sync preview job {job_id} for org {org_id}")
 
         try:
-            # Publish started status
             await publish_git_sync_log(job_id, "info", "Starting sync preview...")
 
             async with get_db_context() as db:
-                # Get GitHub config from database
                 from uuid import UUID
                 from sqlalchemy import select
 
-                # Parse org_id to UUID
                 org_uuid = None
                 if org_id:
                     try:
@@ -569,7 +537,6 @@ class Scheduler:
                     except ValueError:
                         pass
 
-                # Look for github integration config in system_configs table
                 stmt = select(SystemConfig).where(
                     SystemConfig.category == "github",
                     SystemConfig.key == "integration",
@@ -579,7 +546,6 @@ class Scheduler:
                 config = result.scalars().first()
 
                 if not config:
-                    # Try GLOBAL fallback (organization_id = NULL)
                     stmt = select(SystemConfig).where(
                         SystemConfig.category == "github",
                         SystemConfig.key == "integration",
@@ -597,26 +563,11 @@ class Scheduler:
                     return
 
                 github_config = config.value_json or {}
-                encrypted_token = github_config.get("encrypted_token")
                 repo_url = github_config.get("repo_url")
                 branch = github_config.get("branch", "main")
 
-                # Decrypt token if present
-                token = None
-                if encrypted_token:
-                    try:
-                        import base64
-                        from cryptography.fernet import Fernet
-                        from src.config import get_settings
-                        settings = get_settings()
-                        # Use secret_key (same as github.py pattern)
-                        key_bytes = settings.secret_key.encode()[:32].ljust(32, b'0')
-                        fernet = Fernet(base64.urlsafe_b64encode(key_bytes))
-                        token = fernet.decrypt(encrypted_token.encode()).decode()
-                    except Exception as e:
-                        logger.warning(f"Failed to decrypt GitHub token: {e}")
-
-                if not token or not repo_url:
+                clone_url = self._build_clone_url(github_config)
+                if not clone_url or not repo_url:
                     await publish_git_sync_preview_completed(
                         job_id,
                         status="error",
@@ -624,25 +575,16 @@ class Scheduler:
                     )
                     return
 
-                # Extract repo from URL (https://github.com/owner/repo -> owner/repo)
-                if repo_url.startswith("https://github.com/"):
-                    repo = repo_url.replace("https://github.com/", "").rstrip(".git")
-                else:
-                    repo = repo_url
-
                 await publish_git_sync_log(
-                    job_id, "info", f"Analyzing repository: {repo}"
+                    job_id, "info", f"Analyzing repository: {repo_url}"
                 )
 
-                # Create sync service
                 sync_service = GitHubSyncService(
                     db=db,
-                    github_token=token,
-                    repo=repo,
+                    repo_url=clone_url,
                     branch=branch,
                 )
 
-                # Define progress callback
                 async def progress_callback(progress: dict) -> None:
                     await publish_git_sync_progress(
                         job_id,
@@ -652,28 +594,22 @@ class Scheduler:
                         progress.get("path"),
                     )
 
-                # Define log callback for milestone/error logging
                 async def log_callback(level: str, message: str) -> None:
                     await publish_git_sync_log(job_id, level, message)
 
-                # Execute the preview with progress callbacks
-                preview = await sync_service.get_sync_preview(
+                preview = await sync_service.preview(
                     progress_callback=progress_callback,
                     log_callback=log_callback,
                 )
 
                 # Convert preview to dict for serialization
-                # Import the necessary contract types
                 from src.models.contracts.github import (
-                    OrphanInfo,
+                    PreflightIssue,
+                    PreflightResult,
                     SyncAction,
                     SyncActionType,
                     SyncConflictInfo,
-                    SyncSerializationError,
-                    SyncUnresolvedRefInfo,
-                    WorkflowReference,
                 )
-                from src.services.github_sync_entity_metadata import extract_entity_metadata
 
                 preview_response = {
                     "to_pull": [
@@ -705,57 +641,28 @@ class Scheduler:
                             remote_content=c.remote_content,
                             local_sha=c.local_sha,
                             remote_sha=c.remote_sha,
-                            display_name=(
-                                metadata := extract_entity_metadata(
-                                    c.path,
-                                    (c.remote_content or c.local_content or "").encode("utf-8"),
-                                )
-                            ).display_name,
-                            entity_type=metadata.entity_type,
-                            parent_slug=metadata.parent_slug,
+                            display_name=c.display_name,
+                            entity_type=c.entity_type,
+                            parent_slug=c.parent_slug,
                         ).model_dump()
                         for c in preview.conflicts
                     ],
-                    "will_orphan": [
-                        OrphanInfo(
-                            workflow_id=o.workflow_id,
-                            workflow_name=o.workflow_name,
-                            function_name=o.function_name,
-                            last_path=o.last_path,
-                            used_by=[
-                                WorkflowReference(
-                                    type=r.type,
-                                    id=r.id,
-                                    name=r.name,
-                                )
-                                for r in o.used_by
-                            ],
-                        ).model_dump()
-                        for o in preview.will_orphan
-                    ],
-                    "unresolved_refs": [
-                        SyncUnresolvedRefInfo(
-                            entity_type=u.entity_type,
-                            entity_path=u.entity_path,
-                            field_path=u.field_path,
-                            portable_ref=u.portable_ref,
-                        ).model_dump()
-                        for u in preview.unresolved_refs
-                    ],
-                    "serialization_errors": [
-                        SyncSerializationError(
-                            entity_type=e.entity_type,
-                            entity_id=e.entity_id,
-                            entity_name=e.entity_name,
-                            path=e.path,
-                            error=e.error,
-                        ).model_dump()
-                        for e in preview.serialization_errors
-                    ],
+                    "preflight": PreflightResult(
+                        valid=preview.preflight.valid,
+                        issues=[
+                            PreflightIssue(
+                                path=i.path,
+                                line=i.line,
+                                message=i.message,
+                                severity=i.severity,
+                                category=i.category,
+                            )
+                            for i in preview.preflight.issues
+                        ],
+                    ).model_dump(),
                     "is_empty": preview.is_empty,
                 }
 
-                # Publish completion with preview data
                 await publish_git_sync_log(
                     job_id, "success",
                     f"Preview complete: {len(preview.to_pull)} to pull, {len(preview.to_push)} to push"
@@ -769,16 +676,6 @@ class Scheduler:
                     f"Git sync preview job {job_id} completed: "
                     f"to_pull={len(preview.to_pull)}, to_push={len(preview.to_push)}"
                 )
-
-                # Cache the clone path for potential execute
-                # Clean up any previous clone first
-                if self._sync_clone_path and self._sync_clone_path.exists():
-                    shutil.rmtree(self._sync_clone_path, ignore_errors=True)
-
-                if preview.clone_path:
-                    self._sync_clone_path = Path(preview.clone_path)
-                    self._sync_clone_sha = preview.commit_sha
-                    logger.debug(f"Cached clone at {self._sync_clone_path}")
 
         except SyncError as e:
             logger.error(f"Git sync preview job {job_id} failed: {e}")

@@ -719,7 +719,6 @@ async def execute_sync(
             user_email=user.email,
             conflict_resolutions=request.conflict_resolutions,
             confirm_orphans=request.confirm_orphans,
-            confirm_unresolved_refs=request.confirm_unresolved_refs,
         )
 
         logger.info(f"Git sync execute job queued via Redis pubsub: {job_id}")
@@ -755,10 +754,11 @@ async def get_sync_content(
     """
     Fetch file content for diff preview.
 
-    - source="local": Read from database (serialized entity)
-    - source="remote": Read from GitHub repo
+    - source="local": Read from file_index (platform state)
+    - source="remote": Read from git repo
     """
-    from src.services.github_sync import GitHubSyncService
+    from src.services.file_index_service import FileIndexService
+    from src.services.repo_storage import RepoStorage
 
     try:
         config = await get_github_config(db, ctx.org_id)
@@ -775,21 +775,32 @@ async def get_sync_content(
                 detail="GitHub repository not configured",
             )
 
-        repo = _extract_repo_from_url(config.repo_url)
-
-        sync_service = GitHubSyncService(
-            db=db,
-            github_token=config.token,
-            repo=repo,
-            branch=config.branch,
-        )
-
         if request.source == "local":
-            # Get serialized content from database
-            content = await sync_service.get_local_content(request.path)
+            # Read from file_index (platform state)
+            file_index = FileIndexService(db, RepoStorage())
+            content = await file_index.read(request.path)
         else:
-            # Get content from GitHub
-            content = await sync_service.get_remote_content(request.path)
+            # Read from git repo via clone
+            from src.services.github_sync import GitHubSyncService
+
+            repo_url = config.repo_url
+            if not repo_url.endswith(".git"):
+                # Build authenticated clone URL
+                repo_url = f"https://x-access-token:{config.token}@github.com/{_extract_repo_from_url(repo_url)}.git"
+
+            sync_service = GitHubSyncService(
+                db=db,
+                repo_url=repo_url,
+                branch=config.branch,
+            )
+            # Use preview to get remote content — it clones and reads
+            preview = await sync_service.preview()
+            # Find the file in pull actions or conflicts
+            content = None
+            for conflict in preview.conflicts:
+                if conflict.path == request.path:
+                    content = conflict.remote_content
+                    break
 
         return SyncContentResponse(path=request.path, content=content)
 

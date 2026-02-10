@@ -22,25 +22,37 @@
 | `9c03b40e` | 4-6 | Manifest generator, entity serializers, reserved prefix validation |
 | `9a848a72` | 7-10 | RepoStorage, FileIndexService, S3 fallback, reconciler |
 | `ebbe4e10` | 11, 15 | Dual-write in file_ops, sync lock |
+| `22b4a846` | 12-14, 17a, 19 | Drop `workflows.code`, remove prewarming, migrate readers to `file_index` |
 
 ### Done (unstaged, needs commit)
 
 | Tasks | What |
 |-------|------|
-| 12 | Execution service loads code from `file_index` |
-| 13 | MCP code_editor + editor/search read from `file_index` |
-| 14 | Content hash pinning at dispatch (consumer queries `file_index`) |
-| 17 (partial) | `workflows.code` and `code_hash` dropped from ORM + migration |
-| 19 | `warm_cache_from_db` removed from init_container + module_cache; `_sync_module_cache` removed from consumer |
-| — | workflow_orphan.py, routers/workflows.py, workflow indexer all migrated off `workflows.code` |
+| 16 | `workspace_files` table dropped — all refs removed, migration created, `ref_translation.py` + `git_tracker.py` deleted |
+| 17c | `portable_ref` column dropped (included in Task 16 migration) |
+| — | `code_editor.py` fully rewritten: modules/text use FileIndex, no WorkspaceFile |
+| — | `reindex.py` rewritten: FileIndex upsert/hard-delete |
+| — | `folder_ops.py` updated: returns `int` count, not `list[WorkspaceFile]` |
+| — | `files.py` router updated: uses `FileEntry` dataclass |
+| — | 14 test files updated, 2 test files removed (portable refs tests) |
+| — | Storage integrity tests created (`test_storage_integrity.py`) |
+| — | Git sync TDD tests created (`test_git_sync_local.py` — 19 stubs, all failing) |
+| — | GitPython sync Pydantic models created (PreflightIssue, PreflightResult, updated SyncPreview) |
 
-### Post-merge (separate branches)
+### Remaining work (this branch)
 
-| Task | What | Prerequisite |
-|------|------|-------------|
-| 16 | Remove `workspace_files` table references | Migrate modules/text files to `file_index` |
-| 17c | Remove `portable_ref` column | Task 18 (git sync still uses it) |
-| 18 | Replace old git sync with `_repo/`-based sync | Design decisions needed (see Post-Merge section) |
+| Task | What | Status |
+|------|------|--------|
+| 18 | Implement GitPython sync (make `test_git_sync_local.py` pass) | TODO |
+| — | Delete old E2E GitHub sync tests (`test_github.py`, `test_github_virtual_files.py`) | After Task 18 |
+| — | Migrate entity files from JSON to YAML (`.form.json` → `.form.yaml`, `.agent.json` → `.agent.yaml`) | TODO |
+
+### Current test status
+
+**2852 pass, 23 fail.** All 23 failures are git sync tests waiting for Task 18:
+- `test_git_sync_local.py` — 19 TDD stubs (need implementation)
+- `test_github.py` — 1 old E2E test (will be deleted)
+- `test_github_virtual_files.py` — 5 old E2E tests (will be deleted)
 
 ---
 
@@ -2337,58 +2349,127 @@ git commit -m "feat: add Redis distributed lock for git sync operations"
 
 ---
 
-## Post-Merge Work (separate branches)
+## Remaining Work: Task 18 — Implement GitPython Sync
 
-These tasks are safe to defer — the old infrastructure still works alongside the new.
+**Goal:** Make all 19 `test_git_sync_local.py` tests pass, then delete old E2E tests.
+
+### What exists already
+- `api/src/services/github_sync.py` — Pydantic models (`SyncPreview`, `SyncAction`, `ConflictInfo`, `PreflightIssue`, `PreflightResult`, `SyncResult`), old subprocess-based implementation
+- `api/src/services/github_sync_virtual_files.py` — entity serialization (forms, agents, apps → file content)
+- `api/src/services/github_config.py` — GitHub config
+- `api/src/services/github_api.py` — GitHub REST API client (keep for repo listing)
+- `api/tests/integration/platform/test_git_sync_local.py` — 19 TDD test stubs using local bare repos
+
+### Implementation steps
+
+**Step 1: Rewrite `github_sync.py` core**
+
+Replace subprocess git calls + GitHub REST API push with GitPython:
+
+| Current | New |
+|---------|-----|
+| `subprocess.run(["git", "clone", ...])` | `Repo.clone_from()` |
+| `subprocess.run(["git", "rev-parse", "HEAD"])` | `repo.head.commit.hexsha` |
+| Push via GitHub REST API blobs/trees/commits/refs | `repo.index.add()` → `commit()` → `push()` |
+| SHA comparison via `WorkspaceFile.github_sha` + `git_status` | `git diff` (let git handle this) |
+| `GitHubAPIClient` for push | Removed from sync (keep for repo listing) |
+
+**Step 2: Implement sync flows**
+
+**Push (platform → repo):**
+1. Copy `_repo/` from S3 to temp dir (working tree with `.git/`)
+2. Serialize current DB state → write files to working tree
+3. Generate `.bifrost/metadata.yaml` manifest
+4. `git add -A && git commit && git push`
+5. Copy updated `_repo/` back to S3
+
+**Pull (repo → platform):**
+1. Copy `_repo/` from S3 to temp dir
+2. `git pull origin main`
+3. Read `.bifrost/metadata.yaml` → reconcile with DB
+4. For each changed file: update DB entity + `file_index`
+5. Copy updated `_repo/` back to S3
+
+**Preview:**
+1. Copy `_repo/` to temp, `git fetch origin`
+2. Compare local vs remote via `git diff`
+3. Detect conflicts, run preflight
+4. Return `SyncPreview`
+
+**Step 3: Implement preflight validation**
+
+New method: `preflight_check(repo_path) → PreflightResult`
+
+1. **Python syntax** — `compile()` on all `.py` files
+2. **Ruff linting** — `subprocess.run(["ruff", "check", ...])` on `.py` files
+3. **Ref resolution** — scan entity files for UUID references, verify in manifest
+4. **Orphan detection** — entity refs point to missing workflows
+5. **Manifest validity** — `.bifrost/metadata.yaml` parses, all listed paths exist
+
+**Step 4: Config update**
+- `github_config.py` — accept `file://`, `ssh://`, `https://` URLs
+
+**Step 5: Delete old E2E tests**
+- Delete `tests/e2e/api/test_github.py` (1 test — uses old REST API sync)
+- Delete `tests/e2e/api/test_github_virtual_files.py` (5 tests — uses old SHA comparison)
+- The 19 `test_git_sync_local.py` tests replace them
+
+### Key files to modify
+
+| File | Action |
+|------|--------|
+| `api/src/services/github_sync.py` | Rewrite: GitPython replaces subprocess + REST API |
+| `api/src/services/github_config.py` | Modify: accept `file://`, `ssh://`, `https://` URLs |
+| `api/src/services/github_api.py` | Keep for repo/branch listing; remove from sync path |
+| `api/src/services/github_sync_virtual_files.py` | Keep: entity serialization reused |
+| `api/tests/e2e/api/test_github.py` | Delete after implementation |
+| `api/tests/e2e/api/test_github_virtual_files.py` | Delete after implementation |
+
+### Verification
+
+```bash
+# All 19 git sync tests should pass
+./test.sh tests/integration/platform/test_git_sync_local.py -v
+
+# Full suite: 0 failures
+./test.sh
+```
 
 ---
 
-### Task 16: Remove `workspace_files` Table References
+## Follow-up: Entity YAML Migration
 
-**Why:** Modules and text files still use `workspace_files` for storage and MCP tool listing. Once modules are fully migrated to `file_index` + `_repo/`, this table can be dropped.
+**Goal:** Migrate entity file formats from JSON to YAML for consistency with the architecture doc.
 
-**Prerequisite:** Migrate module storage from `workspace_files.content` to `file_index`. Currently `editor/search.py` falls back to `workspace_files.content` for modules, and MCP `list_content` for modules/text still queries `WorkspaceFile`.
+- `.form.json` → `.form.yaml` (portable form definitions)
+- `.agent.json` → `.agent.yaml` (portable agent definitions)
+- Update serializers in `github_sync_virtual_files.py`
+- Update path patterns in `code_editor.py` (`_list_text_files`, `_search_text_files` exclusions)
+- Update path patterns in `entity_detector.py`
+- Update `folder_ops.py` entity routing
+- Update tests
 
-**Files:**
-- Modify: All files that import `WorkspaceFile` (find with `grep -r "WorkspaceFile\|workspace_files" api/src/ --include="*.py" -l`)
-- Delete: `api/src/models/orm/workspace.py`
-- Modify: `api/src/models/orm/__init__.py`, `api/src/models/__init__.py`
-- Create: alembic migration to drop `workspace_files` table
-
----
-
-### Task 17c: Remove `portable_ref` Column
-
-**Why:** `portable_ref` is a computed column (`workflow::path::function_name`) used by `github_sync.py` for cross-entity references during export/import. It cannot be removed until git sync is replaced (Task 18).
-
-**Prerequisite:** Task 18 (replace git sync).
-
-**Files:**
-- Modify: `api/src/models/orm/workflows.py` (remove `portable_ref` computed column)
-- Create: alembic migration to drop column
-- Update any code that references `workflow.portable_ref`
+**Key principle:** YAML for everything — forms, agents, apps, manifest. Only `.py` files use Python format.
 
 ---
 
-### Task 18: Replace Old Git Sync with File-Based Sync
+## Completed Tasks (reference only — Task 16, 17c)
 
-**Why:** The current git sync uses `workspace_files` for local state tracking (`github_sha`, `git_status`). Once `workspace_files` is removed (Task 16), sync needs to use `file_index` content hashes and `_repo/` for state tracking instead.
+### Task 16: Remove `workspace_files` Table References ✅
 
-**This is the largest remaining task.** The new sync should:
-1. Read local file state from `_repo/` in S3 (via RepoStorage)
-2. Use `file_index` content hashes for change detection
-3. Keep using GitHub API for remote operations (no GitPython clone needed for API-based sync)
-4. Preserve existing capabilities: conflict detection, orphan detection, portable ref resolution
+**Completed on this branch.** All `WorkspaceFile` references removed from production code. Migration `20260210_drop_workspace_files` drops the table. Key changes:
+- `code_editor.py` rewritten: modules/text list/search/delete use `FileIndex` queries
+- `reindex.py` rewritten: `FileIndex` upsert/hard-delete (no soft-delete)
+- `folder_ops.py` `upload_from_directory` returns `int` count
+- `files.py` router uses `FileEntry` dataclass
+- `ref_translation.py` deleted (UUIDs used directly)
+- `git_tracker.py` deleted (git manages its own state)
+- `WorkspaceFile` removed from model exports
+- 14 test files updated, 2 portable refs test files removed
 
-**Key decisions needed before implementation:**
-- Does sync still use GitHub API (current approach) or switch to local git clone (GitPython)?
-- How are forms/agents serialized for push? (Entity serializers exist but aren't wired into sync)
-- How is sync state tracked without `workspace_files.github_sha`? (Need equivalent in `file_index` or separate tracking)
+### Task 17c: Remove `portable_ref` Column ✅
 
-**Files:**
-- Modify: `api/src/services/github_sync.py`
-- Modify: `api/src/services/github_sync_virtual_files.py`
-- Modify: `api/src/services/file_storage/entity_detector.py` (may be simplified)
+**Included in Task 16 migration.** `DROP COLUMN IF EXISTS portable_ref` in `20260210_drop_workspace_files` migration.
 
 ---
 
@@ -2397,8 +2478,11 @@ These tasks are safe to defer — the old infrastructure still works alongside t
 | Scope | Tasks | Status |
 |-------|-------|--------|
 | Phase 1 (infrastructure) | 1-10 | ✅ Committed |
-| Phase 2 (migrate reads) | 11-15 | ✅ Committed + unstaged |
-| Column drops + cleanup | 17a, 19 | ✅ Unstaged, ready to commit |
-| Post-merge | 16, 17c, 18 | Deferred to separate branches |
+| Phase 2 (migrate reads + column drops) | 11-15, 17a, 19 | ✅ Committed |
+| Drop workspace_files + portable_ref | 16, 17c | ✅ Unstaged, ready to commit |
+| Storage integrity tests | — | ✅ Created |
+| Git sync TDD tests | — | ✅ 19 stubs created |
+| GitPython sync implementation | 18 | **TODO** — make TDD tests pass |
+| Entity YAML migration | — | **TODO** — `.form.json` → `.form.yaml` |
 
-**This branch is ready to commit and merge.** No remaining blockers — `github_sync.py` does not reference the dropped `workflows.code` column (it reads file content via `FileStorageService`, which already uses `file_index`).
+**Test status: 2852 pass, 23 fail** (all 23 are git sync tests waiting for Task 18).

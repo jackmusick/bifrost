@@ -9,17 +9,15 @@ from src.services.github_sync import (
     SyncActionType,
     ConflictInfo,
     OrphanInfo,
-    UnresolvedRefInfo,
     WorkflowReference,
+    PreflightIssue,
+    PreflightResult,
     SyncPreview,
     SyncResult,
     SyncExecuteRequest,
     SyncError,
     ConflictError,
     OrphanError,
-    UnresolvedRefsError,
-    TreeEntry,
-    GitHubAPIError,
 )
 
 
@@ -141,22 +139,93 @@ class TestOrphanInfo:
         assert orphan.used_by[1].type == "app"
 
 
-class TestUnresolvedRefInfo:
-    """Tests for UnresolvedRefInfo model."""
+class TestPreflightIssue:
+    """Tests for PreflightIssue model."""
 
-    def test_creates_unresolved_ref_info(self):
-        """Test UnresolvedRefInfo creation."""
-        ref = UnresolvedRefInfo(
-            entity_type="app",
-            entity_path="apps/abc123.app.json",
-            field_path="pages.0.launch_workflow_id",
-            portable_ref="workflows/my_workflow.py::my_function",
+    def test_creates_error_issue(self):
+        """Test PreflightIssue with error severity."""
+        issue = PreflightIssue(
+            path="workflows/bad.py",
+            line=42,
+            message="SyntaxError: unexpected indent",
+            severity="error",
+            category="syntax",
         )
 
-        assert ref.entity_type == "app"
-        assert ref.entity_path == "apps/abc123.app.json"
-        assert ref.field_path == "pages.0.launch_workflow_id"
-        assert ref.portable_ref == "workflows/my_workflow.py::my_function"
+        assert issue.path == "workflows/bad.py"
+        assert issue.line == 42
+        assert issue.message == "SyntaxError: unexpected indent"
+        assert issue.severity == "error"
+        assert issue.category == "syntax"
+
+    def test_creates_warning_issue(self):
+        """Test PreflightIssue with warning severity."""
+        issue = PreflightIssue(
+            path="workflows/messy.py",
+            message="unused import",
+            severity="warning",
+            category="lint",
+        )
+
+        assert issue.line is None
+        assert issue.severity == "warning"
+        assert issue.category == "lint"
+
+    def test_orphan_category(self):
+        """Test PreflightIssue for orphan detection."""
+        issue = PreflightIssue(
+            path="forms/test.form.yaml",
+            message="References workflow wf-123 which does not exist",
+            severity="error",
+            category="orphan",
+        )
+
+        assert issue.category == "orphan"
+
+
+class TestPreflightResult:
+    """Tests for PreflightResult model."""
+
+    def test_valid_preflight(self):
+        """Test clean preflight result."""
+        result = PreflightResult(valid=True, issues=[])
+
+        assert result.valid is True
+        assert len(result.issues) == 0
+
+    def test_invalid_preflight_with_errors(self):
+        """Test preflight with errors."""
+        result = PreflightResult(
+            valid=False,
+            issues=[
+                PreflightIssue(
+                    path="workflows/bad.py",
+                    message="syntax error",
+                    severity="error",
+                    category="syntax",
+                ),
+            ],
+        )
+
+        assert result.valid is False
+        assert len(result.issues) == 1
+
+    def test_valid_preflight_with_warnings(self):
+        """Test preflight can be valid even with warnings."""
+        result = PreflightResult(
+            valid=True,
+            issues=[
+                PreflightIssue(
+                    path="workflows/messy.py",
+                    message="unused import",
+                    severity="warning",
+                    category="lint",
+                ),
+            ],
+        )
+
+        assert result.valid is True
+        assert len(result.issues) == 1
 
 
 class TestSyncPreview:
@@ -170,8 +239,8 @@ class TestSyncPreview:
         assert len(preview.to_pull) == 0
         assert len(preview.to_push) == 0
         assert len(preview.conflicts) == 0
-        assert len(preview.will_orphan) == 0
-        assert len(preview.unresolved_refs) == 0
+        assert preview.preflight.valid is True
+        assert len(preview.preflight.issues) == 0
 
     def test_creates_preview_with_changes(self):
         """Test SyncPreview with changes."""
@@ -200,22 +269,25 @@ class TestSyncPreview:
 
         assert len(preview.conflicts) == 1
 
-    def test_preview_with_unresolved_refs(self):
-        """Test SyncPreview with unresolved refs."""
+    def test_preview_with_preflight_errors(self):
+        """Test SyncPreview with preflight errors."""
         preview = SyncPreview(
-            unresolved_refs=[
-                UnresolvedRefInfo(
-                    entity_type="app",
-                    entity_path="apps/test.app.json",
-                    field_path="pages.0.launch_workflow_id",
-                    portable_ref="workflows/missing.py::missing_func",
-                )
-            ],
+            preflight=PreflightResult(
+                valid=False,
+                issues=[
+                    PreflightIssue(
+                        path="workflows/bad.py",
+                        message="syntax error",
+                        severity="error",
+                        category="syntax",
+                    ),
+                ],
+            ),
             is_empty=False,
         )
 
-        assert len(preview.unresolved_refs) == 1
-        assert preview.unresolved_refs[0].portable_ref == "workflows/missing.py::missing_func"
+        assert preview.preflight.valid is False
+        assert len(preview.preflight.issues) == 1
 
 
 class TestSyncResult:
@@ -246,15 +318,6 @@ class TestSyncResult:
         assert result.success is False
         assert result.error == "Something went wrong"
 
-    def test_result_with_orphans(self):
-        """Test SyncResult with orphaned workflows."""
-        result = SyncResult(
-            success=True,
-            orphaned_workflows=["wf-1", "wf-2"],
-        )
-
-        assert len(result.orphaned_workflows) == 2
-
 
 class TestSyncExecuteRequest:
     """Tests for SyncExecuteRequest model."""
@@ -279,33 +342,6 @@ class TestSyncExecuteRequest:
 
         assert len(request.conflict_resolutions) == 0
         assert request.confirm_orphans is False
-        assert request.confirm_unresolved_refs is False
-
-    def test_creates_request_with_unresolved_refs_confirmation(self):
-        """Test SyncExecuteRequest with unresolved refs confirmation."""
-        request = SyncExecuteRequest(
-            confirm_unresolved_refs=True,
-        )
-
-        assert request.confirm_unresolved_refs is True
-
-
-class TestTreeEntry:
-    """Tests for TreeEntry dataclass."""
-
-    def test_creates_tree_entry(self):
-        """Test TreeEntry creation."""
-        entry = TreeEntry(
-            sha="abc123",
-            size=100,
-            type="blob",
-            mode="100644",
-        )
-
-        assert entry.sha == "abc123"
-        assert entry.size == 100
-        assert entry.type == "blob"
-        assert entry.mode == "100644"
 
 
 class TestSyncExceptions:
@@ -333,65 +369,6 @@ class TestSyncExceptions:
         assert "wf-1" in str(error)
         assert "wf-2" in str(error)
         assert error.orphans == orphans
-
-    def test_unresolved_refs_error(self):
-        """Test UnresolvedRefsError exception."""
-        refs = [
-            UnresolvedRefInfo(
-                entity_type="app",
-                entity_path="apps/test.app.json",
-                field_path="pages.0.launch_workflow_id",
-                portable_ref="workflows/missing.py::func1",
-            ),
-            UnresolvedRefInfo(
-                entity_type="form",
-                entity_path="forms/test.form.json",
-                field_path="workflow_id",
-                portable_ref="workflows/missing.py::func2",
-            ),
-        ]
-        error = UnresolvedRefsError(refs)
-
-        assert "workflows/missing.py::func1" in str(error)
-        assert "workflows/missing.py::func2" in str(error)
-        assert error.unresolved_refs == refs
-
-    def test_unresolved_refs_error_truncates_many_refs(self):
-        """Test UnresolvedRefsError truncates message for many refs."""
-        refs = [
-            UnresolvedRefInfo(
-                entity_type="app",
-                entity_path=f"apps/test{i}.app.json",
-                field_path="pages.0.launch_workflow_id",
-                portable_ref=f"workflows/missing.py::func{i}",
-            )
-            for i in range(10)
-        ]
-        error = UnresolvedRefsError(refs)
-
-        # Only first 5 should be shown, plus count of remaining
-        assert "func0" in str(error)
-        assert "func4" in str(error)
-        assert "and 5 more" in str(error)
-        assert "func5" not in str(error)  # Not shown in message
-
-
-class TestGitHubAPIError:
-    """Tests for GitHubAPIError exception."""
-
-    def test_creates_error_without_status(self):
-        """Test GitHubAPIError without status code."""
-        error = GitHubAPIError("Something went wrong")
-
-        assert str(error) == "Something went wrong"
-        assert error.status_code is None
-
-    def test_creates_error_with_status(self):
-        """Test GitHubAPIError with status code."""
-        error = GitHubAPIError("Not found", status_code=404)
-
-        assert str(error) == "Not found"
-        assert error.status_code == 404
 
 
 class TestMemoryUsageDuringFileScan:
@@ -568,9 +545,9 @@ class TestMemoryUsageDuringFileScan:
 
     def test_execute_sync_pattern_memory_bounded(self, tmp_path):
         """
-        Test memory stays bounded when simulating execute_sync file write pattern.
+        Test memory stays bounded when simulating sync file write pattern.
 
-        This simulates what happens in execute_sync when pulling multiple large
+        This simulates what happens during pull when processing multiple large
         Python modules sequentially. Each file:
         1. Read from clone directory
         2. Process (decode for modules, compute SHA, etc.)
@@ -602,7 +579,7 @@ class TestMemoryUsageDuringFileScan:
 
         tracemalloc.start()
 
-        # Simulate the execute_sync pattern:
+        # Simulate the pull pattern:
         # For each file, read -> process -> write (simulated) -> del content
         processed_files: list[str] = []
         for file_path in tmp_path.glob("*.py"):
@@ -638,5 +615,5 @@ class TestMemoryUsageDuringFileScan:
         assert peak < max_expected, (
             f"Peak memory {peak / 1024 / 1024:.1f}MB exceeded "
             f"expected max {max_expected / 1024 / 1024:.1f}MB. "
-            f"This simulates execute_sync pattern - memory should not accumulate."
+            f"This simulates sync pull pattern - memory should not accumulate."
         )

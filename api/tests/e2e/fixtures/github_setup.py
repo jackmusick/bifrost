@@ -486,8 +486,8 @@ def get_github_file_content(github_test_branch):
     Factory fixture to fetch file content directly from GitHub.
 
     This is useful for verifying that pushed files have the correct content
-    (portable refs, _export metadata, etc.). Virtual files don't exist in
-    workspace_files, so we can't use the files API to verify them.
+    (portable refs, _export metadata, etc.). Virtual entity files don't exist
+    in file_index, so we can't use the files API to verify them.
 
     Usage:
         def test_portable_refs(get_github_file_content, ...):

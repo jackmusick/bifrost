@@ -13,9 +13,6 @@ from typing import Callable, Awaitable, TYPE_CHECKING
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.config import Settings, get_settings
-from src.models import WorkspaceFile
-from src.models.enums import GitStatus
-
 from .models import (
     WriteResult,
     WorkflowIdConflictInfo,
@@ -26,7 +23,6 @@ from .models import (
 from .s3_client import S3StorageClient
 from .entity_detector import detect_platform_entity_type
 from .ast_parser import ASTMetadataParser
-from .git_tracker import GitStatusTracker
 from .diagnostics import DiagnosticsService
 from .entity_resolution import EntityResolutionService
 from .deactivation import DeactivationProtectionService
@@ -65,7 +61,6 @@ class FileStorageService:
 
         # Initialize helper services
         self._ast_parser = ASTMetadataParser()
-        self._git_tracker = GitStatusTracker(db)
         self._diagnostics = DiagnosticsService(db)
         self._entity_resolution = EntityResolutionService(db)
         self._deactivation = DeactivationProtectionService(db)
@@ -112,8 +107,8 @@ class FileStorageService:
     # Core File Operations (delegate to FileOperationsService)
     # ========================================================================
 
-    async def read_file(self, path: str) -> tuple[bytes, WorkspaceFile | None]:
-        """Read file content and metadata."""
+    async def read_file(self, path: str) -> tuple[bytes, None]:
+        """Read file content."""
         return await self._file_ops.read_file(path)
 
     async def write_file(
@@ -137,9 +132,9 @@ class FileStorageService:
         """Delete a file from storage."""
         await self._file_ops.delete_file(path)
 
-    async def move_file(self, old_path: str, new_path: str) -> WorkspaceFile:
+    async def move_file(self, old_path: str, new_path: str) -> None:
         """Move/rename a file."""
-        return await self._file_ops.move_file(old_path, new_path)
+        await self._file_ops.move_file(old_path, new_path)
 
     # ========================================================================
     # Folder Operations (delegate to FolderOperationsService)
@@ -149,9 +144,9 @@ class FileStorageService:
         self,
         path: str,
         updated_by: str = "system",
-    ) -> WorkspaceFile:
+    ) -> None:
         """Create a folder record."""
-        return await self._folder_ops.create_folder(path, updated_by)
+        await self._folder_ops.create_folder(path, updated_by)
 
     async def delete_folder(self, path: str) -> None:
         """Delete a folder and all its contents."""
@@ -162,7 +157,7 @@ class FileStorageService:
         directory: str = "",
         include_deleted: bool = False,
         recursive: bool = False,
-    ) -> list[WorkspaceFile]:
+    ) -> list:
         """List files and folders in a directory."""
         return await self._folder_ops.list_files(
             directory=directory,
@@ -173,7 +168,7 @@ class FileStorageService:
     async def list_all_files(
         self,
         include_deleted: bool = False,
-    ) -> list[WorkspaceFile]:
+    ) -> list:
         """List all files in workspace (recursive)."""
         return await self._folder_ops.list_all_files(include_deleted=include_deleted)
 
@@ -185,7 +180,7 @@ class FileStorageService:
         self,
         local_path: Path,
         updated_by: str = "system",
-    ) -> list[WorkspaceFile]:
+    ) -> int:
         """Upload files from local directory to workspace."""
         return await self._folder_ops.upload_from_directory(
             local_path=local_path,
@@ -218,32 +213,6 @@ class FileStorageService:
         return await self._reindex_service.smart_reindex(
             local_path=local_path,
             progress_callback=progress_callback,
-        )
-
-    # ========================================================================
-    # Git Status Operations (delegate to GitStatusTracker)
-    # ========================================================================
-
-    async def update_git_status(
-        self,
-        path: str,
-        status: GitStatus,
-        github_sha: str | None = None,
-    ) -> None:
-        """Update git status for a file."""
-        await self._git_tracker.update_git_status(path, status, github_sha)
-
-    async def bulk_update_git_status(
-        self,
-        status: GitStatus,
-        github_sha: str | None = None,
-        paths: list[str] | None = None,
-    ) -> int:
-        """Bulk update git status for files."""
-        return await self._git_tracker.bulk_update_git_status(
-            status=status,
-            github_sha=github_sha,
-            paths=paths,
         )
 
     # ========================================================================

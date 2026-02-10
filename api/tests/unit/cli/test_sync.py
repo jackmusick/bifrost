@@ -11,7 +11,7 @@ class TestFormatPreviewSummary:
             "to_pull": [],
             "to_push": [],
             "conflicts": [],
-            "will_orphan": [],
+            "preflight": {"valid": True, "issues": []},
             "is_empty": True,
         }
         lines = format_preview_summary(preview)
@@ -28,7 +28,7 @@ class TestFormatPreviewSummary:
                 {"path": "workflows/c.py", "action": "add", "display_name": "c"},
             ],
             "conflicts": [],
-            "will_orphan": [],
+            "preflight": {"valid": True, "issues": []},
             "is_empty": False,
         }
         lines = format_preview_summary(preview)
@@ -48,7 +48,7 @@ class TestFormatPreviewSummary:
                     "entity_type": "workflow",
                 },
             ],
-            "will_orphan": [],
+            "preflight": {"valid": True, "issues": []},
             "is_empty": False,
         }
         lines = format_preview_summary(preview)
@@ -56,26 +56,53 @@ class TestFormatPreviewSummary:
         assert "workflows/billing.py" in text
         assert "--resolve" in text
 
-    def test_orphans_shown(self):
-        """Should warn about orphaned workflows."""
+    def test_preflight_errors_shown(self):
+        """Should show preflight errors."""
         preview = {
             "to_pull": [],
             "to_push": [],
             "conflicts": [],
-            "will_orphan": [
-                {
-                    "workflow_id": "abc",
-                    "workflow_name": "Process Ticket",
-                    "function_name": "process_ticket",
-                    "last_path": "workflows/tickets.py",
-                    "used_by": [
-                        {"type": "form", "id": "def", "name": "Ticket Form"},
-                    ],
-                },
-            ],
+            "preflight": {
+                "valid": False,
+                "issues": [
+                    {
+                        "path": "workflows/bad.py",
+                        "line": 42,
+                        "message": "SyntaxError: unexpected indent",
+                        "severity": "error",
+                        "category": "syntax",
+                    },
+                ],
+            },
             "is_empty": False,
         }
         lines = format_preview_summary(preview)
         text = "\n".join(lines)
-        assert "Process Ticket" in text
-        assert "Ticket Form" in text
+        assert "workflows/bad.py" in text
+        assert "SyntaxError" in text
+        assert "error" in text.lower()
+
+    def test_preflight_warnings_shown(self):
+        """Should show preflight warnings."""
+        preview = {
+            "to_pull": [],
+            "to_push": [],
+            "conflicts": [],
+            "preflight": {
+                "valid": True,
+                "issues": [
+                    {
+                        "path": "workflows/messy.py",
+                        "message": "unused import",
+                        "severity": "warning",
+                        "category": "lint",
+                    },
+                ],
+            },
+            "is_empty": False,
+        }
+        lines = format_preview_summary(preview)
+        text = "\n".join(lines)
+        assert "workflows/messy.py" in text
+        assert "unused import" in text
+        assert "warning" in text.lower()

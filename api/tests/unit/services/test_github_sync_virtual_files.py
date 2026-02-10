@@ -3,9 +3,8 @@ Unit tests for VirtualFileProvider.
 
 Tests the virtual file generation for platform entities (forms, agents)
 in the GitHub sync flow. These virtual files enable platform entities to
-participate in sync by serializing them on-the-fly with portable workflow refs.
-
-Note: App handling has been removed from the platform.
+participate in sync by serializing them on-the-fly. UUIDs are used directly
+for all cross-references.
 """
 
 import json
@@ -51,10 +50,7 @@ def mock_db_session():
     return session
 
 
-
-
-# Sample serialized content for mocking
-def make_form_content(form_id: str, workflow_id: str | None = None, workflow_map: dict | None = None) -> bytes:
+def make_form_content(form_id: str, workflow_id: str | None = None) -> bytes:
     """Generate sample form JSON content."""
     data = {
         "id": form_id,
@@ -63,17 +59,11 @@ def make_form_content(form_id: str, workflow_id: str | None = None, workflow_map
         "is_active": True,
     }
     if workflow_id:
-        # Transform to portable ref if workflow_map is provided
-        if workflow_map and workflow_id in workflow_map:
-            data["workflow_id"] = workflow_map[workflow_id]
-        else:
-            data["workflow_id"] = workflow_id
-    if workflow_map:
-        data["_export"] = {"workflow_refs": ["workflow_id"], "version": "1.0"}
+        data["workflow_id"] = workflow_id
     return json.dumps(data, indent=2).encode("utf-8")
 
 
-def make_agent_content(agent_id: str, tool_ids: list | None = None, workflow_map: dict | None = None) -> bytes:
+def make_agent_content(agent_id: str, tool_ids: list | None = None) -> bytes:
     """Generate sample agent JSON content."""
     data = {
         "id": agent_id,
@@ -84,13 +74,7 @@ def make_agent_content(agent_id: str, tool_ids: list | None = None, workflow_map
         "is_active": True,
     }
     if tool_ids:
-        # Transform to portable refs if workflow_map is provided
-        if workflow_map:
-            data["tool_ids"] = [workflow_map.get(tid, tid) for tid in tool_ids]
-        else:
-            data["tool_ids"] = tool_ids
-    if workflow_map:
-        data["_export"] = {"workflow_refs": ["tool_ids.*"], "version": "1.0"}
+        data["tool_ids"] = tool_ids
     return json.dumps(data, indent=2).encode("utf-8")
 
 
@@ -132,7 +116,6 @@ class TestExtractIdFromFilename:
 
         filename = "550E8400-E29B-41D4-A716-446655440000.form.json"
         result = VirtualFileProvider.extract_id_from_filename(filename)
-        # The regex is case insensitive, so it matches and returns the UUID as-is
         assert result == "550E8400-E29B-41D4-A716-446655440000"
 
     def test_extract_id_from_filename_invalid_no_uuid(self):
@@ -228,7 +211,6 @@ class TestExtractIdFromContent:
         """Test that only top-level id is extracted."""
         from src.services.github_sync_virtual_files import VirtualFileProvider
 
-        # The id we want is at top level
         content = json.dumps({
             "id": "top-level-id",
             "nested": {"id": "nested-id"}
@@ -271,9 +253,8 @@ class TestGetFormVirtualFiles:
             provider, "_get_form_files", return_value=VirtualFileResult(files=[expected_file], errors=[])
         ), patch.object(
             provider, "_get_agent_files", return_value=VirtualFileResult(files=[], errors=[])
-        ), patch(
-            "src.services.github_sync_virtual_files.build_workflow_ref_map",
-            return_value={},
+        ), patch.object(
+            provider, "_get_app_files", return_value=VirtualFileResult(files=[], errors=[])
         ):
             result = await provider.get_all_virtual_files()
 
@@ -321,9 +302,8 @@ class TestGetAgentVirtualFiles:
             provider, "_get_form_files", return_value=VirtualFileResult(files=[], errors=[])
         ), patch.object(
             provider, "_get_agent_files", return_value=VirtualFileResult(files=[expected_file], errors=[])
-        ), patch(
-            "src.services.github_sync_virtual_files.build_workflow_ref_map",
-            return_value={},
+        ), patch.object(
+            provider, "_get_app_files", return_value=VirtualFileResult(files=[], errors=[])
         ):
             result = await provider.get_all_virtual_files()
 
@@ -338,18 +318,18 @@ class TestGetAgentVirtualFiles:
 
 
 # =============================================================================
-# Test: Portable Refs in Virtual Content
+# Test: UUIDs Used Directly in Virtual Content
 # =============================================================================
 
 
-class TestPortableRefsInVirtualContent:
-    """Tests for workflow refs being converted to portable refs."""
+class TestUUIDsInVirtualContent:
+    """Tests that workflow UUIDs are preserved directly in serialized content."""
 
     @pytest.mark.asyncio
-    async def test_portable_refs_in_form_content(
+    async def test_uuids_preserved_in_form_content(
         self, mock_db_session, valid_workflow_uuid, valid_form_uuid
     ):
-        """Test that workflow refs are converted to portable refs in form content."""
+        """Test that workflow UUIDs are preserved directly in form content."""
         from src.services.github_sync_virtual_files import (
             VirtualFileProvider,
             VirtualFile,
@@ -358,16 +338,9 @@ class TestPortableRefsInVirtualContent:
 
         provider = VirtualFileProvider(mock_db_session)
 
-        # Create a workflow map that maps the UUID to a portable ref
-        workflow_map = {
-            str(valid_workflow_uuid): "workflows/test_module.py::test_function"
-        }
-
-        # Create content with portable ref format
         expected_content = make_form_content(
             str(valid_form_uuid),
             workflow_id=str(valid_workflow_uuid),
-            workflow_map=workflow_map,
         )
         expected_sha = compute_git_blob_sha(expected_content)
 
@@ -383,9 +356,8 @@ class TestPortableRefsInVirtualContent:
             provider, "_get_form_files", return_value=VirtualFileResult(files=[expected_file], errors=[])
         ), patch.object(
             provider, "_get_agent_files", return_value=VirtualFileResult(files=[], errors=[])
-        ), patch(
-            "src.services.github_sync_virtual_files.build_workflow_ref_map",
-            return_value=workflow_map,
+        ), patch.object(
+            provider, "_get_app_files", return_value=VirtualFileResult(files=[], errors=[])
         ):
             result = await provider.get_all_virtual_files()
 
@@ -395,21 +367,17 @@ class TestPortableRefsInVirtualContent:
         form_file = form_files[0]
         assert form_file.content is not None
 
-        # Parse the content and verify portable ref format
         data = json.loads(form_file.content.decode("utf-8"))
-
-        # workflow_id should contain "::" (portable ref format)
-        if data.get("workflow_id"):
-            assert "::" in data["workflow_id"]
-
-        # _export metadata should be present when refs are transformed
-        assert "_export" in data
+        # workflow_id should be the UUID directly, not a portable ref
+        assert data.get("workflow_id") == str(valid_workflow_uuid)
+        # No _export metadata (portable refs are gone)
+        assert "_export" not in data
 
     @pytest.mark.asyncio
-    async def test_portable_refs_in_agent_content(
+    async def test_uuids_preserved_in_agent_content(
         self, mock_db_session, valid_workflow_uuid, valid_agent_uuid
     ):
-        """Test that tool_ids are converted to portable refs in agent content."""
+        """Test that tool UUIDs are preserved directly in agent content."""
         from src.services.github_sync_virtual_files import (
             VirtualFileProvider,
             VirtualFile,
@@ -418,15 +386,9 @@ class TestPortableRefsInVirtualContent:
 
         provider = VirtualFileProvider(mock_db_session)
 
-        workflow_map = {
-            str(valid_workflow_uuid): "workflows/tool_module.py::tool_function"
-        }
-
-        # Create content with portable ref format
         expected_content = make_agent_content(
             str(valid_agent_uuid),
             tool_ids=[str(valid_workflow_uuid)],
-            workflow_map=workflow_map,
         )
         expected_sha = compute_git_blob_sha(expected_content)
 
@@ -442,9 +404,8 @@ class TestPortableRefsInVirtualContent:
             provider, "_get_form_files", return_value=VirtualFileResult(files=[], errors=[])
         ), patch.object(
             provider, "_get_agent_files", return_value=VirtualFileResult(files=[expected_file], errors=[])
-        ), patch(
-            "src.services.github_sync_virtual_files.build_workflow_ref_map",
-            return_value=workflow_map,
+        ), patch.object(
+            provider, "_get_app_files", return_value=VirtualFileResult(files=[], errors=[])
         ):
             result = await provider.get_all_virtual_files()
 
@@ -455,14 +416,10 @@ class TestPortableRefsInVirtualContent:
         assert agent_file.content is not None
 
         data = json.loads(agent_file.content.decode("utf-8"))
-
-        # tool_ids should contain portable refs
-        if data.get("tool_ids"):
-            for tool_id in data["tool_ids"]:
-                assert "::" in tool_id
-
-        # _export metadata should be present
-        assert "_export" in data
+        # tool_ids should contain UUIDs directly, not portable refs
+        assert data.get("tool_ids") == [str(valid_workflow_uuid)]
+        # No _export metadata
+        assert "_export" not in data
 
 
 # =============================================================================
@@ -499,9 +456,8 @@ class TestShaComputedFromSerializedContent:
             provider, "_get_form_files", return_value=VirtualFileResult(files=[expected_file], errors=[])
         ), patch.object(
             provider, "_get_agent_files", return_value=VirtualFileResult(files=[], errors=[])
-        ), patch(
-            "src.services.github_sync_virtual_files.build_workflow_ref_map",
-            return_value={},
+        ), patch.object(
+            provider, "_get_app_files", return_value=VirtualFileResult(files=[], errors=[])
         ):
             result = await provider.get_all_virtual_files()
 
@@ -512,7 +468,6 @@ class TestShaComputedFromSerializedContent:
         assert form_file.content is not None
         assert form_file.computed_sha is not None
 
-        # Manually compute SHA and verify it matches
         recomputed_sha = compute_git_blob_sha(form_file.content)
         assert form_file.computed_sha == recomputed_sha
 
@@ -542,9 +497,8 @@ class TestShaComputedFromSerializedContent:
             provider, "_get_form_files", return_value=VirtualFileResult(files=[expected_file], errors=[])
         ), patch.object(
             provider, "_get_agent_files", return_value=VirtualFileResult(files=[], errors=[])
-        ), patch(
-            "src.services.github_sync_virtual_files.build_workflow_ref_map",
-            return_value={},
+        ), patch.object(
+            provider, "_get_app_files", return_value=VirtualFileResult(files=[], errors=[])
         ):
             result1 = await provider.get_all_virtual_files()
             result2 = await provider.get_all_virtual_files()
@@ -555,7 +509,6 @@ class TestShaComputedFromSerializedContent:
         assert len(form_files1) == 1
         assert len(form_files2) == 1
 
-        # SHA should be the same for both calls
         assert form_files1[0].computed_sha == form_files2[0].computed_sha
 
 
@@ -587,9 +540,6 @@ class TestGetVirtualFileById:
 
         with patch.object(
             provider, "_get_form_file_by_id", return_value=expected_file
-        ), patch(
-            "src.services.github_sync_virtual_files.build_workflow_ref_map",
-            return_value={},
         ):
             result = await provider.get_virtual_file_by_id("form", str(valid_form_uuid))
 
@@ -617,9 +567,6 @@ class TestGetVirtualFileById:
 
         with patch.object(
             provider, "_get_agent_file_by_id", return_value=expected_file
-        ), patch(
-            "src.services.github_sync_virtual_files.build_workflow_ref_map",
-            return_value={},
         ):
             result = await provider.get_virtual_file_by_id("agent", str(valid_agent_uuid))
 
@@ -636,9 +583,6 @@ class TestGetVirtualFileById:
 
         with patch.object(
             provider, "_get_form_file_by_id", return_value=None
-        ), patch(
-            "src.services.github_sync_virtual_files.build_workflow_ref_map",
-            return_value={},
         ):
             result = await provider.get_virtual_file_by_id("form", str(uuid4()))
 
@@ -650,14 +594,7 @@ class TestGetVirtualFileById:
         from src.services.github_sync_virtual_files import VirtualFileProvider
 
         provider = VirtualFileProvider(mock_db_session)
-
-        # Still need to patch build_workflow_ref_map since it's called before type check
-        with patch(
-            "src.services.github_sync_virtual_files.build_workflow_ref_map",
-            return_value={},
-        ):
-            result = await provider.get_virtual_file_by_id("invalid_type", str(uuid4()))
-
+        result = await provider.get_virtual_file_by_id("invalid_type", str(uuid4()))
         assert result is None
 
 

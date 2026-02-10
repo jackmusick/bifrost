@@ -53,7 +53,6 @@ from src.models.orm import (
     ExecutionMetricsDaily,
     PlatformMetricsSnapshot,
     WorkflowROIDaily,
-    WorkspaceFile,
     FileIndex,
     DeveloperContext,
     # Applications (App Builder)
@@ -120,7 +119,6 @@ __all__ = [
     "ExecutionMetricsDaily",
     "PlatformMetricsSnapshot",
     "WorkflowROIDaily",
-    "WorkspaceFile",
     "FileIndex",
     "DeveloperContext",
     # Applications (App Builder)

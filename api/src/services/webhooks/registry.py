@@ -152,7 +152,7 @@ class AdapterRegistry:
 
         # TODO: Implement custom adapter discovery from database
         # This would:
-        # 1. Query workspace_files for adapters/*.py files
+        # 1. Query file_index for adapters/*.py files
         # 2. Load code from database and find classes with @adapter decorator
         # 3. Register them in the registry
         #

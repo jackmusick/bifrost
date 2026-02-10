@@ -4,9 +4,8 @@ Provides fast full-text search with regex support.
 Platform admin resource - no org scoping.
 
 Search queries the database directly:
-- Workflows: search file_index content
-- Modules: search workspace_files.content column
-- Forms/Apps/Agents: search serialized JSON representations
+- All code files (workflows, modules): search file_index content
+- Forms/Agents: search serialized JSON representations from DB
 """
 
 import json
@@ -19,7 +18,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.models import SearchRequest, SearchResponse, SearchResult
-from src.models.orm import WorkspaceFile, Form, Agent
+from src.models.orm import Form, Agent
 from src.models.orm.file_index import FileIndex
 
 logger = logging.getLogger(__name__)
@@ -98,7 +97,7 @@ async def search_files_db(
 
     Searches:
     - file_index for workflow Python code
-    - workspace_files.content for module Python code
+    - file_index.content for module Python code
     - Serialized JSON for forms, apps, agents
 
     Args:
@@ -125,19 +124,14 @@ async def search_files_db(
     all_results: List[SearchResult] = []
     files_searched = 0
 
-    # Build path filter for WorkspaceFile queries
-    path_filter = WorkspaceFile.path.like(f"{root_path}%") if root_path else True
-
     # Build file pattern filter if specified
     like_pattern = None
-    ws_include_filter = True
     if request.include_pattern:
         # Convert glob pattern to SQL LIKE pattern
         # e.g., "**/*.py" -> "%.py", "workflows/*.py" -> "workflows/%.py"
         like_pattern = request.include_pattern.replace("**/*", "%").replace("**", "%").replace("*", "%")
-        ws_include_filter = WorkspaceFile.path.like(like_pattern)
 
-    # 1. Search indexed files via file_index
+    # 1. Search all code files via file_index (workflows, modules, all Python)
     fi_conditions = [
         FileIndex.content.isnot(None),
     ]
@@ -145,13 +139,13 @@ async def search_files_db(
         fi_conditions.append(FileIndex.path.like(f"{root_path}%"))
     if like_pattern:
         fi_conditions.append(FileIndex.path.like(like_pattern))
-    workflow_stmt = (
+    code_stmt = (
         select(FileIndex.path, FileIndex.content)
         .where(*fi_conditions)
         .limit(MAX_RESULTS_PER_TYPE)
     )
-    workflow_result = await db.execute(workflow_stmt)
-    for row in workflow_result:
+    code_result = await db.execute(code_stmt)
+    for row in code_result:
         files_searched += 1
         if row.content:
             results = _search_content(
@@ -165,59 +159,37 @@ async def search_files_db(
             if len(all_results) >= request.max_results:
                 break
 
-    # 2. Search modules (workspace_files.content column)
+    # 2. Search forms (serialize to JSON and search)
+    # Forms use virtual paths: forms/{uuid}.form.json
     if len(all_results) < request.max_results:
-        module_stmt = (
-            select(WorkspaceFile.path, WorkspaceFile.content)
-            .where(
-                WorkspaceFile.is_deleted == False,  # noqa: E712
-                WorkspaceFile.entity_type == "module",
-                WorkspaceFile.content.isnot(None),
-                path_filter,
-                ws_include_filter,
-            )
-            .limit(MAX_RESULTS_PER_TYPE)
-        )
-        module_result = await db.execute(module_stmt)
-        for row in module_result:
-            files_searched += 1
-            if row.content:
-                results = _search_content(
-                    row.content,
-                    row.path,
-                    request.query,
-                    request.case_sensitive,
-                    request.is_regex,
-                )
-                all_results.extend(results)
-                if len(all_results) >= request.max_results:
-                    break
-
-    # 3. Search forms (serialize to JSON and search)
-    if len(all_results) < request.max_results:
+        form_conditions = [Form.is_active == True]  # noqa: E712
         form_stmt = (
-            select(Form, WorkspaceFile.path)
-            .join(WorkspaceFile, WorkspaceFile.entity_id == Form.id)
-            .where(
-                WorkspaceFile.is_deleted == False,  # noqa: E712
-                WorkspaceFile.entity_type == "form",
-                path_filter,
-                ws_include_filter,
-            )
+            select(Form)
+            .where(*form_conditions)
             .limit(MAX_RESULTS_PER_TYPE)
         )
         form_result = await db.execute(form_stmt)
-        for row in form_result:
+        for form in form_result.scalars():
+            virtual_path = f"forms/{form.id}.form.json"
+            # Apply path filters
+            if root_path and not virtual_path.startswith(root_path):
+                continue
+            if like_pattern:
+                # Simple LIKE check for virtual paths
+                import fnmatch
+                glob_pattern = like_pattern.replace("%", "*")
+                if not fnmatch.fnmatch(virtual_path, glob_pattern):
+                    continue
+
             files_searched += 1
-            # Serialize form to searchable JSON
             form_json = json.dumps({
-                "name": row.Form.name,
-                "description": row.Form.description,
-                "workflow_id": str(row.Form.workflow_id) if row.Form.workflow_id else None,
+                "name": form.name,
+                "description": form.description,
+                "workflow_id": str(form.workflow_id) if form.workflow_id else None,
             }, indent=2)
             results = _search_content(
                 form_json,
-                row.path,
+                virtual_path,
                 request.query,
                 request.case_sensitive,
                 request.is_regex,
@@ -226,31 +198,36 @@ async def search_files_db(
             if len(all_results) >= request.max_results:
                 break
 
-    # 4. Search agents (serialize to JSON and search)
+    # 3. Search agents (serialize to JSON and search)
+    # Agents use virtual paths: agents/{uuid}.agent.json
     if len(all_results) < request.max_results:
+        agent_conditions = [Agent.is_active == True]  # noqa: E712
         agent_stmt = (
-            select(Agent, WorkspaceFile.path)
-            .join(WorkspaceFile, WorkspaceFile.entity_id == Agent.id)
-            .where(
-                WorkspaceFile.is_deleted == False,  # noqa: E712
-                WorkspaceFile.entity_type == "agent",
-                path_filter,
-                ws_include_filter,
-            )
+            select(Agent)
+            .where(*agent_conditions)
             .limit(MAX_RESULTS_PER_TYPE)
         )
         agent_result = await db.execute(agent_stmt)
-        for row in agent_result:
+        for agent in agent_result.scalars():
+            virtual_path = f"agents/{agent.id}.agent.json"
+            # Apply path filters
+            if root_path and not virtual_path.startswith(root_path):
+                continue
+            if like_pattern:
+                import fnmatch
+                glob_pattern = like_pattern.replace("%", "*")
+                if not fnmatch.fnmatch(virtual_path, glob_pattern):
+                    continue
+
             files_searched += 1
-            # Serialize agent to searchable JSON
             agent_json = json.dumps({
-                "name": row.Agent.name,
-                "description": row.Agent.description,
-                "system_prompt": row.Agent.system_prompt,
+                "name": agent.name,
+                "description": agent.description,
+                "system_prompt": agent.system_prompt,
             }, indent=2)
             results = _search_content(
                 agent_json,
-                row.path,
+                virtual_path,
                 request.query,
                 request.case_sensitive,
                 request.is_regex,

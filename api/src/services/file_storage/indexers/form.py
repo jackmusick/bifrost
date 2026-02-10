@@ -7,7 +7,6 @@ Handles form metadata extraction, ID alignment, and field synchronization.
 import json
 import logging
 from datetime import datetime, timezone
-from typing import Any
 from uuid import UUID, uuid4
 
 from sqlalchemy import delete, select
@@ -18,28 +17,19 @@ from pydantic import ValidationError
 
 from src.models import Form, FormField as FormFieldORM, Workflow
 from src.models.contracts.forms import FormField, FormPublic
-from src.models.contracts.refs import (
-    transform_refs_for_export,
-    transform_refs_for_import,
-)
 
 logger = logging.getLogger(__name__)
 
 
-def _serialize_form_to_json(
-    form: Form,
-    workflow_map: dict[str, str] | None = None
-) -> bytes:
+def _serialize_form_to_json(form: Form) -> bytes:
     """
     Serialize a Form to JSON bytes using Pydantic model_dump.
 
     Uses FormPublic.model_dump() with exclude=True fields auto-excluded.
-    Transforms workflow refs via transform_refs_for_export().
+    UUIDs are used directly for all cross-references.
 
     Args:
         form: Form ORM instance with fields relationship loaded
-        workflow_map: Optional mapping of workflow UUID -> portable ref.
-                      If provided, workflow references are transformed.
 
     Returns:
         JSON serialized as UTF-8 bytes
@@ -53,10 +43,6 @@ def _serialize_form_to_json(
         exclude_none=True,
         exclude={"organization_id", "access_level", "created_at", "updated_at"},
     )
-
-    # Transform workflow UUIDs to portable refs if we have a workflow map
-    if workflow_map:
-        form_data = transform_refs_for_export(form_data, FormPublic, workflow_map)
 
     return json.dumps(form_data, indent=2).encode("utf-8")
 
@@ -102,8 +88,6 @@ class FormIndexer:
         self,
         path: str,
         content: bytes,
-        workspace_file: Any = None,
-        ref_to_uuid: dict[str, str] | None = None,
     ) -> bool:
         """
         Parse and index form from .form.json file.
@@ -119,9 +103,6 @@ class FormIndexer:
         Args:
             path: File path
             content: File content bytes
-            workspace_file: WorkspaceFile ORM instance (optional, not currently used)
-            ref_to_uuid: Optional pre-built mapping of portable refs to UUIDs.
-                         If None, the map will be built internally.
 
         Returns:
             True if content was modified (ID alignment), False otherwise
@@ -135,15 +116,7 @@ class FormIndexer:
             return False
 
         # Remove _export if present (backwards compatibility with old files)
-        # Pydantic will also ignore it during validation, but we clean it up explicitly
         form_data.pop("_export", None)
-
-        # Always transform portable refs to UUIDs
-        # The model annotations tell us which fields contain workflow refs
-        if ref_to_uuid is None:
-            from src.services.file_storage.ref_translation import build_ref_to_uuid_map
-            ref_to_uuid = await build_ref_to_uuid_map(self.db)
-        form_data = transform_refs_for_import(form_data, FormPublic, ref_to_uuid)
 
         name = form_data.get("name")
         if not name:
@@ -234,18 +207,13 @@ class FormIndexer:
                     delete(FormFieldORM).where(FormFieldORM.form_id == form_id)
                 )
 
-                # Build validation context for Pydantic models to resolve portable refs
-                validation_context = {"ref_to_uuid": ref_to_uuid} if ref_to_uuid else None
-
                 # Create new fields from schema using Pydantic validation
                 for position, field_dict in enumerate(fields_data):
                     if not isinstance(field_dict, dict) or not field_dict.get("name"):
                         continue
 
-                    # Validate through Pydantic to trigger ref translation
-                    # (especially for data_provider_id portable refs)
                     try:
-                        form_field = FormField.model_validate(field_dict, context=validation_context)
+                        form_field = FormField.model_validate(field_dict)
                     except ValidationError as e:
                         logger.warning(f"Invalid field in {path}: {e}")
                         continue
@@ -274,17 +242,6 @@ class FormIndexer:
                         content=form_field.content,
                     )
                     self.db.add(field_orm)
-
-        # Update workspace_files with entity routing
-        from uuid import UUID as UUID_type
-        from src.models import WorkspaceFile
-        from sqlalchemy import update
-
-        stmt = update(WorkspaceFile).where(WorkspaceFile.path == path).values(
-            entity_type="form",
-            entity_id=form_id if isinstance(form_id, UUID_type) else UUID_type(form_id),
-        )
-        await self.db.execute(stmt)
 
         logger.debug(f"Indexed form: {name} from {path}")
         return content_modified

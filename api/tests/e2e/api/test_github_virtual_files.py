@@ -111,7 +111,6 @@ def execute_sync_and_wait(e2e_client, headers, max_wait: float = 60.0):
         json={
             "conflict_resolutions": conflict_resolutions,
             "confirm_orphans": True,
-            "confirm_unresolved_refs": True,
         },
         headers=headers,
     )
@@ -123,7 +122,7 @@ def execute_sync_and_wait(e2e_client, headers, max_wait: float = 60.0):
     logger.info(f"Sync job started: {job_id}")
 
     # Poll for completion
-    terminal_statuses = ["success", "completed", "failed", "conflict", "orphans_detected", "unresolved_refs"]
+    terminal_statuses = ["success", "completed", "failed", "conflict", "orphans_detected"]
 
     def check_complete():
         resp = e2e_client.get(f"/api/jobs/{job_id}", headers=headers)

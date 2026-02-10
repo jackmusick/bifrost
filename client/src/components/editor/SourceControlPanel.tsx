@@ -19,7 +19,6 @@ import {
 } from "lucide-react";
 import { formatDistanceToNow } from "date-fns";
 import { Button } from "@/components/ui/button";
-import { Checkbox } from "@/components/ui/checkbox";
 import { cn } from "@/lib/utils";
 import { toast } from "sonner";
 import { apiClient } from "@/lib/api-client";
@@ -31,7 +30,6 @@ import {
 	type SyncPreviewResponse,
 	type SyncAction,
 	type SyncConflictInfo,
-	type OrphanInfo,
 } from "@/hooks/useGitHub";
 import { useEditorStore } from "@/stores/editorStore";
 import { EntitySyncItem } from "./EntitySyncItem";
@@ -61,7 +59,6 @@ export function SourceControlPanel() {
 	const [conflictResolutions, setConflictResolutions] = useState<
 		Record<string, "keep_local" | "keep_remote">
 	>({});
-	const [orphansConfirmed, setOrphansConfirmed] = useState(false);
 
 	// Use ref to track refresh loading state synchronously (prevents React 18 double-call race condition)
 	const isLoadingRef = useRef(false);
@@ -350,13 +347,13 @@ export function SourceControlPanel() {
 				const pullCount = preview.to_pull?.length ?? 0;
 				const pushCount = preview.to_push?.length ?? 0;
 				const conflictCount = preview.conflicts?.length ?? 0;
-				const orphanCount = preview.will_orphan?.length ?? 0;
+				const preflightErrorCount = (preview.preflight?.issues ?? []).filter((i: { severity: string }) => i.severity === "error").length;
 
 				let message = "";
 				if (pullCount > 0) message += `${pullCount} to pull`;
 				if (pushCount > 0) message += `${message ? ", " : ""}${pushCount} to push`;
 				if (conflictCount > 0) message += `${message ? ", " : ""}${conflictCount} conflict(s)`;
-				if (orphanCount > 0) message += `${message ? ", " : ""}${orphanCount} will be orphaned`;
+				if (preflightErrorCount > 0) message += `${message ? ", " : ""}${preflightErrorCount} preflight error(s)`;
 
 				appendTerminalOutput({
 					loggerOutput: [
@@ -411,10 +408,10 @@ export function SourceControlPanel() {
 			return;
 		}
 
-		// Check that orphans are confirmed if any
-		const willOrphan = syncPreview.will_orphan ?? [];
-		if (willOrphan.length > 0 && !orphansConfirmed) {
-			toast.error("Please confirm orphaned workflows before syncing");
+		// Check preflight passes
+		const preflightValid = syncPreview.preflight?.valid ?? true;
+		if (!preflightValid) {
+			toast.error("Preflight validation failed. Fix errors before syncing.");
 			return;
 		}
 
@@ -439,8 +436,7 @@ export function SourceControlPanel() {
 			const result = await syncExecuteMutation.mutateAsync({
 				body: {
 					conflict_resolutions: conflictResolutions,
-					confirm_orphans: orphansConfirmed,
-					confirm_unresolved_refs: true,
+					confirm_orphans: false,
 				},
 			});
 
@@ -678,13 +674,11 @@ export function SourceControlPanel() {
 						// Determine button state
 						const hasPreview = syncPreview && !syncPreview.is_empty;
 						const conflictsLength = syncPreview?.conflicts?.length ?? 0;
-						const willOrphanLength = syncPreview?.will_orphan?.length ?? 0;
+						const preflightValid = syncPreview?.preflight?.valid ?? true;
 						const hasUnresolvedConflicts = hasPreview &&
 							conflictsLength > 0 &&
 							Object.keys(conflictResolutions).length < conflictsLength;
-						const hasUnconfirmedOrphans = hasPreview &&
-							willOrphanLength > 0 && !orphansConfirmed;
-						const canApply = hasPreview && !hasUnresolvedConflicts && !hasUnconfirmedOrphans;
+						const canApply = hasPreview && !hasUnresolvedConflicts && preflightValid;
 
 						// Format progress display with user-friendly phase names
 						const phaseLabels: Record<string, string> = {
@@ -828,12 +822,10 @@ export function SourceControlPanel() {
 							/>
 						)}
 
-						{/* Orphaned workflows warning */}
-						{(syncPreview.will_orphan?.length ?? 0) > 0 && (
-							<OrphanWarning
-								orphans={syncPreview.will_orphan ?? []}
-								confirmed={orphansConfirmed}
-								onConfirmChange={setOrphansConfirmed}
+						{/* Preflight issues */}
+						{(syncPreview.preflight?.issues?.length ?? 0) > 0 && (
+							<PreflightIssuesPanel
+								issues={syncPreview.preflight?.issues ?? []}
 							/>
 						)}
 					</>
@@ -1079,16 +1071,15 @@ function ConflictList({
 /**
  * Warning about workflows that will be orphaned
  */
-function OrphanWarning({
-	orphans,
-	confirmed,
-	onConfirmChange,
+function PreflightIssuesPanel({
+	issues,
 }: {
-	orphans: OrphanInfo[];
-	confirmed: boolean;
-	onConfirmChange: (confirmed: boolean) => void;
+	issues: Array<{ path: string; line?: number | null; message: string; severity: string; category: string }>;
 }) {
 	const [expanded, setExpanded] = useState(true);
+	const errors = issues.filter((i) => i.severity === "error");
+	const warnings = issues.filter((i) => i.severity === "warning");
+	const hasErrors = errors.length > 0;
 
 	return (
 		<div className={cn("border-t flex flex-col min-h-0", expanded && "flex-1")}>
@@ -1101,45 +1092,47 @@ function OrphanWarning({
 				) : (
 					<ChevronRight className="h-4 w-4 flex-shrink-0" />
 				)}
-				<FileWarning className="h-4 w-4 text-yellow-500 flex-shrink-0" />
-				<span className="text-sm font-medium flex-1 truncate">Orphans</span>
-				<span className="text-xs bg-yellow-500/20 text-yellow-700 w-10 text-center py-0.5 rounded-full flex-shrink-0">
-					{orphans.length > 999 ? "999+" : orphans.length}
+				<FileWarning className={cn("h-4 w-4 flex-shrink-0", hasErrors ? "text-red-500" : "text-yellow-500")} />
+				<span className="text-sm font-medium flex-1 truncate">Preflight</span>
+				<span className={cn(
+					"text-xs w-10 text-center py-0.5 rounded-full flex-shrink-0",
+					hasErrors ? "bg-red-500/20 text-red-700" : "bg-yellow-500/20 text-yellow-700"
+				)}>
+					{issues.length > 999 ? "999+" : issues.length}
 				</span>
 			</button>
 			{expanded && (
 				<div className="flex-1 overflow-y-auto px-4 pb-2 min-h-0">
-					<p className="text-xs text-muted-foreground mb-2">
-						These workflows will be orphaned. They may still be referenced by forms or apps.
-					</p>
-					<div className="space-y-1">
-						{orphans.map((orphan) => (
-							<div
-								key={orphan.workflow_id}
-								className="flex items-center gap-2 py-1"
-							>
-								<FileWarning className="h-3.5 w-3.5 text-yellow-500 flex-shrink-0" />
-								<span className="text-xs truncate" title={`${orphan.workflow_name} (${orphan.function_name})`}>
-									{orphan.workflow_name}
-								</span>
+					{errors.length > 0 && (
+						<>
+							<p className="text-xs text-red-600 font-medium mb-1">Errors (must fix)</p>
+							<div className="space-y-1 mb-2">
+								{errors.map((issue, idx) => (
+									<div key={idx} className="flex items-start gap-2 py-0.5">
+										<FileWarning className="h-3.5 w-3.5 text-red-500 flex-shrink-0 mt-0.5" />
+										<span className="text-xs font-mono truncate" title={`${issue.path}${issue.line ? `:${issue.line}` : ""}: ${issue.message}`}>
+											{issue.path}{issue.line ? `:${issue.line}` : ""}: {issue.message}
+										</span>
+									</div>
+								))}
 							</div>
-						))}
-					</div>
-					<div className="flex items-center gap-2 mt-2 pt-2 border-t">
-						<Checkbox
-							id="confirm-orphans"
-							checked={confirmed}
-							onCheckedChange={(checked) =>
-								onConfirmChange(checked === true)
-							}
-						/>
-						<label
-							htmlFor="confirm-orphans"
-							className="text-xs cursor-pointer"
-						>
-							I understand
-						</label>
-					</div>
+						</>
+					)}
+					{warnings.length > 0 && (
+						<>
+							<p className="text-xs text-yellow-600 font-medium mb-1">Warnings</p>
+							<div className="space-y-1">
+								{warnings.map((issue, idx) => (
+									<div key={idx} className="flex items-start gap-2 py-0.5">
+										<FileWarning className="h-3.5 w-3.5 text-yellow-500 flex-shrink-0 mt-0.5" />
+										<span className="text-xs font-mono truncate" title={`${issue.path}${issue.line ? `:${issue.line}` : ""}: ${issue.message}`}>
+											{issue.path}{issue.line ? `:${issue.line}` : ""}: {issue.message}
+										</span>
+									</div>
+								))}
+							</div>
+						</>
+					)}
 				</div>
 			)}
 		</div>

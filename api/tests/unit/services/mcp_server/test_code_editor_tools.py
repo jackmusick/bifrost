@@ -136,22 +136,25 @@ class TestListContent:
 
     @pytest.mark.asyncio
     async def test_list_modules(self, platform_admin_context):
-        """Should list module paths."""
+        """Should list module paths (Python files not in workflows table)."""
         from src.services.mcp_server.tools.code_editor import list_content
-
-        mock_mod1 = MagicMock()
-        mock_mod1.path = "modules/helpers.py"
-
-        mock_mod2 = MagicMock()
-        mock_mod2.path = "modules/utils.py"
 
         with patch("src.services.mcp_server.tools.code_editor.get_db_context") as mock_db:
             mock_session = AsyncMock()
             mock_db.return_value.__aenter__.return_value = mock_session
 
-            mock_result = MagicMock()
-            mock_result.scalars.return_value.all.return_value = [mock_mod1, mock_mod2]
-            mock_session.execute.return_value = mock_result
+            # First execute: select(FileIndex.path) -> all .py paths
+            mock_fi_result = MagicMock()
+            mock_fi_result.fetchall.return_value = [
+                ("modules/helpers.py",),
+                ("modules/utils.py",),
+                ("workflows/sync.py",),
+            ]
+            # Second execute: select(Workflow.path) -> workflow paths to exclude
+            mock_wf_result = MagicMock()
+            mock_wf_result.fetchall.return_value = [("workflows/sync.py",)]
+
+            mock_session.execute.side_effect = [mock_fi_result, mock_wf_result]
 
             result = await list_content(
                 context=platform_admin_context,
@@ -163,6 +166,7 @@ class TestListContent:
             assert "files" in data
             assert len(data["files"]) == 2
             assert data["files"][0]["path"] == "modules/helpers.py"
+            assert data["files"][1]["path"] == "modules/utils.py"
 
     @pytest.mark.asyncio
     async def test_list_app_files(self, platform_admin_context):
@@ -884,36 +888,35 @@ class TestDeleteContent:
 
     @pytest.mark.asyncio
     async def test_delete_module(self, platform_admin_context):
-        """Should delete a module by marking it as deleted."""
+        """Should delete a module from file_index."""
         from src.services.mcp_server.tools.code_editor import delete_content
-
-        mock_module = MagicMock()
-        mock_module.id = uuid4()
-        mock_module.path = "modules/old_helpers.py"
-        mock_module.entity_type = "module"
-        mock_module.is_deleted = False
 
         with patch("src.services.mcp_server.tools.code_editor.get_db_context") as mock_db:
             mock_session = AsyncMock()
             mock_db.return_value.__aenter__.return_value = mock_session
 
-            mock_result = MagicMock()
-            mock_result.scalar_one_or_none.return_value = mock_module
-            mock_session.execute.return_value = mock_result
+            # First execute: select(FileIndex.path) -> found
+            mock_find_result = MagicMock()
+            mock_find_result.scalar_one_or_none.return_value = "modules/old_helpers.py"
+            # Second execute: delete(FileIndex) -> success
+            mock_delete_result = MagicMock()
 
-            result = await delete_content(
-                context=platform_admin_context,
-                entity_type="module",
-                path="modules/old_helpers.py",
-            )
+            mock_session.execute.side_effect = [mock_find_result, mock_delete_result]
+
+            with patch("src.core.module_cache.invalidate_module", new_callable=AsyncMock):
+                result = await delete_content(
+                    context=platform_admin_context,
+                    entity_type="module",
+                    path="modules/old_helpers.py",
+                )
 
             assert isinstance(result, ToolResult)
             data = get_result_data(result)
             assert data["success"] is True
             assert data["path"] == "modules/old_helpers.py"
             assert data["entity_type"] == "module"
-            # Verify module was marked deleted
-            assert mock_module.is_deleted is True
+            # Should have called execute twice (select + delete)
+            assert mock_session.execute.call_count == 2
 
     @pytest.mark.asyncio
     async def test_delete_app_file(self, platform_admin_context):

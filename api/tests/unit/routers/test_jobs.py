@@ -17,7 +17,7 @@ class TestJobStatusResponse:
                     "display_name": "shared",
                     "entity_type": "workflow",
                 }],
-                "will_orphan": [],
+                "preflight": {"valid": True, "issues": []},
                 "is_empty": False,
             },
         )

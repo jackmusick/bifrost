@@ -7,38 +7,28 @@ Handles agent metadata extraction, tool/delegation synchronization, and ID align
 import json
 import logging
 from datetime import datetime, timezone
-from typing import Any
 from uuid import UUID, uuid4
 
-from sqlalchemy import delete, select, update
+from sqlalchemy import delete, select
 from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.models import Workflow
 from src.models.orm import Agent, AgentTool, AgentDelegation
 from src.models.contracts.agents import AgentPublic
-from src.models.contracts.refs import (
-    transform_refs_for_export,
-    transform_refs_for_import,
-)
 
 logger = logging.getLogger(__name__)
 
 
-def _serialize_agent_to_json(
-    agent: Agent,
-    workflow_map: dict[str, str] | None = None
-) -> bytes:
+def _serialize_agent_to_json(agent: Agent) -> bytes:
     """
     Serialize an Agent to JSON bytes using Pydantic model_dump.
 
     Uses AgentPublic.model_dump() with exclude=True fields auto-excluded.
-    Transforms workflow refs via transform_refs_for_export().
+    UUIDs are used directly for all cross-references.
 
     Args:
         agent: Agent ORM instance with tools relationship loaded
-        workflow_map: Optional mapping of workflow UUID -> portable ref.
-                      If provided, tool_ids are transformed.
 
     Returns:
         JSON serialized as UTF-8 bytes
@@ -57,10 +47,6 @@ def _serialize_agent_to_json(
     for key in ["delegated_agent_ids", "role_ids", "knowledge_sources", "system_tools"]:
         if key in agent_data and agent_data[key] == []:
             del agent_data[key]
-
-    # Transform workflow UUIDs to portable refs if we have a workflow map
-    if workflow_map:
-        agent_data = transform_refs_for_export(agent_data, AgentPublic, workflow_map)
 
     # Sort list fields for deterministic serialization (DB query order is non-deterministic)
     for key in ["tool_ids", "delegated_agent_ids", "role_ids", "knowledge_sources", "system_tools", "channels"]:
@@ -90,8 +76,6 @@ class AgentIndexer:
         self,
         path: str,
         content: bytes,
-        workspace_file: Any = None,
-        ref_to_uuid: dict[str, str] | None = None,
     ) -> bool:
         """
         Parse and index agent from .agent.json file.
@@ -107,9 +91,6 @@ class AgentIndexer:
         Args:
             path: File path
             content: File content bytes
-            workspace_file: WorkspaceFile ORM instance (optional, not currently used)
-            ref_to_uuid: Optional mapping of portable refs to UUIDs. If not provided,
-                         builds the map from the database.
 
         Returns:
             True if content was modified (ID alignment), False otherwise
@@ -123,15 +104,7 @@ class AgentIndexer:
             return False
 
         # Remove _export if present (backwards compatibility with old files)
-        # Pydantic will also ignore it during validation, but we clean it up explicitly
         agent_data.pop("_export", None)
-
-        # Always transform portable refs to UUIDs
-        # The model annotations tell us which fields contain workflow refs
-        if ref_to_uuid is None:
-            from src.services.file_storage.ref_translation import build_ref_to_uuid_map
-            ref_to_uuid = await build_ref_to_uuid_map(self.db)
-        agent_data = transform_refs_for_import(agent_data, AgentPublic, ref_to_uuid)
 
         name = agent_data.get("name")
         if not name:
@@ -203,9 +176,7 @@ class AgentIndexer:
         )
         await self.db.execute(stmt)
 
-        # Sync tool associations (tool_ids in JSON are workflow IDs)
-        # Note: transform_refs_for_import already resolved portable refs to UUIDs,
-        # but unresolved refs remain unchanged and will be skipped below.
+        # Sync tool associations (tool_ids are workflow UUIDs)
         tool_ids = agent_data.get("tool_ids", [])
         if isinstance(tool_ids, list):
             # Delete existing tool associations
@@ -231,7 +202,6 @@ class AgentIndexer:
                     else:
                         logger.warning(f"Agent {name} references non-existent workflow {workflow_id}")
                 except ValueError:
-                    # Not a valid UUID - likely an unresolved portable ref
                     logger.warning(f"Invalid tool_id in agent {name}: {tool_id_str}")
 
         # Sync delegated agent associations
@@ -255,15 +225,6 @@ class AgentIndexer:
                         logger.warning(f"Agent {name} references non-existent agent {child_agent_id}")
                 except ValueError:
                     logger.warning(f"Invalid delegated_agent_id in agent {name}: {child_id_str}")
-
-        # Update workspace_files with entity routing
-        from src.models import WorkspaceFile
-
-        stmt = update(WorkspaceFile).where(WorkspaceFile.path == path).values(
-            entity_type="agent",
-            entity_id=agent_id,
-        )
-        await self.db.execute(stmt)
 
         logger.debug(f"Indexed agent: {name} from {path}")
         return content_modified

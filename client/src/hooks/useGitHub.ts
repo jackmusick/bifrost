@@ -54,42 +54,26 @@ export interface SyncConflictInfo {
 	parent_slug?: string | null;
 }
 
-export interface WorkflowReference {
-	type: string;
-	id: string;
-	name: string;
-}
 
-export interface OrphanInfo {
-	workflow_id: string;
-	workflow_name: string;
-	function_name: string;
-	last_path: string;
-	used_by: WorkflowReference[];
-}
 
-export interface SyncUnresolvedRefInfo {
-	entity_type: string;
-	entity_path: string;
-	field_path: string;
-	portable_ref: string;
-}
-
-export interface SyncSerializationError {
-	entity_type: string;
-	entity_id: string;
-	entity_name: string;
+export interface PreflightIssue {
 	path: string;
-	error: string;
+	line?: number | null;
+	message: string;
+	severity: "error" | "warning";
+	category: "syntax" | "lint" | "ref" | "orphan" | "manifest";
+}
+
+export interface PreflightResult {
+	valid: boolean;
+	issues: PreflightIssue[];
 }
 
 export interface SyncPreviewResponse {
 	to_pull: SyncAction[];
 	to_push: SyncAction[];
 	conflicts: SyncConflictInfo[];
-	will_orphan: OrphanInfo[];
-	unresolved_refs: SyncUnresolvedRefInfo[];
-	serialization_errors: SyncSerializationError[];
+	preflight: PreflightResult;
 	is_empty: boolean;
 }
 

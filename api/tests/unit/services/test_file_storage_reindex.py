@@ -1,7 +1,7 @@
 """
 Unit tests for FileStorageService.reindex_workspace_files().
 
-Tests the reindexing of workspace files and reconciliation of orphaned
+Tests the reindexing of file_index entries and reconciliation of orphaned
 workflows and data providers.
 """
 
@@ -94,7 +94,7 @@ class TestReindexWorkspaceFiles:
 
     @pytest.mark.asyncio
     async def test_indexes_existing_files(self, mock_db, temp_workspace):
-        """Files in the local workspace are indexed in workspace_files."""
+        """Files in the local workspace are indexed in file_index."""
         # Setup mock responses
         mock_db.execute.return_value = MagicMock(rowcount=0, scalars=MagicMock(return_value=MagicMock(all=MagicMock(return_value=[]))))
 
@@ -111,7 +111,7 @@ class TestReindexWorkspaceFiles:
 
     @pytest.mark.asyncio
     async def test_marks_missing_files_as_deleted(self, mock_db, temp_workspace):
-        """Files in DB but not on filesystem are marked as deleted."""
+        """Files in file_index but not on filesystem are removed."""
         # Mock that the update statement affects 2 rows
         mock_result = MagicMock()
         mock_result.rowcount = 2

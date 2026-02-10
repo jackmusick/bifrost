@@ -8,7 +8,7 @@ installed packages survive container restarts.
 Persistence Flow:
 1. User installs package via /api/packages/install
 2. package_install.py consumer installs the package and calls save_requirements_to_db()
-3. requirements.txt is stored in workspace_files table + Redis cache
+3. requirements.txt is stored in file_index table + Redis cache
 4. On container restart, init_container.py calls warm_requirements_cache()
 5. Worker processes call _install_requirements_from_cache_sync() at startup
 6. pip install runs from cached requirements.txt
@@ -83,14 +83,12 @@ async def warm_requirements_cache(session=None) -> bool:
     """
     from sqlalchemy import select
 
-    from src.models.orm.workspace import WorkspaceFile
+    from src.models.orm.file_index import FileIndex
 
     async def _warm_with_session(db_session) -> bool:
-        stmt = select(WorkspaceFile).where(
-            WorkspaceFile.path == "requirements.txt",
-            WorkspaceFile.entity_type == "requirements",
-            WorkspaceFile.is_deleted == False,  # noqa: E712
-            WorkspaceFile.content.isnot(None),
+        stmt = select(FileIndex).where(
+            FileIndex.path == "requirements.txt",
+            FileIndex.content.isnot(None),
         )
         result = await db_session.execute(stmt)
         file = result.scalar_one_or_none()
@@ -123,42 +121,30 @@ async def save_requirements_to_db(content: str, session=None) -> None:
         content: Full requirements.txt content
         session: Optional SQLAlchemy AsyncSession. If not provided, creates its own.
     """
-    from sqlalchemy import select
+    from sqlalchemy.dialects.postgresql import insert
 
-    from src.models.enums import GitStatus
-    from src.models.orm.workspace import WorkspaceFile
+    from src.models.orm.file_index import FileIndex
 
     content_hash = hashlib.sha256(content.encode()).hexdigest()
 
     async def _save_with_session(db_session) -> None:
-        # Check if record exists
-        stmt = select(WorkspaceFile).where(
-            WorkspaceFile.path == "requirements.txt",
-            WorkspaceFile.entity_type == "requirements",
+        from datetime import datetime, timezone
+
+        now = datetime.now(timezone.utc)
+        stmt = insert(FileIndex).values(
+            path="requirements.txt",
+            content=content,
+            content_hash=content_hash,
+            updated_at=now,
+        ).on_conflict_do_update(
+            index_elements=[FileIndex.path],
+            set_={
+                "content": content,
+                "content_hash": content_hash,
+                "updated_at": now,
+            },
         )
-        result = await db_session.execute(stmt)
-        existing = result.scalar_one_or_none()
-
-        if existing:
-            # Update existing record
-            existing.content = content
-            existing.content_hash = content_hash
-            existing.size_bytes = len(content)
-            existing.is_deleted = False
-        else:
-            # Create new record
-            file = WorkspaceFile(
-                path="requirements.txt",
-                entity_type="requirements",
-                content=content,
-                content_hash=content_hash,
-                size_bytes=len(content),
-                content_type="text/plain",
-                git_status=GitStatus.UNTRACKED,
-                is_deleted=False,
-            )
-            db_session.add(file)
-
+        await db_session.execute(stmt)
         await db_session.commit()
 
         # Update cache

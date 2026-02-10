@@ -6,18 +6,32 @@ Handles folder creation, deletion, listing, and bulk operations.
 
 import logging
 import shutil
+from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from pathlib import Path
 
-from sqlalchemy import select, update
+from sqlalchemy import select, delete
 from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.config import Settings
-from src.models import WorkspaceFile
-from src.models.enums import GitStatus
+from src.models.orm.file_index import FileIndex
 
 logger = logging.getLogger(__name__)
+
+
+@dataclass
+class FileEntry:
+    """Lightweight file/folder entry for listings (replaces WorkspaceFile)."""
+
+    path: str
+    content_hash: str = ""
+    size_bytes: int = 0
+    content_type: str = "text/plain"
+    is_deleted: bool = False
+    entity_type: str | None = None
+    entity_id: str | None = None
+    updated_at: datetime | None = None
 
 
 class FolderOperationsService:
@@ -51,49 +65,35 @@ class FolderOperationsService:
         self,
         path: str,
         updated_by: str = "system",
-    ) -> WorkspaceFile:
+    ) -> FileEntry:
         """
-        Create a folder record explicitly.
+        Create a folder marker in file_index.
 
-        Folders are represented by paths ending with '/'. This enables:
-        - Reliable folder listing (no need to synthesize from file paths)
-        - Explicit folder metadata (created_at, updated_by)
-        - Simpler deletion (just delete the folder record + children)
+        Folders are represented by paths ending with '/'.
 
         Args:
             path: Folder path (will be normalized to end with '/')
             updated_by: User who created the folder
 
         Returns:
-            WorkspaceFile record for the folder
+            FileEntry for the folder
         """
-        # Normalize to trailing slash
         folder_path = path.rstrip("/") + "/"
-
         now = datetime.now(timezone.utc)
 
-        # Insert folder record - use on_conflict_do_nothing for silent indexing
-        stmt = insert(WorkspaceFile).values(
+        # Insert folder marker in file_index
+        stmt = insert(FileIndex).values(
             path=folder_path,
-            content_hash="",  # Empty hash for folders
-            size_bytes=0,
-            content_type="inode/directory",  # MIME type for directories
-            git_status=GitStatus.UNTRACKED,
-            is_deleted=False,
-            created_at=now,
+            content=None,
+            content_hash="",
             updated_at=now,
         ).on_conflict_do_update(
-            index_elements=[WorkspaceFile.path],
-            set_={
-                "is_deleted": False,  # Reactivate if was deleted
-                "updated_at": now,
-            },
-        ).returning(WorkspaceFile)
+            index_elements=[FileIndex.path],
+            set_={"updated_at": now},
+        )
+        await self.db.execute(stmt)
 
-        result = await self.db.execute(stmt)
-        folder_record = result.scalar_one()
-
-        # Create on local filesystem too (for tools that read files directly)
+        # Create on local filesystem too
         try:
             from src.core.paths import WORKSPACE_PATH
             local_folder = WORKSPACE_PATH / path.rstrip("/")
@@ -102,7 +102,7 @@ class FolderOperationsService:
             logger.warning(f"Failed to create local folder: {e}")
 
         logger.info(f"Folder created: {folder_path} by {updated_by}")
-        return folder_record
+        return FileEntry(path=folder_path, content_type="inode/directory", updated_at=now)
 
     async def delete_folder(self, path: str) -> None:
         """
@@ -113,55 +113,38 @@ class FolderOperationsService:
         """
         folder_path = path.rstrip("/") + "/"
 
-        # Find all files/folders under this path (recursive)
-        stmt = select(WorkspaceFile).where(
-            WorkspaceFile.path.startswith(folder_path),
-            WorkspaceFile.is_deleted == False,  # noqa: E712
+        # Find all files under this path
+        stmt = select(FileIndex.path).where(
+            FileIndex.path.startswith(folder_path),
         )
         result = await self.db.execute(stmt)
-        children = result.scalars().all()
+        child_paths = [row[0] for row in result.fetchall()]
 
-        # Delete children from S3 (regular files only) and soft-delete in DB
-        # Platform entities (entity_type is not None) have content in DB, not S3
+        # Delete children from S3 and clean up metadata
+        from src.services.file_storage.entity_detector import detect_platform_entity_type
         async with self._s3_client.get_client() as s3:
-            for child in children:
-                # Skip folder records (no S3 object)
-                if child.path.endswith("/"):
+            for child_path in child_paths:
+                if child_path.endswith("/"):
                     continue
 
                 # Only delete from S3 if not a platform entity
-                if child.entity_type is None:
+                platform_type = detect_platform_entity_type(child_path, b"")
+                if platform_type is None:
                     try:
                         await s3.delete_object(
                             Bucket=self.settings.s3_bucket,
-                            Key=child.path,
+                            Key=child_path,
                         )
                     except Exception as e:
-                        logger.warning(f"Failed to delete S3 object {child.path}: {e}")
+                        logger.warning(f"Failed to delete S3 object {child_path}: {e}")
 
-                # Clean up metadata for all files (platform entities and regular)
-                await self._remove_metadata(child.path)
+                await self._remove_metadata(child_path)
 
-        # Soft delete all children and the folder itself
-        now = datetime.now(timezone.utc)
-        stmt = update(WorkspaceFile).where(
-            WorkspaceFile.path.startswith(folder_path),
-        ).values(
-            is_deleted=True,
-            git_status=GitStatus.DELETED,
-            updated_at=now,
+        # Delete all entries from file_index
+        del_stmt = delete(FileIndex).where(
+            FileIndex.path.startswith(folder_path),
         )
-        await self.db.execute(stmt)
-
-        # Also soft delete the folder record itself
-        stmt = update(WorkspaceFile).where(
-            WorkspaceFile.path == folder_path,
-        ).values(
-            is_deleted=True,
-            git_status=GitStatus.DELETED,
-            updated_at=now,
-        )
-        await self.db.execute(stmt)
+        await self.db.execute(del_stmt)
 
         # Delete from local filesystem
         try:
@@ -179,94 +162,80 @@ class FolderOperationsService:
         directory: str = "",
         include_deleted: bool = False,
         recursive: bool = False,
-    ) -> list[WorkspaceFile]:
+    ) -> list[FileEntry]:
         """
         List files and folders in a directory.
 
-        Works like S3 - synthesizes folders from file path prefixes.
-        Returns both:
-        - Files (actual records)
-        - Folders (explicit records OR synthesized from nested file paths)
+        Queries file_index for code files and synthesizes folder entries.
 
         Args:
             directory: Directory path (empty for root)
-            include_deleted: Whether to include soft-deleted files
-            recursive: If True, return all files under directory (not just direct children)
+            include_deleted: Ignored (file_index has no soft delete)
+            recursive: If True, return all files under directory
 
         Returns:
-            List of WorkspaceFile records (files and folders)
+            List of FileEntry records (files and folders)
         """
         from src.services.editor.file_filter import is_excluded_path
 
-        # Normalize directory path
         prefix = directory.rstrip("/") + "/" if directory else ""
 
-        # Query all files under this prefix
-        stmt = select(WorkspaceFile)
-
+        # Query file_index for all files under this prefix
+        stmt = select(FileIndex).order_by(FileIndex.path)
         if prefix:
-            # Get all files that start with this prefix
-            stmt = stmt.where(WorkspaceFile.path.startswith(prefix))
-
-        if not include_deleted:
-            stmt = stmt.where(WorkspaceFile.is_deleted == False)  # noqa: E712
-
-        stmt = stmt.order_by(WorkspaceFile.path)
+            stmt = stmt.where(FileIndex.path.startswith(prefix))
 
         result = await self.db.execute(stmt)
-        all_files = list(result.scalars().all())
+        all_entries = list(result.scalars().all())
 
-        # If recursive mode, return all files under this prefix (excluding folders)
+        # Convert to FileEntry
+        all_files = [
+            FileEntry(
+                path=fi.path,
+                content_hash=fi.content_hash or "",
+                size_bytes=len(fi.content.encode("utf-8")) if fi.content else 0,
+                content_type="inode/directory" if fi.path.endswith("/") else "text/plain",
+                updated_at=fi.updated_at,
+            )
+            for fi in all_entries
+        ]
+
         if recursive:
             return [
                 f for f in all_files
                 if not is_excluded_path(f.path) and not f.path.endswith("/")
             ]
 
-        # Synthesize direct children (like S3 ListObjectsV2 with delimiter)
-        direct_children: dict[str, WorkspaceFile] = {}
+        # Synthesize direct children
+        direct_children: dict[str, FileEntry] = {}
         seen_folders: set[str] = set()
 
         for file in all_files:
-            # Skip excluded paths
             if is_excluded_path(file.path):
                 continue
 
-            # Get the part after the prefix
             relative_path = file.path[len(prefix):] if prefix else file.path
-
-            # Skip empty (shouldn't happen, but safety)
             if not relative_path:
                 continue
 
-            # Check if this is a direct child or nested
             slash_idx = relative_path.find("/")
 
             if slash_idx == -1:
-                # Direct child file (no slash in relative path)
                 direct_children[file.path] = file
             elif slash_idx == len(relative_path) - 1:
-                # This is an explicit folder record (ends with /)
                 folder_name = relative_path.rstrip("/")
                 direct_children[file.path] = file
                 seen_folders.add(folder_name)
             else:
-                # Nested file - extract the immediate folder name
                 folder_name = relative_path[:slash_idx]
                 folder_path = f"{prefix}{folder_name}/"
 
                 if folder_name not in seen_folders:
                     seen_folders.add(folder_name)
-                    # Check if we already have an explicit folder record
                     if folder_path not in direct_children:
-                        # Synthesize a folder record
-                        direct_children[folder_path] = WorkspaceFile(
+                        direct_children[folder_path] = FileEntry(
                             path=folder_path,
-                            content_hash="",
-                            size_bytes=0,
                             content_type="inode/directory",
-                            git_status=GitStatus.UNTRACKED,
-                            is_deleted=False,
                         )
 
         return sorted(direct_children.values(), key=lambda f: f.path)
@@ -274,25 +243,27 @@ class FolderOperationsService:
     async def list_all_files(
         self,
         include_deleted: bool = False,
-    ) -> list[WorkspaceFile]:
+    ) -> list[FileEntry]:
         """
         List all files in workspace.
 
         Args:
-            include_deleted: Whether to include soft-deleted files
+            include_deleted: Ignored (file_index has no soft delete)
 
         Returns:
-            List of WorkspaceFile records
+            List of FileEntry records
         """
-        stmt = select(WorkspaceFile)
-
-        if not include_deleted:
-            stmt = stmt.where(WorkspaceFile.is_deleted == False)  # noqa: E712
-
-        stmt = stmt.order_by(WorkspaceFile.path)
-
+        stmt = select(FileIndex).order_by(FileIndex.path)
         result = await self.db.execute(stmt)
-        return list(result.scalars().all())
+        return [
+            FileEntry(
+                path=fi.path,
+                content_hash=fi.content_hash or "",
+                size_bytes=len(fi.content.encode("utf-8")) if fi.content else 0,
+                updated_at=fi.updated_at,
+            )
+            for fi in result.scalars()
+        ]
 
     async def download_workspace(self, local_path: Path) -> None:
         """
@@ -336,7 +307,7 @@ class FolderOperationsService:
         self,
         local_path: Path,
         updated_by: str = "system",
-    ) -> list[WorkspaceFile]:
+    ) -> int:
         """
         Upload all files from local directory to workspace.
 
@@ -347,9 +318,9 @@ class FolderOperationsService:
             updated_by: User who made the change
 
         Returns:
-            List of uploaded WorkspaceFile records
+            Number of files uploaded
         """
-        uploaded = []
+        count = 0
 
         for file_path in local_path.rglob("*"):
             if file_path.is_file():
@@ -360,8 +331,8 @@ class FolderOperationsService:
                 rel_path = str(file_path.relative_to(local_path))
                 content = file_path.read_bytes()
 
-                write_result = await self._write_file(rel_path, content, updated_by)
-                uploaded.append(write_result.file_record)
+                await self._write_file(rel_path, content, updated_by)
+                count += 1
 
-        logger.info(f"Uploaded {len(uploaded)} files from {local_path}")
-        return uploaded
+        logger.info(f"Uploaded {count} files from {local_path}")
+        return count

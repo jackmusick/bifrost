@@ -16,8 +16,7 @@ from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.config import Settings
-from src.models import WorkspaceFile
-from src.models.enums import GitStatus
+from src.models.orm.file_index import FileIndex
 
 if TYPE_CHECKING:
     from src.models.contracts.maintenance import ReindexResult
@@ -66,7 +65,7 @@ class WorkspaceReindexService:
         Sync index from S3 bucket contents.
 
         Used for initial setup or recovery. Scans S3 bucket and
-        creates index entries for all files.
+        creates file_index entries for all files.
 
         Returns:
             Number of files indexed
@@ -80,7 +79,6 @@ class WorkspaceReindexService:
             async for page in paginator.paginate(Bucket=self.settings.s3_bucket):
                 for obj in page.get("Contents", []):
                     key = obj.get("Key")
-                    size = obj.get("Size", 0)
                     if not key:
                         continue
 
@@ -91,30 +89,20 @@ class WorkspaceReindexService:
                     )
                     content = await response["Body"].read()
                     content_hash = self._compute_hash(content)
-                    content_type = self._guess_content_type(key)
+                    content_str = content.decode("utf-8", errors="replace")
 
-                    # Upsert index
-                    # Note: github_sha is NOT set here - it should only be set by the
-                    # GitHub sync process. Reindexing doesn't mean the file is synced.
+                    # Upsert file_index
                     now = datetime.now(timezone.utc)
-                    stmt = insert(WorkspaceFile).values(
+                    stmt = insert(FileIndex).values(
                         path=key,
+                        content=content_str,
                         content_hash=content_hash,
-                        # github_sha intentionally omitted - defaults to None
-                        size_bytes=size,
-                        content_type=content_type,
-                        git_status=GitStatus.UNTRACKED,
-                        is_deleted=False,
-                        created_at=now,
                         updated_at=now,
                     ).on_conflict_do_update(
-                        index_elements=[WorkspaceFile.path],
+                        index_elements=[FileIndex.path],
                         set_={
+                            "content": content_str,
                             "content_hash": content_hash,
-                            # github_sha intentionally NOT updated - preserve sync state
-                            "size_bytes": size,
-                            "content_type": content_type,
-                            "is_deleted": False,
                             "updated_at": now,
                         },
                     )
@@ -131,7 +119,7 @@ class WorkspaceReindexService:
         self, local_path: Path
     ) -> dict[str, int | list[str]]:
         """
-        Reindex workspace_files table from local filesystem.
+        Reindex file_index table from local filesystem.
 
         Called after download_workspace() to ensure DB matches actual files.
         Also reconciles orphaned workflows/data_providers.
@@ -143,7 +131,7 @@ class WorkspaceReindexService:
             Dict with counts: files_indexed, files_removed, workflows_deactivated,
             data_providers_deactivated
         """
-        from src.models import Workflow  # Data providers are in workflows table with type='data_provider'
+        from src.models import Workflow
         from src.services.editor.file_filter import is_excluded_path
 
         counts: dict[str, int | list[str]] = {
@@ -158,29 +146,24 @@ class WorkspaceReindexService:
         for file_path in local_path.rglob("*"):
             if file_path.is_file():
                 rel_path = str(file_path.relative_to(local_path))
-                # Skip excluded paths (system files, caches, etc.)
                 if not is_excluded_path(rel_path):
                     existing_paths.add(rel_path)
 
-        # 2. Update workspace_files: mark missing files as deleted
-        stmt = update(WorkspaceFile).where(
-            WorkspaceFile.is_deleted == False,  # noqa: E712
-            ~WorkspaceFile.path.in_(existing_paths) if existing_paths else True,
-            ~WorkspaceFile.path.endswith("/"),  # Skip folder records
-        ).values(
-            is_deleted=True,
-            git_status=GitStatus.DELETED,
-            updated_at=datetime.now(timezone.utc),
-        )
-        result = await self.db.execute(stmt)
+        # 2. Remove orphaned file_index entries (files no longer on disk)
+        if existing_paths:
+            del_stmt = delete(FileIndex).where(
+                ~FileIndex.path.in_(existing_paths),
+                ~FileIndex.path.endswith("/"),  # Skip folder markers
+            )
+        else:
+            del_stmt = delete(FileIndex).where(
+                ~FileIndex.path.endswith("/"),
+            )
+        result = await self.db.execute(del_stmt)
         counts["files_removed"] = result.rowcount if result.rowcount > 0 else 0
 
-        # 3. For each existing file, ensure it's in workspace_files
-        # Process files in dependency order:
-        # - Python files first (define workflows, data providers, tools)
-        # - Form JSON files second (may reference workflows)
-        # - Agent JSON files last (reference workflows + potentially other agents)
-        # This prevents FK constraint violations during indexing
+        # 3. For each existing file, upsert into file_index
+        # Process files in dependency order to prevent FK constraint violations
         py_files = sorted([p for p in existing_paths if p.endswith(".py")])
         form_files = sorted([p for p in existing_paths if p.endswith(".form.json")])
         agent_files = sorted([p for p in existing_paths if p.endswith(".agent.json")])
@@ -201,26 +184,19 @@ class WorkspaceReindexService:
                 continue
 
             content_hash = self._compute_hash(content)
-            content_type = self._guess_content_type(rel_path)
-            size_bytes = len(content)
+            content_str = content.decode("utf-8", errors="replace")
 
-            # Upsert workspace_files record
-            stmt = insert(WorkspaceFile).values(
+            # Upsert file_index record
+            stmt = insert(FileIndex).values(
                 path=rel_path,
+                content=content_str,
                 content_hash=content_hash,
-                size_bytes=size_bytes,
-                content_type=content_type,
-                git_status=GitStatus.SYNCED,
-                is_deleted=False,
-                created_at=now,
                 updated_at=now,
             ).on_conflict_do_update(
-                index_elements=[WorkspaceFile.path],
+                index_elements=[FileIndex.path],
                 set_={
+                    "content": content_str,
                     "content_hash": content_hash,
-                    "size_bytes": size_bytes,
-                    "content_type": content_type,
-                    "is_deleted": False,
                     "updated_at": now,
                 },
             )
@@ -260,10 +236,6 @@ class WorkspaceReindexService:
         result = await self.db.execute(stmt)
         counts["workflows_deactivated"] = result.rowcount if result.rowcount > 0 else 0
 
-        # 6. Data providers are now in the workflows table with type='data_provider'
-        # They are already handled by the orphaned workflows query above (step 5).
-        # The workflows_deactivated count includes data providers.
-        # We keep the key for backward compatibility but set it to 0.
         counts["data_providers_deactivated"] = 0
 
         if any(counts.values()):

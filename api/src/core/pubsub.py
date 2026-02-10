@@ -592,7 +592,6 @@ async def publish_git_sync_request(
     user_email: str,
     conflict_resolutions: Mapping[str, str],
     confirm_orphans: bool,
-    confirm_unresolved_refs: bool = False,
 ) -> None:
     """
     Request a git sync operation from the scheduler.
@@ -607,7 +606,6 @@ async def publish_git_sync_request(
         user_email: Email of the user (for git commit author)
         conflict_resolutions: Dict mapping file paths to resolution strategy
         confirm_orphans: Whether to proceed with orphan cleanup
-        confirm_unresolved_refs: Whether to proceed despite unresolved refs
     """
     message = {
         "type": "git_sync_request",
@@ -617,7 +615,6 @@ async def publish_git_sync_request(
         "userEmail": user_email,
         "conflictResolutions": conflict_resolutions,
         "confirmOrphans": confirm_orphans,
-        "confirmUnresolvedRefs": confirm_unresolved_refs,
     }
     await manager._publish_to_redis("scheduler:git-sync", message)
 

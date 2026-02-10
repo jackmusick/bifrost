@@ -86,7 +86,7 @@ async def warm_requirements_cache() -> bool:
     """
     Warm Redis requirements cache from database.
 
-    Loads requirements.txt content from workspace_files table into Redis cache
+    Loads requirements.txt content from file_index table into Redis cache
     so workers can install packages without database access during startup.
 
     Returns:

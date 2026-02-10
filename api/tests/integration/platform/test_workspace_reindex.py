@@ -15,8 +15,7 @@ from uuid import uuid4
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from src.models import Workflow, WorkspaceFile
-from src.models.enums import GitStatus
+from src.models import Workflow, FileIndex
 
 
 def get_file_storage_service(db_session):
@@ -107,25 +106,25 @@ async def clean_tables(db_session: AsyncSession):
     await db_session.execute(
         delete(Workflow).where(Workflow.path == "documented_workflow.py")
     )
-    # Delete workspace_files
+    # Delete file_index entries
     await db_session.execute(
-        delete(WorkspaceFile).where(WorkspaceFile.path.like("%_workflow.py"))
+        delete(FileIndex).where(FileIndex.path.like("%_workflow.py"))
     )
     await db_session.execute(
-        delete(WorkspaceFile).where(WorkspaceFile.path.like("%_provider.py"))
+        delete(FileIndex).where(FileIndex.path.like("%_provider.py"))
     )
     await db_session.execute(
-        delete(WorkspaceFile).where(WorkspaceFile.path.like("%_file.py"))
+        delete(FileIndex).where(FileIndex.path.like("%_file.py"))
     )
     await db_session.execute(
-        delete(WorkspaceFile).where(WorkspaceFile.path == "documented_workflow.py")
+        delete(FileIndex).where(FileIndex.path == "documented_workflow.py")
     )
     await db_session.commit()
 
     # Track IDs created during test (for targeted cleanup if needed)
     created_data = {
         "workflow_ids": [],
-        "workspace_file_ids": [],
+        "file_index_paths": [],
     }
 
     yield created_data
@@ -157,18 +156,18 @@ async def clean_tables(db_session: AsyncSession):
     await db_session.execute(
         delete(Workflow).where(Workflow.path == "documented_workflow.py")
     )
-    # Delete workspace_files
+    # Delete file_index entries
     await db_session.execute(
-        delete(WorkspaceFile).where(WorkspaceFile.path.like("%_workflow.py"))
+        delete(FileIndex).where(FileIndex.path.like("%_workflow.py"))
     )
     await db_session.execute(
-        delete(WorkspaceFile).where(WorkspaceFile.path.like("%_provider.py"))
+        delete(FileIndex).where(FileIndex.path.like("%_provider.py"))
     )
     await db_session.execute(
-        delete(WorkspaceFile).where(WorkspaceFile.path.like("%_file.py"))
+        delete(FileIndex).where(FileIndex.path.like("%_file.py"))
     )
     await db_session.execute(
-        delete(WorkspaceFile).where(WorkspaceFile.path == "documented_workflow.py")
+        delete(FileIndex).where(FileIndex.path == "documented_workflow.py")
     )
     await db_session.commit()
 
@@ -295,25 +294,25 @@ def test_provider():
         assert counts["workflows_deactivated"] == 1
         assert counts["data_providers_deactivated"] == 0
 
-    async def test_workspace_files_table_updated(
+    async def test_file_index_table_updated(
         self,
         db_session: AsyncSession,
         clean_workspace: Path,
         clean_tables,
     ):
         """
-        workspace_files table is updated to match actual files.
+        file_index table is updated to match actual files.
+        Missing files are hard-deleted from file_index, present files are upserted.
         """
         workspace = clean_workspace
 
-        # 1. Create a workspace file record for a non-existent file
-        orphaned_file = WorkspaceFile(
+        # 1. Create a file_index record for a non-existent file
+        from datetime import datetime, timezone
+        orphaned_file = FileIndex(
             path="orphaned_file.py",
             content_hash="abc123",
-            size_bytes=100,
-            content_type="text/x-python",
-            git_status=GitStatus.SYNCED,
-            is_deleted=False,
+            content="# old content",
+            updated_at=datetime.now(timezone.utc),
         )
         db_session.add(orphaned_file)
         await db_session.commit()
@@ -327,21 +326,19 @@ def test_provider():
         counts = await storage.reindex_workspace_files(workspace)
         await db_session.commit()
 
-        # 4. Verify the orphaned file record is marked as deleted
+        # 4. Verify the orphaned file record is hard-deleted from file_index
         result = await db_session.execute(
-            select(WorkspaceFile).where(WorkspaceFile.path == "orphaned_file.py")
+            select(FileIndex).where(FileIndex.path == "orphaned_file.py")
         )
-        orphaned = result.scalar_one()
-        assert orphaned.is_deleted is True
-        assert orphaned.git_status == GitStatus.DELETED
+        orphaned = result.scalar_one_or_none()
+        assert orphaned is None, "Orphaned file should be hard-deleted from file_index"
 
         # 5. Verify the real file is indexed
         result = await db_session.execute(
-            select(WorkspaceFile).where(WorkspaceFile.path == "real_file.py")
+            select(FileIndex).where(FileIndex.path == "real_file.py")
         )
-        real = result.scalar_one()
-        assert real.is_deleted is False
-        assert real.git_status == GitStatus.SYNCED
+        real = result.scalar_one_or_none()
+        assert real is not None, "Real file should exist in file_index"
 
         # 6. Verify counts
         assert counts["files_indexed"] == 1

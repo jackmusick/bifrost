@@ -1,10 +1,6 @@
 """Data models for file storage operations."""
 
 from dataclasses import dataclass
-from typing import TYPE_CHECKING
-
-if TYPE_CHECKING:
-    from src.models import WorkspaceFile
 
 
 @dataclass
@@ -58,7 +54,7 @@ class AvailableReplacementInfo:
 class WriteResult:
     """Result of a file write operation."""
 
-    file_record: "WorkspaceFile"
+    file_record: None  # Deprecated — was WorkspaceFile, now always None
     final_content: bytes
     content_modified: bool  # True if forms/agents were modified for ID alignment
     needs_indexing: bool = False  # Legacy field, always False

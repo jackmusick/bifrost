@@ -1293,12 +1293,11 @@ def get_data():
         Test that installing a package creates/updates requirements.txt in database.
 
         Verifies that after package installation:
-        1. A workspace_files record exists with path='requirements.txt'
-        2. The record has entity_type='requirements'
-        3. The content includes the installed package
+        1. A file_index record exists with path='requirements.txt'
+        2. The content includes the installed package
         """
         from sqlalchemy import select
-        from src.models.orm.workspace import WorkspaceFile
+        from src.models.orm.file_index import FileIndex
 
         package_name = "humanize"
 
@@ -1341,16 +1340,15 @@ def get_data():
         installed = poll_until(check_package_installed, max_wait=60.0)
         assert installed, f"Package '{package_name}' not installed within timeout"
 
-        # Query database for requirements.txt
-        stmt = select(WorkspaceFile).where(
-            WorkspaceFile.path == "requirements.txt",
-            WorkspaceFile.entity_type == "requirements",
-            WorkspaceFile.is_deleted == False,  # noqa: E712
+        # Query database for requirements.txt in file_index
+        stmt = select(FileIndex).where(
+            FileIndex.path == "requirements.txt",
+            FileIndex.content.isnot(None),
         )
         result = await db_session.execute(stmt)
         file = result.scalar_one_or_none()
 
-        assert file is not None, "requirements.txt should be stored in database"
+        assert file is not None, "requirements.txt should be stored in file_index"
         assert file.content is not None, "requirements.txt should have content"
         assert package_name in file.content.lower(), \
             f"requirements.txt should contain '{package_name}', got: {file.content}"

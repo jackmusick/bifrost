@@ -9,7 +9,6 @@ Key behaviors validated:
 - Forms created via API are stored in forms table, not S3
 - Apps created via API are stored in applications table, not S3
 - Regular files (no decorators) are stored in S3
-- workspace_files entries have correct entity_type values
 """
 
 import pytest
@@ -546,53 +545,7 @@ class DataHelper:
         )
 
 
-@pytest.mark.e2e
-class TestWorkspaceFilesEntityType:
-    """Verify workspace_files entries have correct entity_type values."""
 
-    def test_workflow_file_has_entity_type(self, e2e_client, platform_admin):
-        """Workflow files have entity_type='workflow' in workspace_files."""
-        workflow_content = '''"""Entity Type Test Workflow"""
-from bifrost import workflow
-
-@workflow(name="entity_type_test_workflow")
-async def entity_type_test_workflow() -> str:
-    return "test"
-'''
-        # Create workflow with index=true for synchronous discovery
-        e2e_client.put(
-            "/api/files/editor/content?index=true",
-            headers=platform_admin.headers,
-            json={
-                "path": "entity_type_test.py",
-                "content": workflow_content,
-                "encoding": "utf-8",
-            },
-        )
-
-        # List files and check the entry
-        response = e2e_client.get(
-            "/api/files/editor",
-            headers=platform_admin.headers,
-            params={"path": "."},
-        )
-        assert response.status_code == 200
-        files = response.json()
-
-        # Find our file
-        file_entry = next(
-            (f for f in files if "entity_type_test" in f.get("path", "")),
-            None
-        )
-        if file_entry:
-            # If entity_type is exposed in the response, verify it
-            entity_type = file_entry.get("entity_type")
-            if entity_type is not None:
-                assert entity_type == "workflow", \
-                    f"Expected entity_type='workflow', got '{entity_type}'"
-
-        # Cleanup
-        e2e_client.delete(
-            "/api/files/editor?path=entity_type_test.py",
-            headers=platform_admin.headers,
-        )
+# TestWorkspaceFilesEntityType was removed — entity_type no longer exists
+# in the new architecture. Files are tracked in file_index (search index)
+# and entities live in their own tables (workflows, forms, agents).

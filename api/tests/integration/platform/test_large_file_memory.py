@@ -14,7 +14,7 @@ import pytest_asyncio
 from sqlalchemy import delete
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from src.models import WorkspaceFile
+from src.models import FileIndex
 from src.services.file_storage import FileStorageService
 from tests.fixtures.large_module_generator import generate_large_module
 
@@ -23,12 +23,12 @@ from tests.fixtures.large_module_generator import generate_large_module
 async def clean_test_modules(db_session: AsyncSession):
     """Clean up test module files before and after each test."""
     await db_session.execute(
-        delete(WorkspaceFile).where(WorkspaceFile.path.like("modules/test_mem_%"))
+        delete(FileIndex).where(FileIndex.path.like("modules/test_mem_%"))
     )
     await db_session.commit()
     yield
     await db_session.execute(
-        delete(WorkspaceFile).where(WorkspaceFile.path.like("modules/test_mem_%"))
+        delete(FileIndex).where(FileIndex.path.like("modules/test_mem_%"))
     )
     await db_session.commit()
 
@@ -67,7 +67,7 @@ class TestLargeFileMemory:
                     updated_by="test",
                     force_deactivation=True,
                 )
-                db_session.expunge(result.file_record)
+                # file_record is now always None (workspace_files removed)
 
             current, peak = tracemalloc.get_traced_memory()
         finally:
@@ -102,7 +102,7 @@ class TestLargeFileMemory:
                     updated_by="test",
                     force_deactivation=True,
                 )
-                db_session.expunge(result.file_record)
+                # file_record is now always None (workspace_files removed)
                 del result
                 gc.collect()
 
