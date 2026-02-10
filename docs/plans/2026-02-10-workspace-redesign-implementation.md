@@ -23,36 +23,16 @@
 | `9a848a72` | 7-10 | RepoStorage, FileIndexService, S3 fallback, reconciler |
 | `ebbe4e10` | 11, 15 | Dual-write in file_ops, sync lock |
 | `22b4a846` | 12-14, 17a, 19 | Drop `workflows.code`, remove prewarming, migrate readers to `file_index` |
-
-### Done (unstaged, needs commit)
-
-| Tasks | What |
-|-------|------|
-| 16 | `workspace_files` table dropped — all refs removed, migration created, `ref_translation.py` + `git_tracker.py` deleted |
-| 17c | `portable_ref` column dropped (included in Task 16 migration) |
-| — | `code_editor.py` fully rewritten: modules/text use FileIndex, no WorkspaceFile |
-| — | `reindex.py` rewritten: FileIndex upsert/hard-delete |
-| — | `folder_ops.py` updated: returns `int` count, not `list[WorkspaceFile]` |
-| — | `files.py` router updated: uses `FileEntry` dataclass |
-| — | 14 test files updated, 2 test files removed (portable refs tests) |
-| — | Storage integrity tests created (`test_storage_integrity.py`) |
-| — | Git sync TDD tests created (`test_git_sync_local.py` — 19 stubs, all failing) |
-| — | GitPython sync Pydantic models created (PreflightIssue, PreflightResult, updated SyncPreview) |
-
-### Remaining work (this branch)
-
-| Task | What | Status |
-|------|------|--------|
-| 18 | Implement GitPython sync (make `test_git_sync_local.py` pass) | TODO |
-| — | Delete old E2E GitHub sync tests (`test_github.py`, `test_github_virtual_files.py`) | After Task 18 |
-| — | Migrate entity files from JSON to YAML (`.form.json` → `.form.yaml`, `.agent.json` → `.agent.yaml`) | TODO |
+| `08e9f3ac` | 16, 17c | Drop workspace_files table, remove portable_ref, rewrite code_editor and reindex |
+| `a687a11c` | — | Refactor virtual file handling to use YAML format for forms and agents |
+| `7176e7f0` | 18 | Complete git sync with conflict resolution, agent/app import, cleanup |
 
 ### Current test status
 
-**2852 pass, 23 fail.** All 23 failures are git sync tests waiting for Task 18:
-- `test_git_sync_local.py` — 19 TDD stubs (need implementation)
-- `test_github.py` — 1 old E2E test (will be deleted)
-- `test_github_virtual_files.py` — 5 old E2E tests (will be deleted)
+**2881 passed, 1 skipped, 0 failures.** All tests green including:
+- `test_git_sync_local.py` — 19 integration tests passing
+- `test_github.py` — old E2E tests passing
+- `test_github_virtual_files.py` — old E2E tests passing
 
 ---
 
@@ -2479,10 +2459,9 @@ New method: `preflight_check(repo_path) → PreflightResult`
 |-------|-------|--------|
 | Phase 1 (infrastructure) | 1-10 | ✅ Committed |
 | Phase 2 (migrate reads + column drops) | 11-15, 17a, 19 | ✅ Committed |
-| Drop workspace_files + portable_ref | 16, 17c | ✅ Unstaged, ready to commit |
-| Storage integrity tests | — | ✅ Created |
-| Git sync TDD tests | — | ✅ 19 stubs created |
-| GitPython sync implementation | 18 | **TODO** — make TDD tests pass |
-| Entity YAML migration | — | **TODO** — `.form.json` → `.form.yaml` |
+| Drop workspace_files + portable_ref | 16, 17c | ✅ Committed |
+| YAML virtual files | — | ✅ Committed |
+| GitPython sync implementation | 18 | ✅ Committed |
+| Entity YAML migration | — | Done (`.form.json` → `.form.yaml`, `.agent.json` → `.agent.yaml`) |
 
-**Test status: 2852 pass, 23 fail** (all 23 are git sync tests waiting for Task 18).
+**Test status: 2881 passed, 1 skipped, 0 failures.**
