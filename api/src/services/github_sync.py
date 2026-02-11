@@ -764,68 +764,63 @@ class GitHubSyncService:
         await self.db.execute(stmt)
 
     async def _import_form(self, mform, content: bytes) -> None:
-        """Import a form from repo YAML into the DB."""
+        """Import a form from repo YAML into the DB using FormIndexer."""
         from uuid import UUID
 
-        from sqlalchemy.dialects.postgresql import insert
-
-        from src.models.orm.forms import Form
+        from src.services.file_storage.indexers.form import FormIndexer
 
         data = yaml.safe_load(content.decode("utf-8"))
         if not data:
             return
 
-        stmt = insert(Form).values(
-            id=UUID(mform.id),
-            name=data.get("name", ""),
-            description=data.get("description"),
-            workflow_id=data.get("workflow"),
-            is_active=True,
-            created_by="git-sync",
-            organization_id=UUID(mform.organization_id) if mform.organization_id else None,
-        ).on_conflict_do_update(
-            index_elements=["id"],
-            set_={
-                "name": data.get("name", ""),
-                "description": data.get("description"),
-                "workflow_id": data.get("workflow"),
-                "is_active": True,
-                "updated_at": datetime.now(timezone.utc),
-            },
-        )
-        await self.db.execute(stmt)
+        data["id"] = mform.id
+        if mform.organization_id:
+            from sqlalchemy.dialects.postgresql import insert as pg_insert
+
+            from src.models.orm.forms import Form
+
+            stmt = pg_insert(Form).values(
+                id=UUID(mform.id),
+                name=data.get("name", ""),
+                is_active=True,
+                created_by="git-sync",
+                organization_id=UUID(mform.organization_id),
+            ).on_conflict_do_nothing(index_elements=["id"])
+            await self.db.execute(stmt)
+
+        updated_content = yaml.dump(data, default_flow_style=False, sort_keys=False).encode("utf-8")
+        indexer = FormIndexer(self.db)
+        await indexer.index_form(f"forms/{mform.id}.form.yaml", updated_content)
 
     async def _import_agent(self, magent, content: bytes) -> None:
-        """Import an agent from repo YAML into the DB."""
+        """Import an agent from repo YAML into the DB using AgentIndexer."""
         from uuid import UUID
 
-        from sqlalchemy.dialects.postgresql import insert
-
-        from src.models.orm.agents import Agent
+        from src.services.file_storage.indexers.agent import AgentIndexer
 
         data = yaml.safe_load(content.decode("utf-8"))
         if not data:
             return
 
-        stmt = insert(Agent).values(
-            id=UUID(magent.id),
-            name=data.get("name", ""),
-            system_prompt=data.get("system_prompt", ""),
-            description=data.get("description"),
-            is_active=True,
-            created_by="git-sync",
-            organization_id=UUID(magent.organization_id) if magent.organization_id else None,
-        ).on_conflict_do_update(
-            index_elements=["id"],
-            set_={
-                "name": data.get("name", ""),
-                "system_prompt": data.get("system_prompt", ""),
-                "description": data.get("description"),
-                "is_active": True,
-                "updated_at": datetime.now(timezone.utc),
-            },
-        )
-        await self.db.execute(stmt)
+        data["id"] = magent.id
+        if magent.organization_id:
+            from sqlalchemy.dialects.postgresql import insert as pg_insert
+
+            from src.models.orm.agents import Agent
+
+            stmt = pg_insert(Agent).values(
+                id=UUID(magent.id),
+                name=data.get("name", ""),
+                system_prompt=data.get("system_prompt", ""),
+                is_active=True,
+                created_by="git-sync",
+                organization_id=UUID(magent.organization_id),
+            ).on_conflict_do_nothing(index_elements=["id"])
+            await self.db.execute(stmt)
+
+        updated_content = yaml.dump(data, default_flow_style=False, sort_keys=False).encode("utf-8")
+        indexer = AgentIndexer(self.db)
+        await indexer.index_agent(f"agents/{magent.id}.agent.yaml", updated_content)
 
     async def _import_app(self, mapp, content: bytes) -> None:
         """Import an app from repo into the DB (metadata only)."""

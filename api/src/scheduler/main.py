@@ -419,6 +419,86 @@ class Scheduler:
                         data=op_result.model_dump(),
                     )
 
+                elif op_type == "git_sync_preview":
+                    # Sync preview: fetch + status + preflight
+                    fetch_result = await sync_service.desktop_fetch()
+                    if not fetch_result.success:
+                        await publish_git_op_completed(
+                            job_id, status="failed", result_type="sync_preview",
+                            error=fetch_result.error,
+                        )
+                    else:
+                        status_result = await sync_service.desktop_status()
+                        preflight_result = await sync_service.preflight()
+                        await publish_git_op_completed(
+                            job_id, status="success", result_type="sync_preview",
+                            data={
+                                "fetch": fetch_result.model_dump(),
+                                "status": status_result.model_dump(),
+                                "preflight": preflight_result.model_dump(),
+                            },
+                        )
+
+                elif op_type == "git_sync_execute":
+                    # Full sync: commit + pull (with resolutions) + push
+                    conflict_resolutions = data.get("conflict_resolutions", {})
+
+                    # Step 1: Commit local changes
+                    commit_result = await sync_service.desktop_commit("Sync from Bifrost")
+                    # Commit may have nothing to commit -- that's OK
+
+                    # Step 2: Pull remote changes
+                    pull_result = await sync_service.desktop_pull()
+                    if not pull_result.success:
+                        if pull_result.conflicts and conflict_resolutions:
+                            # Auto-resolve with provided resolutions
+                            resolve_result = await sync_service.desktop_resolve(conflict_resolutions)
+                            if not resolve_result.success:
+                                await publish_git_op_completed(
+                                    job_id, status="conflict", result_type="sync_execute",
+                                    data={"pull": pull_result.model_dump()},
+                                    error=resolve_result.error,
+                                )
+                            else:
+                                # Resolution succeeded, continue to push
+                                push_result = await sync_service.desktop_push()
+                                await publish_git_op_completed(
+                                    job_id,
+                                    status="success" if push_result.success else "failed",
+                                    result_type="sync_execute",
+                                    data={
+                                        "commit": commit_result.model_dump() if commit_result else None,
+                                        "pull": pull_result.model_dump(),
+                                        "push": push_result.model_dump() if push_result.success else None,
+                                    },
+                                    error=push_result.error if not push_result.success else None,
+                                )
+                        elif pull_result.conflicts:
+                            await publish_git_op_completed(
+                                job_id, status="conflict", result_type="sync_execute",
+                                data={"pull": pull_result.model_dump()},
+                                error="Merge conflicts detected",
+                            )
+                        else:
+                            await publish_git_op_completed(
+                                job_id, status="failed", result_type="sync_execute",
+                                error=pull_result.error,
+                            )
+                    else:
+                        # Step 3: Push
+                        push_result = await sync_service.desktop_push()
+                        await publish_git_op_completed(
+                            job_id,
+                            status="success" if push_result.success else "failed",
+                            result_type="sync_execute",
+                            data={
+                                "commit": commit_result.model_dump() if commit_result else None,
+                                "pull": pull_result.model_dump(),
+                                "push": push_result.model_dump() if push_result.success else None,
+                            },
+                            error=push_result.error if not push_result.success else None,
+                        )
+
                 else:
                     await publish_git_op_completed(
                         job_id, status="failed", result_type=result_type,

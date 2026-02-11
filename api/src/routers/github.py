@@ -30,6 +30,7 @@ from src.models import (
     GitJobResponse,
     GitRefreshStatusResponse,
     ResolveRequest,
+    SyncExecuteRequest,
     ValidateTokenRequest,
 )
 from src.services.github_api import GitHubAPIClient, GitHubAPIError
@@ -792,5 +793,62 @@ async def git_diff(
         user_email=user.email,
         op_type="git_diff",
         path=request.path,
+    )
+    return GitJobResponse(job_id=job_id)
+
+
+@router.get(
+    "/sync",
+    response_model=GitJobResponse,
+    summary="Queue sync preview",
+    description="Queue a sync preview operation. Fetches remote, computes diff, runs preflight. Results via WebSocket/polling.",
+)
+async def sync_preview(
+    ctx: Context,
+    user: CurrentSuperuser,
+    db: DbSession,
+) -> GitJobResponse:
+    """Queue a sync preview (fetch + status + preflight)."""
+    config = await get_github_config(db, ctx.org_id)
+    if not config or not config.token or not config.repo_url:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="GitHub not configured")
+
+    job_id = str(uuid.uuid4())
+    await publish_git_operation(
+        job_id=job_id,
+        org_id=str(ctx.org_id) if ctx.org_id else "",
+        user_id=str(user.user_id),
+        user_email=user.email,
+        op_type="git_sync_preview",
+    )
+    return GitJobResponse(job_id=job_id)
+
+
+@router.post(
+    "/sync",
+    response_model=GitJobResponse,
+    summary="Queue sync execution",
+    description="Queue a full sync: commit local changes, pull remote (with conflict resolutions), push. Results via WebSocket/polling.",
+)
+async def sync_execute(
+    request: SyncExecuteRequest,
+    ctx: Context,
+    user: CurrentSuperuser,
+    db: DbSession,
+) -> GitJobResponse:
+    """Queue a full sync (commit + pull + push)."""
+    config = await get_github_config(db, ctx.org_id)
+    if not config or not config.token or not config.repo_url:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="GitHub not configured")
+
+    job_id = str(uuid.uuid4())
+    await publish_git_operation(
+        job_id=job_id,
+        org_id=str(ctx.org_id) if ctx.org_id else "",
+        user_id=str(user.user_id),
+        user_email=user.email,
+        op_type="git_sync_execute",
+        conflict_resolutions=request.conflict_resolutions,
+        confirm_orphans=request.confirm_orphans,
     )
     return GitJobResponse(job_id=job_id)

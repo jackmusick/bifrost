@@ -262,7 +262,32 @@ async def cleanup_test_data(db_session: AsyncSession):
         delete(FileIndex).where(FileIndex.path.like("forms/%"))
     )
     await db_session.execute(
+        delete(FileIndex).where(FileIndex.path.like("agents/%"))
+    )
+
+    # Clean up child records before parents (foreign key dependencies)
+    from src.models.orm.agents import Agent, AgentTool
+    await db_session.execute(
+        delete(AgentTool).where(
+            AgentTool.agent_id.in_(
+                select(Agent.id).where(Agent.created_by.in_(["file_sync", "git-sync"]))
+            )
+        )
+    )
+    from src.models.orm.forms import FormField
+    await db_session.execute(
+        delete(FormField).where(
+            FormField.form_id.in_(
+                select(Form.id).where(Form.created_by.in_(["test", "git-sync"]))
+            )
+        )
+    )
+
+    await db_session.execute(
         delete(Form).where(Form.created_by.in_(["test", "git-sync"]))
+    )
+    await db_session.execute(
+        delete(Agent).where(Agent.created_by.in_(["file_sync", "git-sync"]))
     )
     await db_session.commit()
 
@@ -615,6 +640,166 @@ class TestPull:
         form = form_result.scalar_one_or_none()
         assert form is not None
         assert form.name == "Onboarding Form"
+
+    async def test_pull_new_form_with_fields(
+        self,
+        db_session: AsyncSession,
+        sync_service,
+        working_clone,
+    ):
+        """Form pulled from repo should have field definitions."""
+        from src.models.orm.forms import Form, FormField
+        from src.models.orm.workflows import Workflow
+
+        work_dir = Path(working_clone.working_dir)
+
+        # Create a workflow to be referenced
+        wf_id = uuid4()
+        db_session.add(Workflow(
+            id=wf_id,
+            name="form_test_workflow",
+            path="workflows/form_test.py",
+            function_name="form_test_workflow",
+            is_active=True,
+        ))
+        await db_session.flush()
+
+        form_id = uuid4()
+        form_yaml = f"""name: Test Form With Fields
+description: Form with field definitions
+workflow_id: {wf_id}
+form_schema:
+  fields:
+  - name: email
+    type: text
+    label: Email Address
+    required: true
+  - name: count
+    type: number
+    label: Count
+    required: false
+    default_value: 5
+"""
+        form_dir = work_dir / "forms"
+        form_dir.mkdir(exist_ok=True)
+        (form_dir / f"{form_id}.form.yaml").write_text(form_yaml)
+
+        manifest_dir = work_dir / ".bifrost"
+        manifest_dir.mkdir(exist_ok=True)
+        (manifest_dir / "metadata.yaml").write_text(f"""forms:
+  Test Form With Fields:
+    id: "{form_id}"
+    path: forms/{form_id}.form.yaml
+    organization_id: null
+    roles: []
+workflows: {{}}
+agents: {{}}
+apps: {{}}
+organizations: []
+roles: []
+""")
+
+        working_clone.index.add(["forms/", ".bifrost/"])
+        working_clone.index.commit("Add form with fields")
+        working_clone.remotes.origin.push()
+
+        # Pull into platform
+        result = await sync_service.desktop_pull()
+        assert result.success is True
+
+        # Verify form was created
+        form = await db_session.get(Form, form_id)
+        assert form is not None
+        assert form.name == "Test Form With Fields"
+        assert str(form.workflow_id) == str(wf_id)
+
+        # Verify fields were imported
+        from sqlalchemy import select
+        fields = (await db_session.execute(
+            select(FormField).where(FormField.form_id == form_id).order_by(FormField.position)
+        )).scalars().all()
+        assert len(fields) == 2
+        assert fields[0].name == "email"
+        assert fields[0].type == "text"
+        assert fields[0].required is True
+        assert fields[1].name == "count"
+        assert fields[1].default_value == 5
+
+    async def test_pull_new_agent_with_tools(
+        self,
+        db_session: AsyncSession,
+        sync_service,
+        working_clone,
+    ):
+        """Agent pulled from repo should have tool associations."""
+        from src.models.orm.agents import Agent
+        from src.models.orm.workflows import Workflow
+
+        work_dir = Path(working_clone.working_dir)
+
+        # Create a workflow to be referenced as a tool
+        wf_id = uuid4()
+        db_session.add(Workflow(
+            id=wf_id,
+            name="agent_tool_workflow",
+            path="workflows/agent_tool.py",
+            function_name="agent_tool_workflow",
+            is_active=True,
+        ))
+        await db_session.flush()
+
+        agent_id = uuid4()
+        agent_yaml = f"""name: Test Agent With Tools
+description: Agent with tool associations
+system_prompt: You are a test agent.
+channels:
+- chat
+tool_ids:
+- {wf_id}
+"""
+        # Write agent file + manifest
+        agent_dir = work_dir / "agents"
+        agent_dir.mkdir(exist_ok=True)
+        (agent_dir / f"{agent_id}.agent.yaml").write_text(agent_yaml)
+
+        manifest_dir = work_dir / ".bifrost"
+        manifest_dir.mkdir(exist_ok=True)
+        (manifest_dir / "metadata.yaml").write_text(f"""agents:
+  Test Agent With Tools:
+    id: "{agent_id}"
+    path: agents/{agent_id}.agent.yaml
+    organization_id: null
+    roles: []
+workflows: {{}}
+forms: {{}}
+apps: {{}}
+organizations: []
+roles: []
+""")
+
+        # Commit to repo
+        working_clone.index.add(["agents/", ".bifrost/"])
+        working_clone.index.commit("Add agent with tools")
+        working_clone.remotes.origin.push()
+
+        # Pull into platform
+        result = await sync_service.desktop_pull()
+        assert result.success is True
+
+        # Verify agent was created with tool association
+        agent = await db_session.get(Agent, agent_id)
+        assert agent is not None
+        assert agent.name == "Test Agent With Tools"
+        assert agent.channels == ["chat"]
+
+        # Verify tool association
+        from sqlalchemy import select
+        from src.models.orm.agents import AgentTool
+        tools = (await db_session.execute(
+            select(AgentTool).where(AgentTool.agent_id == agent_id)
+        )).scalars().all()
+        assert len(tools) == 1
+        assert tools[0].workflow_id == wf_id
 
     async def test_pull_modified_workflow(
         self,
@@ -1112,6 +1297,203 @@ class TestRoundTrip:
         # UUID should be preserved
         await db_session.refresh(form)
         assert str(form.workflow_id) == str(wf_id)
+
+    async def test_agent_with_tools_survives_round_trip(
+        self,
+        db_session: AsyncSession,
+        sync_service,
+        working_clone,
+        bare_repo,
+        tmp_path,
+    ):
+        """Create agent with tools -> commit+push -> pull back -> tools preserved."""
+        from src.models.orm.agents import Agent, AgentTool
+        from src.models.orm.workflows import Workflow as WfModel
+
+        # Create workflow (tool) and agent in DB
+        wf_id = uuid4()
+        db_session.add(WfModel(
+            id=wf_id,
+            name="RT Agent Tool WF",
+            path="workflows/git_sync_test_rt_agent_tool.py",
+            function_name="rt_agent_tool_wf",
+            is_active=True,
+        ))
+
+        agent_id = uuid4()
+        agent = Agent(
+            id=agent_id,
+            name="Round Trip Agent",
+            system_prompt="Test agent for round trip",
+            channels=["chat"],
+            is_active=True,
+            created_by="file_sync",
+        )
+        db_session.add(agent)
+        await db_session.flush()
+
+        # Add tool association
+        db_session.add(AgentTool(agent_id=agent_id, workflow_id=wf_id))
+        await db_session.commit()
+
+        # Write agent YAML and workflow file to persistent dir
+        agent_yaml = f"""id: {agent_id}
+name: Round Trip Agent
+system_prompt: Test agent for round trip
+channels:
+- chat
+tool_ids:
+- {wf_id}
+"""
+        write_entity_to_repo(
+            sync_service._persistent_dir,
+            f"agents/{agent_id}.agent.yaml",
+            agent_yaml,
+        )
+        write_entity_to_repo(
+            sync_service._persistent_dir,
+            "workflows/git_sync_test_rt_agent_tool.py",
+            SAMPLE_WORKFLOW_PY,
+        )
+
+        # Commit + push
+        commit_result = await sync_service.desktop_commit("initial commit with agent")
+        assert commit_result.success is True
+        await sync_service.desktop_push()
+
+        # Verify agent YAML exists in repo with tool_ids
+        verify_path = tmp_path / "verify"
+        Repo.clone_from(f"file://{bare_repo}", str(verify_path), branch="main")
+        agent_file = verify_path / "agents" / f"{agent_id}.agent.yaml"
+        assert agent_file.exists(), "Agent YAML should be in repo"
+        agent_content = agent_file.read_text()
+        assert str(wf_id) in agent_content, "Agent YAML should contain tool UUID"
+
+        # Pull back
+        result = await sync_service.desktop_pull()
+        assert result.success is True
+
+        # Verify agent still exists with tools
+        await db_session.refresh(agent)
+        assert agent.name == "Round Trip Agent"
+        assert agent.channels == ["chat"]
+
+        tools = (await db_session.execute(
+            select(AgentTool).where(AgentTool.agent_id == agent_id)
+        )).scalars().all()
+        assert len(tools) >= 1, f"Agent should still have tool associations, got {len(tools)}"
+        assert any(t.workflow_id == wf_id for t in tools)
+
+    async def test_form_with_fields_survives_round_trip(
+        self,
+        db_session: AsyncSession,
+        sync_service,
+        working_clone,
+        bare_repo,
+        tmp_path,
+    ):
+        """Create form with fields -> commit+push -> pull back -> fields preserved."""
+        from src.models.orm.forms import FormField
+        from src.models.orm.workflows import Workflow as WfModel
+
+        # Create workflow and form in DB
+        wf_id = uuid4()
+        db_session.add(WfModel(
+            id=wf_id,
+            name="RT Form WF",
+            path="workflows/git_sync_test_rt_form.py",
+            function_name="rt_form_wf",
+            is_active=True,
+        ))
+
+        form_id = uuid4()
+        form = Form(
+            id=form_id,
+            name="Round Trip Form",
+            description="Test form for round trip",
+            workflow_id=str(wf_id),
+            is_active=True,
+            created_by="test",
+        )
+        db_session.add(form)
+        await db_session.flush()
+
+        # Add form fields
+        db_session.add(FormField(
+            form_id=form_id,
+            name="email",
+            type="text",
+            label="Email Address",
+            required=True,
+            position=0,
+        ))
+        db_session.add(FormField(
+            form_id=form_id,
+            name="count",
+            type="number",
+            label="Count",
+            required=False,
+            default_value=5,
+            position=1,
+        ))
+        await db_session.commit()
+
+        # Write form YAML and workflow file to persistent dir
+        form_yaml = f"""id: {form_id}
+name: Round Trip Form
+description: Test form for round trip
+workflow_id: {wf_id}
+form_schema:
+  fields:
+  - name: email
+    type: text
+    label: Email Address
+    required: true
+  - name: count
+    type: number
+    label: Count
+    required: false
+    default_value: 5
+"""
+        write_entity_to_repo(
+            sync_service._persistent_dir,
+            f"forms/{form_id}.form.yaml",
+            form_yaml,
+        )
+        write_entity_to_repo(
+            sync_service._persistent_dir,
+            "workflows/git_sync_test_rt_form.py",
+            SAMPLE_WORKFLOW_PY,
+        )
+
+        # Commit + push
+        commit_result = await sync_service.desktop_commit("initial commit with form")
+        assert commit_result.success is True
+        await sync_service.desktop_push()
+
+        # Verify form YAML exists in repo
+        verify_path = tmp_path / "verify"
+        Repo.clone_from(f"file://{bare_repo}", str(verify_path), branch="main")
+        form_file = verify_path / "forms" / f"{form_id}.form.yaml"
+        assert form_file.exists(), "Form YAML should be in repo"
+
+        # Pull back
+        result = await sync_service.desktop_pull()
+        assert result.success is True
+
+        # Verify form still exists with fields
+        await db_session.refresh(form)
+        assert form.name == "Round Trip Form"
+        assert str(form.workflow_id) == str(wf_id)
+
+        fields = (await db_session.execute(
+            select(FormField).where(FormField.form_id == form_id).order_by(FormField.position)
+        )).scalars().all()
+        assert len(fields) == 2, f"Form should have 2 fields, got {len(fields)}"
+        assert fields[0].name == "email"
+        assert fields[0].required is True
+        assert fields[1].name == "count"
+        assert fields[1].default_value == 5
 
 
 # =============================================================================

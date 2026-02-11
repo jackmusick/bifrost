@@ -146,8 +146,9 @@ class FormIndexer:
 
         now = datetime.now(timezone.utc)
 
-        # Get workflow_id - prefer explicit workflow_id, fall back to linked_workflow (name lookup)
-        workflow_id = form_data.get("workflow_id")
+        # Get workflow_id - prefer explicit workflow_id, fall back to 'workflow' (UUID alias),
+        # then linked_workflow (name lookup)
+        workflow_id = form_data.get("workflow_id") or form_data.get("workflow")
         if not workflow_id:
             linked_workflow = form_data.get("linked_workflow")
             if linked_workflow:
@@ -161,9 +162,15 @@ class FormIndexer:
         # Same fallback for launch_workflow_id
         launch_workflow_id = form_data.get("launch_workflow_id")
         if not launch_workflow_id:
-            launch_workflow_name = form_data.get("launch_workflow")
-            if launch_workflow_name:
-                launch_workflow_id = await self.resolve_workflow_name_to_id(launch_workflow_name)
+            launch_workflow_value = form_data.get("launch_workflow")
+            if launch_workflow_value:
+                # Check if it looks like a UUID (direct reference) vs a name (needs lookup)
+                try:
+                    from uuid import UUID as _UUID
+                    _UUID(str(launch_workflow_value))
+                    launch_workflow_id = str(launch_workflow_value)
+                except ValueError:
+                    launch_workflow_id = await self.resolve_workflow_name_to_id(launch_workflow_value)
 
         # Upsert form - updates definition but NOT organization_id or access_level
         # These env-specific fields are only set via the API, not from file sync
@@ -198,50 +205,63 @@ class FormIndexer:
         await self.db.execute(stmt)
 
         # Sync form_schema (fields) if present
+        # Support both form_schema.fields (canonical) and flat fields (workspace shorthand)
         form_schema = form_data.get("form_schema")
         if form_schema and isinstance(form_schema, dict):
             fields_data = form_schema.get("fields", [])
-            if isinstance(fields_data, list):
-                # Delete existing fields
-                await self.db.execute(
-                    delete(FormFieldORM).where(FormFieldORM.form_id == form_id)
+        elif "fields" in form_data and isinstance(form_data["fields"], list):
+            # Flat fields format — normalize 'default' to 'default_value'
+            fields_data = []
+            for f in form_data["fields"]:
+                if isinstance(f, dict):
+                    fd = dict(f)
+                    if "default" in fd and "default_value" not in fd:
+                        fd["default_value"] = fd.pop("default")
+                    fields_data.append(fd)
+        else:
+            fields_data = None
+
+        if fields_data is not None and isinstance(fields_data, list):
+            # Delete existing fields
+            await self.db.execute(
+                delete(FormFieldORM).where(FormFieldORM.form_id == form_id)
+            )
+
+            # Create new fields from schema using Pydantic validation
+            for position, field_dict in enumerate(fields_data):
+                if not isinstance(field_dict, dict) or not field_dict.get("name"):
+                    continue
+
+                try:
+                    form_field = FormField.model_validate(field_dict)
+                except ValidationError as e:
+                    logger.warning(f"Invalid field in {path}: {e}")
+                    continue
+
+                field_orm = FormFieldORM(
+                    form_id=form_id,
+                    name=form_field.name,
+                    label=form_field.label,
+                    type=form_field.type,
+                    required=form_field.required,
+                    position=position,
+                    placeholder=form_field.placeholder,
+                    help_text=form_field.help_text,
+                    default_value=form_field.default_value,
+                    options=form_field.options,
+                    data_provider_id=form_field.data_provider_id,
+                    data_provider_inputs=(
+                        {k: v.model_dump() for k, v in form_field.data_provider_inputs.items()}
+                        if form_field.data_provider_inputs else None
+                    ),
+                    visibility_expression=form_field.visibility_expression,
+                    validation=form_field.validation,
+                    allowed_types=form_field.allowed_types,
+                    multiple=form_field.multiple,
+                    max_size_mb=form_field.max_size_mb,
+                    content=form_field.content,
                 )
-
-                # Create new fields from schema using Pydantic validation
-                for position, field_dict in enumerate(fields_data):
-                    if not isinstance(field_dict, dict) or not field_dict.get("name"):
-                        continue
-
-                    try:
-                        form_field = FormField.model_validate(field_dict)
-                    except ValidationError as e:
-                        logger.warning(f"Invalid field in {path}: {e}")
-                        continue
-
-                    field_orm = FormFieldORM(
-                        form_id=form_id,
-                        name=form_field.name,
-                        label=form_field.label,
-                        type=form_field.type,
-                        required=form_field.required,
-                        position=position,
-                        placeholder=form_field.placeholder,
-                        help_text=form_field.help_text,
-                        default_value=form_field.default_value,
-                        options=form_field.options,
-                        data_provider_id=form_field.data_provider_id,
-                        data_provider_inputs=(
-                            {k: v.model_dump() for k, v in form_field.data_provider_inputs.items()}
-                            if form_field.data_provider_inputs else None
-                        ),
-                        visibility_expression=form_field.visibility_expression,
-                        validation=form_field.validation,
-                        allowed_types=form_field.allowed_types,
-                        multiple=form_field.multiple,
-                        max_size_mb=form_field.max_size_mb,
-                        content=form_field.content,
-                    )
-                    self.db.add(field_orm)
+                self.db.add(field_orm)
 
         logger.debug(f"Indexed form: {name} from {path}")
         return content_modified

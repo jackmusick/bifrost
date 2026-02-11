@@ -338,6 +338,7 @@ from src.models.contracts.github import (
     PushResult,
     ResolveResult,
     DiffResult,
+    SyncExecuteRequest,
 )
 
 # CLI Models
@@ -749,6 +750,7 @@ __all__ = [
     "PushResult",
     "ResolveResult",
     "DiffResult",
+    "SyncExecuteRequest",
     # CLI Models
     "CLIFileReadRequest",
     "CLIFileWriteRequest",

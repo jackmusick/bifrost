@@ -177,7 +177,8 @@ class AgentIndexer:
         await self.db.execute(stmt)
 
         # Sync tool associations (tool_ids are workflow UUIDs)
-        tool_ids = agent_data.get("tool_ids", [])
+        # Accept 'tools' as friendlier alias for 'tool_ids'
+        tool_ids = agent_data.get("tool_ids") or agent_data.get("tools", [])
         if isinstance(tool_ids, list):
             # Delete existing tool associations
             await self.db.execute(

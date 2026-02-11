@@ -410,6 +410,17 @@ class DiffResult(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
 
+class SyncPreviewRequest(BaseModel):
+    """Request body for sync preview (currently empty, reserved for future filters)."""
+    pass
+
+
+class SyncExecuteRequest(BaseModel):
+    """Request to execute a sync with conflict resolutions."""
+    conflict_resolutions: dict[str, str] = Field(default_factory=dict)
+    confirm_orphans: bool = False
+
+
 # ==================== ORPHAN MANAGEMENT MODELS ====================
 
 
