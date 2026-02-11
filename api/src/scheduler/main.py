@@ -421,6 +421,9 @@ class Scheduler:
 
                 elif op_type == "git_sync_preview":
                     # Sync preview: fetch + status + preflight
+                    # Result must match CLI's expected format:
+                    #   preview.to_push, preview.to_pull, preview.conflicts,
+                    #   preview.is_empty, preview.preflight
                     fetch_result = await sync_service.desktop_fetch()
                     if not fetch_result.success:
                         await publish_git_op_completed(
@@ -430,17 +433,45 @@ class Scheduler:
                     else:
                         status_result = await sync_service.desktop_status()
                         preflight_result = await sync_service.preflight()
+
+                        # Build to_push from local changed files
+                        to_push = [
+                            {
+                                "action": cf.change_type,
+                                "path": cf.path,
+                                "display_name": cf.display_name,
+                                "entity_type": cf.entity_type,
+                            }
+                            for cf in status_result.changed_files
+                        ]
+
+                        # to_pull: we know how many commits behind but not
+                        # individual files; leave empty (pull happens on execute)
+                        to_pull: list[dict[str, str]] = []
+
+                        is_empty = (
+                            not to_push
+                            and fetch_result.commits_behind == 0
+                        )
+
+                        preview = {
+                            "is_empty": is_empty,
+                            "to_push": to_push,
+                            "to_pull": to_pull,
+                            "conflicts": [],
+                            "preflight": preflight_result.model_dump(),
+                            "commits_ahead": fetch_result.commits_ahead,
+                            "commits_behind": fetch_result.commits_behind,
+                        }
+
                         await publish_git_op_completed(
                             job_id, status="success", result_type="sync_preview",
-                            data={
-                                "fetch": fetch_result.model_dump(),
-                                "status": status_result.model_dump(),
-                                "preflight": preflight_result.model_dump(),
-                            },
+                            preview=preview,
                         )
 
                 elif op_type == "git_sync_execute":
                     # Full sync: commit + pull (with resolutions) + push
+                    # Result must provide top-level pulled/pushed/commit_sha for CLI
                     conflict_resolutions = data.get("conflict_resolutions", {})
 
                     # Step 1: Commit local changes
@@ -456,7 +487,6 @@ class Scheduler:
                             if not resolve_result.success:
                                 await publish_git_op_completed(
                                     job_id, status="conflict", result_type="sync_execute",
-                                    data={"pull": pull_result.model_dump()},
                                     error=resolve_result.error,
                                 )
                             else:
@@ -466,17 +496,14 @@ class Scheduler:
                                     job_id,
                                     status="success" if push_result.success else "failed",
                                     result_type="sync_execute",
-                                    data={
-                                        "commit": commit_result.model_dump() if commit_result else None,
-                                        "pull": pull_result.model_dump(),
-                                        "push": push_result.model_dump() if push_result.success else None,
-                                    },
+                                    pulled=pull_result.pulled,
+                                    pushed=commit_result.files_committed if commit_result else 0,
+                                    commit_sha=push_result.commit_sha,
                                     error=push_result.error if not push_result.success else None,
                                 )
                         elif pull_result.conflicts:
                             await publish_git_op_completed(
                                 job_id, status="conflict", result_type="sync_execute",
-                                data={"pull": pull_result.model_dump()},
                                 error="Merge conflicts detected",
                             )
                         else:
@@ -491,11 +518,9 @@ class Scheduler:
                             job_id,
                             status="success" if push_result.success else "failed",
                             result_type="sync_execute",
-                            data={
-                                "commit": commit_result.model_dump() if commit_result else None,
-                                "pull": pull_result.model_dump(),
-                                "push": push_result.model_dump() if push_result.success else None,
-                            },
+                            pulled=pull_result.pulled,
+                            pushed=commit_result.files_committed if commit_result else 0,
+                            commit_sha=push_result.commit_sha,
                             error=push_result.error if not push_result.success else None,
                         )
 

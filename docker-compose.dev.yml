@@ -46,6 +46,9 @@ services:
 
   # Init Container - development password defaults
   init:
+    build:
+      context: .
+      dockerfile: api/Dockerfile.dev
     environment:
       BIFROST_ENVIRONMENT: development
       BIFROST_SECRET_KEY: ${BIFROST_SECRET_KEY:-dev-secret-key-change-in-production-must-be-32-chars}
@@ -60,6 +63,9 @@ services:
 
   # API with hot reload for development
   api:
+    build:
+      context: .
+      dockerfile: api/Dockerfile.dev
     environment:
       BIFROST_ENVIRONMENT: development
       BIFROST_DEBUG: ${BIFROST_DEBUG:-true}
@@ -89,6 +95,9 @@ services:
 
   # Scheduler with hot reload for development
   scheduler:
+    build:
+      context: .
+      dockerfile: api/Dockerfile.dev
     environment:
       BIFROST_ENVIRONMENT: development
       BIFROST_SECRET_KEY: ${BIFROST_SECRET_KEY:-dev-secret-key-change-in-production-must-be-32-chars}
@@ -106,6 +115,9 @@ services:
 
   # Worker with hot reload for development
   worker:
+    build:
+      context: .
+      dockerfile: api/Dockerfile.dev
     environment:
       BIFROST_ENVIRONMENT: development
       BIFROST_SECRET_KEY: ${BIFROST_SECRET_KEY:-dev-secret-key-change-in-production-must-be-32-chars}

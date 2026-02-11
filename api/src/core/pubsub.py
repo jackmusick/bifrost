@@ -624,6 +624,10 @@ async def publish_git_op_completed(
     result_type: str,
     data: dict[str, Any] | None = None,
     error: str | None = None,
+    preview: dict[str, Any] | None = None,
+    pulled: int = 0,
+    pushed: int = 0,
+    commit_sha: str | None = None,
 ) -> None:
     """
     Publish git operation completion.
@@ -637,6 +641,10 @@ async def publish_git_op_completed(
         result_type: Which operation completed (fetch, commit, pull, push, status, resolve, diff)
         data: Result data dict
         error: Error message if failed
+        preview: Sync preview data (for sync_preview ops, consumed by CLI)
+        pulled: Number of files pulled (for sync_execute ops)
+        pushed: Number of files pushed (for sync_execute ops)
+        commit_sha: Commit SHA if created (for sync_execute ops)
     """
     import json
 
@@ -650,6 +658,14 @@ async def publish_git_op_completed(
         completion_message["data"] = data
     if error is not None:
         completion_message["error"] = error
+    if preview is not None:
+        completion_message["preview"] = preview
+    if pulled:
+        completion_message["pulled"] = pulled
+    if pushed:
+        completion_message["pushed"] = pushed
+    if commit_sha is not None:
+        completion_message["commit_sha"] = commit_sha
 
     await manager.broadcast(f"git:{job_id}", completion_message)
 
