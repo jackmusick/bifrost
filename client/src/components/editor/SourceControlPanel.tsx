@@ -512,51 +512,6 @@ export function SourceControlPanel() {
 				</button>
 			</div>
 
-			{/* Action bar */}
-			{status.configured && (
-				<div className="border-b px-4 py-2 flex items-center gap-2">
-					{commitsBehind > 0 && (
-						<Button
-							size="sm"
-							variant="outline"
-							onClick={handlePull}
-							disabled={!!loading}
-							className="gap-1.5 flex-1"
-						>
-							{loading === "pulling" ? (
-								<Loader2 className="h-3.5 w-3.5 animate-spin" />
-							) : (
-								<Download className="h-3.5 w-3.5" />
-							)}
-							Pull {commitsBehind > 0 && <span className="text-xs">↓{commitsBehind}</span>}
-						</Button>
-					)}
-					{commitsAhead > 0 && (
-						<Button
-							size="sm"
-							variant="outline"
-							onClick={handlePush}
-							disabled={!!loading}
-							className="gap-1.5 flex-1"
-						>
-							{loading === "pushing" ? (
-								<Loader2 className="h-3.5 w-3.5 animate-spin" />
-							) : (
-								<Upload className="h-3.5 w-3.5" />
-							)}
-							Push {commitsAhead > 0 && <span className="text-xs">↑{commitsAhead}</span>}
-						</Button>
-					)}
-					{commitsBehind === 0 && commitsAhead === 0 && (
-						<span className="text-xs text-muted-foreground">
-							{status.last_synced
-								? `Synced ${formatDistanceToNow(new Date(status.last_synced), { addSuffix: true })}`
-								: "Up to date"}
-						</span>
-					)}
-				</div>
-			)}
-
 			{/* Scrollable sections */}
 			<div className="flex-1 flex flex-col min-h-0 overflow-hidden">
 				{/* Merge conflicts (only after failed pull) */}
@@ -585,11 +540,15 @@ export function SourceControlPanel() {
 					commitMessage={commitMessage}
 					onCommitMessageChange={setCommitMessage}
 					onCommit={handleCommit}
+					onPull={handlePull}
+					onPush={handlePush}
 					onShowDiff={handleShowDiff}
-					isCommitting={loading === "committing"}
-					isLoadingChanges={loading === "loading_changes"}
+					commitsBehind={commitsBehind}
+					commitsAhead={commitsAhead}
+					loading={loading}
 					disabled={!!loading}
 					branch={status.current_branch || "main"}
+					lastSynced={status.last_synced}
 				/>
 
 				{/* Commits */}
@@ -758,23 +717,113 @@ function ChangesSection({
 	commitMessage,
 	onCommitMessageChange,
 	onCommit,
+	onPull,
+	onPush,
 	onShowDiff,
-	isCommitting,
-	isLoadingChanges,
+	commitsBehind,
+	commitsAhead,
+	loading,
 	disabled,
 	branch,
+	lastSynced,
 }: {
 	changedFiles: ChangedFile[];
 	commitMessage: string;
 	onCommitMessageChange: (msg: string) => void;
 	onCommit: () => void;
+	onPull: () => void;
+	onPush: () => void;
 	onShowDiff: (file: ChangedFile) => void;
-	isCommitting: boolean;
-	isLoadingChanges: boolean;
+	commitsBehind: number;
+	commitsAhead: number;
+	loading: "fetching" | "committing" | "pulling" | "pushing" | "resolving" | "loading_changes" | null;
 	disabled: boolean;
 	branch: string;
+	lastSynced?: string | null;
 }) {
 	const [expanded, setExpanded] = useState(true);
+
+	// Determine the primary action: pull > commit > push > synced
+	const canCommit = changedFiles.length > 0 && commitMessage.trim().length > 0;
+	const showCommitInput = changedFiles.length > 0 || (!commitsAhead && !commitsBehind);
+
+	let actionButton: React.ReactNode;
+	if (commitsBehind > 0 && !canCommit) {
+		// Pull takes priority when there's nothing ready to commit
+		actionButton = (
+			<Button
+				size="sm"
+				className="w-full gap-2 rounded-none"
+				onClick={onPull}
+				disabled={disabled}
+			>
+				{loading === "pulling" ? (
+					<>
+						<Loader2 className="h-3.5 w-3.5 animate-spin" />
+						Pulling...
+					</>
+				) : (
+					<>
+						<Download className="h-3.5 w-3.5" />
+						Pull ↓{commitsBehind}
+					</>
+				)}
+			</Button>
+		);
+	} else if (canCommit) {
+		actionButton = (
+			<Button
+				size="sm"
+				className="w-full gap-2 rounded-none"
+				onClick={onCommit}
+				disabled={disabled}
+			>
+				{loading === "committing" ? (
+					<>
+						<Loader2 className="h-3.5 w-3.5 animate-spin" />
+						Committing...
+					</>
+				) : (
+					`Commit to ${branch}`
+				)}
+			</Button>
+		);
+	} else if (commitsAhead > 0) {
+		actionButton = (
+			<Button
+				size="sm"
+				className="w-full gap-2 rounded-none"
+				onClick={onPush}
+				disabled={disabled}
+			>
+				{loading === "pushing" ? (
+					<>
+						<Loader2 className="h-3.5 w-3.5 animate-spin" />
+						Pushing...
+					</>
+				) : (
+					<>
+						<Upload className="h-3.5 w-3.5" />
+						Push ↑{commitsAhead}
+					</>
+				)}
+			</Button>
+		);
+	} else {
+		// Nothing to do — show a disabled synced button
+		actionButton = (
+			<Button
+				size="sm"
+				variant="outline"
+				className="w-full gap-2 rounded-none"
+				disabled
+			>
+				{lastSynced
+					? `Synced ${formatDistanceToNow(new Date(lastSynced), { addSuffix: true })}`
+					: "Up to date"}
+			</Button>
+		);
+	}
 
 	return (
 		<div className={cn("border-t flex flex-col min-h-0", expanded && "flex-1")}>
@@ -795,41 +844,33 @@ function ChangesSection({
 			</button>
 			{expanded && (
 				<div className="flex-1 flex flex-col overflow-hidden min-h-0">
-					{/* Commit message + button */}
-					<div className="px-4 pt-2 pb-2 flex flex-col gap-2 flex-shrink-0">
-						<input
-							type="text"
-							value={commitMessage}
-							onChange={(e) => onCommitMessageChange(e.target.value)}
-							placeholder="Commit message"
-							className="w-full px-2 py-1.5 text-xs bg-muted/50 border border-border rounded focus:outline-none focus:ring-1 focus:ring-ring"
-							disabled={disabled}
-							onKeyDown={(e) => {
-								if (e.key === "Enter" && commitMessage.trim() && changedFiles.length > 0) {
-									onCommit();
-								}
-							}}
-						/>
-						<Button
-							size="sm"
-							className="w-full gap-2"
-							onClick={onCommit}
-							disabled={disabled || !commitMessage.trim() || changedFiles.length === 0}
-						>
-							{isCommitting ? (
-								<>
-									<Loader2 className="h-3.5 w-3.5 animate-spin" />
-									Committing...
-								</>
-							) : (
-								`Commit to ${branch}`
-							)}
-						</Button>
+					{/* Commit message input (shown when there are changes or nothing else to do) */}
+					{showCommitInput && (
+						<div className="px-4 pt-2 pb-2 flex-shrink-0">
+							<input
+								type="text"
+								value={commitMessage}
+								onChange={(e) => onCommitMessageChange(e.target.value)}
+								placeholder="Commit message"
+								className="w-full px-2 py-1.5 text-xs bg-muted/50 border border-border rounded focus:outline-none focus:ring-1 focus:ring-ring"
+								disabled={disabled}
+								onKeyDown={(e) => {
+									if (e.key === "Enter" && canCommit) {
+										onCommit();
+									}
+								}}
+							/>
+						</div>
+					)}
+
+					{/* Dynamic action button */}
+					<div className="flex-shrink-0">
+						{actionButton}
 					</div>
 
 					{/* File list */}
 					<div className="flex-1 overflow-y-auto px-4 pb-2 min-h-0">
-						{isLoadingChanges ? (
+						{loading === "loading_changes" ? (
 							<div className="flex items-center justify-center py-4">
 								<Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
 							</div>
