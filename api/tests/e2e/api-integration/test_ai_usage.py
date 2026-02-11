@@ -22,9 +22,9 @@ class TestAIPricingRepositoryIntegration:
     """Integration tests for AIPricingRepository with real database."""
 
     @pytest.mark.asyncio
-    async def test_create_and_get_pricing(self, integration_db_session: AsyncSession):
+    async def test_create_and_get_pricing(self, db_session: AsyncSession):
         """Test creating and retrieving pricing record."""
-        repo = AIPricingRepository(integration_db_session)
+        repo = AIPricingRepository(db_session)
 
         # Create unique model name to avoid conflicts
         model_name = f"test-model-{uuid4()}"
@@ -50,13 +50,13 @@ class TestAIPricingRepositoryIntegration:
         assert retrieved.input_price_per_million == Decimal("5.00")
 
         # Cleanup
-        await integration_db_session.delete(pricing)
-        await integration_db_session.commit()
+        await db_session.delete(pricing)
+        await db_session.commit()
 
     @pytest.mark.asyncio
-    async def test_update_pricing(self, integration_db_session: AsyncSession):
+    async def test_update_pricing(self, db_session: AsyncSession):
         """Test updating pricing record."""
-        repo = AIPricingRepository(integration_db_session)
+        repo = AIPricingRepository(db_session)
 
         model_name = f"test-model-{uuid4()}"
 
@@ -78,13 +78,13 @@ class TestAIPricingRepositoryIntegration:
         assert updated.output_price_per_million == Decimal("15.00")  # Unchanged
 
         # Cleanup
-        await integration_db_session.delete(pricing)
-        await integration_db_session.commit()
+        await db_session.delete(pricing)
+        await db_session.commit()
 
     @pytest.mark.asyncio
-    async def test_list_all_pricing(self, integration_db_session: AsyncSession):
+    async def test_list_all_pricing(self, db_session: AsyncSession):
         """Test listing all pricing records."""
-        repo = AIPricingRepository(integration_db_session)
+        repo = AIPricingRepository(db_session)
 
         # Create test pricing
         model_name = f"test-model-{uuid4()}"
@@ -103,8 +103,8 @@ class TestAIPricingRepositoryIntegration:
         assert model_name in model_names
 
         # Cleanup
-        await integration_db_session.delete(pricing)
-        await integration_db_session.commit()
+        await db_session.delete(pricing)
+        await db_session.commit()
 
 
 class TestAIUsageServiceIntegration:
@@ -124,7 +124,7 @@ class TestAIUsageServiceIntegration:
     @pytest.mark.asyncio
     async def test_get_cached_price_from_redis(
         self,
-        integration_db_session: AsyncSession,
+        db_session: AsyncSession,
         redis_client,
     ):
         """Test pricing cache lookup from Redis."""
@@ -138,7 +138,7 @@ class TestAIUsageServiceIntegration:
         )
 
         input_price, output_price = await get_cached_price(
-            redis_client, integration_db_session, "openai", "gpt-4o"
+            redis_client, db_session, "openai", "gpt-4o"
         )
 
         assert input_price == Decimal("5.00")
@@ -150,7 +150,7 @@ class TestAIUsageServiceIntegration:
     @pytest.mark.asyncio
     async def test_get_cached_price_from_db(
         self,
-        integration_db_session: AsyncSession,
+        db_session: AsyncSession,
         redis_client,
     ):
         """Test pricing lookup falls back to database."""
@@ -162,18 +162,18 @@ class TestAIUsageServiceIntegration:
         await redis_client.delete(cache_key)
 
         # Create pricing in DB
-        repo = AIPricingRepository(integration_db_session)
+        repo = AIPricingRepository(db_session)
         pricing = await repo.create_pricing(
             provider="test-provider",
             model=model_name,
             input_price_per_million=Decimal("7.00"),
             output_price_per_million=Decimal("21.00"),
         )
-        await integration_db_session.commit()
+        await db_session.commit()
 
         # Should find it from DB
         input_price, output_price = await get_cached_price(
-            redis_client, integration_db_session, "test-provider", model_name
+            redis_client, db_session, "test-provider", model_name
         )
 
         assert input_price == Decimal("7.00")
@@ -185,8 +185,8 @@ class TestAIUsageServiceIntegration:
 
         # Cleanup
         await redis_client.delete(cache_key)
-        await integration_db_session.delete(pricing)
-        await integration_db_session.commit()
+        await db_session.delete(pricing)
+        await db_session.commit()
 
     @pytest.mark.asyncio
     async def test_invalidate_usage_cache(
