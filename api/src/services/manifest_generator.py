@@ -42,34 +42,34 @@ async def generate_manifest(db: AsyncSession) -> Manifest:
     Queries all active entities and builds a complete manifest
     with org bindings, role assignments, and runtime config.
     """
-    # Fetch all active workflows
+    # Fetch all active workflows (sorted by name for deterministic manifest output)
     wf_result = await db.execute(
-        select(Workflow).where(Workflow.is_active == True)  # noqa: E712
+        select(Workflow).where(Workflow.is_active == True).order_by(Workflow.name)  # noqa: E712
     )
     workflows_list = wf_result.scalars().all()
 
-    # Fetch all active forms
+    # Fetch all active forms (sorted by name)
     form_result = await db.execute(
-        select(Form).where(Form.is_active == True)  # noqa: E712
+        select(Form).where(Form.is_active == True).order_by(Form.name)  # noqa: E712
     )
     forms_list = form_result.scalars().all()
 
-    # Fetch all active agents
+    # Fetch all active agents (sorted by name)
     agent_result = await db.execute(
-        select(Agent).where(Agent.is_active == True)  # noqa: E712
+        select(Agent).where(Agent.is_active == True).order_by(Agent.name)  # noqa: E712
     )
     agents_list = agent_result.scalars().all()
 
-    # Fetch all apps (Application has no is_active field)
-    app_result = await db.execute(select(Application))
+    # Fetch all apps (sorted by name)
+    app_result = await db.execute(select(Application).order_by(Application.name))
     apps_list = app_result.scalars().all()
 
-    # Fetch organizations
-    org_result = await db.execute(select(Organization))
+    # Fetch organizations (sorted by name)
+    org_result = await db.execute(select(Organization).order_by(Organization.name))
     orgs_list = org_result.scalars().all()
 
-    # Fetch roles (roles are global — no organization_id on Role model)
-    role_result = await db.execute(select(Role))
+    # Fetch roles (sorted by name)
+    role_result = await db.execute(select(Role).order_by(Role.name))
     roles_list = role_result.scalars().all()
 
     # Fetch role assignments for all entity types
@@ -129,7 +129,7 @@ async def generate_manifest(db: AsyncSession) -> Manifest:
                 path=f"forms/{form.id}.form.yaml",
                 organization_id=str(form.organization_id) if form.organization_id else None,
                 roles=form_roles_by_form.get(str(form.id), []),
-                access_level=str(form.access_level) if form.access_level else "role_based",
+                access_level=form.access_level.value if form.access_level else "role_based",
             )
             for form in forms_list
         },
@@ -139,7 +139,7 @@ async def generate_manifest(db: AsyncSession) -> Manifest:
                 path=f"agents/{agent.id}.agent.yaml",
                 organization_id=str(agent.organization_id) if agent.organization_id else None,
                 roles=agent_roles_by_agent.get(str(agent.id), []),
-                access_level=str(agent.access_level) if agent.access_level else "role_based",
+                access_level=agent.access_level.value if agent.access_level else "role_based",
             )
             for agent in agents_list
             if not agent.is_system  # Exclude system agents
@@ -150,7 +150,7 @@ async def generate_manifest(db: AsyncSession) -> Manifest:
                 path=f"apps/{app.slug or app.id}/app.yaml",
                 organization_id=str(app.organization_id) if app.organization_id else None,
                 roles=app_roles_by_app.get(str(app.id), []),
-                access_level=str(app.access_level) if app.access_level else "authenticated",
+                access_level=app.access_level.value if app.access_level else "authenticated",
             )
             for app in apps_list
         },
