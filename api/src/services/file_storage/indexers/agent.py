@@ -158,6 +158,10 @@ class AgentIndexer:
             channels=channels,
             knowledge_sources=knowledge_sources,
             is_active=agent_data.get("is_active", True),
+            llm_model=agent_data.get("llm_model"),
+            llm_temperature=agent_data.get("llm_temperature"),
+            llm_max_tokens=agent_data.get("llm_max_tokens"),
+            system_tools=agent_data.get("system_tools", []),
             created_by="file_sync",
         ).on_conflict_do_update(
             index_elements=[Agent.id],
@@ -169,6 +173,10 @@ class AgentIndexer:
                 "channels": channels,
                 "knowledge_sources": knowledge_sources,
                 "is_active": agent_data.get("is_active", True),
+                "llm_model": agent_data.get("llm_model"),
+                "llm_temperature": agent_data.get("llm_temperature"),
+                "llm_max_tokens": agent_data.get("llm_max_tokens"),
+                "system_tools": agent_data.get("system_tools", []),
                 "updated_at": now,
                 # NOTE: organization_id and access_level are NOT updated
                 # These are preserved from the database (env-specific)
