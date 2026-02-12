@@ -7,7 +7,7 @@ Key principles:
 1. DB is source of truth for "local" state
 2. GitPython for clone/pull/push/commit
 3. Conflict detection with user resolution
-4. .bifrost/metadata.yaml declares entity identity
+4. .bifrost/ split manifest files declare entity identity
 5. Preflight validates repo health (syntax, lint, refs, orphans)
 """
 
@@ -43,9 +43,9 @@ if TYPE_CHECKING:
     )
 from src.services.manifest import (
     Manifest,
-    parse_manifest,
-    serialize_manifest,
     get_all_entity_ids,
+    read_manifest_from_dir,
+    write_manifest_to_dir,
 )
 from src.services.manifest_generator import generate_manifest
 
@@ -209,6 +209,9 @@ class GitHubSyncService:
                             change_type = "deleted"
                         elif status_code == "R":
                             change_type = "renamed"
+                            # Porcelain rename format: "old_path -> new_path"
+                            if " -> " in path:
+                                path = path.split(" -> ", 1)[1]
                         else:
                             change_type = "modified"
 
@@ -533,22 +536,39 @@ class GitHubSyncService:
         return repo
 
     async def _regenerate_manifest_only(self, work_dir: Path) -> None:
-        """Write .bifrost/metadata.yaml from DB state. Lightweight - no entity re-serialization."""
+        """Write .bifrost/ split manifest files from DB state. Lightweight - no entity re-serialization."""
         manifest = await generate_manifest(self.db)
-        manifest_path = work_dir / ".bifrost" / "metadata.yaml"
-        manifest_path.parent.mkdir(parents=True, exist_ok=True)
-        manifest_path.write_text(serialize_manifest(manifest))
+        write_manifest_to_dir(manifest, work_dir / ".bifrost")
 
     async def _import_all_entities(self, work_dir: Path) -> int:
-        """Import all entities from the working tree into the DB. Returns count."""
-        manifest_path = work_dir / ".bifrost" / "metadata.yaml"
-        if not manifest_path.exists():
+        """Import all entities from the working tree into the DB.
+
+        Import order follows dependency chain:
+        1. Workflows (no deps)
+        2. Integrations (refs workflow UUIDs for data_provider)
+        3. Configs (refs integration UUIDs)
+        4. Tables (refs org/app UUIDs)
+        5. Event Sources + Subscriptions (refs integration + workflow UUIDs)
+        6. Forms (refs workflow UUIDs)
+        7. Agents (refs workflow UUIDs)
+        8. Apps (refs org UUIDs)
+
+        Returns count of entities imported.
+        """
+        bifrost_dir = work_dir / ".bifrost"
+        manifest = read_manifest_from_dir(bifrost_dir)
+
+        has_entities = (
+            manifest.workflows or manifest.forms or manifest.agents or manifest.apps
+            or manifest.integrations or manifest.configs or manifest.tables
+            or manifest.events
+        )
+        if not has_entities:
             return 0
 
-        manifest = parse_manifest(manifest_path.read_text())
         count = 0
 
-        # Import workflows
+        # 1. Import workflows
         for wf_name, mwf in manifest.workflows.items():
             wf_path = work_dir / mwf.path
             if wf_path.exists():
@@ -556,7 +576,27 @@ class GitHubSyncService:
                 await self._import_workflow(wf_name, mwf, content)
                 count += 1
 
-        # Import forms
+        # 2. Import integrations (with config_schema, oauth_provider, mappings)
+        for integ_name, minteg in manifest.integrations.items():
+            await self._import_integration(integ_name, minteg)
+            count += 1
+
+        # 3. Import configs
+        for _config_key, mcfg in manifest.configs.items():
+            await self._import_config(mcfg)
+            count += 1
+
+        # 4. Import tables
+        for table_name, mtable in manifest.tables.items():
+            await self._import_table(table_name, mtable)
+            count += 1
+
+        # 5. Import event sources + subscriptions
+        for _es_name, mes in manifest.events.items():
+            await self._import_event_source(mes)
+            count += 1
+
+        # 6. Import forms
         for _form_name, mform in manifest.forms.items():
             form_path = work_dir / mform.path
             if form_path.exists():
@@ -564,7 +604,7 @@ class GitHubSyncService:
                 await self._import_form(mform, content)
                 count += 1
 
-        # Import agents
+        # 7. Import agents
         for _agent_name, magent in manifest.agents.items():
             agent_path = work_dir / magent.path
             if agent_path.exists():
@@ -572,7 +612,7 @@ class GitHubSyncService:
                 await self._import_agent(magent, content)
                 count += 1
 
-        # Import apps
+        # 8. Import apps
         for _app_name, mapp in manifest.apps.items():
             app_path = work_dir / mapp.path
             if app_path.exists():
@@ -583,10 +623,16 @@ class GitHubSyncService:
         return count
 
     async def _delete_removed_entities(self, work_dir: Path) -> None:
-        """Hard-delete entities whose files no longer exist in the working tree after a pull.
+        """Delete entities that disappeared from the manifest after a pull.
 
         Git history provides the undo mechanism — no need for a DB recycle bin.
         Compares manifest entity IDs against active DB entities to find deletions.
+
+        Deletion strategy per entity type:
+        - Workflows, Forms, Agents, Apps: hard-delete (existing behavior)
+        - Integrations, Configs, Events: hard-delete (manifest is source of truth)
+        - Tables: soft-delete (keep data, set inactive — never created here currently)
+        - Knowledge: no-op (declarative only, no DB entity)
         """
         from uuid import UUID
 
@@ -594,14 +640,14 @@ class GitHubSyncService:
 
         from src.models.orm.agents import Agent
         from src.models.orm.applications import Application
+        from src.models.orm.config import Config
+        from src.models.orm.events import EventSource, EventSubscription
         from src.models.orm.forms import Form
+        from src.models.orm.integrations import Integration
+        from src.models.orm.tables import Table
         from src.models.orm.workflows import Workflow
 
-        manifest_path = work_dir / ".bifrost" / "metadata.yaml"
-        if not manifest_path.exists():
-            return
-
-        manifest = parse_manifest(manifest_path.read_text())
+        manifest = read_manifest_from_dir(work_dir / ".bifrost")
 
         # Collect IDs of entities present in the manifest AND whose files exist
         present_wf_ids: set[str] = set()
@@ -624,6 +670,16 @@ class GitHubSyncService:
             if (work_dir / mapp.path).exists():
                 present_app_ids.add(mapp.id)
 
+        # IDs present in manifest (no file check needed for non-file entities)
+        present_integ_ids = {minteg.id for minteg in manifest.integrations.values()}
+        present_config_ids = {mcfg.id for mcfg in manifest.configs.values()}
+        present_table_ids = {mtable.id for mtable in manifest.tables.values()}
+        present_event_ids = {mes.id for mes in manifest.events.values()}
+        present_sub_ids: set[str] = set()
+        for mes in manifest.events.values():
+            for msub in mes.subscriptions:
+                present_sub_ids.add(msub.id)
+
         # Delete workflows synced from git that are no longer present
         wf_result = await self.db.execute(
             select(Workflow.id).where(
@@ -637,6 +693,55 @@ class GitHubSyncService:
                 logger.info(f"Deleting workflow {wf_id} — removed from repo")
                 await self.db.execute(
                     sa_delete(Workflow).where(Workflow.id == UUID(wf_id))
+                )
+
+        # Delete integrations not in manifest
+        integ_result = await self.db.execute(
+            select(Integration.id).where(Integration.is_deleted == False)  # noqa: E712
+        )
+        for row in integ_result.all():
+            integ_id = str(row[0])
+            if integ_id not in present_integ_ids:
+                logger.info(f"Deleting integration {integ_id} — removed from repo")
+                await self.db.execute(
+                    sa_delete(Integration).where(Integration.id == UUID(integ_id))
+                )
+
+        # Delete configs not in manifest
+        config_result = await self.db.execute(select(Config.id))
+        for row in config_result.all():
+            config_id = str(row[0])
+            if config_id not in present_config_ids:
+                logger.info(f"Deleting config {config_id} — removed from repo")
+                await self.db.execute(
+                    sa_delete(Config).where(Config.id == UUID(config_id))
+                )
+
+        # Soft-delete tables not in manifest (keep data)
+        table_result = await self.db.execute(select(Table.id))
+        for row in table_result.all():
+            table_id = str(row[0])
+            if table_id not in present_table_ids:
+                logger.info(f"Table {table_id} not in manifest (data preserved)")
+
+        # Delete event subscriptions not in manifest
+        sub_result = await self.db.execute(select(EventSubscription.id))
+        for row in sub_result.all():
+            sub_id = str(row[0])
+            if sub_id not in present_sub_ids:
+                logger.info(f"Deleting event subscription {sub_id} — removed from repo")
+                await self.db.execute(
+                    sa_delete(EventSubscription).where(EventSubscription.id == UUID(sub_id))
+                )
+
+        # Delete event sources not in manifest
+        es_result = await self.db.execute(select(EventSource.id))
+        for row in es_result.all():
+            es_id = str(row[0])
+            if es_id not in present_event_ids:
+                logger.info(f"Deleting event source {es_id} — removed from repo")
+                await self.db.execute(
+                    sa_delete(EventSource).where(EventSource.id == UUID(es_id))
                 )
 
         # Delete forms synced from git that are no longer present
@@ -850,6 +955,278 @@ class GitHubSyncService:
         )
         await self.db.execute(stmt)
 
+    async def _import_integration(self, integ_name: str, minteg) -> None:
+        """Import an integration from manifest into the DB.
+
+        Upserts the integration, syncs config schema items, oauth provider
+        structure (with sentinel secrets), and org mappings.
+        """
+        from uuid import UUID
+
+        from sqlalchemy.dialects.postgresql import insert
+
+        from src.models.orm.integrations import Integration, IntegrationConfigSchema, IntegrationMapping
+        from src.models.orm.oauth import OAuthProvider
+
+        integ_id = UUID(minteg.id)
+
+        # Upsert integration
+        stmt = insert(Integration).values(
+            id=integ_id,
+            name=integ_name,
+            entity_id=minteg.entity_id,
+            entity_id_name=minteg.entity_id_name,
+            default_entity_id=minteg.default_entity_id,
+            list_entities_data_provider_id=(
+                UUID(minteg.list_entities_data_provider_id)
+                if minteg.list_entities_data_provider_id else None
+            ),
+            is_deleted=False,
+        ).on_conflict_do_update(
+            index_elements=["id"],
+            set_={
+                "name": integ_name,
+                "entity_id": minteg.entity_id,
+                "entity_id_name": minteg.entity_id_name,
+                "default_entity_id": minteg.default_entity_id,
+                "list_entities_data_provider_id": (
+                    UUID(minteg.list_entities_data_provider_id)
+                    if minteg.list_entities_data_provider_id else None
+                ),
+                "is_deleted": False,
+                "updated_at": datetime.now(timezone.utc),
+            },
+        )
+        await self.db.execute(stmt)
+
+        # Sync config schema items: delete all + re-insert
+        from sqlalchemy import delete as sa_delete
+        await self.db.execute(
+            sa_delete(IntegrationConfigSchema).where(
+                IntegrationConfigSchema.integration_id == integ_id
+            )
+        )
+        for cs in minteg.config_schema:
+            cs_stmt = insert(IntegrationConfigSchema).values(
+                integration_id=integ_id,
+                key=cs.key,
+                type=cs.type,
+                required=cs.required,
+                description=cs.description,
+                options=cs.options,
+                position=cs.position,
+            )
+            await self.db.execute(cs_stmt)
+
+        # Sync OAuth provider (structure only — client_secret never imported)
+        if minteg.oauth_provider:
+            op = minteg.oauth_provider
+            op_stmt = insert(OAuthProvider).values(
+                provider_name=op.provider_name,
+                display_name=op.display_name,
+                oauth_flow_type=op.oauth_flow_type,
+                client_id=op.client_id,
+                encrypted_client_secret=b"",  # placeholder — needs manual setup
+                authorization_url=op.authorization_url,
+                token_url=op.token_url,
+                token_url_defaults=op.token_url_defaults or {},
+                scopes=op.scopes or [],
+                redirect_uri=op.redirect_uri,
+                integration_id=integ_id,
+            ).on_conflict_do_update(
+                constraint="ix_oauth_providers_org_name",
+                set_={
+                    "display_name": op.display_name,
+                    "oauth_flow_type": op.oauth_flow_type,
+                    "authorization_url": op.authorization_url,
+                    "token_url": op.token_url,
+                    "token_url_defaults": op.token_url_defaults or {},
+                    "scopes": op.scopes or [],
+                    "redirect_uri": op.redirect_uri,
+                    "updated_at": datetime.now(timezone.utc),
+                },
+            )
+            await self.db.execute(op_stmt)
+
+        # Sync mappings: delete all + re-insert
+        await self.db.execute(
+            sa_delete(IntegrationMapping).where(
+                IntegrationMapping.integration_id == integ_id
+            )
+        )
+        for mapping in minteg.mappings:
+            m_stmt = insert(IntegrationMapping).values(
+                integration_id=integ_id,
+                organization_id=UUID(mapping.organization_id) if mapping.organization_id else None,
+                entity_id=mapping.entity_id,
+                entity_name=mapping.entity_name,
+            )
+            await self.db.execute(m_stmt)
+
+    async def _import_config(self, mcfg) -> None:
+        """Import a config entry from manifest into the DB.
+
+        Skips writing value if type=SECRET and existing value is non-null
+        (don't overwrite manually-entered secrets).
+        """
+        from uuid import UUID
+
+        from sqlalchemy.dialects.postgresql import insert
+
+        from src.models.orm.config import Config
+
+        cfg_id = UUID(mcfg.id)
+
+        # Check if this is a secret that already has a value
+        if mcfg.config_type == "secret":
+            existing = await self.db.execute(
+                select(Config.value).where(Config.id == cfg_id)
+            )
+            row = existing.first()
+            if row and row[0] is not None:
+                # Secret already has a value — don't overwrite
+                return
+
+        stmt = insert(Config).values(
+            id=cfg_id,
+            key=mcfg.key,
+            config_type=mcfg.config_type,
+            description=mcfg.description,
+            integration_id=UUID(mcfg.integration_id) if mcfg.integration_id else None,
+            organization_id=UUID(mcfg.organization_id) if mcfg.organization_id else None,
+            value=mcfg.value if mcfg.value is not None else {},
+            updated_by="git-sync",
+        ).on_conflict_do_update(
+            index_elements=["id"],
+            set_={
+                "key": mcfg.key,
+                "config_type": mcfg.config_type,
+                "description": mcfg.description,
+                "integration_id": UUID(mcfg.integration_id) if mcfg.integration_id else None,
+                "organization_id": UUID(mcfg.organization_id) if mcfg.organization_id else None,
+                "updated_by": "git-sync",
+                "updated_at": datetime.now(timezone.utc),
+                # Only update value for non-secret types
+                **({"value": mcfg.value if mcfg.value is not None else {}} if mcfg.config_type != "secret" else {}),
+            },
+        )
+        await self.db.execute(stmt)
+
+    async def _import_table(self, table_name: str, mtable) -> None:
+        """Import a table definition from manifest into the DB (schema only, no data)."""
+        from uuid import UUID
+
+        from sqlalchemy.dialects.postgresql import insert
+
+        from src.models.orm.tables import Table
+
+        stmt = insert(Table).values(
+            id=UUID(mtable.id),
+            name=table_name,
+            description=mtable.description,
+            organization_id=UUID(mtable.organization_id) if mtable.organization_id else None,
+            application_id=UUID(mtable.application_id) if mtable.application_id else None,
+            schema=mtable.table_schema,
+            created_by="git-sync",
+        ).on_conflict_do_update(
+            index_elements=["id"],
+            set_={
+                "name": table_name,
+                "description": mtable.description,
+                "schema": mtable.table_schema,
+                "updated_at": datetime.now(timezone.utc),
+            },
+        )
+        await self.db.execute(stmt)
+
+    async def _import_event_source(self, mes) -> None:
+        """Import an event source + subscriptions from manifest into the DB."""
+        from uuid import UUID
+
+        from sqlalchemy.dialects.postgresql import insert
+
+        from src.models.orm.events import EventSource, EventSubscription, ScheduleSource, WebhookSource
+
+        es_id = UUID(mes.id)
+
+        # Upsert event source
+        stmt = insert(EventSource).values(
+            id=es_id,
+            name=mes.id,  # will be overwritten by on_conflict
+            source_type=mes.source_type,
+            organization_id=UUID(mes.organization_id) if mes.organization_id else None,
+            is_active=mes.is_active,
+            created_by="git-sync",
+        ).on_conflict_do_update(
+            index_elements=["id"],
+            set_={
+                "source_type": mes.source_type,
+                "is_active": mes.is_active,
+                "updated_at": datetime.now(timezone.utc),
+            },
+        )
+        await self.db.execute(stmt)
+
+        # Upsert schedule source if applicable
+        if mes.source_type == "schedule" and mes.cron_expression:
+            sched_stmt = insert(ScheduleSource).values(
+                event_source_id=es_id,
+                cron_expression=mes.cron_expression,
+                timezone=mes.timezone or "UTC",
+                enabled=mes.schedule_enabled if mes.schedule_enabled is not None else True,
+            ).on_conflict_do_update(
+                index_elements=["event_source_id"],
+                set_={
+                    "cron_expression": mes.cron_expression,
+                    "timezone": mes.timezone or "UTC",
+                    "enabled": mes.schedule_enabled if mes.schedule_enabled is not None else True,
+                    "updated_at": datetime.now(timezone.utc),
+                },
+            )
+            await self.db.execute(sched_stmt)
+
+        # Upsert webhook source if applicable (external state left empty)
+        if mes.source_type == "webhook":
+            wh_stmt = insert(WebhookSource).values(
+                event_source_id=es_id,
+                adapter_name=mes.adapter_name,
+                integration_id=UUID(mes.webhook_integration_id) if mes.webhook_integration_id else None,
+                config=mes.webhook_config or {},
+            ).on_conflict_do_update(
+                index_elements=["event_source_id"],
+                set_={
+                    "adapter_name": mes.adapter_name,
+                    "integration_id": UUID(mes.webhook_integration_id) if mes.webhook_integration_id else None,
+                    "config": mes.webhook_config or {},
+                    "updated_at": datetime.now(timezone.utc),
+                },
+            )
+            await self.db.execute(wh_stmt)
+
+        # Sync subscriptions: upsert each
+        for msub in mes.subscriptions:
+            sub_stmt = insert(EventSubscription).values(
+                id=UUID(msub.id),
+                event_source_id=es_id,
+                workflow_id=UUID(msub.workflow_id),
+                event_type=msub.event_type,
+                filter_expression=msub.filter_expression,
+                input_mapping=msub.input_mapping,
+                is_active=msub.is_active,
+                created_by="git-sync",
+            ).on_conflict_do_update(
+                index_elements=["id"],
+                set_={
+                    "workflow_id": UUID(msub.workflow_id),
+                    "event_type": msub.event_type,
+                    "filter_expression": msub.filter_expression,
+                    "input_mapping": msub.input_mapping,
+                    "is_active": msub.is_active,
+                    "updated_at": datetime.now(timezone.utc),
+                },
+            )
+            await self.db.execute(sub_stmt)
+
     async def _update_file_index(self, work_dir: Path) -> None:
         """Update file_index from all files in the working tree, remove stale entries."""
         from sqlalchemy import delete, text
@@ -900,24 +1277,24 @@ class GitHubSyncService:
         issues: list[PreflightIssue] = []
 
         # 1. Check manifest validity
-        manifest_path = repo_dir / ".bifrost" / "metadata.yaml"
+        bifrost_dir = repo_dir / ".bifrost"
         manifest: Manifest | None = None
-        if manifest_path.exists():
+        if bifrost_dir.exists():
             try:
-                manifest = parse_manifest(manifest_path.read_text())
+                manifest = read_manifest_from_dir(bifrost_dir)
                 # Verify all paths exist
                 from src.services.manifest import get_all_paths
                 for path in get_all_paths(manifest):
                     if not (repo_dir / path).exists():
                         issues.append(PreflightIssue(
-                            path=".bifrost/metadata.yaml",
+                            path=".bifrost/",
                             message=f"Manifest references missing file: {path}",
                             severity="error",
                             category="manifest",
                         ))
             except Exception as e:
                 issues.append(PreflightIssue(
-                    path=".bifrost/metadata.yaml",
+                    path=".bifrost/",
                     message=f"Invalid manifest: {e}",
                     severity="error",
                     category="manifest",
@@ -1015,6 +1392,48 @@ class GitHubSyncService:
                                 ))
                     except Exception:
                         pass
+
+            # 6. Cross-reference validation for new entity types
+            from src.services.manifest import validate_manifest
+            ref_errors = validate_manifest(manifest)
+            for err in ref_errors:
+                issues.append(PreflightIssue(
+                    path=".bifrost/",
+                    message=err,
+                    severity="error",
+                    category="ref",
+                ))
+
+            # 7. Health warnings (non-blocking)
+            # Secret configs with null values
+            for cfg_key, mcfg in manifest.configs.items():
+                if mcfg.config_type == "secret" and mcfg.value is None:
+                    issues.append(PreflightIssue(
+                        path=".bifrost/configs.yaml",
+                        message=f"Config '{cfg_key}' (type=secret) needs a value after import",
+                        severity="warning",
+                        category="health",
+                    ))
+
+            # OAuth providers needing setup
+            for integ_name, minteg in manifest.integrations.items():
+                if minteg.oauth_provider and minteg.oauth_provider.client_id == "__NEEDS_SETUP__":
+                    issues.append(PreflightIssue(
+                        path=".bifrost/integrations.yaml",
+                        message=f"Integration '{integ_name}' OAuth provider needs client_id and client_secret setup",
+                        severity="warning",
+                        category="health",
+                    ))
+
+            # Webhook sources needing external registration
+            for es_name, mes in manifest.events.items():
+                if mes.source_type == "webhook":
+                    issues.append(PreflightIssue(
+                        path=".bifrost/events.yaml",
+                        message=f"Webhook source '{es_name}' will need external registration after import",
+                        severity="warning",
+                        category="health",
+                    ))
 
         has_errors = any(i.severity == "error" for i in issues)
         return PreflightResult(valid=not has_errors, issues=issues)

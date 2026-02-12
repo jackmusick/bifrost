@@ -91,6 +91,7 @@ class LLMConfig:
     provider: Literal["openai", "anthropic"]
     model: str
     api_key: str
+    endpoint: str | None = None
     max_tokens: int = 4096
     temperature: float = 0.7
     # Optional parameters

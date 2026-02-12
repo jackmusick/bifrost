@@ -69,7 +69,7 @@ import {
 	type AIModelPricingCreate,
 } from "@/services/ai-pricing";
 
-type Provider = "openai" | "anthropic" | "custom";
+type Provider = "openai" | "anthropic";
 
 // Model info with both ID and display name
 interface ModelInfo {
@@ -81,7 +81,12 @@ interface ModelInfo {
 const DEFAULT_MODELS: Record<Provider, string> = {
 	openai: "gpt-4o",
 	anthropic: "claude-sonnet-4-20250514",
-	custom: "",
+};
+
+// Default API endpoints for each provider
+const DEFAULT_ENDPOINTS: Record<Provider, string> = {
+	openai: "https://api.openai.com/v1",
+	anthropic: "https://api.anthropic.com",
 };
 
 export function LLMConfig() {
@@ -89,7 +94,7 @@ export function LLMConfig() {
 	const [provider, setProvider] = useState<Provider>("openai");
 	const [model, setModel] = useState(DEFAULT_MODELS.openai);
 	const [apiKey, setApiKey] = useState("");
-	const [endpoint, setEndpoint] = useState("");
+	const [endpoint, setEndpoint] = useState(DEFAULT_ENDPOINTS.openai);
 	const [maxTokens, setMaxTokens] = useState(4096);
 	const [temperature, setTemperature] = useState(0.7);
 	const [defaultSystemPrompt, setDefaultSystemPrompt] = useState("");
@@ -128,14 +133,13 @@ export function LLMConfig() {
 	// Update form when config loads
 	useEffect(() => {
 		if (config) {
-			setProvider(config.provider);
+			const p = config.provider as Provider;
+			setProvider(p);
 			setModel(config.model);
 			setMaxTokens(config.max_tokens);
 			setTemperature(config.temperature);
 			setDefaultSystemPrompt(config.default_system_prompt ?? "");
-			if (config.endpoint) {
-				setEndpoint(config.endpoint);
-			}
+			setEndpoint(config.endpoint || DEFAULT_ENDPOINTS[p] || DEFAULT_ENDPOINTS.openai);
 		}
 	}, [config]);
 
@@ -175,24 +179,16 @@ export function LLMConfig() {
 	const handleProviderChange = (newProvider: Provider) => {
 		setProvider(newProvider);
 		setModel(DEFAULT_MODELS[newProvider]);
+		setEndpoint(DEFAULT_ENDPOINTS[newProvider]);
 		setTestResult(null);
 		setAvailableModels([]);
 		setModelsLoaded(false);
-		// Clear endpoint if not custom
-		if (newProvider !== "custom") {
-			setEndpoint("");
-		}
 	};
 
 	// Test connection with current form values
 	const handleTestConnection = async () => {
 		if (!apiKey && !config?.api_key_set) {
 			toast.error("Please enter an API key");
-			return;
-		}
-
-		if (provider === "custom" && !endpoint) {
-			toast.error("Please enter an endpoint URL for custom provider");
 			return;
 		}
 
@@ -203,12 +199,13 @@ export function LLMConfig() {
 			let result;
 			// If we have a new API key, test with that
 			if (apiKey) {
+				const isDefaultEndpoint = endpoint === DEFAULT_ENDPOINTS[provider];
 				result = await testMutation.mutateAsync({
 					body: {
 						provider,
 						model: model || DEFAULT_MODELS[provider],
 						api_key: apiKey,
-						endpoint: provider === "custom" ? endpoint : undefined,
+						endpoint: isDefaultEndpoint ? undefined : endpoint || undefined,
 					},
 				});
 			} else {
@@ -258,11 +255,6 @@ export function LLMConfig() {
 			return;
 		}
 
-		if (provider === "custom" && !endpoint) {
-			toast.error("Please enter an endpoint URL for custom provider");
-			return;
-		}
-
 		if (!model) {
 			toast.error("Please select a model");
 			return;
@@ -270,12 +262,13 @@ export function LLMConfig() {
 
 		setSaving(true);
 		try {
+			const isDefaultEndpoint = endpoint === DEFAULT_ENDPOINTS[provider];
 			await saveMutation.mutateAsync({
 				body: {
 					provider,
 					model,
 					api_key: apiKey || "unchanged", // Backend handles "unchanged" specially if key already set
-					endpoint: provider === "custom" ? endpoint : undefined,
+					endpoint: isDefaultEndpoint ? undefined : endpoint || undefined,
 					max_tokens: maxTokens,
 					temperature,
 					default_system_prompt: defaultSystemPrompt || null,
@@ -314,7 +307,7 @@ export function LLMConfig() {
 			setProvider("openai");
 			setModel(DEFAULT_MODELS.openai);
 			setApiKey("");
-			setEndpoint("");
+			setEndpoint(DEFAULT_ENDPOINTS.openai);
 			setMaxTokens(4096);
 			setTemperature(0.7);
 			setDefaultSystemPrompt("");
@@ -358,7 +351,6 @@ export function LLMConfig() {
 	const canSave =
 		!saving &&
 		model &&
-		(provider !== "custom" || endpoint) &&
 		(isVerified || hasValidConfig);
 
 	return (
@@ -430,28 +422,23 @@ export function LLMConfig() {
 								<SelectItem value="anthropic">
 									Anthropic
 								</SelectItem>
-								<SelectItem value="custom">
-									Custom (OpenAI-compatible)
-								</SelectItem>
 							</SelectContent>
 						</Select>
 					</div>
 
-					{/* Custom Endpoint (only for custom provider) */}
-					{provider === "custom" && (
-						<div className="space-y-2">
-							<Label htmlFor="endpoint">API Endpoint</Label>
-							<Input
-								id="endpoint"
-								placeholder="https://api.example.com/v1"
-								value={endpoint}
-								onChange={(e) => setEndpoint(e.target.value)}
-							/>
-							<p className="text-xs text-muted-foreground">
-								Must be OpenAI-compatible API endpoint
-							</p>
-						</div>
-					)}
+					{/* API Endpoint */}
+					<div className="space-y-2">
+						<Label htmlFor="endpoint">API Endpoint</Label>
+						<Input
+							id="endpoint"
+							placeholder={DEFAULT_ENDPOINTS[provider]}
+							value={endpoint}
+							onChange={(e) => setEndpoint(e.target.value)}
+						/>
+						<p className="text-xs text-muted-foreground">
+							Change this to use a compatible provider (Azure OpenAI, Ollama, etc.)
+						</p>
+					</div>
 
 					{/* API Key */}
 					<div className="space-y-2">
@@ -466,9 +453,7 @@ export function LLMConfig() {
 										? "API key saved - enter new key to change"
 										: provider === "openai"
 											? "sk-..."
-											: provider === "anthropic"
-												? "sk-ant-..."
-												: "Enter API key"
+											: "sk-ant-..."
 								}
 								value={apiKey}
 								onChange={(e) => {

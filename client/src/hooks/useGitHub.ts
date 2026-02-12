@@ -34,7 +34,7 @@ export interface PreflightIssue {
 	line?: number | null;
 	message: string;
 	severity: "error" | "warning";
-	category: "syntax" | "lint" | "ref" | "orphan" | "manifest";
+	category: "syntax" | "lint" | "ref" | "orphan" | "manifest" | "health";
 }
 
 export interface PreflightResult {

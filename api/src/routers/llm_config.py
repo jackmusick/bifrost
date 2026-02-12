@@ -56,7 +56,7 @@ async def get_llm_config(
         return None
 
     return LLMConfigResponse(
-        provider=config.provider,  # type: ignore[arg-type]
+        provider=config.provider,
         model=config.model,
         endpoint=config.endpoint,
         max_tokens=config.max_tokens,

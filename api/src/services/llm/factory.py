@@ -75,8 +75,10 @@ async def get_llm_config(session: AsyncSession) -> LLMConfig:
 
     config_data = config.value_json
 
-    # Determine provider
+    # Determine provider (map legacy "custom" to "openai")
     provider_str = config_data.get("provider", DEFAULT_PROVIDER)
+    if provider_str == "custom":
+        provider_str = "openai"
     if provider_str not in ("openai", "anthropic"):
         logger.warning(f"Invalid provider '{provider_str}', defaulting to {DEFAULT_PROVIDER}")
         provider_str = DEFAULT_PROVIDER
@@ -105,11 +107,13 @@ async def get_llm_config(session: AsyncSession) -> LLMConfig:
     # Get optional parameters with defaults
     max_tokens = config_data.get("max_tokens", DEFAULT_MAX_TOKENS)
     temperature = config_data.get("temperature", DEFAULT_TEMPERATURE)
+    endpoint = config_data.get("endpoint") or None
 
     return LLMConfig(
         provider=provider,
         model=model,
         api_key=api_key,
+        endpoint=endpoint,
         max_tokens=max_tokens,
         temperature=temperature,
     )
@@ -143,6 +147,7 @@ def create_llm_client(
     provider: Literal["openai", "anthropic"],
     api_key: str,
     model: str | None = None,
+    endpoint: str | None = None,
     max_tokens: int = DEFAULT_MAX_TOKENS,
     temperature: float = DEFAULT_TEMPERATURE,
 ) -> BaseLLMClient:
@@ -155,6 +160,7 @@ def create_llm_client(
         provider: "openai" or "anthropic"
         api_key: API key for the provider
         model: Model identifier (uses defaults if not provided)
+        endpoint: Custom API endpoint URL
         max_tokens: Maximum tokens for completion
         temperature: Temperature for sampling
 
@@ -168,6 +174,7 @@ def create_llm_client(
         provider=provider,
         model=model,
         api_key=api_key,
+        endpoint=endpoint,
         max_tokens=max_tokens,
         temperature=temperature,
     )

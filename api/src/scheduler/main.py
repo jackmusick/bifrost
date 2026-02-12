@@ -379,7 +379,7 @@ class Scheduler:
                     await publish_git_op_completed(
                         job_id, status="success" if op_result.success else "failed",
                         result_type="commit",
-                        data=op_result.model_dump() if op_result.success else None,
+                        data=op_result.model_dump(),
                         error=op_result.error,
                     )
 

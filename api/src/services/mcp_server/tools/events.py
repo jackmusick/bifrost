@@ -6,7 +6,7 @@ and webhook adapters.
 """
 
 import logging
-from datetime import datetime, timezone
+from datetime import datetime, timezone as _tz
 from typing import Any
 from uuid import UUID
 
@@ -131,7 +131,7 @@ async def create_event_source(
             return error_result("cron_expression is required for schedule source type")
 
     try:
-        now = datetime.now(timezone.utc)
+        now = datetime.now(_tz.utc)
         user_email = getattr(context, "user_email", "") or getattr(context, "email", "mcp")
 
         async with get_db_context() as db:
@@ -323,7 +323,7 @@ async def update_event_source(
                 if is_active:
                     source.error_message = None
 
-            source.updated_at = datetime.now(timezone.utc)
+            source.updated_at = datetime.now(_tz.utc)
 
             # Update schedule fields
             if source.source_type == EventSourceType.SCHEDULE and source.schedule_source:
@@ -334,7 +334,7 @@ async def update_event_source(
                     ss.timezone = timezone
                 if schedule_enabled is not None:
                     ss.enabled = schedule_enabled
-                ss.updated_at = datetime.now(timezone.utc)
+                ss.updated_at = datetime.now(_tz.utc)
 
             await db.flush()
 
@@ -408,7 +408,7 @@ async def delete_event_source(
                         logger.warning(f"Failed to unsubscribe webhook: {e}")
 
             source.is_active = False
-            source.updated_at = datetime.now(timezone.utc)
+            source.updated_at = datetime.now(_tz.utc)
             await db.flush()
 
             display_text = f"Deleted event source: {source.name}"
@@ -505,7 +505,7 @@ async def create_event_subscription(
         return error_result("workflow_id is required")
 
     try:
-        now = datetime.now(timezone.utc)
+        now = datetime.now(_tz.utc)
         user_email = getattr(context, "user_email", "") or getattr(context, "email", "mcp")
 
         async with get_db_context() as db:
@@ -595,7 +595,7 @@ async def update_event_subscription(
             if is_active is not None:
                 subscription.is_active = is_active
 
-            subscription.updated_at = datetime.now(timezone.utc)
+            subscription.updated_at = datetime.now(_tz.utc)
             await db.flush()
 
             data = {
@@ -644,7 +644,7 @@ async def delete_event_subscription(
                 return error_result(f"Subscription not found: {subscription_id}")
 
             subscription.is_active = False
-            subscription.updated_at = datetime.now(timezone.utc)
+            subscription.updated_at = datetime.now(_tz.utc)
             await db.flush()
 
             display_text = f"Deleted subscription {subscription_id}"

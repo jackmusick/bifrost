@@ -45,8 +45,54 @@ import {
 	type PushResult,
 	type ResolveResult,
 	type DiffResult,
+	type PreflightResult,
 } from "@/hooks/useGitHub";
 import { useEditorStore } from "@/stores/editorStore";
+
+/** Custom error that preserves the data payload from failed git operations */
+class GitOpError extends Error {
+	data: Record<string, unknown> | undefined;
+	constructor(message: string, data?: Record<string, unknown>) {
+		super(message);
+		this.name = "GitOpError";
+		this.data = data;
+	}
+}
+
+/** Log preflight validation issues to the editor terminal */
+function logPreflightToTerminal(preflight: PreflightResult, commitSucceeded: boolean) {
+	if (!preflight.issues.length) return;
+
+	const errors = preflight.issues.filter((i) => i.severity === "error");
+	const warnings = preflight.issues.filter((i) => i.severity === "warning");
+
+	const header = commitSucceeded
+		? `Commit succeeded with ${warnings.length} warning(s)`
+		: `Commit blocked: ${errors.length} error(s), ${warnings.length} warning(s)`;
+
+	const logs = [
+		{
+			level: commitSucceeded ? "WARNING" : "ERROR",
+			message: `[Preflight] ${header}`,
+			source: "preflight",
+			timestamp: new Date().toISOString(),
+		},
+		...preflight.issues.map((issue) => ({
+			level: issue.severity === "error" ? "ERROR" : "WARNING",
+			message: `${issue.path}${issue.line ? ` [Line ${issue.line}]` : ""}: ${issue.message} (${issue.category})`,
+			source: "preflight",
+			timestamp: new Date().toISOString(),
+		})),
+	];
+
+	useEditorStore.getState().appendTerminalOutput({
+		loggerOutput: logs,
+		variables: {},
+		status: commitSucceeded ? "Success" : "Failed",
+		executionId: `preflight-${Date.now()}`,
+		error: commitSucceeded ? undefined : "Preflight validation failed",
+	});
+}
 
 /** Icon mapping for entity types */
 const ENTITY_ICONS = {
@@ -111,12 +157,12 @@ async function runGitOp<T>(
 				unsub();
 				if (complete.status === "success" || complete.resultType === resultType) {
 					if (complete.error && complete.status !== "success") {
-						reject(new Error(complete.error));
+						reject(new GitOpError(complete.error, complete.data as Record<string, unknown>));
 					} else {
 						resolve((complete.data ?? {}) as T);
 					}
 				} else {
-					reject(new Error(complete.error || `${resultType} failed`));
+					reject(new GitOpError(complete.error || `${resultType} failed`, complete.data as Record<string, unknown>));
 				}
 			},
 		);
@@ -246,12 +292,21 @@ export function SourceControlPanel() {
 				setCommitsAhead((prev) => prev + 1);
 				setChangedFiles([]);
 				refreshStatus();
+				if (result.preflight?.issues?.length) {
+					logPreflightToTerminal(result.preflight, true);
+				}
 			} else {
 				toast.error(result.error || "Commit failed");
 			}
 		} catch (error) {
 			const msg = error instanceof Error ? error.message : String(error);
 			toast.error(`Commit failed: ${msg}`);
+			if (error instanceof GitOpError && error.data) {
+				const commitData = error.data as unknown as CommitResult;
+				if (commitData.preflight?.issues?.length) {
+					logPreflightToTerminal(commitData.preflight, false);
+				}
+			}
 		} finally {
 			setLoading(null);
 		}

@@ -95,6 +95,7 @@ pytest
 pytest-asyncio
 pytest-cov
 pytest-env
+pytest-timeout  # Per-test timeout protection (catches infinite hangs)
 websockets  # For E2E WebSocket tests
 
 # =============================================================================

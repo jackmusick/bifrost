@@ -30,7 +30,7 @@ LLM_CONFIG_KEY = "provider_config"
 class LLMProviderConfig:
     """LLM provider configuration (API key masked for responses)."""
 
-    provider: Literal["openai", "anthropic", "custom"]
+    provider: Literal["openai", "anthropic"]
     model: str
     endpoint: str | None = None  # For custom OpenAI-compatible providers
     max_tokens: int = 4096
@@ -101,8 +101,13 @@ class LLMConfigService:
 
         config_data = config.value_json
 
+        # Map legacy "custom" provider to "openai"
+        provider = config_data.get("provider", "openai")
+        if provider == "custom":
+            provider = "openai"
+
         return LLMProviderConfig(
-            provider=config_data.get("provider", "openai"),
+            provider=provider,
             model=config_data.get("model", ""),
             endpoint=config_data.get("endpoint"),
             max_tokens=config_data.get("max_tokens", 4096),
@@ -114,7 +119,7 @@ class LLMConfigService:
 
     async def save_config(
         self,
-        provider: Literal["openai", "anthropic", "custom"],
+        provider: Literal["openai", "anthropic"],
         model: str,
         api_key: str,
         endpoint: str | None = None,
@@ -223,9 +228,9 @@ class LLMConfigService:
 
             # Try to create a minimal completion to test the connection
             if config.provider == "openai":
-                return await self._test_openai(config.api_key, config.model)
+                return await self._test_openai(config.api_key, config.model, config.endpoint)
             elif config.provider == "anthropic":
-                return await self._test_anthropic(config.api_key, config.model)
+                return await self._test_anthropic(config.api_key, config.model, config.endpoint)
             else:
                 return LLMTestResult(
                     success=False,
@@ -238,93 +243,113 @@ class LLMConfigService:
             logger.error(f"LLM connection test failed: {e}")
             return LLMTestResult(success=False, message=f"Connection test failed: {e}")
 
-    async def _test_openai(self, api_key: str, model: str) -> LLMTestResult:
-        """Test OpenAI connection and list models."""
+    async def _test_openai(self, api_key: str, model: str, endpoint: str | None = None) -> LLMTestResult:
+        """Test OpenAI-compatible connection and list models."""
         import re
 
         try:
             from openai import AsyncOpenAI
 
-            client = AsyncOpenAI(api_key=api_key)
+            client = AsyncOpenAI(api_key=api_key, base_url=endpoint or None)
 
-            # List models to verify the API key works
-            models_response = await client.models.list()
+            endpoint_label = endpoint or "https://api.openai.com/v1"
 
-            # Filter for GPT models and create model info with display names
-            # OpenAI date suffix pattern: -YYYY-MM-DD
-            date_pattern = re.compile(r"-\d{4}-\d{2}-\d{2}$")
-
+            # Try to list models (some custom endpoints may not support this)
             model_infos: list[LLMModelInfo] = []
-            seen_display_names: set[str] = set()
+            model_available = False
+            try:
+                models_response = await client.models.list()
 
-            for m in sorted(models_response.data, key=lambda x: x.id, reverse=True):
-                if "gpt" not in m.id.lower():
-                    continue
+                # OpenAI date suffix pattern: -YYYY-MM-DD
+                date_pattern = re.compile(r"-\d{4}-\d{2}-\d{2}$")
+                seen_display_names: set[str] = set()
 
-                # Derive display name by stripping date suffix
-                display_name = date_pattern.sub("", m.id)
+                for m in sorted(models_response.data, key=lambda x: x.id, reverse=True):
+                    # Derive display name by stripping date suffix
+                    display_name = date_pattern.sub("", m.id)
 
-                # Only include the newest version of each model (first seen since sorted desc)
-                if display_name in seen_display_names:
-                    continue
+                    # Only include the newest version of each model (first seen since sorted desc)
+                    if display_name in seen_display_names:
+                        continue
 
-                seen_display_names.add(display_name)
-                model_infos.append(LLMModelInfo(id=m.id, display_name=display_name))
+                    seen_display_names.add(display_name)
+                    model_infos.append(LLMModelInfo(id=m.id, display_name=display_name))
 
-            # Sort by display name for consistent ordering
-            model_infos.sort(key=lambda x: x.display_name)
+                # Sort by display name for consistent ordering
+                model_infos.sort(key=lambda x: x.display_name)
 
-            # Check if the configured model is available
-            all_model_ids = [m.id for m in models_response.data]
-            model_available = model in all_model_ids
+                # Check if the configured model is available
+                all_model_ids = [m.id for m in models_response.data]
+                model_available = model in all_model_ids
+            except Exception as e:
+                logger.info(f"Model listing not supported at {endpoint_label}: {e}")
 
-            return LLMTestResult(
-                success=True,
-                message=f"Connected to OpenAI. Model '{model}' {'is' if model_available else 'may not be'} available.",
-                models=model_infos[:20],  # Return top 20 GPT models
-            )
+            if model_infos:
+                return LLMTestResult(
+                    success=True,
+                    message=f"Connected to {endpoint_label}. Model '{model}' {'is' if model_available else 'may not be'} available.",
+                    models=model_infos[:20],
+                )
+            else:
+                return LLMTestResult(
+                    success=True,
+                    message=f"Connected to {endpoint_label}. Model listing not available — enter model ID manually.",
+                    models=None,
+                )
 
         except Exception as e:
             return LLMTestResult(success=False, message=f"OpenAI connection failed: {e}")
 
-    async def _test_anthropic(self, api_key: str, model: str) -> LLMTestResult:
+    async def _test_anthropic(self, api_key: str, model: str, endpoint: str | None = None) -> LLMTestResult:
         """Test Anthropic connection and list models."""
         try:
             from anthropic import AsyncAnthropic
 
-            client = AsyncAnthropic(api_key=api_key)
+            client = AsyncAnthropic(api_key=api_key, base_url=endpoint or None)
 
-            # List models to verify the API key works
-            models_response = await client.models.list()
+            endpoint_label = endpoint or "https://api.anthropic.com"
 
-            # Anthropic API returns display_name directly
-            # Only include the newest version of each display name
-            seen_display_names: set[str] = set()
+            # Try to list models (custom endpoints may not support this)
             model_infos: list[LLMModelInfo] = []
+            model_available = False
+            try:
+                models_response = await client.models.list()
 
-            # Sort by ID descending to get newest versions first
-            for m in sorted(models_response.data, key=lambda x: x.id, reverse=True):
-                display_name = getattr(m, "display_name", m.id)
+                # Anthropic API returns display_name directly
+                seen_display_names: set[str] = set()
 
-                # Only include the newest version of each model
-                if display_name in seen_display_names:
-                    continue
+                # Sort by ID descending to get newest versions first
+                for m in sorted(models_response.data, key=lambda x: x.id, reverse=True):
+                    display_name = getattr(m, "display_name", m.id)
 
-                seen_display_names.add(display_name)
-                model_infos.append(LLMModelInfo(id=m.id, display_name=display_name))
+                    # Only include the newest version of each model
+                    if display_name in seen_display_names:
+                        continue
 
-            # Sort by display name for consistent ordering
-            model_infos.sort(key=lambda x: x.display_name)
+                    seen_display_names.add(display_name)
+                    model_infos.append(LLMModelInfo(id=m.id, display_name=display_name))
 
-            # Check if the configured model is available
-            all_model_ids = [m.id for m in models_response.data]
-            model_available = model in all_model_ids
+                # Sort by display name for consistent ordering
+                model_infos.sort(key=lambda x: x.display_name)
 
-            return LLMTestResult(
-                success=True,
-                message=f"Connected to Anthropic. Model '{model}' {'is' if model_available else 'may not be'} available.",
-                models=model_infos,
-            )
+                # Check if the configured model is available
+                all_model_ids = [m.id for m in models_response.data]
+                model_available = model in all_model_ids
+            except Exception as e:
+                logger.info(f"Model listing not supported at {endpoint_label}: {e}")
+
+            if model_infos:
+                return LLMTestResult(
+                    success=True,
+                    message=f"Connected to {endpoint_label}. Model '{model}' {'is' if model_available else 'may not be'} available.",
+                    models=model_infos,
+                )
+            else:
+                return LLMTestResult(
+                    success=True,
+                    message=f"Connected to {endpoint_label}. Model listing not available — enter model ID manually.",
+                    models=None,
+                )
 
         except Exception as e:
             return LLMTestResult(success=False, message=f"Anthropic connection failed: {e}")

@@ -19,7 +19,7 @@ from src.config import get_settings
 from src.services.file_storage.indexers.form import _serialize_form_to_yaml
 from src.services.file_storage.indexers.agent import _serialize_agent_to_yaml
 from src.services.file_index_service import FileIndexService
-from src.services.manifest import serialize_manifest
+from src.services.manifest import MANIFEST_FILES, MANIFEST_LEGACY_FILE, serialize_manifest_dir
 from src.services.manifest_generator import generate_manifest
 from src.services.repo_storage import RepoStorage
 
@@ -67,13 +67,26 @@ class RepoSyncWriter:
         logger.debug(f"Deleted _repo/{path}")
 
     async def regenerate_manifest(self) -> None:
-        """Generate manifest from DB and write to _repo/.bifrost/metadata.yaml."""
+        """Generate manifest from DB and write split files to _repo/.bifrost/."""
         if not self._s3_available:
             return
         manifest = await generate_manifest(self.db)
-        yaml_content = serialize_manifest(manifest)
-        await self._file_index.write(
-            ".bifrost/metadata.yaml",
-            yaml_content.encode("utf-8"),
-        )
-        logger.debug("Regenerated manifest at _repo/.bifrost/metadata.yaml")
+        files = serialize_manifest_dir(manifest)
+        for filename, content in files.items():
+            await self._file_index.write(
+                f".bifrost/{filename}",
+                content.encode("utf-8"),
+            )
+        # Remove split files for now-empty entity types
+        for filename in MANIFEST_FILES.values():
+            if filename not in files:
+                try:
+                    await self._file_index.delete(f".bifrost/{filename}")
+                except Exception:
+                    pass  # File didn't exist
+        # Clean up legacy single-file manifest
+        try:
+            await self._file_index.delete(f".bifrost/{MANIFEST_LEGACY_FILE}")
+        except Exception:
+            pass  # Already gone
+        logger.debug("Regenerated split manifest files in _repo/.bifrost/")

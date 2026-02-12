@@ -314,6 +314,8 @@ services:
       # For E2E tests, point to the API container
       TEST_API_URL: http://api:8000
       PYTHONPATH: /app
+      # Coverage data stored on shared volume for cross-phase accumulation
+      COVERAGE_FILE: /coverage/.coverage
       # GitHub E2E test configuration (optional - tests skip if not set)
       # Pass from host: GITHUB_TEST_PAT=ghp_xxx ./test.sh --e2e
       # Or set in .env.test file
@@ -337,6 +339,7 @@ services:
       - ./api/alembic.ini:/app/alembic.ini:ro
       - ./api/pytest.ini:/app/pytest.ini:ro
       - ./api/pyproject.toml:/app/pyproject.toml:ro
+      - test-coverage:/coverage  # Shared coverage data across phases
     working_dir: /app
     depends_on:
       pgbouncer:
@@ -417,4 +420,5 @@ services:
 # Named volumes for test data - ephemeral within test session
 volumes:
   test-mounts:  # File storage for uploads, branding, etc.
+  test-coverage:  # Shared coverage data across test phases
   playwright-results:  # Playwright test results (HTML reports, screenshots, videos)

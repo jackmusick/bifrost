@@ -28,7 +28,9 @@ import {
 	SelectTrigger,
 	SelectValue,
 } from "@/components/ui/select";
+import { Combobox } from "@/components/ui/combobox";
 import { Loader2, Plus, Trash2 } from "lucide-react";
+import { Skeleton } from "@/components/ui/skeleton";
 import { toast } from "sonner";
 import {
 	useCreateIntegration,
@@ -50,21 +52,22 @@ interface CreateIntegrationDialogProps {
 	initialData?: IntegrationDetail;
 }
 
-// Inner component that gets remounted when the dialog opens or when editing a different integration
-function CreateIntegrationDialogContent({
+/**
+ * Form component that renders once data is available.
+ * Gets remounted via key when existingIntegration changes from undefined to loaded.
+ */
+function CreateIntegrationForm({
 	onOpenChange,
 	editIntegrationId,
+	existingIntegration,
 	initialData,
-}: Omit<CreateIntegrationDialogProps, "open">) {
+}: {
+	onOpenChange: (open: boolean) => void;
+	editIntegrationId?: string;
+	existingIntegration?: IntegrationDetail;
+	initialData?: IntegrationDetail;
+}) {
 	const queryClient = useQueryClient();
-
-	// Only fetch if we don't have initialData and we're editing
-	const { data: fetchedIntegration } = useIntegration(
-		initialData ? "" : editIntegrationId || "",
-	);
-
-	// Use initialData if provided, otherwise use fetched data
-	const existingIntegration = initialData || fetchedIntegration;
 
 	// Fetch available data providers
 	const { data: dataProviders, isLoading: isLoadingProviders } =
@@ -77,9 +80,8 @@ function CreateIntegrationDialogContent({
 	const isLoading = createMutation.isPending || updateMutation.isPending;
 
 	// Initialize state from existing integration (or empty for new)
-	const [name, setName] = useState(() => {
-		return existingIntegration?.name || "";
-	});
+	// This is safe because the parent only mounts this component once data is ready
+	const [name, setName] = useState(existingIntegration?.name || "");
 	const [description, setDescription] = useState(() => {
 		const integrationWithDesc =
 			existingIntegration as typeof existingIntegration & {
@@ -87,15 +89,15 @@ function CreateIntegrationDialogContent({
 			};
 		return integrationWithDesc?.description || "";
 	});
-	const [dataProviderId, setDataProviderId] = useState<string | null>(() => {
-		return existingIntegration?.list_entities_data_provider_id || null;
-	});
-	const [configSchema, setConfigSchema] = useState<ConfigSchemaItem[]>(() => {
-		return existingIntegration?.config_schema || [];
-	});
-	const [defaultEntityId, setDefaultEntityId] = useState<string>(() => {
-		return existingIntegration?.default_entity_id || "";
-	});
+	const [dataProviderId, setDataProviderId] = useState<string | null>(
+		existingIntegration?.list_entities_data_provider_id || null,
+	);
+	const [configSchema, setConfigSchema] = useState<ConfigSchemaItem[]>(
+		existingIntegration?.config_schema || [],
+	);
+	const [defaultEntityId, setDefaultEntityId] = useState<string>(
+		existingIntegration?.default_entity_id || "",
+	);
 
 	// Track original values for confirmation dialogs
 	const originalName = existingIntegration?.name || "";
@@ -223,6 +225,21 @@ function CreateIntegrationDialogContent({
 		setConfigSchema(updated);
 	};
 
+	// Build data provider options for combobox
+	const dataProviderOptions = [
+		{ value: "none", label: "None" },
+		...((
+			dataProviders as Array<{
+				id?: string | null;
+				name: string;
+			}>
+		)?.flatMap((provider) =>
+			provider.id
+				? [{ value: provider.id, label: provider.name }]
+				: [],
+		) || []),
+	];
+
 	return (
 		<>
 			<form onSubmit={handleSubmit}>
@@ -266,43 +283,22 @@ function CreateIntegrationDialogContent({
 						<Label htmlFor="dataProvider">
 							Entity Data Provider
 						</Label>
-						<Select
+						<Combobox
+							id="dataProvider"
+							options={dataProviderOptions}
 							value={dataProviderId || "none"}
 							onValueChange={(value) =>
 								setDataProviderId(
-									value === "none" ? null : value,
+									value === "none" || value === ""
+										? null
+										: value,
 								)
 							}
-						>
-							<SelectTrigger id="dataProvider">
-								<SelectValue placeholder="Select a data provider..." />
-							</SelectTrigger>
-							<SelectContent>
-								<SelectItem value="none">None</SelectItem>
-								{isLoadingProviders ? (
-									<SelectItem value="loading" disabled>
-										Loading...
-									</SelectItem>
-								) : (
-									(
-										dataProviders as Array<{
-											id?: string | null;
-											name: string;
-										}>
-									)?.map(
-										(provider) =>
-											provider.id && (
-												<SelectItem
-													key={provider.id}
-													value={provider.id}
-												>
-													{provider.name}
-												</SelectItem>
-											),
-									)
-								)}
-							</SelectContent>
-						</Select>
+							placeholder="Select a data provider..."
+							searchPlaceholder="Search data providers..."
+							emptyText="No data providers found."
+							isLoading={isLoadingProviders}
+						/>
 						<p className="text-xs text-muted-foreground">
 							Select a data provider to populate entity options
 							for organization mappings
@@ -543,6 +539,62 @@ function CreateIntegrationDialogContent({
 				</AlertDialogContent>
 			</AlertDialog>
 		</>
+	);
+}
+
+// Inner component that handles data fetching and renders form when ready
+function CreateIntegrationDialogContent({
+	onOpenChange,
+	editIntegrationId,
+	initialData,
+}: Omit<CreateIntegrationDialogProps, "open">) {
+	// Only fetch if we don't have initialData and we're editing
+	const {
+		data: fetchedIntegration,
+		isLoading,
+		dataUpdatedAt,
+	} = useIntegration(initialData ? "" : editIntegrationId || "");
+
+	// Use initialData if provided, otherwise use fetched data
+	const existingIntegration = initialData || fetchedIntegration;
+
+	const isEditing = Boolean(editIntegrationId);
+	const needsFetch = isEditing && !initialData;
+
+	// Show loading skeleton while fetching existing integration data
+	if (needsFetch && isLoading) {
+		return (
+			<>
+				<DialogHeader>
+					<DialogTitle>Edit Integration</DialogTitle>
+					<DialogDescription>
+						Loading integration details...
+					</DialogDescription>
+				</DialogHeader>
+				<div className="space-y-4 py-4">
+					<Skeleton className="h-10 w-full" />
+					<Skeleton className="h-10 w-full" />
+					<Skeleton className="h-10 w-full" />
+					<Skeleton className="h-10 w-full" />
+				</div>
+			</>
+		);
+	}
+
+	// Use dataUpdatedAt in key so form remounts when fresh data arrives
+	// (e.g., after saving and re-opening the dialog with stale cache)
+	const formKey = needsFetch
+		? `${existingIntegration?.id}-${dataUpdatedAt}`
+		: existingIntegration?.id || "new";
+
+	return (
+		<CreateIntegrationForm
+			key={formKey}
+			onOpenChange={onOpenChange}
+			editIntegrationId={editIntegrationId}
+			existingIntegration={existingIntegration}
+			initialData={initialData}
+		/>
 	);
 }
 

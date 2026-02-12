@@ -274,7 +274,7 @@ class PreflightIssue(BaseModel):
     line: int | None = Field(default=None)
     message: str = Field(...)
     severity: Literal["error", "warning"] = Field(...)
-    category: Literal["syntax", "lint", "ref", "orphan", "manifest"] = Field(...)
+    category: Literal["syntax", "lint", "ref", "orphan", "manifest", "health"] = Field(...)
 
     model_config = ConfigDict(from_attributes=True)
 

@@ -32,7 +32,7 @@ async def reconcile_file_index(
     Returns stats dict with counts of added, removed, updated entries.
     """
     repo = repo_storage or RepoStorage()
-    stats = {"added": 0, "removed": 0, "updated": 0, "unchanged": 0}
+    stats = {"added": 0, "removed": 0, "updated": 0, "unchanged": 0, "reverse_synced": 0}
 
     # Get all files from S3
     s3_paths = set(await repo.list())
@@ -61,19 +61,34 @@ async def reconcile_file_index(
         except Exception as e:
             logger.warning(f"Failed to index {path}: {e}")
 
-    # Files in DB but not in S3 -> remove
-    to_remove = db_paths - s3_text_paths
-    if to_remove:
-        await db.execute(
-            delete(FileIndex).where(FileIndex.path.in_(to_remove))
-        )
-        stats["removed"] = len(to_remove)
+    # Files in DB but not in S3 -> reverse-sync (write DB content to S3)
+    # This handles the case where the pre-migration backfill populated
+    # file_index but S3 was unavailable at the time.
+    to_reverse_sync = db_paths - s3_paths
+    for path in to_reverse_sync:
+        try:
+            fi_result = await db.execute(
+                select(FileIndex.content).where(FileIndex.path == path)
+            )
+            content_str = fi_result.scalar_one_or_none()
+            if content_str is not None:
+                await repo.write(path, content_str.encode("utf-8"))
+                stats["reverse_synced"] += 1
+            else:
+                # No content in DB either — orphaned row, remove it
+                await db.execute(
+                    delete(FileIndex).where(FileIndex.path == path)
+                )
+                stats["removed"] += 1
+        except Exception as e:
+            logger.warning(f"Failed to reverse-sync {path}: {e}")
 
     await db.commit()
 
     logger.info(
         f"Reconciliation complete: {stats['added']} added, "
-        f"{stats['removed']} removed, {stats['updated']} updated"
+        f"{stats['removed']} removed, {stats['updated']} updated, "
+        f"{stats['reverse_synced']} reverse-synced"
     )
 
     return stats

@@ -37,7 +37,7 @@ class AnthropicClient(BaseLLMClient):
 
     def __init__(self, config: LLMConfig):
         super().__init__(config)
-        self.client = AsyncAnthropic(api_key=config.api_key)
+        self.client = AsyncAnthropic(api_key=config.api_key, base_url=config.endpoint or None)
 
     @property
     def provider_name(self) -> str:
