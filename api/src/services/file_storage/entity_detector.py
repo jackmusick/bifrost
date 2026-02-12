@@ -46,6 +46,13 @@ def detect_platform_entity_type(path: str, content: bytes) -> str | None:
     Returns:
         Entity type ("workflow", "form", "agent") or None for regular files
     """
+    # App files: apps/{slug}/...
+    if path.startswith("apps/"):
+        parts = path.split("/")
+        if len(parts) >= 3 and parts[2] == "app.json":
+            return "app"
+        return "app_file"
+
     # YAML platform entities - always go to DB
     if path.endswith(".form.yaml"):
         return "form"

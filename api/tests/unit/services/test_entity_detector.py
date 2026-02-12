@@ -96,6 +96,52 @@ class TestDetectPlatformEntityType:
         assert result == "agent"
 
 
+class TestDetectAppEntityType:
+    """Tests for app file path detection."""
+
+    def test_detect_app_json(self):
+        """app.json files should be detected as 'app' entity type."""
+        content = b'{"name": "My App", "slug": "my-app"}'
+        result = detect_platform_entity_type("apps/my-app/app.json", content)
+        assert result == "app"
+
+    def test_detect_app_tsx_file(self):
+        """TSX files under apps/ should be detected as 'app_file' entity type."""
+        content = b'export default function Page() { return <div>Hello</div>; }'
+        result = detect_platform_entity_type("apps/my-app/pages/index.tsx", content)
+        assert result == "app_file"
+
+    def test_detect_app_ts_file(self):
+        """TS files under apps/ should be detected as 'app_file' entity type."""
+        content = b'export function helper() { return 42; }'
+        result = detect_platform_entity_type("apps/my-app/modules/utils.ts", content)
+        assert result == "app_file"
+
+    def test_detect_app_css_file(self):
+        """CSS files under apps/ should be detected as 'app_file'."""
+        content = b'body { color: red; }'
+        result = detect_platform_entity_type("apps/my-app/styles/main.css", content)
+        assert result == "app_file"
+
+    def test_detect_non_app_tsx(self):
+        """TSX files NOT under apps/ should not be detected as app_file."""
+        content = b'export default function Page() { return <div>Hello</div>; }'
+        result = detect_platform_entity_type("components/Page.tsx", content)
+        assert result != "app_file"
+
+    def test_detect_app_root_file(self):
+        """Files directly under apps/{slug}/ should be app_file."""
+        content = b'export default {}'
+        result = detect_platform_entity_type("apps/my-app/_layout.tsx", content)
+        assert result == "app_file"
+
+    def test_detect_app_nested_file(self):
+        """Deeply nested files under apps/ should be app_file."""
+        content = b'// component'
+        result = detect_platform_entity_type("apps/my-app/pages/clients/[id].tsx", content)
+        assert result == "app_file"
+
+
 # ---------------------------------------------------------------------------
 # 2. detect_python_entity_type
 # ---------------------------------------------------------------------------
