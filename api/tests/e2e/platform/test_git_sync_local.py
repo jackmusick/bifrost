@@ -127,6 +127,32 @@ def remove_entity_from_repo(persistent_dir: Path, rel_path: str) -> None:
         target.unlink()
 
 
+async def write_manifest_to_repo(db_session: AsyncSession, persistent_dir: Path) -> None:
+    """Generate manifest from DB and write to persistent dir, simulating RepoSyncWriter.regenerate_manifest()."""
+    from src.services.manifest_generator import generate_manifest
+    from src.services.manifest import write_manifest_to_dir
+    manifest = await generate_manifest(db_session)
+    # Filter out entities whose files don't exist in the persistent dir
+    # (the test DB may contain entities from other fixtures)
+    manifest.workflows = {
+        k: v for k, v in manifest.workflows.items()
+        if (persistent_dir / v.path).exists()
+    }
+    manifest.forms = {
+        k: v for k, v in manifest.forms.items()
+        if (persistent_dir / v.path).exists()
+    }
+    manifest.agents = {
+        k: v for k, v in manifest.agents.items()
+        if (persistent_dir / v.path).exists()
+    }
+    manifest.apps = {
+        k: v for k, v in manifest.apps.items()
+        if (persistent_dir / v.path).exists()
+    }
+    write_manifest_to_dir(manifest, persistent_dir / ".bifrost")
+
+
 # =============================================================================
 # Fixtures
 # =============================================================================
@@ -202,38 +228,6 @@ async def sync_service(db_session: AsyncSession, bare_repo, tmp_path):
 
     service.repo_manager.checkout = local_checkout
     service._persistent_dir = persistent_dir  # Expose for tests
-
-    # Override _regenerate_manifest_only to filter out entities whose files
-    # don't exist in the working dir. The test DB may contain agents/forms/apps
-    # from other fixtures that have no corresponding files in the test repo.
-    _original_regenerate = service._regenerate_manifest_only
-
-    async def _filtered_regenerate(work_dir: Path) -> None:
-        await _original_regenerate(work_dir)
-        # Re-read the manifest and filter out missing paths
-        bifrost_dir = work_dir / ".bifrost"
-        if bifrost_dir.exists():
-            from src.services.manifest import read_manifest_from_dir, write_manifest_to_dir
-            manifest = read_manifest_from_dir(bifrost_dir)
-            manifest.workflows = {
-                k: v for k, v in manifest.workflows.items()
-                if (work_dir / v.path).exists()
-            }
-            manifest.forms = {
-                k: v for k, v in manifest.forms.items()
-                if (work_dir / v.path).exists()
-            }
-            manifest.agents = {
-                k: v for k, v in manifest.agents.items()
-                if (work_dir / v.path).exists()
-            }
-            manifest.apps = {
-                k: v for k, v in manifest.apps.items()
-                if (work_dir / v.path).exists()
-            }
-            write_manifest_to_dir(manifest, bifrost_dir)
-
-    service._regenerate_manifest_only = _filtered_regenerate
 
     return service
 
@@ -391,6 +385,7 @@ class TestPushToEmptyRepo:
             "workflows/git_sync_test_wf.py",
             SAMPLE_WORKFLOW_PY,
         )
+        await write_manifest_to_repo(db_session, sync_service._persistent_dir)
 
         # Commit + push
         commit_result = await sync_service.desktop_commit("initial commit")
@@ -440,6 +435,7 @@ class TestPushToEmptyRepo:
             "workflows/git_sync_test_manifest.py",
             SAMPLE_WORKFLOW_PY,
         )
+        await write_manifest_to_repo(db_session, sync_service._persistent_dir)
 
         # Commit + push
         await sync_service.desktop_commit("initial commit")
@@ -498,6 +494,7 @@ class TestIncrementalPush:
             "workflows/git_sync_test_incremental.py",
             SAMPLE_WORKFLOW_PY,
         )
+        await write_manifest_to_repo(db_session, sync_service._persistent_dir)
         result1 = await sync_service.desktop_commit("initial commit")
         assert result1.success is True
         await sync_service.desktop_push()
@@ -511,6 +508,7 @@ class TestIncrementalPush:
             "workflows/git_sync_test_incremental.py",
             SAMPLE_WORKFLOW_UPDATED,
         )
+        await write_manifest_to_repo(db_session, sync_service._persistent_dir)
 
         # Second commit+push
         result2 = await sync_service.desktop_commit("update workflow")
@@ -554,6 +552,7 @@ class TestIncrementalPush:
             "workflows/git_sync_test_delete.py",
             SAMPLE_WORKFLOW_PY,
         )
+        await write_manifest_to_repo(db_session, sync_service._persistent_dir)
         await sync_service.desktop_commit("initial commit")
         await sync_service.desktop_push()
 
@@ -564,6 +563,7 @@ class TestIncrementalPush:
             sync_service._persistent_dir,
             "workflows/git_sync_test_delete.py",
         )
+        await write_manifest_to_repo(db_session, sync_service._persistent_dir)
 
         # Second commit+push
         await sync_service.desktop_commit("delete workflow")
@@ -895,6 +895,7 @@ roles: []
             "workflows/git_sync_test_modified.py",
             SAMPLE_WORKFLOW_PY,
         )
+        await write_manifest_to_repo(db_session, sync_service._persistent_dir)
         await sync_service.desktop_commit("initial commit")
         await sync_service.desktop_push()
 
@@ -946,6 +947,7 @@ roles: []
             "workflows/git_sync_test_del_pull.py",
             SAMPLE_WORKFLOW_PY,
         )
+        await write_manifest_to_repo(db_session, sync_service._persistent_dir)
         await sync_service.desktop_commit("initial commit")
         await sync_service.desktop_push()
 
@@ -1012,6 +1014,7 @@ class TestRenames:
             "workflows/git_sync_test_rename_old.py",
             SAMPLE_WORKFLOW_PY,
         )
+        await write_manifest_to_repo(db_session, sync_service._persistent_dir)
         await sync_service.desktop_commit("initial commit")
         await sync_service.desktop_push()
 
@@ -1077,6 +1080,7 @@ class TestRenames:
             "workflows/git_sync_test_plat_old.py",
             SAMPLE_WORKFLOW_PY,
         )
+        await write_manifest_to_repo(db_session, sync_service._persistent_dir)
         await sync_service.desktop_commit("initial commit")
         await sync_service.desktop_push()
 
@@ -1092,6 +1096,7 @@ class TestRenames:
         )
         wf.path = "workflows/git_sync_test_plat_new.py"
         await db_session.commit()
+        await write_manifest_to_repo(db_session, sync_service._persistent_dir)
 
         # Commit+push again
         await sync_service.desktop_commit("rename workflow")
@@ -1140,6 +1145,7 @@ class TestConflicts:
             "workflows/git_sync_test_conflict.py",
             SAMPLE_WORKFLOW_PY,
         )
+        await write_manifest_to_repo(db_session, sync_service._persistent_dir)
         await sync_service.desktop_commit("initial commit")
         await sync_service.desktop_push()
 
@@ -1160,6 +1166,7 @@ class TestConflicts:
             "workflows/git_sync_test_conflict.py",
             SAMPLE_WORKFLOW_CLEAN,  # Different content from repo change
         )
+        await write_manifest_to_repo(db_session, sync_service._persistent_dir)
 
         # Commit locally (creates divergent history)
         await sync_service.desktop_commit("modify workflow in platform")
@@ -1200,6 +1207,7 @@ class TestConflicts:
             "workflows/git_sync_test_del_conflict.py",
             SAMPLE_WORKFLOW_PY,
         )
+        await write_manifest_to_repo(db_session, sync_service._persistent_dir)
         await sync_service.desktop_commit("initial commit")
         await sync_service.desktop_push()
 
@@ -1222,6 +1230,7 @@ class TestConflicts:
             "workflows/git_sync_test_del_conflict.py",
             SAMPLE_WORKFLOW_UPDATED,
         )
+        await write_manifest_to_repo(db_session, sync_service._persistent_dir)
         await sync_service.desktop_commit("modify workflow in platform")
 
         # Pull should detect conflict (delete vs modify)
@@ -1269,6 +1278,7 @@ class TestRoundTrip:
             "workflows/git_sync_test_roundtrip.py",
             SAMPLE_WORKFLOW_PY,
         )
+        await write_manifest_to_repo(db_session, sync_service._persistent_dir)
         await sync_service.desktop_commit("initial commit")
         await sync_service.desktop_push()
 
@@ -1341,6 +1351,7 @@ class TestRoundTrip:
             f"forms/{form_id}.form.yaml",
             SAMPLE_FORM_YAML.format(workflow_id=wf_id),
         )
+        await write_manifest_to_repo(db_session, sync_service._persistent_dir)
 
         # Commit + push
         await sync_service.desktop_commit("initial commit")
@@ -1422,6 +1433,7 @@ tool_ids:
             "workflows/git_sync_test_rt_agent_tool.py",
             SAMPLE_WORKFLOW_PY,
         )
+        await write_manifest_to_repo(db_session, sync_service._persistent_dir)
 
         # Commit + push
         commit_result = await sync_service.desktop_commit("initial commit with agent")
@@ -1532,6 +1544,7 @@ form_schema:
             "workflows/git_sync_test_rt_form.py",
             SAMPLE_WORKFLOW_PY,
         )
+        await write_manifest_to_repo(db_session, sync_service._persistent_dir)
 
         # Commit + push
         commit_result = await sync_service.desktop_commit("initial commit with form")
@@ -1612,6 +1625,7 @@ class TestOrphanDetection:
             f"forms/{form_id}.form.yaml",
             SAMPLE_FORM_YAML.format(workflow_id=wf_id),
         )
+        await write_manifest_to_repo(db_session, sync_service._persistent_dir)
         await sync_service.desktop_commit("initial commit")
         await sync_service.desktop_push()
 
@@ -1849,6 +1863,7 @@ class TestSplitManifestFormat:
             "workflows/git_sync_test_split.py",
             SAMPLE_WORKFLOW_PY,
         )
+        await write_manifest_to_repo(db_session, sync_service._persistent_dir)
 
         await sync_service.desktop_commit("initial commit")
         await sync_service.desktop_push()
@@ -1877,11 +1892,10 @@ class TestSplitManifestFormat:
         working_clone,
     ):
         """Pull manifest with integration → creates Integration, config_schema, mappings in DB."""
-        from src.models.orm.integrations import Integration, IntegrationConfigSchema, IntegrationMapping
+        from src.models.orm.integrations import Integration, IntegrationConfigSchema
 
         work_dir = Path(working_clone.working_dir)
         integ_id = str(uuid4())
-        org_id = str(uuid4())
 
         # Write split manifest with integration
         bifrost_dir = work_dir / ".bifrost"

@@ -1,11 +1,10 @@
 """Test WorkflowIndexer enrich-only behavior."""
 
 import pytest
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock
 from uuid import uuid4
 
 from sqlalchemy import Update, Insert
-from sqlalchemy.sql import ClauseElement
 
 
 SAMPLE_WORKFLOW = '''
@@ -43,8 +42,8 @@ async def test_indexer_skips_unregistered_workflow():
     # Verify no INSERT or UPDATE was issued (only SELECT)
     for call in mock_db.execute.call_args_list:
         stmt = call[0][0]
-        assert not _is_statement_type(stmt, Insert), f"Unexpected INSERT statement"
-        assert not _is_statement_type(stmt, Update), f"Unexpected UPDATE statement"
+        assert not _is_statement_type(stmt, Insert), "Unexpected INSERT statement"
+        assert not _is_statement_type(stmt, Update), "Unexpected UPDATE statement"
 
 
 @pytest.mark.asyncio

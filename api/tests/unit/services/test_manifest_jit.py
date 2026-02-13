@@ -46,7 +46,7 @@ async def test_desktop_commit_regenerates_manifest_before_staging():
 
         mock_preflight.return_value = MagicMock(valid=True)
 
-        result = await service.desktop_commit("test commit")
+        await service.desktop_commit("test commit")
 
         # Manifest must be regenerated BEFORE git add
         assert call_order == ["regenerate_manifest", "git_add"]
@@ -80,10 +80,10 @@ async def test_reimport_regenerates_manifest_and_reindexes_workflows():
 
     with patch.object(service, '_regenerate_manifest_to_dir') as mock_regen, \
          patch.object(service, '_reindex_registered_workflows') as mock_reindex, \
-         patch.object(service, '_import_all_entities', return_value=5) as mock_import, \
-         patch.object(service, '_delete_removed_entities') as mock_delete, \
-         patch.object(service, '_update_file_index') as mock_fi, \
-         patch.object(service, '_sync_app_previews') as mock_apps:
+         patch.object(service, '_import_all_entities', return_value=5), \
+         patch.object(service, '_delete_removed_entities'), \
+         patch.object(service, '_update_file_index'), \
+         patch.object(service, '_sync_app_previews'):
 
         result = await service.reimport_from_repo()
 
