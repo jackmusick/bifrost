@@ -4,7 +4,7 @@ Git Sync Service
 GitPython-based synchronization. S3 _repo/ is the persistent working tree.
 
 Key principles:
-1. DB is source of truth for "local" state
+1. Git working tree is source of truth during sync operations
 2. GitPython for clone/pull/push/commit
 3. Conflict detection with user resolution
 4. .bifrost/ split manifest files declare entity identity
@@ -21,6 +21,7 @@ from typing import TYPE_CHECKING
 import yaml
 from git import Repo as GitRepo
 from sqlalchemy import select
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.config import Settings, get_settings
@@ -34,6 +35,7 @@ from src.services.github_sync_entity_metadata import extract_entity_metadata
 if TYPE_CHECKING:
     from src.models.contracts.github import (
         CommitResult,
+        DiscardResult,
         DiffResult,
         FetchResult,
         PullResult,
@@ -45,9 +47,7 @@ from src.services.manifest import (
     Manifest,
     get_all_entity_ids,
     read_manifest_from_dir,
-    write_manifest_to_dir,
 )
-from src.services.manifest_generator import generate_manifest
 
 logger = logging.getLogger(__name__)
 
@@ -176,15 +176,46 @@ class GitHubSyncService:
             return FetchResult(success=False, error=str(e))
 
     async def desktop_status(self) -> "WorkingTreeStatus":
-        """Get working tree status (uncommitted changes). Regenerates manifest first."""
-        from src.models.contracts.github import ChangedFile, WorkingTreeStatus
+        """Get working tree status (uncommitted changes)."""
+        from src.models.contracts.github import ChangedFile, MergeConflict, WorkingTreeStatus
 
         try:
             async with self.repo_manager.checkout() as work_dir:
                 repo = self._open_or_init(work_dir)
 
-                # Regenerate manifest before checking status
-                await self._regenerate_manifest_only(work_dir)
+                # Check for unresolved conflicts BEFORE git add (which would resolve them)
+                conflict_list: list[MergeConflict] = []
+                try:
+                    unmerged = repo.index.unmerged_blobs()
+                    for cpath in sorted(unmerged.keys()):
+                        ours_content = None
+                        theirs_content = None
+                        try:
+                            ours_content = repo.git.show(f":2:{cpath}")
+                        except Exception:
+                            pass
+                        try:
+                            theirs_content = repo.git.show(f":3:{cpath}")
+                        except Exception:
+                            pass
+                        metadata = extract_entity_metadata(str(cpath))
+                        conflict_list.append(MergeConflict(
+                            path=str(cpath),
+                            ours_content=ours_content,
+                            theirs_content=theirs_content,
+                            display_name=metadata.display_name,
+                            entity_type=metadata.entity_type,
+                        ))
+                except Exception:
+                    pass  # No unmerged entries
+
+                # If there are conflicts, don't stage/unstage — just return conflicts
+                if conflict_list:
+                    return WorkingTreeStatus(
+                        changed_files=[],
+                        total_changes=0,
+                        conflicts=conflict_list,
+                    )
 
                 # Stage everything to get accurate diff
                 repo.git.add(A=True)
@@ -245,10 +276,31 @@ class GitHubSyncService:
             logger.error(f"Status failed: {e}", exc_info=True)
             return WorkingTreeStatus()
 
+    @staticmethod
+    async def _regenerate_manifest_to_dir(db, work_dir) -> None:
+        """Generate manifest from DB and write split files to work_dir/.bifrost/."""
+        from src.services.manifest import serialize_manifest_dir, MANIFEST_FILES
+        from src.services.manifest_generator import generate_manifest
+
+        manifest = await generate_manifest(db)
+        files = serialize_manifest_dir(manifest)
+
+        bifrost_dir = work_dir / ".bifrost"
+        bifrost_dir.mkdir(parents=True, exist_ok=True)
+
+        for filename, content in files.items():
+            (bifrost_dir / filename).write_text(content)
+
+        # Remove files for now-empty entity types
+        for filename in MANIFEST_FILES.values():
+            path = bifrost_dir / filename
+            if filename not in files and path.exists():
+                path.unlink()
+
     async def desktop_commit(self, message: str) -> "CommitResult":
         """
         Commit working tree changes (local only, no push).
-        Regenerates manifest, runs preflight, commits if valid.
+        Runs preflight, commits if valid.
         """
         from src.models.contracts.github import CommitResult
 
@@ -256,10 +308,10 @@ class GitHubSyncService:
             async with self.repo_manager.checkout() as work_dir:
                 repo = self._open_or_init(work_dir)
 
-                # Regenerate manifest
-                await self._regenerate_manifest_only(work_dir)
+                # Regenerate manifest from DB before staging
+                await self._regenerate_manifest_to_dir(self.db, work_dir)
 
-                # Stage everything
+                # Stage everything (now includes fresh manifest)
                 repo.git.add(A=True)
 
                 # Check if there are changes to commit
@@ -316,6 +368,15 @@ class GitHubSyncService:
                 if not remote_exists:
                     return PullResult(success=True, pulled=0)
 
+                # Stash local changes before merge (like GitHub Desktop)
+                stashed = False
+                try:
+                    # --include-untracked captures new files too
+                    result = repo.git.stash("push", "--include-untracked", "-m", "bifrost-pull-stash")
+                    stashed = "No local changes" not in result
+                except Exception as e:
+                    logger.debug(f"Stash before pull: {e}")
+
                 # Attempt merge
                 try:
                     repo.git.merge(f"origin/{self.branch}")
@@ -354,13 +415,61 @@ class GitHubSyncService:
                             ))
 
                         # DON'T abort merge - leave it in merge state for resolve
+                        # Note: stash stays intact, will be popped after resolve
                         return PullResult(
                             success=False,
                             conflicts=conflicts,
                             error="Merge conflicts detected",
                         )
                     else:
+                        # Non-conflict merge failure — restore stash and re-raise
+                        if stashed:
+                            try:
+                                repo.git.stash("pop")
+                            except Exception:
+                                logger.warning("Failed to pop stash after merge failure")
                         raise
+
+                # Merge succeeded — pop stash to restore local changes
+                if stashed:
+                    try:
+                        repo.git.stash("pop")
+                    except Exception as e:
+                        logger.warning(f"Stash pop had conflicts: {e}")
+
+                        # Parse stash pop conflicts the same way as merge conflicts
+                        stash_conflicts: list[MergeConflict] = []
+                        try:
+                            unmerged = repo.index.unmerged_blobs()
+                            conflicted_files = sorted(unmerged.keys())
+                        except Exception:
+                            conflicted_files = []
+
+                        for cpath in conflicted_files:
+                            ours_content = None
+                            theirs_content = None
+                            try:
+                                ours_content = repo.git.show(f":2:{cpath}")
+                            except Exception:
+                                pass
+                            try:
+                                theirs_content = repo.git.show(f":3:{cpath}")
+                            except Exception:
+                                pass
+                            metadata = extract_entity_metadata(cpath)
+                            stash_conflicts.append(MergeConflict(
+                                path=cpath,
+                                ours_content=ours_content,
+                                theirs_content=theirs_content,
+                                display_name=metadata.display_name,
+                                entity_type=metadata.entity_type,
+                            ))
+
+                        return PullResult(
+                            success=False,
+                            conflicts=stash_conflicts,
+                            error="Local changes conflict with pulled changes",
+                        )
 
                 # Success - import entities atomically with savepoint
                 async with self.db.begin_nested():
@@ -368,6 +477,9 @@ class GitHubSyncService:
                     await self._delete_removed_entities(work_dir)
                     await self._update_file_index(work_dir)
                 await self.db.commit()
+
+                # Sync app preview files from repo to _apps/{id}/preview/
+                await self._sync_app_previews(work_dir)
 
                 commit_sha = repo.head.commit.hexsha if repo.head.is_valid() else None
                 logger.info(f"Pull complete: {pulled} entities, commit={commit_sha[:8] if commit_sha else 'none'}")
@@ -444,10 +556,13 @@ class GitHubSyncService:
             async with self.repo_manager.checkout() as work_dir:
                 repo = self._open_or_init(work_dir)
 
-                # Verify we're in a merge state
+                # Check for merge state or unmerged entries (stash pop conflicts)
                 merge_head = work_dir / ".git" / "MERGE_HEAD"
-                if not merge_head.exists():
-                    return ResolveResult(success=False, error="Not in a merge state")
+                is_merge = merge_head.exists()
+                has_unmerged = bool(repo.index.unmerged_blobs())
+
+                if not is_merge and not has_unmerged:
+                    return ResolveResult(success=False, error="No conflicts to resolve")
 
                 # Apply resolutions
                 for cpath, resolution in resolutions.items():
@@ -457,8 +572,12 @@ class GitHubSyncService:
                         repo.git.checkout("--theirs", cpath)
                     repo.git.add(cpath)
 
-                # Complete the merge
-                repo.index.commit("Merge with conflict resolution")
+                # Complete the operation
+                if is_merge:
+                    repo.index.commit("Merge with conflict resolution")
+                else:
+                    # Stash pop conflict — merge already succeeded, just commit resolved files
+                    repo.index.commit("Apply stashed changes with conflict resolution")
 
                 # Import entities atomically with savepoint
                 async with self.db.begin_nested():
@@ -466,6 +585,9 @@ class GitHubSyncService:
                     await self._delete_removed_entities(work_dir)
                     await self._update_file_index(work_dir)
                 await self.db.commit()
+
+                # Sync app preview files from repo to _apps/{id}/preview/
+                await self._sync_app_previews(work_dir)
 
                 logger.info(f"Resolved conflicts, imported {pulled} entities")
                 return ResolveResult(success=True, pulled=pulled)
@@ -480,9 +602,6 @@ class GitHubSyncService:
         try:
             async with self.repo_manager.checkout() as work_dir:
                 repo = self._open_or_init(work_dir)
-
-                # Regenerate manifest for accurate diff
-                await self._regenerate_manifest_only(work_dir)
 
                 # Get HEAD content
                 head_content = None
@@ -506,6 +625,39 @@ class GitHubSyncService:
         except Exception as e:
             logger.error(f"Diff failed: {e}", exc_info=True)
             return DiffResult(path=path)
+
+    async def desktop_discard(self, paths: list[str]) -> "DiscardResult":
+        """Discard working tree changes for specific files (git checkout -- <path>)."""
+        from src.models.contracts.github import DiscardResult
+
+        try:
+            async with self.repo_manager.checkout() as work_dir:
+                repo = self._open_or_init(work_dir)
+                discarded = []
+
+                for path in paths:
+                    file_path = work_dir / path
+                    try:
+                        if repo.head.is_valid():
+                            try:
+                                # File exists in HEAD — restore it
+                                repo.git.checkout("HEAD", "--", path)
+                                discarded.append(path)
+                                continue
+                            except Exception:
+                                pass
+                        # Untracked or not in HEAD — just delete
+                        if file_path.exists():
+                            file_path.unlink()
+                            discarded.append(path)
+                    except Exception as e:
+                        logger.warning(f"Failed to discard {path}: {e}")
+
+                logger.info(f"Discarded {len(discarded)} file(s)")
+                return DiscardResult(success=True, discarded=discarded)
+        except Exception as e:
+            logger.error(f"Discard failed: {e}", exc_info=True)
+            return DiscardResult(success=False, error=str(e))
 
     # -----------------------------------------------------------------
     # Helpers for desktop-style operations
@@ -534,11 +686,6 @@ class GitHubSyncService:
                 cw.set_value("user", "email", "bifrost@localhost")
 
         return repo
-
-    async def _regenerate_manifest_only(self, work_dir: Path) -> None:
-        """Write .bifrost/ split manifest files from DB state. Lightweight - no entity re-serialization."""
-        manifest = await generate_manifest(self.db)
-        write_manifest_to_dir(manifest, work_dir / ".bifrost")
 
     async def _import_all_entities(self, work_dir: Path) -> int:
         """Import all entities from the working tree into the DB.
@@ -786,6 +933,62 @@ class GitHubSyncService:
                 )
 
     # -----------------------------------------------------------------
+    # App preview sync
+    # -----------------------------------------------------------------
+
+    async def _sync_app_previews(self, work_dir: Path) -> None:
+        """Sync app preview files from repo working tree to _apps/{id}/preview/ in S3.
+
+        Reads the manifest to find app entries, derives the source directory
+        from each app's path, and copies files to the preview store.
+        """
+        from src.services.app_storage import AppStorageService
+
+        bifrost_dir = work_dir / ".bifrost"
+        manifest = read_manifest_from_dir(bifrost_dir)
+
+        if not manifest.apps:
+            return
+
+        app_storage = AppStorageService(self.repo_manager._settings)
+
+        for _app_name, mapp in manifest.apps.items():
+            # Derive source directory from app path (e.g. "apps/tickbox-grc/app.yaml" -> "apps/tickbox-grc")
+            app_source_dir = str(Path(mapp.path).parent)
+
+            try:
+                synced = await app_storage.sync_preview(mapp.id, app_source_dir)
+                logger.info(f"Synced {synced} preview files for app {mapp.id}")
+            except Exception as e:
+                logger.warning(f"Failed to sync preview for app {mapp.id}: {e}")
+
+    # -----------------------------------------------------------------
+    # Reimport from repo (no git operations)
+    # -----------------------------------------------------------------
+
+    async def reimport_from_repo(self) -> int:
+        """Re-import all entities from S3 _repo/ without git operations.
+
+        Downloads the working tree from S3, imports entities into DB,
+        updates file_index, and syncs app previews.
+
+        Returns count of entities imported.
+        """
+        async with self.repo_manager.checkout() as work_dir:
+            # Import entities atomically with savepoint
+            async with self.db.begin_nested():
+                count = await self._import_all_entities(work_dir)
+                await self._delete_removed_entities(work_dir)
+                await self._update_file_index(work_dir)
+            await self.db.commit()
+
+            # Sync app preview files
+            await self._sync_app_previews(work_dir)
+
+            logger.info(f"Reimport complete: {count} entities")
+            return count
+
+    # -----------------------------------------------------------------
     # Internal: git operations
     # -----------------------------------------------------------------
 
@@ -856,17 +1059,68 @@ class GitHubSyncService:
             is_active=True,
             organization_id=UUID(mwf.organization_id) if mwf.organization_id else None,
         ).on_conflict_do_update(
-            index_elements=["id"],
+            constraint="workflows_path_function_key",
             set_={
                 "name": manifest_name,
-                "function_name": mwf.function_name,
-                "path": mwf.path,
                 "type": getattr(mwf, "type", "workflow"),
                 "is_active": True,
                 "updated_at": datetime.now(timezone.utc),
             },
         )
         await self.db.execute(stmt)
+
+    async def _resolve_portable_ref(self, ref: str) -> str | None:
+        """Resolve a path::function_name portable ref to a workflow UUID string.
+
+        Args:
+            ref: A string like "workflows/foo.py::bar"
+
+        Returns:
+            UUID string if found, None otherwise
+        """
+        from src.models.orm.workflows import Workflow
+
+        if "::" not in ref:
+            return None
+
+        path, _, function_name = ref.rpartition("::")
+        if not path or not function_name:
+            return None
+
+        result = await self.db.execute(
+            select(Workflow.id).where(
+                Workflow.path == path,
+                Workflow.function_name == function_name,
+                Workflow.is_active.is_(True),
+            )
+        )
+        wf_id = result.scalar_one_or_none()
+        return str(wf_id) if wf_id else None
+
+    async def _resolve_ref_field(self, data: dict, field_name: str) -> None:
+        """Resolve a portable ref in a dict field to a UUID in-place.
+
+        If the field value contains '::', attempts to resolve it.
+        If resolution fails, the value is left unchanged (will be stored as-is).
+        """
+        value = data.get(field_name)
+        if isinstance(value, str) and "::" in value:
+            resolved = await self._resolve_portable_ref(value)
+            if resolved:
+                data[field_name] = resolved
+                logger.info(f"Resolved portable ref '{value}' -> '{resolved}'")
+            else:
+                logger.warning(f"Could not resolve portable ref '{value}' for field '{field_name}'")
+        elif isinstance(value, list):
+            # Handle list fields like tool_ids
+            resolved_list = []
+            for item in value:
+                if isinstance(item, str) and "::" in item:
+                    resolved = await self._resolve_portable_ref(item)
+                    resolved_list.append(resolved if resolved else item)
+                else:
+                    resolved_list.append(item)
+            data[field_name] = resolved_list
 
     async def _import_form(self, mform, content: bytes) -> None:
         """Import a form from repo YAML into the DB using FormIndexer."""
@@ -879,6 +1133,11 @@ class GitHubSyncService:
             return
 
         data["id"] = mform.id
+
+        # Resolve portable refs (path::function_name) to UUIDs
+        await self._resolve_ref_field(data, "workflow_id")
+        await self._resolve_ref_field(data, "launch_workflow_id")
+
         if mform.organization_id:
             from sqlalchemy.dialects.postgresql import insert as pg_insert
 
@@ -908,6 +1167,13 @@ class GitHubSyncService:
             return
 
         data["id"] = magent.id
+
+        # Resolve portable refs (path::function_name) to UUIDs in tool_ids
+        await self._resolve_ref_field(data, "tool_ids")
+        # Also handle 'tools' alias used by AgentIndexer
+        if "tools" in data and "tool_ids" not in data:
+            await self._resolve_ref_field(data, "tools")
+
         if magent.organization_id:
             from sqlalchemy.dialects.postgresql import insert as pg_insert
 
@@ -939,17 +1205,24 @@ class GitHubSyncService:
         if not data:
             return
 
+        # Slug from manifest entry, or derive from path (e.g. "apps/tickbox-grc/app.yaml" -> "tickbox-grc")
+        slug = mapp.slug or (mapp.path.split("/")[1] if mapp.path else None)
+        if not slug:
+            logger.warning(f"App {mapp.id} has no slug or path, skipping")
+            return
+
         stmt = insert(Application).values(
             id=UUID(mapp.id),
             name=data.get("name", ""),
             description=data.get("description"),
-            slug=data.get("slug", str(UUID(mapp.id))),
+            slug=slug,
             organization_id=UUID(mapp.organization_id) if mapp.organization_id else None,
         ).on_conflict_do_update(
             index_elements=["id"],
             set_={
                 "name": data.get("name", ""),
                 "description": data.get("description"),
+                "slug": slug,
                 "updated_at": datetime.now(timezone.utc),
             },
         )
@@ -1113,31 +1386,51 @@ class GitHubSyncService:
         await self.db.execute(stmt)
 
     async def _import_table(self, table_name: str, mtable) -> None:
-        """Import a table definition from manifest into the DB (schema only, no data)."""
+        """Import a table definition from manifest into the DB (schema only, no data).
+
+        Uses two-pass upsert: first try by ID, fall back to update-by-name if
+        a table with the same name but different ID already exists.
+        """
         from uuid import UUID
 
+        from sqlalchemy import update
         from sqlalchemy.dialects.postgresql import insert
 
         from src.models.orm.tables import Table
 
-        stmt = insert(Table).values(
-            id=UUID(mtable.id),
-            name=table_name,
-            description=mtable.description,
-            organization_id=UUID(mtable.organization_id) if mtable.organization_id else None,
-            application_id=UUID(mtable.application_id) if mtable.application_id else None,
-            schema=mtable.table_schema,
-            created_by="git-sync",
-        ).on_conflict_do_update(
-            index_elements=["id"],
-            set_={
-                "name": table_name,
-                "description": mtable.description,
-                "schema": mtable.table_schema,
-                "updated_at": datetime.now(timezone.utc),
-            },
-        )
-        await self.db.execute(stmt)
+        now = datetime.now(timezone.utc)
+        try:
+            async with self.db.begin_nested():
+                stmt = insert(Table).values(
+                    id=UUID(mtable.id),
+                    name=table_name,
+                    description=mtable.description,
+                    organization_id=UUID(mtable.organization_id) if mtable.organization_id else None,
+                    application_id=UUID(mtable.application_id) if mtable.application_id else None,
+                    schema=mtable.table_schema,
+                    created_by="git-sync",
+                ).on_conflict_do_update(
+                    index_elements=["id"],
+                    set_={
+                        "name": table_name,
+                        "description": mtable.description,
+                        "schema": mtable.table_schema,
+                        "updated_at": now,
+                    },
+                )
+                await self.db.execute(stmt)
+        except IntegrityError:
+            # Name already exists with a different ID — update the existing row by name
+            stmt_update = (
+                update(Table)
+                .where(Table.name == table_name)
+                .values(
+                    description=mtable.description,
+                    schema=mtable.table_schema,
+                    updated_at=now,
+                )
+            )
+            await self.db.execute(stmt_update)
 
     async def _import_event_source(self, mes) -> None:
         """Import an event source + subscriptions from manifest into the DB."""

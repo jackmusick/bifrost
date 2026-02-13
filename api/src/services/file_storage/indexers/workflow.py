@@ -92,13 +92,14 @@ class WorkflowIndexer:
         cached_content_str: str | None = None,
     ) -> None:
         """
-        Extract and index workflows/providers from Python file.
+        Enrich existing workflow/provider records from Python file content.
 
         Uses AST-based parsing to extract metadata from @workflow, @tool, and
         @data_provider decorators without importing the module.
 
-        IDs are DB-only. Workflows without IDs in decorators will have IDs
-        generated in the database using path + function_name as the identity key.
+        Enrich-only: only updates existing DB records. Unregistered functions
+        (no matching DB record) are skipped. Use register_workflow() to create
+        new records.
 
         Args:
             path: File path
@@ -131,57 +132,32 @@ class WorkflowIndexer:
                 decorator_name, kwargs = decorator_info
 
                 if decorator_name in ("workflow", "tool"):
-                    # @tool decorator is an alias for @workflow(is_tool=True)
-                    # If using @tool, force is_tool=True
                     if decorator_name == "tool":
                         kwargs["is_tool"] = True
 
-                    # function_name is the actual Python function name (unique per file)
                     function_name = node.name
 
-                    # Phase 6 (DB-first): IDs are DB-only.
-                    # If ID is in decorator, use it. Otherwise, look up by path + function_name
-                    # or generate a new one.
-                    workflow_id_str = kwargs.get("id")
-                    workflow_uuid: UUID_type
+                    # Look up existing workflow by path + function_name
+                    stmt = select(Workflow).where(
+                        Workflow.path == path,
+                        Workflow.function_name == function_name,
+                        Workflow.is_active.is_(True),
+                    )
+                    result = await self.db.execute(stmt)
+                    existing_workflow = result.scalar_one_or_none()
 
-                    if workflow_id_str:
-                        # ID in decorator - validate and use it
-                        try:
-                            workflow_uuid = UUID_type(workflow_id_str)
-                        except ValueError:
-                            logger.warning(f"Invalid workflow id '{workflow_id_str}' in {path} - skipping indexing")
-                            continue
-                    else:
-                        # No ID in decorator - look up existing workflow by path + function_name
-                        # This is the DB-first approach: identities are in the database
-                        stmt = select(Workflow).where(
-                            Workflow.path == path,
-                            Workflow.function_name == function_name
+                    if not existing_workflow:
+                        # Not registered — skip. Use register_workflow() to register.
+                        logger.debug(
+                            f"Skipping unregistered function {function_name} in {path}"
                         )
-                        result = await self.db.execute(stmt)
-                        existing_workflow = result.scalar_one_or_none()
+                        continue
 
-                        if existing_workflow:
-                            # Reuse existing ID
-                            workflow_uuid = existing_workflow.id
-                            logger.debug(
-                                f"Workflow {function_name} in {path} has no ID in decorator, "
-                                f"reusing existing DB ID: {workflow_uuid}"
-                            )
-                        else:
-                            # Generate new ID
-                            workflow_uuid = uuid4()
-                            logger.info(
-                                f"Workflow {function_name} in {path} has no ID, "
-                                f"generating new DB ID: {workflow_uuid}"
-                            )
+                    workflow_uuid = existing_workflow.id
 
                     # Get workflow name from decorator or function name
                     workflow_name = kwargs.get("name") or node.name
                     description = kwargs.get("description")
-
-                    # If no description in decorator, try to get from docstring
                     if description is None:
                         docstring = ast.get_docstring(node)
                         if docstring:
@@ -191,7 +167,6 @@ class WorkflowIndexer:
                     tags = kwargs.get("tags", [])
                     endpoint_enabled = kwargs.get("endpoint_enabled", False)
                     allowed_methods = kwargs.get("allowed_methods", ["POST"])
-                    # Apply same logic as decorator: endpoints default to sync, others to async
                     execution_mode = kwargs.get("execution_mode")
                     if execution_mode is None:
                         execution_mode = "sync" if endpoint_enabled else "async"
@@ -200,135 +175,108 @@ class WorkflowIndexer:
                     time_saved = kwargs.get("time_saved", 0)
                     value = kwargs.get("value", 0.0)
                     timeout_seconds = kwargs.get("timeout_seconds", 1800)
-
-                    # Determine type based on is_tool flag
                     workflow_type = "tool" if is_tool else "workflow"
-
-                    # Extract parameters from function signature
                     parameters_schema = self._extract_parameters_from_ast(node)
 
-                    stmt = insert(Workflow).values(
-                        id=workflow_uuid,
-                        name=workflow_name,
-                        function_name=function_name,
-                        path=path,
-                        description=description,
-                        category=category,
-                        parameters_schema=parameters_schema,
-                        tags=tags,
-                        endpoint_enabled=endpoint_enabled,
-                        allowed_methods=allowed_methods,
-                        execution_mode=execution_mode,
-                        type=workflow_type,
-                        tool_description=tool_description,
-                        timeout_seconds=timeout_seconds,
-                        time_saved=time_saved,
-                        value=value,
-                        is_active=True,
-                        last_seen_at=now,
-                    ).on_conflict_do_update(
-                        index_elements=[Workflow.id],
-                        set_={
-                            "name": workflow_name,
-                            "function_name": function_name,
-                            "path": path,
-                            "description": description,
-                            "category": category,
-                            "parameters_schema": parameters_schema,
-                            "tags": tags,
-                            "endpoint_enabled": endpoint_enabled,
-                            "allowed_methods": allowed_methods,
-                            "execution_mode": execution_mode,
-                            "type": workflow_type,
-                            "tool_description": tool_description,
-                            "timeout_seconds": timeout_seconds,
-                            "time_saved": time_saved,
-                            "value": value,
-                            "is_active": True,
-                            "last_seen_at": now,
-                            "updated_at": now,
-                        },
-                    ).returning(Workflow)
-                    result = await self.db.execute(stmt)
-                    workflow = result.scalar_one()
-                    logger.debug(f"Indexed workflow: {workflow_name} ({function_name}) from {path}")
+                    # Enrich existing record with content-derived fields
+                    stmt = (
+                        update(Workflow)
+                        .where(Workflow.id == workflow_uuid)
+                        .values(
+                            name=workflow_name,
+                            function_name=function_name,
+                            path=path,
+                            description=description,
+                            category=category,
+                            parameters_schema=parameters_schema,
+                            tags=tags,
+                            endpoint_enabled=endpoint_enabled,
+                            allowed_methods=allowed_methods,
+                            execution_mode=execution_mode,
+                            type=workflow_type,
+                            tool_description=tool_description,
+                            timeout_seconds=timeout_seconds,
+                            time_saved=time_saved,
+                            value=value,
+                            is_active=True,
+                            last_seen_at=now,
+                            updated_at=now,
+                        )
+                    )
+                    await self.db.execute(stmt)
+                    logger.debug(f"Enriched workflow: {workflow_name} ({function_name}) from {path}")
 
                     # Refresh endpoint registration if endpoint_enabled
                     if endpoint_enabled:
+                        # Re-fetch for the refresh call
+                        result = await self.db.execute(
+                            select(Workflow).where(Workflow.id == workflow_uuid)
+                        )
+                        workflow = result.scalar_one()
                         await self.refresh_workflow_endpoint(workflow)
 
-                    # Update Redis caches for this workflow
+                    # Update Redis caches
                     try:
                         from src.core.redis_client import get_redis_client
                         redis_client = get_redis_client()
-
-                        # Invalidate endpoint workflow cache (keyed by name)
                         await redis_client.invalidate_endpoint_workflow_cache(workflow_name)
-                        logger.debug(f"Invalidated endpoint cache for workflow: {workflow_name}")
-
-                        # Upsert workflow metadata cache (keyed by ID)
                         await redis_client.set_workflow_metadata_cache(
                             workflow_id=str(workflow_uuid),
                             name=workflow_name,
                             file_path=path,
-                            timeout_seconds=kwargs.get("timeout_seconds", 1800),
+                            timeout_seconds=timeout_seconds,
                             time_saved=time_saved,
                             value=value,
                             execution_mode=execution_mode,
                         )
-                        logger.debug(f"Upserted workflow metadata cache: {workflow_name}")
                     except Exception as e:
                         logger.warning(f"Failed to update caches for workflow {workflow_name}: {e}")
 
                 elif decorator_name == "data_provider":
-                    # Get provider name from decorator (required)
                     provider_name = kwargs.get("name") or node.name
+                    function_name = node.name
+
+                    # Look up existing data_provider
+                    stmt = select(Workflow).where(
+                        Workflow.path == path,
+                        Workflow.function_name == function_name,
+                        Workflow.is_active.is_(True),
+                    )
+                    result = await self.db.execute(stmt)
+                    existing_dp = result.scalar_one_or_none()
+
+                    if not existing_dp:
+                        logger.debug(
+                            f"Skipping unregistered data_provider {function_name} in {path}"
+                        )
+                        continue
+
                     description = kwargs.get("description")
                     category = kwargs.get("category", "General")
                     tags = kwargs.get("tags", [])
                     timeout_seconds = kwargs.get("timeout_seconds", 300)
                     cache_ttl_seconds = kwargs.get("cache_ttl_seconds", 300)
-
-                    # Extract parameters from function signature
                     parameters_schema = self._extract_parameters_from_ast(node)
 
-                    # function_name is the actual Python function name (unique per file)
-                    # provider_name is the display name from decorator (can have duplicates)
-                    function_name = node.name
-
-                    # Data providers are stored in workflows table with type='data_provider'
-                    stmt = insert(Workflow).values(
-                        name=provider_name,
-                        function_name=function_name,
-                        path=path,
-                        description=description,
-                        category=category,
-                        tags=tags,
-                        parameters_schema=parameters_schema,
-                        type="data_provider",
-                        timeout_seconds=timeout_seconds,
-                        cache_ttl_seconds=cache_ttl_seconds,
-                        is_active=True,
-                        last_seen_at=now,
-                    ).on_conflict_do_update(
-                        index_elements=[Workflow.path, Workflow.function_name],
-                        set_={
-                            "name": provider_name,
-                            "description": description,
-                            "category": category,
-                            "tags": tags,
-                            "parameters_schema": parameters_schema,
-                            "type": "data_provider",
-                            "timeout_seconds": timeout_seconds,
-                            "cache_ttl_seconds": cache_ttl_seconds,
-                            "is_active": True,
-                            "last_seen_at": now,
-                            "updated_at": now,
-                        },
-                    ).returning(Workflow)
-                    dp_result = await self.db.execute(stmt)
-                    _data_provider = dp_result.scalar_one()
-                    logger.debug(f"Indexed data provider: {provider_name} ({function_name}) from {path}")
+                    stmt = (
+                        update(Workflow)
+                        .where(Workflow.id == existing_dp.id)
+                        .values(
+                            name=provider_name,
+                            description=description,
+                            category=category,
+                            tags=tags,
+                            parameters_schema=parameters_schema,
+                            type="data_provider",
+                            timeout_seconds=timeout_seconds,
+                            cache_ttl_seconds=cache_ttl_seconds,
+                            is_active=True,
+                            last_seen_at=now,
+                            updated_at=now,
+                        )
+                    )
+                    await self.db.execute(stmt)
+                    logger.debug(f"Enriched data provider: {provider_name} ({function_name}) from {path}")
 
         # Note: workspace_files update removed — file_index is the sole search index.
         # Entity type/ID routing is handled by path conventions, not DB columns.
