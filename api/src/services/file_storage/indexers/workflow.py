@@ -10,10 +10,7 @@ import logging
 import re
 from datetime import datetime, timezone
 from typing import Any
-from uuid import UUID as UUID_type, uuid4
-
 from sqlalchemy import select, update
-from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.models import Workflow

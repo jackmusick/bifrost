@@ -5,25 +5,21 @@ API endpoints for workspace maintenance operations.
 Platform admin resource - no org scoping.
 """
 
-import asyncio
 import logging
-from pathlib import Path
-from typing import Any
 
-import aiofiles
 from fastapi import APIRouter, Depends, HTTPException, status
 from pydantic import BaseModel
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.core.auth import Context, CurrentSuperuser
 from src.core.database import get_db
-from src.core.paths import WORKSPACE_PATH
 from src.models import (
     DocsIndexResponse,
     MaintenanceStatus,
-    ReindexJobResponse,
-    ReindexRequest,
+    PreflightIssueResponse,
+    PreflightResponse,
+    ReimportJobResponse,
 )
 from src.models.contracts.notifications import (
     NotificationCategory,
@@ -58,37 +54,21 @@ async def get_maintenance_status(
     Get the current maintenance status of the workspace.
 
     Returns:
-        - total_files: Total number of Python files in workspace
+        - total_files: Total number of Python files in file_index
         - last_reindex: Timestamp of last reindex (not tracked currently)
     """
-    from src.services.editor.file_filter import is_excluded_path
-
-    total_files = 0
-
     try:
-        # Count Python files in workspace
-        workspace_path = Path(WORKSPACE_PATH)
-        if not workspace_path.exists():
-            return MaintenanceStatus(
-                total_files=0,
-                last_reindex=None,
+        result = await db.execute(
+            select(func.count()).select_from(FileIndex).where(
+                FileIndex.path.endswith(".py"),
+                ~FileIndex.path.endswith("/"),
             )
-
-        # Get all Python files (rglob is I/O bound, run in thread)
-        python_files = await asyncio.to_thread(lambda: list(workspace_path.rglob("*.py")))
-
-        for file_path in python_files:
-            rel_path = str(file_path.relative_to(workspace_path))
-
-            # Skip excluded paths
-            if is_excluded_path(rel_path):
-                continue
-
-            total_files += 1
+        )
+        total_files = result.scalar() or 0
 
         return MaintenanceStatus(
             total_files=total_files,
-            last_reindex=None,  # Not tracked currently
+            last_reindex=None,
         )
 
     except Exception as e:
@@ -96,195 +76,6 @@ async def get_maintenance_status(
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Failed to get maintenance status",
-        )
-
-
-@router.post(
-    "/reindex",
-    response_model=ReindexJobResponse,
-    summary="Start workspace reindex (non-blocking)",
-    description="Queue a reindex job with reference validation (Platform admin only)",
-)
-async def run_reindex(
-    ctx: Context,
-    user: CurrentSuperuser,
-    request: ReindexRequest,
-) -> ReindexJobResponse:
-    """
-    Start a non-blocking reindex operation.
-
-    The reindex runs in the scheduler container and publishes progress via WebSocket.
-    Connect to `reindex:{job_id}` channel to receive updates.
-
-    Features:
-        - Downloads all workspace files from S3
-        - Indexes workflows/data_providers to database
-        - Validates form/agent references point to existing workflows
-        - Reports errors for unresolvable references
-
-    Returns:
-        ReindexJobResponse with job_id for tracking via WebSocket
-    """
-    from uuid import uuid4
-
-    from src.core.pubsub import publish_reindex_request
-
-    job_id = str(uuid4())
-
-    await publish_reindex_request(
-        job_id=job_id,
-        user_id=str(user.user_id),
-    )
-
-    logger.info(f"Reindex job {job_id} queued by user {user.user_id}")
-
-    return ReindexJobResponse(
-        status="queued",
-        job_id=job_id,
-    )
-
-
-class SDKScanResponse(BaseModel):
-    """Response from SDK reference scan."""
-
-    files_scanned: int
-    issues_found: int
-    issues: list[dict[str, Any]]
-    notification_created: bool
-
-
-@router.post(
-    "/scan-sdk",
-    response_model=SDKScanResponse,
-    summary="Scan workspace for missing SDK references",
-    description="Scan all Python files for missing config.get() and integrations.get() references (Platform admin only)",
-)
-async def scan_sdk_references(
-    ctx: Context,
-    user: CurrentSuperuser,
-    db: AsyncSession = Depends(get_db),
-) -> SDKScanResponse:
-    """
-    Scan the entire workspace for missing SDK references.
-
-    Detects:
-        - config.get("key") calls where "key" doesn't exist in Config table
-        - integrations.get("name") calls where "name" doesn't have any IntegrationMapping
-
-    Creates a platform admin notification if issues are found.
-
-    Returns:
-        SDKScanResponse with scan results
-    """
-    from src.services.editor.file_filter import is_excluded_path
-    from src.services.sdk_reference_scanner import SDKReferenceScanner
-
-    try:
-        workspace_path = Path(WORKSPACE_PATH)
-        if not workspace_path.exists():
-            return SDKScanResponse(
-                files_scanned=0,
-                issues_found=0,
-                issues=[],
-                notification_created=False,
-            )
-
-        scanner = SDKReferenceScanner(db)
-        all_issues = []
-        files_scanned = 0
-
-        # Get all Python files
-        python_files = await asyncio.to_thread(lambda: list(workspace_path.rglob("*.py")))
-
-        for file_path in python_files:
-            rel_path = str(file_path.relative_to(workspace_path))
-
-            # Skip excluded paths
-            if is_excluded_path(rel_path):
-                continue
-
-            files_scanned += 1
-
-            try:
-                async with aiofiles.open(file_path, "r", encoding="utf-8", errors="replace") as f:
-                    content = await f.read()
-                issues = await scanner.scan_file(rel_path, content)
-                all_issues.extend(issues)
-            except Exception as e:
-                logger.warning(f"Failed to scan {rel_path} for SDK issues: {e}")
-
-        # Create notification if issues found
-        notification_created = False
-        if all_issues:
-            notification_service = get_notification_service()
-
-            files_with_issues = len({i.file_path for i in all_issues})
-            title = f"Missing SDK References: {files_with_issues} file(s)"
-
-            # Check for existing notification to avoid duplicates
-            existing = await notification_service.find_admin_notification_by_title(
-                title=title,
-                category=NotificationCategory.SYSTEM,
-            )
-
-            if not existing:
-                # Build description with first few issues
-                issue_keys = [i.key for i in all_issues[:3]]
-                description = f"{len(all_issues)} missing: {', '.join(issue_keys)}"
-                if len(all_issues) > 3:
-                    description += "..."
-
-                await notification_service.create_notification(
-                    user_id="system",
-                    request=NotificationCreate(
-                        category=NotificationCategory.SYSTEM,
-                        title=title,
-                        description=description,
-                        metadata={
-                            "action": "view_file",
-                            "file_path": all_issues[0].file_path,
-                            "line_number": all_issues[0].line_number,
-                            "issues": [
-                                {
-                                    "type": i.issue_type,
-                                    "key": i.key,
-                                    "line": i.line_number,
-                                    "file": i.file_path,
-                                }
-                                for i in all_issues
-                            ],
-                        },
-                    ),
-                    for_admins=True,
-                    initial_status=NotificationStatus.AWAITING_ACTION,
-                )
-                notification_created = True
-
-        logger.info(
-            f"SDK scan completed: scanned {files_scanned} files, "
-            f"found {len(all_issues)} issues"
-        )
-
-        return SDKScanResponse(
-            files_scanned=files_scanned,
-            issues_found=len(all_issues),
-            issues=[
-                {
-                    "file_path": i.file_path,
-                    "line_number": i.line_number,
-                    "issue_type": i.issue_type,
-                    "key": i.key,
-                }
-                for i in all_issues
-            ],
-            notification_created=notification_created,
-        )
-
-    except Exception as e:
-        logger.error(f"Error running SDK scan: {e}", exc_info=True)
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Failed to run SDK scan: {str(e)}",
         )
 
 
@@ -366,6 +157,30 @@ async def index_documentation(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Failed to index documentation: {str(e)}",
         )
+
+
+@router.post(
+    "/reimport",
+    response_model=ReimportJobResponse,
+    summary="Reimport from repository",
+    description="Queue a reimport of all entities from S3. Poll GET /api/jobs/{job_id} for result.",
+)
+async def reimport_from_repo(
+    user: CurrentSuperuser,
+) -> ReimportJobResponse:
+    """
+    Queue a reimport of all entities from the S3 repo.
+
+    Returns a job_id immediately. Poll GET /api/jobs/{job_id} for completion.
+    Platform admin only.
+    """
+    from uuid import uuid4
+
+    from src.core.pubsub import publish_reimport_request
+
+    job_id = str(uuid4())
+    await publish_reimport_request(job_id)
+    return ReimportJobResponse(status="queued", job_id=job_id)
 
 
 class AppDependencyIssue(BaseModel):
@@ -542,3 +357,93 @@ async def scan_app_dependencies(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Failed to rebuild app dependencies: {str(e)}",
         )
+
+
+@router.post(
+    "/preflight",
+    response_model=PreflightResponse,
+    summary="Run preflight validation",
+    description="Run validation checks including unregistered function detection (Platform admin only)",
+)
+async def run_preflight(
+    user: CurrentSuperuser,
+    db: AsyncSession = Depends(get_db),
+) -> PreflightResponse:
+    """Run preflight validation on the current workspace state."""
+    import ast
+
+    from src.services.file_storage import FileStorageService
+
+    issues: list[PreflightIssueResponse] = []
+    warnings: list[PreflightIssueResponse] = []
+
+    service = FileStorageService(db)
+
+    # List all files
+    try:
+        all_files = await service.list_files("")
+    except Exception as e:
+        logger.error(f"Preflight: failed to list files: {e}")
+        return PreflightResponse(
+            valid=False,
+            issues=[
+                PreflightIssueResponse(
+                    level="error",
+                    category="system",
+                    detail=f"Failed to list files: {e}",
+                )
+            ],
+            warnings=[],
+        )
+
+    # Detect unregistered decorated functions
+    py_files = [f for f in all_files if f.path.endswith(".py")]
+    for py_file in py_files:
+        try:
+            content_result = await service.read_file(py_file.path)
+            if isinstance(content_result, tuple):
+                content = content_result[0]
+            else:
+                content = content_result
+            content_str = content.decode("utf-8", errors="replace")
+            tree = ast.parse(content_str, filename=py_file.path)
+        except Exception:
+            continue
+
+        for node in ast.walk(tree):
+            if not isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
+                continue
+            for dec in node.decorator_list:
+                dec_name = None
+                if isinstance(dec, ast.Name):
+                    dec_name = dec.id
+                elif isinstance(dec, ast.Call) and isinstance(
+                    dec.func, ast.Name
+                ):
+                    dec_name = dec.func.id
+                if dec_name in ("workflow", "tool", "data_provider"):
+                    # Check if registered
+                    result = await db.execute(
+                        select(Workflow).where(
+                            Workflow.path == py_file.path,
+                            Workflow.function_name == node.name,
+                            Workflow.is_active.is_(True),
+                        )
+                    )
+                    if not result.scalar_one_or_none():
+                        warnings.append(
+                            PreflightIssueResponse(
+                                level="warning",
+                                category="unregistered_function",
+                                detail=(
+                                    f"Decorated function '{node.name}' in"
+                                    f" {py_file.path} is not registered."
+                                    " Use POST /api/workflows/register to"
+                                    " register it."
+                                ),
+                                path=py_file.path,
+                            )
+                        )
+
+    valid = len(issues) == 0
+    return PreflightResponse(valid=valid, issues=issues, warnings=warnings)

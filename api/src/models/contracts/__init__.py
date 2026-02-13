@@ -435,6 +435,8 @@ from src.models.contracts.decorators import (
 from src.models.contracts.maintenance import (
     DocsIndexResponse,
     MaintenanceStatus,
+    PreflightIssueResponse,
+    PreflightResponse,
     ReimportJobResponse,
 )
 
@@ -837,6 +839,8 @@ __all__ = [
     # Maintenance
     "DocsIndexResponse",
     "MaintenanceStatus",
+    "PreflightIssueResponse",
+    "PreflightResponse",
     "ReimportJobResponse",
     # ROI
     "ROISettingsRequest",
