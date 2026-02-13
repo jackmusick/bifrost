@@ -249,6 +249,9 @@ def main(args: list[str] | None = None) -> int:
     if command == "sync":
         return handle_sync(args[1:])
 
+    if command == "push":
+        return handle_push(args[1:])
+
     # Unknown command
     print(f"Unknown command: {command}", file=sys.stderr)
     print_help()
@@ -266,6 +269,7 @@ Usage:
 Commands:
   run         Run a workflow file with web-based parameter input
   sync        Sync with Bifrost platform via GitHub
+  push        Push local files to Bifrost platform
   login       Authenticate with device authorization flow
   logout      Clear stored credentials and sign out
   help        Show this help message
@@ -276,6 +280,8 @@ Examples:
   bifrost sync
   bifrost sync --preview
   bifrost sync --resolve workflows/billing.py=keep_remote
+  bifrost push apps/my-app
+  bifrost push apps/my-app --clean
   bifrost login
   bifrost login --url https://app.gobifrost.com
   bifrost logout
@@ -779,6 +785,217 @@ def handle_sync(args: list[str]) -> int:
     """
     from .sync import run_sync
     return run_sync(args)
+
+
+def handle_push(args: list[str]) -> int:
+    """
+    Handle 'bifrost push' command.
+
+    Pushes local files to Bifrost _repo/ via the /api/files/push endpoint.
+
+    Usage:
+      bifrost push <path> [--clean] [--validate]
+
+    Args:
+      path: Local directory to push (e.g., apps/my-app, workflows/)
+      --clean: Delete remote files not present locally
+      --validate: Validate after push (for apps)
+    """
+    if not args:
+        print("Usage: bifrost push <path> [--clean] [--validate]", file=sys.stderr)
+        return 1
+
+    local_path = None
+    clean = False
+    validate = False
+
+    i = 0
+    while i < len(args):
+        arg = args[i]
+        if arg == "--clean":
+            clean = True
+        elif arg == "--validate":
+            validate = True
+        elif arg.startswith("--"):
+            print(f"Unknown option: {arg}", file=sys.stderr)
+            return 1
+        elif local_path is None:
+            local_path = arg
+        else:
+            print(f"Unexpected argument: {arg}", file=sys.stderr)
+            return 1
+        i += 1
+
+    if not local_path:
+        print("Error: path argument required", file=sys.stderr)
+        return 1
+
+    return asyncio.run(_push_files(local_path, clean=clean, validate=validate))
+
+
+async def _push_files(local_path: str, clean: bool = False, validate: bool = False) -> int:
+    """Push local directory to Bifrost _repo/."""
+    import pathlib
+
+    path = pathlib.Path(local_path).resolve()
+
+    if not path.exists():
+        print(f"Error: path does not exist: {local_path}", file=sys.stderr)
+        return 1
+
+    if not path.is_dir():
+        print(f"Error: path is not a directory: {local_path}", file=sys.stderr)
+        return 1
+
+    # Determine repo prefix from path structure
+    # Look for known top-level dirs (apps, workflows, modules, agents, forms) in the path
+    # e.g., "/home/user/workspace/apps/my-app" -> "apps/my-app"
+    # e.g., "/home/user/workspace/workflows" -> "workflows"
+    parts = path.parts
+    repo_prefix = None
+    known_roots = {"apps", "workflows", "modules", "agents", "forms"}
+    for i, part in enumerate(parts):
+        if part in known_roots:
+            repo_prefix = "/".join(parts[i:])
+            break
+
+    if repo_prefix is None:
+        # Fallback: use the directory name itself
+        repo_prefix = path.name
+        print(f"Warning: could not detect repo prefix from path. Using '{repo_prefix}'.", file=sys.stderr)
+        print(f"  Hint: path should contain apps/, workflows/, modules/, etc.", file=sys.stderr)
+
+    # Walk the directory and collect files
+    files: dict[str, str] = {}
+    skipped = 0
+
+    # Binary file extensions to skip
+    binary_extensions = {
+        ".png", ".jpg", ".jpeg", ".gif", ".ico", ".svg",
+        ".woff", ".woff2", ".ttf", ".eot",
+        ".zip", ".tar", ".gz", ".bz2",
+        ".pyc", ".pyo", ".so", ".dll",
+        ".exe", ".bin",
+    }
+
+    for file_path in sorted(path.rglob("*")):
+        if file_path.is_dir():
+            continue
+
+        # Skip hidden files and common non-content files
+        rel_parts = file_path.relative_to(path).parts
+        if any(part.startswith(".") for part in rel_parts):
+            continue
+        if file_path.name in ("__pycache__", ".DS_Store", "node_modules"):
+            continue
+        if any(part == "__pycache__" or part == "node_modules" for part in rel_parts):
+            continue
+
+        # Skip binary files
+        if file_path.suffix.lower() in binary_extensions:
+            skipped += 1
+            continue
+
+        try:
+            content = file_path.read_text(encoding="utf-8")
+            repo_path = f"{repo_prefix}/{file_path.relative_to(path)}"
+            files[repo_path] = content
+        except UnicodeDecodeError:
+            skipped += 1
+            continue
+
+    if not files:
+        print("No files found to push.", file=sys.stderr)
+        return 1
+
+    print(f"Pushing {len(files)} file(s) to {repo_prefix}/...")
+    if skipped:
+        print(f"  (skipped {skipped} binary file(s))")
+
+    # Get authenticated client
+    try:
+        client = BifrostClient.get_instance(require_auth=True)
+    except RuntimeError as e:
+        print(f"Error: {e}", file=sys.stderr)
+        return 1
+
+    # Push files
+    payload: dict[str, Any] = {"files": files}
+    if clean:
+        payload["delete_missing_prefix"] = repo_prefix
+
+    try:
+        response = await client.post("/api/files/push", json=payload)
+
+        if response.status_code != 200:
+            print(f"Error: server returned {response.status_code}", file=sys.stderr)
+            try:
+                detail = response.json().get("detail", response.text)
+                print(f"  {detail}", file=sys.stderr)
+            except Exception:
+                print(f"  {response.text}", file=sys.stderr)
+            return 1
+
+        result = response.json()
+
+        # Print summary
+        parts = []
+        if result.get("created"):
+            parts.append(f"{result['created']} created")
+        if result.get("updated"):
+            parts.append(f"{result['updated']} updated")
+        if result.get("deleted"):
+            parts.append(f"{result['deleted']} deleted")
+        if result.get("unchanged"):
+            parts.append(f"{result['unchanged']} unchanged")
+
+        print(f"  {', '.join(parts) if parts else 'No changes'}")
+
+        if result.get("errors"):
+            print(f"\n  Errors ({len(result['errors'])}):")
+            for error in result["errors"]:
+                print(f"    - {error}")
+
+        # Validate if requested
+        if validate and repo_prefix.startswith("apps/"):
+            slug = repo_prefix.split("/")[1] if "/" in repo_prefix else repo_prefix
+            print(f"\nValidating app '{slug}'...")
+
+            try:
+                # Look up app by slug
+                val_response = await client.get(f"/api/applications/{slug}")
+                if val_response.status_code == 200:
+                    app_data = val_response.json()
+                    app_id = app_data.get("id")
+                    if app_id:
+                        val_result = await client.post(f"/api/applications/{app_id}/validate")
+                        if val_result.status_code == 200:
+                            val_data = val_result.json()
+                            if val_data.get("errors"):
+                                print(f"  Errors ({len(val_data['errors'])}):")
+                                for err in val_data["errors"]:
+                                    print(f"    - [{err.get('severity', 'error')}] {err.get('message', err)}")
+                            elif val_data.get("warnings"):
+                                print(f"  Warnings ({len(val_data['warnings'])}):")
+                                for warn in val_data["warnings"]:
+                                    print(f"    - {warn.get('message', warn)}")
+                            else:
+                                print("  No issues found.")
+                        else:
+                            print(f"  Validation failed: {val_result.status_code}", file=sys.stderr)
+                else:
+                    print(f"  Could not find app '{slug}' for validation", file=sys.stderr)
+            except Exception as e:
+                print(f"  Validation error: {e}", file=sys.stderr)
+
+        return 0 if not result.get("errors") else 1
+
+    except httpx.ConnectError:
+        print("Error: could not connect to Bifrost API. Is the server running?", file=sys.stderr)
+        return 1
+    except Exception as e:
+        print(f"Error: {e}", file=sys.stderr)
+        return 1
 
 
 def print_run_help() -> None:

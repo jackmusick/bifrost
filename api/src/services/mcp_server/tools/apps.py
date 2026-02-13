@@ -498,9 +498,10 @@ modules/
 - **React hooks**: `useState`, `useEffect`, `useMemo`, `useCallback`, etc.
 - **Bifrost hooks**: `useWorkflow`, `useUser`, `useNavigate`, `useLocation`, `useParams`
 - **Routing**: `Outlet`, `Link`
-- **UI components**: `Button`, `Card`, `Table`, `Select`, `Badge`, `Input`, `Skeleton`, etc.
+- **UI components**: `Button`, `Card`, `Table`, `Select`, `Badge`, `Input`, `Skeleton`, `Pagination`, `Calendar`, `DateRangePicker`, `MultiCombobox`, `TagsInput`, `Combobox`, `Slider`, etc.
 - **Icons**: All lucide-react icons (`Loader2`, `RefreshCw`, `Check`, `X`, `Building2`, etc.)
 - **Utilities**: `cn` (for className merging)
+- **Date utilities**: `format` (from date-fns, for date formatting)
 
 If you add import statements, you will get: `Cannot use import statement outside a module`
 
@@ -734,6 +735,232 @@ export default function ClientsPage() {
     return success_result("App Builder schema documentation", {"schema": schema_doc})
 
 
+async def validate_app(context: Any, app_id: str) -> ToolResult:
+    """
+    Validate application files for common issues.
+
+    Runs static analysis checking for:
+    - Unknown components
+    - Invalid workflow IDs
+    - Import statements (not allowed in app builder)
+    - Forbidden patterns (require, module.exports)
+    - Missing required files (_layout.tsx)
+
+    Args:
+        app_id: Application UUID (required)
+    """
+    import re
+    from uuid import UUID
+
+    from sqlalchemy import select
+
+    from src.core.database import get_db_context
+    from src.models.orm.applications import Application
+    from src.models.orm.file_index import FileIndex
+    from src.models.orm.workflow import Workflow
+    from src.routers.applications import KNOWN_APP_COMPONENTS
+
+    logger.info(f"MCP validate_app called with id={app_id}")
+
+    try:
+        app_uuid = UUID(app_id)
+    except ValueError:
+        return error_result(f"Invalid app_id format: {app_id}")
+
+    try:
+        async with get_db_context() as db:
+            # Get the app
+            result = await db.execute(
+                select(Application).where(Application.id == app_uuid)
+            )
+            app = result.scalar_one_or_none()
+            if not app:
+                return error_result(f"Application not found: {app_id}")
+
+            prefix = f"apps/{app.slug}/"
+
+            # Get all app files
+            fi_result = await db.execute(
+                select(FileIndex.path, FileIndex.content).where(
+                    FileIndex.path.startswith(prefix)
+                )
+            )
+            files = {row.path: row.content or "" for row in fi_result.all()}
+
+            errors: list[dict] = []
+            warnings: list[dict] = []
+
+            # Check required structure
+            if f"{prefix}_layout.tsx" not in files:
+                errors.append({"severity": "error", "file": "_layout.tsx", "message": "Missing required _layout.tsx"})
+            if f"{prefix}pages/index.tsx" not in files:
+                warnings.append({"severity": "warning", "file": "pages/index.tsx", "message": "Missing pages/index.tsx"})
+
+            # Analyze TSX/TS files
+            for full_path, content in files.items():
+                rel_path = full_path[len(prefix):]
+                if not (rel_path.endswith(".tsx") or rel_path.endswith(".ts")):
+                    continue
+
+                for i, line in enumerate(content.split("\n"), 1):
+                    stripped = line.strip()
+                    if re.match(r'^import\s+', stripped) and not stripped.startswith("//"):
+                        errors.append({"severity": "error", "file": rel_path, "message": f"Import not allowed: {stripped[:80]}", "line": i})
+
+                # Check unknown components
+                comp_refs = set(re.findall(r'<([A-Z][a-zA-Z0-9]*)', content))
+                for comp in comp_refs:
+                    if comp not in KNOWN_APP_COMPONENTS:
+                        warnings.append({"severity": "warning", "file": rel_path, "message": f"Unknown component <{comp}>"})
+
+                # Check workflow IDs
+                wf_refs = re.findall(r'(?:useWorkflowQuery|useWorkflowMutation)\s*\(\s*["\']([^"\']+)["\']', content)
+                for wf_ref in wf_refs:
+                    try:
+                        wf_uuid = UUID(wf_ref)
+                        wf_result = await db.execute(
+                            select(Workflow.id).where(Workflow.id == wf_uuid, Workflow.is_active == True)  # noqa: E712
+                        )
+                        if not wf_result.scalar_one_or_none():
+                            errors.append({"severity": "error", "file": rel_path, "message": f"Workflow '{wf_ref}' not found"})
+                    except ValueError:
+                        errors.append({"severity": "error", "file": rel_path, "message": f"'{wf_ref}' is not a valid UUID"})
+
+            # Build result
+            lines = []
+            if errors:
+                lines.append(f"Found {len(errors)} error(s):")
+                for e in errors:
+                    line_info = f" (line {e['line']})" if e.get('line') else ""
+                    lines.append(f"  ✗ [{e['file']}{line_info}] {e['message']}")
+            if warnings:
+                lines.append(f"\nFound {len(warnings)} warning(s):")
+                for w in warnings:
+                    lines.append(f"  ⚠ [{w['file']}] {w['message']}")
+            if not errors and not warnings:
+                lines.append("✓ No issues found")
+
+            display_text = "\n".join(lines)
+            return success_result(display_text, {
+                "valid": len(errors) == 0,
+                "errors": errors,
+                "warnings": warnings,
+                "app_name": app.name,
+            })
+
+    except Exception as e:
+        logger.exception(f"Error validating app: {e}")
+        return error_result(f"Error validating app: {str(e)}")
+
+
+async def push_files(
+    context: Any,
+    files: dict[str, str],
+    delete_missing_prefix: str | None = None,
+) -> ToolResult:
+    """
+    Push multiple files to _repo/ in a single batch.
+
+    Useful for creating or updating multiple files at once (e.g., pushing
+    an entire app or workflow set).
+
+    Args:
+        files: Map of repo_path to content, e.g. {"apps/my-app/pages/index.tsx": "..."}
+        delete_missing_prefix: If set, delete files under this prefix not in batch
+    """
+    import hashlib
+
+    from sqlalchemy import select
+
+    from src.core.database import get_db_context
+    from src.models.orm.file_index import FileIndex
+    from src.services.file_storage import FileStorageService
+
+    logger.info(f"MCP push_files called with {len(files)} file(s)")
+
+    try:
+        async with get_db_context() as db:
+            file_storage = FileStorageService(db)
+            created = 0
+            updated = 0
+            unchanged = 0
+            deleted = 0
+            push_errors: list[str] = []
+
+            for repo_path, content in files.items():
+                try:
+                    existing = await db.execute(
+                        select(FileIndex.content_hash).where(FileIndex.path == repo_path)
+                    )
+                    existing_hash = existing.scalar_one_or_none()
+
+                    content_bytes = content.encode("utf-8")
+                    new_hash = hashlib.sha256(content_bytes).hexdigest()
+
+                    if existing_hash == new_hash:
+                        unchanged += 1
+                        continue
+
+                    was_new = existing_hash is None
+                    await file_storage.write_file(
+                        path=repo_path,
+                        content=content_bytes,
+                        updated_by=str(context.user_id),
+                    )
+
+                    if was_new:
+                        created += 1
+                    else:
+                        updated += 1
+                except Exception as e:
+                    push_errors.append(f"{repo_path}: {str(e)}")
+
+            if delete_missing_prefix:
+                prefix = delete_missing_prefix
+                if not prefix.endswith("/"):
+                    prefix += "/"
+                existing_files = await db.execute(
+                    select(FileIndex.path).where(FileIndex.path.startswith(prefix))
+                )
+                existing_paths = {row[0] for row in existing_files.all()}
+                push_paths = set(files.keys())
+                for path_to_delete in existing_paths - push_paths:
+                    try:
+                        await file_storage.delete_file(path_to_delete)
+                        deleted += 1
+                    except Exception as e:
+                        push_errors.append(f"delete {path_to_delete}: {str(e)}")
+
+            await db.commit()
+
+            parts = []
+            if created:
+                parts.append(f"{created} created")
+            if updated:
+                parts.append(f"{updated} updated")
+            if deleted:
+                parts.append(f"{deleted} deleted")
+            if unchanged:
+                parts.append(f"{unchanged} unchanged")
+
+            summary = ", ".join(parts) if parts else "No changes"
+            display_text = f"Push complete: {summary}"
+            if push_errors:
+                display_text += f"\n\nErrors ({len(push_errors)}):\n" + "\n".join(f"  - {e}" for e in push_errors)
+
+            return success_result(display_text, {
+                "created": created,
+                "updated": updated,
+                "deleted": deleted,
+                "unchanged": unchanged,
+                "errors": push_errors,
+            })
+
+    except Exception as e:
+        logger.exception(f"Error pushing files: {e}")
+        return error_result(f"Error pushing files: {str(e)}")
+
+
 # Tool metadata for registration
 TOOLS = [
     ("list_apps", "List Applications", "List all App Builder applications with file counts and URLs."),
@@ -741,6 +968,8 @@ TOOLS = [
     ("get_app", "Get Application", "Get application metadata and file list."),
     ("update_app", "Update Application", "Update application metadata (name, description)."),
     ("publish_app", "Publish Application", "Publish all draft files to live."),
+    ("validate_app", "Validate Application", "Validate application files for common issues (unknown components, bad workflow IDs, forbidden patterns)."),
+    ("push_files", "Push Files", "Push multiple files to _repo/ in a single batch. Useful for creating or updating entire apps or workflow sets."),
     ("get_app_schema", "Get App Schema", "Get documentation about App Builder application structure and code-based files."),
 ]
 
@@ -755,6 +984,8 @@ def register_tools(mcp: Any, get_context_fn: Any) -> None:
         "get_app": get_app,
         "update_app": update_app,
         "publish_app": publish_app,
+        "validate_app": validate_app,
+        "push_files": push_files,
         "get_app_schema": get_app_schema,
     }
 

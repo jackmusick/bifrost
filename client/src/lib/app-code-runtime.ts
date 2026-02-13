@@ -172,6 +172,14 @@ import * as ContextMenuModule from "@/components/ui/context-menu";
 import * as SheetModule from "@/components/ui/sheet";
 import * as SeparatorModule from "@/components/ui/separator";
 import * as ComboboxModule from "@/components/ui/combobox";
+import * as PaginationModule from "@/components/ui/pagination";
+import * as TagsInputModule from "@/components/ui/tags-input";
+import * as MultiComboboxModule from "@/components/ui/multi-combobox";
+import * as CalendarModule from "@/components/ui/calendar";
+import * as DateRangePickerModule from "@/components/ui/date-range-picker";
+
+// Utilities - date-fns
+import { format } from "date-fns";
 
 /**
  * The $ registry - contains EVERYTHING available to user code
@@ -238,6 +246,14 @@ export const $: Record<string, unknown> = {
 	...SheetModule,
 	...SeparatorModule,
 	...ComboboxModule,
+	...PaginationModule,
+	...TagsInputModule,
+	...MultiComboboxModule,
+	...CalendarModule,
+	...DateRangePickerModule,
+
+	// Utilities - date-fns
+	format,
 };
 
 /**

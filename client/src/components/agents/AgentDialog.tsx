@@ -10,6 +10,7 @@ import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import * as z from "zod";
 import { Loader2, Check, ChevronsUpDown, X, AlertTriangle } from "lucide-react";
+import { MultiCombobox } from "@/components/ui/multi-combobox";
 import {
 	Dialog,
 	DialogContent,
@@ -139,11 +140,9 @@ export function AgentDialog({ agentId, open, onOpenChange }: AgentDialogProps) {
 	const createAgent = useCreateAgent();
 	const updateAgent = useUpdateAgent();
 
-	const [channelsOpen, setChannelsOpen] = useState(false);
 	const [toolsOpen, setToolsOpen] = useState(false);
 	const [delegationsOpen, setDelegationsOpen] = useState(false);
 	const [rolesOpen, setRolesOpen] = useState(false);
-	const [knowledgeOpen, setKnowledgeOpen] = useState(false);
 	const [modelSettingsOpen, setModelSettingsOpen] = useState(false);
 
 	// Default organization_id for org users is their org, for platform admins it's null (global)
@@ -417,174 +416,22 @@ export function AgentDialog({ agentId, open, onOpenChange }: AgentDialogProps) {
 										render={({ field }) => (
 											<FormItem>
 												<FormLabel>Channels</FormLabel>
-												<Popover
-													open={channelsOpen}
-													onOpenChange={
-														setChannelsOpen
-													}
-												>
-													<PopoverTrigger asChild>
-														<FormControl>
-															<Button
-																variant="outline"
-																role="combobox"
-																aria-expanded={
-																	channelsOpen
-																}
-																className="w-full justify-between h-auto min-h-10"
-															>
-																{field.value
-																	?.length >
-																0 ? (
-																	<div className="flex flex-wrap gap-1">
-																		{field.value.map(
-																			(
-																				channelValue,
-																			) => {
-																				const channel =
-																					CHANNELS.find(
-																						(
-																							c,
-																						) =>
-																							c.value ===
-																							channelValue,
-																					);
-																				return (
-																					<Badge
-																						key={
-																							channelValue
-																						}
-																						variant="secondary"
-																						className="mr-1"
-																					>
-																						{channel?.label ||
-																							channelValue}
-																						<span
-																							role="button"
-																							tabIndex={0}
-																							onClick={(
-																								e,
-																							) => {
-																								e.stopPropagation();
-																								e.preventDefault();
-																								field.onChange(
-																									field.value.filter(
-																										(
-																											v,
-																										) =>
-																											v !==
-																											channelValue,
-																									),
-																								);
-																							}}
-																							onKeyDown={(
-																								e,
-																							) => {
-																								if (
-																									e.key ===
-																										"Enter" ||
-																									e.key ===
-																										" "
-																								) {
-																									e.stopPropagation();
-																									e.preventDefault();
-																									field.onChange(
-																										field.value.filter(
-																											(
-																												v,
-																											) =>
-																												v !==
-																												channelValue,
-																										),
-																									);
-																								}
-																							}}
-																							className="ml-1 rounded-full p-0.5 hover:bg-muted-foreground/20 transition-colors cursor-pointer"
-																						>
-																							<X className="h-3 w-3" />
-																						</span>
-																					</Badge>
-																				);
-																			},
-																		)}
-																	</div>
-																) : (
-																	<span className="text-muted-foreground">
-																		Select
-																		channels...
-																	</span>
-																)}
-																<ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
-															</Button>
-														</FormControl>
-													</PopoverTrigger>
-													<PopoverContent
-														className="w-[300px] p-0"
-														align="start"
-													>
-														<Command>
-															<CommandList>
-																<CommandEmpty>
-																	No channels
-																	available.
-																</CommandEmpty>
-																<CommandGroup>
-																	{CHANNELS.map(
-																		(
-																			channel,
-																		) => (
-																			<CommandItem
-																				key={
-																					channel.value
-																				}
-																				value={
-																					channel.value
-																				}
-																				onSelect={() => {
-																					const current =
-																						field.value ||
-																						[];
-																					if (
-																						current.includes(
-																							channel.value,
-																						)
-																					) {
-																						field.onChange(
-																							current.filter(
-																								(
-																									v,
-																								) =>
-																									v !==
-																									channel.value,
-																							),
-																						);
-																					} else {
-																						field.onChange(
-																							[
-																								...current,
-																								channel.value,
-																							],
-																						);
-																					}
-																				}}
-																			>
-																				<Checkbox
-																					checked={field.value?.includes(
-																						channel.value,
-																					)}
-																					className="mr-2"
-																				/>
-																				{
-																					channel.label
-																				}
-																			</CommandItem>
-																		),
-																	)}
-																</CommandGroup>
-															</CommandList>
-														</Command>
-													</PopoverContent>
-												</Popover>
+												<FormControl>
+													<MultiCombobox
+														options={CHANNELS.map(
+															(c) => ({
+																value: c.value,
+																label: c.label,
+															}),
+														)}
+														value={field.value || []}
+														onValueChange={
+															field.onChange
+														}
+														placeholder="Select channels..."
+														emptyText="No channels available."
+													/>
+												</FormControl>
 												<FormDescription>
 													Which communication channels
 													this agent is available on
@@ -1415,183 +1262,24 @@ export function AgentDialog({ agentId, open, onOpenChange }: AgentDialogProps) {
 												<FormLabel>
 													Knowledge Sources
 												</FormLabel>
-												<Popover
-													open={knowledgeOpen}
-													onOpenChange={
-														setKnowledgeOpen
-													}
-												>
-													<PopoverTrigger asChild>
-														<FormControl>
-															<Button
-																variant="outline"
-																role="combobox"
-																aria-expanded={
-																	knowledgeOpen
-																}
-																className="w-full justify-between h-auto min-h-10"
-															>
-																{field.value
-																	?.length >
-																0 ? (
-																	<div className="flex flex-wrap gap-1">
-																		{field.value.map(
-																			(
-																				namespace,
-																			) => (
-																				<Badge
-																					key={
-																						namespace
-																					}
-																					variant="secondary"
-																					className="mr-1"
-																				>
-																					{
-																						namespace
-																					}
-																					<span
-																						role="button"
-																						tabIndex={0}
-																						onClick={(
-																							e,
-																						) => {
-																							e.stopPropagation();
-																							e.preventDefault();
-																							field.onChange(
-																								field.value.filter(
-																									(
-																										ns,
-																									) =>
-																										ns !==
-																										namespace,
-																								),
-																							);
-																						}}
-																						onKeyDown={(
-																							e,
-																						) => {
-																							if (
-																								e.key ===
-																									"Enter" ||
-																								e.key ===
-																									" "
-																							) {
-																								e.stopPropagation();
-																								e.preventDefault();
-																								field.onChange(
-																									field.value.filter(
-																										(
-																											ns,
-																										) =>
-																											ns !==
-																											namespace,
-																									),
-																								);
-																							}
-																						}}
-																						className="ml-1 rounded-full p-0.5 hover:bg-muted-foreground/20 transition-colors cursor-pointer"
-																					>
-																						<X className="h-3 w-3" />
-																					</span>
-																				</Badge>
-																			),
-																		)}
-																	</div>
-																) : (
-																	<span className="text-muted-foreground">
-																		Select
-																		namespaces...
-																	</span>
-																)}
-																<ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
-															</Button>
-														</FormControl>
-													</PopoverTrigger>
-													<PopoverContent
-														className="w-[400px] p-0"
-														align="start"
-													>
-														<Command>
-															<CommandInput placeholder="Search namespaces..." />
-															<CommandList>
-																<CommandEmpty>
-																	No
-																	namespaces
-																	found.
-																</CommandEmpty>
-																<CommandGroup>
-																	{knowledgeNamespaces?.map(
-																		(
-																			ns,
-																		) => (
-																			<CommandItem
-																				key={
-																					ns.namespace
-																				}
-																				value={
-																					ns.namespace
-																				}
-																				onSelect={() => {
-																					const current =
-																						field.value ||
-																						[];
-																					if (
-																						current.includes(
-																							ns.namespace,
-																						)
-																					) {
-																						field.onChange(
-																							current.filter(
-																								(
-																									n,
-																								) =>
-																									n !==
-																									ns.namespace,
-																							),
-																						);
-																					} else {
-																						field.onChange(
-																							[
-																								...current,
-																								ns.namespace,
-																							],
-																						);
-																					}
-																				}}
-																			>
-																				<Check
-																					className={cn(
-																						"mr-2 h-4 w-4",
-																						field.value?.includes(
-																							ns.namespace,
-																						)
-																							? "opacity-100"
-																							: "opacity-0",
-																					)}
-																				/>
-																				<div className="flex flex-col">
-																					<span>
-																						{
-																							ns.namespace
-																						}
-																					</span>
-																					<span className="text-xs text-muted-foreground">
-																						{
-																							ns
-																								.scopes
-																								.total
-																						}{" "}
-																						documents
-																					</span>
-																				</div>
-																			</CommandItem>
-																		),
-																	)}
-																</CommandGroup>
-															</CommandList>
-														</Command>
-													</PopoverContent>
-												</Popover>
+												<FormControl>
+													<MultiCombobox
+														options={(knowledgeNamespaces || []).map(
+															(ns) => ({
+																value: ns.namespace,
+																label: ns.namespace,
+																description: `${ns.scopes.total} documents`,
+															}),
+														)}
+														value={field.value || []}
+														onValueChange={
+															field.onChange
+														}
+														placeholder="Select namespaces..."
+														searchPlaceholder="Search namespaces..."
+														emptyText="No namespaces found."
+													/>
+												</FormControl>
 												{field.value?.length > 0 && (
 													<div className="flex items-center gap-2 p-2 border rounded-md bg-muted/30">
 														<Badge

@@ -44,6 +44,8 @@ import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { Combobox } from "@/components/ui/combobox";
+import { MultiCombobox } from "@/components/ui/multi-combobox";
+import { TagsInput } from "@/components/ui/tags-input";
 
 // =============================================================================
 // Display Components
@@ -60,6 +62,15 @@ import { Progress } from "@/components/ui/progress";
 // =============================================================================
 
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
+import {
+	Pagination,
+	PaginationContent,
+	PaginationEllipsis,
+	PaginationItem,
+	PaginationLink,
+	PaginationNext,
+	PaginationPrevious,
+} from "@/components/ui/pagination";
 
 // =============================================================================
 // Feedback Components
@@ -102,8 +113,15 @@ import {
 	PopoverAnchor,
 } from "@/components/ui/popover";
 
+// Calendar and Date Components
+import { Calendar } from "@/components/ui/calendar";
+import { DateRangePicker } from "@/components/ui/date-range-picker";
+
 // Toast notifications via Sonner
 import { toast } from "sonner";
+
+// Utilities - date-fns
+import { format } from "date-fns";
 
 // =============================================================================
 // Data Display Components
@@ -169,6 +187,8 @@ export const APP_CODE_COMPONENTS = {
 	RadioGroup,
 	RadioGroupItem,
 	Combobox,
+	MultiCombobox,
+	TagsInput,
 
 	// Display
 	Badge,
@@ -186,6 +206,13 @@ export const APP_CODE_COMPONENTS = {
 	TabsList,
 	TabsTrigger,
 	TabsContent,
+	Pagination,
+	PaginationContent,
+	PaginationEllipsis,
+	PaginationItem,
+	PaginationLink,
+	PaginationNext,
+	PaginationPrevious,
 
 	// Feedback - Dialog
 	Dialog,
@@ -232,6 +259,13 @@ export const APP_CODE_COMPONENTS = {
 	TableRow,
 	TableCell,
 	TableCaption,
+
+	// Calendar and Date
+	Calendar,
+	DateRangePicker,
+
+	// Utilities
+	format,
 } as const;
 
 /**
@@ -274,6 +308,8 @@ export { Label };
 export { Switch };
 export { RadioGroup, RadioGroupItem };
 export { Combobox };
+export { MultiCombobox };
+export { TagsInput };
 
 // Display
 export { Badge };
@@ -284,6 +320,15 @@ export { Progress };
 
 // Navigation
 export { Tabs, TabsList, TabsTrigger, TabsContent };
+export {
+	Pagination,
+	PaginationContent,
+	PaginationEllipsis,
+	PaginationItem,
+	PaginationLink,
+	PaginationNext,
+	PaginationPrevious,
+};
 
 // Feedback
 export {
@@ -326,3 +371,10 @@ export {
 	TableCell,
 	TableCaption,
 };
+
+// Calendar and Date
+export { Calendar };
+export { DateRangePicker };
+
+// Utilities
+export { format };

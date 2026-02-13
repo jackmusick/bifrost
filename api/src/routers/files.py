@@ -105,6 +105,24 @@ class FileExistsResponse(BaseModel):
     exists: bool = Field(..., description="True if file exists")
 
 
+class FilePushRequest(BaseModel):
+    """Request to push multiple files to _repo/."""
+    files: dict[str, str] = Field(..., description="Map of repo_path to content")
+    delete_missing_prefix: str | None = Field(
+        default=None,
+        description="If set, delete files under this prefix not in the push batch",
+    )
+
+
+class FilePushResponse(BaseModel):
+    """Response for file push."""
+    created: int = 0
+    updated: int = 0
+    deleted: int = 0
+    unchanged: int = 0
+    errors: list[str] = Field(default_factory=list)
+
+
 # =============================================================================
 # Basic CRUD Endpoints (SDK-focused)
 # =============================================================================
@@ -235,6 +253,102 @@ async def file_exists(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail=str(e),
         )
+
+
+# =============================================================================
+# Batch Push Endpoint (CLI-focused)
+# =============================================================================
+
+
+@router.post("/push", response_model=FilePushResponse)
+async def push_files(
+    request: FilePushRequest,
+    ctx: Context,
+    user: CurrentSuperuser,
+    db: AsyncSession = Depends(get_db),
+) -> FilePushResponse:
+    """
+    Push multiple files to _repo/ in a single batch.
+
+    For each file in the request, writes content via FileStorageService.
+    Compares content hashes to skip unchanged files.
+    If delete_missing_prefix is set, deletes files under that prefix
+    that are not in the push batch.
+    """
+    file_storage = FileStorageService(db)
+    created = 0
+    updated = 0
+    unchanged = 0
+    deleted = 0
+    errors = []
+
+    for repo_path, content in request.files.items():
+        try:
+            # Check if file already exists with same content
+            from src.models.orm.file_index import FileIndex
+            from sqlalchemy import select
+
+            existing = await db.execute(
+                select(FileIndex.content_hash).where(FileIndex.path == repo_path)
+            )
+            existing_hash = existing.scalar_one_or_none()
+
+            # Compute hash of new content
+            content_bytes = content.encode("utf-8")
+            new_hash = hashlib.sha256(content_bytes).hexdigest()
+
+            if existing_hash == new_hash:
+                unchanged += 1
+                continue
+
+            was_new = existing_hash is None
+            await file_storage.write_file(
+                path=repo_path,
+                content=content_bytes,
+                updated_by=user.email or "cli",
+            )
+
+            if was_new:
+                created += 1
+            else:
+                updated += 1
+
+        except Exception as e:
+            logger.warning(f"Error pushing file {repo_path}: {e}")
+            errors.append(f"{repo_path}: {str(e)}")
+
+    # Handle delete_missing_prefix
+    if request.delete_missing_prefix:
+        prefix = request.delete_missing_prefix
+        if not prefix.endswith("/"):
+            prefix += "/"
+
+        from src.models.orm.file_index import FileIndex
+        from sqlalchemy import select
+
+        existing_files = await db.execute(
+            select(FileIndex.path).where(FileIndex.path.startswith(prefix))
+        )
+        existing_paths = {row[0] for row in existing_files.all()}
+        push_paths = set(request.files.keys())
+
+        for path_to_delete in existing_paths - push_paths:
+            try:
+                await file_storage.delete_file(path_to_delete)
+                deleted += 1
+            except Exception as e:
+                logger.warning(f"Error deleting file {path_to_delete}: {e}")
+                errors.append(f"delete {path_to_delete}: {str(e)}")
+
+    await db.commit()
+
+    return FilePushResponse(
+        created=created,
+        updated=updated,
+        deleted=deleted,
+        unchanged=unchanged,
+        errors=errors,
+    )
 
 
 # =============================================================================

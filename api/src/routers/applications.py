@@ -13,10 +13,12 @@ File operations are handled through the app_files router.
 """
 
 import logging
+import re
 from datetime import datetime, timezone
 from uuid import UUID
 
 from fastapi import APIRouter, HTTPException, Query, status
+from pydantic import BaseModel
 from sqlalchemy import select
 
 from src.core.auth import Context, CurrentUser
@@ -40,6 +42,68 @@ from src.repositories.org_scoped import OrgScopedRepository
 logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/api/applications", tags=["Applications"])
+
+
+# =============================================================================
+# Known components available in the app builder runtime
+# =============================================================================
+
+KNOWN_APP_COMPONENTS = {
+    # React
+    "React", "Fragment",
+    # Routing
+    "Outlet", "Link", "NavLink", "Navigate",
+    # Layout
+    "Card", "CardHeader", "CardFooter", "CardTitle", "CardAction", "CardDescription", "CardContent",
+    # Forms
+    "Button", "Input", "Label", "Textarea", "Checkbox", "Switch",
+    "Select", "SelectContent", "SelectGroup", "SelectItem", "SelectLabel", "SelectTrigger", "SelectValue", "SelectSeparator",
+    "RadioGroup", "RadioGroupItem", "Combobox", "MultiCombobox", "TagsInput", "Slider",
+    # Display
+    "Badge", "Avatar", "AvatarImage", "AvatarFallback", "Alert", "AlertTitle", "AlertDescription",
+    "Skeleton", "Progress",
+    # Navigation
+    "Tabs", "TabsList", "TabsTrigger", "TabsContent",
+    "Pagination", "PaginationContent", "PaginationEllipsis", "PaginationItem", "PaginationLink", "PaginationNext", "PaginationPrevious",
+    # Feedback
+    "Dialog", "DialogClose", "DialogContent", "DialogDescription", "DialogFooter", "DialogHeader", "DialogTitle", "DialogTrigger",
+    "AlertDialog", "AlertDialogTrigger", "AlertDialogContent", "AlertDialogHeader", "AlertDialogFooter", "AlertDialogTitle", "AlertDialogDescription", "AlertDialogAction", "AlertDialogCancel",
+    "Tooltip", "TooltipContent", "TooltipProvider", "TooltipTrigger",
+    "Popover", "PopoverContent", "PopoverTrigger", "PopoverAnchor",
+    "HoverCard", "HoverCardContent", "HoverCardTrigger",
+    "Sheet", "SheetClose", "SheetContent", "SheetDescription", "SheetFooter", "SheetHeader", "SheetTitle", "SheetTrigger",
+    "Command", "CommandDialog", "CommandEmpty", "CommandGroup", "CommandInput", "CommandItem", "CommandList", "CommandSeparator", "CommandShortcut",
+    "ContextMenu", "ContextMenuCheckboxItem", "ContextMenuContent", "ContextMenuGroup", "ContextMenuItem", "ContextMenuLabel", "ContextMenuPortal", "ContextMenuRadioGroup", "ContextMenuRadioItem", "ContextMenuSeparator", "ContextMenuShortcut", "ContextMenuSub", "ContextMenuSubContent", "ContextMenuSubTrigger", "ContextMenuTrigger",
+    # Data Display
+    "Table", "TableHeader", "TableBody", "TableFooter", "TableHead", "TableRow", "TableCell", "TableCaption",
+    # Calendar/Date
+    "Calendar", "DateRangePicker",
+    # Accordion/Collapsible
+    "Accordion", "AccordionContent", "AccordionItem", "AccordionTrigger",
+    "Collapsible", "CollapsibleContent", "CollapsibleTrigger",
+    # Toggle
+    "Toggle", "ToggleGroup", "ToggleGroupItem",
+    # Separator
+    "Separator",
+    # DropdownMenu
+    "DropdownMenu", "DropdownMenuCheckboxItem", "DropdownMenuContent", "DropdownMenuGroup", "DropdownMenuItem", "DropdownMenuLabel", "DropdownMenuPortal", "DropdownMenuRadioGroup", "DropdownMenuRadioItem", "DropdownMenuSeparator", "DropdownMenuShortcut", "DropdownMenuSub", "DropdownMenuSubContent", "DropdownMenuSubTrigger", "DropdownMenuTrigger",
+}
+
+# Note: Lucide icons (lucide-react) are all valid - hundreds of icons available.
+# We skip checking those to avoid false positives.
+
+
+class AppValidationIssue(BaseModel):
+    severity: str  # "error" or "warning"
+    file: str
+    message: str
+    line: int | None = None
+
+
+class AppValidationResponse(BaseModel):
+    valid: bool
+    errors: list[AppValidationIssue] = []
+    warnings: list[AppValidationIssue] = []
 
 
 # =============================================================================
@@ -935,6 +999,147 @@ async def publish_application(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail=str(e),
         )
+
+
+# =============================================================================
+# Validate Endpoint
+# =============================================================================
+
+
+@router.post(
+    "/{app_id}/validate",
+    response_model=AppValidationResponse,
+    summary="Validate application files",
+)
+async def validate_application(
+    app_id: UUID,
+    ctx: Context,
+    user: CurrentUser,
+) -> AppValidationResponse:
+    """
+    Run static analysis on application files.
+
+    Checks for: unknown components, workflow ID format/existence,
+    bad imports, forbidden patterns, required file structure.
+    """
+    from src.models.orm.file_index import FileIndex
+    from src.models.orm.workflows import Workflow
+
+    app = await get_application_by_id_or_404(ctx, app_id)
+    prefix = f"apps/{app.slug}/"
+
+    # Get all app files
+    result = await ctx.db.execute(
+        select(FileIndex.path, FileIndex.content).where(
+            FileIndex.path.startswith(prefix)
+        )
+    )
+    files = {row.path: row.content or "" for row in result.all()}
+
+    errors: list[AppValidationIssue] = []
+    warnings: list[AppValidationIssue] = []
+
+    # Check required file structure
+    layout_path = f"{prefix}_layout.tsx"
+    index_path = f"{prefix}pages/index.tsx"
+
+    if layout_path not in files:
+        errors.append(AppValidationIssue(
+            severity="error",
+            file="_layout.tsx",
+            message="Missing required _layout.tsx file",
+        ))
+
+    if index_path not in files:
+        warnings.append(AppValidationIssue(
+            severity="warning",
+            file="pages/index.tsx",
+            message="Missing pages/index.tsx (home page)",
+        ))
+
+    # Analyze each TSX/TS file
+    for full_path, content in files.items():
+        rel_path = full_path[len(prefix):]
+
+        if not (rel_path.endswith(".tsx") or rel_path.endswith(".ts")):
+            continue
+
+        # Check for import statements (forbidden in app builder)
+        for i, line in enumerate(content.split("\n"), 1):
+            stripped = line.strip()
+            # Match import statements but not comments
+            if re.match(r'^import\s+', stripped) and not stripped.startswith("//"):
+                errors.append(AppValidationIssue(
+                    severity="error",
+                    file=rel_path,
+                    message=f"Import statements are not allowed: {stripped[:80]}",
+                    line=i,
+                ))
+
+        # Check for forbidden patterns
+        forbidden = [
+            (r'\brequire\s*\(', "require() is not allowed"),
+            (r'\bmodule\.exports\b', "module.exports is not allowed"),
+        ]
+        for pattern, msg in forbidden:
+            for i, line in enumerate(content.split("\n"), 1):
+                if re.search(pattern, line) and not line.strip().startswith("//"):
+                    errors.append(AppValidationIssue(
+                        severity="error",
+                        file=rel_path,
+                        message=msg,
+                        line=i,
+                    ))
+
+        # Check for unknown components (JSX tags starting with uppercase)
+        component_refs = set(re.findall(r'<([A-Z][a-zA-Z0-9]*)', content))
+        for comp_name in component_refs:
+            if comp_name not in KNOWN_APP_COMPONENTS:
+                # Could be a lucide icon (hundreds of them) or user-defined component
+                # Only warn, don't error
+                warnings.append(AppValidationIssue(
+                    severity="warning",
+                    file=rel_path,
+                    message=f"Unknown component <{comp_name}> - verify it exists in the runtime",
+                ))
+
+        # Check workflow IDs
+        # Match useWorkflowQuery("...") and useWorkflowMutation("...")
+        workflow_refs = re.findall(
+            r'(?:useWorkflowQuery|useWorkflowMutation)\s*\(\s*["\']([^"\']+)["\']',
+            content,
+        )
+        for wf_ref in workflow_refs:
+            # Check UUID format
+            try:
+                wf_uuid = UUID(wf_ref)
+            except ValueError:
+                errors.append(AppValidationIssue(
+                    severity="error",
+                    file=rel_path,
+                    message=f"Workflow reference '{wf_ref}' is not a valid UUID. Use workflow IDs, not names.",
+                ))
+                continue
+
+            # Check workflow exists
+            wf_result = await ctx.db.execute(
+                select(Workflow.id).where(
+                    Workflow.id == wf_uuid,
+                    Workflow.is_active == True,  # noqa: E712
+                )
+            )
+            if not wf_result.scalar_one_or_none():
+                errors.append(AppValidationIssue(
+                    severity="error",
+                    file=rel_path,
+                    message=f"Workflow '{wf_ref}' not found or inactive",
+                ))
+
+    return AppValidationResponse(
+        valid=len(errors) == 0,
+        errors=errors,
+        warnings=warnings,
+    )
 
 
 # =============================================================================

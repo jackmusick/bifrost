@@ -276,7 +276,7 @@ async def create_workflow(context: Any, file_path: str, code: str) -> ToolResult
             data = {
                 "success": True,
                 "file_path": file_path,
-                "message": "Workflow created and registered.",
+                "message": "Workflow file created. Use register_workflow to register the function.",
             }
             return success_result(f"Workflow created at '{file_path}'", data)
 
@@ -309,6 +309,7 @@ For complete SDK documentation including decorators, modules, and examples, use 
 - `execute_workflow` - Execute a workflow with parameters
 - `validate_workflow` - Validate Python file syntax
 - `create_workflow` - Create a new workflow file
+- `register_workflow` - Register a function from an existing file
 - `get_sdk_schema` - Get full SDK documentation
 """
 

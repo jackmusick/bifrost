@@ -16,6 +16,11 @@ if [ "$(id -u)" = "0" ]; then
         chown -R bifrost:bifrost /tmp/bifrost 2>/dev/null || true
     fi
 
+    # Fix coverage directory permissions if needed (test runner)
+    if [ -d "/coverage" ]; then
+        chown -R bifrost:bifrost /coverage 2>/dev/null || true
+    fi
+
     # Drop to bifrost user and exec the command
     exec gosu bifrost "$@"
 else
