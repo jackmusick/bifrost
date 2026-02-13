@@ -17,6 +17,8 @@ import pytest
 from websockets.asyncio.client import connect
 from websockets.exceptions import ConnectionClosedError
 
+from tests.e2e.conftest import write_and_register
+
 logger = logging.getLogger(__name__)
 
 
@@ -175,28 +177,15 @@ async def e2e_ws_exec_workflow(message: str = "test"):
     """Simple test workflow."""
     return {"status": "success", "message": message}
 '''
-        e2e_client.put(
-            "/api/files/editor/content?index=true",
-            headers=platform_admin.headers,
-            json={
-                "path": "e2e_ws_exec_workflow.py",
-                "content": workflow_content,
-                "encoding": "utf-8",
-            },
+        result = write_and_register(
+            e2e_client,
+            platform_admin.headers,
+            "e2e_ws_exec_workflow.py",
+            workflow_content,
+            "e2e_ws_exec_workflow",
         )
 
-        # Discovery happens synchronously during file write - just fetch the workflow
-        response = e2e_client.get("/api/workflows", headers=platform_admin.headers)
-        assert response.status_code == 200, f"Failed to list workflows: {response.text}"
-        workflows = response.json()
-        workflow = next(
-            (w for w in workflows if w["name"] == "e2e_ws_exec_workflow"),
-            None
-        )
-        assert workflow is not None, "Workflow not discovered after file write"
-        workflow_id = workflow["id"]
-
-        yield {"id": workflow_id, "name": "e2e_ws_exec_workflow"}
+        yield result
 
         # Cleanup
         try:

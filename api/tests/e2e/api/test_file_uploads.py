@@ -11,7 +11,7 @@ Tests the complete file upload workflow:
 import httpx
 import pytest
 
-from tests.e2e.conftest import poll_until
+from tests.e2e.conftest import write_and_register
 
 
 @pytest.mark.e2e
@@ -169,34 +169,12 @@ async def e2e_file_read_workflow(file_path: str):
         "length": len(content) if content else 0,
     }
 '''
-        response = e2e_client.put(
-            "/api/files/editor/content?index=true",
-            headers=platform_admin.headers,
-            json={
-                "path": "e2e_file_read_workflow.py",
-                "content": workflow_content,
-                "encoding": "utf-8",
-            },
+        result = write_and_register(
+            e2e_client, platform_admin.headers,
+            "e2e_file_read_workflow.py", workflow_content,
+            "e2e_file_read_workflow",
         )
-        assert response.status_code == 200, f"Create workflow failed: {response.text}"
-
-        # Discovery happens synchronously during file write - just poll for workflow
-        def check_workflow():
-            response = e2e_client.get(
-                "/api/workflows",
-                headers=platform_admin.headers,
-            )
-            if response.status_code != 200:
-                return None
-            workflows = response.json()
-            for w in workflows:
-                if w["name"] == "e2e_file_read_workflow":
-                    return w["id"]
-            return None
-
-        workflow_id = poll_until(check_workflow, max_wait=30.0, interval=0.2)
-
-        assert workflow_id, "Workflow e2e_file_read_workflow not discovered after 30s"
+        workflow_id = result["id"]
 
         # Execute workflow with the file path (without uploads/ prefix)
         # Retry on timeout — the sync execution can occasionally lose results

@@ -2,7 +2,10 @@
 App Code Files Router
 
 CRUD operations for code source files in App Builder applications.
-Files are stored in S3 via FileStorageService, indexed in file_index table.
+
+Read/list: served from _apps/{app_id}/preview/ or _apps/{app_id}/live/ in S3.
+Write/delete: goes through FileStorageService (_repo/ + file_index), which
+also syncs to _apps/{app_id}/preview/.
 
 Endpoints use UUID for app_id with relative file paths.
 Path can contain slashes (e.g., 'pages/clients/[id].tsx').
@@ -20,7 +23,6 @@ from enum import Enum
 from uuid import UUID
 
 from fastapi import APIRouter, HTTPException, Path, status
-from sqlalchemy import and_, select
 
 from src.core.auth import Context, CurrentUser
 from src.core.exceptions import AccessDeniedError
@@ -30,8 +32,8 @@ from src.models.contracts.applications import (
     SimpleFileResponse,
 )
 from src.models.orm.applications import Application
-from src.models.orm.file_index import FileIndex
 from src.routers.applications import ApplicationRepository
+from src.services.app_storage import AppStorageService
 from src.services.file_storage.service import get_file_storage_service
 
 logger = logging.getLogger(__name__)
@@ -218,21 +220,9 @@ class FileMode(str, Enum):
     live = "live"
 
 
-def _app_prefix(slug: str) -> str:
-    """Return the file_index path prefix for an app slug."""
+def _repo_prefix(slug: str) -> str:
+    """Return the _repo/ path prefix for an app slug."""
     return f"apps/{slug}/"
-
-
-def _app_json_path(slug: str) -> str:
-    """Return the file_index path for the app.json metadata file."""
-    return f"apps/{slug}/app.json"
-
-
-def _strip_prefix(full_path: str, prefix: str) -> str:
-    """Strip the app prefix from a full file_index path to get a relative path."""
-    if full_path.startswith(prefix):
-        return full_path[len(prefix):]
-    return full_path
 
 
 # =============================================================================
@@ -253,56 +243,26 @@ async def list_app_files(
 ) -> SimpleFileListResponse:
     """List all files for an application.
 
-    In draft mode, reads from file_index (which mirrors S3).
-    In live mode, reads from the published_snapshot on the application.
+    Reads from _apps/{app_id}/preview/ (draft) or _apps/{app_id}/live/ (live).
     """
     app = await get_application_or_404(ctx, app_id)
-    prefix = _app_prefix(app.slug)
-    app_json = _app_json_path(app.slug)
+    app_storage = AppStorageService()
 
-    if mode == FileMode.live:
-        # Live mode: use published_snapshot
-        snapshot = app.published_snapshot
-        if not snapshot:
-            return SimpleFileListResponse(files=[], total=0)
+    storage_mode = "preview" if mode == FileMode.draft else "live"
+    file_paths = await app_storage.list_files(str(app.id), storage_mode)
 
-        # Read content for each file from FileStorageService (Redis cache -> S3)
-        storage = get_file_storage_service(ctx.db)
-        files: list[SimpleFileResponse] = []
-        for full_path in sorted(snapshot.keys()):
-            if full_path == app_json:
-                continue
-            rel_path = _strip_prefix(full_path, prefix)
-            try:
-                content_bytes, _ = await storage.read_file(full_path)
-                source = content_bytes.decode("utf-8", errors="replace")
-            except FileNotFoundError:
-                source = ""
-            files.append(SimpleFileResponse(path=rel_path, source=source))
+    if not file_paths:
+        return SimpleFileListResponse(files=[], total=0)
 
-        return SimpleFileListResponse(files=files, total=len(files))
-
-    # Draft mode: query file_index directly (has content column)
-    query = (
-        select(FileIndex)
-        .where(
-            and_(
-                FileIndex.path.startswith(prefix),
-                FileIndex.path != app_json,
-            )
-        )
-        .order_by(FileIndex.path)
-    )
-    result = await ctx.db.execute(query)
-    rows = list(result.scalars().all())
-
-    files = [
-        SimpleFileResponse(
-            path=_strip_prefix(row.path, prefix),
-            source=row.content or "",
-        )
-        for row in rows
-    ]
+    # Read content for each file
+    files: list[SimpleFileResponse] = []
+    for rel_path in sorted(file_paths):
+        try:
+            content_bytes = await app_storage.read_file(str(app.id), storage_mode, rel_path)
+            source = content_bytes.decode("utf-8", errors="replace")
+        except FileNotFoundError:
+            source = ""
+        files.append(SimpleFileResponse(path=rel_path, source=source))
 
     return SimpleFileListResponse(files=files, total=len(files))
 
@@ -321,25 +281,14 @@ async def read_app_file(
 ) -> SimpleFileResponse:
     """Read a single file by relative path.
 
-    Draft mode reads from Redis cache -> S3 via FileStorageService.
-    Live mode verifies the file exists in published_snapshot first.
+    Reads from _apps/{app_id}/preview/ (draft) or _apps/{app_id}/live/ (live).
     """
     app = await get_application_or_404(ctx, app_id)
-    prefix = _app_prefix(app.slug)
-    full_path = f"{prefix}{file_path}"
+    app_storage = AppStorageService()
 
-    if mode == FileMode.live:
-        # Verify file exists in published snapshot
-        snapshot = app.published_snapshot
-        if not snapshot or full_path not in snapshot:
-            raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND,
-                detail=f"File '{file_path}' not found in published version",
-            )
-
-    storage = get_file_storage_service(ctx.db)
+    storage_mode = "preview" if mode == FileMode.draft else "live"
     try:
-        content_bytes, _ = await storage.read_file(full_path)
+        content_bytes = await app_storage.read_file(str(app.id), storage_mode, file_path)
         source = content_bytes.decode("utf-8", errors="replace")
     except FileNotFoundError:
         raise HTTPException(
@@ -365,14 +314,14 @@ async def write_app_file(
     """Create or update a file at the given path.
 
     Validates the path, then writes via FileStorageService (which handles
-    S3 storage, file_index update, and pubsub for apps/ paths).
+    S3 _repo/ storage, file_index update, pubsub, and preview sync).
     """
     app = await get_application_or_404(ctx, app_id)
 
     # Validate path conventions
     validate_file_path(file_path)
 
-    prefix = _app_prefix(app.slug)
+    prefix = _repo_prefix(app.slug)
     full_path = f"{prefix}{file_path}"
     source = data.source or ""
 
@@ -400,11 +349,11 @@ async def delete_app_file(
 ) -> None:
     """Delete a file at the given path.
 
-    Deletes via FileStorageService (which handles S3 deletion,
-    file_index cleanup, and pubsub for apps/ paths).
+    Deletes via FileStorageService (which handles S3 _repo/ deletion,
+    file_index cleanup, pubsub, and preview sync).
     """
     app = await get_application_or_404(ctx, app_id)
-    prefix = _app_prefix(app.slug)
+    prefix = _repo_prefix(app.slug)
     full_path = f"{prefix}{file_path}"
 
     storage = get_file_storage_service(ctx.db)

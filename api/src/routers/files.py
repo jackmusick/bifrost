@@ -382,6 +382,7 @@ async def put_file_content_editor(
             updated_by,
             force_deactivation=request.force_deactivation,
             replacements=request.replacements,
+            workflows_to_deactivate=request.workflows_to_deactivate,
         )
 
         # Check for pending deactivations - return 409 if any

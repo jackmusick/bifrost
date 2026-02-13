@@ -22,6 +22,8 @@ import {
 	AppWindow,
 	Workflow,
 	FileCode,
+	Undo2,
+	AlertTriangle,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
@@ -33,9 +35,11 @@ import {
 	useCommit,
 	usePull,
 	usePush,
+	useDiscard,
 	useWorkingTreeChanges,
 	useResolveConflicts,
 	useFileDiff,
+	useCleanupOrphaned,
 	type ChangedFile,
 	type MergeConflict,
 	type FetchResult,
@@ -45,6 +49,7 @@ import {
 	type PushResult,
 	type ResolveResult,
 	type DiffResult,
+	type DiscardResult,
 	type PreflightResult,
 } from "@/hooks/useGitHub";
 import { useEditorStore } from "@/stores/editorStore";
@@ -70,20 +75,39 @@ function logPreflightToTerminal(preflight: PreflightResult, commitSucceeded: boo
 		? `Commit succeeded with ${warnings.length} warning(s)`
 		: `Commit blocked: ${errors.length} error(s), ${warnings.length} warning(s)`;
 
-	const logs = [
+	const logs: Array<{ level: string; message: string; source: string; timestamp: string }> = [
 		{
 			level: commitSucceeded ? "WARNING" : "ERROR",
 			message: `[Preflight] ${header}`,
 			source: "preflight",
 			timestamp: new Date().toISOString(),
 		},
-		...preflight.issues.map((issue) => ({
+	];
+
+	// Group issues by fix_hint to avoid repeating the same hint for each issue
+	const hintGroups = new Map<string, number>();
+	for (const issue of preflight.issues) {
+		logs.push({
 			level: issue.severity === "error" ? "ERROR" : "WARNING",
 			message: `${issue.path}${issue.line ? ` [Line ${issue.line}]` : ""}: ${issue.message} (${issue.category})`,
 			source: "preflight",
 			timestamp: new Date().toISOString(),
-		})),
-	];
+		});
+		if (issue.fix_hint) {
+			hintGroups.set(issue.fix_hint, (hintGroups.get(issue.fix_hint) ?? 0) + 1);
+		}
+	}
+
+	// Append deduplicated fix hints at the end
+	for (const [hint, count] of hintGroups) {
+		const suffix = count > 1 ? ` (${count} issues)` : "";
+		logs.push({
+			level: "INFO",
+			message: `-> Fix: ${hint}${suffix}`,
+			source: "preflight",
+			timestamp: new Date().toISOString(),
+		});
+	}
 
 	useEditorStore.getState().appendTerminalOutput({
 		loggerOutput: logs,
@@ -193,6 +217,8 @@ export function SourceControlPanel() {
 	>([]);
 	const [totalCommits, setTotalCommits] = useState(0);
 	const [hasMoreCommits, setHasMoreCommits] = useState(false);
+	const [showCleanupPrompt, setShowCleanupPrompt] = useState(false);
+	const [orphanedCount, setOrphanedCount] = useState(0);
 
 	const sidebarPanel = useEditorStore((state) => state.sidebarPanel);
 	const setDiffPreview = useEditorStore((state) => state.setDiffPreview);
@@ -210,6 +236,8 @@ export function SourceControlPanel() {
 	const changesOp = useWorkingTreeChanges();
 	const resolveOp = useResolveConflicts();
 	const diffOp = useFileDiff();
+	const discardOp = useDiscard();
+	const cleanupOp = useCleanupOrphaned();
 
 	// Update commits state when data loads
 	useEffect(() => {
@@ -242,6 +270,10 @@ export function SourceControlPanel() {
 				"status",
 			);
 			setChangedFiles(result.changed_files || []);
+			// Surface any pre-existing conflicts (e.g. from a previous stash pop)
+			if (result.conflicts && result.conflicts.length > 0) {
+				setConflicts(result.conflicts);
+			}
 		} catch (error) {
 			console.error("Failed to load changes:", error);
 		} finally {
@@ -281,6 +313,7 @@ export function SourceControlPanel() {
 			return;
 		}
 		setLoading("committing");
+		setShowCleanupPrompt(false);
 		try {
 			const result = await runGitOp<CommitResult>(
 				() => commitOp.mutateAsync(commitMessage.trim()),
@@ -305,12 +338,93 @@ export function SourceControlPanel() {
 				const commitData = error.data as unknown as CommitResult;
 				if (commitData.preflight?.issues?.length) {
 					logPreflightToTerminal(commitData.preflight, false);
+					// Check for auto-fixable issues and show cleanup prompt
+					const fixableCount = commitData.preflight.issues.filter(
+						(i) => i.auto_fixable,
+					).length;
+					if (fixableCount > 0) {
+						setShowCleanupPrompt(true);
+						setOrphanedCount(fixableCount);
+					}
 				}
 			}
 		} finally {
 			setLoading(null);
 		}
 	}, [commitMessage, commitOp, refreshStatus]);
+
+	const handleCleanupAndRetry = useCallback(async () => {
+		setLoading("committing");
+		try {
+			const result = await cleanupOp.mutateAsync({});
+			const cleaned = result.data?.cleaned ?? [];
+			const count = result.data?.count ?? 0;
+
+			// Log cleanup results to terminal
+			const logs = [
+				{
+					level: "INFO",
+					message: `[Cleanup] Removed ${count} orphaned reference(s)`,
+					source: "preflight",
+					timestamp: new Date().toISOString(),
+				},
+				...cleaned.map((e) => ({
+					level: "INFO",
+					message: `   Deactivated ${e.entity_type}: ${e.entity_name} (${e.path})`,
+					source: "preflight",
+					timestamp: new Date().toISOString(),
+				})),
+			];
+			useEditorStore.getState().appendTerminalOutput({
+				loggerOutput: logs,
+				variables: {},
+				status: "Success",
+				executionId: `cleanup-${Date.now()}`,
+			});
+
+			setShowCleanupPrompt(false);
+			setOrphanedCount(0);
+
+			// Re-commit automatically
+			toast.success(`Cleaned ${count} orphaned reference(s), retrying commit...`);
+		} catch (error) {
+			const msg = error instanceof Error ? error.message : String(error);
+			toast.error(`Cleanup failed: ${msg}`);
+			setLoading(null);
+			return;
+		}
+
+		// Retry the commit
+		try {
+			const result = await runGitOp<CommitResult>(
+				() => commitOp.mutateAsync(commitMessage.trim()),
+				"commit",
+			);
+			if (result.success) {
+				toast.success(`Committed ${result.files_committed} file(s)`);
+				setCommitMessage("");
+				setCommitsAhead((prev) => prev + 1);
+				setChangedFiles([]);
+				refreshStatus();
+				if (result.preflight?.issues?.length) {
+					logPreflightToTerminal(result.preflight, true);
+				}
+			} else {
+				toast.error(result.error || "Commit failed after cleanup");
+			}
+		} catch (error) {
+			const msg = error instanceof Error ? error.message : String(error);
+			toast.error(`Commit failed after cleanup: ${msg}`);
+			if (error instanceof GitOpError && error.data) {
+				const commitData = error.data as unknown as CommitResult;
+				if (commitData.preflight?.issues?.length) {
+					logPreflightToTerminal(commitData.preflight, false);
+				}
+			}
+		} finally {
+			setLoading(null);
+		}
+	}, [cleanupOp, commitOp, commitMessage, refreshStatus]);
 
 	const handlePull = useCallback(async () => {
 		setLoading("pulling");
@@ -451,6 +565,25 @@ export function SourceControlPanel() {
 		},
 		[conflictResolutions, setDiffPreview],
 	);
+
+	const handleDiscard = useCallback(async (file: ChangedFile) => {
+		try {
+			const result = await runGitOp<DiscardResult>(
+				() => discardOp.mutateAsync([file.path]),
+				"discard",
+			);
+			if (result.success) {
+				toast.success(`Discarded changes to ${file.display_name || file.path}`);
+				setChangedFiles((prev) => prev.filter((f) => f.path !== file.path));
+				refreshStatus();
+			} else {
+				toast.error(result.error || "Discard failed");
+			}
+		} catch (error) {
+			const msg = error instanceof Error ? error.message : String(error);
+			toast.error(`Discard failed: ${msg}`);
+		}
+	}, [discardOp, refreshStatus]);
 
 	// Auto-refresh on visibility change
 	useEffect(() => {
@@ -597,11 +730,16 @@ export function SourceControlPanel() {
 					onPull={handlePull}
 					onPush={handlePush}
 					onShowDiff={handleShowDiff}
+					onDiscard={handleDiscard}
 					commitsBehind={commitsBehind}
 					commitsAhead={commitsAhead}
 					loading={loading}
 					disabled={!!loading}
 					branch={status.current_branch || "main"}
+					showCleanupPrompt={showCleanupPrompt}
+					orphanedCount={orphanedCount}
+					onCleanupAndRetry={handleCleanupAndRetry}
+					onDismissCleanup={() => setShowCleanupPrompt(false)}
 				/>
 
 				{/* Commits */}
@@ -773,11 +911,16 @@ function ChangesSection({
 	onPull,
 	onPush,
 	onShowDiff,
+	onDiscard,
 	commitsBehind,
 	commitsAhead,
 	loading,
 	disabled,
 	branch,
+	showCleanupPrompt,
+	orphanedCount,
+	onCleanupAndRetry,
+	onDismissCleanup,
 }: {
 	changedFiles: ChangedFile[];
 	commitMessage: string;
@@ -786,80 +929,21 @@ function ChangesSection({
 	onPull: () => void;
 	onPush: () => void;
 	onShowDiff: (file: ChangedFile) => void;
+	onDiscard: (file: ChangedFile) => void;
 	commitsBehind: number;
 	commitsAhead: number;
 	loading: "fetching" | "committing" | "pulling" | "pushing" | "resolving" | "loading_changes" | null;
 	disabled: boolean;
 	branch: string;
+	showCleanupPrompt?: boolean;
+	orphanedCount?: number;
+	onCleanupAndRetry?: () => void;
+	onDismissCleanup?: () => void;
 }) {
 	const [expanded, setExpanded] = useState(true);
 
-	// Determine the primary action: has changes → commit, behind → pull, ahead → push
 	const hasChanges = changedFiles.length > 0;
 	const canCommit = hasChanges && commitMessage.trim().length > 0;
-
-	let actionButton: React.ReactNode = null;
-	if (hasChanges) {
-		actionButton = (
-			<Button
-				size="sm"
-				className="w-full gap-2 rounded-none"
-				onClick={onCommit}
-				disabled={disabled || !canCommit}
-			>
-				{loading === "committing" ? (
-					<>
-						<Loader2 className="h-3.5 w-3.5 animate-spin" />
-						Committing...
-					</>
-				) : (
-					`Commit to ${branch}`
-				)}
-			</Button>
-		);
-	} else if (commitsBehind > 0) {
-		actionButton = (
-			<Button
-				size="sm"
-				className="w-full gap-2 rounded-none"
-				onClick={onPull}
-				disabled={disabled}
-			>
-				{loading === "pulling" ? (
-					<>
-						<Loader2 className="h-3.5 w-3.5 animate-spin" />
-						Pulling...
-					</>
-				) : (
-					<>
-						<Download className="h-3.5 w-3.5" />
-						Pull ↓{commitsBehind}
-					</>
-				)}
-			</Button>
-		);
-	} else if (commitsAhead > 0) {
-		actionButton = (
-			<Button
-				size="sm"
-				className="w-full gap-2 rounded-none"
-				onClick={onPush}
-				disabled={disabled}
-			>
-				{loading === "pushing" ? (
-					<>
-						<Loader2 className="h-3.5 w-3.5 animate-spin" />
-						Pushing...
-					</>
-				) : (
-					<>
-						<Upload className="h-3.5 w-3.5" />
-						Push ↑{commitsAhead}
-					</>
-				)}
-			</Button>
-		);
-	}
 
 	return (
 		<div className={cn("border-t flex flex-col min-h-0", expanded && "flex-1")}>
@@ -899,10 +983,109 @@ function ChangesSection({
 						</div>
 					)}
 
-					{/* Dynamic action button */}
-					{actionButton && (
-						<div className="px-4 pb-2 flex-shrink-0">
-							{actionButton}
+					{/* Action buttons */}
+					<div className="px-4 pb-2 flex-shrink-0 flex flex-col gap-1">
+						{commitsBehind > 0 && (
+							<Button
+								size="sm"
+								variant={hasChanges ? "outline" : "default"}
+								className="w-full gap-2 rounded-none"
+								onClick={onPull}
+								disabled={disabled}
+							>
+								{loading === "pulling" ? (
+									<>
+										<Loader2 className="h-3.5 w-3.5 animate-spin" />
+										Pulling...
+									</>
+								) : (
+									<>
+										<Download className="h-3.5 w-3.5" />
+										Pull ↓{commitsBehind}
+									</>
+								)}
+							</Button>
+						)}
+						{hasChanges && (
+							<Button
+								size="sm"
+								className="w-full gap-2 rounded-none"
+								onClick={onCommit}
+								disabled={disabled || !canCommit}
+							>
+								{loading === "committing" ? (
+									<>
+										<Loader2 className="h-3.5 w-3.5 animate-spin" />
+										Committing...
+									</>
+								) : (
+									`Commit to ${branch}`
+								)}
+							</Button>
+						)}
+						{commitsAhead > 0 && !hasChanges && (
+							<Button
+								size="sm"
+								className="w-full gap-2 rounded-none"
+								onClick={onPush}
+								disabled={disabled}
+							>
+								{loading === "pushing" ? (
+									<>
+										<Loader2 className="h-3.5 w-3.5 animate-spin" />
+										Pushing...
+									</>
+								) : (
+									<>
+										<Upload className="h-3.5 w-3.5" />
+										Push ↑{commitsAhead}
+									</>
+								)}
+							</Button>
+						)}
+					</div>
+
+					{/* Orphaned cleanup banner */}
+					{showCleanupPrompt && (
+						<div className="mx-4 mb-2 p-2.5 rounded border border-yellow-500/30 bg-yellow-500/10 flex-shrink-0">
+							<div className="flex items-start gap-2">
+								<AlertTriangle className="h-4 w-4 text-yellow-600 mt-0.5 flex-shrink-0" />
+								<div className="flex-1 min-w-0">
+									<p className="text-xs font-medium text-yellow-700">
+										{orphanedCount} orphaned reference(s) found
+									</p>
+									<p className="text-xs text-muted-foreground mt-0.5">
+										Some entities reference files that no longer exist.
+									</p>
+									<div className="flex gap-2 mt-2">
+										<Button
+											size="sm"
+											variant="default"
+											className="h-6 text-xs px-2 rounded-none"
+											onClick={onCleanupAndRetry}
+											disabled={disabled}
+										>
+											{loading === "committing" ? (
+												<>
+													<Loader2 className="h-3 w-3 animate-spin mr-1" />
+													Cleaning up...
+												</>
+											) : (
+												"Clean up & Retry"
+											)}
+										</Button>
+										<Button
+											size="sm"
+											variant="ghost"
+											className="h-6 text-xs px-2 rounded-none"
+											onClick={onDismissCleanup}
+											disabled={disabled}
+										>
+											Dismiss
+										</Button>
+									</div>
+								</div>
+							</div>
 						</div>
 					)}
 
@@ -927,13 +1110,23 @@ function ChangesSection({
 									<div
 										key={file.path}
 										onClick={() => onShowDiff(file)}
-										className="flex items-center gap-2 text-xs py-1.5 px-2 rounded hover:bg-muted/30 cursor-pointer"
+										className="group flex items-center gap-2 text-xs py-1.5 px-2 rounded hover:bg-muted/30 cursor-pointer"
 									>
 										{getChangeIcon(file.change_type)}
 										<IconComponent className={cn("h-3.5 w-3.5 flex-shrink-0", iconClassName)} />
 										<span className="flex-1 truncate" title={file.path}>
 											{file.display_name || file.path}
 										</span>
+										<button
+											onClick={(e) => {
+												e.stopPropagation();
+												onDiscard(file);
+											}}
+											className="hidden group-hover:block p-0.5 rounded hover:bg-muted/80 flex-shrink-0"
+											title="Discard changes"
+										>
+											<Undo2 className="h-3 w-3 text-muted-foreground" />
+										</button>
 										<span
 											className={cn(
 												"text-xs font-mono w-4 text-center flex-shrink-0",

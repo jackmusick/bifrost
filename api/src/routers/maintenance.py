@@ -15,8 +15,10 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from src.core.auth import Context, CurrentSuperuser
 from src.core.database import get_db
 from src.models import (
+    CleanupOrphanedResponse,
     DocsIndexResponse,
     MaintenanceStatus,
+    OrphanedEntity,
     PreflightIssueResponse,
     PreflightResponse,
     ReimportJobResponse,
@@ -27,7 +29,9 @@ from src.models.contracts.notifications import (
     NotificationStatus,
 )
 from src.models.orm import (
+    Agent,
     Application,
+    Form,
     Workflow,
 )
 from src.models.orm.file_index import FileIndex
@@ -181,6 +185,99 @@ async def reimport_from_repo(
     job_id = str(uuid4())
     await publish_reimport_request(job_id)
     return ReimportJobResponse(status="queued", job_id=job_id)
+
+
+@router.post(
+    "/cleanup-orphaned",
+    response_model=CleanupOrphanedResponse,
+    summary="Clean up orphaned entity references",
+    description="Deactivate workflows, forms, and agents whose files no longer exist in the workspace",
+)
+async def cleanup_orphaned(
+    user: CurrentSuperuser,
+    db: AsyncSession = Depends(get_db),
+) -> CleanupOrphanedResponse:
+    """
+    Find and deactivate entities that reference files no longer in FileIndex.
+
+    For each entity type (workflow, form, agent), queries active records and
+    checks whether their associated file path exists in file_index. Entities
+    whose files are missing are set to is_active=False.
+
+    This is a synchronous DB-only operation (no S3/checkout needed).
+    """
+    try:
+        # Get all existing file paths from FileIndex
+        fi_result = await db.execute(select(FileIndex.path))
+        existing_paths: set[str] = {row[0] for row in fi_result.all()}
+
+        cleaned: list[OrphanedEntity] = []
+
+        # 1. Workflows — have a direct `path` column
+        wf_result = await db.execute(
+            select(Workflow).where(Workflow.is_active.is_(True))
+        )
+        for wf in wf_result.scalars().all():
+            if wf.path and wf.path not in existing_paths:
+                wf.is_active = False
+                wf.is_orphaned = True
+                cleaned.append(OrphanedEntity(
+                    entity_type="workflow",
+                    entity_id=str(wf.id),
+                    entity_name=wf.display_name or wf.name,
+                    path=wf.path,
+                ))
+
+        # 2. Forms — manifest generates path as forms/{id}.form.yaml
+        form_result = await db.execute(
+            select(Form).where(Form.is_active.is_(True))
+        )
+        for form in form_result.scalars().all():
+            expected_path = f"forms/{form.id}.form.yaml"
+            if expected_path not in existing_paths:
+                form.is_active = False
+                cleaned.append(OrphanedEntity(
+                    entity_type="form",
+                    entity_id=str(form.id),
+                    entity_name=form.name,
+                    path=expected_path,
+                ))
+
+        # 3. Agents — manifest generates path as agents/{id}.agent.yaml
+        agent_result = await db.execute(
+            select(Agent).where(Agent.is_active.is_(True))
+        )
+        for agent in agent_result.scalars().all():
+            expected_path = f"agents/{agent.id}.agent.yaml"
+            if expected_path not in existing_paths:
+                agent.is_active = False
+                cleaned.append(OrphanedEntity(
+                    entity_type="agent",
+                    entity_id=str(agent.id),
+                    entity_name=agent.name,
+                    path=expected_path,
+                ))
+
+        await db.commit()
+
+        if cleaned:
+            logger.info(
+                f"Cleaned up {len(cleaned)} orphaned entities: "
+                f"{', '.join(f'{e.entity_type}:{e.entity_name}' for e in cleaned)}"
+            )
+
+        return CleanupOrphanedResponse(
+            success=True,
+            cleaned=cleaned,
+            count=len(cleaned),
+        )
+
+    except Exception as e:
+        logger.error(f"Error cleaning up orphaned entities: {e}", exc_info=True)
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to clean up orphaned entities: {str(e)}",
+        )
 
 
 class AppDependencyIssue(BaseModel):
@@ -381,7 +478,7 @@ async def run_preflight(
 
     # List all files
     try:
-        all_files = await service.list_files("")
+        all_files = await service.list_files("", recursive=True)
     except Exception as e:
         logger.error(f"Preflight: failed to list files: {e}")
         return PreflightResponse(

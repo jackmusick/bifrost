@@ -516,7 +516,59 @@ def handle_run(args: list[str]) -> int:
         # Try to authenticate for SDK features (knowledge, ai, etc.)
         # but don't require it — standalone mode can run without API access
         try:
-            BifrostClient.get_instance(require_auth=True)
+            client = BifrostClient.get_instance(require_auth=True)
+
+            # Set up execution context so context.org_id, context.user_id, etc. work
+            try:
+                from bifrost._context import set_execution_context
+                import uuid
+
+                user_info = client.user
+                org_info = client.organization
+
+                class _Org:
+                    def __init__(self, id, name):
+                        self.id = id
+                        self.name = name
+
+                class _StandaloneContext:
+                    def __init__(self, user_id, email, name, scope, organization, execution_id, workflow_name):
+                        self.user_id = user_id
+                        self.email = email
+                        self.name = name
+                        self.scope = scope
+                        self.organization = organization
+                        self.execution_id = execution_id
+                        self.workflow_name = workflow_name
+                        self.is_platform_admin = False
+                        self.is_function_key = False
+                        self.parameters = {}
+                        self.startup = None
+
+                    @property
+                    def org_id(self):
+                        return self.organization.id if self.organization else None
+
+                    @property
+                    def org_name(self):
+                        return self.organization.name if self.organization else None
+
+                org = _Org(org_info["id"], org_info.get("name", "")) if org_info else None
+                scope = org_info["id"] if org_info else "GLOBAL"
+
+                ctx = _StandaloneContext(
+                    user_id=user_info.get("id", "cli-user"),
+                    email=user_info.get("email", ""),
+                    name=user_info.get("name", "CLI User"),
+                    scope=scope,
+                    organization=org,
+                    execution_id=f"standalone-{uuid.uuid4()}",
+                    workflow_name=selected_workflow,
+                )
+                set_execution_context(ctx)
+            except Exception:
+                pass  # Context setup is best-effort
+
         except (RuntimeError, Exception):
             pass  # Standalone mode works without auth
 

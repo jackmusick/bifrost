@@ -275,11 +275,11 @@ class TestDocumentQueryOperators:
         doc_repo = DocumentRepository(db_session, table)
 
         # Insert test documents with various data types
-        await doc_repo.insert({"name": "Acme Corp", "status": "active", "amount": 100}, created_by=test_user_email)
-        await doc_repo.insert({"name": "Beta Inc", "status": "active", "amount": 200}, created_by=test_user_email)
-        await doc_repo.insert({"name": "Gamma LLC", "status": "inactive", "amount": 300}, created_by=test_user_email)
-        await doc_repo.insert({"name": "Delta Co", "status": "pending", "amount": 150}, created_by=test_user_email)
-        await doc_repo.insert({"name": "Acme Beta", "status": "active"}, created_by=test_user_email)  # No amount field
+        await doc_repo.insert({"name": "Acme Corp", "status": "active", "amount": 100, "active": True}, created_by=test_user_email)
+        await doc_repo.insert({"name": "Beta Inc", "status": "active", "amount": 200, "active": True}, created_by=test_user_email)
+        await doc_repo.insert({"name": "Gamma LLC", "status": "inactive", "amount": 300, "active": False}, created_by=test_user_email)
+        await doc_repo.insert({"name": "Delta Co", "status": "pending", "amount": 150, "active": True}, created_by=test_user_email)
+        await doc_repo.insert({"name": "Acme Beta", "status": "active"}, created_by=test_user_email)  # No amount/active field
 
         return table
 
@@ -435,6 +435,68 @@ class TestDocumentQueryOperators:
         query = DocumentQuery(where={"status": "active"})
         documents2, total2 = await doc_repo.query(query)
         assert total2 == 3
+
+    @pytest.mark.asyncio
+    async def test_simple_equality_boolean(self, db_session: AsyncSession, test_table_with_data):
+        """Test simple equality filter with boolean values."""
+        doc_repo = DocumentRepository(db_session, test_table_with_data)
+
+        from src.models.contracts.tables import DocumentQuery
+
+        query = DocumentQuery(where={"active": True})
+        documents, total = await doc_repo.query(query)
+        assert total == 3  # Acme Corp, Beta Inc, Delta Co
+        assert all(d.data["active"] is True for d in documents)
+
+        query = DocumentQuery(where={"active": False})
+        documents, total = await doc_repo.query(query)
+        assert total == 1  # Gamma LLC
+        assert documents[0].data["name"] == "Gamma LLC"
+
+    @pytest.mark.asyncio
+    async def test_in_operator_boolean(self, db_session: AsyncSession, test_table_with_data):
+        """Test in operator with boolean values (regression: str(True) -> 'True' != 'true')."""
+        doc_repo = DocumentRepository(db_session, test_table_with_data)
+
+        from src.models.contracts.tables import DocumentQuery
+
+        query = DocumentQuery(where={"active": {"in": [True]}})
+        documents, total = await doc_repo.query(query)
+        assert total == 3  # Acme Corp, Beta Inc, Delta Co
+
+        query = DocumentQuery(where={"active": {"in": [False]}})
+        documents, total = await doc_repo.query(query)
+        assert total == 1  # Gamma LLC
+
+        query = DocumentQuery(where={"active": {"in": [True, False]}})
+        documents, total = await doc_repo.query(query)
+        assert total == 4  # All documents that have the active field
+
+    @pytest.mark.asyncio
+    async def test_ne_operator_boolean(self, db_session: AsyncSession, test_table_with_data):
+        """Test ne operator with boolean values."""
+        doc_repo = DocumentRepository(db_session, test_table_with_data)
+
+        from src.models.contracts.tables import DocumentQuery
+
+        query = DocumentQuery(where={"active": {"ne": True}})
+        documents, total = await doc_repo.query(query)
+        assert total == 2  # Gamma LLC (active=False) + Acme Beta (no active field)
+        names = {d.data["name"] for d in documents}
+        assert "Gamma LLC" in names
+
+    @pytest.mark.asyncio
+    async def test_in_operator_numeric(self, db_session: AsyncSession, test_table_with_data):
+        """Test in operator with numeric values."""
+        doc_repo = DocumentRepository(db_session, test_table_with_data)
+
+        from src.models.contracts.tables import DocumentQuery
+
+        query = DocumentQuery(where={"amount": {"in": [100, 200]}})
+        documents, total = await doc_repo.query(query)
+        assert total == 2  # Acme Corp (100) and Beta Inc (200)
+        amounts = {d.data["amount"] for d in documents}
+        assert amounts == {100, 200}
 
 
 class TestTableCascadeDelete:

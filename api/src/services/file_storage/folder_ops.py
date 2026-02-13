@@ -94,14 +94,6 @@ class FolderOperationsService:
         )
         await self.db.execute(stmt)
 
-        # Create on local filesystem too
-        try:
-            from src.core.paths import WORKSPACE_PATH
-            local_folder = WORKSPACE_PATH / path.rstrip("/")
-            local_folder.mkdir(parents=True, exist_ok=True)
-        except Exception as e:
-            logger.warning(f"Failed to create local folder: {e}")
-
         logger.info(f"Folder created: {folder_path} by {updated_by}")
         return FileEntry(path=folder_path, content_type="inode/directory", updated_at=now)
 
@@ -144,15 +136,6 @@ class FolderOperationsService:
             FileIndex.path.startswith(folder_path),
         )
         await self.db.execute(del_stmt)
-
-        # Delete from local filesystem
-        try:
-            from src.core.paths import WORKSPACE_PATH
-            local_folder = WORKSPACE_PATH / path.rstrip("/")
-            if local_folder.exists():
-                shutil.rmtree(local_folder)
-        except Exception as e:
-            logger.warning(f"Failed to delete local folder: {e}")
 
         logger.info(f"Folder deleted: {folder_path}")
 

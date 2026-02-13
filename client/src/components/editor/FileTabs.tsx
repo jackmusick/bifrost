@@ -47,7 +47,8 @@ export function FileTabs() {
 		if (!tab) return;
 
 		// If content already loaded, check for conflicts before switching
-		if (tab.content !== "" && tab.etag) {
+		// Skip conflict check during indexing (server modifies file, creating etag mismatch)
+		if (tab.content !== "" && tab.etag && !useEditorStore.getState().isIndexing) {
 			try {
 				const serverFile = await fileService.readFile(tab.file.path);
 

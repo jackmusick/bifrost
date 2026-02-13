@@ -100,7 +100,7 @@ mkdir -p "$LOG_DIR"
 export_docker_logs() {
     echo "Exporting docker logs to $LOG_DIR/..."
 
-    # Clean up old docker log files from previous runs (preserve test-runner.log written by tee)
+    # Clean up old docker log files from previous runs (preserve test-runner.log and xml results)
     find "$LOG_DIR" -maxdepth 1 -name "*.log" ! -name "test-runner.log" -delete 2>/dev/null
     rm -f "$LOG_DIR"/docker-logs.txt 2>/dev/null
 
@@ -559,7 +559,7 @@ if [ "$CLIENT_ONLY" = false ]; then
         echo ""
 
         # Ignore tests that require a running API service
-        PHASE1_CMD=("pytest" "tests/" "--ignore=tests/e2e/" "-v")
+        PHASE1_CMD=("pytest" "tests/" "--ignore=tests/e2e/" "-v" "--junitxml=/tmp/bifrost/unit-results.xml")
         if [ "$COVERAGE" = true ]; then
             PHASE1_CMD+=("--cov=src" "--cov-report=term-missing")
         fi
@@ -612,7 +612,7 @@ if [ "$CLIENT_ONLY" = false ]; then
             echo ""
 
             # Run e2e tests that need a live API
-            PHASE2_CMD=("pytest" "tests/e2e/" "-v")
+            PHASE2_CMD=("pytest" "tests/e2e/" "-v" "--junitxml=/tmp/bifrost/e2e-results.xml")
             if [ "$COVERAGE" = true ]; then
                 PHASE2_CMD+=("--cov=src" "--cov-append" "--cov-report=term-missing" "--cov-report=xml:/app/coverage.xml")
             fi
@@ -794,6 +794,9 @@ if [ "$CLIENT_TESTS" = true ]; then
         echo "  Playwright tests: FAILED (exit code $PLAYWRIGHT_EXIT_CODE)"
     fi
 fi
+echo ""
+echo "  Logs: $LOG_DIR/test-runner.log"
+echo "  Results: $LOG_DIR/*-results.xml"
 echo "============================================================"
 
 # In wait mode, wait for user before cleanup

@@ -20,6 +20,7 @@ from src.models import (
     CreateRepoRequest,
     CreateRepoResponse,
     DiffRequest,
+    DiscardRequest,
     GitHubBranchesResponse,
     GitHubBranchInfo,
     GitHubConfigRequest,
@@ -793,6 +794,35 @@ async def git_diff(
         user_email=user.email,
         op_type="git_diff",
         path=request.path,
+    )
+    return GitJobResponse(job_id=job_id)
+
+
+@router.post(
+    "/discard",
+    response_model=GitJobResponse,
+    summary="Discard working tree changes",
+    description="Discard uncommitted changes for specific files (git checkout -- <path>).",
+)
+async def git_discard(
+    request: DiscardRequest,
+    ctx: Context,
+    user: CurrentSuperuser,
+    db: DbSession,
+) -> GitJobResponse:
+    """Queue a discard operation."""
+    config = await get_github_config(db, ctx.org_id)
+    if not config or not config.token or not config.repo_url:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="GitHub not configured")
+
+    job_id = str(uuid.uuid4())
+    await publish_git_operation(
+        job_id=job_id,
+        org_id=str(ctx.org_id) if ctx.org_id else "",
+        user_id=str(user.user_id),
+        user_email=user.email,
+        op_type="git_discard",
+        paths=request.paths,
     )
     return GitJobResponse(job_id=job_id)
 

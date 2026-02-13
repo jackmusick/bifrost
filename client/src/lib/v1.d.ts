@@ -1747,6 +1747,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/workflows/register": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Register a workflow function
+         * @description Register a decorated function from an existing .py file as a workflow.
+         */
+        post: operations["register_workflow_api_workflows_register_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/workflows/{workflow_id}": {
         parameters: {
             query?: never;
@@ -2998,6 +3018,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/github/discard": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Discard working tree changes
+         * @description Discard uncommitted changes for specific files (git checkout -- <path>).
+         */
+        post: operations["git_discard_api_github_discard_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/github/sync": {
         parameters: {
             query?: never;
@@ -3245,22 +3285,22 @@ export interface paths {
          * Execute workflow via API key
          * @description Execute an endpoint-enabled workflow using an API key for authentication
          */
-        get: operations["execute_endpoint_api_endpoints__workflow_name__get"];
+        get: operations["execute_endpoint_api_endpoints__workflow_name__put"];
         /**
          * Execute workflow via API key
          * @description Execute an endpoint-enabled workflow using an API key for authentication
          */
-        put: operations["execute_endpoint_api_endpoints__workflow_name__get"];
+        put: operations["execute_endpoint_api_endpoints__workflow_name__put"];
         /**
          * Execute workflow via API key
          * @description Execute an endpoint-enabled workflow using an API key for authentication
          */
-        post: operations["execute_endpoint_api_endpoints__workflow_name__get"];
+        post: operations["execute_endpoint_api_endpoints__workflow_name__put"];
         /**
          * Execute workflow via API key
          * @description Execute an endpoint-enabled workflow using an API key for authentication
          */
-        delete: operations["execute_endpoint_api_endpoints__workflow_name__get"];
+        delete: operations["execute_endpoint_api_endpoints__workflow_name__put"];
         options?: never;
         head?: never;
         patch?: never;
@@ -4997,46 +5037,6 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/api/maintenance/reindex": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /**
-         * Start workspace reindex (non-blocking)
-         * @description Queue a reindex job with reference validation (Platform admin only)
-         */
-        post: operations["run_reindex_api_maintenance_reindex_post"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/maintenance/scan-sdk": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /**
-         * Scan workspace for missing SDK references
-         * @description Scan all Python files for missing config.get() and integrations.get() references (Platform admin only)
-         */
-        post: operations["scan_sdk_references_api_maintenance_scan_sdk_post"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
     "/api/maintenance/index-docs": {
         parameters: {
             query?: never;
@@ -5057,6 +5057,46 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/maintenance/reimport": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Reimport from repository
+         * @description Queue a reimport of all entities from S3. Poll GET /api/jobs/{job_id} for result.
+         */
+        post: operations["reimport_from_repo_api_maintenance_reimport_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/maintenance/cleanup-orphaned": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Clean up orphaned entity references
+         * @description Deactivate workflows, forms, and agents whose files no longer exist in the workspace
+         */
+        post: operations["cleanup_orphaned_api_maintenance_cleanup_orphaned_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/maintenance/scan-app-dependencies": {
         parameters: {
             query?: never;
@@ -5071,6 +5111,26 @@ export interface paths {
          * @description Scan all app source files for workflow references and report issues (Platform admin only)
          */
         post: operations["scan_app_dependencies_api_maintenance_scan_app_dependencies_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/maintenance/preflight": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Run preflight validation
+         * @description Run validation checks including unregistered function detection (Platform admin only)
+         */
+        post: operations["run_preflight_api_maintenance_preflight_post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -6340,8 +6400,7 @@ export interface paths {
          * List app files
          * @description List all files for an application.
          *
-         *     In draft mode, reads from file_index (which mirrors S3).
-         *     In live mode, reads from the published_snapshot on the application.
+         *     Reads from _apps/{app_id}/preview/ (draft) or _apps/{app_id}/live/ (live).
          */
         get: operations["list_app_files_api_applications__app_id__files_get"];
         put?: never;
@@ -6363,8 +6422,7 @@ export interface paths {
          * Read a single app file
          * @description Read a single file by relative path.
          *
-         *     Draft mode reads from Redis cache -> S3 via FileStorageService.
-         *     Live mode verifies the file exists in published_snapshot first.
+         *     Reads from _apps/{app_id}/preview/ (draft) or _apps/{app_id}/live/ (live).
          */
         get: operations["read_app_file_api_applications__app_id__files__file_path__get"];
         /**
@@ -6372,7 +6430,7 @@ export interface paths {
          * @description Create or update a file at the given path.
          *
          *     Validates the path, then writes via FileStorageService (which handles
-         *     S3 storage, file_index update, and pubsub for apps/ paths).
+         *     S3 _repo/ storage, file_index update, pubsub, and preview sync).
          */
         put: operations["write_app_file_api_applications__app_id__files__file_path__put"];
         post?: never;
@@ -6380,8 +6438,8 @@ export interface paths {
          * Delete an app file
          * @description Delete a file at the given path.
          *
-         *     Deletes via FileStorageService (which handles S3 deletion,
-         *     file_index cleanup, and pubsub for apps/ paths).
+         *     Deletes via FileStorageService (which handles S3 _repo/ deletion,
+         *     file_index cleanup, pubsub, and preview sync).
          */
         delete: operations["delete_app_file_api_applications__app_id__files__file_path__delete"];
         options?: never;
@@ -8436,6 +8494,28 @@ export interface components {
             duration_ms?: number | null;
         };
         /**
+         * CleanupOrphanedResponse
+         * @description Response from orphaned entity cleanup.
+         */
+        CleanupOrphanedResponse: {
+            /**
+             * Success
+             * @description Whether cleanup completed successfully
+             */
+            success: boolean;
+            /**
+             * Cleaned
+             * @description Entities that were deactivated
+             */
+            cleaned?: components["schemas"]["OrphanedEntity"][];
+            /**
+             * Count
+             * @description Total number of entities cleaned up
+             * @default 0
+             */
+            count: number;
+        };
+        /**
          * CleanupTriggeredResponse
          * @description Response model for cleanup trigger operation
          */
@@ -9309,6 +9389,17 @@ export interface components {
              * @description File path to diff
              */
             path: string;
+        };
+        /**
+         * DiscardRequest
+         * @description Request to discard working tree changes for specific files.
+         */
+        DiscardRequest: {
+            /**
+             * Paths
+             * @description File paths to discard changes for
+             */
+            paths: string[];
         };
         /**
          * DocsIndexResponse
@@ -10315,6 +10406,11 @@ export interface components {
             replacements?: {
                 [key: string]: string;
             } | null;
+            /**
+             * Workflows To Deactivate
+             * @description List of workflow IDs to selectively deactivate (used with replacements for mixed actions)
+             */
+            workflows_to_deactivate?: string[] | null;
         };
         /**
          * FileContentResponse
@@ -13530,6 +13626,32 @@ export interface components {
             ai_cost?: string;
         };
         /**
+         * OrphanedEntity
+         * @description An entity that references a file no longer in the workspace.
+         */
+        OrphanedEntity: {
+            /**
+             * Entity Type
+             * @description Entity type: 'workflow', 'form', or 'agent'
+             */
+            entity_type: string;
+            /**
+             * Entity Id
+             * @description Entity UUID
+             */
+            entity_id: string;
+            /**
+             * Entity Name
+             * @description Entity display name
+             */
+            entity_name: string;
+            /**
+             * Path
+             * @description File path that no longer exists
+             */
+            path: string;
+        };
+        /**
          * OrphanedWorkflowInfo
          * @description Orphaned workflow with metadata and references.
          */
@@ -14080,6 +14202,53 @@ export interface components {
             total: number;
         };
         /**
+         * PreflightIssueResponse
+         * @description A single preflight validation issue.
+         */
+        PreflightIssueResponse: {
+            /**
+             * Level
+             * @description Issue level: 'error' or 'warning'
+             */
+            level: string;
+            /**
+             * Category
+             * @description Issue category
+             */
+            category: string;
+            /**
+             * Detail
+             * @description Human-readable description
+             */
+            detail: string;
+            /**
+             * Path
+             * @description File path if applicable
+             */
+            path?: string | null;
+        };
+        /**
+         * PreflightResponse
+         * @description Response from on-demand preflight validation.
+         */
+        PreflightResponse: {
+            /**
+             * Valid
+             * @description True if no errors found
+             */
+            valid: boolean;
+            /**
+             * Issues
+             * @description Blocking issues
+             */
+            issues?: components["schemas"]["PreflightIssueResponse"][];
+            /**
+             * Warnings
+             * @description Non-blocking warnings
+             */
+            warnings?: components["schemas"]["PreflightIssueResponse"][];
+        };
+        /**
          * ProcessInfo
          * @description Information about a worker process in the pool.
          */
@@ -14540,10 +14709,62 @@ export interface components {
             mfa_code: string;
         };
         /**
-         * ReindexJobResponse
-         * @description Response from starting a non-blocking reindex job.
+         * RegisterWorkflowRequest
+         * @description Request model for explicit workflow registration.
          */
-        ReindexJobResponse: {
+        RegisterWorkflowRequest: {
+            /**
+             * Path
+             * @description Workspace-relative path to the .py file
+             */
+            path: string;
+            /**
+             * Function Name
+             * @description Name of the decorated function to register
+             */
+            function_name: string;
+        };
+        /**
+         * RegisterWorkflowResponse
+         * @description Response model for workflow registration.
+         */
+        RegisterWorkflowResponse: {
+            /**
+             * Id
+             * @description Workflow UUID
+             */
+            id: string;
+            /**
+             * Name
+             * @description Workflow name (from decorator or function name)
+             */
+            name: string;
+            /**
+             * Function Name
+             * @description Python function name
+             */
+            function_name: string;
+            /**
+             * Path
+             * @description File path
+             */
+            path: string;
+            /**
+             * Type
+             * @description Executable type: workflow, tool, or data_provider
+             */
+            type: string;
+            /**
+             * Description
+             * @description Workflow description
+             */
+            description?: string | null;
+        };
+        /**
+         * ReimportJobResponse
+         * @description Response from a reimport request.
+         */
+        ReimportJobResponse: {
             /**
              * Status
              * @description Job status: queued
@@ -14551,20 +14772,9 @@ export interface components {
             status: string;
             /**
              * Job Id
-             * @description Unique identifier for tracking the job via websocket
+             * @description Job ID for polling via GET /api/jobs/{job_id}
              */
             job_id: string;
-        };
-        /**
-         * ReindexRequest
-         * @description Request to start a workspace reindex operation.
-         */
-        ReindexRequest: {
-            /**
-             * Notification Id
-             * @description Optional notification ID to update with progress
-             */
-            notification_id?: string | null;
         };
         /**
          * ReplaceWorkflowRequest
@@ -15345,22 +15555,6 @@ export interface components {
             config?: {
                 [key: string]: unknown;
             } | null;
-        };
-        /**
-         * SDKScanResponse
-         * @description Response from SDK reference scan.
-         */
-        SDKScanResponse: {
-            /** Files Scanned */
-            files_scanned: number;
-            /** Issues Found */
-            issues_found: number;
-            /** Issues */
-            issues: {
-                [key: string]: unknown;
-            }[];
-            /** Notification Created */
-            notification_created: boolean;
         };
         /**
          * SDKTableCreateRequest
@@ -16904,6 +17098,11 @@ export interface components {
              * @description Human-readable workflow name
              */
             name: string;
+            /**
+             * Function Name
+             * @description Python function name (for CodeLens registration status)
+             */
+            function_name?: string | null;
             /**
              * Display Name
              * @description Optional display name for UI (falls back to name if not set)
@@ -19858,6 +20057,39 @@ export interface operations {
             };
         };
     };
+    register_workflow_api_workflows_register_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["RegisterWorkflowRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RegisterWorkflowResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     delete_workflow_api_workflows__workflow_id__delete: {
         parameters: {
             query?: never;
@@ -22041,6 +22273,39 @@ export interface operations {
             };
         };
     };
+    git_discard_api_github_discard_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["DiscardRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["GitJobResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     sync_preview_api_github_sync_get: {
         parameters: {
             query?: never;
@@ -22477,7 +22742,7 @@ export interface operations {
             };
         };
     };
-    execute_endpoint_api_endpoints__workflow_name__get: {
+    execute_endpoint_api_endpoints__workflow_name__put: {
         parameters: {
             query?: never;
             header: {
@@ -22510,7 +22775,7 @@ export interface operations {
             };
         };
     };
-    execute_endpoint_api_endpoints__workflow_name__get: {
+    execute_endpoint_api_endpoints__workflow_name__put: {
         parameters: {
             query?: never;
             header: {
@@ -22543,7 +22808,7 @@ export interface operations {
             };
         };
     };
-    execute_endpoint_api_endpoints__workflow_name__get: {
+    execute_endpoint_api_endpoints__workflow_name__put: {
         parameters: {
             query?: never;
             header: {
@@ -22576,7 +22841,7 @@ export interface operations {
             };
         };
     };
-    execute_endpoint_api_endpoints__workflow_name__get: {
+    execute_endpoint_api_endpoints__workflow_name__put: {
         parameters: {
             query?: never;
             header: {
@@ -25745,59 +26010,6 @@ export interface operations {
             };
         };
     };
-    run_reindex_api_maintenance_reindex_post: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["ReindexRequest"];
-            };
-        };
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ReindexJobResponse"];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    scan_sdk_references_api_maintenance_scan_sdk_post: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["SDKScanResponse"];
-                };
-            };
-        };
-    };
     index_documentation_api_maintenance_index_docs_post: {
         parameters: {
             query?: never;
@@ -25818,6 +26030,46 @@ export interface operations {
             };
         };
     };
+    reimport_from_repo_api_maintenance_reimport_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ReimportJobResponse"];
+                };
+            };
+        };
+    };
+    cleanup_orphaned_api_maintenance_cleanup_orphaned_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CleanupOrphanedResponse"];
+                };
+            };
+        };
+    };
     scan_app_dependencies_api_maintenance_scan_app_dependencies_post: {
         parameters: {
             query?: never;
@@ -25834,6 +26086,26 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["AppDependencyScanResponse"];
+                };
+            };
+        };
+    };
+    run_preflight_api_maintenance_preflight_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PreflightResponse"];
                 };
             };
         };

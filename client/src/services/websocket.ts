@@ -117,41 +117,6 @@ export interface PackageComplete {
 	message: string;
 }
 
-// Reindex streaming types
-export interface ReindexProgress {
-	type: "progress";
-	phase: string;
-	current: number;
-	total: number;
-	current_file?: string | null;
-}
-
-export interface ReindexCompleted {
-	type: "completed";
-	counts: {
-		files_indexed: number;
-		files_skipped: number;
-		files_deleted: number;
-		workflows_active: number;
-		forms_active: number;
-		agents_active: number;
-	};
-	warnings: string[];
-	errors: Array<{
-		file_path: string;
-		field: string;
-		referenced_id: string;
-		message: string;
-	}>;
-}
-
-export interface ReindexFailed {
-	type: "failed";
-	error: string;
-}
-
-export type ReindexMessage = ReindexProgress | ReindexCompleted | ReindexFailed;
-
 export interface LocalRunnerStateUpdate {
 	file_path: string;
 	workflows: Array<{
@@ -412,7 +377,6 @@ type WebSocketMessage =
 			event: EventSourceEvent;
 	  }
 	| ChatStreamChunk
-	| (ReindexMessage & { jobId: string })
 	| AppDraftUpdate
 	| AppCodeFileUpdate
 	| AppPublishedUpdate
@@ -460,7 +424,6 @@ type GitLogCallback = (log: PackageLog) => void;
 type GitProgressCallback = (progress: GitProgress) => void;
 type GitCompleteCallback = (complete: PackageComplete & Record<string, unknown>) => void;
 type LocalRunnerStateCallback = (state: LocalRunnerStateUpdate | null) => void;
-type ReindexCallback = (message: ReindexMessage) => void;
 type CLISessionUpdateCallback = (update: CLISessionUpdate) => void;
 type EventSourceUpdateCallback = (update: EventSourceUpdate) => void;
 type ChatStreamCallback = (chunk: ChatStreamChunk) => void;
@@ -506,7 +469,6 @@ class WebSocketService {
 		Set<EventSourceUpdateCallback>
 	>();
 	private chatStreamCallbacks = new Map<string, ChatStreamCallback>();
-	private reindexCallbacks = new Map<string, Set<ReindexCallback>>();
 	private appDraftUpdateCallbacks = new Map<
 		string,
 		Set<AppDraftUpdateCallback>
@@ -848,15 +810,6 @@ class WebSocketService {
 				this.dispatchChatStreamChunk(message as ChatStreamChunk);
 				break;
 
-			// Reindex message types
-			case "progress":
-			case "completed":
-			case "failed":
-				this.dispatchReindexMessage(
-					message as ReindexMessage & { jobId: string },
-				);
-				break;
-
 			// App Builder live update message types
 			case "app_draft_update":
 				this.dispatchAppDraftUpdate(message as AppDraftUpdate);
@@ -885,14 +838,6 @@ class WebSocketService {
 
 	private dispatchPoolMessage(message: PoolMessage) {
 		this.poolMessageCallbacks.forEach((cb) => cb(message));
-	}
-
-	private dispatchReindexMessage(
-		message: ReindexMessage & { jobId: string },
-	) {
-		const { jobId, ...reindexMessage } = message;
-		const callbacks = this.reindexCallbacks.get(jobId);
-		callbacks?.forEach((cb) => cb(reindexMessage as ReindexMessage));
 	}
 
 	private dispatchCLISessionUpdate(message: {
@@ -1443,41 +1388,6 @@ class WebSocketService {
 			}),
 		);
 		return true;
-	}
-
-	/**
-	 * Connect to a reindex job channel for progress updates
-	 */
-	async connectToReindex(jobId: string): Promise<void> {
-		const channel = `reindex:${jobId}`;
-		if (this.subscribedChannels.has(channel)) {
-			return;
-		}
-
-		if (this.ws?.readyState === WebSocket.OPEN) {
-			await this.subscribe(channel);
-			return;
-		}
-
-		await this.connect([channel]);
-	}
-
-	/**
-	 * Subscribe to reindex progress updates for a specific job
-	 */
-	onReindexProgress(jobId: string, callback: ReindexCallback): () => void {
-		if (!this.reindexCallbacks.has(jobId)) {
-			this.reindexCallbacks.set(jobId, new Set());
-		}
-		this.reindexCallbacks.get(jobId)!.add(callback);
-
-		// Return unsubscribe function
-		return () => {
-			this.reindexCallbacks.get(jobId)?.delete(callback);
-			if (this.reindexCallbacks.get(jobId)?.size === 0) {
-				this.reindexCallbacks.delete(jobId);
-			}
-		};
 	}
 
 	/**

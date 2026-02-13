@@ -150,6 +150,12 @@ async def write_manifest_to_repo(db_session: AsyncSession, persistent_dir: Path)
         k: v for k, v in manifest.apps.items()
         if (persistent_dir / v.path).exists()
     }
+    # Clear non-file entities that leak from other tests
+    manifest.integrations = {}
+    manifest.configs = {}
+    manifest.tables = {}
+    manifest.knowledge = {}
+    manifest.events = {}
     write_manifest_to_dir(manifest, persistent_dir / ".bifrost")
 
 

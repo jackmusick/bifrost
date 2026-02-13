@@ -167,6 +167,7 @@ class FileOperationsService:
         updated_by: str = "system",
         force_deactivation: bool = False,
         replacements: dict[str, str] | None = None,
+        workflows_to_deactivate: list[str] | None = None,
     ) -> WriteResult:
         """
         Write file content to storage and update index.
@@ -265,7 +266,8 @@ class FileOperationsService:
             available_replacements,
         ) = await self._extract_metadata(
             path, content, force_deactivation, replacements,
-            cached_ast=cached_ast, cached_content_str=cached_content_str
+            cached_ast=cached_ast, cached_content_str=cached_content_str,
+            workflows_to_deactivate=workflows_to_deactivate,
         )
 
         # Release cached AST and content string to free memory

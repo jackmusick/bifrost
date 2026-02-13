@@ -51,45 +51,6 @@ def get_system_tool_ids() -> list[str]:
     return [tool["id"] for tool in get_system_tools_from_server()]
 
 
-# Backwards compatibility - some code imports SYSTEM_TOOLS directly
-# This is now a computed property from the registry
-def _get_system_tools_list() -> list[ToolInfo]:
-    return get_system_tools()
-
-
-# For backwards compatibility with imports like: from src.routers.tools import SYSTEM_TOOLS
-# We create a lazy-loading wrapper
-class _SystemToolsList(list):  # type: ignore[type-arg]
-    """Lazy-loading list that populates from registry on first access."""
-
-    _populated = False
-
-    def _populate(self) -> None:
-        if not self._populated:
-            self.clear()
-            self.extend(get_system_tools())
-            self._populated = True
-
-    def __iter__(self):  # type: ignore[override]
-        self._populate()
-        return super().__iter__()
-
-    def __len__(self) -> int:
-        self._populate()
-        return super().__len__()
-
-    def __getitem__(self, key):  # type: ignore[override]
-        self._populate()
-        return super().__getitem__(key)
-
-    def copy(self) -> list[ToolInfo]:
-        self._populate()
-        return list(self)
-
-
-SYSTEM_TOOLS: list[ToolInfo] = _SystemToolsList()  # type: ignore[assignment]
-
-
 # =============================================================================
 # Tools Endpoint
 # =============================================================================

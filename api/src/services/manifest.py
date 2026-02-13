@@ -98,6 +98,7 @@ class ManifestApp(BaseModel):
     """App entry in manifest."""
     id: str
     path: str
+    slug: str | None = None
     organization_id: str | None = None
     roles: list[str] = Field(default_factory=list)
     access_level: str = "authenticated"

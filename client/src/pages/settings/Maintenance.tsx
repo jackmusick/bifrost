@@ -2,10 +2,10 @@
  * Workspace Maintenance Settings
  *
  * Platform admin page for managing workspace maintenance operations.
- * Provides tools for reindexing, SDK reference scanning, and docs indexing.
+ * Provides tools for documentation indexing and app dependency scanning.
  */
 
-import { useState, useCallback, useEffect, useRef } from "react";
+import { useState, useEffect } from "react";
 import {
 	Card,
 	CardContent,
@@ -16,57 +16,23 @@ import {
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Checkbox } from "@/components/ui/checkbox";
-import { Progress } from "@/components/ui/progress";
 import {
 	AlertCircle,
 	CheckCircle2,
 	Loader2,
-	RefreshCw,
-	FileCode,
 	AlertTriangle,
 	Settings2,
 	Database,
-	Search,
 	AppWindow,
 	Download,
 	Upload,
 	Play,
+	RefreshCw,
 } from "lucide-react";
 import { toast } from "sonner";
 import { authFetch } from "@/lib/api-client";
 import { exportAll } from "@/services/exportImport";
 import { ImportDialog } from "@/components/ImportDialog";
-import { useEditorStore } from "@/stores/editorStore";
-import { fileService } from "@/services/fileService";
-import {
-	webSocketService,
-	type ReindexMessage,
-	type ReindexProgress,
-	type ReindexCompleted,
-	type ReindexFailed,
-} from "@/services/websocket";
-import type { components } from "@/lib/v1";
-
-type FileMetadata = components["schemas"]["FileMetadata"];
-
-interface ReindexJobResponse {
-	status: "queued";
-	job_id: string;
-}
-
-interface SDKIssue {
-	file_path: string;
-	line_number: number;
-	issue_type: "config" | "integration";
-	key: string;
-}
-
-interface SDKScanResponse {
-	files_scanned: number;
-	issues_found: number;
-	issues: SDKIssue[];
-	notification_created: boolean;
-}
 
 interface DocsIndexResponse {
 	status: string;
@@ -95,23 +61,7 @@ interface AppDependencyScanResponse {
 	notification_created: boolean;
 }
 
-// Reindex streaming state
-interface ReindexState {
-	jobId: string | null;
-	phase: string;
-	current: number;
-	total: number;
-	currentFile: string | null;
-}
-
-// Completed reindex result (from WebSocket)
-interface ReindexResult {
-	counts: ReindexCompleted["counts"];
-	warnings: string[];
-	errors: ReindexCompleted["errors"];
-}
-
-type ScanResultType = "none" | "reindex" | "sdk" | "docs" | "app-deps";
+type ScanResultType = "none" | "docs" | "app-deps";
 
 export function Maintenance() {
 	// Checklist state
@@ -120,24 +70,8 @@ export function Maintenance() {
 	const [completedActions, setCompletedActions] = useState<Set<string>>(new Set());
 	const [actionQueue, setActionQueue] = useState<string[]>([]);
 
-	// Reindex streaming state
-	const [reindexState, setReindexState] = useState<ReindexState>({
-		jobId: null,
-		phase: "",
-		current: 0,
-		total: 0,
-		currentFile: null,
-	});
-	const unsubscribeRef = useRef<(() => void) | null>(null);
-
 	// Results
 	const [lastScanType, setLastScanType] = useState<ScanResultType>("none");
-	const [reindexResult, setReindexResult] = useState<ReindexResult | null>(
-		null,
-	);
-	const [sdkScanResult, setSdkScanResult] = useState<SDKScanResponse | null>(
-		null,
-	);
 	const [docsIndexResult, setDocsIndexResult] =
 		useState<DocsIndexResponse | null>(null);
 	const [appDepScanResult, setAppDepScanResult] =
@@ -148,246 +82,9 @@ export function Maintenance() {
 
 	const isAnyRunning = runningAction !== null;
 
-	// Cleanup WebSocket subscription on unmount
-	useEffect(() => {
-		return () => {
-			if (unsubscribeRef.current) {
-				unsubscribeRef.current();
-			}
-		};
-	}, []);
-
-	// Editor store actions
-	const openFileInTab = useEditorStore((state) => state.openFileInTab);
-	const openEditor = useEditorStore((state) => state.openEditor);
-	const revealLine = useEditorStore((state) => state.revealLine);
-
-	const openFileInEditor = useCallback(
-		async (filePath: string, lineNumber?: number) => {
-			try {
-				// Get file name and extension from path
-				const fileName = filePath.split("/").pop() || filePath;
-				const extension = fileName.includes(".")
-					? fileName.split(".").pop() || ""
-					: "";
-
-				// Create minimal FileMetadata
-				const fileMetadata: FileMetadata = {
-					name: fileName,
-					path: filePath,
-					type: "file",
-					size: 0,
-					extension,
-					modified: new Date().toISOString(),
-					entity_type: null,
-					entity_id: null,
-				};
-
-				// Fetch file content
-				const response = await fileService.readFile(filePath);
-
-				// Open in editor
-				openFileInTab(
-					fileMetadata,
-					response.content,
-					response.encoding as "utf-8" | "base64",
-					response.etag,
-				);
-
-				// Queue line reveal if provided (will execute after editor loads)
-				if (lineNumber) {
-					revealLine(lineNumber);
-				}
-
-				openEditor();
-
-				toast.success("Opened in editor");
-			} catch (err) {
-				toast.error("Failed to open file", {
-					description:
-						err instanceof Error ? err.message : "Unknown error",
-				});
-			}
-		},
-		[openFileInTab, openEditor, revealLine],
-	);
-
-	const finishAction = useCallback((actionId: string) => {
+	const finishAction = (actionId: string) => {
 		setCompletedActions((prev) => new Set([...prev, actionId]));
 		setRunningAction(null);
-	}, []);
-
-	const handleReindexMessage = useCallback((message: ReindexMessage) => {
-		switch (message.type) {
-			case "progress": {
-				const progress = message as ReindexProgress;
-				setReindexState((prev) => ({
-					...prev,
-					phase: progress.phase,
-					current: progress.current,
-					total: progress.total,
-					currentFile: progress.current_file ?? null,
-				}));
-				break;
-			}
-			case "completed": {
-				const completed = message as ReindexCompleted;
-				setReindexResult({
-					counts: completed.counts,
-					warnings: completed.warnings,
-					errors: completed.errors,
-				});
-				setLastScanType("reindex");
-				finishAction("reindex");
-				setReindexState({
-					jobId: null,
-					phase: "",
-					current: 0,
-					total: 0,
-					currentFile: null,
-				});
-
-				// Cleanup subscription
-				if (unsubscribeRef.current) {
-					unsubscribeRef.current();
-					unsubscribeRef.current = null;
-				}
-
-				const hasErrors = completed.errors.length > 0;
-				const hasWarnings = completed.warnings.length > 0;
-
-				if (hasErrors) {
-					toast.warning("Reindex completed with errors", {
-						description: `${completed.errors.length} unresolved reference${completed.errors.length !== 1 ? "s" : ""}`,
-					});
-				} else if (hasWarnings) {
-					toast.success("Reindex complete", {
-						description: `${completed.warnings.length} correction${completed.warnings.length !== 1 ? "s" : ""} made`,
-					});
-				} else {
-					toast.success("Reindex complete", {
-						description: `Indexed ${completed.counts.files_indexed} files`,
-					});
-				}
-				break;
-			}
-			case "failed": {
-				const failed = message as ReindexFailed;
-				finishAction("reindex");
-				setReindexState({
-					jobId: null,
-					phase: "",
-					current: 0,
-					total: 0,
-					currentFile: null,
-				});
-
-				// Cleanup subscription
-				if (unsubscribeRef.current) {
-					unsubscribeRef.current();
-					unsubscribeRef.current = null;
-				}
-
-				toast.error("Reindex failed", {
-					description: failed.error,
-				});
-				break;
-			}
-		}
-	}, [finishAction]);
-
-	const handleReindex = async () => {
-		setRunningAction("reindex");
-		setReindexResult(null);
-
-		try {
-			const response = await authFetch("/api/maintenance/reindex", {
-				method: "POST",
-				body: JSON.stringify({}),
-			});
-
-			if (!response.ok) {
-				const errorData = await response.json().catch(() => ({}));
-				toast.error("Reindex failed", {
-					description: errorData.detail || "Unknown error",
-				});
-				finishAction("reindex");
-				return;
-			}
-
-			const data: ReindexJobResponse = await response.json();
-
-			// Update state with job ID
-			setReindexState({
-				jobId: data.job_id,
-				phase: "Queued",
-				current: 0,
-				total: 0,
-				currentFile: null,
-			});
-
-			// Connect to WebSocket for progress updates
-			await webSocketService.connectToReindex(data.job_id);
-
-			// Subscribe to progress updates
-			unsubscribeRef.current = webSocketService.onReindexProgress(
-				data.job_id,
-				handleReindexMessage,
-			);
-
-			toast.info("Reindex started", {
-				description: "Processing workspace files...",
-			});
-		} catch (err) {
-			toast.error("Reindex failed", {
-				description:
-					err instanceof Error
-						? err.message
-						: "Unknown error occurred",
-			});
-			finishAction("reindex");
-		}
-	};
-
-	const handleSdkScan = async () => {
-		setRunningAction("sdk");
-
-		try {
-			const response = await authFetch("/api/maintenance/scan-sdk", {
-				method: "POST",
-			});
-
-			if (!response.ok) {
-				const errorData = await response.json().catch(() => ({}));
-				toast.error("SDK scan failed", {
-					description: errorData.detail || "Unknown error",
-				});
-				return;
-			}
-
-			const data: SDKScanResponse = await response.json();
-			setSdkScanResult(data);
-			setLastScanType("sdk");
-
-			if (data.issues_found === 0) {
-				toast.success("No SDK issues found", {
-					description: `Scanned ${data.files_scanned} files`,
-				});
-			} else {
-				toast.warning("SDK issues found", {
-					description: `Found ${data.issues_found} missing references in ${data.files_scanned} files`,
-				});
-			}
-		} catch (err) {
-			toast.error("SDK scan failed", {
-				description:
-					err instanceof Error
-						? err.message
-						: "Unknown error occurred",
-			});
-		} finally {
-			finishAction("sdk");
-		}
 	};
 
 	const handleDocsIndex = async () => {
@@ -476,6 +173,69 @@ export function Maintenance() {
 		}
 	};
 
+	const handleReimport = async () => {
+		setRunningAction("reimport");
+
+		try {
+			const response = await authFetch("/api/maintenance/reimport", {
+				method: "POST",
+			});
+
+			if (!response.ok) {
+				const errorData = await response.json().catch(() => ({}));
+				toast.error("Reimport failed", {
+					description: errorData.detail || "Unknown error",
+				});
+				finishAction("reimport");
+				return;
+			}
+
+			const { job_id } = await response.json();
+			toast.info("Reimport started", {
+				description: "Re-importing entities from repository...",
+			});
+
+			// Poll for job completion
+			const poll = async () => {
+				for (let i = 0; i < 120; i++) {
+					await new Promise((r) => setTimeout(r, 2000));
+					try {
+						const res = await authFetch(`/api/jobs/${job_id}`);
+						const result = await res.json();
+						if (result.status === "success") {
+							toast.success("Reimport complete", {
+								description: result.message || "All entities reimported",
+							});
+							return;
+						} else if (result.status === "failed") {
+							toast.error("Reimport failed", {
+								description: result.error || "Unknown error",
+							});
+							return;
+						}
+						// status === "pending" — keep polling
+					} catch {
+						// Network error, keep polling
+					}
+				}
+				toast.warning("Reimport timed out", {
+					description: "Job may still be running. Check scheduler logs.",
+				});
+			};
+
+			await poll();
+		} catch (err) {
+			toast.error("Reimport failed", {
+				description:
+					err instanceof Error
+						? err.message
+						: "Unknown error occurred",
+			});
+		} finally {
+			finishAction("reimport");
+		}
+	};
+
 	const handleExportAll = async () => {
 		setIsExportingAll(true);
 		try {
@@ -508,10 +268,9 @@ export function Maintenance() {
 		setActionQueue(rest);
 
 		const handlers: Record<string, () => Promise<void>> = {
-			reindex: handleReindex,
-			sdk: handleSdkScan,
 			docs: handleDocsIndex,
 			"app-deps": handleAppDepScan,
+			reimport: handleReimport,
 		};
 
 		handlers[next]?.();
@@ -521,25 +280,12 @@ export function Maintenance() {
 	const handleRunSelected = () => {
 		if (selectedActions.size === 0) return;
 		setCompletedActions(new Set());
-		// Reindex first since it's the longest, then the rest in order
-		const order = ["reindex", "sdk", "docs", "app-deps"];
+		const order = ["docs", "app-deps", "reimport"];
 		const queue = order.filter((id) => selectedActions.has(id));
 		setActionQueue(queue);
 	};
 
 	const actions = [
-		{
-			id: "reindex",
-			icon: RefreshCw,
-			label: "Reindex Workspace",
-			description: "Re-scan workspace files for metadata",
-		},
-		{
-			id: "sdk",
-			icon: Search,
-			label: "Scan SDK References",
-			description: "Find missing config/integration references",
-		},
 		{
 			id: "docs",
 			icon: Database,
@@ -551,6 +297,13 @@ export function Maintenance() {
 			icon: AppWindow,
 			label: "Rebuild App Dependencies",
 			description: "Rebuild app dependency graph",
+		},
+		{
+			id: "reimport",
+			icon: RefreshCw,
+			label: "Reimport from Repository",
+			description:
+				"Re-read workspace from S3 and reimport all entities (workflows, forms, agents, apps)",
 		},
 	];
 
@@ -643,33 +396,6 @@ export function Maintenance() {
 											</p>
 										</div>
 									</label>
-
-									{/* Reindex progress inline */}
-									{isRunning && action.id === "reindex" && reindexState.jobId && (
-										<div className="px-4 pb-3 space-y-2">
-											<div className="flex items-center justify-between text-xs">
-												<span className="font-medium capitalize">
-													{reindexState.phase.replace(/_/g, " ") || "Starting..."}
-												</span>
-												{reindexState.total > 0 && (
-													<span className="text-muted-foreground">
-														{reindexState.current} / {reindexState.total}
-													</span>
-												)}
-											</div>
-											{reindexState.total > 0 && (
-												<Progress
-													value={(reindexState.current / reindexState.total) * 100}
-													className="h-1.5"
-												/>
-											)}
-											{reindexState.currentFile && (
-												<p className="text-xs text-muted-foreground truncate font-mono">
-													{reindexState.currentFile}
-												</p>
-											)}
-										</div>
-									)}
 								</div>
 							);
 						})}
@@ -704,16 +430,6 @@ export function Maintenance() {
 						<div className="flex items-center justify-center py-8 text-muted-foreground">
 							<p>No scan results yet. Run a scan above.</p>
 						</div>
-					) : lastScanType === "reindex" && reindexResult ? (
-						<ReindexResults
-							result={reindexResult}
-							onOpenFile={openFileInEditor}
-						/>
-					) : lastScanType === "sdk" && sdkScanResult ? (
-						<SdkScanResults
-							result={sdkScanResult}
-							onOpenFile={openFileInEditor}
-						/>
 					) : lastScanType === "docs" && docsIndexResult ? (
 						<DocsIndexResults result={docsIndexResult} />
 					) : lastScanType === "app-deps" && appDepScanResult ? (
@@ -727,277 +443,6 @@ export function Maintenance() {
 				onOpenChange={setIsImportAllOpen}
 				entityType="all"
 			/>
-		</div>
-	);
-}
-
-function ReindexResults({
-	result,
-	onOpenFile,
-}: {
-	result: ReindexResult;
-	onOpenFile: (path: string, line?: number) => void;
-}) {
-	const hasErrors = result.errors.length > 0;
-	const hasWarnings = result.warnings.length > 0;
-
-	return (
-		<div className="space-y-4">
-			{/* Summary */}
-			<div className="flex items-center gap-4 flex-wrap">
-				{hasErrors ? (
-					<div className="flex items-center gap-2 text-destructive">
-						<AlertCircle className="h-5 w-5" />
-						<span className="font-medium">
-							{result.errors.length} unresolved reference
-							{result.errors.length !== 1 ? "s" : ""}
-						</span>
-					</div>
-				) : hasWarnings ? (
-					<div className="flex items-center gap-2 text-amber-600">
-						<AlertTriangle className="h-5 w-5" />
-						<span className="font-medium">
-							{result.warnings.length} correction
-							{result.warnings.length !== 1 ? "s" : ""} made
-						</span>
-					</div>
-				) : (
-					<div className="flex items-center gap-2 text-green-600">
-						<CheckCircle2 className="h-5 w-5" />
-						<span className="font-medium">
-							All references validated
-						</span>
-					</div>
-				)}
-			</div>
-
-			{/* Stats grid */}
-			<div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
-				<div className="rounded-lg border bg-muted/50 p-3 text-center">
-					<div className="text-xl font-bold">
-						{result.counts.files_indexed}
-					</div>
-					<div className="text-xs text-muted-foreground">
-						Files Indexed
-					</div>
-				</div>
-				<div className="rounded-lg border bg-muted/50 p-3 text-center">
-					<div className="text-xl font-bold">
-						{result.counts.files_skipped}
-					</div>
-					<div className="text-xs text-muted-foreground">Skipped</div>
-				</div>
-				<div className="rounded-lg border bg-muted/50 p-3 text-center">
-					<div className="text-xl font-bold">
-						{result.counts.workflows_active}
-					</div>
-					<div className="text-xs text-muted-foreground">
-						Workflows
-					</div>
-				</div>
-				<div className="rounded-lg border bg-muted/50 p-3 text-center">
-					<div className="text-xl font-bold">
-						{result.counts.forms_active}
-					</div>
-					<div className="text-xs text-muted-foreground">Forms</div>
-				</div>
-				<div className="rounded-lg border bg-muted/50 p-3 text-center">
-					<div className="text-xl font-bold">
-						{result.counts.agents_active}
-					</div>
-					<div className="text-xs text-muted-foreground">Agents</div>
-				</div>
-				<div className="rounded-lg border bg-muted/50 p-3 text-center">
-					<div className="text-xl font-bold">
-						{result.counts.files_deleted}
-					</div>
-					<div className="text-xs text-muted-foreground">Deleted</div>
-				</div>
-			</div>
-
-			{/* Errors */}
-			{hasErrors && (
-				<div className="space-y-2">
-					<h4 className="text-sm font-medium text-destructive flex items-center gap-2">
-						<AlertCircle className="h-4 w-4" />
-						Unresolved References (requires action)
-					</h4>
-					<div className="max-h-64 overflow-y-auto rounded-md border border-destructive/30 bg-destructive/5 p-3 space-y-3">
-						{result.errors.map((error, idx) => (
-							<div
-								key={`${error.file_path}-${error.field}-${idx}`}
-								className="space-y-1"
-							>
-								<div className="flex items-center gap-2 text-sm font-mono">
-									<FileCode className="h-4 w-4 text-destructive flex-shrink-0" />
-									<button
-										type="button"
-										onClick={() =>
-											onOpenFile(error.file_path)
-										}
-										className="truncate text-left hover:text-primary hover:underline"
-									>
-										{error.file_path}
-									</button>
-								</div>
-								<div className="ml-6 text-xs text-muted-foreground space-y-0.5">
-									<p>
-										<span className="font-medium">
-											Field:
-										</span>{" "}
-										{error.field}
-									</p>
-									<p>
-										<span className="font-medium">
-											References:
-										</span>{" "}
-										<code className="bg-muted px-1 py-0.5 rounded">
-											{error.referenced_id}
-										</code>
-									</p>
-									<p className="text-destructive">
-										{error.message}
-									</p>
-								</div>
-							</div>
-						))}
-					</div>
-				</div>
-			)}
-
-			{/* Warnings */}
-			{hasWarnings && (
-				<div className="space-y-2">
-					<h4 className="text-sm font-medium text-amber-600 flex items-center gap-2">
-						<AlertTriangle className="h-4 w-4" />
-						Corrections Made
-					</h4>
-					<div className="max-h-48 overflow-y-auto rounded-md border border-amber-200 bg-amber-50 dark:border-amber-900 dark:bg-amber-950/50 p-3">
-						<ul className="space-y-1 text-sm">
-							{result.warnings.map((warning, idx) => (
-								<li
-									key={idx}
-									className="text-amber-800 dark:text-amber-200"
-								>
-									{warning}
-								</li>
-							))}
-						</ul>
-					</div>
-				</div>
-			)}
-		</div>
-	);
-}
-
-function SdkScanResults({
-	result,
-	onOpenFile,
-}: {
-	result: SDKScanResponse;
-	onOpenFile: (path: string, line?: number) => void;
-}) {
-	const hasIssues = result.issues_found > 0;
-
-	// Group issues by file
-	const issuesByFile = result.issues.reduce(
-		(acc, issue) => {
-			if (!acc[issue.file_path]) {
-				acc[issue.file_path] = [];
-			}
-			acc[issue.file_path].push(issue);
-			return acc;
-		},
-		{} as Record<string, SDKIssue[]>,
-	);
-
-	return (
-		<div className="space-y-4">
-			{/* Summary */}
-			<div className="flex items-center gap-4">
-				{hasIssues ? (
-					<div className="flex items-center gap-2 text-amber-600">
-						<AlertTriangle className="h-5 w-5" />
-						<span className="font-medium">
-							{result.issues_found} missing reference
-							{result.issues_found !== 1 ? "s" : ""}
-						</span>
-					</div>
-				) : (
-					<div className="flex items-center gap-2 text-green-600">
-						<CheckCircle2 className="h-5 w-5" />
-						<span className="font-medium">
-							No missing references
-						</span>
-					</div>
-				)}
-				<Badge variant="secondary">
-					{result.files_scanned} file
-					{result.files_scanned !== 1 ? "s" : ""} scanned
-				</Badge>
-			</div>
-
-			{/* Issues by file */}
-			{hasIssues && (
-				<div className="space-y-2">
-					<h4 className="text-sm font-medium text-muted-foreground">
-						Missing SDK references:
-					</h4>
-					<div className="max-h-64 overflow-y-auto rounded-md border bg-muted/50 p-3 space-y-3">
-						{Object.entries(issuesByFile).map(
-							([filePath, issues]) => (
-								<div key={filePath} className="space-y-1">
-									<div className="flex items-center gap-2 text-sm font-mono font-medium">
-										<FileCode className="h-4 w-4 text-muted-foreground flex-shrink-0" />
-										<button
-											type="button"
-											onClick={() =>
-												onOpenFile(
-													filePath,
-													issues[0]?.line_number,
-												)
-											}
-											className="truncate text-left hover:text-primary hover:underline"
-										>
-											{filePath}
-										</button>
-									</div>
-									<ul className="ml-6 space-y-0.5">
-										{issues.map((issue, idx) => (
-											<li
-												key={`${issue.key}-${idx}`}
-												className="text-sm text-muted-foreground flex items-center gap-2"
-											>
-												<Badge
-													variant="outline"
-													className="text-xs px-1.5 py-0"
-												>
-													{issue.issue_type}
-												</Badge>
-												<code className="text-xs bg-muted px-1 py-0.5 rounded">
-													{issue.key}
-												</code>
-												<button
-													type="button"
-													onClick={() =>
-														onOpenFile(
-															filePath,
-															issue.line_number,
-														)
-													}
-													className="text-xs hover:text-primary hover:underline"
-												>
-													line {issue.line_number}
-												</button>
-											</li>
-										))}
-									</ul>
-								</div>
-							),
-						)}
-					</div>
-				</div>
-			)}
 		</div>
 	);
 }

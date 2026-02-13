@@ -103,9 +103,6 @@ class AgentIndexer:
             logger.warning(f"Invalid YAML in agent file: {path}")
             return False
 
-        # Remove _export if present (backwards compatibility with old files)
-        agent_data.pop("_export", None)
-
         name = agent_data.get("name")
         if not name:
             logger.warning(f"Agent file missing name: {path}")

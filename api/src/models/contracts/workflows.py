@@ -55,6 +55,7 @@ class WorkflowMetadata(BaseModel):
 
     # Required fields
     name: str = Field(..., min_length=1, max_length=200, description="Human-readable workflow name")
+    function_name: str | None = Field(default=None, description="Python function name (for CodeLens registration status)")
     display_name: str | None = Field(default=None, description="Optional display name for UI (falls back to name if not set)")
     description: str | None = Field(default=None, description="Human-readable description")
 

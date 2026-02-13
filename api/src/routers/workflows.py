@@ -93,6 +93,7 @@ def _convert_workflow_orm_to_schema(workflow: WorkflowORM, used_by_count: int = 
     return WorkflowMetadata(
         id=str(workflow.id),
         name=workflow.name,
+        function_name=workflow.function_name,
         display_name=workflow.display_name,
         description=workflow.description if workflow.description else None,
         category=workflow.category or "General",

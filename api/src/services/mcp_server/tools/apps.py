@@ -21,11 +21,11 @@ logger = logging.getLogger(__name__)
 
 async def list_apps(context: Any) -> ToolResult:
     """List all applications with file summaries."""
-    from sqlalchemy import func, select
+    from sqlalchemy import select
 
     from src.core.database import get_db_context
     from src.models.orm.applications import Application
-    from src.models.orm.file_index import FileIndex
+    from src.services.app_storage import AppStorageService
 
     logger.info("MCP list_apps called")
 
@@ -44,13 +44,9 @@ async def list_apps(context: Any) -> ToolResult:
 
             apps_data = []
             for app in apps:
-                file_count_query = (
-                    select(func.count())
-                    .select_from(FileIndex)
-                    .where(FileIndex.path.startswith(f"apps/{app.slug}/"))
-                )
-                file_count = await db.execute(file_count_query)
-                count = file_count.scalar() or 0
+                app_storage = AppStorageService()
+                preview_files = await app_storage.list_files(str(app.id), "preview")
+                count = len(preview_files)
 
                 apps_data.append({
                     "id": str(app.id),
@@ -218,7 +214,7 @@ async def get_app(
 
     from src.core.database import get_db_context
     from src.models.orm.applications import Application
-    from src.models.orm.file_index import FileIndex
+    from src.services.app_storage import AppStorageService
 
     logger.info(f"MCP get_app called with id={app_id}, slug={app_slug}")
 
@@ -249,15 +245,9 @@ async def get_app(
             if not app:
                 return error_result(f"Application not found: {app_id or app_slug}")
 
-            # List files from file_index
-            prefix = f"apps/{app.slug}/"
-            files_query = (
-                select(FileIndex.path)
-                .where(FileIndex.path.startswith(prefix))
-                .order_by(FileIndex.path)
-            )
-            files_result = await db.execute(files_query)
-            file_paths = list(files_result.scalars().all())
+            # List files from S3 preview
+            app_storage = AppStorageService()
+            preview_files = await app_storage.list_files(str(app.id), "preview")
 
             app_data = {
                 "id": str(app.id),
@@ -268,10 +258,8 @@ async def get_app(
                 "has_unpublished_changes": app.has_unpublished_changes,
                 "url": f"/apps/{app.slug}",
                 "files": [
-                    {
-                        "path": p.removeprefix(prefix),
-                    }
-                    for p in file_paths
+                    {"path": p}
+                    for p in sorted(preview_files)
                 ],
             }
 
@@ -378,7 +366,7 @@ async def publish_app(context: Any, app_id: str) -> ToolResult:
 
     from src.core.database import get_db_context
     from src.models.orm.applications import Application
-    from src.models.orm.file_index import FileIndex
+    from src.services.app_storage import AppStorageService
 
     logger.info(f"MCP publish_app called with id={app_id}")
 
@@ -400,21 +388,16 @@ async def publish_app(context: Any, app_id: str) -> ToolResult:
             if not app:
                 return error_result(f"Application not found: {app_id}")
 
-            # Query all files for this app from file_index
-            prefix = f"apps/{app.slug}/"
-            files_query = (
-                select(FileIndex.path, FileIndex.content_hash)
-                .where(FileIndex.path.startswith(prefix))
-            )
-            files_result = await db.execute(files_query)
-            files = files_result.all()
+            # Publish via AppStorageService: copy preview → live in S3
+            app_storage = AppStorageService()
+            published_count = await app_storage.publish(str(app.id))
 
-            if not files:
+            if published_count == 0:
                 return error_result("No files found to publish")
 
-            # Build snapshot and set on application
-            snapshot = {row.path: row.content_hash for row in files}
-            app.published_snapshot = snapshot
+            # Update app metadata
+            preview_files = await app_storage.list_files(str(app.id), "preview")
+            app.published_snapshot = {f: "" for f in preview_files}
             app.published_at = datetime.now(timezone.utc)
 
             await db.commit()
@@ -426,13 +409,13 @@ async def publish_app(context: Any, app_id: str) -> ToolResult:
                 new_version_id=app_id,
             )
 
-            display_text = f"Published application: {app.name} ({len(files)} files)"
+            display_text = f"Published application: {app.name} ({published_count} files)"
             return success_result(display_text, {
                 "success": True,
                 "id": str(app.id),
                 "name": app.name,
                 "is_published": True,
-                "files_published": len(files),
+                "files_published": published_count,
             })
 
     except Exception as e:

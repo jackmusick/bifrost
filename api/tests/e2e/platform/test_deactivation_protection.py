@@ -20,6 +20,58 @@ from src.models.orm.users import User
 from src.core.constants import PROVIDER_ORG_ID
 
 
+async def register_workflow_in_db(
+    db_session: AsyncSession,
+    path: str,
+    function_name: str,
+    wf_type: str = "workflow",
+) -> Workflow:
+    """Register a workflow directly in the DB and enrich via indexer.
+
+    Creates a minimal Workflow ORM record, then runs the WorkflowIndexer
+    to populate content-derived fields (name, description, etc.) from
+    the file already stored in S3.
+
+    Args:
+        db_session: Async database session
+        path: File path in workspace
+        function_name: Python function name (the def name)
+        wf_type: Workflow type - "workflow", "tool", or "data_provider"
+
+    Returns:
+        The enriched Workflow ORM object
+    """
+    from src.services.file_storage import FileStorageService
+    from src.services.file_storage.indexers.workflow import WorkflowIndexer
+
+    # Create minimal DB record
+    wf = Workflow(
+        id=uuid4(),
+        name=function_name,
+        function_name=function_name,
+        path=path,
+        type=wf_type,
+        is_active=True,
+    )
+    db_session.add(wf)
+    await db_session.flush()
+
+    # Read file content and run indexer to enrich
+    service = FileStorageService(db_session)
+    content_tuple = await service.read_file(path)
+    content = content_tuple[0]
+
+    indexer = WorkflowIndexer(db_session)
+    await indexer.index_python_file(path, content)
+    await db_session.flush()
+
+    # Re-fetch enriched record
+    result = await db_session.execute(
+        select(Workflow).where(Workflow.id == wf.id)
+    )
+    return result.scalar_one()
+
+
 def get_file_storage_service(db_session):
     """
     Get a fresh FileStorageService with clean libcst state.
@@ -76,6 +128,14 @@ async def clean_tables(db_session: AsyncSession):
         "test_file.py",
         "test_workflow.py",
         "data_provider_file.py",
+        "test_deactivation.py",
+        "test_replacements.py",
+        "test_force.py",
+        "test_identity.py",
+        "test_exec_history.py",
+        "brand_new_file.py",
+        "test_add_workflow.py",
+        "test_data_provider.py",
     ]
     for path in test_paths:
         await db_session.execute(
@@ -97,6 +157,27 @@ async def clean_tables(db_session: AsyncSession):
     )
     await db_session.execute(
         delete(Workflow).where(Workflow.name == "Test Data Provider")
+    )
+    await db_session.execute(
+        delete(Workflow).where(Workflow.name.like("Force Test%"))
+    )
+    await db_session.execute(
+        delete(Workflow).where(Workflow.name.like("Identity Test%"))
+    )
+    await db_session.execute(
+        delete(Workflow).where(Workflow.name.like("Exec History%"))
+    )
+    await db_session.execute(
+        delete(Workflow).where(Workflow.name.like("Brand New%"))
+    )
+    await db_session.execute(
+        delete(Workflow).where(Workflow.name.like("Original Workflow%"))
+    )
+    await db_session.execute(
+        delete(Workflow).where(Workflow.name.like("New Workflow%"))
+    )
+    await db_session.execute(
+        delete(Workflow).where(Workflow.name.like("Test Provider%"))
     )
     await db_session.commit()
 
@@ -161,11 +242,10 @@ class TestDeactivationProtection:
         Saving a file that removes/renames a workflow function returns 409.
 
         Scenario:
-        1. Save a Python file with a @workflow decorator
+        1. Save a Python file with a @workflow decorator and register it
         2. Verify workflow is created in DB
         3. Save modified version that removes the function
-        4. Assert 409 with reason="workflows_would_deactivate"
-        5. Assert pending_deactivations array is populated
+        4. Assert pending_deactivations array is populated
         """
         storage = get_file_storage_service(db_session)
         path = "test_deactivation.py"
@@ -181,11 +261,11 @@ class TestDeactivationProtection:
         # Verify no pending deactivations on initial save
         assert result.pending_deactivations is None or len(result.pending_deactivations) == 0
 
-        # Step 2: Verify workflow was created in DB
-        stmt = select(Workflow).where(Workflow.path == path, Workflow.is_active == True)  # noqa: E712
-        wf_result = await db_session.execute(stmt)
-        workflow = wf_result.scalar_one_or_none()
+        # Register the workflow in DB (auto-discovery removed)
+        workflow = await register_workflow_in_db(db_session, path, "test_workflow")
+        await db_session.commit()
 
+        # Step 2: Verify workflow was created in DB
         assert workflow is not None
         assert workflow.function_name == "test_workflow"
         assert workflow.name == "Test Workflow"
@@ -214,8 +294,8 @@ class TestDeactivationProtection:
         When a workflow is renamed, available_replacements suggests the new function.
 
         Scenario:
-        1. Save file with first_workflow function
-        2. Save modified file that renames to first_workflow_renamed
+        1. Save file with first_workflow and second_workflow, register both
+        2. Save modified file that renames first_workflow to first_workflow_renamed
         3. Assert available_replacements includes the new function with similarity score
         """
         storage = get_file_storage_service(db_session)
@@ -223,6 +303,11 @@ class TestDeactivationProtection:
 
         # Step 1: Save initial two-workflow file
         result = await storage.write_file(path, TWO_WORKFLOW_CODE.encode("utf-8"), updated_by="test")
+        await db_session.commit()
+
+        # Register both workflows in DB (auto-discovery removed)
+        await register_workflow_in_db(db_session, path, "first_workflow")
+        await register_workflow_in_db(db_session, path, "second_workflow")
         await db_session.commit()
 
         # Verify workflows were created
@@ -262,7 +347,7 @@ class TestDeactivationProtection:
         Using force_deactivation=True allows the save and deactivates workflow.
 
         Scenario:
-        1. Save initial workflow file
+        1. Save initial workflow file and register it
         2. Verify workflow is active
         3. Try to save file removing workflow (without force) - get pending deactivations
         4. Retry with force_deactivation=True
@@ -279,12 +364,12 @@ class TestDeactivationProtection:
         await storage.write_file(path, initial_code.encode("utf-8"), updated_by="test")
         await db_session.commit()
 
-        # Step 2: Verify workflow is active
-        stmt = select(Workflow).where(Workflow.path == path, Workflow.is_active == True)  # noqa: E712
-        wf_result = await db_session.execute(stmt)
-        workflow = wf_result.scalar_one()
-        workflow_id = workflow.id
+        # Register the workflow in DB (auto-discovery removed)
+        workflow = await register_workflow_in_db(db_session, path, "force_test_workflow")
+        await db_session.commit()
 
+        # Step 2: Verify workflow is active
+        workflow_id = workflow.id
         assert workflow.is_active is True
 
         # Step 3: Try to remove workflow (without force) - should get pending deactivations
@@ -327,7 +412,7 @@ class TestDeactivationProtection:
         Using replacements transfers identity to new function name.
 
         Scenario:
-        1. Save initial workflow file
+        1. Save initial workflow file and register it
         2. Get workflow ID
         3. Rename function and provide replacement mapping
         4. Assert workflow ID is preserved with new function_name
@@ -343,10 +428,11 @@ class TestDeactivationProtection:
         await storage.write_file(path, initial_code.encode("utf-8"), updated_by="test")
         await db_session.commit()
 
+        # Register the workflow in DB (auto-discovery removed)
+        original_workflow = await register_workflow_in_db(db_session, path, "old_function_name")
+        await db_session.commit()
+
         # Step 2: Get original workflow ID
-        stmt = select(Workflow).where(Workflow.path == path, Workflow.is_active == True)  # noqa: E712
-        wf_result = await db_session.execute(stmt)
-        original_workflow = wf_result.scalar_one()
         original_id = original_workflow.id
 
         # Step 3: Save with renamed function AND replacement mapping
@@ -410,10 +496,9 @@ class TestDeactivationProtection:
         await storage.write_file(path, initial_code.encode("utf-8"), updated_by="test")
         await db_session.commit()
 
-        # Get workflow
-        stmt = select(Workflow).where(Workflow.path == path, Workflow.is_active == True)  # noqa: E712
-        wf_result = await db_session.execute(stmt)
-        workflow = wf_result.scalar_one()
+        # Register the workflow in DB (auto-discovery removed)
+        workflow = await register_workflow_in_db(db_session, path, "exec_history_workflow")
+        await db_session.commit()
 
         # Create a test user first (required for foreign key constraint)
         test_user = User(
@@ -466,6 +551,7 @@ class TestDeactivationProtection:
         Scenario:
         1. Save a new workflow file to a path with no existing workflows
         2. Assert no pending_deactivations
+        3. Register the workflow and verify it exists
         """
         storage = get_file_storage_service(db_session)
         path = "brand_new_file.py"
@@ -486,10 +572,11 @@ class TestDeactivationProtection:
         # No pending deactivations for new files
         assert result.pending_deactivations is None or len(result.pending_deactivations) == 0
 
-        # Workflow was created
-        stmt = select(Workflow).where(Workflow.path == path, Workflow.is_active == True)  # noqa: E712
-        wf_result = await db_session.execute(stmt)
-        workflow = wf_result.scalar_one_or_none()
+        # Register the workflow in DB (auto-discovery removed)
+        workflow = await register_workflow_in_db(db_session, path, "brand_new_workflow")
+        await db_session.commit()
+
+        # Workflow was created and enriched
         assert workflow is not None
         assert workflow.function_name == "brand_new_workflow"
 
@@ -502,9 +589,10 @@ class TestDeactivationProtection:
         Adding a new workflow to an existing file should not trigger protection.
 
         Scenario:
-        1. Save file with one workflow
+        1. Save file with one workflow and register it
         2. Add a second workflow to the file
-        3. Assert no pending_deactivations
+        3. Assert no pending_deactivations (original_workflow still present)
+        4. Register the new workflow and verify both exist
         """
         storage = get_file_storage_service(db_session)
         path = "test_add_workflow.py"
@@ -515,6 +603,10 @@ class TestDeactivationProtection:
             function_name="original_workflow"
         )
         await storage.write_file(path, initial_code.encode("utf-8"), updated_by="test")
+        await db_session.commit()
+
+        # Register the workflow in DB (auto-discovery removed)
+        await register_workflow_in_db(db_session, path, "original_workflow")
         await db_session.commit()
 
         # Step 2: Add second workflow (keep the original)
@@ -537,6 +629,10 @@ def new_workflow():
         # No pending deactivations when adding workflows
         assert result.pending_deactivations is None or len(result.pending_deactivations) == 0
 
+        # Register the new workflow
+        await register_workflow_in_db(db_session, path, "new_workflow")
+        await db_session.commit()
+
         # Both workflows should exist and be active
         stmt = select(Workflow).where(Workflow.path == path, Workflow.is_active == True)  # noqa: E712
         wf_result = await db_session.execute(stmt)
@@ -555,7 +651,7 @@ def new_workflow():
         Data providers should also have deactivation protection.
 
         Scenario:
-        1. Save file with @data_provider decorator
+        1. Save file with @data_provider decorator and register it
         2. Verify data provider is created in DB
         3. Remove the data provider
         4. Assert pending_deactivations includes the data provider
@@ -575,15 +671,11 @@ def test_provider():
         result = await storage.write_file(path, dp_code.encode("utf-8"), updated_by="test")
         await db_session.commit()
 
-        # Step 2: Verify data provider was created
-        stmt = select(Workflow).where(
-            Workflow.path == path,
-            Workflow.is_active == True,  # noqa: E712
-            Workflow.type == "data_provider"
-        )
-        wf_result = await db_session.execute(stmt)
-        dp = wf_result.scalar_one_or_none()
+        # Register the data provider in DB (auto-discovery removed)
+        dp = await register_workflow_in_db(db_session, path, "test_provider", wf_type="data_provider")
+        await db_session.commit()
 
+        # Step 2: Verify data provider was created
         assert dp is not None
         assert dp.function_name == "test_provider"
         assert dp.type == "data_provider"

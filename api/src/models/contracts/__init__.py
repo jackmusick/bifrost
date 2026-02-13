@@ -433,8 +433,10 @@ from src.models.contracts.decorators import (
 
 # Maintenance
 from src.models.contracts.maintenance import (
+    CleanupOrphanedResponse,
     DocsIndexResponse,
     MaintenanceStatus,
+    OrphanedEntity,
     PreflightIssueResponse,
     PreflightResponse,
     ReimportJobResponse,
@@ -837,8 +839,10 @@ __all__ = [
     "UpdatePropertiesRequest",
     "UpdatePropertiesResponse",
     # Maintenance
+    "CleanupOrphanedResponse",
     "DocsIndexResponse",
     "MaintenanceStatus",
+    "OrphanedEntity",
     "PreflightIssueResponse",
     "PreflightResponse",
     "ReimportJobResponse",

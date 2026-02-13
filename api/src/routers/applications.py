@@ -348,23 +348,24 @@ class ApplicationRepository(OrgScopedRepository[Application]):
         """
         Publish draft to live.
 
-        Creates a published_snapshot from file_index, capturing the current
-        state of all files under apps/{slug}/.
+        Copies preview files to live in S3 via AppStorageService, then
+        captures a published_snapshot for backwards compatibility.
         """
         application = await self.get_by_id(app_id)
         if not application:
             return None
 
-        # Create published_snapshot from file_index
-        from src.models.orm.file_index import FileIndex
-        fi_result = await self.session.execute(
-            select(FileIndex.path, FileIndex.content_hash).where(
-                FileIndex.path.startswith(f"apps/{application.slug}/"),
-            )
-        )
-        snapshot = {row.path: row.content_hash for row in fi_result.all()}
-        if not snapshot:
+        # Publish via AppStorageService: copy preview -> live in S3
+        from src.services.app_storage import AppStorageService
+        app_storage = AppStorageService()
+        published_count = await app_storage.publish(str(app_id))
+
+        if published_count == 0:
             raise ValueError("No files found to publish")
+
+        # Build snapshot for backwards compat
+        preview_files = await app_storage.list_files(str(app_id), "preview")
+        snapshot = {f: "" for f in preview_files}
 
         application.published_snapshot = snapshot
         application.published_at = datetime.now(timezone.utc)
@@ -374,7 +375,7 @@ class ApplicationRepository(OrgScopedRepository[Application]):
 
         logger.info(
             f"Published application {app_id} "
-            f"({len(snapshot)} files) by user {published_by}"
+            f"({published_count} files) by user {published_by}"
         )
         return application
 

@@ -57,6 +57,23 @@ class DocsIndexResponse(BaseModel):
     )
 
 
+class OrphanedEntity(BaseModel):
+    """An entity that references a file no longer in the workspace."""
+
+    entity_type: str = Field(description="Entity type: 'workflow', 'form', or 'agent'")
+    entity_id: str = Field(description="Entity UUID")
+    entity_name: str = Field(description="Entity display name")
+    path: str = Field(description="File path that no longer exists")
+
+
+class CleanupOrphanedResponse(BaseModel):
+    """Response from orphaned entity cleanup."""
+
+    success: bool = Field(description="Whether cleanup completed successfully")
+    cleaned: list[OrphanedEntity] = Field(default_factory=list, description="Entities that were deactivated")
+    count: int = Field(default=0, description="Total number of entities cleaned up")
+
+
 class PreflightIssueResponse(BaseModel):
     """A single preflight validation issue."""
 

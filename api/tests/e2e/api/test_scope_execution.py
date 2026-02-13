@@ -15,6 +15,8 @@ import logging
 import os
 import pytest
 
+from tests.e2e.conftest import write_and_register
+
 
 logger = logging.getLogger(__name__)
 
@@ -472,23 +474,11 @@ async def {workflow_name}():
 
     return results
 '''
-    response = e2e_client.put(
-        "/api/files/editor/content?index=true",
-        headers=platform_admin.headers,
-        json={
-            "path": workflow_path,
-            "content": workflow_content,
-            "encoding": "utf-8",
-        },
+    result = write_and_register(
+        e2e_client, platform_admin.headers,
+        workflow_path, workflow_content, workflow_name,
     )
-    assert response.status_code == 200, f"Create workflow failed: {response.text}"
-
-    # Get workflow ID
-    response = e2e_client.get("/api/workflows", headers=platform_admin.headers)
-    workflows = response.json()
-    workflow = next((w for w in workflows if w["name"] == workflow_name), None)
-    assert workflow is not None, "Workflow not discovered"
-    workflow_id = workflow["id"]
+    workflow_id = result["id"]
 
     # Set organization_id via PATCH to make it org-scoped
     response = e2e_client.patch(
@@ -607,23 +597,11 @@ async def {workflow_name}():
 
     return results
 '''
-    response = e2e_client.put(
-        "/api/files/editor/content?index=true",
-        headers=platform_admin.headers,
-        json={
-            "path": workflow_path,
-            "content": workflow_content,
-            "encoding": "utf-8",
-        },
+    result = write_and_register(
+        e2e_client, platform_admin.headers,
+        workflow_path, workflow_content, workflow_name,
     )
-    assert response.status_code == 200, f"Create workflow failed: {response.text}"
-
-    # Get workflow ID
-    response = e2e_client.get("/api/workflows", headers=platform_admin.headers)
-    workflows = response.json()
-    workflow = next((w for w in workflows if w["name"] == workflow_name), None)
-    assert workflow is not None, "Workflow not discovered"
-    workflow_id = workflow["id"]
+    workflow_id = result["id"]
 
     # Global workflow - no organization_id set
 
@@ -973,23 +951,11 @@ async def {workflow_name}():
 
     return results
 '''
-        response = e2e_client.put(
-            "/api/files/editor/content?index=true",
-            headers=platform_admin.headers,
-            json={
-                "path": workflow_path,
-                "content": workflow_content,
-                "encoding": "utf-8",
-            },
+        result = write_and_register(
+            e2e_client, platform_admin.headers,
+            workflow_path, workflow_content, workflow_name,
         )
-        assert response.status_code == 200, f"Create workflow failed: {response.text}"
-
-        # Get workflow ID
-        response = e2e_client.get("/api/workflows", headers=platform_admin.headers)
-        workflows = response.json()
-        workflow = next((w for w in workflows if w["name"] == workflow_name), None)
-        assert workflow is not None, "Workflow not discovered"
-        workflow_id = workflow["id"]
+        workflow_id = result["id"]
 
         # Set organization_id to org1
         response = e2e_client.patch(
@@ -1122,23 +1088,11 @@ async def {workflow_name}():
         "scope": context.scope,
     }}
 '''
-        response = e2e_client.put(
-            "/api/files/editor/content?index=true",
-            headers=platform_admin.headers,
-            json={
-                "path": workflow_path,
-                "content": workflow_content,
-                "encoding": "utf-8",
-            },
+        result = write_and_register(
+            e2e_client, platform_admin.headers,
+            workflow_path, workflow_content, workflow_name,
         )
-        assert response.status_code == 200, f"Create workflow failed: {response.text}"
-
-        # Get workflow ID
-        response = e2e_client.get("/api/workflows", headers=platform_admin.headers)
-        workflows = response.json()
-        workflow = next((w for w in workflows if w["name"] == workflow_name), None)
-        assert workflow is not None, "Workflow not discovered"
-        workflow_id = workflow["id"]
+        workflow_id = result["id"]
 
         # Set organization_id and access_level=authenticated
         response = e2e_client.patch(
@@ -1194,23 +1148,11 @@ async def {workflow_name}():
         "scope": context.scope,
     }}
 '''
-        response = e2e_client.put(
-            "/api/files/editor/content?index=true",
-            headers=platform_admin.headers,
-            json={
-                "path": workflow_path,
-                "content": workflow_content,
-                "encoding": "utf-8",
-            },
+        result = write_and_register(
+            e2e_client, platform_admin.headers,
+            workflow_path, workflow_content, workflow_name,
         )
-        assert response.status_code == 200, f"Create workflow failed: {response.text}"
-
-        # Get workflow ID
-        response = e2e_client.get("/api/workflows", headers=platform_admin.headers)
-        workflows = response.json()
-        workflow = next((w for w in workflows if w["name"] == workflow_name), None)
-        assert workflow is not None, "Workflow not discovered"
-        workflow_id = workflow["id"]
+        workflow_id = result["id"]
 
         # Set access_level=authenticated (no organization_id = global)
         response = e2e_client.patch(
@@ -1267,23 +1209,11 @@ async def {workflow_name}():
         "scope": context.scope,
     }}
 '''
-        response = e2e_client.put(
-            "/api/files/editor/content?index=true",
-            headers=platform_admin.headers,
-            json={
-                "path": workflow_path,
-                "content": workflow_content,
-                "encoding": "utf-8",
-            },
+        result = write_and_register(
+            e2e_client, platform_admin.headers,
+            workflow_path, workflow_content, workflow_name,
         )
-        assert response.status_code == 200, f"Create workflow failed: {response.text}"
-
-        # Get workflow ID
-        response = e2e_client.get("/api/workflows", headers=platform_admin.headers)
-        workflows = response.json()
-        workflow = next((w for w in workflows if w["name"] == workflow_name), None)
-        assert workflow is not None, "Workflow not discovered"
-        workflow_id = workflow["id"]
+        workflow_id = result["id"]
 
         # Set organization_id=org2 and access_level=authenticated
         response = e2e_client.patch(

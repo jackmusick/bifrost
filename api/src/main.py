@@ -10,6 +10,7 @@ from contextlib import asynccontextmanager
 from typing import AsyncGenerator
 
 from fastapi import FastAPI, Request
+from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
 from pydantic import ValidationError as PydanticValidationError
 from sqlalchemy.exc import IntegrityError, NoResultFound, OperationalError
@@ -280,6 +281,23 @@ def create_app() -> FastAPI:
     # ==========================================================================
     # These provide consistent error responses using the ErrorResponse model.
     # Handlers are registered in order of specificity (most specific first).
+
+    @app.exception_handler(RequestValidationError)
+    async def request_validation_handler(
+        request: Request, exc: RequestValidationError
+    ) -> JSONResponse:
+        """Request validation errors (bad input) → 422 with concise messages."""
+        messages = []
+        for err in exc.errors():
+            field = ".".join(str(p) for p in err["loc"] if p != "body")
+            messages.append(f"{field}: {err['msg']}")
+        return JSONResponse(
+            status_code=422,
+            content=ErrorResponse(
+                error="validation_error",
+                message="; ".join(messages),
+            ).model_dump(),
+        )
 
     @app.exception_handler(PydanticValidationError)
     async def pydantic_validation_handler(

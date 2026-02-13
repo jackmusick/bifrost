@@ -105,7 +105,6 @@ class TestWorkflowDecorator:
 
         metadata = get_user._executable_metadata
         assert metadata.type == "tool"
-        assert metadata.tool is True
 
     def test_workflow_unknown_params_logged_as_warning(self, caplog):
         """Test that unknown parameters are accepted but logged as warnings"""

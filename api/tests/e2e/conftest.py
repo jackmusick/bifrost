@@ -84,3 +84,38 @@ def e2e_client():
     """
     with httpx.Client(base_url=E2E_API_URL, timeout=60.0) as client:
         yield client
+
+
+def write_and_register(e2e_client, headers, path: str, content: str, function_name: str) -> dict:
+    """Write a Python file and register its decorated function.
+
+    Returns the RegisterWorkflowResponse dict with keys: id, name, function_name, path, type, description.
+    """
+    # Write file
+    resp = e2e_client.put(
+        "/api/files/editor/content",
+        headers=headers,
+        json={"path": path, "content": content, "encoding": "utf-8"},
+    )
+    assert resp.status_code in (200, 201), f"File write failed: {resp.status_code} {resp.text}"
+
+    # Register the decorated function
+    resp = e2e_client.post(
+        "/api/workflows/register",
+        headers=headers,
+        json={"path": path, "function_name": function_name},
+    )
+    if resp.status_code == 409:
+        # Already registered from a previous test run — look up and return existing
+        list_resp = e2e_client.get("/api/workflows", headers=headers)
+        assert list_resp.status_code == 200, f"Workflow list failed: {list_resp.status_code}"
+        for w in list_resp.json():
+            if w.get("function_name") == function_name and w.get("path") == path:
+                return w
+        # Fallback: match by function_name only
+        for w in list_resp.json():
+            if w.get("function_name") == function_name:
+                return w
+        raise AssertionError(f"409 but could not find existing workflow {function_name} at {path}")
+    assert resp.status_code in (200, 201), f"Register failed for {function_name} at {path}: {resp.status_code} {resp.text}"
+    return resp.json()

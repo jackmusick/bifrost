@@ -113,7 +113,7 @@ async def validate_workflow_file(path: str, content: str | None = None):
     import re
     from pydantic import ValidationError
     from src.models import WorkflowValidationResponse, ValidationIssue
-    from src.services.execution.module_loader import import_module_fresh, WorkflowMetadata
+    from src.services.execution.module_loader import import_module, WorkflowMetadata
     from src.services.execution.type_inference import VALID_PARAM_TYPES
 
     issues = []
@@ -175,7 +175,7 @@ async def validate_workflow_file(path: str, content: str | None = None):
 
         # Step 2: Check for import errors by attempting to load the module
         try:
-            module = import_module_fresh(file_to_validate)
+            module = import_module(file_to_validate)
         except Exception as e:
             # Import error - could be missing dependencies or runtime errors
             issues.append(ValidationIssue(

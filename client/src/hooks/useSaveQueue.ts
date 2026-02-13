@@ -5,6 +5,7 @@ import {
 	type FileConflictResponse,
 } from "@/services/fileService";
 import type { ConflictReason, FileDiagnostic } from "@/stores/editorStore";
+import { toast } from "sonner";
 
 interface SaveQueueEntry {
 	filePath: string;
@@ -95,6 +96,10 @@ export function useSaveQueue() {
 					`[SaveQueue] Failed to save ${entry.filePath}:`,
 					error,
 				);
+				toast.error("Failed to save file", {
+					description:
+						error instanceof Error ? error.message : String(error),
+				});
 				return { success: false };
 			}
 		},

@@ -4,8 +4,18 @@
  */
 import { loader } from "@monaco-editor/react";
 import type * as Monaco from "monaco-editor";
+import { useWorkflowsStore } from "@/stores/workflowsStore";
 
 let setupComplete = false;
+
+// Side-channel for current file path (Monaco doesn't know workspace paths)
+let _currentFilePath: string | null = null;
+export function setCurrentFilePath(path: string | null) {
+	_currentFilePath = path;
+}
+export function getCurrentFilePath() {
+	return _currentFilePath;
+}
 
 /**
  * Configure Monaco editor before it loads
@@ -167,5 +177,89 @@ export async function initializeMonaco(monaco: typeof Monaco) {
 			{ open: "[", close: "]" },
 			{ open: '"', close: '"' },
 		],
+	});
+
+	// Register CodeLens commands for Bifrost decorator registration
+	monaco.editor.registerCommand(
+		"bifrost.registerDecorator",
+		(_accessor, filePath: string, functionName: string) => {
+			window.dispatchEvent(
+				new CustomEvent("bifrost-register-decorator", {
+					detail: { filePath, functionName },
+				}),
+			);
+		},
+	);
+
+	monaco.editor.registerCommand("bifrost.noop", () => {
+		// No-op for "Registered" labels
+	});
+
+	// CodeLens provider for Python files — shows Register/Registered on decorators
+	const decoratorRegex = /^(\s*)@(workflow|tool|data_provider)\b/;
+	const defRegex = /^(\s*)(?:async\s+)?def\s+(\w+)\s*\(/;
+
+	monaco.languages.registerCodeLensProvider("python", {
+		provideCodeLenses(model) {
+			const filePath = getCurrentFilePath();
+			if (!filePath) return { lenses: [], dispose() {} };
+
+			const registeredFns =
+				useWorkflowsStore.getState().getRegisteredFunctions(filePath);
+
+			const lenses: Monaco.languages.CodeLens[] = [];
+			const lineCount = model.getLineCount();
+
+			for (let i = 1; i <= lineCount; i++) {
+				const line = model.getLineContent(i);
+				const decoratorMatch = line.match(decoratorRegex);
+				if (!decoratorMatch) continue;
+
+				const decoratorType = decoratorMatch[2];
+
+				// Look ahead up to 5 lines for the function definition
+				let functionName: string | null = null;
+				for (
+					let j = i + 1;
+					j <= Math.min(i + 5, lineCount);
+					j++
+				) {
+					const defLine = model.getLineContent(j);
+					const defMatch = defLine.match(defRegex);
+					if (defMatch) {
+						functionName = defMatch[2];
+						break;
+					}
+				}
+
+				if (!functionName) continue;
+
+				const isRegistered = registeredFns.has(functionName);
+
+				lenses.push({
+					range: {
+						startLineNumber: i,
+						startColumn: 1,
+						endLineNumber: i,
+						endColumn: 1,
+					},
+					command: isRegistered
+						? {
+								id: "bifrost.noop",
+								title: `$(check) Registered ${decoratorType}`,
+							}
+						: {
+								id: "bifrost.registerDecorator",
+								title: `$(play) Register ${decoratorType}`,
+								arguments: [filePath, functionName],
+							},
+				});
+			}
+
+			return { lenses, dispose() {} };
+		},
+		resolveCodeLens(_model, codeLens) {
+			return codeLens;
+		},
 	});
 }

@@ -282,6 +282,10 @@ class LLMConfigService:
                 all_model_ids = [m.id for m in models_response.data]
                 model_available = model in all_model_ids
             except Exception as e:
+                error_str = str(e).lower()
+                # Auth errors should fail the connection test, not be silently swallowed
+                if "401" in error_str or "403" in error_str or "unauthorized" in error_str or "forbidden" in error_str or "authentication" in error_str or "invalid" in error_str:
+                    raise  # Re-raise to outer handler which returns success=False
                 logger.info(f"Model listing not supported at {endpoint_label}: {e}")
 
             if model_infos:
@@ -336,6 +340,10 @@ class LLMConfigService:
                 all_model_ids = [m.id for m in models_response.data]
                 model_available = model in all_model_ids
             except Exception as e:
+                error_str = str(e).lower()
+                # Auth errors should fail the connection test, not be silently swallowed
+                if "401" in error_str or "403" in error_str or "unauthorized" in error_str or "forbidden" in error_str or "authentication" in error_str or "invalid" in error_str:
+                    raise  # Re-raise to outer handler which returns success=False
                 logger.info(f"Model listing not supported at {endpoint_label}: {e}")
 
             if model_infos:

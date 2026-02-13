@@ -4,6 +4,7 @@ import { useSaveQueue } from "./useSaveQueue";
 import { fileService, FileConflictError } from "@/services/fileService";
 import type { ConflictReason } from "@/stores/editorStore";
 import { useReloadWorkflowFile } from "./useWorkflows";
+import { isBifrostSystemFile } from "@/lib/file-filter";
 
 /**
  * Auto-save hook with 1-second debounce and save queue.
@@ -54,7 +55,8 @@ export function useAutoSave() {
 	// Auto-save with 1-second debounce using save queue
 	useEffect(() => {
 		// Only enqueue if we have unsaved changes and not in conflict
-		if (!unsavedChanges || !openFile || saveState === "conflict") {
+		// Skip auto-save for .bifrost/ system files (read-only)
+		if (!unsavedChanges || !openFile || saveState === "conflict" || isBifrostSystemFile(openFile.path)) {
 			return;
 		}
 
@@ -170,9 +172,13 @@ export function useAutoSave() {
 					}
 				}
 
-				// Show green cloud for 2.5 seconds
+				// Show green cloud for 2.5 seconds, but only transition if still "saved"
 				setTimeout(() => {
-					setSaveState(activeTabIndex, "clean");
+					const currentState = useEditorStore.getState();
+					const currentTab = currentState.tabs[activeTabIndex];
+					if (currentTab?.saveState === "saved") {
+						setSaveState(activeTabIndex, "clean");
+					}
 				}, 2500);
 
 				// Run post-save tasks for Python workflow files
@@ -226,7 +232,7 @@ export function useAutoSave() {
 	// Manual save function (for Cmd+S)
 	// Uses same deferred indexing flow as auto-save
 	const manualSave = useCallback(async () => {
-		if (!openFile || !unsavedChanges) {
+		if (!openFile || !unsavedChanges || isBifrostSystemFile(openFile.path)) {
 			return;
 		}
 
@@ -333,9 +339,13 @@ export function useAutoSave() {
 				}
 			}
 
-			// Show green cloud briefly
+			// Show green cloud briefly, but only transition if still "saved"
 			setTimeout(() => {
-				setSaveState(activeTabIndex, "clean");
+				const currentState = useEditorStore.getState();
+				const currentTab = currentState.tabs[activeTabIndex];
+				if (currentTab?.saveState === "saved") {
+					setSaveState(activeTabIndex, "clean");
+				}
 			}, 2500);
 
 			// Reload workflows if Python file

@@ -115,9 +115,6 @@ class FormIndexer:
             logger.warning(f"Invalid YAML in form file: {path}")
             return False
 
-        # Remove _export if present (backwards compatibility with old files)
-        form_data.pop("_export", None)
-
         name = form_data.get("name")
         if not name:
             logger.warning(f"Form file missing name: {path}")

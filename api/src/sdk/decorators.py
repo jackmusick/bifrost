@@ -134,7 +134,6 @@ def workflow(
             category=category,
             tags=workflow_tags,
             type=workflow_type,
-            tool=is_tool,
             source_file_path=source_file_path,
             parameters=parameters,
             function=func,

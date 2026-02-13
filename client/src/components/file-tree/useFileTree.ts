@@ -13,6 +13,8 @@ interface FileTreeState {
 	fileMap: Map<string, FileNode[]>;
 	/** Set of expanded folder paths */
 	expandedFolders: Set<string>;
+	/** Set of folder paths currently loading */
+	loadingFolders: Set<string>;
 	/** Loading state */
 	isLoading: boolean;
 }
@@ -22,6 +24,8 @@ interface UseFileTreeResult {
 	files: FileTreeNode[];
 	/** Whether the tree is loading */
 	isLoading: boolean;
+	/** Check if a specific folder is currently loading */
+	isFolderLoading: (folderPath: string) => boolean;
 	/** Load files at a path */
 	loadFiles: (path: string) => Promise<void>;
 	/** Toggle folder expand/collapse */
@@ -59,6 +63,7 @@ export function useFileTree(operations: FileOperations): UseFileTreeResult {
 	const [state, setState] = useState<FileTreeState>({
 		fileMap: new Map([["", []]]),
 		expandedFolders: new Set<string>(),
+		loadingFolders: new Set<string>(),
 		isLoading: false,
 	});
 
@@ -67,7 +72,11 @@ export function useFileTree(operations: FileOperations): UseFileTreeResult {
 	 */
 	const loadFiles = useCallback(
 		async (path: string = "") => {
-			setState((prev) => ({ ...prev, isLoading: true }));
+			setState((prev) => {
+				const newLoadingFolders = new Set(prev.loadingFolders);
+				newLoadingFolders.add(path);
+				return { ...prev, isLoading: true, loadingFolders: newLoadingFolders };
+			});
 
 			try {
 				const allFiles = await operations.list(path);
@@ -118,14 +127,21 @@ export function useFileTree(operations: FileOperations): UseFileTreeResult {
 				setState((prev) => {
 					const newFileMap = new Map(prev.fileMap);
 					newFileMap.set(path, sortedFiles);
+					const newLoadingFolders = new Set(prev.loadingFolders);
+					newLoadingFolders.delete(path);
 					return {
 						...prev,
 						fileMap: newFileMap,
-						isLoading: false,
+						isLoading: newLoadingFolders.size > 0,
+						loadingFolders: newLoadingFolders,
 					};
 				});
 			} catch {
-				setState((prev) => ({ ...prev, isLoading: false }));
+				setState((prev) => {
+					const newLoadingFolders = new Set(prev.loadingFolders);
+					newLoadingFolders.delete(path);
+					return { ...prev, isLoading: newLoadingFolders.size > 0, loadingFolders: newLoadingFolders };
+				});
 			}
 		},
 		[operations],
@@ -171,6 +187,16 @@ export function useFileTree(operations: FileOperations): UseFileTreeResult {
 			return state.expandedFolders.has(folderPath);
 		},
 		[state.expandedFolders],
+	);
+
+	/**
+	 * Check if a folder is currently loading
+	 */
+	const isFolderLoading = useCallback(
+		(folderPath: string) => {
+			return state.loadingFolders.has(folderPath);
+		},
+		[state.loadingFolders],
 	);
 
 	/**
@@ -355,6 +381,7 @@ export function useFileTree(operations: FileOperations): UseFileTreeResult {
 	return {
 		files: buildVisibleFiles(),
 		isLoading: state.isLoading,
+		isFolderLoading,
 		loadFiles,
 		toggleFolder,
 		isFolderExpanded,

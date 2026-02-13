@@ -6,6 +6,8 @@ Tests form CRUD operations, access levels, and role-based access.
 
 import pytest
 
+from tests.e2e.conftest import write_and_register
+
 
 @pytest.mark.e2e
 class TestFormCRUD:
@@ -393,34 +395,14 @@ async def e2e_form_test_dp(org_id: str | None = None):
         {"value": "opt_3", "label": "Option 3"},
     ]
 '''
-        response = e2e_client.put(
-            "/api/files/editor/content",
-            headers=platform_admin.headers,
-            json={
-                "path": "e2e_form_test_dp.py",
-                "content": dp_content,
-                "encoding": "utf-8",
-            },
+        result = write_and_register(
+            e2e_client, platform_admin.headers,
+            "e2e_form_test_dp.py", dp_content, "e2e_form_test_dp",
         )
-        assert response.status_code == 200, f"Create data provider failed: {response.text}"
-
-        # Get the data provider ID (data providers are now in workflows with type=data_provider)
-        response = e2e_client.get(
-            "/api/workflows?type=data_provider",
-            headers=platform_admin.headers,
-        )
-        assert response.status_code == 200, f"List data providers failed: {response.text}"
-        providers = response.json()
-        provider = next(
-            (p for p in providers if p["name"] == "e2e_form_test_dp"),
-            None
-        )
-        assert provider is not None, f"Data provider not discovered. Found: {[p['name'] for p in providers]}"
-        assert provider.get("id"), "Data provider has no ID"
 
         yield {
-            "id": provider["id"],
-            "name": provider["name"],
+            "id": result["id"],
+            "name": result["name"],
             "path": "e2e_form_test_dp.py",
         }
 

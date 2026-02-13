@@ -75,8 +75,6 @@ Example:
         refresh_token = integration.oauth.refresh_token
 """
 
-from dataclasses import dataclass
-
 # SDK Modules
 from .ai import ai
 from .config import config
@@ -181,14 +179,6 @@ except ImportError:
         CHECKBOX = "checkbox"
         DATE = "date"
 
-# For backwards compatibility with type stubs
-@dataclass
-class Caller:
-    """User who triggered the workflow execution."""
-    user_id: str
-    email: str
-    name: str
-
 __all__ = [
     # SDK Modules
     'ai',
@@ -228,7 +218,6 @@ __all__ = [
     # Context
     'context',
     'ExecutionContext',
-    'Caller',
     # Enums
     'ExecutionStatus',
     'ConfigType',

@@ -111,19 +111,6 @@ class WorkflowMetadata(ExecutableMetadata):
     time_saved: int = 0  # Minutes saved per execution
     value: float = 0.0  # Flexible value unit (e.g., cost savings, revenue)
 
-    # Legacy field - kept for backward compatibility during migration
-    # Will be removed once all code uses 'type' field instead
-    tool: bool = False
-
-    def __post_init__(self):
-        """Sync legacy 'tool' field with 'type' field."""
-        # If tool=True was set, update type to 'tool'
-        if self.tool and self.type == "workflow":
-            self.type = "tool"
-        # If type='tool' was set, update tool field for backward compat
-        elif self.type == "tool":
-            self.tool = True
-
 
 @dataclass
 class DataProviderMetadata(ExecutableMetadata):
@@ -243,12 +230,6 @@ def import_module(file_path: Path) -> ModuleType:
         raise ImportError(f"Failed to import {file_path}: {e}") from e
 
     return module
-
-
-# Aliases for backward compatibility
-reload_module = import_module
-import_module_fresh = import_module
-reload_single_module = import_module
 
 
 def exec_from_db(
@@ -768,7 +749,6 @@ def _convert_workflow_metadata(old_metadata: Any) -> WorkflowMetadata:
         allowed_methods=getattr(old_metadata, 'allowed_methods', ['POST']),
         disable_global_key=getattr(old_metadata, 'disable_global_key', False),
         public_endpoint=getattr(old_metadata, 'public_endpoint', False),
-        tool=is_tool,
         tool_description=getattr(old_metadata, 'tool_description', None),
         time_saved=getattr(old_metadata, 'time_saved', 0),
         value=getattr(old_metadata, 'value', 0.0),

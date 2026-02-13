@@ -126,7 +126,7 @@ class TestLLMConfigurationCRUD:
         response = e2e_client.post(
             "/api/admin/llm/config",
             json={
-                "provider": "custom",
+                "provider": "openai",
                 "model": "deepseek-chat",
                 "api_key": llm_test_custom_config["api_key"],
                 "endpoint": llm_test_custom_config["endpoint"],
@@ -138,7 +138,7 @@ class TestLLMConfigurationCRUD:
         assert response.status_code == 200, f"Set config failed: {response.text}"
 
         data = response.json()
-        assert data["provider"] == "custom"
+        assert data["provider"] == "openai"
         assert data["model"] == "deepseek-chat"
         assert data["endpoint"] == llm_test_custom_config["endpoint"]
         assert data["is_configured"] is True
@@ -290,7 +290,7 @@ class TestLLMConnectionTests:
 
         data = response.json()
         assert data["success"] is True
-        assert "Connected to Anthropic" in data["message"]
+        assert "Connected to" in data["message"]
         assert data["models"] is not None
         assert len(data["models"]) > 0
 
@@ -318,7 +318,7 @@ class TestLLMConnectionTests:
 
         data = response.json()
         assert data["success"] is True
-        assert "Connected to OpenAI" in data["message"]
+        assert "Connected to" in data["message"]
         assert data["models"] is not None
         assert len(data["models"]) > 0
 

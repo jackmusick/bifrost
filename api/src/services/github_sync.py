@@ -283,6 +283,36 @@ class GitHubSyncService:
         from src.services.manifest_generator import generate_manifest
 
         manifest = await generate_manifest(db)
+
+        # Filter out entities whose files don't exist in work_dir.
+        # The DB may contain entities from other workspaces or deleted files;
+        # the manifest should only reference files actually present in the repo.
+        manifest.workflows = {
+            k: v for k, v in manifest.workflows.items()
+            if (work_dir / v.path).exists()
+        }
+        manifest.forms = {
+            k: v for k, v in manifest.forms.items()
+            if (work_dir / v.path).exists()
+        }
+        manifest.agents = {
+            k: v for k, v in manifest.agents.items()
+            if (work_dir / v.path).exists()
+        }
+        manifest.apps = {
+            k: v for k, v in manifest.apps.items()
+            if (work_dir / v.path).exists()
+        }
+
+        # Filter configs to only include those whose integration_id is present
+        # in the manifest (or has no integration_id). This prevents stale configs
+        # from referencing integrations that aren't part of this repo.
+        integration_ids = {v.id for v in manifest.integrations.values()}
+        manifest.configs = {
+            k: v for k, v in manifest.configs.items()
+            if v.integration_id is None or v.integration_id in integration_ids
+        }
+
         files = serialize_manifest_dir(manifest)
 
         bifrost_dir = work_dir / ".bifrost"
@@ -1088,9 +1118,11 @@ class GitHubSyncService:
             is_active=True,
             organization_id=UUID(mwf.organization_id) if mwf.organization_id else None,
         ).on_conflict_do_update(
-            constraint="workflows_path_function_key",
+            index_elements=["id"],
             set_={
                 "name": manifest_name,
+                "function_name": mwf.function_name,
+                "path": mwf.path,
                 "type": getattr(mwf, "type", "workflow"),
                 "is_active": True,
                 "updated_at": datetime.now(timezone.utc),
@@ -1613,6 +1645,8 @@ class GitHubSyncService:
                             message=f"Manifest references missing file: {path}",
                             severity="error",
                             category="manifest",
+                            fix_hint="This file was deleted but the entity is still registered. Use 'Clean up & Retry' to remove orphaned references.",
+                            auto_fixable=True,
                         ))
             except Exception as e:
                 issues.append(PreflightIssue(
@@ -1620,6 +1654,7 @@ class GitHubSyncService:
                     message=f"Invalid manifest: {e}",
                     severity="error",
                     category="manifest",
+                    fix_hint="The manifest is malformed. Run 'Reimport' from Settings > Maintenance.",
                 ))
 
         # 2. Syntax check all .py files
@@ -1637,6 +1672,7 @@ class GitHubSyncService:
                     message=f"Syntax error: {e.msg}",
                     severity="error",
                     category="syntax",
+                    fix_hint=f"Fix the syntax error in {rel} at line {e.lineno}.",
                 ))
 
         # 3. Ruff lint check
@@ -1663,6 +1699,7 @@ class GitHubSyncService:
                             message=f"{violation.get('code', '?')}: {violation.get('message', '')}",
                             severity="warning",
                             category="lint",
+                            fix_hint="This is a style warning and won't block your commit.",
                         ))
             except (subprocess.TimeoutExpired, FileNotFoundError):
                 pass  # ruff not available or timed out — skip lint
@@ -1684,6 +1721,7 @@ class GitHubSyncService:
                                     message=f"Form references unknown workflow UUID: {wf_ref}",
                                     severity="error",
                                     category="ref",
+                                    fix_hint="Edit this form and assign a valid workflow.",
                                 ))
                             launch_ref = data.get("launch_workflow")
                             if launch_ref and launch_ref not in entity_ids:
@@ -1692,6 +1730,7 @@ class GitHubSyncService:
                                     message=f"Form references unknown launch workflow UUID: {launch_ref}",
                                     severity="error",
                                     category="ref",
+                                    fix_hint="Edit this form and assign a valid launch workflow.",
                                 ))
                     except Exception:
                         pass
@@ -1711,6 +1750,7 @@ class GitHubSyncService:
                                     message=f"Form '{form_name}' references workflow {wf_ref} which is not in the manifest (will be orphaned)",
                                     severity="warning",
                                     category="orphan",
+                                    fix_hint="Register the referenced workflow, or update the form to reference an active one.",
                                 ))
                     except Exception:
                         pass
@@ -1724,6 +1764,7 @@ class GitHubSyncService:
                     message=err,
                     severity="error",
                     category="ref",
+                    fix_hint="Check that all referenced entity IDs exist and are active.",
                 ))
 
             # 7. Health warnings (non-blocking)
@@ -1735,6 +1776,7 @@ class GitHubSyncService:
                         message=f"Config '{cfg_key}' (type=secret) needs a value after import",
                         severity="warning",
                         category="health",
+                        fix_hint="Set a value for this config in Settings > Integrations.",
                     ))
 
             # OAuth providers needing setup
@@ -1745,6 +1787,7 @@ class GitHubSyncService:
                         message=f"Integration '{integ_name}' OAuth provider needs client_id and client_secret setup",
                         severity="warning",
                         category="health",
+                        fix_hint="Configure OAuth client_id and client_secret in Settings > Integrations.",
                     ))
 
             # Webhook sources needing external registration
@@ -1755,6 +1798,7 @@ class GitHubSyncService:
                         message=f"Webhook source '{es_name}' will need external registration after import",
                         severity="warning",
                         category="health",
+                        fix_hint="Register this webhook URL with the external service after import.",
                     ))
 
         has_errors = any(i.severity == "error" for i in issues)

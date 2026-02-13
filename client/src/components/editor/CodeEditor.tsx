@@ -11,7 +11,10 @@ import type { FileDiagnostic } from "@/stores/editorStore";
 import { Loader2, FileIcon } from "lucide-react";
 import { toast } from "sonner";
 import type * as Monaco from "monaco-editor";
-import { initializeMonaco } from "@/lib/monaco-setup";
+import { initializeMonaco, setCurrentFilePath } from "@/lib/monaco-setup";
+import { registerWorkflow } from "@/hooks/useWorkflows";
+import { useReloadWorkflowFile } from "@/hooks/useWorkflows";
+import { isBifrostSystemFile } from "@/lib/file-filter";
 import { ConflictDiffView } from "./ConflictDiffView";
 import { SyncDiffView } from "./SyncDiffView";
 import { IndexingOverlay } from "./IndexingOverlay";
@@ -49,6 +52,9 @@ export function CodeEditor() {
 	// Indexing state for blocking overlay during ID injection
 	const isIndexing = useEditorStore((state) => state.isIndexing);
 
+	// Check if current file is a read-only system file (.bifrost/)
+	const isReadOnly = openFile ? isBifrostSystemFile(openFile.path) : false;
+
 	// Diff preview state for sync UI
 	const diffPreview = useEditorStore((state) => state.diffPreview);
 
@@ -80,6 +86,49 @@ export function CodeEditor() {
 		(state) => state.clearPendingLineReveal,
 	);
 
+	// Workflow registration support for CodeLens
+	const reloadWorkflows = useReloadWorkflowFile();
+
+	// Keep Monaco CodeLens provider aware of the current file path
+	useEffect(() => {
+		setCurrentFilePath(openFile?.path ?? null);
+		return () => setCurrentFilePath(null);
+	}, [openFile?.path]);
+
+	// Listen for CodeLens "Register" button clicks
+	useEffect(() => {
+		const handler = async (e: Event) => {
+			const { filePath, functionName } = (e as CustomEvent).detail as {
+				filePath: string;
+				functionName: string;
+			};
+			try {
+				await registerWorkflow(filePath, functionName);
+				toast.success(`Registered ${functionName}`);
+				// Refresh workflow store so CodeLens updates
+				await reloadWorkflows.mutate();
+				// Force CodeLens to re-evaluate by toggling language
+				const editor = editorRef.current;
+				const monaco = monacoRef.current;
+				if (editor && monaco) {
+					const model = editor.getModel();
+					if (model) {
+						monaco.editor.setModelLanguage(model, "plaintext");
+						monaco.editor.setModelLanguage(model, "python");
+					}
+				}
+			} catch (err) {
+				toast.error("Failed to register", {
+					description:
+						err instanceof Error ? err.message : String(err),
+				});
+			}
+		};
+		window.addEventListener("bifrost-register-decorator", handler);
+		return () =>
+			window.removeEventListener("bifrost-register-decorator", handler);
+	}, [reloadWorkflows]);
+
 	// Check for conflicts by comparing etags
 	const checkForConflict = useCallback(async () => {
 		// Get fresh state from store (not from closure)
@@ -90,9 +139,11 @@ export function CodeEditor() {
 			!freshTab ||
 			!freshTab.file ||
 			!freshTab.etag ||
-			freshTab.saveState === "conflict"
+			freshTab.saveState === "conflict" ||
+			freshTab.saveState === "saving" ||
+			state.isIndexing
 		) {
-			return; // Skip if no file, no etag, or already in conflict state
+			return; // Skip if no file, no etag, already in conflict, saving, or indexing
 		}
 
 		try {
@@ -126,7 +177,7 @@ export function CodeEditor() {
 
 	// Manual save handler
 	const handleManualSave = useCallback(async () => {
-		if (!openFile || !unsavedChanges) {
+		if (!openFile || !unsavedChanges || isReadOnly) {
 			return;
 		}
 
@@ -164,6 +215,7 @@ export function CodeEditor() {
 		openFile,
 		fileContent,
 		unsavedChanges,
+		isReadOnly,
 		markSaved,
 		setDiagnostics,
 		activeTabIndex,
@@ -596,8 +648,11 @@ export function CodeEditor() {
 						// Code lens (for conflict resolution buttons)
 						codeLens: true,
 
-						// Read-only during indexing (prevents typing)
-						readOnly: isIndexing,
+						// Read-only for system files (.bifrost/) or during indexing
+						readOnly: isReadOnly || isIndexing,
+						readOnlyMessage: isReadOnly
+							? { value: "This file is system-generated and cannot be edited." }
+							: undefined,
 					}}
 					loading={
 						<div className="flex h-full items-center justify-center">
@@ -658,28 +713,13 @@ export function CodeEditor() {
 						pendingDeactivationConflict?.availableReplacements ?? []
 					}
 					open={pendingDeactivationConflict !== null}
-					onForceDeactivate={async () => {
-						const response =
-							await resolveDeactivationConflict(
-								"force_deactivate",
-							);
-						if (response && pendingDeactivationConflict) {
-							// Update tab with new etag
-							updateTabContent(
-								pendingDeactivationConflict.tabIndex,
-								response.content,
-								response.etag,
-							);
-							toast.info("Workflows deactivated");
-						}
-					}}
-					onApplyReplacements={async (replacements) => {
+					onResolve={async (replacements, workflowsToDeactivate) => {
 						const response = await resolveDeactivationConflict(
-							"apply_replacements",
-							replacements,
+							"apply",
+							Object.keys(replacements).length > 0 ? replacements : undefined,
+							workflowsToDeactivate.length > 0 ? workflowsToDeactivate : undefined,
 						);
 						if (response && pendingDeactivationConflict) {
-							// Update tab with new content (may have ID injections)
 							if (response.content_modified && response.content) {
 								updateTabContent(
 									pendingDeactivationConflict.tabIndex,
@@ -687,14 +727,21 @@ export function CodeEditor() {
 									response.etag,
 								);
 							} else {
-								// Just update etag
 								updateTabContent(
 									pendingDeactivationConflict.tabIndex,
 									pendingDeactivationConflict.content,
 									response.etag,
 								);
 							}
-							toast.success("Workflow identities transferred");
+							const mapped = Object.keys(replacements).length;
+							const deactivated = workflowsToDeactivate.length;
+							if (mapped > 0 && deactivated > 0) {
+								toast.success(`${mapped} transferred, ${deactivated} deactivated`);
+							} else if (mapped > 0) {
+								toast.success("Workflow identities transferred");
+							} else {
+								toast.info("Workflows deactivated");
+							}
 						}
 					}}
 					onCancel={() => {

@@ -336,10 +336,6 @@ async def publish_local_runner_state_update(
     await manager.broadcast(f"local-runner:{user_id}", message)
 
 
-# Alias for backwards compatibility
-publish_devrun_state_update = publish_local_runner_state_update
-
-
 async def publish_cli_session_update(
     user_id: str | UUID,
     session_id: str,
@@ -363,105 +359,6 @@ async def publish_cli_session_update(
     # Broadcast to both session-specific and user-level channels
     await manager.broadcast(f"cli-session:{session_id}", message)
     await manager.broadcast(f"cli-sessions:{user_id}", message)
-
-
-# =============================================================================
-# Reindex Pub/Sub (API -> Scheduler Communication)
-# =============================================================================
-
-
-async def publish_reindex_request(
-    job_id: str,
-    user_id: str,
-) -> None:
-    """
-    Request a reindex operation from the scheduler.
-
-    The scheduler listens on `bifrost:scheduler:reindex` and executes
-    the reindex, publishing progress to `reindex:{job_id}`.
-
-    Args:
-        job_id: Unique job ID for tracking
-        user_id: User who initiated the reindex
-    """
-    message = {
-        "type": "reindex_request",
-        "job_id": job_id,
-        "user_id": user_id,
-    }
-    await manager._publish_to_redis("scheduler:reindex", message)
-
-
-async def publish_reindex_progress(
-    job_id: str,
-    phase: str,
-    current: int,
-    total: int,
-    current_file: str | None = None,
-) -> None:
-    """
-    Publish reindex progress update.
-
-    Args:
-        job_id: Unique job ID
-        phase: Current phase (downloading, validating_workflows, etc.)
-        current: Current item number
-        total: Total items to process
-        current_file: Currently processing file path
-    """
-    message = {
-        "type": "progress",
-        "jobId": job_id,
-        "phase": phase,
-        "current": current,
-        "total": total,
-        "current_file": current_file,
-    }
-    await manager.broadcast(f"reindex:{job_id}", message)
-
-
-async def publish_reindex_completed(
-    job_id: str,
-    counts: dict,
-    warnings: list[str],
-    errors: list[dict],
-) -> None:
-    """
-    Publish reindex completion.
-
-    Args:
-        job_id: Unique job ID
-        counts: Summary counts from reindex
-        warnings: List of warning messages
-        errors: List of ReindexError dicts
-    """
-    message = {
-        "type": "completed",
-        "jobId": job_id,
-        "counts": counts,
-        "warnings": warnings,
-        "errors": errors,
-    }
-    await manager.broadcast(f"reindex:{job_id}", message)
-
-
-async def publish_reindex_failed(
-    job_id: str,
-    error: str,
-) -> None:
-    """
-    Publish reindex failure.
-
-    Args:
-        job_id: Unique job ID
-        error: Error message
-    """
-    message = {
-        "type": "failed",
-        "jobId": job_id,
-        "error": error,
-    }
-    await manager.broadcast(f"reindex:{job_id}", message)
 
 
 # =============================================================================
@@ -796,6 +693,11 @@ async def publish_pool_scaling(
         "timestamp": datetime.now(timezone.utc).isoformat(),
     }
     await manager.broadcast("platform_workers", message)
+
+
+async def publish_reimport_request(job_id: str) -> None:
+    """Publish a reimport request to the scheduler."""
+    await manager._publish_to_redis("scheduler:reimport", {"action": "reimport", "job_id": job_id})
 
 
 async def publish_pool_progress(

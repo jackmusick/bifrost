@@ -11,6 +11,7 @@ from typing import Any, Generator
 
 import pytest
 
+from tests.e2e.conftest import write_and_register
 from tests.helpers.polling import poll_until  # noqa: F401 — re-exported for dependents
 
 logger = logging.getLogger(__name__)
@@ -43,40 +44,20 @@ def {workflow_name}(value: str) -> str:
     return f"processed: {{value}}"
 '''
 
-    # Create workflow file
-    response = e2e_client.put(
-        "/api/files/editor/content?index=true",
-        headers=platform_admin.headers,
-        json={
-            "path": file_path,
-            "content": workflow_content,
-            "encoding": "utf-8",
-        },
+    # Create workflow file and register
+    result = write_and_register(
+        e2e_client, platform_admin.headers,
+        file_path, workflow_content, workflow_name,
     )
-    assert response.status_code == 200, f"Create workflow file failed: {response.text}"
-    logger.info(f"Created workflow file: {file_path}")
-
-    # Poll until workflow is discovered
-    def check_workflow():
-        resp = e2e_client.get("/api/workflows", headers=platform_admin.headers)
-        if resp.status_code != 200:
-            return None
-        workflows = resp.json()
-        for w in workflows:
-            if w.get("name") == workflow_name:
-                return w
-        return None
-
-    workflow = poll_until(check_workflow, max_wait=30.0, interval=0.5)
-    assert workflow, f"Workflow '{workflow_name}' not discovered within 30s"
+    logger.info(f"Created and registered workflow: {file_path}")
 
     workflow_info = {
-        "id": workflow["id"],
-        "name": workflow["name"],
+        "id": result["id"],
+        "name": result["name"],
         "file_path": file_path,
         "portable_ref": f"{file_path}::{workflow_name}",
     }
-    logger.info(f"Workflow discovered: {workflow_info}")
+    logger.info(f"Workflow registered: {workflow_info}")
 
     yield workflow_info
 
@@ -257,40 +238,20 @@ def {workflow_name}(query: str) -> str:
     return f"result: {{query}}"
 '''
 
-    # Create workflow file
-    response = e2e_client.put(
-        "/api/files/editor/content?index=true",
-        headers=platform_admin.headers,
-        json={
-            "path": file_path,
-            "content": workflow_content,
-            "encoding": "utf-8",
-        },
+    # Create tool workflow file and register
+    result = write_and_register(
+        e2e_client, platform_admin.headers,
+        file_path, workflow_content, workflow_name,
     )
-    assert response.status_code == 200, f"Create tool workflow file failed: {response.text}"
-    logger.info(f"Created tool workflow file: {file_path}")
-
-    # Poll until workflow is discovered
-    def check_workflow():
-        resp = e2e_client.get("/api/workflows", headers=platform_admin.headers)
-        if resp.status_code != 200:
-            return None
-        workflows = resp.json()
-        for w in workflows:
-            if w.get("name") == workflow_name:
-                return w
-        return None
-
-    workflow = poll_until(check_workflow, max_wait=30.0, interval=0.5)
-    assert workflow, f"Tool workflow '{workflow_name}' not discovered within 30s"
+    logger.info(f"Created and registered tool workflow: {file_path}")
 
     workflow_info = {
-        "id": workflow["id"],
-        "name": workflow["name"],
+        "id": result["id"],
+        "name": result["name"],
         "file_path": file_path,
         "portable_ref": f"{file_path}::{workflow_name}",
     }
-    logger.info(f"Tool workflow discovered: {workflow_info}")
+    logger.info(f"Tool workflow registered: {workflow_info}")
 
     yield workflow_info
 

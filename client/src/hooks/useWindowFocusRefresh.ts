@@ -29,9 +29,11 @@ export function useWindowFocusRefresh() {
 		if (
 			!activeTab ||
 			!activeTab.etag ||
-			activeTab.saveState === "conflict"
+			activeTab.saveState === "conflict" ||
+			activeTab.saveState === "saving" ||
+			state.isIndexing
 		) {
-			return; // Skip if no active file, no etag, or already in conflict
+			return; // Skip if no active file, no etag, already in conflict, saving, or indexing
 		}
 
 		try {

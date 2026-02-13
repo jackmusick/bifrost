@@ -185,10 +185,13 @@ class TestReindexWorkspaceFiles:
     ):
         """
         Workflows whose source files no longer exist are marked inactive.
+        Reindex is enrich-only: it updates existing DB records but does not
+        create new ones.  We pre-register both workflows in the DB so reindex
+        can reconcile them.
         """
         workspace = clean_workspace
 
-        # 1. Create a workflow file
+        # 1. Create a workflow file AND a matching DB record (registered)
         workflow_file = workspace / "my_workflow.py"
         workflow_file.write_text("""
 from bifrost import workflow
@@ -197,6 +200,14 @@ from bifrost import workflow
 def test_workflow():
     pass
 """)
+        active_workflow = Workflow(
+            id=uuid4(),
+            name="Test Workflow",
+            function_name="test_workflow",
+            path="my_workflow.py",
+            is_active=True,
+        )
+        db_session.add(active_workflow)
 
         # 2. Create a workflow record in DB that references a non-existent file
         orphaned_workflow = Workflow(
@@ -209,6 +220,7 @@ def test_workflow():
         db_session.add(orphaned_workflow)
         await db_session.commit()
         orphaned_id = orphaned_workflow.id
+        active_id = active_workflow.id
 
         # 3. Call reindex_workspace_files to index the workspace
         storage = get_file_storage_service(db_session)
@@ -222,17 +234,15 @@ def test_workflow():
         workflow = result.scalar_one()
         assert workflow.is_active is False
 
-        # 5. Verify the existing workflow was indexed and is active
+        # 5. Verify the registered workflow is still active
         result = await db_session.execute(
-            select(Workflow).where(Workflow.path == "my_workflow.py")
+            select(Workflow).where(Workflow.id == active_id)
         )
-        indexed_workflow = result.scalar_one_or_none()
+        indexed_workflow = result.scalar_one()
         assert indexed_workflow is not None
         assert indexed_workflow.is_active is True
 
         # 6. Verify counts - at least 1 file indexed and 1 workflow deactivated
-        # We check >= 1 rather than exact count to handle test isolation issues
-        # where other tests may have left orphaned workflows
         assert counts["files_indexed"] == 1
         assert counts["workflows_deactivated"] >= 1, (
             f"Expected at least 1 deactivated workflow, got {counts['workflows_deactivated']}"
@@ -398,6 +408,7 @@ def test_provider():
     ):
         """
         Workflow metadata is extracted from Python files during reindex.
+        Reindex is enrich-only: it requires a pre-existing DB record to update.
         """
         workspace = clean_workspace
 
@@ -417,21 +428,29 @@ def documented_workflow(message: str, count: int = 5):
     pass
 """)
 
-        # 2. Call reindex_workspace_files to index the workspace
+        # 2. Pre-register the workflow in DB (reindex is enrich-only)
+        pre_wf = Workflow(
+            id=uuid4(),
+            name="documented_workflow",  # Will be enriched to "Documented Workflow"
+            function_name="documented_workflow",
+            path="documented_workflow.py",
+            is_active=True,
+        )
+        db_session.add(pre_wf)
+        await db_session.commit()
+
+        # 3. Call reindex_workspace_files to enrich metadata
         storage = get_file_storage_service(db_session)
         await storage.reindex_workspace_files(workspace)
         await db_session.commit()
 
-        # 3. Verify workflow was created with correct metadata
-        result = await db_session.execute(
-            select(Workflow).where(Workflow.path == "documented_workflow.py")
-        )
-        workflow = result.scalar_one()
+        # 4. Verify workflow was enriched with correct metadata
+        await db_session.refresh(pre_wf)
 
-        assert workflow.name == "Documented Workflow"
-        assert workflow.description == "A well-documented workflow"
-        assert workflow.category == "Testing"
-        assert workflow.is_active is True
-        assert workflow.function_name == "documented_workflow"
+        assert pre_wf.name == "Documented Workflow"
+        assert pre_wf.description == "A well-documented workflow"
+        assert pre_wf.category == "Testing"
+        assert pre_wf.is_active is True
+        assert pre_wf.function_name == "documented_workflow"
         # Parameters should be extracted
-        assert len(workflow.parameters_schema) == 2
+        assert len(pre_wf.parameters_schema) == 2

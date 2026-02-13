@@ -2,11 +2,13 @@
 E2E tests for data providers.
 
 Tests data provider creation, discovery, listing, and metadata extraction.
-Follows the pattern of creating a data provider file via the editor API,
-waiting for discovery, then verifying the results.
+Uses write_and_register() to write files and register decorated functions
+in a single step, avoiding poll-based discovery.
 """
 
 import pytest
+
+from tests.e2e.conftest import write_and_register
 
 
 @pytest.mark.e2e
@@ -27,21 +29,20 @@ async def e2e_test_provider():
     """Returns test data."""
     return [{"id": 1, "name": "Test"}]
 '''
-        response = e2e_client.put(
-            "/api/files/editor/content",
-            headers=platform_admin.headers,
-            json={
-                "path": "e2e_data_provider.py",
-                "content": data_provider_content,
-                "encoding": "utf-8",
-            },
+        result = write_and_register(
+            e2e_client,
+            platform_admin.headers,
+            "e2e_data_provider.py",
+            data_provider_content,
+            "e2e_test_provider",
         )
-        assert response.status_code == 200, f"Create data provider failed: {response.text}"
 
         yield {
+            "id": result["id"],
             "path": "e2e_data_provider.py",
-            "name": "e2e_test_provider",
-            "description": "E2E test data provider",
+            "name": result["name"],
+            "description": result["description"],
+            "type": result["type"],
         }
 
         # Cleanup
@@ -63,16 +64,15 @@ async def e2e_creation_test():
     """Returns test data for creation test."""
     return [{"id": 1, "value": "created"}]
 '''
-        response = e2e_client.put(
-            "/api/files/editor/content",
-            headers=platform_admin.headers,
-            json={
-                "path": "e2e_creation_test_provider.py",
-                "content": data_provider_content,
-                "encoding": "utf-8",
-            },
+        result = write_and_register(
+            e2e_client,
+            platform_admin.headers,
+            "e2e_creation_test_provider.py",
+            data_provider_content,
+            "e2e_creation_test",
         )
-        assert response.status_code == 200, f"Create data provider failed: {response.text}"
+        assert result["type"] == "data_provider", \
+            f"Expected type='data_provider', got '{result['type']}'"
 
         # Cleanup
         e2e_client.delete(
@@ -112,7 +112,6 @@ async def e2e_creation_test():
 
     def test_data_provider_metadata_correct(self, e2e_client, platform_admin, test_data_provider_file):
         """Verify data provider metadata is correctly extracted."""
-        # Discovery happens synchronously during file write - no sleep needed
         response = e2e_client.get(
             "/api/workflows?type=data_provider",
             headers=platform_admin.headers,
@@ -185,21 +184,20 @@ async def e2e_parametrized_provider(category: str = "default"):
     }
     return data.get(category, data["default"])
 '''
-        response = e2e_client.put(
-            "/api/files/editor/content",
-            headers=platform_admin.headers,
-            json={
-                "path": "e2e_parametrized_provider.py",
-                "content": data_provider_content,
-                "encoding": "utf-8",
-            },
+        result = write_and_register(
+            e2e_client,
+            platform_admin.headers,
+            "e2e_parametrized_provider.py",
+            data_provider_content,
+            "e2e_parametrized_provider",
         )
-        assert response.status_code == 200, f"Create data provider failed: {response.text}"
 
         yield {
+            "id": result["id"],
             "path": "e2e_parametrized_provider.py",
-            "name": "e2e_parametrized_provider",
-            "description": "Data provider with parameters",
+            "name": result["name"],
+            "description": result["description"],
+            "type": result["type"],
         }
 
         # Cleanup
@@ -223,7 +221,6 @@ async def e2e_parametrized_provider(category: str = "default"):
 
     def test_parametrized_provider_has_parameters(self, e2e_client, platform_admin, parametrized_provider_file):
         """Parametrized data provider includes parameter metadata."""
-        # Discovery happens synchronously during file write - no sleep needed
         response = e2e_client.get(
             "/api/workflows?type=data_provider",
             headers=platform_admin.headers,
@@ -299,30 +296,18 @@ async def e2e_executable_provider(category: str = "default"):
     }
     return options.get(category, options["default"])
 '''
-        response = e2e_client.put(
-            "/api/files/editor/content?index=true",
-            headers=platform_admin.headers,
-            json={
-                "path": "e2e_executable_provider.py",
-                "content": data_provider_content,
-                "encoding": "utf-8",
-            },
+        result = write_and_register(
+            e2e_client,
+            platform_admin.headers,
+            "e2e_executable_provider.py",
+            data_provider_content,
+            "e2e_executable_provider",
         )
-        assert response.status_code == 200, f"Create data provider failed: {response.text}"
-
-        # Get the provider's ID from /api/workflows (data providers are in workflows table)
-        response = e2e_client.get("/api/workflows", headers=platform_admin.headers)
-        workflows = response.json()
-        provider = next(
-            (w for w in workflows if w["name"] == "e2e_executable_provider"),
-            None
-        )
-        assert provider is not None, "Data provider not discovered after file write"
 
         yield {
-            "id": provider["id"],
-            "name": "e2e_executable_provider",
-            "type": provider.get("type"),
+            "id": result["id"],
+            "name": result["name"],
+            "type": result["type"],
         }
 
         # Cleanup

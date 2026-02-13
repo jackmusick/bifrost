@@ -109,6 +109,7 @@ export function FileTree({
 	const {
 		files,
 		isLoading,
+		isFolderLoading,
 		loadFiles,
 		toggleFolder,
 		isFolderExpanded,
@@ -672,6 +673,7 @@ export function FileTree({
 								onCreateFolder={handleCreateFolder}
 								onChangeScope={onChangeScope}
 								isExpanded={isFolderExpanded(file.path)}
+								isLoadingContents={isFolderLoading(file.path)}
 								onDragStart={handleDragStart}
 								onDragOver={handleDragOver}
 								onDragLeave={handleDragLeave}
@@ -744,6 +746,7 @@ interface FileTreeItemProps {
 	onCreateFolder: (folderPath?: string) => void;
 	onChangeScope?: (file: FileNode) => void;
 	isExpanded: boolean;
+	isLoadingContents: boolean;
 	onDragStart: (e: React.DragEvent, file: FileNode) => void;
 	onDragOver: (e: React.DragEvent, targetFolder?: string) => void;
 	onDragLeave: () => void;
@@ -778,6 +781,7 @@ const FileTreeItem = memo(function FileTreeItem({
 	onCreateFolder,
 	onChangeScope,
 	isExpanded,
+	isLoadingContents,
 	onDragStart,
 	onDragOver,
 	onDragLeave,
@@ -820,7 +824,9 @@ const FileTreeItem = memo(function FileTreeItem({
 				>
 					{isFolder ? (
 						<>
-							{isExpanded ? (
+							{isLoadingContents ? (
+								<Loader2 className="h-4 w-4 flex-shrink-0 animate-spin text-muted-foreground" />
+							) : isExpanded ? (
 								<ChevronDown className="h-4 w-4 flex-shrink-0 text-muted-foreground" />
 							) : (
 								<ChevronRight className="h-4 w-4 flex-shrink-0 text-muted-foreground" />
@@ -880,7 +886,9 @@ const FileTreeItem = memo(function FileTreeItem({
 						>
 							{isFolder ? (
 								<>
-									{isExpanded ? (
+									{isLoadingContents ? (
+										<Loader2 className="h-4 w-4 flex-shrink-0 animate-spin text-muted-foreground" />
+									) : isExpanded ? (
 										<ChevronDown className="h-4 w-4 flex-shrink-0 text-muted-foreground" />
 									) : (
 										<ChevronRight className="h-4 w-4 flex-shrink-0 text-muted-foreground" />

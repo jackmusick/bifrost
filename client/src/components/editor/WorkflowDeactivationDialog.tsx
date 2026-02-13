@@ -30,6 +30,7 @@ import {
 	Bot,
 	FormInput,
 	AppWindow,
+	XCircle,
 } from "lucide-react";
 import type { components } from "@/lib/v1";
 
@@ -41,10 +42,16 @@ interface WorkflowDeactivationDialogProps {
 	pendingDeactivations: PendingDeactivation[];
 	availableReplacements: AvailableReplacement[];
 	open: boolean;
-	onForceDeactivate: () => void;
-	onApplyReplacements: (replacements: Record<string, string>) => void;
+	onResolve: (
+		replacements: Record<string, string>,
+		workflowsToDeactivate: string[],
+	) => void;
 	onCancel: () => void;
 }
+
+type WorkflowAction =
+	| { type: "map"; functionName: string }
+	| { type: "deactivate" };
 
 function getEntityIcon(entityType: string) {
 	switch (entityType) {
@@ -109,23 +116,21 @@ function AffectedEntitiesSection({ entities }: { entities: AffectedEntity[] }) {
 /**
  * Dialog shown when saving a file would deactivate workflows that are in use.
  *
- * Gives the user the choice to:
- * 1. Select replacement functions to inherit workflow identities (preserves history)
- * 2. Force deactivate all (workflows become inactive, may break dependencies)
- * 3. Cancel the operation
+ * Each pending deactivation gets its own action choice:
+ * - Map to a replacement function (preserves identity/history)
+ * - Deactivate (marks workflow inactive)
+ *
+ * The user must choose an action for every pending deactivation before applying.
  */
 export function WorkflowDeactivationDialog({
 	pendingDeactivations,
 	availableReplacements,
 	open,
-	onForceDeactivate,
-	onApplyReplacements,
+	onResolve,
 	onCancel,
 }: WorkflowDeactivationDialogProps) {
-	// Track selected replacement for each pending deactivation
-	const [selectedReplacements, setSelectedReplacements] = useState<
-		Record<string, string>
-	>({});
+	// Track per-workflow action: "map" with a function name, or "deactivate"
+	const [actions, setActions] = useState<Record<string, WorkflowAction>>({});
 
 	// Group available replacements by decorator type for smarter suggestions
 	const replacementsByType = useMemo(() => {
@@ -140,26 +145,52 @@ export function WorkflowDeactivationDialog({
 
 	// Get compatible replacements for a pending deactivation
 	const getCompatibleReplacements = (pd: PendingDeactivation) => {
-		// Only show replacements of matching type
 		return replacementsByType[pd.decorator_type] || [];
 	};
 
-	// Check if all deactivations have replacements selected
-	const allHaveReplacements = pendingDeactivations.every(
-		(pd) => selectedReplacements[pd.id],
-	);
+	// Get already-used replacement function names (prevent double-mapping)
+	const usedReplacementFunctions = useMemo(() => {
+		const used = new Set<string>();
+		for (const action of Object.values(actions)) {
+			if (action.type === "map") {
+				used.add(action.functionName);
+			}
+		}
+		return used;
+	}, [actions]);
+
+	// Check if all deactivations have an action chosen
+	const allResolved = pendingDeactivations.every((pd) => actions[pd.id]);
+
+	const setAction = (workflowId: string, action: WorkflowAction) => {
+		setActions((prev) => ({ ...prev, [workflowId]: action }));
+	};
+
+	const handleApply = () => {
+		const replacements: Record<string, string> = {};
+		const toDeactivate: string[] = [];
+
+		for (const pd of pendingDeactivations) {
+			const action = actions[pd.id];
+			if (!action) continue;
+
+			if (action.type === "map") {
+				replacements[pd.id] = action.functionName;
+			} else {
+				toDeactivate.push(pd.id);
+			}
+		}
+
+		onResolve(replacements, toDeactivate);
+	};
 
 	// Count how many have affected entities (for warning emphasis)
 	const deactivationsWithDependencies = pendingDeactivations.filter(
 		(pd) => pd.affected_entities && pd.affected_entities.length > 0,
 	);
 
-	const handleApply = () => {
-		onApplyReplacements(selectedReplacements);
-	};
-
 	return (
-		<Dialog open={open} onOpenChange={(open) => !open && onCancel()}>
+		<Dialog open={open} onOpenChange={(isOpen) => !isOpen && onCancel()}>
 			<DialogContent className="z-[100] sm:max-w-[700px] max-h-[80vh] overflow-hidden flex flex-col">
 				<DialogHeader>
 					<DialogTitle className="flex items-center gap-2">
@@ -180,6 +211,9 @@ export function WorkflowDeactivationDialog({
 								active dependencies that would break.
 							</span>
 						)}
+						<span className="block mt-1 text-xs">
+							Choose an action for each workflow below.
+						</span>
 					</DialogDescription>
 				</DialogHeader>
 
@@ -189,11 +223,19 @@ export function WorkflowDeactivationDialog({
 							getCompatibleReplacements(pd);
 						const hasReplacements =
 							compatibleReplacements.length > 0;
+						const currentAction = actions[pd.id];
+						const hasDependencies =
+							pd.affected_entities &&
+							pd.affected_entities.length > 0;
 
 						return (
 							<div
 								key={pd.id}
-								className="border rounded-lg p-4 space-y-3"
+								className={`border rounded-lg p-4 space-y-3 ${
+									currentAction
+										? "border-primary/30 bg-primary/5"
+										: ""
+								}`}
 							>
 								{/* Header row */}
 								<div className="flex items-start justify-between gap-4">
@@ -246,79 +288,108 @@ export function WorkflowDeactivationDialog({
 										/>
 									)}
 
-								{/* Replacement selector */}
-								{hasReplacements && (
-									<div className="pt-2 border-t">
-										<label className="text-sm font-medium mb-1.5 block">
-											Transfer identity to:
-										</label>
-										<Select
-											value={
-												selectedReplacements[pd.id] ||
-												""
+								{/* Action selector — single dropdown with replacements + deactivate */}
+								<div className="pt-2 border-t">
+									<label className="text-sm font-medium mb-1.5 block">
+										{hasReplacements
+											? "Transfer identity or deactivate:"
+											: "Action:"}
+									</label>
+									<Select
+										value={
+											currentAction?.type === "map"
+												? currentAction.functionName
+												: currentAction?.type ===
+													  "deactivate"
+													? "__deactivate__"
+													: ""
+										}
+										onValueChange={(value) => {
+											if (value === "__deactivate__") {
+												setAction(pd.id, {
+													type: "deactivate",
+												});
+											} else {
+												setAction(pd.id, {
+													type: "map",
+													functionName: value,
+												});
 											}
-											onValueChange={(value) =>
-												setSelectedReplacements(
-													(prev) => ({
-														...prev,
-														[pd.id]: value,
-													}),
+										}}
+									>
+										<SelectTrigger className="w-full">
+											<SelectValue placeholder="Choose action..." />
+										</SelectTrigger>
+										<SelectContent className="z-[101]">
+											{compatibleReplacements
+												.filter(
+													(r) =>
+														!usedReplacementFunctions.has(
+															r.function_name,
+														) ||
+														(currentAction?.type ===
+															"map" &&
+															currentAction.functionName ===
+																r.function_name),
 												)
-											}
-										>
-											<SelectTrigger className="w-full">
-												<SelectValue placeholder="Select a replacement function..." />
-											</SelectTrigger>
-											<SelectContent className="z-[101]">
-												{compatibleReplacements
-													.sort(
-														(a, b) =>
-															b.similarity_score -
-															a.similarity_score,
-													)
-													.map((r) => (
-														<SelectItem
-															key={
-																r.function_name
-															}
-															value={
-																r.function_name
-															}
+												.sort(
+													(a, b) =>
+														b.similarity_score -
+														a.similarity_score,
+												)
+												.map((r) => (
+													<SelectItem
+														key={r.function_name}
+														value={r.function_name}
+													>
+														<div className="flex items-center gap-2">
+															<span className="font-mono">
+																{
+																	r.function_name
+																}
+															</span>
+															{r.similarity_score >=
+																0.5 && (
+																<Badge
+																	variant="outline"
+																	className="text-xs"
+																>
+																	{Math.round(
+																		r.similarity_score *
+																			100,
+																	)}
+																	% match
+																</Badge>
+															)}
+														</div>
+													</SelectItem>
+												))}
+											{hasReplacements && (
+												<SelectItem
+													value="__separator__"
+													disabled
+													className="p-0 h-px my-1"
+												>
+													<div className="border-t w-full" />
+												</SelectItem>
+											)}
+											<SelectItem value="__deactivate__">
+												<div className="flex items-center gap-2 text-destructive">
+													<XCircle className="h-3 w-3" />
+													Deactivate
+													{hasDependencies && (
+														<Badge
+															variant="destructive"
+															className="text-[10px] px-1 py-0"
 														>
-															<div className="flex items-center gap-2">
-																<span className="font-mono">
-																	{
-																		r.function_name
-																	}
-																</span>
-																{r.similarity_score >=
-																	0.5 && (
-																	<Badge
-																		variant="outline"
-																		className="text-xs"
-																	>
-																		{Math.round(
-																			r.similarity_score *
-																				100,
-																		)}
-																		% match
-																	</Badge>
-																)}
-															</div>
-														</SelectItem>
-													))}
-											</SelectContent>
-										</Select>
-									</div>
-								)}
-
-								{!hasReplacements && (
-									<div className="pt-2 border-t text-sm text-muted-foreground italic">
-										No compatible replacement functions
-										available. This workflow will be
-										deactivated.
-									</div>
-								)}
+															has deps
+														</Badge>
+													)}
+												</div>
+											</SelectItem>
+										</SelectContent>
+									</Select>
+								</div>
 							</div>
 						);
 					})}
@@ -331,9 +402,9 @@ export function WorkflowDeactivationDialog({
 						execution history, schedules, and all references.
 					</p>
 					<p>
-						<strong>Deactivate All:</strong> All listed workflows
-						will be marked inactive. Affected forms, agents, and
-						apps may stop working.
+						<strong>Deactivate:</strong> The workflow will be marked
+						inactive. Affected forms, agents, and apps may stop
+						working.
 					</p>
 				</div>
 
@@ -341,26 +412,12 @@ export function WorkflowDeactivationDialog({
 					<Button variant="outline" onClick={onCancel}>
 						Cancel
 					</Button>
-					<Button
-						variant="destructive"
-						onClick={onForceDeactivate}
-						disabled={deactivationsWithDependencies.length > 0}
-						title={
-							deactivationsWithDependencies.length > 0
-								? "Cannot deactivate workflows with active dependencies"
-								: undefined
-						}
-					>
-						Deactivate All
+					<Button onClick={handleApply} disabled={!allResolved}>
+						Apply{" "}
+						{allResolved
+							? `(${pendingDeactivations.length} resolved)`
+							: `(${Object.keys(actions).length}/${pendingDeactivations.length} resolved)`}
 					</Button>
-					{availableReplacements.length > 0 && (
-						<Button
-							onClick={handleApply}
-							disabled={!allHaveReplacements}
-						>
-							Apply Replacements
-						</Button>
-					)}
 				</DialogFooter>
 			</DialogContent>
 		</Dialog>

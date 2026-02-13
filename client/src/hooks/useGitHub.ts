@@ -35,6 +35,8 @@ export interface PreflightIssue {
 	message: string;
 	severity: "error" | "warning";
 	category: "syntax" | "lint" | "ref" | "orphan" | "manifest" | "health";
+	fix_hint?: string | null;
+	auto_fixable?: boolean;
 }
 
 export interface PreflightResult {
@@ -76,6 +78,7 @@ export interface FetchResult {
 export interface WorkingTreeStatus {
 	changed_files: ChangedFile[];
 	total_changes: number;
+	conflicts?: MergeConflict[];
 }
 
 export interface CommitResult {
@@ -111,6 +114,12 @@ export interface DiffResult {
 	path: string;
 	head_content?: string | null;
 	working_content?: string | null;
+}
+
+export interface DiscardResult {
+	success: boolean;
+	discarded: string[];
+	error?: string | null;
 }
 
 // =============================================================================
@@ -364,6 +373,26 @@ export function useResolveConflicts() {
 }
 
 /**
+ * Queue a discard operation - returns job_id for WebSocket tracking
+ */
+export function useDiscard() {
+	return {
+		mutateAsync: async (paths: string[]): Promise<GitJobResponse> => {
+			const response = await authFetch("/api/github/discard", {
+				method: "POST",
+				body: JSON.stringify({ paths }),
+			});
+			if (!response.ok) {
+				const error = await response.json().catch(() => ({}));
+				throw new Error(error.detail || "Failed to queue discard");
+			}
+			return (await response.json()) as GitJobResponse;
+		},
+		isPending: false,
+	};
+}
+
+/**
  * Queue a file diff operation - returns job_id for WebSocket tracking
  */
 export function useFileDiff() {
@@ -381,6 +410,10 @@ export function useFileDiff() {
 		},
 		isPending: false,
 	};
+}
+
+export function useCleanupOrphaned() {
+	return $api.useMutation("post", "/api/maintenance/cleanup-orphaned");
 }
 
 // =============================================================================

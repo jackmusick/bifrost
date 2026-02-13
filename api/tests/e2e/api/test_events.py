@@ -13,7 +13,7 @@ import uuid
 
 import pytest
 
-from tests.e2e.conftest import poll_until
+from tests.e2e.conftest import poll_until, write_and_register
 
 
 # Simple test workflow content for subscriptions
@@ -34,51 +34,22 @@ async def e2e_events_test_workflow(event: dict) -> dict:
 '''
 
 
-def _wait_for_workflow(e2e_client, platform_admin, workflow_name: str, max_wait: float = 30.0) -> dict | None:
-    """Wait for a workflow to be discovered and return it."""
-    def check_workflow():
-        response = e2e_client.get(
-            "/api/workflows",
-            headers=platform_admin.headers,
-        )
-        if response.status_code == 200:
-            workflows = response.json()
-            workflow = next(
-                (w for w in workflows if w.get("name") == workflow_name),
-                None
-            )
-            if workflow:
-                return workflow
-        return None
-
-    return poll_until(check_workflow, max_wait=max_wait, interval=0.1, backoff=1.5, max_interval=1.0)
-
-
 @pytest.fixture(scope="module")
 def test_workflow(e2e_client, platform_admin):
     """
     Create a test workflow file for event subscriptions.
 
-    Creates the workflow via Editor API, waits for discovery,
-    and cleans up after tests.
+    Writes the workflow file, registers the function, and cleans up after tests.
     """
-    # Create workflow file with index=true for synchronous discovery
-    response = e2e_client.put(
-        "/api/files/editor/content?index=true",
-        headers=platform_admin.headers,
-        json={
-            "path": "e2e_events_test_workflow.py",
-            "content": TEST_WORKFLOW_CONTENT,
-            "encoding": "utf-8",
-        },
+    result = write_and_register(
+        e2e_client,
+        platform_admin.headers,
+        "e2e_events_test_workflow.py",
+        TEST_WORKFLOW_CONTENT,
+        "e2e_events_test_workflow",
     )
-    assert response.status_code == 200, f"Failed to create workflow file: {response.text}"
 
-    # Wait for workflow discovery
-    workflow = _wait_for_workflow(e2e_client, platform_admin, "e2e_events_test_workflow")
-    assert workflow is not None, "Workflow e2e_events_test_workflow not discovered after 30s"
-
-    yield workflow
+    yield result
 
     # Cleanup: delete the workflow file
     e2e_client.delete(

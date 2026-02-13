@@ -138,9 +138,28 @@ def test_dup_wf(message: str):
 
     def test_register_non_python_file_fails(self, e2e_client, platform_admin):
         """Registration fails for non-.py files."""
+        # Write a non-Python file first so the endpoint finds it and
+        # rejects it based on file extension (400) rather than returning
+        # 404 for a missing file.
+        e2e_client.put(
+            "/api/files/editor/content",
+            headers=platform_admin.headers,
+            json={
+                "path": "workflows/readme.md",
+                "content": "# Readme\n",
+                "encoding": "utf-8",
+            },
+        )
+
         resp = e2e_client.post(
             "/api/workflows/register",
             headers=platform_admin.headers,
             json={"path": "workflows/readme.md", "function_name": "foo"},
         )
         assert resp.status_code == 400
+
+        # Cleanup
+        e2e_client.delete(
+            "/api/files/editor?path=workflows/readme.md",
+            headers=platform_admin.headers,
+        )

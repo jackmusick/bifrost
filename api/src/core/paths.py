@@ -68,29 +68,3 @@ def create_session_temp_dir(session_id: str | None = None) -> Path:
     path = Path(f"/tmp/bifrost/sessions/{sid}")
     path.mkdir(parents=True, exist_ok=True)
     return path
-
-
-# =============================================================================
-# DEPRECATED - Remove after migration
-# =============================================================================
-# These are kept temporarily for backwards compatibility during migration.
-# Services should migrate to purpose-specific paths above.
-
-WORKSPACE_PATH = Path("/tmp/bifrost/workspace")  # DEPRECATED: Use purpose-specific paths
-
-
-def get_local_workspace_path() -> Path:
-    """
-    DEPRECATED: Use purpose-specific paths instead.
-
-    This function exists for backwards compatibility during migration.
-    """
-    import warnings
-    warnings.warn(
-        "get_local_workspace_path() is deprecated. Use purpose-specific paths "
-        "(GIT_WORKSPACE_PATH, CODING_AGENT_PATH, etc.) instead.",
-        DeprecationWarning,
-        stacklevel=2,
-    )
-    WORKSPACE_PATH.mkdir(parents=True, exist_ok=True)
-    return WORKSPACE_PATH

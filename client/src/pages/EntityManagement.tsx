@@ -1763,8 +1763,17 @@ export function EntityManagement() {
 				pendingDeactivations={pendingDeactivations}
 				availableReplacements={availableReplacements}
 				open={deleteDialogOpen}
-				onForceDeactivate={handleForceDeactivate}
-				onApplyReplacements={handleApplyReplacements}
+				onResolve={(replacements, workflowsToDeactivate) => {
+					const hasReplacements = Object.keys(replacements).length > 0;
+					const hasDeactivations = workflowsToDeactivate.length > 0;
+					// In entity management context, all items are being deleted.
+					// If any have replacements, apply them; otherwise force-deactivate.
+					if (hasReplacements) {
+						handleApplyReplacements(replacements);
+					} else if (hasDeactivations) {
+						handleForceDeactivate();
+					}
+				}}
 				onCancel={handleCancelDelete}
 			/>
 

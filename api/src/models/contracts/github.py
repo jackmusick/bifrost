@@ -275,6 +275,8 @@ class PreflightIssue(BaseModel):
     message: str = Field(...)
     severity: Literal["error", "warning"] = Field(...)
     category: Literal["syntax", "lint", "ref", "orphan", "manifest", "health"] = Field(...)
+    fix_hint: str | None = Field(default=None, description="Actionable guidance for resolving this issue")
+    auto_fixable: bool = Field(default=False, description="Whether this can be auto-fixed via cleanup endpoint")
 
     model_config = ConfigDict(from_attributes=True)
 
@@ -356,6 +358,7 @@ class WorkingTreeStatus(BaseModel):
     """Working tree status (uncommitted changes)."""
     changed_files: list[ChangedFile] = Field(default_factory=list, description="Changed files")
     total_changes: int = Field(default=0, description="Total number of changes")
+    conflicts: list[MergeConflict] = Field(default_factory=list, description="Unresolved merge/stash conflicts")
 
     model_config = ConfigDict(from_attributes=True)
 
@@ -406,6 +409,22 @@ class DiffResult(BaseModel):
     path: str = Field(..., description="File path")
     head_content: str | None = Field(default=None, description="Content at HEAD (committed)")
     working_content: str | None = Field(default=None, description="Content in working tree")
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+class DiscardRequest(BaseModel):
+    """Request to discard working tree changes for specific files."""
+    paths: list[str] = Field(..., min_length=1, description="File paths to discard changes for")
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+class DiscardResult(BaseModel):
+    """Result of discarding working tree changes."""
+    success: bool = Field(..., description="Whether discard succeeded")
+    discarded: list[str] = Field(default_factory=list, description="Paths that were discarded")
+    error: str | None = Field(default=None, description="Error message if failed")
 
     model_config = ConfigDict(from_attributes=True)
 

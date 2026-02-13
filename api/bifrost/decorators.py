@@ -178,7 +178,6 @@ def workflow(
             category=category,
             tags=tags or [],
             type=workflow_type,
-            is_tool=is_tool,
         )
 
         # Attach metadata to function (all executable types use same attribute)

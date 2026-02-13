@@ -11,7 +11,6 @@ from datetime import datetime, timezone
 from urllib.parse import urlencode
 from uuid import UUID
 
-import aiofiles
 from fastapi import APIRouter, HTTPException, Query, status
 from pydantic import BaseModel, Field
 from typing import Any
@@ -1663,7 +1662,6 @@ async def generate_sdk(
         result = await example_api.list_users()
     """
     from src.services.sdk_generator import generate_sdk_from_url
-    from src.core.paths import get_local_workspace_path
 
     repo = IntegrationsRepository(ctx.db)
 
@@ -1691,14 +1689,15 @@ async def generate_sdk(
             module_name=request.module_name,
         )
 
-        # Write to workspace modules folder
-        workspace_path = get_local_workspace_path()
-        modules_dir = workspace_path / "modules"
-        modules_dir.mkdir(parents=True, exist_ok=True)
-
-        module_path = modules_dir / f"{result.module_name}.py"
-        async with aiofiles.open(module_path, "w", encoding="utf-8") as f:
-            await f.write(result.code)
+        # Write to S3 workspace
+        from src.services.file_storage import FileStorageService
+        storage = FileStorageService(ctx.db)
+        module_path = f"modules/{result.module_name}.py"
+        await storage.write_file(
+            path=module_path,
+            content=result.code.encode("utf-8"),
+            updated_by=str(user.user_id),
+        )
 
         logger.info(
             f"Generated SDK for integration {integration.name}: "

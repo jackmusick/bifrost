@@ -114,6 +114,7 @@ class FileStorageService:
         updated_by: str = "system",
         force_deactivation: bool = False,
         replacements: dict[str, str] | None = None,
+        workflows_to_deactivate: list[str] | None = None,
     ) -> WriteResult:
         """Write file content to storage and update index."""
         return await self._file_ops.write_file(
@@ -122,6 +123,7 @@ class FileStorageService:
             updated_by=updated_by,
             force_deactivation=force_deactivation,
             replacements=replacements,
+            workflows_to_deactivate=workflows_to_deactivate,
         )
 
     async def delete_file(self, path: str) -> None:
@@ -283,6 +285,7 @@ class FileStorageService:
         replacements: dict[str, str] | None = None,
         cached_ast: "ast.Module | None" = None,
         cached_content_str: str | None = None,
+        workflows_to_deactivate: list[str] | None = None,
     ) -> tuple[
         bytes,
         bool,
@@ -315,6 +318,8 @@ class FileStorageService:
                 if cached_ast is None and cached_content_str is not None:
                     # No AST means no decorators were found - skip indexing
                     # Still need to run deactivation check in case file previously had workflows
+                    if workflows_to_deactivate:
+                        await self._deactivation.deactivate_workflows_by_id(workflows_to_deactivate)
                     if force_deactivation:
                         await self._deactivation.deactivate_removed_workflows(path, set())
                     else:
@@ -331,7 +336,8 @@ class FileStorageService:
                 # Python files with decorators: do deactivation check then index
                 return await self._index_python_file_full(
                     path, content, force_deactivation, replacements,
-                    cached_ast=cached_ast, cached_content_str=cached_content_str
+                    cached_ast=cached_ast, cached_content_str=cached_content_str,
+                    workflows_to_deactivate=workflows_to_deactivate,
                 )
             elif path.endswith(".form.yaml"):
                 # Index the form and return proper tuple
@@ -353,6 +359,7 @@ class FileStorageService:
         replacements: dict[str, str] | None = None,
         cached_ast: ast.Module | None = None,
         cached_content_str: str | None = None,
+        workflows_to_deactivate: list[str] | None = None,
     ) -> tuple[
         bytes,
         bool,
@@ -425,6 +432,10 @@ class FileStorageService:
         # Apply replacements first if provided
         if replacements:
             await self._deactivation.apply_workflow_replacements(replacements)
+
+        # Selectively deactivate specific workflows if requested
+        if workflows_to_deactivate:
+            await self._deactivation.deactivate_workflows_by_id(workflows_to_deactivate)
 
         # Check for pending deactivations (always check, even if no new functions)
         pending_deactivations: list[PendingDeactivationInfo] | None = None

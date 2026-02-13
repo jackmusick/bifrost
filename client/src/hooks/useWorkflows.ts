@@ -247,6 +247,52 @@ export async function executeWorkflowWithContext(
 }
 
 /**
+ * Register a decorated function from an existing .py file as a workflow.
+ * Non-hook async function (can be called outside React components).
+ */
+export async function registerWorkflow(
+	path: string,
+	functionName: string,
+): Promise<{ id: string; name: string; function_name: string; path: string; type: string; description?: string | null }> {
+	const response = await authFetch("/api/workflows/register", {
+		method: "POST",
+		body: JSON.stringify({ path, function_name: functionName }),
+	});
+
+	if (!response.ok) {
+		const error = await response.json().catch(() => ({}));
+		throw new Error(
+			error.detail || `Failed to register workflow: ${response.status}`,
+		);
+	}
+
+	return response.json();
+}
+
+/**
+ * Run on-demand preflight validation.
+ * Returns validation results including unregistered function warnings.
+ */
+export async function runPreflight(): Promise<{
+	valid: boolean;
+	issues: Array<{ level: string; category: string; detail: string; path?: string | null }>;
+	warnings: Array<{ level: string; category: string; detail: string; path?: string | null }>;
+}> {
+	const response = await authFetch("/api/maintenance/preflight", {
+		method: "POST",
+	});
+
+	if (!response.ok) {
+		const error = await response.json().catch(() => ({}));
+		throw new Error(
+			error.detail || `Preflight failed: ${response.status}`,
+		);
+	}
+
+	return response.json();
+}
+
+/**
  * Validate a workflow file for syntax errors and decorator issues
  * @param path - Relative workspace path to the workflow file
  * @param content - Optional file content to validate (if not provided, reads from disk)

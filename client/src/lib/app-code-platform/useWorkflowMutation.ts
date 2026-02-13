@@ -154,6 +154,31 @@ export function useWorkflowMutation<T = unknown>(
 
 			const execId = responseData.execution_id;
 
+			// Short-circuit for transient/sync executions (e.g. data providers)
+			// The server already returned the result inline — no WebSocket wait needed
+			if (responseData.is_transient && responseData.status) {
+				if (mountedRef.current) {
+					setExecutionId(execId);
+				}
+				if (responseData.status === "Success") {
+					const result = responseData.result as T;
+					if (mountedRef.current) {
+						setData(result);
+						setIsLoading(false);
+					}
+					return result;
+				} else {
+					const errMsg =
+						responseData.error ??
+						`Workflow ${responseData.status}`;
+					if (mountedRef.current) {
+						setError(errMsg);
+						setIsLoading(false);
+					}
+					throw new Error(errMsg);
+				}
+			}
+
 			// Create deferred for this execution
 			const deferred = createDeferred<T>();
 			deferredMapRef.current.set(execId, deferred);

@@ -9,6 +9,7 @@ export interface FileTreeNode extends FileMetadata {
 interface FileTreeState {
 	fileMap: Map<string, FileMetadata[]>; // path -> children mapping
 	expandedFolders: Set<string>;
+	loadingFolders: Set<string>;
 	isLoading: boolean;
 }
 
@@ -20,6 +21,7 @@ export function useFileTree() {
 	const [state, setState] = useState<FileTreeState>({
 		fileMap: new Map([["", []]]), // Initialize with root
 		expandedFolders: new Set<string>(),
+		loadingFolders: new Set<string>(),
 		isLoading: false,
 	});
 
@@ -35,7 +37,11 @@ export function useFileTree() {
 	};
 
 	const loadFiles = useCallback(async (path: string = "") => {
-		setState((prev) => ({ ...prev, isLoading: true }));
+		setState((prev) => {
+			const newLoadingFolders = new Set(prev.loadingFolders);
+			newLoadingFolders.add(path);
+			return { ...prev, isLoading: true, loadingFolders: newLoadingFolders };
+		});
 
 		try {
 			const allFiles = await fileService.listFiles(path);
@@ -91,14 +97,21 @@ export function useFileTree() {
 			setState((prev) => {
 				const newFileMap = new Map(prev.fileMap);
 				newFileMap.set(path, sortedFiles);
+				const newLoadingFolders = new Set(prev.loadingFolders);
+				newLoadingFolders.delete(path);
 				return {
 					...prev,
 					fileMap: newFileMap,
-					isLoading: false,
+					isLoading: newLoadingFolders.size > 0,
+					loadingFolders: newLoadingFolders,
 				};
 			});
 		} catch {
-			setState((prev) => ({ ...prev, isLoading: false }));
+			setState((prev) => {
+				const newLoadingFolders = new Set(prev.loadingFolders);
+				newLoadingFolders.delete(path);
+				return { ...prev, isLoading: newLoadingFolders.size > 0, loadingFolders: newLoadingFolders };
+			});
 		}
 	}, []);
 
@@ -136,6 +149,13 @@ export function useFileTree() {
 			return state.expandedFolders.has(folderPath);
 		},
 		[state.expandedFolders],
+	);
+
+	const isFolderLoading = useCallback(
+		(folderPath: string) => {
+			return state.loadingFolders.has(folderPath);
+		},
+		[state.loadingFolders],
 	);
 
 	const refreshAll = useCallback(async () => {
@@ -354,6 +374,7 @@ export function useFileTree() {
 	return {
 		files: buildVisibleFiles(),
 		isLoading: state.isLoading,
+		isFolderLoading,
 		loadFiles,
 		toggleFolder,
 		isFolderExpanded,

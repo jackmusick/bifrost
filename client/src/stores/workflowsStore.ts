@@ -28,6 +28,7 @@ interface WorkflowsState {
 	setWorkflows: (workflows: WorkflowMetadata[]) => void;
 	isWorkflowFile: (filePath: string) => boolean;
 	getWorkflowByPath: (filePath: string) => WorkflowMetadata | undefined;
+	getRegisteredFunctions: (filePath: string) => Set<string>;
 }
 
 export const useWorkflowsStore = create<WorkflowsState>((set, get) => ({
@@ -61,5 +62,16 @@ export const useWorkflowsStore = create<WorkflowsState>((set, get) => ({
 	getWorkflowByPath: (filePath) => {
 		const { workflowsByPath } = get();
 		return workflowsByPath.get(filePath);
+	},
+
+	getRegisteredFunctions: (filePath) => {
+		const { workflows } = get();
+		const names = new Set<string>();
+		for (const wf of workflows) {
+			if (wf.relative_file_path === filePath && wf.function_name) {
+				names.add(wf.function_name);
+			}
+		}
+		return names;
 	},
 }));

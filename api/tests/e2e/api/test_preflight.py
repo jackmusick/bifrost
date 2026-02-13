@@ -47,12 +47,19 @@ def unreg_wf():
         )
         assert resp.status_code == 200
         data = resp.json()
-        warnings = data.get("warnings", [])
-        unreg_warnings = [
-            w for w in warnings if "unreg_wf" in w.get("detail", "")
+        # Unregistered functions may appear in issues or warnings depending
+        # on the endpoint implementation.  Combine both lists and look for
+        # entries with the "unregistered_function" category that mention the
+        # function name.
+        all_items = data.get("issues", []) + data.get("warnings", [])
+        unreg_items = [
+            item
+            for item in all_items
+            if item.get("category") == "unregistered_function"
+            and "unreg_wf" in item.get("detail", "")
         ]
-        assert len(unreg_warnings) > 0, (
-            f"Expected unregistered function warning, got: {warnings}"
+        assert len(unreg_items) > 0, (
+            f"Expected unregistered function issue/warning, got: {all_items}"
         )
 
         # Cleanup

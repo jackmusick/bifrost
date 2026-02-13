@@ -62,6 +62,10 @@ class FileContentRequest(BaseModel):
         default=None,
         description="Map of workflow_id -> new_function_name to transfer identity when renaming"
     )
+    workflows_to_deactivate: list[str] | None = Field(
+        default=None,
+        description="List of workflow IDs to selectively deactivate (used with replacements for mixed actions)"
+    )
 
     model_config = ConfigDict(from_attributes=True)
 

@@ -11,7 +11,7 @@ Tests the /api/endpoints/{workflow_name} functionality including:
 
 import pytest
 
-from tests.e2e.conftest import poll_until
+from tests.e2e.conftest import write_and_register
 
 
 # Workflow content for endpoint-enabled workflow
@@ -57,52 +57,23 @@ async def e2e_endpoint_post_only(data: str) -> dict:
 '''
 
 
-def _wait_for_workflow(e2e_client, platform_admin, workflow_name: str, max_wait: float = 30.0) -> dict | None:
-    """Wait for a workflow to be discovered and return it."""
-
-    def check_workflow():
-        response = e2e_client.get(
-            "/api/workflows",
-            headers=platform_admin.headers,
-        )
-        if response.status_code != 200:
-            return None
-        workflows = response.json()
-        workflow = next(
-            (w for w in workflows if w.get("name") == workflow_name),
-            None
-        )
-        return workflow
-
-    return poll_until(check_workflow, max_wait=max_wait, interval=0.2)
-
-
 @pytest.fixture(scope="module")
 def endpoint_workflow_file(e2e_client, platform_admin):
     """
-    Create the endpoint-enabled workflow file via Editor API.
+    Create the endpoint-enabled workflow file and register it.
 
-    This fixture creates the workflow file, waits for discovery,
+    This fixture creates the workflow file, registers the function,
     and cleans up after tests.
     """
-    # Create workflow file with index=true to enable synchronous ID injection
-    response = e2e_client.put(
-        "/api/files/editor/content?index=true",
-        headers=platform_admin.headers,
-        json={
-            "path": "e2e_endpoint_workflow.py",
-            "content": ENDPOINT_WORKFLOW_CONTENT,
-            "encoding": "utf-8",
-        },
+    result = write_and_register(
+        e2e_client,
+        platform_admin.headers,
+        "e2e_endpoint_workflow.py",
+        ENDPOINT_WORKFLOW_CONTENT,
+        "e2e_endpoint_workflow",
     )
-    assert response.status_code == 200, f"Failed to create workflow file: {response.text}"
 
-    # Discovery happens synchronously during file write - just fetch the workflow
-    workflow = _wait_for_workflow(e2e_client, platform_admin, "e2e_endpoint_workflow")
-    assert workflow is not None, "Workflow e2e_endpoint_workflow not discovered after 30s"
-    assert workflow.get("endpoint_enabled"), "Workflow should have endpoint_enabled=True"
-
-    yield workflow
+    yield result
 
     # Cleanup: delete the workflow file
     e2e_client.delete(
@@ -114,25 +85,17 @@ def endpoint_workflow_file(e2e_client, platform_admin):
 @pytest.fixture(scope="module")
 def post_only_workflow_file(e2e_client, platform_admin):
     """
-    Create the POST-only endpoint workflow file via Editor API.
+    Create the POST-only endpoint workflow file and register it.
     """
-    # Create workflow file with index=true to enable synchronous ID injection
-    response = e2e_client.put(
-        "/api/files/editor/content?index=true",
-        headers=platform_admin.headers,
-        json={
-            "path": "e2e_endpoint_post_only.py",
-            "content": POST_ONLY_WORKFLOW_CONTENT,
-            "encoding": "utf-8",
-        },
+    result = write_and_register(
+        e2e_client,
+        platform_admin.headers,
+        "e2e_endpoint_post_only.py",
+        POST_ONLY_WORKFLOW_CONTENT,
+        "e2e_endpoint_post_only",
     )
-    assert response.status_code == 200, f"Failed to create workflow file: {response.text}"
 
-    # Discovery happens synchronously during file write - just fetch the workflow
-    workflow = _wait_for_workflow(e2e_client, platform_admin, "e2e_endpoint_post_only")
-    assert workflow is not None, "Workflow e2e_endpoint_post_only not discovered after 30s"
-
-    yield workflow
+    yield result
 
     # Cleanup: delete the workflow file
     e2e_client.delete(

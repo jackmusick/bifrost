@@ -23,6 +23,10 @@ import {
 	Settings,
 	FileType,
 	Braces,
+	ShieldCheck,
+	AlertTriangle,
+	XCircle,
+	CheckCircle2,
 	type LucideIcon,
 } from "lucide-react";
 import { useFileTree, type FileTreeNode } from "@/hooks/useFileTree";
@@ -37,6 +41,8 @@ import { isExcludedPath } from "@/lib/file-filter";
 import { Button } from "@/components/ui/button";
 import { toast } from "sonner";
 import { WorkflowIdConflictDialog } from "./WorkflowIdConflictDialog";
+import { runPreflight, registerWorkflow } from "@/hooks/useWorkflows";
+import { useReloadWorkflowFile } from "@/hooks/useWorkflows";
 
 /**
  * Interface for a file with its relative path from the drop target
@@ -235,6 +241,25 @@ import {
 	AlertDialogHeader,
 	AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
+import {
+	Dialog,
+	DialogContent,
+	DialogHeader,
+	DialogTitle,
+} from "@/components/ui/dialog";
+
+type PreflightIssue = {
+	level: string;
+	category: string;
+	detail: string;
+	path?: string | null;
+};
+
+type PreflightResult = {
+	valid: boolean;
+	issues: PreflightIssue[];
+	warnings: PreflightIssue[];
+};
 
 type CreatingItemType = "file" | "folder" | null;
 
@@ -245,6 +270,7 @@ export function FileTree() {
 	const {
 		files,
 		isLoading,
+		isFolderLoading,
 		loadFiles,
 		toggleFolder,
 		isFolderExpanded,
@@ -301,6 +327,60 @@ export function FileTree() {
 
 	const inputRef = useRef<HTMLInputElement>(null);
 	const renameInputRef = useRef<HTMLInputElement>(null);
+
+	// Preflight state
+	const [preflightLoading, setPreflightLoading] = useState(false);
+	const [preflightResult, setPreflightResult] =
+		useState<PreflightResult | null>(null);
+	const [preflightRegistering, setPreflightRegistering] = useState<
+		string | null
+	>(null); // function name currently being registered
+	const reloadWorkflows = useReloadWorkflowFile();
+
+	const handlePreflight = useCallback(async () => {
+		setPreflightLoading(true);
+		try {
+			const result = await runPreflight();
+			if (
+				result.valid &&
+				result.warnings.length === 0 &&
+				result.issues.length === 0
+			) {
+				toast.success("All checks passed");
+			} else {
+				setPreflightResult(result);
+			}
+		} catch (err) {
+			toast.error("Preflight failed", {
+				description:
+					err instanceof Error ? err.message : String(err),
+			});
+		} finally {
+			setPreflightLoading(false);
+		}
+	}, []);
+
+	const handlePreflightRegister = useCallback(
+		async (path: string, functionName: string) => {
+			setPreflightRegistering(functionName);
+			try {
+				await registerWorkflow(path, functionName);
+				toast.success(`Registered ${functionName}`);
+				await reloadWorkflows.mutate();
+				// Re-run preflight to refresh results
+				const result = await runPreflight();
+				setPreflightResult(result);
+			} catch (err) {
+				toast.error("Failed to register", {
+					description:
+						err instanceof Error ? err.message : String(err),
+				});
+			} finally {
+				setPreflightRegistering(null);
+			}
+		},
+		[reloadWorkflows],
+	);
 
 	// Load root directory on mount
 	useEffect(() => {
@@ -1059,6 +1139,20 @@ export function FileTree() {
 				>
 					<RefreshCw className="h-4 w-4" />
 				</Button>
+				<Button
+					variant="ghost"
+					size="sm"
+					onClick={handlePreflight}
+					disabled={preflightLoading}
+					title="Preflight Check"
+					className="h-7 px-2"
+				>
+					{preflightLoading ? (
+						<Loader2 className="h-4 w-4 animate-spin" />
+					) : (
+						<ShieldCheck className="h-4 w-4" />
+					)}
+				</Button>
 			</div>
 
 			{/* File list */}
@@ -1132,6 +1226,7 @@ export function FileTree() {
 								onCreateFile={handleCreateFile}
 								onCreateFolder={handleCreateFolder}
 								isExpanded={isFolderExpanded(file.path)}
+								isLoadingContents={isFolderLoading(file.path)}
 								isSelected={openFile?.path === file.path}
 								onDragStart={handleDragStart}
 								onDragOver={handleDragOver}
@@ -1262,6 +1357,101 @@ export function FileTree() {
 					setUploadWorkflowConflicts(null);
 				}}
 			/>
+
+			{/* Preflight Results Dialog */}
+			<Dialog
+				open={preflightResult !== null}
+				onOpenChange={(open) => {
+					if (!open) setPreflightResult(null);
+				}}
+			>
+				<DialogContent className="max-w-lg">
+					<DialogHeader>
+						<DialogTitle className="flex items-center gap-2">
+							{preflightResult?.valid ? (
+								<CheckCircle2 className="h-5 w-5 text-green-500" />
+							) : (
+								<XCircle className="h-5 w-5 text-destructive" />
+							)}
+							Preflight Results
+						</DialogTitle>
+					</DialogHeader>
+					<div className="max-h-80 overflow-y-auto space-y-2">
+						{preflightResult?.issues.map((issue, idx) => (
+							<div
+								key={`issue-${idx}`}
+								className="flex items-start gap-2 rounded-md border border-destructive/30 bg-destructive/5 p-2 text-sm"
+							>
+								<XCircle className="h-4 w-4 mt-0.5 flex-shrink-0 text-destructive" />
+								<div className="flex-1 min-w-0">
+									{issue.path && (
+										<div className="font-mono text-xs text-muted-foreground truncate">
+											{issue.path}
+										</div>
+									)}
+									<div>{issue.detail}</div>
+								</div>
+							</div>
+						))}
+						{preflightResult?.warnings.map((warning, idx) => {
+							// Extract function name from unregistered_function warnings
+							const fnMatch =
+								warning.category === "unregistered_function"
+									? warning.detail.match(
+											/function '(\w+)'/,
+										)
+									: null;
+							const fnName = fnMatch?.[1];
+
+							return (
+								<div
+									key={`warn-${idx}`}
+									className="flex items-start gap-2 rounded-md border border-amber-500/30 bg-amber-500/5 p-2 text-sm"
+								>
+									<AlertTriangle className="h-4 w-4 mt-0.5 flex-shrink-0 text-amber-500" />
+									<div className="flex-1 min-w-0">
+										{warning.path && (
+											<div className="font-mono text-xs text-muted-foreground truncate">
+												{warning.path}
+											</div>
+										)}
+										<div>{warning.detail}</div>
+									</div>
+									{fnName && warning.path && (
+										<Button
+											variant="outline"
+											size="sm"
+											className="h-7 text-xs flex-shrink-0"
+											disabled={
+												preflightRegistering ===
+												fnName
+											}
+											onClick={() =>
+												handlePreflightRegister(
+													warning.path!,
+													fnName,
+												)
+											}
+										>
+											{preflightRegistering ===
+											fnName ? (
+												<Loader2 className="h-3 w-3 animate-spin mr-1" />
+											) : null}
+											Register
+										</Button>
+									)}
+								</div>
+							);
+						})}
+						{preflightResult?.issues.length === 0 &&
+							preflightResult?.warnings.length === 0 && (
+								<div className="text-center text-sm text-muted-foreground py-4">
+									All checks passed
+								</div>
+							)}
+					</div>
+				</DialogContent>
+			</Dialog>
 		</div>
 	);
 }
@@ -1275,6 +1465,7 @@ interface FileTreeItemProps {
 	onCreateFile: (folderPath?: string) => void;
 	onCreateFolder: (folderPath?: string) => void;
 	isExpanded: boolean;
+	isLoadingContents: boolean;
 	isSelected: boolean;
 	onDragStart: (e: React.DragEvent, file: FileMetadata) => void;
 	onDragOver: (e: React.DragEvent, targetFolder?: string) => void;
@@ -1307,6 +1498,7 @@ function FileTreeItem({
 	onCreateFile,
 	onCreateFolder,
 	isExpanded,
+	isLoadingContents,
 	isSelected,
 	onDragStart,
 	onDragOver,
@@ -1343,7 +1535,9 @@ function FileTreeItem({
 				>
 					{isFolder ? (
 						<>
-							{isExpanded ? (
+							{isLoadingContents ? (
+								<Loader2 className="h-4 w-4 flex-shrink-0 animate-spin text-muted-foreground" />
+							) : isExpanded ? (
 								<ChevronDown className="h-4 w-4 flex-shrink-0 text-muted-foreground" />
 							) : (
 								<ChevronRight className="h-4 w-4 flex-shrink-0 text-muted-foreground" />
@@ -1420,7 +1614,9 @@ function FileTreeItem({
 						>
 							{isFolder && (
 								<>
-									{isExpanded ? (
+									{isLoadingContents ? (
+										<Loader2 className="h-4 w-4 flex-shrink-0 animate-spin text-muted-foreground" />
+									) : isExpanded ? (
 										<ChevronDown className="h-4 w-4 flex-shrink-0 text-muted-foreground" />
 									) : (
 										<ChevronRight className="h-4 w-4 flex-shrink-0 text-muted-foreground" />

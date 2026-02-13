@@ -54,8 +54,7 @@ class Scheduler:
     - OAuth token refresh
 
     Also listens for on-demand requests via Redis pub/sub:
-    - Reindex requests (bifrost:scheduler:reindex)
-    - Git sync requests (bifrost:scheduler:git-sync)
+    - Git sync requests (bifrost:scheduler:git-op)
     """
 
     def __init__(self):
@@ -227,8 +226,8 @@ class Scheduler:
         self._pubsub_listener = ResilientPubSubListener(
             redis_url=self.settings.redis_url,
             channels=[
-                "bifrost:scheduler:reindex",
                 "bifrost:scheduler:git-op",
+                "bifrost:scheduler:reimport",
             ],
             on_message=self._handle_pubsub_message,
         )
@@ -237,10 +236,10 @@ class Scheduler:
 
     async def _handle_pubsub_message(self, channel: str, data: dict) -> None:
         """Handle incoming pub/sub message."""
-        if channel == "bifrost:scheduler:reindex":
-            await self._handle_reindex_request(data)
-        elif channel == "bifrost:scheduler:git-op":
+        if channel == "bifrost:scheduler:git-op":
             await self._handle_git_operation(data)
+        elif channel == "bifrost:scheduler:reimport":
+            await self._handle_reimport(data)
         else:
             logger.warning(f"Unknown channel: {channel}")
 
@@ -257,60 +256,51 @@ class Scheduler:
 
         return f"https://x-access-token:{config.token}@github.com/{repo}.git"
 
-    async def _handle_reindex_request(self, data: dict) -> None:
+    async def _handle_reimport(self, data: dict) -> None:
         """
-        Handle reindex request from API.
+        Handle a reimport request.
 
-        Runs the smart_reindex and publishes progress via WebSocket.
+        Re-reads _repo/ from S3 and reimports all entities.
+        Stores result in Redis for polling via GET /api/jobs/{job_id}.
         """
-        from src.core.pubsub import (
-            publish_reindex_completed,
-            publish_reindex_failed,
-            publish_reindex_progress,
-        )
-        from src.core.paths import WORKSPACE_PATH
-        from src.services.file_storage import FileStorageService
+        import json
+
+        from src.core.redis_client import get_redis_client
+        from src.services.github_sync import GitHubSyncService
 
         job_id = data.get("job_id", "unknown")
-        user_id = data.get("user_id", "system")
+        logger.info(f"Reimport requested (job_id={job_id}) - re-importing all entities from S3 repo")
 
-        logger.info(f"Starting reindex job {job_id} for user {user_id}")
-
+        result: dict
         try:
-            # Publish started status
-            await publish_reindex_progress(job_id, "started", 0, 0)
-
-            # Create progress callback
-            async def progress_callback(progress: dict) -> None:
-                await publish_reindex_progress(
-                    job_id,
-                    progress.get("phase", "processing"),
-                    progress.get("current", 0),
-                    progress.get("total", 0),
-                    progress.get("current_file"),
-                )
-
-            # Run smart reindex with database session
             async with get_db_context() as db:
-                storage = FileStorageService(db)
-                result = await storage.smart_reindex(
-                    local_path=WORKSPACE_PATH,
-                    progress_callback=progress_callback,
+                sync_service = GitHubSyncService(
+                    db=db,
+                    repo_url="unused://reimport-only",
+                    settings=get_settings(),
                 )
-
-            # Publish completion
-            await publish_reindex_completed(
-                job_id,
-                counts=result.counts.model_dump(),
-                warnings=result.warnings,
-                errors=[e.model_dump() for e in result.errors],
-            )
-
-            logger.info(f"Reindex job {job_id} completed: {result.counts}")
-
+                count = await sync_service.reimport_from_repo()
+                logger.info(f"Reimport completed successfully: {count} entities imported")
+                result = {
+                    "status": "success",
+                    "message": f"Reimported {count} entities from repository",
+                    "entities_imported": count,
+                }
         except Exception as e:
-            logger.error(f"Reindex job {job_id} failed: {e}", exc_info=True)
-            await publish_reindex_failed(job_id, str(e))
+            logger.error(f"Reimport failed: {e}", exc_info=True)
+            result = {
+                "status": "failed",
+                "error": str(e),
+            }
+
+        # Store result in Redis for HTTP polling (5-minute TTL)
+        try:
+            redis_client = get_redis_client()
+            if redis_client:
+                result_key = f"bifrost:job:{job_id}"
+                await redis_client.setex(result_key, 300, json.dumps(result))
+        except Exception as e:
+            logger.warning(f"Failed to store reimport result in Redis: {e}")
 
     async def _handle_git_operation(self, data: dict) -> None:
         """
@@ -419,11 +409,20 @@ class Scheduler:
                         data=op_result.model_dump(),
                     )
 
+                elif op_type == "git_discard":
+                    paths = data.get("paths", [])
+                    op_result = await sync_service.desktop_discard(paths)
+                    await publish_git_op_completed(
+                        job_id,
+                        status="success" if op_result.success else "failed",
+                        result_type="discard",
+                        data=op_result.model_dump(),
+                        error=op_result.error if not op_result.success else None,
+                    )
+
                 elif op_type == "git_sync_preview":
-                    # Sync preview: fetch + status + preflight
-                    # Result must match CLI's expected format:
-                    #   preview.to_push, preview.to_pull, preview.conflicts,
-                    #   preview.is_empty, preview.preflight
+                    # Sync preview: fetch + status (no preflight — that runs
+                    # during execute after pull, when the working tree is correct)
                     fetch_result = await sync_service.desktop_fetch()
                     if not fetch_result.success:
                         await publish_git_op_completed(
@@ -432,7 +431,6 @@ class Scheduler:
                         )
                     else:
                         status_result = await sync_service.desktop_status()
-                        preflight_result = await sync_service.preflight()
 
                         # Build to_push from local changed files
                         to_push = [
@@ -459,7 +457,7 @@ class Scheduler:
                             "to_push": to_push,
                             "to_pull": to_pull,
                             "conflicts": [],
-                            "preflight": preflight_result.model_dump(),
+                            "preflight": {"valid": True, "issues": []},
                             "commits_ahead": fetch_result.commits_ahead,
                             "commits_behind": fetch_result.commits_behind,
                         }
@@ -470,19 +468,15 @@ class Scheduler:
                         )
 
                 elif op_type == "git_sync_execute":
-                    # Full sync: commit + pull (with resolutions) + push
-                    # Result must provide top-level pulled/pushed/commit_sha for CLI
+                    # Full sync: pull + commit + push
+                    # Pull first so remote changes (which may fix issues) land before
+                    # we run preflight during commit.
                     conflict_resolutions = data.get("conflict_resolutions", {})
 
-                    # Step 1: Commit local changes
-                    commit_result = await sync_service.desktop_commit("Sync from Bifrost")
-                    # Commit may have nothing to commit -- that's OK
-
-                    # Step 2: Pull remote changes
+                    # Step 1: Pull remote changes (no preflight — remote may fix things)
                     pull_result = await sync_service.desktop_pull()
                     if not pull_result.success:
                         if pull_result.conflicts and conflict_resolutions:
-                            # Auto-resolve with provided resolutions
                             resolve_result = await sync_service.desktop_resolve(conflict_resolutions)
                             if not resolve_result.success:
                                 await publish_git_op_completed(
@@ -490,7 +484,8 @@ class Scheduler:
                                     error=resolve_result.error,
                                 )
                             else:
-                                # Resolution succeeded, continue to push
+                                # Resolution succeeded, commit + push
+                                commit_result = await sync_service.desktop_commit("Sync from Bifrost")
                                 push_result = await sync_service.desktop_push()
                                 await publish_git_op_completed(
                                     job_id,
@@ -512,6 +507,9 @@ class Scheduler:
                                 error=pull_result.error,
                             )
                     else:
+                        # Step 2: Commit local changes (runs preflight after pull)
+                        commit_result = await sync_service.desktop_commit("Sync from Bifrost")
+
                         # Step 3: Push
                         push_result = await sync_service.desktop_push()
                         await publish_git_op_completed(

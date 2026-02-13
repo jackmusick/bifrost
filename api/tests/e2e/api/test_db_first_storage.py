@@ -13,6 +13,8 @@ Key behaviors validated:
 
 import pytest
 
+from tests.e2e.conftest import write_and_register
+
 
 @pytest.mark.e2e
 class TestDBFirstWorkflows:
@@ -35,31 +37,13 @@ async def db_first_test_workflow(message: str) -> dict:
     """A test workflow to verify DB storage."""
     return {"message": message, "source": "db"}
 '''
-        # Write workflow via editor API with index=true for synchronous discovery
-        response = e2e_client.put(
-            "/api/files/editor/content?index=true",
-            headers=platform_admin.headers,
-            json={
-                "path": "db_first_test_workflow.py",
-                "content": workflow_content,
-                "encoding": "utf-8",
-            },
+        result = write_and_register(
+            e2e_client, platform_admin.headers,
+            "db_first_test_workflow.py", workflow_content,
+            "db_first_test_workflow",
         )
-        assert response.status_code == 200, f"Write workflow failed: {response.text}"
-
-        # Verify workflow appears in workflows list
-        response = e2e_client.get(
-            "/api/workflows",
-            headers=platform_admin.headers,
-        )
-        assert response.status_code == 200
-        workflows = response.json()
-        workflow = next(
-            (w for w in workflows if w["name"] == "db_first_test_workflow"),
-            None
-        )
-        assert workflow is not None, "Workflow not found in database"
-        assert workflow.get("id"), "Workflow should have an ID"
+        workflow_id = result["id"]
+        assert workflow_id, "Workflow should have an ID"
 
         # Verify we can read the workflow code via editor
         response = e2e_client.get(
@@ -86,15 +70,11 @@ from bifrost import workflow
 async def read_test_workflow(x: int) -> int:
     return x * 2
 '''
-        # Create workflow with index=true for synchronous discovery
-        e2e_client.put(
-            "/api/files/editor/content?index=true",
-            headers=platform_admin.headers,
-            json={
-                "path": "read_test_workflow.py",
-                "content": workflow_content,
-                "encoding": "utf-8",
-            },
+        # Create workflow via write_and_register
+        write_and_register(
+            e2e_client, platform_admin.headers,
+            "read_test_workflow.py", workflow_content,
+            "read_test_workflow",
         )
 
         # Update the workflow via editor (simulates editing)
@@ -141,28 +121,14 @@ from bifrost import workflow
 async def hash_test_workflow() -> str:
     return "version1"
 '''
-        # Create workflow with index=true for synchronous discovery
-        e2e_client.put(
-            "/api/files/editor/content?index=true",
-            headers=platform_admin.headers,
-            json={
-                "path": "hash_test_workflow.py",
-                "content": original_content,
-                "encoding": "utf-8",
-            },
+        # Create workflow and capture its ID
+        original_result = write_and_register(
+            e2e_client, platform_admin.headers,
+            "hash_test_workflow.py", original_content,
+            "hash_test_workflow",
         )
-
-        # Get workflow and note its state
-        response = e2e_client.get(
-            "/api/workflows",
-            headers=platform_admin.headers,
-        )
-        workflows = response.json()
-        original_workflow = next(
-            (w for w in workflows if w["name"] == "hash_test_workflow"),
-            None
-        )
-        assert original_workflow is not None
+        original_id = original_result["id"]
+        assert original_id, "Workflow should have an ID"
 
         # Update the workflow
         updated_content = '''"""Hash Test Workflow - Modified"""
@@ -172,31 +138,15 @@ from bifrost import workflow
 async def hash_test_workflow() -> str:
     return "version2"
 '''
-        response = e2e_client.put(
-            "/api/files/editor/content?index=true",
-            headers=platform_admin.headers,
-            json={
-                "path": "hash_test_workflow.py",
-                "content": updated_content,
-                "encoding": "utf-8",
-            },
+        updated_result = write_and_register(
+            e2e_client, platform_admin.headers,
+            "hash_test_workflow.py", updated_content,
+            "hash_test_workflow",
         )
-        assert response.status_code == 200
-
-        # Get updated workflow
-        response = e2e_client.get(
-            "/api/workflows",
-            headers=platform_admin.headers,
-        )
-        workflows = response.json()
-        updated_workflow = next(
-            (w for w in workflows if w["name"] == "hash_test_workflow"),
-            None
-        )
-        assert updated_workflow is not None
+        updated_id = updated_result["id"]
 
         # ID should remain the same (update, not recreate)
-        assert original_workflow["id"] == updated_workflow["id"], \
+        assert original_id == updated_id, \
             "Workflow ID should remain stable across updates"
 
         # Cleanup
@@ -349,31 +299,12 @@ async def db_first_test_provider(filter_value: str = None):
         options = [o for o in options if filter_value in o["label"]]
     return options
 '''
-        # Write data provider via editor with index=true for synchronous discovery
-        response = e2e_client.put(
-            "/api/files/editor/content?index=true",
-            headers=platform_admin.headers,
-            json={
-                "path": "db_first_test_provider.py",
-                "content": dp_content,
-                "encoding": "utf-8",
-            },
+        result = write_and_register(
+            e2e_client, platform_admin.headers,
+            "db_first_test_provider.py", dp_content,
+            "db_first_test_provider",
         )
-        assert response.status_code == 200, f"Write DP failed: {response.text}"
-
-        # Verify data provider appears in list
-        response = e2e_client.get(
-            "/api/workflows?type=data_provider",
-            headers=platform_admin.headers,
-        )
-        assert response.status_code == 200
-        providers = response.json()
-        provider = next(
-            (p for p in providers if p["name"] == "db_first_test_provider"),
-            None
-        )
-        assert provider is not None, "Data provider not found"
-        assert provider.get("id"), "Data provider should have an ID"
+        assert result["id"], "Data provider should have an ID"
 
         # Cleanup
         e2e_client.delete(
@@ -399,28 +330,12 @@ async def db_first_test_tool(input_text: str) -> str:
     """Processes input text."""
     return f"Processed: {input_text}"
 '''
-        # Write tool via editor with index=true for synchronous discovery
-        response = e2e_client.put(
-            "/api/files/editor/content?index=true",
-            headers=platform_admin.headers,
-            json={
-                "path": "db_first_test_tool.py",
-                "content": tool_content,
-                "encoding": "utf-8",
-            },
+        result = write_and_register(
+            e2e_client, platform_admin.headers,
+            "db_first_test_tool.py", tool_content,
+            "db_first_test_tool",
         )
-        assert response.status_code == 200, f"Write tool failed: {response.text}"
-
-        # Verify tool appears in workflows list (tools are in workflows table)
-        response = e2e_client.get(
-            "/api/workflows",
-            headers=platform_admin.headers,
-            params={"type": "tool"},
-        )
-        assert response.status_code == 200
-        tools = response.json()
-        # Verify tool exists in list (soft check - depends on filter implementation)
-        assert any(t["name"] == "db_first_test_tool" for t in tools) or True
+        assert result["id"], "Tool should have an ID"
 
         # Cleanup
         e2e_client.delete(

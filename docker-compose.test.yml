@@ -340,6 +340,7 @@ services:
       - ./api/pytest.ini:/app/pytest.ini:ro
       - ./api/pyproject.toml:/app/pyproject.toml:ro
       - test-coverage:/coverage  # Shared coverage data across phases
+      - /tmp/bifrost:/tmp/bifrost  # Host-mounted for test results (junitxml)
     working_dir: /app
     depends_on:
       pgbouncer:

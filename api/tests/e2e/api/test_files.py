@@ -6,7 +6,7 @@ Tests workspace file listing, reading, writing, and folder operations.
 
 import pytest
 
-from tests.e2e.conftest import poll_until
+from tests.e2e.conftest import write_and_register
 
 
 @pytest.mark.e2e
@@ -316,19 +316,17 @@ from bifrost import workflow, context
 async def e2e_discovery_test_workflow(value: str):
     return {"value": value, "user": context.email}
 '''
-        # Use index=true to inject workflow ID into decorator
-        response = e2e_client.put(
-            "/api/files/editor/content?index=true",
-            headers=platform_admin.headers,
-            json={
-                "path": "e2e_discovery_test.py",
-                "content": workflow_content,
-                "encoding": "utf-8",
-            },
+        result = write_and_register(
+            e2e_client, platform_admin.headers,
+            "e2e_discovery_test.py", workflow_content,
+            "e2e_discovery_test_workflow",
         )
-        assert response.status_code == 200, f"Create workflow file failed: {response.text}"
 
-        yield {"path": "e2e_discovery_test.py", "name": "e2e_discovery_test_workflow"}
+        yield {
+            "path": "e2e_discovery_test.py",
+            "name": "e2e_discovery_test_workflow",
+            "id": result["id"],
+        }
 
         # Cleanup
         e2e_client.delete(
@@ -338,45 +336,29 @@ async def e2e_discovery_test_workflow(value: str):
 
     def test_workflow_file_creates_workflow(self, e2e_client, platform_admin, test_workflow_file):
         """Workflow is discoverable after file creation."""
-
-        def check_workflow():
-            response = e2e_client.get(
-                "/api/workflows",
-                headers=platform_admin.headers,
-            )
-            if response.status_code != 200:
-                return None
-            workflows = response.json()
-            workflow_names = [w["name"] for w in workflows]
-            if test_workflow_file["name"] in workflow_names:
-                return True
-            return None
-
-        workflow_found = poll_until(check_workflow, max_wait=30.0, interval=0.2)
-
-        assert workflow_found, \
-            f"Workflow {test_workflow_file['name']} not discovered after 30s"
+        response = e2e_client.get(
+            "/api/workflows",
+            headers=platform_admin.headers,
+        )
+        assert response.status_code == 200
+        workflows = response.json()
+        workflow_names = [w["name"] for w in workflows]
+        assert test_workflow_file["name"] in workflow_names, \
+            f"Workflow {test_workflow_file['name']} not found in workflow list"
 
     def test_workflow_has_parameters(self, e2e_client, platform_admin, test_workflow_file):
         """Discovered workflow includes parameters."""
-
-        def check_workflow_with_params():
-            response = e2e_client.get(
-                "/api/workflows",
-                headers=platform_admin.headers,
-            )
-            if response.status_code != 200:
-                return None
-            workflows = response.json()
-            workflow = next(
-                (w for w in workflows if w["name"] == test_workflow_file["name"]), None
-            )
-            if workflow and "parameters" in workflow:
-                return workflow
-            return None
-
-        workflow = poll_until(check_workflow_with_params, max_wait=10.0, interval=0.2)
-
-        assert workflow, f"Workflow {test_workflow_file['name']} with parameters not found"
+        response = e2e_client.get(
+            "/api/workflows",
+            headers=platform_admin.headers,
+        )
+        assert response.status_code == 200
+        workflows = response.json()
+        workflow = next(
+            (w for w in workflows if w["name"] == test_workflow_file["name"]), None
+        )
+        assert workflow is not None, \
+            f"Workflow {test_workflow_file['name']} not found"
+        assert "parameters" in workflow, "Workflow missing parameters"
         param_names = [p["name"] for p in workflow["parameters"]]
         assert "value" in param_names, "Missing 'value' parameter"

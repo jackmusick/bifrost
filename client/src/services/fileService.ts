@@ -82,11 +82,13 @@ export const fileService = {
 		forceIds?: Record<string, string>,
 		forceDeactivation?: boolean,
 		replacements?: Record<string, string>,
+		workflowsToDeactivate?: string[],
 	): Promise<FileContentResponse> {
 		const body: FileContentRequest & {
 			force_ids?: Record<string, string> | null;
 			force_deactivation?: boolean;
 			replacements?: Record<string, string> | null;
+			workflows_to_deactivate?: string[] | null;
 		} = {
 			path,
 			content,
@@ -95,6 +97,7 @@ export const fileService = {
 			force_ids: forceIds ?? null,
 			force_deactivation: forceDeactivation ?? false,
 			replacements: replacements ?? null,
+			workflows_to_deactivate: workflowsToDeactivate ?? null,
 		};
 
 		const url = index
@@ -116,7 +119,19 @@ export const fileService = {
 		}
 
 		if (!response.ok) {
-			throw new Error(`Failed to write file: ${response.statusText}`);
+			// Try to extract detail from JSON error response (e.g., 403 for .bifrost/ files)
+			let detail = response.statusText;
+			try {
+				const errorBody = await response.json();
+				if (errorBody.detail) {
+					detail = typeof errorBody.detail === "string"
+						? errorBody.detail
+						: JSON.stringify(errorBody.detail);
+				}
+			} catch {
+				// Ignore JSON parse errors, fall back to statusText
+			}
+			throw new Error(detail);
 		}
 
 		return response.json();

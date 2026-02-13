@@ -12,6 +12,8 @@ rather than silently ignoring them.
 import pytest
 from uuid import uuid4
 
+from tests.e2e.conftest import write_and_register
+
 
 @pytest.mark.e2e
 class TestFormReferenceValidation:
@@ -332,7 +334,6 @@ class TestWorkflowTypeValidation:
 
     def test_form_accepts_tool_as_workflow_id(self, e2e_client, platform_admin):
         """Form workflow_id accepts both workflow and tool types."""
-        # Create a tool via editor API with index=true for synchronous discovery
         tool_content = '''"""Test Tool for Validation"""
 from bifrost import tool
 
@@ -343,28 +344,11 @@ from bifrost import tool
 async def validation_test_tool(query: str) -> str:
     return f"Result: {query}"
 '''
-        create_response = e2e_client.put(
-            "/api/files/editor/content?index=true",
-            headers=platform_admin.headers,
-            json={
-                "path": "validation_test_tool.py",
-                "content": tool_content,
-                "encoding": "utf-8",
-            },
+        result = write_and_register(
+            e2e_client, platform_admin.headers,
+            "validation_test_tool.py", tool_content, "validation_test_tool",
         )
-        assert create_response.status_code == 200
-
-        # Find the tool we just created - check all workflows including tools
-        workflows_response = e2e_client.get(
-            "/api/workflows",
-            headers=platform_admin.headers,
-        )
-        assert workflows_response.status_code == 200
-        workflows = workflows_response.json()
-
-        tool = next((w for w in workflows if w.get("name") == "validation_test_tool"), None)
-        assert tool is not None, "Tool should have been created"
-        assert tool.get("type") == "tool", f"Should be type='tool', got {tool.get('type')}"
+        assert result["type"] == "tool", f"Should be type='tool', got {result['type']}"
 
         # Create form with tool ID as workflow_id — tools are valid workflow targets
         response = e2e_client.post(
@@ -372,7 +356,7 @@ async def validation_test_tool(query: str) -> str:
             headers=platform_admin.headers,
             json={
                 "name": "Test Form with Tool",
-                "workflow_id": tool["id"],
+                "workflow_id": result["id"],
                 "form_schema": {"fields": []},
                 "access_level": "authenticated",
             },
@@ -392,7 +376,6 @@ async def validation_test_tool(query: str) -> str:
 
     def test_form_rejects_data_provider_as_workflow_id(self, e2e_client, platform_admin):
         """Form workflow_id must reference a workflow type, not a data_provider."""
-        # Create a data provider via editor API with index=true for synchronous discovery
         dp_content = '''"""Test Data Provider for Validation"""
 from bifrost import data_provider
 
@@ -403,26 +386,10 @@ from bifrost import data_provider
 async def validation_test_dp() -> list:
     return [{"value": "a", "label": "A"}]
 '''
-        create_response = e2e_client.put(
-            "/api/files/editor/content?index=true",
-            headers=platform_admin.headers,
-            json={
-                "path": "validation_test_dp.py",
-                "content": dp_content,
-                "encoding": "utf-8",
-            },
+        result = write_and_register(
+            e2e_client, platform_admin.headers,
+            "validation_test_dp.py", dp_content, "validation_test_dp",
         )
-        assert create_response.status_code == 200
-
-        # Find the data provider we just created
-        dp_response = e2e_client.get(
-            "/api/workflows?type=data_provider",
-            headers=platform_admin.headers,
-        )
-        assert dp_response.status_code == 200
-        data_providers = dp_response.json()
-        dp = next((d for d in data_providers if d.get("name") == "validation_test_dp"), None)
-        assert dp is not None, "Data provider should have been created"
 
         # Try to create form with data_provider ID as workflow_id
         response = e2e_client.post(
@@ -430,7 +397,7 @@ async def validation_test_dp() -> list:
             headers=platform_admin.headers,
             json={
                 "name": "Test Form with DP",
-                "workflow_id": dp["id"],
+                "workflow_id": result["id"],
                 "form_schema": {"fields": []},
                 "access_level": "authenticated",
             },
@@ -449,7 +416,6 @@ async def validation_test_dp() -> list:
 
     def test_agent_rejects_workflow_as_tool(self, e2e_client, platform_admin):
         """Agent tool_ids must reference type='tool', not regular workflows."""
-        # Create a regular workflow via editor API with index=true for synchronous discovery
         workflow_content = '''"""Test Workflow for Validation"""
 from bifrost import workflow
 
@@ -460,27 +426,11 @@ from bifrost import workflow
 async def validation_test_workflow(input: str) -> str:
     return f"Processed: {input}"
 '''
-        create_response = e2e_client.put(
-            "/api/files/editor/content?index=true",
-            headers=platform_admin.headers,
-            json={
-                "path": "validation_test_workflow.py",
-                "content": workflow_content,
-                "encoding": "utf-8",
-            },
+        result = write_and_register(
+            e2e_client, platform_admin.headers,
+            "validation_test_workflow.py", workflow_content, "validation_test_workflow",
         )
-        assert create_response.status_code == 200
-
-        # Find the workflow we just created
-        workflows_response = e2e_client.get(
-            "/api/workflows",
-            headers=platform_admin.headers,
-        )
-        assert workflows_response.status_code == 200
-        workflows = workflows_response.json()
-        workflow = next((w for w in workflows if w.get("name") == "validation_test_workflow"), None)
-        assert workflow is not None, "Workflow should have been created"
-        assert workflow.get("type") == "workflow", f"Should be type='workflow', got {workflow.get('type')}"
+        assert result["type"] == "workflow", f"Should be type='workflow', got {result['type']}"
 
         # Try to create agent with regular workflow as tool
         response = e2e_client.post(
@@ -491,7 +441,7 @@ async def validation_test_workflow(input: str) -> str:
                 "description": "Testing tool type validation",
                 "system_prompt": "You are a test agent.",
                 "channels": ["chat"],
-                "tool_ids": [workflow["id"]],
+                "tool_ids": [result["id"]],
             },
         )
         assert response.status_code == 422, f"Expected 422, got {response.status_code}: {response.text}"

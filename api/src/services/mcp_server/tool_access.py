@@ -16,7 +16,7 @@ from sqlalchemy.orm import selectinload
 from src.models.contracts.agents import ToolInfo
 from src.models.enums import AgentAccessLevel
 from src.models.orm.agents import Agent
-from src.routers.tools import SYSTEM_TOOLS
+from src.routers.tools import get_system_tools
 from src.services.mcp_server.config_service import MCPConfig, MCPConfigService
 
 logger = logging.getLogger(__name__)
@@ -57,8 +57,8 @@ class MCPToolAccessService:
     - Workflow tools: agent.tools relationship (workflows assigned via agent_tools table)
     """
 
-    # Map system tool IDs to their metadata from SYSTEM_TOOLS
-    _SYSTEM_TOOL_MAP: dict[str, ToolInfo] = {tool.id: tool for tool in SYSTEM_TOOLS}
+    # Map system tool IDs to their metadata from get_system_tools()
+    _SYSTEM_TOOL_MAP: dict[str, ToolInfo] = {tool.id: tool for tool in get_system_tools()}
 
     def __init__(self, session: AsyncSession):
         self.session = session

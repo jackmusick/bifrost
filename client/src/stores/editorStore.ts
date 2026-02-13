@@ -246,8 +246,9 @@ interface EditorState {
 		} | null,
 	) => void;
 	resolveDeactivationConflict: (
-		action: "force_deactivate" | "apply_replacements" | "cancel",
+		action: "force_deactivate" | "apply" | "cancel",
 		replacements?: Record<string, string>,
+		workflowsToDeactivate?: string[],
 	) => Promise<FileContentResponse | null>;
 
 	// Diff preview actions
@@ -875,7 +876,7 @@ export const useEditorStore = create<EditorState>()(
 			setPendingDeactivationConflict: (conflict) =>
 				set({ pendingDeactivationConflict: conflict }),
 
-			resolveDeactivationConflict: async (action, replacements) => {
+			resolveDeactivationConflict: async (action, replacements, workflowsToDeactivate) => {
 				const state = get();
 				const conflict = state.pendingDeactivationConflict;
 				if (!conflict) return null;
@@ -888,29 +889,33 @@ export const useEditorStore = create<EditorState>()(
 				}
 
 				try {
+					// Don't send etag — the initial save already wrote the file
+					// content to storage (before the 409), so the etag has changed.
+					// The content is the same; skip the etag check.
 					if (action === "force_deactivate") {
 						// Re-save with force_deactivation=true
 						const response = await fileService.writeFile(
 							conflict.filePath,
 							conflict.content,
 							conflict.encoding,
-							conflict.etag,
+							undefined, // skip etag check
 							false, // index
 							undefined, // forceIds
 							true, // forceDeactivation
 						);
 						return response;
 					} else {
-						// apply_replacements: Save with replacements map
+						// apply: Save with replacements and/or selective deactivations
 						const response = await fileService.writeFile(
 							conflict.filePath,
 							conflict.content,
 							conflict.encoding,
-							conflict.etag,
+							undefined, // skip etag check
 							false, // index
 							undefined, // forceIds
 							false, // forceDeactivation
 							replacements,
+							workflowsToDeactivate,
 						);
 						return response;
 					}
@@ -919,6 +924,8 @@ export const useEditorStore = create<EditorState>()(
 						"Failed to resolve deactivation conflict:",
 						error,
 					);
+					// Restore conflict state so the user can retry
+					set({ pendingDeactivationConflict: conflict });
 					return null;
 				}
 			},

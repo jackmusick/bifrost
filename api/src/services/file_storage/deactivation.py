@@ -276,6 +276,54 @@ class DeactivationProtectionService:
             await self.db.execute(stmt)
             logger.info(f"Applied replacement: workflow {old_id} -> function {new_function_name}")
 
+    async def deactivate_workflows_by_id(
+        self,
+        workflow_ids: list[str],
+    ) -> int:
+        """
+        Deactivate specific workflows by their IDs.
+
+        Used for selective per-workflow deactivation when the user chooses
+        to deactivate some workflows while mapping others to replacements.
+
+        Args:
+            workflow_ids: List of workflow UUID strings to deactivate
+
+        Returns:
+            Number of workflows deactivated
+        """
+        from src.models import Workflow
+
+        if not workflow_ids:
+            return 0
+
+        uuids = []
+        for wid in workflow_ids:
+            try:
+                uuids.append(UUID_type(wid))
+            except ValueError:
+                logger.warning(f"Invalid workflow ID in deactivation list: {wid}")
+                continue
+
+        if not uuids:
+            return 0
+
+        stmt = (
+            update(Workflow)
+            .where(
+                Workflow.id.in_(uuids),
+                Workflow.is_active == True,  # noqa: E712
+            )
+            .values(is_active=False)
+        )
+        result = await self.db.execute(stmt)
+        count = result.rowcount if result.rowcount else 0
+
+        if count > 0:
+            logger.info(f"Selectively deactivated {count} workflow(s) by ID")
+
+        return count
+
     async def deactivate_removed_workflows(
         self,
         path: str,

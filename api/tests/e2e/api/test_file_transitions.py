@@ -14,6 +14,8 @@ changes and route storage appropriately.
 
 import pytest
 
+from tests.e2e.conftest import write_and_register
+
 
 @pytest.mark.e2e
 class TestRegularFileToWorkflow:
@@ -52,7 +54,7 @@ async def process_data(data: dict) -> dict:
         assert not any(w["name"] == "process_data" for w in workflows), \
             "Regular file should not appear in workflows"
 
-        # Step 2: Add @workflow decorator
+        # Step 2: Add @workflow decorator and register
         workflow_content = '''"""Workflow Module - Upgraded"""
 from bifrost import workflow
 
@@ -64,30 +66,17 @@ async def process_data(data: dict) -> dict:
     """Process some data."""
     return {"processed": True, "original": data}
 '''
-        response = e2e_client.put(
-            "/api/files/editor/content",
-            headers=platform_admin.headers,
-            json={
-                "path": "transition_test.py",
-                "content": workflow_content,
-                "encoding": "utf-8",
-            },
+        registered = write_and_register(
+            e2e_client,
+            platform_admin.headers,
+            "transition_test.py",
+            workflow_content,
+            "process_data",
         )
-        assert response.status_code == 200
 
         # Step 3: Verify workflow now appears in DB
-        response = e2e_client.get(
-            "/api/workflows",
-            headers=platform_admin.headers,
-        )
-        workflows = response.json()
-        workflow = next(
-            (w for w in workflows if w["name"] == "process_data_workflow"),
-            None
-        )
-        assert workflow is not None, \
-            "Workflow should appear after adding decorator"
-        assert workflow.get("id"), "Workflow should have an ID"
+        assert registered["name"] == "process_data_workflow"
+        assert registered.get("id"), "Workflow should have an ID"
 
         # Cleanup
         e2e_client.delete(
@@ -130,7 +119,7 @@ async def get_options():
         providers = response.json()
         assert not any(p["name"] == "transition_options_provider" for p in providers)
 
-        # Add @data_provider decorator
+        # Add @data_provider decorator and register
         dp_content = '''"""Data Provider Module - Upgraded"""
 from bifrost import data_provider
 
@@ -141,24 +130,16 @@ from bifrost import data_provider
 async def get_options():
     return [{"value": "a", "label": "A"}]
 '''
-        e2e_client.put(
-            "/api/files/editor/content",
-            headers=platform_admin.headers,
-            json={
-                "path": "dp_transition_test.py",
-                "content": dp_content,
-                "encoding": "utf-8",
-            },
+        registered = write_and_register(
+            e2e_client,
+            platform_admin.headers,
+            "dp_transition_test.py",
+            dp_content,
+            "get_options",
         )
 
-        # Verify appears in data providers
-        response = e2e_client.get(
-            "/api/workflows?type=data_provider",
-            headers=platform_admin.headers,
-        )
-        providers = response.json()
-        assert any(p["name"] == "transition_options_provider" for p in providers), \
-            "Data provider should appear after adding decorator"
+        # Verify appears as data provider
+        assert registered["name"] == "transition_options_provider"
 
         # Cleanup
         e2e_client.delete(
@@ -176,7 +157,7 @@ class TestFormDeletion:
         self, e2e_client, platform_admin
     ):
         """Deleting workflow file removes workflow from DB."""
-        # Create workflow
+        # Create workflow via write_and_register
         workflow_content = '''"""Delete File Test Workflow"""
 from bifrost import workflow
 
@@ -184,23 +165,16 @@ from bifrost import workflow
 async def delete_file_test_workflow() -> str:
     return "test"
 '''
-        e2e_client.put(
-            "/api/files/editor/content",
-            headers=platform_admin.headers,
-            json={
-                "path": "delete_file_test.py",
-                "content": workflow_content,
-                "encoding": "utf-8",
-            },
+        registered = write_and_register(
+            e2e_client,
+            platform_admin.headers,
+            "delete_file_test.py",
+            workflow_content,
+            "delete_file_test_workflow",
         )
 
         # Verify workflow exists
-        response = e2e_client.get(
-            "/api/workflows",
-            headers=platform_admin.headers,
-        )
-        workflows = response.json()
-        assert any(w["name"] == "delete_file_test_workflow" for w in workflows)
+        assert registered["name"] == "delete_file_test_workflow"
 
         # Delete file
         response = e2e_client.delete(
@@ -227,7 +201,7 @@ class TestDecoratorTypeChanges:
         """
         Changing from @workflow to @tool should update the type.
         """
-        # Create as workflow
+        # Create as workflow via write_and_register
         workflow_content = '''"""Workflow First"""
 from bifrost import workflow
 
@@ -238,27 +212,16 @@ from bifrost import workflow
 async def type_change_test(x: str) -> str:
     return f"Result: {x}"
 '''
-        e2e_client.put(
-            "/api/files/editor/content",
-            headers=platform_admin.headers,
-            json={
-                "path": "type_change_test.py",
-                "content": workflow_content,
-                "encoding": "utf-8",
-            },
+        registered = write_and_register(
+            e2e_client,
+            platform_admin.headers,
+            "type_change_test.py",
+            workflow_content,
+            "type_change_test",
         )
 
         # Verify appears as workflow
-        response = e2e_client.get(
-            "/api/workflows",
-            headers=platform_admin.headers,
-        )
-        workflows = response.json()
-        workflow = next(
-            (w for w in workflows if w["name"] == "type_change_test"),
-            None
-        )
-        assert workflow is not None
+        assert registered["name"] == "type_change_test"
 
         # Change to @tool
         tool_content = '''"""Tool Now"""
@@ -294,7 +257,7 @@ async def type_change_test(x: str) -> str:
         self, e2e_client, platform_admin
     ):
         """Changing from @workflow to @data_provider updates type."""
-        # Create as workflow
+        # Create as workflow via write_and_register
         workflow_content = '''"""Workflow to DP"""
 from bifrost import workflow
 
@@ -302,23 +265,16 @@ from bifrost import workflow
 async def workflow_to_dp_test() -> list:
     return []
 '''
-        e2e_client.put(
-            "/api/files/editor/content",
-            headers=platform_admin.headers,
-            json={
-                "path": "workflow_to_dp_test.py",
-                "content": workflow_content,
-                "encoding": "utf-8",
-            },
+        registered = write_and_register(
+            e2e_client,
+            platform_admin.headers,
+            "workflow_to_dp_test.py",
+            workflow_content,
+            "workflow_to_dp_test",
         )
 
         # Verify exists as workflow
-        response = e2e_client.get(
-            "/api/workflows",
-            headers=platform_admin.headers,
-        )
-        workflows = response.json()
-        assert any(w["name"] == "workflow_to_dp_test" for w in workflows)
+        assert registered["name"] == "workflow_to_dp_test"
 
         # Change to data provider
         dp_content = '''"""Now a Data Provider"""

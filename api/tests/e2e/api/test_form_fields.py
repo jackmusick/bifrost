@@ -8,6 +8,8 @@ radio, and datetime fields maintain their types through the execution pipeline.
 
 import pytest
 
+from tests.e2e.conftest import write_and_register
+
 
 @pytest.mark.e2e
 class TestFormFieldTypes:
@@ -71,27 +73,14 @@ async def e2e_all_fields_workflow(
         "scope": context.scope,
     }
 '''
-        # Save workflow
-        response = e2e_client.put(
-            "/api/files/editor/content?index=true",
-            headers=platform_admin.headers,
-            json={
-                "path": "e2e_all_fields_workflow.py",
-                "content": workflow_content,
-                "encoding": "utf-8",
-            },
+        result = write_and_register(
+            e2e_client,
+            platform_admin.headers,
+            "e2e_all_fields_workflow.py",
+            workflow_content,
+            "e2e_all_fields_workflow",
         )
-        assert response.status_code == 200, f"Failed to save workflow: {response.text}"
-
-        # Discovery happens synchronously during file write - just fetch the workflow
-        response = e2e_client.get("/api/workflows", headers=platform_admin.headers)
-        assert response.status_code == 200, f"Failed to list workflows: {response.text}"
-        workflows = response.json()
-        workflow = next(
-            (w for w in workflows if w["name"] == "e2e_all_fields_workflow"), None
-        )
-        assert workflow is not None, "Workflow not discovered after file write"
-        workflow_id = workflow["id"]
+        workflow_id = result["id"]
         yield {"id": workflow_id, "name": "e2e_all_fields_workflow"}
 
         # Cleanup

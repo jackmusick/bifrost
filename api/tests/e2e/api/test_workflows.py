@@ -6,6 +6,8 @@ Tests workflow listing, discovery, and data providers.
 
 import pytest
 
+from tests.e2e.conftest import write_and_register
+
 
 @pytest.mark.e2e
 class TestWorkflowListing:
@@ -185,31 +187,12 @@ from bifrost import workflow
 async def db_storage_test_workflow(x: int) -> int:
     return x * 2
 '''
-        # Create workflow via editor
-        response = e2e_client.put(
-            "/api/files/editor/content",
-            headers=platform_admin.headers,
-            json={
-                "path": "db_storage_test.py",
-                "content": workflow_content,
-                "encoding": "utf-8",
-            },
+        result = write_and_register(
+            e2e_client, platform_admin.headers,
+            "db_storage_test.py", workflow_content,
+            "db_storage_test_workflow",
         )
-        assert response.status_code == 200
-
-        # Verify workflow appears in list with ID (stored in DB)
-        response = e2e_client.get(
-            "/api/workflows",
-            headers=platform_admin.headers,
-        )
-        assert response.status_code == 200
-        workflows = response.json()
-        workflow = next(
-            (w for w in workflows if w["name"] == "db_storage_test_workflow"),
-            None
-        )
-        assert workflow is not None, "Workflow should be in DB"
-        assert workflow.get("id"), "Workflow should have DB-generated ID"
+        assert result.get("id"), "Workflow should have DB-generated ID"
 
         # Read file back - should return code from DB
         response = e2e_client.get(
@@ -236,27 +219,11 @@ async def update_persist_workflow() -> str:
     return "original"
 '''
         # Create workflow
-        e2e_client.put(
-            "/api/files/editor/content",
-            headers=platform_admin.headers,
-            json={
-                "path": "update_persist_workflow.py",
-                "content": original_content,
-                "encoding": "utf-8",
-            },
+        original = write_and_register(
+            e2e_client, platform_admin.headers,
+            "update_persist_workflow.py", original_content,
+            "update_persist_workflow",
         )
-
-        # Get original workflow
-        response = e2e_client.get(
-            "/api/workflows",
-            headers=platform_admin.headers,
-        )
-        workflows = response.json()
-        original = next(
-            (w for w in workflows if w["name"] == "update_persist_workflow"),
-            None
-        )
-        assert original is not None
         original_id = original["id"]
 
         # Update workflow
@@ -267,29 +234,25 @@ from bifrost import workflow
 async def update_persist_workflow() -> str:
     return "updated"
 '''
-        e2e_client.put(
-            "/api/files/editor/content",
-            headers=platform_admin.headers,
-            json={
-                "path": "update_persist_workflow.py",
-                "content": updated_content,
-                "encoding": "utf-8",
-            },
+        updated = write_and_register(
+            e2e_client, platform_admin.headers,
+            "update_persist_workflow.py", updated_content,
+            "update_persist_workflow",
         )
+        assert updated["id"] == original_id, "ID should remain stable"
 
-        # Verify update persisted
+        # Verify update persisted via workflow list
         response = e2e_client.get(
             "/api/workflows",
             headers=platform_admin.headers,
         )
         workflows = response.json()
-        updated = next(
+        wf = next(
             (w for w in workflows if w["name"] == "update_persist_workflow"),
             None
         )
-        assert updated is not None
-        assert updated["id"] == original_id, "ID should remain stable"
-        assert updated.get("description") == "Updated description", \
+        assert wf is not None
+        assert wf.get("description") == "Updated description", \
             "Description should be updated in DB"
 
         # Cleanup
@@ -308,25 +271,12 @@ async def stable_id_workflow() -> str:
     return "v1"
 '''
         # Create workflow
-        e2e_client.put(
-            "/api/files/editor/content",
-            headers=platform_admin.headers,
-            json={
-                "path": "stable_id_workflow.py",
-                "content": workflow_content,
-                "encoding": "utf-8",
-            },
+        result = write_and_register(
+            e2e_client, platform_admin.headers,
+            "stable_id_workflow.py", workflow_content,
+            "stable_id_workflow",
         )
-
-        # Get original ID
-        response = e2e_client.get(
-            "/api/workflows",
-            headers=platform_admin.headers,
-        )
-        workflows = response.json()
-        v1 = next((w for w in workflows if w["name"] == "stable_id_workflow"), None)
-        assert v1 is not None
-        original_id = v1["id"]
+        original_id = result["id"]
 
         # Update multiple times
         for version in ["v2", "v3", "v4"]:
@@ -337,25 +287,13 @@ from bifrost import workflow
 async def stable_id_workflow() -> str:
     return "{version}"
 '''
-            e2e_client.put(
-                "/api/files/editor/content",
-                headers=platform_admin.headers,
-                json={
-                    "path": "stable_id_workflow.py",
-                    "content": updated,
-                    "encoding": "utf-8",
-                },
+            result = write_and_register(
+                e2e_client, platform_admin.headers,
+                "stable_id_workflow.py", updated,
+                "stable_id_workflow",
             )
 
-        # Verify ID unchanged
-        response = e2e_client.get(
-            "/api/workflows",
-            headers=platform_admin.headers,
-        )
-        workflows = response.json()
-        final = next((w for w in workflows if w["name"] == "stable_id_workflow"), None)
-        assert final is not None
-        assert final["id"] == original_id, \
+        assert result["id"] == original_id, \
             "Workflow ID should remain stable across all updates"
 
         # Cleanup
@@ -374,23 +312,11 @@ async def delete_from_db_workflow() -> str:
     return "to be deleted"
 '''
         # Create workflow
-        e2e_client.put(
-            "/api/files/editor/content",
-            headers=platform_admin.headers,
-            json={
-                "path": "delete_from_db_workflow.py",
-                "content": workflow_content,
-                "encoding": "utf-8",
-            },
+        write_and_register(
+            e2e_client, platform_admin.headers,
+            "delete_from_db_workflow.py", workflow_content,
+            "delete_from_db_workflow",
         )
-
-        # Verify exists
-        response = e2e_client.get(
-            "/api/workflows",
-            headers=platform_admin.headers,
-        )
-        workflows = response.json()
-        assert any(w["name"] == "delete_from_db_workflow" for w in workflows)
 
         # Delete file
         response = e2e_client.delete(

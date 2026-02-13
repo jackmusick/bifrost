@@ -2441,9 +2441,15 @@ def _build_jsonb_filters(
             # Operator-based filter
             for op, op_value in value.items():
                 if op == "eq":
-                    base_query = base_query.where(json_field.astext == str(op_value))
+                    if isinstance(op_value, (bool, int, float)):
+                        base_query = base_query.where(data_column.contains({key: op_value}))
+                    else:
+                        base_query = base_query.where(json_field.astext == str(op_value))
                 elif op == "ne":
-                    base_query = base_query.where(json_field.astext != str(op_value))
+                    if isinstance(op_value, (bool, int, float)):
+                        base_query = base_query.where(~data_column.contains({key: op_value}))
+                    else:
+                        base_query = base_query.where(json_field.astext != str(op_value))
                 elif op == "contains":
                     # Case-insensitive substring search
                     base_query = base_query.where(
@@ -2475,8 +2481,12 @@ def _build_jsonb_filters(
                     )
                 elif op in ("in", "in_"):
                     if isinstance(op_value, list):
+                        def _jsonb_text(v: Any) -> str:
+                            if isinstance(v, bool):
+                                return str(v).lower()  # True -> "true", False -> "false"
+                            return str(v)
                         base_query = base_query.where(
-                            json_field.astext.in_([str(v) for v in op_value])
+                            json_field.astext.in_([_jsonb_text(v) for v in op_value])
                         )
                 elif op == "is_null":
                     if op_value:
@@ -2489,8 +2499,12 @@ def _build_jsonb_filters(
                     else:
                         base_query = base_query.where(~data_column.has_key(key))
         else:
-            # Simple equality
-            base_query = base_query.where(json_field.astext == str(value))
+            # Simple equality — use JSONB containment for type-safe comparison
+            # This handles booleans, numbers, and strings correctly
+            if isinstance(value, (bool, int, float)):
+                base_query = base_query.where(data_column.contains({key: value}))
+            else:
+                base_query = base_query.where(json_field.astext == str(value))
 
     return base_query
 

@@ -6,7 +6,7 @@ Tests sync/async execution, polling, cancellation, and execution history.
 
 import pytest
 
-from tests.e2e.conftest import poll_until
+from tests.e2e.conftest import poll_until, write_and_register
 
 
 # Module-level fixtures for workflows used across multiple test classes
@@ -31,22 +31,14 @@ async def e2e_exec_sync_workflow(message: str, count: int = 1):
         "user": context.email,
     }
 '''
-    e2e_client.put(
-        "/api/files/editor/content?index=true",
-        headers=platform_admin.headers,
-        json={
-            "path": "e2e_exec_sync_workflow.py",
-            "content": workflow_content,
-            "encoding": "utf-8",
-        },
+    result = write_and_register(
+        e2e_client,
+        platform_admin.headers,
+        "e2e_exec_sync_workflow.py",
+        workflow_content,
+        "e2e_exec_sync_workflow",
     )
-
-    # Discovery happens synchronously during file write (with index=true) - just fetch the workflow
-    response = e2e_client.get("/api/workflows", headers=platform_admin.headers)
-    workflows = response.json()
-    workflow = next((w for w in workflows if w["name"] == "e2e_exec_sync_workflow"), None)
-    assert workflow is not None, "Workflow not discovered after file write"
-    workflow_id = workflow["id"]
+    workflow_id = result["id"]
 
     yield {"id": workflow_id, "name": "e2e_exec_sync_workflow"}
 
@@ -73,22 +65,14 @@ async def e2e_exec_async_workflow(delay_seconds: int = 1):
     time.sleep(delay_seconds)
     return {"status": "completed", "delayed": delay_seconds}
 '''
-    e2e_client.put(
-        "/api/files/editor/content?index=true",
-        headers=platform_admin.headers,
-        json={
-            "path": "e2e_exec_async_workflow.py",
-            "content": workflow_content,
-            "encoding": "utf-8",
-        },
+    result = write_and_register(
+        e2e_client,
+        platform_admin.headers,
+        "e2e_exec_async_workflow.py",
+        workflow_content,
+        "e2e_exec_async_workflow",
     )
-
-    # Discovery happens synchronously during file write (with index=true) - just fetch the workflow
-    response = e2e_client.get("/api/workflows", headers=platform_admin.headers)
-    workflows = response.json()
-    workflow = next((w for w in workflows if w["name"] == "e2e_exec_async_workflow"), None)
-    assert workflow is not None, "Workflow not discovered after file write"
-    workflow_id = workflow["id"]
+    workflow_id = result["id"]
 
     yield {"id": workflow_id, "name": "e2e_exec_async_workflow"}
 
@@ -257,25 +241,14 @@ async def e2e_cancellation_workflow(sleep_seconds: int = 30):
     time.sleep(sleep_seconds)
     return {"status": "completed", "slept_for": sleep_seconds}
 '''
-        e2e_client.put(
-            "/api/files/editor/content?index=true",
-            headers=platform_admin.headers,
-            json={
-                "path": "e2e_cancellation_workflow.py",
-                "content": workflow_content,
-                "encoding": "utf-8",
-            },
+        result = write_and_register(
+            e2e_client,
+            platform_admin.headers,
+            "e2e_cancellation_workflow.py",
+            workflow_content,
+            "e2e_cancellation_workflow",
         )
-
-        # Discovery happens synchronously during file write - just fetch the workflow
-        response = e2e_client.get("/api/workflows", headers=platform_admin.headers)
-        workflows = response.json()
-        workflow = next(
-            (w for w in workflows if w["name"] == "e2e_cancellation_workflow"),
-            None,
-        )
-        assert workflow is not None, "Workflow not discovered after file write"
-        workflow_id = workflow["id"]
+        workflow_id = result["id"]
 
         yield {"id": workflow_id, "name": "e2e_cancellation_workflow"}
 
@@ -808,23 +781,11 @@ from bifrost import workflow
 async def {workflow_name}():
     return {{"message": "Hello World", "version": 1}}
 '''
-        response = e2e_client.put(
-            "/api/files/editor/content?index=true",
-            headers=platform_admin.headers,
-            json={
-                "path": workflow_path,
-                "content": v1_content,
-                "encoding": "utf-8",
-            },
+        reg_result = write_and_register(
+            e2e_client, platform_admin.headers,
+            workflow_path, v1_content, workflow_name,
         )
-        assert response.status_code == 200, f"Create v1 failed: {response.text}"
-
-        # Get workflow ID
-        response = e2e_client.get("/api/workflows", headers=platform_admin.headers)
-        workflows = response.json()
-        workflow = next((w for w in workflows if w["name"] == workflow_name), None)
-        assert workflow is not None, "Workflow not discovered"
-        workflow_id = workflow["id"]
+        workflow_id = reg_result["id"]
 
         try:
             # Step 2: Execute v1 and verify
@@ -855,7 +816,7 @@ async def {workflow_name}():
     return {{"message": "Hello World Again", "version": 2}}
 '''
             response = e2e_client.put(
-                "/api/files/editor/content?index=true",
+                "/api/files/editor/content",
                 headers=platform_admin.headers,
                 json={
                     "path": workflow_path,
@@ -936,23 +897,11 @@ async def {workflow_name}():
     value = {module_name}.get_value()
     return {{"value": value}}
 '''
-        response = e2e_client.put(
-            "/api/files/editor/content?index=true",
-            headers=platform_admin.headers,
-            json={
-                "path": workflow_path,
-                "content": workflow_content,
-                "encoding": "utf-8",
-            },
+        reg_result = write_and_register(
+            e2e_client, platform_admin.headers,
+            workflow_path, workflow_content, workflow_name,
         )
-        assert response.status_code == 200, f"Create workflow failed: {response.text}"
-
-        # Get workflow ID
-        response = e2e_client.get("/api/workflows", headers=platform_admin.headers)
-        workflows = response.json()
-        workflow = next((w for w in workflows if w["name"] == workflow_name), None)
-        assert workflow is not None, "Workflow not discovered"
-        workflow_id = workflow["id"]
+        workflow_id = reg_result["id"]
 
         try:
             # Step 3: Execute and verify "original"
@@ -1053,23 +1002,11 @@ async def {workflow_name}(number: int = 1000000):
     import humanize
     return {{"humanized": humanize.intcomma(number)}}
 '''
-        response = e2e_client.put(
-            "/api/files/editor/content?index=true",
-            headers=platform_admin.headers,
-            json={
-                "path": workflow_path,
-                "content": workflow_content,
-                "encoding": "utf-8",
-            },
+        reg_result = write_and_register(
+            e2e_client, platform_admin.headers,
+            workflow_path, workflow_content, workflow_name,
         )
-        assert response.status_code == 200, f"Create workflow failed: {response.text}"
-
-        # Get workflow ID
-        response = e2e_client.get("/api/workflows", headers=platform_admin.headers)
-        workflows = response.json()
-        workflow = next((w for w in workflows if w["name"] == workflow_name), None)
-        assert workflow is not None, "Workflow not discovered"
-        workflow_id = workflow["id"]
+        workflow_id = reg_result["id"]
 
         try:
             # Step 2: Execute - should fail due to missing package
@@ -1202,23 +1139,11 @@ async def {workflow_name}():
     data = get_data()
     return {{"data": data, "constant": CONSTANT}}
 '''
-        response = e2e_client.put(
-            "/api/files/editor/content?index=true",
-            headers=platform_admin.headers,
-            json={
-                "path": workflow_path,
-                "content": workflow_content,
-                "encoding": "utf-8",
-            },
+        reg_result = write_and_register(
+            e2e_client, platform_admin.headers,
+            workflow_path, workflow_content, workflow_name,
         )
-        assert response.status_code == 200, f"Create workflow failed: {response.text}"
-
-        # Get workflow ID
-        response = e2e_client.get("/api/workflows", headers=platform_admin.headers)
-        workflows = response.json()
-        workflow = next((w for w in workflows if w["name"] == workflow_name), None)
-        assert workflow is not None, "Workflow not discovered"
-        workflow_id = workflow["id"]
+        workflow_id = reg_result["id"]
 
         try:
             # Step 3: Execute and verify original values
