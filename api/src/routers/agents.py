@@ -419,7 +419,6 @@ async def create_agent(
     from src.services.repo_sync_writer import RepoSyncWriter
     writer = RepoSyncWriter(db)
     await writer.write_agent(agent)
-    await writer.regenerate_manifest()
 
     return _agent_to_public(agent)
 
@@ -697,7 +696,6 @@ async def update_agent(
     from src.services.repo_sync_writer import RepoSyncWriter
     writer = RepoSyncWriter(db)
     await writer.write_agent(agent)
-    await writer.regenerate_manifest()
 
     return _agent_to_public(agent)
 
@@ -741,7 +739,6 @@ async def delete_agent(
     from src.services.repo_sync_writer import RepoSyncWriter
     writer = RepoSyncWriter(db)
     await writer.delete_entity_file(f"agents/{agent_id}.agent.yaml")
-    await writer.regenerate_manifest()
 
 
 @router.post("/{agent_id}/promote")

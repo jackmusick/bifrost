@@ -335,7 +335,6 @@ async def create_form(
     from src.services.repo_sync_writer import RepoSyncWriter
     writer = RepoSyncWriter(db)
     await writer.write_form(form)
-    await writer.regenerate_manifest()
 
     # Invalidate cache after successful create
     if CACHE_INVALIDATION_AVAILABLE and invalidate_form:
@@ -531,7 +530,6 @@ async def update_form(
     from src.services.repo_sync_writer import RepoSyncWriter
     writer = RepoSyncWriter(db)
     await writer.write_form(form)
-    await writer.regenerate_manifest()
 
     # Invalidate cache after successful update
     if CACHE_INVALIDATION_AVAILABLE and invalidate_form:
@@ -599,7 +597,6 @@ async def delete_form(
     from src.services.repo_sync_writer import RepoSyncWriter
     writer = RepoSyncWriter(db)
     await writer.delete_entity_file(f"forms/{form_id}.form.yaml")
-    await writer.regenerate_manifest()
 
     logger.info(f"Soft deleted form {form_id}")
 

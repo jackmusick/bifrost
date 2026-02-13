@@ -14,6 +14,8 @@ from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
+from fastapi import HTTPException
+
 from src.config import Settings
 from src.models import Workflow, Form, Agent
 from src.models.orm.file_index import FileIndex
@@ -187,6 +189,13 @@ class FileOperationsService:
         Raises:
             ValueError: If path is excluded (system files, caches, etc.)
         """
+        # .bifrost/ files are generated artifacts, not user-editable
+        if path.startswith(".bifrost/") or path == ".bifrost":
+            raise HTTPException(
+                status_code=403,
+                detail=".bifrost/ files are system-generated and cannot be edited directly",
+            )
+
         # Check if path is excluded (system files, caches, metadata, etc.)
         from src.services.editor.file_filter import is_excluded_path
         if is_excluded_path(path):
@@ -319,6 +328,12 @@ class FileOperationsService:
                             compiled=None,
                             action="update",
                         )
+                        # Sync to _apps/{app_id}/preview/
+                        from src.services.app_storage import AppStorageService
+                        app_storage = AppStorageService()
+                        await app_storage.write_preview_file(
+                            str(app.id), relative_path, final_content
+                        )
                 except Exception as e:
                     logger.warning(f"Failed to publish app file update for {path}: {e}")
 
@@ -339,6 +354,13 @@ class FileOperationsService:
         Args:
             path: Relative path within workspace
         """
+        # .bifrost/ files are generated artifacts, not user-editable
+        if path.startswith(".bifrost/") or path == ".bifrost":
+            raise HTTPException(
+                status_code=403,
+                detail=".bifrost/ files are system-generated and cannot be edited directly",
+            )
+
         # Detect entity type from path (used for module cache invalidation below)
         platform_entity_type = detect_platform_entity_type(path, b"")
 
@@ -379,6 +401,12 @@ class FileOperationsService:
                             source=None,
                             compiled=None,
                             action="delete",
+                        )
+                        # Delete from _apps/{app_id}/preview/
+                        from src.services.app_storage import AppStorageService
+                        app_storage = AppStorageService()
+                        await app_storage.delete_preview_file(
+                            str(app.id), relative_path
                         )
                 except Exception as e:
                     logger.warning(f"Failed to publish app file delete for {path}: {e}")

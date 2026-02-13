@@ -8,7 +8,6 @@ as the original monolithic FileStorageService.
 import ast
 import logging
 from pathlib import Path
-from typing import Callable, Awaitable, TYPE_CHECKING
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -30,9 +29,6 @@ from .file_ops import FileOperationsService
 from .folder_ops import FolderOperationsService
 from .reindex import WorkspaceReindexService
 from .indexers import WorkflowIndexer, FormIndexer, AgentIndexer
-
-if TYPE_CHECKING:
-    from src.models.contracts.maintenance import ReindexResult
 
 logger = logging.getLogger(__name__)
 
@@ -202,17 +198,6 @@ class FileStorageService:
         """Reindex workspace files from local filesystem."""
         return await self._reindex_service.reindex_workspace_files(
             local_path=local_path,
-        )
-
-    async def smart_reindex(
-        self,
-        local_path: Path,
-        progress_callback: "Callable[[dict], Awaitable[None]] | None" = None,
-    ) -> "ReindexResult":
-        """Smart reindex with reference validation and ID alignment."""
-        return await self._reindex_service.smart_reindex(
-            local_path=local_path,
-            progress_callback=progress_callback,
         )
 
     # ========================================================================
