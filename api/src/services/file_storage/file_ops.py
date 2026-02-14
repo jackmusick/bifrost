@@ -232,16 +232,19 @@ class FileOperationsService:
         now = datetime.now(timezone.utc)
 
         # Write to file_index (the sole search index)
+        # Binary files (containing null bytes) can't be stored in PostgreSQL text columns,
+        # so we index them with path only (no content) for listing/existence checks.
         content_str = cached_content_str or content.decode("utf-8", errors="replace")
+        is_binary = b"\x00" in content
         fi_stmt = insert(FileIndex).values(
             path=path,
-            content=content_str,
+            content="" if is_binary else content_str,
             content_hash=content_hash,
             updated_at=now,
         ).on_conflict_do_update(
             index_elements=[FileIndex.path],
             set_={
-                "content": content_str,
+                "content": "" if is_binary else content_str,
                 "content_hash": content_hash,
                 "updated_at": now,
             },
