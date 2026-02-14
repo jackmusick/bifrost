@@ -369,7 +369,13 @@ async def cli_get_config(
         raw_value = cache_entry.get("value")
         config_type = cache_entry.get("type", "string")
 
-        if config_type == "json" and isinstance(raw_value, str):
+        if config_type == "secret" and raw_value:
+            from src.core.security import decrypt_secret
+            try:
+                raw_value = decrypt_secret(raw_value)
+            except Exception:
+                raw_value = None
+        elif config_type == "json" and isinstance(raw_value, str):
             try:
                 raw_value = json.loads(raw_value)
             except json.JSONDecodeError:

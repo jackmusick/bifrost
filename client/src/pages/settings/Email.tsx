@@ -283,7 +283,7 @@ export function Email() {
 								</SelectTrigger>
 								<SelectContent>
 									{activeWorkflows.length === 0 ? (
-										<SelectItem value="" disabled>
+										<SelectItem value="__empty" disabled>
 											No workflows available
 										</SelectItem>
 									) : (

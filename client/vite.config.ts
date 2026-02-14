@@ -197,6 +197,15 @@ export default defineConfig({
 				target: process.env.API_URL || "http://localhost:8000",
 				changeOrigin: true,
 			},
+			// Proxy API docs (Swagger UI and ReDoc)
+			"/docs": {
+				target: process.env.API_URL || "http://localhost:8000",
+				changeOrigin: true,
+			},
+			"/redoc": {
+				target: process.env.API_URL || "http://localhost:8000",
+				changeOrigin: true,
+			},
 			// Proxy OpenAPI spec for type generation
 			"/openapi.json": {
 				target: process.env.API_URL || "http://localhost:8000",

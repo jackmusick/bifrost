@@ -156,12 +156,14 @@ class S3Backend(FileBackend):
 
     async def read(self, path: str, location: Location) -> bytes:
         """Read file from S3."""
-        s3_path = self._resolve_path(path, location)
+        self._validate_path(path)
         try:
             if location in ("temp", "uploads"):
                 # Direct S3 read — temp/uploads don't go through workspace index
+                s3_path = self._resolve_path(path, location)
                 return await self.storage.read_uploaded_file(s3_path)
-            content, _ = await self.storage.read_file(s3_path)
+            # Workspace: pass raw path — read_file adds _repo/ prefix internally
+            content, _ = await self.storage.read_file(path)
             return content
         except Exception as e:
             # Convert S3 errors to appropriate exceptions
@@ -174,33 +176,36 @@ class S3Backend(FileBackend):
 
     async def write(self, path: str, content: bytes, location: Location, updated_by: str = "system") -> None:
         """Write file to S3."""
-        s3_path = self._resolve_path(path, location)
+        self._validate_path(path)
         if location in ("temp", "uploads"):
             # No workspace indexing for temp/uploads - write directly to S3
+            s3_path = self._resolve_path(path, location)
             await self.storage.write_raw_to_s3(s3_path, content)
         else:
-            # Workspace files get full indexing
-            await self.storage.write_file(s3_path, content, updated_by)
+            # Workspace: pass raw path — write_file adds _repo/ prefix internally
+            await self.storage.write_file(path, content, updated_by)
 
     async def delete(self, path: str, location: Location) -> None:
         """Delete file from S3."""
-        s3_path = self._resolve_path(path, location)
+        self._validate_path(path)
         if location in ("temp", "uploads"):
             # Direct S3 delete for temp/uploads
+            s3_path = self._resolve_path(path, location)
             await self.storage.delete_raw_from_s3(s3_path)
         else:
-            # Workspace files go through full delete with index update
-            await self.storage.delete_file(s3_path)
+            # Workspace: pass raw path — delete_file adds _repo/ prefix internally
+            await self.storage.delete_file(path)
 
     async def list(self, directory: str, location: Location) -> list[str]:
         """List files in S3 directory."""
-        s3_dir = self._resolve_path(directory, location)
+        self._validate_path(directory)
         if location in ("temp", "uploads"):
             # Direct S3 listing for temp/uploads
+            s3_dir = self._resolve_path(directory, location)
             return await self.storage.list_raw_s3(s3_dir)
         else:
-            # Workspace listing through index
-            files = await self.storage.list_files(s3_dir)
+            # Workspace: pass raw path — list_files adds _repo/ prefix internally
+            files = await self.storage.list_files(directory)
             return [f.path for f in files]
 
     async def exists(self, path: str, location: Location) -> bool:
