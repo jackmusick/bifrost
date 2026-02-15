@@ -12,12 +12,14 @@ Applications use code-based files (TSX/TypeScript) stored in app_files table.
 File operations are handled through the app_files router.
 """
 
+import io
 import logging
 import re
+import tarfile
 from datetime import datetime, timezone
 from uuid import UUID
 
-from fastapi import APIRouter, HTTPException, Query, status
+from fastapi import APIRouter, File, HTTPException, Query, UploadFile, status
 from pydantic import BaseModel
 from sqlalchemy import select
 
@@ -304,13 +306,15 @@ class ApplicationRepository(OrgScopedRepository[Application]):
             icon=data.icon,
             organization_id=self.org_id,
             created_by=created_by,
+            app_type=data.app_type,
             access_level=data.access_level,
         )
         self.session.add(application)
         await self.session.flush()
 
-        # Scaffold initial files via FileStorageService
-        await self._scaffold_code_files(application.slug)
+        # Scaffold initial files via FileStorageService (runtime apps only)
+        if data.app_type != "static":
+            await self._scaffold_code_files(application.slug)
 
         # Add role associations if role_based access
         if data.access_level == "role_based" and data.role_ids:
@@ -419,9 +423,16 @@ class ApplicationRepository(OrgScopedRepository[Application]):
         if not application:
             return None
 
-        # Publish via AppStorageService: copy preview -> live in S3
+        # Re-compile all files from _repo/ before publishing
         from src.services.app_storage import AppStorageService
         app_storage = AppStorageService()
+        synced, compile_errors = await app_storage.sync_preview_compiled(
+            str(app_id), f"apps/{application.slug}/"
+        )
+        if compile_errors:
+            logger.warning(f"Compile warnings during publish: {compile_errors}")
+
+        # Now copy preview -> live
         published_count = await app_storage.publish(str(app_id))
 
         if published_count == 0:
@@ -523,6 +534,7 @@ export default function RootLayout() {
             "description": application.description,
             "icon": application.icon,
             "organization_id": str(application.organization_id) if application.organization_id else None,
+            "app_type": application.app_type,
             "published_at": application.published_at.isoformat() if application.published_at else None,
             "created_at": application.created_at.isoformat() if application.created_at else None,
             "updated_at": application.updated_at.isoformat() if application.updated_at else None,
@@ -602,6 +614,7 @@ async def application_to_public(
         description=application.description,
         icon=application.icon,
         organization_id=application.organization_id,
+        app_type=application.app_type,
         published_at=application.published_at,
         created_at=application.created_at,
         updated_at=application.updated_at,
@@ -999,6 +1012,129 @@ async def publish_application(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail=str(e),
         )
+
+
+# =============================================================================
+# Deploy Endpoint (Static Apps)
+# =============================================================================
+
+
+class DeployResponse(BaseModel):
+    """Response from deploying a static app bundle."""
+    files_uploaded: int
+    mode: str  # "preview" or "live"
+
+
+def _extract_bundle(content: bytes) -> dict[str, bytes]:
+    """Extract and validate a .tar.gz app bundle.
+
+    Returns normalized {relative_path: bytes} mapping.
+    Raises HTTPException on invalid input.
+    """
+    if not content:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Empty upload",
+        )
+
+    try:
+        tar = tarfile.open(fileobj=io.BytesIO(content), mode="r:gz")
+    except tarfile.TarError:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Invalid tarball. Expected a .tar.gz archive.",
+        )
+
+    files: dict[str, bytes] = {}
+    with tar:
+        for member in tar.getmembers():
+            if not member.isfile():
+                continue
+            # Security: reject absolute paths and path traversal
+            if member.name.startswith("/") or ".." in member.name:
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail=f"Invalid path in archive: {member.name}",
+                )
+            f = tar.extractfile(member)
+            if f:
+                files[member.name] = f.read()
+
+    if not files:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Archive contains no files",
+        )
+
+    # Verify index.html exists (at root or inside a dist/ prefix)
+    has_index = "index.html" in files or any(
+        k.endswith("/index.html") or k == "dist/index.html" for k in files
+    )
+    if not has_index:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Archive must contain an index.html file",
+        )
+
+    # Normalize paths: strip leading "dist/" prefix if present
+    normalized: dict[str, bytes] = {}
+    for path, data in files.items():
+        clean = path.lstrip("/")
+        if clean.startswith("dist/"):
+            clean = clean[5:]
+        normalized[clean] = data
+
+    return normalized
+
+
+@router.post(
+    "/{app_id}/deploy",
+    response_model=DeployResponse,
+    summary="Deploy a static app bundle to preview",
+)
+async def deploy_static_app(
+    app_id: UUID,
+    ctx: Context,
+    user: CurrentUser,
+    bundle: UploadFile = File(..., description="Tarball (.tar.gz) of the built dist/ directory"),
+) -> DeployResponse:
+    """
+    Upload a pre-built static app bundle to preview.
+
+    Accepts a .tar.gz archive of the Vite build output (dist/ directory).
+    The archive must contain an index.html at the root.
+
+    Files go to **preview** storage — preview at /apps-v2/{slug}/preview/.
+    Use POST /{app_id}/publish to copy preview → live.
+
+    Only works for apps with app_type='static'.
+    """
+    application = await get_application_by_id_or_404(ctx, app_id)
+
+    if application.app_type != "static":
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Deploy is only supported for static apps. This app has app_type='runtime'.",
+        )
+
+    raw = await bundle.read()
+    normalized = _extract_bundle(raw)
+
+    # Write files to S3 preview via AppStorageService
+    from src.services.app_storage import AppStorageService
+    app_storage = AppStorageService()
+
+    for rel_path, data in normalized.items():
+        await app_storage.write_preview_file(str(app_id), rel_path, data)
+
+    logger.info(
+        f"Deployed {len(normalized)} files to preview for static app {app_id} by {user.email}"
+    )
+
+    return DeployResponse(
+        files_uploaded=len(normalized),
+        mode="preview",
+    )
 
 
 # =============================================================================

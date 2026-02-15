@@ -321,20 +321,33 @@ class FileOperationsService:
                         from src.core.pubsub import publish_app_code_file_update
                         # Relative path within app (strip "apps/{slug}/")
                         relative_path = "/".join(parts[2:]) if len(parts) > 2 else ""
+
+                        # Compile TSX/TS files server-side
+                        compiled_js = None
+                        if relative_path.endswith((".tsx", ".ts")):
+                            from src.services.app_compiler import AppCompilerService
+                            compiler = AppCompilerService()
+                            result = await compiler.compile_file(content_str, relative_path)
+                            if result.success:
+                                compiled_js = result.compiled
+                            else:
+                                logger.warning(f"Compilation failed for {relative_path}: {result.error}")
+
                         await publish_app_code_file_update(
                             app_id=str(app.id),
                             user_id=updated_by,
                             user_name=updated_by,
                             path=relative_path,
                             source=content_str,
-                            compiled=None,
+                            compiled=compiled_js,
                             action="update",
                         )
-                        # Sync to _apps/{app_id}/preview/
+                        # Write compiled JS (or raw source if compile failed) to preview
+                        preview_content = compiled_js.encode("utf-8") if compiled_js else final_content
                         from src.services.app_storage import AppStorageService
                         app_storage = AppStorageService()
                         await app_storage.write_preview_file(
-                            str(app.id), relative_path, final_content
+                            str(app.id), relative_path, preview_content
                         )
                 except Exception as e:
                     logger.warning(f"Failed to publish app file update for {path}: {e}")

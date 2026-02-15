@@ -874,6 +874,7 @@ async def push_files(
 
     from src.core.database import get_db_context
     from src.models.orm.file_index import FileIndex
+    from src.services.app_storage import AppStorageService
     from src.services.file_storage import FileStorageService
 
     logger.info(f"MCP push_files called with {len(files)} file(s)")
@@ -933,6 +934,54 @@ async def push_files(
 
             await db.commit()
 
+            # Compile app files that were pushed
+            compile_warnings = []
+            app_file_groups = {}  # group by app slug
+            for repo_path, content in files.items():
+                if repo_path.startswith("apps/") and repo_path.endswith((".tsx", ".ts")):
+                    parts = repo_path.split("/")
+                    if len(parts) >= 3:
+                        slug = parts[1]
+                        rel_path = "/".join(parts[2:])
+                        app_file_groups.setdefault(slug, []).append({
+                            "path": rel_path, "source": content
+                        })
+
+            if app_file_groups:
+                from src.services.app_compiler import AppCompilerService
+                from src.models.orm.applications import Application
+                from src.routers.applications import KNOWN_APP_COMPONENTS
+                import re
+
+                compiler = AppCompilerService()
+                for slug, app_files in app_file_groups.items():
+                    # Get app ID
+                    app_result = await db.execute(
+                        select(Application).where(Application.slug == slug)
+                    )
+                    app = app_result.scalar_one_or_none()
+                    if not app:
+                        continue
+
+                    # Batch compile
+                    results = await compiler.compile_batch(app_files)
+                    app_storage = AppStorageService()
+
+                    for result, file_input in zip(results, app_files):
+                        if result.success and result.compiled:
+                            await app_storage.write_preview_file(
+                                str(app.id), result.path,
+                                result.compiled.encode("utf-8")
+                            )
+                        else:
+                            compile_warnings.append(f"✗ {result.path}: {result.error}")
+
+                        # Check for unknown components
+                        comp_refs = set(re.findall(r'<([A-Z][a-zA-Z0-9]*)', file_input["source"]))
+                        unknown = comp_refs - KNOWN_APP_COMPONENTS
+                        for comp in unknown:
+                            compile_warnings.append(f"⚠ {file_input['path']}: Unknown component <{comp}>")
+
             parts = []
             if created:
                 parts.append(f"{created} created")
@@ -948,12 +997,17 @@ async def push_files(
             if push_errors:
                 display_text += f"\n\nErrors ({len(push_errors)}):\n" + "\n".join(f"  - {e}" for e in push_errors)
 
+            if compile_warnings:
+                display_text += f"\n\nCompilation ({len(compile_warnings)} issue(s)):\n"
+                display_text += "\n".join(f"  {w}" for w in compile_warnings)
+
             return success_result(display_text, {
                 "created": created,
                 "updated": updated,
                 "deleted": deleted,
                 "unchanged": unchanged,
                 "errors": push_errors,
+                "compile_warnings": compile_warnings,
             })
 
     except Exception as e:

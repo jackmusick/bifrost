@@ -125,6 +125,113 @@ class AppStorageService:
             logger.info(f"Synced {synced} files to preview for app {app_id}")
             return synced
 
+    async def sync_preview_compiled(
+        self, app_id: str, source_dir_in_repo: str
+    ) -> tuple[int, list[str]]:
+        """Compile source files and write compiled JS to preview.
+
+        Like sync_preview, but compiles .tsx/.ts files via AppCompilerService
+        before writing to _apps/{app_id}/preview/.
+
+        Args:
+            app_id: Application UUID as string.
+            source_dir_in_repo: Directory path within _repo/ (e.g. "apps/tickbox-grc/").
+
+        Returns:
+            Tuple of (files_synced, compile_errors).
+        """
+        from src.services.app_compiler import AppCompilerService
+        from src.services.repo_storage import REPO_PREFIX
+
+        source_prefix = f"{REPO_PREFIX}{source_dir_in_repo.rstrip('/')}/"
+        preview_prefix = self._key(app_id, "preview")
+
+        async with self._get_client() as client:
+            # List source files in _repo/
+            source_keys = await self._list_keys(client, source_prefix)
+
+            # List existing preview files
+            existing_preview_keys = await self._list_keys(client, preview_prefix)
+            existing_relative = {
+                k[len(preview_prefix):] for k in existing_preview_keys
+            }
+
+            # Read all source files and collect TS/TSX for compilation
+            source_files: list[tuple[str, bytes]] = []  # (rel_path, content)
+            for source_key in source_keys:
+                rel_path = source_key[len(source_prefix):]
+                if not rel_path:
+                    continue
+                if rel_path == "app.yaml":
+                    continue
+
+                response = await client.get_object(Bucket=self._bucket, Key=source_key)
+                content = await response["Body"].read()
+                source_files.append((rel_path, content))
+
+            # Batch-compile TS/TSX files
+            ts_files = [
+                (rel, content)
+                for rel, content in source_files
+                if rel.endswith((".tsx", ".ts"))
+            ]
+            compiled_map: dict[str, str] = {}
+            compile_errors: list[str] = []
+
+            if ts_files:
+                compiler = AppCompilerService()
+                batch_input = [
+                    {"path": rel, "source": content.decode("utf-8")}
+                    for rel, content in ts_files
+                ]
+                results = await compiler.compile_batch(batch_input)
+
+                for result in results:
+                    if result.success and result.compiled:
+                        compiled_map[result.path] = result.compiled
+                    elif result.error:
+                        compile_errors.append(f"{result.path}: {result.error}")
+                        logger.warning(
+                            f"Compilation failed for {result.path}: {result.error}"
+                        )
+
+            # Write to preview (compiled JS for TS/TSX, raw for others)
+            synced = 0
+            new_relative: set[str] = set()
+
+            for rel_path, content in source_files:
+                new_relative.add(rel_path)
+                dest_key = f"{preview_prefix}{rel_path}"
+
+                if rel_path in compiled_map:
+                    write_content = compiled_map[rel_path].encode("utf-8")
+                else:
+                    write_content = content
+
+                await client.put_object(
+                    Bucket=self._bucket,
+                    Key=dest_key,
+                    Body=write_content,
+                )
+                synced += 1
+
+            # Remove stale preview files
+            stale = existing_relative - new_relative
+            for rel_path in stale:
+                await client.delete_object(
+                    Bucket=self._bucket,
+                    Key=f"{preview_prefix}{rel_path}",
+                )
+
+            if stale:
+                logger.info(f"Removed {len(stale)} stale preview files for app {app_id}")
+
+            logger.info(
+                f"Synced {synced} compiled files to preview for app {app_id}"
+                f" ({len(compile_errors)} compile errors)"
+            )
+            return synced, compile_errors
+
     # -----------------------------------------------------------------
     # Single file operations
     # -----------------------------------------------------------------

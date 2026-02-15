@@ -1010,8 +1010,14 @@ class GitHubSyncService:
             app_source_dir = str(Path(mapp.path).parent)
 
             try:
-                synced = await app_storage.sync_preview(mapp.id, app_source_dir)
-                logger.info(f"Synced {synced} preview files for app {mapp.id}")
+                synced, compile_errors = await app_storage.sync_preview_compiled(
+                    mapp.id, app_source_dir
+                )
+                logger.info(f"Synced {synced} compiled preview files for app {mapp.id}")
+                if compile_errors:
+                    logger.warning(
+                        f"Compile errors for app {mapp.id}: {compile_errors}"
+                    )
             except Exception as e:
                 logger.warning(f"Failed to sync preview for app {mapp.id}: {e}")
 
