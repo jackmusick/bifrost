@@ -34,6 +34,7 @@ from src.models.contracts.applications import (
 from src.models.orm.applications import Application
 from src.routers.applications import ApplicationRepository
 from src.services.app_storage import AppStorageService
+from src.services.file_index_service import FileIndexService
 from src.services.file_storage.service import get_file_storage_service
 
 logger = logging.getLogger(__name__)
@@ -243,26 +244,49 @@ async def list_app_files(
 ) -> SimpleFileListResponse:
     """List all files for an application.
 
-    Reads from _apps/{app_id}/preview/ (draft) or _apps/{app_id}/live/ (live).
+    Source content is read from the file_index (_repo/apps/{slug}/).
+    Compiled content is read from _apps/{app_id}/{mode}/.
+    The compiled field is only set when it differs from source.
     """
     app = await get_application_or_404(ctx, app_id)
     app_storage = AppStorageService()
+    file_index = FileIndexService(ctx.db)
 
-    storage_mode = "preview" if mode == FileMode.draft else "live"
-    file_paths = await app_storage.list_files(str(app.id), storage_mode)
+    # Source files live under apps/{slug}/ in the file_index
+    repo_prefix = _repo_prefix(app.slug)
+    source_paths = await file_index.list_paths(prefix=repo_prefix)
 
-    if not file_paths:
+    if not source_paths:
         return SimpleFileListResponse(files=[], total=0)
 
-    # Read content for each file
+    storage_mode = "preview" if mode == FileMode.draft else "live"
+
+    # Read source from file_index and compiled from _apps/
     files: list[SimpleFileResponse] = []
-    for rel_path in sorted(file_paths):
+    for full_path in sorted(source_paths):
+        # Derive relative path by stripping the repo prefix
+        rel_path = full_path[len(repo_prefix):]
+        if not rel_path:
+            continue
+        # Skip app.yaml (manifest metadata, not a source file)
+        if rel_path == "app.yaml":
+            continue
+
+        # Source from file_index (DB)
+        source = await file_index.read(full_path) or ""
+
+        # Compiled from _apps/{app_id}/{mode}/
+        compiled: str | None = None
         try:
-            content_bytes = await app_storage.read_file(str(app.id), storage_mode, rel_path)
-            source = content_bytes.decode("utf-8", errors="replace")
+            compiled_bytes = await app_storage.read_file(str(app.id), storage_mode, rel_path)
+            compiled_str = compiled_bytes.decode("utf-8", errors="replace")
+            # Only set compiled if it differs from source
+            if compiled_str != source:
+                compiled = compiled_str
         except FileNotFoundError:
-            source = ""
-        files.append(SimpleFileResponse(path=rel_path, source=source))
+            pass
+
+        files.append(SimpleFileResponse(path=rel_path, source=source, compiled=compiled))
 
     return SimpleFileListResponse(files=files, total=len(files))
 
@@ -281,22 +305,36 @@ async def read_app_file(
 ) -> SimpleFileResponse:
     """Read a single file by relative path.
 
-    Reads from _apps/{app_id}/preview/ (draft) or _apps/{app_id}/live/ (live).
+    Source content is read from the file_index (_repo/apps/{slug}/).
+    Compiled content is read from _apps/{app_id}/{mode}/.
+    The compiled field is only set when it differs from source.
     """
     app = await get_application_or_404(ctx, app_id)
+    file_index = FileIndexService(ctx.db)
     app_storage = AppStorageService()
 
-    storage_mode = "preview" if mode == FileMode.draft else "live"
-    try:
-        content_bytes = await app_storage.read_file(str(app.id), storage_mode, file_path)
-        source = content_bytes.decode("utf-8", errors="replace")
-    except FileNotFoundError:
+    # Source from file_index (DB)
+    repo_path = f"{_repo_prefix(app.slug)}{file_path}"
+    source = await file_index.read(repo_path)
+    if source is None:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail=f"File '{file_path}' not found",
         )
 
-    return SimpleFileResponse(path=file_path, source=source)
+    # Compiled from _apps/{app_id}/{mode}/
+    compiled: str | None = None
+    storage_mode = "preview" if mode == FileMode.draft else "live"
+    try:
+        compiled_bytes = await app_storage.read_file(str(app.id), storage_mode, file_path)
+        compiled_str = compiled_bytes.decode("utf-8", errors="replace")
+        # Only set compiled if it differs from source
+        if compiled_str != source:
+            compiled = compiled_str
+    except FileNotFoundError:
+        pass
+
+    return SimpleFileResponse(path=file_path, source=source, compiled=compiled)
 
 
 @router.put(

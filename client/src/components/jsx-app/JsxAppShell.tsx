@@ -136,11 +136,11 @@ function LayoutWrapper({
 
 				if (cancelled) return;
 
-				// Compilation is 100% client-side now
+				// Use compiled code when available, skip client-side compilation
 				const Component = createComponent(
-					file.source,
+					file.compiled || file.source,
 					customComponents,
-					false,
+					!!file.compiled,
 				);
 
 				setLayoutComponent(() => Component);
@@ -238,11 +238,11 @@ function ProvidersWrapper({
 
 				if (cancelled) return;
 
-				// Compilation is 100% client-side now
+				// Use compiled code when available, skip client-side compilation
 				const Component = createComponent(
-					file.source,
+					file.compiled || file.source,
 					customComponents,
-					false,
+					!!file.compiled,
 				);
 
 				setProvidersComponent(

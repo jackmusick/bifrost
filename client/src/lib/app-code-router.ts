@@ -16,6 +16,8 @@ export interface AppCodeFile {
 	path: string;
 	/** Original source code */
 	source: string;
+	/** Pre-compiled code from the server (skips client-side Babel) */
+	compiled?: string | null;
 }
 
 /**

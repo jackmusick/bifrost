@@ -221,8 +221,8 @@ export async function resolveAppComponentsFromFiles(
 			continue;
 		}
 
-		// Compilation is 100% client-side now
-		const component = createComponent(file.source, {}, false);
+		// Use compiled code when available, skip client-side compilation
+		const component = createComponent(file.compiled || file.source, {}, !!file.compiled);
 
 		// Cache the compiled component
 		componentCache.set(cacheKey, {

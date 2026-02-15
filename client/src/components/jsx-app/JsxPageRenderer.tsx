@@ -114,11 +114,11 @@ export function JsxPageRenderer({
 
 				if (cancelled) return;
 
-				// Create the page component with injected scope
+				// Use compiled code when available, skip client-side compilation
 				const Component = createComponent(
-					source,
+					file.compiled || source,
 					customComponents,
-					false,
+					!!file.compiled,
 				);
 
 				setPageComponent(() => Component);
