@@ -29,10 +29,18 @@ import { useAppBuilderStore } from "@/stores/app-builder.store";
 import { useAppCodeUpdates } from "@/hooks/useAppCodeUpdates";
 
 /**
- * Response shape from the new file listing endpoint
+ * Response shape from the file listing endpoint (editor)
  */
 interface AppFileListResponse {
 	files: AppCodeFile[];
+	total: number;
+}
+
+/**
+ * Response shape from the render endpoint
+ */
+interface AppRenderResponse {
+	files: Array<{ path: string; code: string }>;
 	total: number;
 }
 
@@ -52,6 +60,8 @@ interface JsxAppContext {
 	appId: string;
 	/** Set of component names that exist as user files in components/ */
 	userComponentNames: Set<string>;
+	/** All pre-loaded files (for resolving components without API calls) */
+	allFiles: AppCodeFile[];
 }
 
 /**
@@ -62,14 +72,17 @@ export function useJsxAppContext(): JsxAppContext {
 }
 
 /**
- * Fetch all app code files for an application
+ * Fetch all compiled app files for rendering.
+ *
+ * Uses the /render endpoint which returns pre-compiled JS and
+ * batch-compiles on demand if any files are missing compiled versions.
  */
 async function fetchAppFiles(
 	appId: string,
 	mode: "draft" | "live",
 ): Promise<AppCodeFile[]> {
 	const response = await authFetch(
-		`/api/applications/${appId}/files?mode=${mode}`,
+		`/api/applications/${appId}/render?mode=${mode}`,
 	);
 
 	if (!response.ok) {
@@ -77,8 +90,15 @@ async function fetchAppFiles(
 		throw new Error(`Failed to fetch app files: ${errorText}`);
 	}
 
-	const data: AppFileListResponse = await response.json();
-	return data.files;
+	const data: AppRenderResponse = await response.json();
+	// Map render response to AppCodeFile shape.
+	// code is already compiled JS — set as both source and compiled
+	// so the runtime uses the compiled path.
+	return data.files.map((f) => ({
+		path: f.path,
+		source: f.code,
+		compiled: f.code,
+	}));
 }
 
 /**
@@ -100,10 +120,12 @@ function LayoutWrapper({
 	file,
 	appId,
 	userComponentNames,
+	allFiles,
 }: {
 	file: AppCodeFile;
 	appId: string;
 	userComponentNames: Set<string>;
+	allFiles: AppCodeFile[];
 }) {
 	const [LayoutComponent, setLayoutComponent] =
 		useState<React.ComponentType | null>(null);
@@ -111,8 +133,8 @@ function LayoutWrapper({
 	const [isLoading, setIsLoading] = useState(true);
 
 	const appContext = useMemo<JsxAppContext>(
-		() => ({ appId, userComponentNames }),
-		[appId, userComponentNames],
+		() => ({ appId, userComponentNames, allFiles }),
+		[appId, userComponentNames, allFiles],
 	);
 
 	useEffect(() => {
@@ -131,6 +153,7 @@ function LayoutWrapper({
 						appId,
 						componentNames,
 						userComponentNames,
+						allFiles,
 					);
 				}
 
@@ -161,7 +184,7 @@ function LayoutWrapper({
 		return () => {
 			cancelled = true;
 		};
-	}, [appId, userComponentNames, file.path, file.source]);
+	}, [appId, userComponentNames, allFiles, file.path, file.source]);
 
 	if (isLoading) {
 		return <PageLoader message="Loading layout..." />;
@@ -204,11 +227,13 @@ function ProvidersWrapper({
 	file,
 	appId,
 	userComponentNames,
+	allFiles,
 	children,
 }: {
 	file: AppCodeFile;
 	appId: string;
 	userComponentNames: Set<string>;
+	allFiles: AppCodeFile[];
 	children: React.ReactNode;
 }) {
 	const [ProvidersComponent, setProvidersComponent] = useState<
@@ -233,6 +258,7 @@ function ProvidersWrapper({
 						appId,
 						componentNames,
 						userComponentNames,
+						allFiles,
 					);
 				}
 
@@ -270,7 +296,7 @@ function ProvidersWrapper({
 		return () => {
 			cancelled = true;
 		};
-	}, [appId, userComponentNames, file.path, file.source]);
+	}, [appId, userComponentNames, allFiles, file.path, file.source]);
 
 	if (isLoading) {
 		return <PageLoader message="Loading app..." />;
@@ -300,6 +326,7 @@ function renderRoutes(
 	routes: AppCodeRouteObject[],
 	appId: string,
 	userComponentNames: Set<string>,
+	allFiles: AppCodeFile[],
 ): React.ReactNode {
 	return routes.map((route, index) => {
 		// Handle index routes
@@ -313,6 +340,7 @@ function renderRoutes(
 							appId={appId}
 							file={route.file}
 							userComponentNames={userComponentNames}
+							allFiles={allFiles}
 						/>
 					}
 				/>
@@ -327,6 +355,7 @@ function renderRoutes(
 							file={route.file}
 							appId={appId}
 							userComponentNames={userComponentNames}
+							allFiles={allFiles}
 						/>
 					)
 				: (
@@ -334,17 +363,18 @@ function renderRoutes(
 							appId={appId}
 							file={route.file}
 							userComponentNames={userComponentNames}
+							allFiles={allFiles}
 						/>
 					)
 			: route.children && route.children.length > 0
-				? <Outlet context={{ appId, userComponentNames }} />
+				? <Outlet context={{ appId, userComponentNames, allFiles }} />
 				: undefined;
 
 		// Render with children if any
 		if (route.children && route.children.length > 0) {
 			return (
 				<Route key={route.path || index} path={route.path} element={element}>
-					{renderRoutes(route.children, appId, userComponentNames)}
+					{renderRoutes(route.children, appId, userComponentNames, allFiles)}
 				</Route>
 			);
 		}
@@ -391,7 +421,7 @@ function AppContent({
 
 	return (
 		<Routes>
-			{renderRoutes(jsxRoutes, appId, userComponentNames)}
+			{renderRoutes(jsxRoutes, appId, userComponentNames, files)}
 		</Routes>
 	);
 }
@@ -533,6 +563,7 @@ export function JsxAppShell({
 					file={providersFile}
 					appId={appId}
 					userComponentNames={userComponentNames}
+					allFiles={files}
 				>
 					{appContent}
 				</ProvidersWrapper>

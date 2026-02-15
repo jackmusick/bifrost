@@ -24,6 +24,8 @@ interface JsxPageRendererProps {
 	file: AppCodeFile;
 	/** Set of component names that exist as user files in components/ */
 	userComponentNames: Set<string>;
+	/** All pre-loaded files (for resolving components without API calls) */
+	allFiles?: AppCodeFile[];
 }
 
 /**
@@ -81,6 +83,7 @@ export function JsxPageRenderer({
 	appId,
 	file,
 	userComponentNames,
+	allFiles,
 }: JsxPageRendererProps) {
 	const [PageComponent, setPageComponent] =
 		useState<React.ComponentType | null>(null);
@@ -109,6 +112,7 @@ export function JsxPageRenderer({
 						appId,
 						componentNames,
 						userComponentNames,
+						allFiles,
 					);
 				}
 

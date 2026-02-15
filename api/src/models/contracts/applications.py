@@ -311,5 +311,19 @@ class SimpleFileListResponse(BaseModel):
     total: int
 
 
+class RenderFileResponse(BaseModel):
+    """Single compiled file for rendering (no source)."""
+
+    path: str = Field(description="Relative file path within the app")
+    code: str = Field(description="Compiled JavaScript ready for execution")
+
+
+class AppRenderResponse(BaseModel):
+    """All compiled files needed to render an application."""
+
+    files: list[RenderFileResponse]
+    total: int
+
+
 # ==================== IMPORT MODELS ====================
 # Applications use file sync (like forms/agents), not a dedicated import endpoint

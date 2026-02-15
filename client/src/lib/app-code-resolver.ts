@@ -192,6 +192,8 @@ export async function resolveAppComponentsFromFiles(
 	appId: string,
 	componentNames: string[],
 	userComponentNames: Set<string>,
+	/** Pre-loaded files from /render — avoids per-component API calls */
+	allFiles?: AppCodeFile[],
 ): Promise<Record<string, React.ComponentType>> {
 	const components: Record<string, React.ComponentType> = {};
 
@@ -210,19 +212,39 @@ export async function resolveAppComponentsFromFiles(
 			continue;
 		}
 
-		// Fetch from API - try with .tsx extension first, then without
-		let file = await resolveFile(appId, `components/${name}.tsx`);
-		if (!file) {
-			file = await resolveFile(appId, `components/${name}`);
+		let source: string | null = null;
+		let isPreCompiled = false;
+
+		if (allFiles) {
+			// Resolve from in-memory file list (no API call)
+			const match = allFiles.find(
+				(f) =>
+					f.path === `components/${name}.tsx` ||
+					f.path === `components/${name}.ts` ||
+					f.path === `components/${name}`,
+			);
+			if (match) {
+				source = match.compiled || match.source;
+				isPreCompiled = !!match.compiled;
+			}
+		} else {
+			// Fallback: fetch from API individually
+			let file = await resolveFile(appId, `components/${name}.tsx`);
+			if (!file) {
+				file = await resolveFile(appId, `components/${name}`);
+			}
+			if (file) {
+				source = (file as AppCodeFile).compiled || file.source;
+				isPreCompiled = !!(file as AppCodeFile).compiled;
+			}
 		}
-		if (!file) {
-			// This shouldn't happen since we filtered to known files
+
+		if (!source) {
 			console.warn(`Component file not found (unexpected): ${name}`);
 			continue;
 		}
 
-		// Use compiled code when available, skip client-side compilation
-		const component = createComponent(file.compiled || file.source, {}, !!file.compiled);
+		const component = createComponent(source, {}, isPreCompiled);
 
 		// Cache the compiled component
 		componentCache.set(cacheKey, {

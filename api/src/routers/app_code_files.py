@@ -28,6 +28,8 @@ from src.core.auth import Context, CurrentUser
 from src.core.exceptions import AccessDeniedError
 from src.models.contracts.applications import (
     AppFileUpdate,
+    AppRenderResponse,
+    RenderFileResponse,
     SimpleFileListResponse,
     SimpleFileResponse,
 )
@@ -42,6 +44,11 @@ logger = logging.getLogger(__name__)
 router = APIRouter(
     prefix="/api/applications/{app_id}/files",
     tags=["App Code Files"],
+)
+
+render_router = APIRouter(
+    prefix="/api/applications/{app_id}",
+    tags=["App Rendering"],
 )
 
 
@@ -398,3 +405,109 @@ async def delete_app_file(
     await storage.delete_file(full_path)
 
     logger.info(f"Deleted app file '{file_path}' from app {app_id} (slug={app.slug})")
+
+
+# =============================================================================
+# Render endpoint — compiled JS only, batch-compiles on demand
+# =============================================================================
+
+_COMPILABLE_EXTENSIONS = (".tsx", ".ts")
+
+
+@render_router.get(
+    "/render",
+    response_model=AppRenderResponse,
+    summary="Get all compiled files for rendering",
+)
+async def render_app(
+    app_id: UUID = Path(..., description="Application UUID"),
+    mode: FileMode = FileMode.draft,
+    ctx: Context = None,
+    user: CurrentUser = None,
+) -> AppRenderResponse:
+    """Return all files as compiled JS, ready for client-side execution.
+
+    If any compilable files are missing their compiled version in S3,
+    the entire app is batch-compiled first (writes results to S3 for
+    future requests).
+
+    Unlike /files, this returns only `path` + `code` (no source).
+    """
+    app = await get_application_or_404(ctx, app_id)
+    app_storage = AppStorageService()
+    file_index = FileIndexService(ctx.db)
+
+    repo_prefix = _repo_prefix(app.slug)
+    source_paths = await file_index.list_paths(prefix=repo_prefix)
+
+    if not source_paths:
+        return AppRenderResponse(files=[], total=0)
+
+    storage_mode = "preview" if mode == FileMode.draft else "live"
+    app_id_str = str(app.id)
+
+    # Gather source from DB and compiled from S3
+    source_map: dict[str, str] = {}   # rel_path -> source
+    compiled_map: dict[str, str] = {}  # rel_path -> compiled JS
+
+    for full_path in sorted(source_paths):
+        rel_path = full_path[len(repo_prefix):]
+        if not rel_path or rel_path == "app.yaml":
+            continue
+
+        source = await file_index.read(full_path) or ""
+        source_map[rel_path] = source
+
+        # Try reading compiled from S3
+        try:
+            compiled_bytes = await app_storage.read_file(
+                app_id_str, storage_mode, rel_path
+            )
+            compiled_str = compiled_bytes.decode("utf-8", errors="replace")
+            if compiled_str != source:
+                compiled_map[rel_path] = compiled_str
+        except FileNotFoundError:
+            pass
+
+    # Check if any compilable files are missing compiled versions
+    needs_compile = [
+        rel for rel in source_map
+        if rel.endswith(_COMPILABLE_EXTENSIONS) and rel not in compiled_map
+    ]
+
+    if needs_compile:
+        # Batch-compile ALL compilable files (not just missing ones,
+        # to ensure consistency)
+        from src.services.app_compiler import AppCompilerService
+
+        compiler = AppCompilerService()
+        batch_input = [
+            {"path": rel, "source": source_map[rel]}
+            for rel in source_map
+            if rel.endswith(_COMPILABLE_EXTENSIONS)
+        ]
+
+        if batch_input:
+            results = await compiler.compile_batch(batch_input)
+            for result in results:
+                if result.success and result.compiled:
+                    compiled_map[result.path] = result.compiled
+                    # Write to S3 for future requests
+                    await app_storage.write_preview_file(
+                        app_id_str,
+                        result.path,
+                        result.compiled.encode("utf-8"),
+                    )
+
+        logger.info(
+            f"On-demand compiled {len(batch_input)} files for app {app_id}"
+            f" ({len(needs_compile)} were missing)"
+        )
+
+    # Build response: compiled JS for compilable files, raw source for others
+    files: list[RenderFileResponse] = []
+    for rel_path, source in source_map.items():
+        code = compiled_map.get(rel_path, source)
+        files.append(RenderFileResponse(path=rel_path, code=code))
+
+    return AppRenderResponse(files=files, total=len(files))

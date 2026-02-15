@@ -45,6 +45,8 @@ from src.routers.tables import router as tables_router
 from src.routers.knowledge_sources import router as knowledge_sources_router
 from src.routers.applications import router as applications_router
 from src.routers.app_code_files import router as app_code_files_router
+from src.routers.app_code_files import render_router as app_render_router
+from src.routers.app_static_serve import router as app_static_serve_router
 from src.routers.dependencies import router as dependencies_router
 from src.routers.export_import import router as export_import_router
 from src.routers.jobs import router as jobs_router
@@ -101,6 +103,8 @@ __all__ = [
     "knowledge_sources_router",
     "applications_router",
     "app_code_files_router",
+    "app_render_router",
+    "app_static_serve_router",
     "dependencies_router",
     "export_import_router",
     "jobs_router",
