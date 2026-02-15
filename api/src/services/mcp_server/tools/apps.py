@@ -5,6 +5,9 @@ Tools for listing, creating, getting, updating, publishing apps,
 plus schema documentation.
 
 Applications use code-based files (TSX/TypeScript) stored in file_index table.
+
+Note: `get_app_schema` provides a concise platform overview and component index.
+For detailed component documentation (props, variants, examples), use `get_component_docs`.
 """
 
 import logging
@@ -423,6 +426,125 @@ async def publish_app(context: Any, app_id: str) -> ToolResult:
         return error_result(f"Error publishing app: {str(e)}")
 
 
+async def get_component_docs(
+    context: Any,  # noqa: ARG001
+    components: str = "",
+    category: str = "",
+) -> ToolResult:
+    """
+    Get detailed documentation for available UI components.
+
+    Args:
+        components: Comma-separated component names (e.g. "Button,Card,Table").
+                    Returns detailed docs for those specific components.
+        category: Filter by category. One of: layout, forms, display, navigation,
+                  feedback, data, typography.
+                  Returns all components in that category.
+
+    If neither components nor category is provided, returns a category index
+    listing all available components grouped by category.
+    """
+    from src.services.mcp_server.component_docs import CATEGORIES, COMPONENT_DOCS
+
+    # Case 1: Specific components requested
+    if components:
+        names = [c.strip() for c in components.split(",") if c.strip()]
+        results: dict[str, dict] = {}
+        not_found: list[str] = []
+        for name in names:
+            if name in COMPONENT_DOCS:
+                results[name] = COMPONENT_DOCS[name]
+            else:
+                not_found.append(name)
+
+        lines = []
+        for name, doc in results.items():
+            lines.append(f"## {name}")
+            lines.append(f"**Category**: {CATEGORIES.get(doc.get('category', ''), doc.get('category', ''))}")
+            lines.append(f"**Description**: {doc['description']}")
+            if doc.get("children"):
+                lines.append(f"**Children**: {', '.join(doc['children'])}")
+            if doc.get("props"):
+                lines.append("**Props**:")
+                for prop_name, prop_desc in doc["props"].items():
+                    lines.append(f"  - `{prop_name}`: {prop_desc}")
+            if doc.get("example"):
+                lines.append(f"**Example**:\n```tsx\n{doc['example']}\n```")
+            lines.append("")
+
+        if not_found:
+            lines.append(f"**Not found**: {', '.join(not_found)}")
+
+        display_text = "\n".join(lines)
+        return success_result(display_text, {
+            "components": results,
+            "not_found": not_found,
+        })
+
+    # Case 2: Category filter
+    if category:
+        if category not in CATEGORIES:
+            return error_result(
+                f"Unknown category '{category}'. Valid categories: {', '.join(CATEGORIES.keys())}"
+            )
+
+        cat_components: dict[str, dict] = {
+            name: doc for name, doc in COMPONENT_DOCS.items()
+            if doc.get("category") == category
+        }
+
+        lines = [f"# {CATEGORIES[category]}", ""]
+        for name, doc in cat_components.items():
+            lines.append(f"## {name}")
+            lines.append(f"**Description**: {doc['description']}")
+            if doc.get("children"):
+                lines.append(f"**Children**: {', '.join(doc['children'])}")
+            if doc.get("props"):
+                lines.append("**Props**:")
+                for prop_name, prop_desc in doc["props"].items():
+                    lines.append(f"  - `{prop_name}`: {prop_desc}")
+            if doc.get("example"):
+                lines.append(f"**Example**:\n```tsx\n{doc['example']}\n```")
+            lines.append("")
+
+        display_text = "\n".join(lines)
+        return success_result(display_text, {
+            "category": category,
+            "category_label": CATEGORIES[category],
+            "components": cat_components,
+            "count": len(cat_components),
+        })
+
+    # Case 3: No filter -- return category index
+    index: dict[str, list[str]] = {cat: [] for cat in CATEGORIES}
+    for name, doc in COMPONENT_DOCS.items():
+        cat = doc.get("category", "")
+        if cat in index:
+            index[cat].append(name)
+
+    lines = ["# Component Categories", ""]
+    for cat_key, cat_label in CATEGORIES.items():
+        comp_names = index.get(cat_key, [])
+        lines.append(f"## {cat_label} ({len(comp_names)} components)")
+        lines.append(", ".join(comp_names))
+        lines.append("")
+
+    lines.append("Use `components` parameter for specific component docs,")
+    lines.append("or `category` parameter to see all components in a category.")
+
+    display_text = "\n".join(lines)
+    return success_result(display_text, {
+        "categories": {
+            cat_key: {
+                "label": cat_label,
+                "components": index.get(cat_key, []),
+            }
+            for cat_key, cat_label in CATEGORIES.items()
+        },
+        "total_components": sum(len(v) for v in index.values()),
+    })
+
+
 async def get_app_schema(context: Any) -> ToolResult:  # noqa: ARG001
     """Get application schema documentation for code-based apps."""
     from src.models.contracts.applications import (
@@ -436,298 +558,96 @@ async def get_app_schema(context: Any) -> ToolResult:  # noqa: ARG001
         (ApplicationUpdate, "ApplicationUpdate (for updating apps)"),
     ], "Application Models")
 
-    # Documentation for code-based apps
+    # Documentation for code-based apps (concise overview; use get_component_docs for detailed component API)
     overview = r"""# App Builder Schema Documentation
 
-Applications in Bifrost use a code-based approach with TypeScript/TSX files.
+Applications in Bifrost use TypeScript/TSX files. For detailed component docs (props, variants, examples), use the `get_component_docs` tool.
 
-## App Builder Tool Hierarchy
+## Tool Hierarchy
 
-Apps are managed at two levels:
+**App Level**: `list_apps`, `get_app`, `update_app`, `publish_app`
+**File Level**: `code_list_files`, `code_get_file`, `code_create_file`, `code_update_file`, `code_delete_file`
 
-### App Level
-- `list_apps` - List all applications with file counts
-- `get_app` - Get app metadata and file list
-- `update_app` - Update app settings (name, description)
-- `publish_app` - Publish all draft files to live
+## File Structure & Paths
 
-### File Level
-- `code_list_files` - List all files in an app
-- `code_get_file` - Get a specific file's content
-- `code_create_file` - Create a new file
-- `code_update_file` - Update a file's content
-- `code_delete_file` - Delete a file
-
-**Workflow**: Use `get_app` to see files, then file tools for editing.
-
----
-
-## File Structure
-
-Applications use a file-based structure:
-
-```
-_layout.tsx          # Root layout wrapper (required)
-_providers.tsx       # Optional providers wrapper
-pages/
-  index.tsx          # Home page (/)
-  about.tsx          # About page (/about)
-  clients/
-    index.tsx        # Clients list (/clients)
-    [id].tsx         # Client detail (/clients/:id)
-components/
-  Button.tsx         # Shared components
-  Card.tsx
-modules/
-  api.ts             # Utility modules
-  utils.ts
-```
-
-## File Path Conventions
-
-- Root files: `_layout.tsx`, `_providers.tsx` only
-- Pages: `pages/*.tsx` - automatically become routes
-- Components: `components/*.tsx` - reusable UI
-- Modules: `modules/*.ts` - utilities and helpers
-- Dynamic routes: `[param].tsx` syntax
+- `_layout.tsx` — Root layout (required, must use `<Outlet />` not `{children}`)
+- `_providers.tsx` — Optional providers wrapper
+- `pages/*.tsx` — Routes (e.g., `pages/index.tsx` = `/`, `pages/clients/[id].tsx` = `/clients/:id`)
+- `components/*.tsx` — Reusable UI components
+- `modules/*.ts` — Utility modules
 
 ## CRITICAL: No Import Statements
 
-**App files must NOT contain import statements.** The Bifrost runtime automatically provides all necessary modules in scope:
+All modules are auto-provided by the Bifrost runtime. **Do NOT use import statements** or you get: `Cannot use import statement outside a module`.
 
-- **React hooks**: `useState`, `useEffect`, `useMemo`, `useCallback`, etc.
-- **Bifrost hooks**: `useWorkflow`, `useUser`, `useNavigate`, `useLocation`, `useParams`
+Available in scope:
+- **React**: `useState`, `useEffect`, `useMemo`, `useCallback`, etc.
+- **Bifrost hooks**: `useWorkflowQuery`, `useWorkflowMutation`, `useUser`, `useNavigate`, `useLocation`, `useParams`
 - **Routing**: `Outlet`, `Link`
-- **UI components**: `Button`, `Card`, `Table`, `Select`, `Badge`, `Input`, `Skeleton`, `Pagination`, `Calendar`, `DateRangePicker`, `MultiCombobox`, `TagsInput`, `Combobox`, `Slider`, etc.
-- **Icons**: All lucide-react icons (`Loader2`, `RefreshCw`, `Check`, `X`, `Building2`, etc.)
-- **Utilities**: `cn` (for className merging)
-- **Date utilities**: `format` (from date-fns, for date formatting)
+- **UI**: Button, Card, Table, Select, Badge, Input, Skeleton, Pagination, Calendar, DateRangePicker, MultiCombobox, TagsInput, Combobox, Slider, Dialog, Alert, Tabs, etc.
+- **Icons**: All lucide-react icons (e.g., `Loader2`, `RefreshCw`, `Check`, `X`)
+- **Utilities**: `cn` (className merging), `format` (date-fns)
 
-If you add import statements, you will get: `Cannot use import statement outside a module`
+## Available Components (use `get_component_docs` for full API)
+
+**Layout**: Card, CardHeader, CardTitle, CardDescription, CardContent, CardFooter, Separator
+**Data Display**: Table, TableHeader, TableBody, TableRow, TableHead, TableCell, Badge, Skeleton
+**Forms**: Input, Button, Select, Combobox, MultiCombobox, TagsInput, Slider, Calendar, DateRangePicker
+**Feedback**: Alert, AlertTitle, AlertDescription, Dialog, DialogTrigger, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter
+**Navigation**: Tabs, TabsList, TabsTrigger, TabsContent, Pagination, Link
+**Overlay**: Tooltip, TooltipTrigger, TooltipContent, Popover, PopoverTrigger, PopoverContent
 
 ## Workflow Hooks
 
-**CRITICAL: Always use workflow IDs, not names.**
+**CRITICAL: Always use workflow UUIDs, not names.** Get IDs via `list_workflows` first.
 
-```tsx
-// CORRECT - use the workflow UUID
-const { data } = useWorkflowQuery("ef8cf1f2-b451-47f4-aee8-336f7cb21d33");
+### useWorkflowQuery(workflowId, params?, options?)
 
-// WRONG - names don't work
-const { data } = useWorkflowQuery("list_csp_tenants");
-```
-
-Get workflow IDs using `list_workflows` before building the app.
-
-Two hooks are available:
-- `useWorkflowQuery` — for loading data (runs automatically on mount)
-- `useWorkflowMutation` — for user-triggered actions (runs when you call `execute()`)
-
-### useWorkflowQuery
-
-Declarative data fetching. Executes automatically on mount, re-executes when params change.
+Auto-executes on mount. For reading/loading data.
 
 | Property | Type | Description |
 |----------|------|-------------|
-| `data` | `T \| null` | The workflow result data (null until completed) |
-| `isLoading` | `boolean` | True while the workflow is executing |
-| `isError` | `boolean` | True if the workflow failed |
-| `error` | `string \| null` | Error message if workflow failed |
-| `logs` | `StreamingLog[]` | Streaming logs array (updates in real-time) |
-| `refetch` | `() => Promise<T>` | Re-execute the workflow |
-| `executionId` | `string \| null` | Current execution ID |
-| `status` | `string \| null` | Execution status |
+| `data` | `T \| null` | Result data (null until completed) |
+| `isLoading` | `boolean` | True while executing |
+| `isError` | `boolean` | True if failed |
+| `error` | `string \| null` | Error message |
+| `refetch` | `() => Promise<T>` | Re-execute |
+| `logs` | `StreamingLog[]` | Real-time streaming logs |
 
-Options (third parameter): `{ enabled?: boolean }` — set `enabled: false` to skip automatic execution.
+Options: `{ enabled?: boolean }` — set `false` to defer execution.
 
-### useWorkflowMutation
+### useWorkflowMutation(workflowId)
 
-Imperative execution. Does nothing until `execute()` is called. `execute()` returns `Promise<T>` with the actual result.
+Manual execution via `execute()`. For user-triggered actions.
 
 | Property | Type | Description |
 |----------|------|-------------|
-| `execute` | `(params?) => Promise<T>` | Execute the workflow. Returns the result directly. |
-| `isLoading` | `boolean` | True while the workflow is executing |
-| `isError` | `boolean` | True if the last execution failed |
-| `error` | `string \| null` | Error message from last execution |
-| `data` | `T \| null` | Result data from last execution |
-| `logs` | `StreamingLog[]` | Streaming logs array (updates in real-time) |
-| `reset` | `() => void` | Reset data, error, and loading state |
-| `executionId` | `string \| null` | Current execution ID |
-| `status` | `string \| null` | Execution status |
+| `execute` | `(params?) => Promise<T>` | Run the workflow, returns result |
+| `isLoading` | `boolean` | True while executing |
+| `isError` | `boolean` | True if failed |
+| `error` | `string \| null` | Error message |
+| `data` | `T \| null` | Last result |
+| `reset` | `() => void` | Reset state |
+| `logs` | `StreamingLog[]` | Real-time streaming logs |
 
-### Usage Patterns
-
-**Pattern 1: Load data on mount (`useWorkflowQuery`)**
-
-Best for workflows that load data when the page loads.
+### Quick Patterns
 
 ```tsx
-const { data, isLoading, error } = useWorkflowQuery("workflow-id", { limit: 10 });
+// Load data on mount
+const { data, isLoading } = useWorkflowQuery("workflow-uuid", { limit: 10 });
 
-if (isLoading) return <Skeleton />;
-if (error) return <Alert>{error}</Alert>;
+// Button-triggered action
+const { execute, isLoading } = useWorkflowMutation("workflow-uuid");
+const result = await execute({ name: "New Item" });
 
-return <CustomerList data={data} />;
+// Conditional loading
+const { data } = useWorkflowQuery("workflow-uuid", { id }, { enabled: !!id });
 ```
 
-**Pattern 2: Button-triggered action (`useWorkflowMutation`)**
+## Layout Tips
 
-Best for user-triggered actions like create, update, delete.
-
-```tsx
-const { execute, isLoading } = useWorkflowMutation("create-item-workflow");
-
-const handleCreate = async () => {
-  try {
-    const result = await execute({ name: "New Item" });
-    setItems(prev => [...prev, result.item]);
-    setDialogOpen(false);
-  } catch (err) {
-    console.error("Failed:", err.message);
-  }
-};
-
-<Button onClick={handleCreate} disabled={isLoading}>
-  {isLoading ? <Loader2 className="animate-spin" /> : "Create"}
-</Button>
-```
-
-**Pattern 3: Sequential/batch calls (`useWorkflowMutation`)**
-
-Each `execute()` call is independent — safe to call in a loop.
-
-```tsx
-const { execute } = useWorkflowMutation("process-item-workflow");
-
-const handleBatch = async () => {
-  const results = [];
-  for (const item of items) {
-    const result = await execute({ id: item.id });
-    results.push(result);
-  }
-  setProcessed(results);
-};
-```
-
-**Pattern 4: Conditional loading (`useWorkflowQuery` with `enabled`)**
-
-Delay execution until a condition is met.
-
-```tsx
-const params = useParams();
-const { data, isLoading } = useWorkflowQuery(
-  "get-customer-workflow",
-  { id: params.id },
-  { enabled: !!params.id }
-);
-```
-
-### Guidelines
-
-- Use `useWorkflowQuery` for **reading/loading data** (GET-like operations)
-- Use `useWorkflowMutation` for **user-triggered actions and writes** (POST/PUT/DELETE-like operations)
-- No `useEffect` needed for handling results — `useWorkflowQuery` auto-executes, and `useWorkflowMutation.execute()` returns results directly as a Promise
-
-## Layout Pattern
-
-The root `_layout.tsx` must use `<Outlet />` for routing:
-
-```tsx
-// _layout.tsx - CORRECT
-export default function RootLayout() {
-  return (
-    <div className="h-full bg-background overflow-hidden">
-      <Outlet />
-    </div>
-  );
-}
-```
-
-**Do NOT use `{children}` prop pattern** - it doesn't work with Bifrost routing.
-
-## Scrolling and Layout
-
-For pages with scrollable content, use flex layout with overflow control:
-
-```tsx
-// Page with scrollable table
-export default function MyPage() {
-  return (
-    <div className="flex flex-col h-full p-6 overflow-hidden">
-      {/* Header - fixed */}
-      <div className="shrink-0 mb-4">
-        <h1>Title</h1>
-      </div>
-
-      {/* Content - scrollable */}
-      <Card className="flex flex-col min-h-0 flex-1">
-        <CardHeader className="shrink-0">...</CardHeader>
-        <CardContent className="flex-1 min-h-0 overflow-auto">
-          <Table>...</Table>
-        </CardContent>
-      </Card>
-    </div>
-  );
-}
-```
-
-Key classes:
-- `h-full overflow-hidden` on layout root
-- `flex flex-col h-full overflow-hidden` on page root
-- `shrink-0` on fixed headers
-- `flex-1 min-h-0 overflow-auto` on scrollable content
-
-## Example Page
-
-```tsx
-// pages/index.tsx - NO IMPORTS NEEDED
-export default function ClientsPage() {
-  // Use workflow ID, not name
-  const clientsWorkflow = useWorkflow("a1b2c3d4-0001-0001-0001-000000000001");
-
-  useEffect(() => {
-    clientsWorkflow.execute();
-  }, []);
-
-  if (clientsWorkflow.loading) {
-    return (
-      <div className="p-8">
-        <Skeleton className="h-8 w-48 mb-4" />
-        <Skeleton className="h-64 w-full" />
-      </div>
-    );
-  }
-
-  const clients = clientsWorkflow.result?.clients || [];
-
-  return (
-    <div className="flex flex-col h-full p-6 overflow-hidden">
-      <h1 className="text-2xl font-bold mb-4 shrink-0">Clients</h1>
-      <Card className="flex flex-col min-h-0 flex-1">
-        <CardContent className="flex-1 min-h-0 overflow-auto p-0">
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead>Name</TableHead>
-                <TableHead>Email</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {clients.map(client => (
-                <TableRow key={client.id}>
-                  <TableCell>{client.name}</TableCell>
-                  <TableCell>{client.email}</TableCell>
-                </TableRow>
-              ))}
-            </TableBody>
-          </Table>
-        </CardContent>
-      </Card>
-    </div>
-  );
-}
-```
+- `_layout.tsx`: Use `<Outlet />` (not `{children}`) with `h-full overflow-hidden` on root div
+- Scrollable pages: `flex flex-col h-full overflow-hidden` on page root, `shrink-0` on headers, `flex-1 min-h-0 overflow-auto` on scrollable content
 
 """
 
@@ -1025,6 +945,7 @@ TOOLS = [
     ("validate_app", "Validate Application", "Validate application files for common issues (unknown components, bad workflow IDs, forbidden patterns)."),
     ("push_files", "Push Files", "Push multiple files to _repo/ in a single batch. Useful for creating or updating entire apps or workflow sets."),
     ("get_app_schema", "Get App Schema", "Get documentation about App Builder application structure and code-based files."),
+    ("get_component_docs", "Get Component Docs", "Get detailed UI component documentation (props, variants, examples). Filter by component names or category."),
 ]
 
 
@@ -1041,6 +962,7 @@ def register_tools(mcp: Any, get_context_fn: Any) -> None:
         "validate_app": validate_app,
         "push_files": push_files,
         "get_app_schema": get_app_schema,
+        "get_component_docs": get_component_docs,
     }
 
     for tool_id, name, description in TOOLS:
