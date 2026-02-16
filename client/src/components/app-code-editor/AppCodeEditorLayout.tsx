@@ -20,6 +20,7 @@ import { AppCodeEditor } from "./AppCodeEditor";
 import { AppCodePreview } from "./AppCodePreview";
 import { useAppCodeEditor } from "./useAppCodeEditor";
 import { useAppCodeUpdates, type LastUpdate } from "@/hooks/useAppCodeUpdates";
+import { authFetch } from "@/lib/api-client";
 import { JsxAppShell } from "@/components/jsx-app/JsxAppShell";
 import { toast } from "sonner";
 import {
@@ -31,7 +32,6 @@ import {
 	PanelLeft,
 	LayoutGrid,
 	AppWindow,
-	Package,
 } from "lucide-react";
 import { DependencyPanel } from "./DependencyPanel";
 import type { FileNode, FileContent, EditorCallbacks } from "@/components/file-tree/types";
@@ -176,6 +176,7 @@ export function AppCodeEditorLayout({
 	const {
 		state: editorState,
 		setSource,
+		setCompiled,
 		save: triggerSave,
 	} = useAppCodeEditor({
 		initialSource: currentFile?.source ?? "",
@@ -185,11 +186,29 @@ export function AppCodeEditorLayout({
 			if (!currentFile) return;
 
 			try {
-				// Save to API
-				await operations.write(currentFile.path, source);
+				// Save to API and get compiled code back
+				const response = await authFetch(
+					`/api/applications/${appId}/files/${encodeURIComponent(currentFile.path)}`,
+					{
+						method: "PUT",
+						headers: { "Content-Type": "application/json" },
+						body: JSON.stringify({ source }),
+					},
+				);
+
+				if (!response.ok) {
+					throw new Error(`Failed to save: ${response.statusText}`);
+				}
+
+				const data = await response.json();
+
+				// Update compiled code from server response
+				if (data.compiled) {
+					setCompiled(data.compiled);
+				}
 
 				// Call external save handler if provided
-				await onSave?.(currentFile.path, source, compiled);
+				await onSave?.(currentFile.path, source, data.compiled ?? compiled);
 
 				toast.success("File saved", { description: currentFile.name });
 			} catch (error) {
@@ -305,24 +324,6 @@ export function AppCodeEditorLayout({
 							(unsaved)
 						</span>
 					)}
-
-					<div className="w-px h-4 bg-border mx-1" />
-
-					{/* Package manager button */}
-					<Button
-						variant={sidebarTab === "packages" && !sidebarCollapsed ? "secondary" : "ghost"}
-						size="icon"
-						className="h-7 w-7"
-						onClick={() => {
-							if (sidebarCollapsed) {
-								setSidebarCollapsed(false);
-							}
-							setSidebarTab(sidebarTab === "packages" ? "files" : "packages");
-						}}
-						title="Package manager"
-					>
-						<Package className="h-4 w-4" />
-					</Button>
 				</div>
 
 				<div className="flex items-center gap-1">

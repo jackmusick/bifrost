@@ -450,8 +450,17 @@ async def write_app_file(
         updated_by=user.email or "unknown",
     )
 
+    # Compile server-side and return compiled code in the response
+    compiled_js: str | None = None
+    if file_path.endswith((".tsx", ".ts")):
+        from src.services.app_compiler import AppCompilerService
+        compiler = AppCompilerService()
+        result = await compiler.compile_file(source, file_path)
+        if result.success:
+            compiled_js = result.compiled
+
     logger.info(f"Wrote app file '{file_path}' for app {app_id} (slug={app.slug})")
-    return SimpleFileResponse(path=file_path, source=source)
+    return SimpleFileResponse(path=file_path, source=source, compiled=compiled_js)
 
 
 @router.delete(

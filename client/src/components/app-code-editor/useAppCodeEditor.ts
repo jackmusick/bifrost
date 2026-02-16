@@ -43,6 +43,8 @@ export interface UseAppCodeEditorResult {
 	state: AppCodeEditorState;
 	/** Update the source code */
 	setSource: (source: string) => void;
+	/** Update the compiled output (e.g. after server-side compilation) */
+	setCompiled: (compiled: string | null) => void;
 	/** Trigger an immediate save */
 	save: () => Promise<void>;
 	/** Trigger an immediate compile (no-op, kept for API compat) */
@@ -101,6 +103,11 @@ export function useAppCodeEditor({
 		}));
 	}, []);
 
+	// Update compiled output (e.g. after server returns compiled code)
+	const setCompiled = useCallback((compiled: string | null) => {
+		setState((prev) => ({ ...prev, compiled }));
+	}, []);
+
 	// Save: send source to server (compilation happens server-side)
 	const save = useCallback(async () => {
 		if (isSavingRef.current) return;
@@ -147,6 +154,7 @@ export function useAppCodeEditor({
 	return {
 		state,
 		setSource,
+		setCompiled,
 		save,
 		compile,
 		reset,
