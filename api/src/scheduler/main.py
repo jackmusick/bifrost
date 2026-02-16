@@ -468,12 +468,15 @@ class Scheduler:
                         )
 
                 elif op_type == "git_sync_execute":
-                    # Full sync: pull + commit + push
-                    # Pull first so remote changes (which may fix issues) land before
-                    # we run preflight during commit.
+                    # Full sync: commit + pull + push
+                    # Commit first to lock local platform state into git history,
+                    # then pull merges remote changes via three-way merge.
                     conflict_resolutions = data.get("conflict_resolutions", {})
 
-                    # Step 1: Pull remote changes (no preflight — remote may fix things)
+                    # Step 1: Commit local changes (regenerates manifest from DB)
+                    commit_result = await sync_service.desktop_commit("Sync from Bifrost")
+
+                    # Step 2: Pull remote changes
                     pull_result = await sync_service.desktop_pull()
                     if not pull_result.success:
                         if pull_result.conflicts and conflict_resolutions:
@@ -484,15 +487,14 @@ class Scheduler:
                                     error=resolve_result.error,
                                 )
                             else:
-                                # Resolution succeeded, commit + push
-                                commit_result = await sync_service.desktop_commit("Sync from Bifrost")
+                                # Resolution succeeded — fall through to push
                                 push_result = await sync_service.desktop_push()
                                 await publish_git_op_completed(
                                     job_id,
                                     status="success" if push_result.success else "failed",
                                     result_type="sync_execute",
-                                    pulled=pull_result.pulled,
-                                    pushed=commit_result.files_committed if commit_result else 0,
+                                    pulled=pull_result.pulled if pull_result.success else 0,
+                                    pushed=(commit_result.files_committed if commit_result and commit_result.success else 0),
                                     commit_sha=push_result.commit_sha,
                                     error=push_result.error if not push_result.success else None,
                                 )
@@ -507,17 +509,14 @@ class Scheduler:
                                 error=pull_result.error,
                             )
                     else:
-                        # Step 2: Commit local changes (runs preflight after pull)
-                        commit_result = await sync_service.desktop_commit("Sync from Bifrost")
-
                         # Step 3: Push
                         push_result = await sync_service.desktop_push()
                         await publish_git_op_completed(
                             job_id,
                             status="success" if push_result.success else "failed",
                             result_type="sync_execute",
-                            pulled=pull_result.pulled,
-                            pushed=commit_result.files_committed if commit_result else 0,
+                            pulled=pull_result.pulled if pull_result.success else 0,
+                            pushed=(commit_result.files_committed if commit_result and commit_result.success else 0),
                             commit_sha=push_result.commit_sha,
                             error=push_result.error if not push_result.success else None,
                         )
