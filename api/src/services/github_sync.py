@@ -141,6 +141,9 @@ class GitHubSyncService:
             async with self.repo_manager.checkout() as work_dir:
                 repo = self._open_or_init(work_dir)
 
+                # Regenerate manifest from DB so working tree reflects current platform state
+                await self._regenerate_manifest_to_dir(self.db, work_dir)
+
                 # Fetch remote
                 remote_exists = True
                 try:
