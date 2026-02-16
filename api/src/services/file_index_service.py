@@ -2,7 +2,7 @@
 File Index Service — dual-write facade for _repo/ files.
 
 Every write goes to both S3 (_repo/) and the file_index DB table.
-Reads and searches go through the DB for performance.
+Searches go through the DB; content reads go through get_module() (Redis/S3).
 Binary files are written to S3 only (not indexed).
 """
 
@@ -75,17 +75,6 @@ class FileIndexService:
 
         return content_hash
 
-    async def read(self, path: str) -> str | None:
-        """Read file content from the DB index. Returns None if not found."""
-        result = await self.db.execute(
-            select(FileIndex.content).where(FileIndex.path == path)
-        )
-        return result.scalar_one_or_none()
-
-    async def read_bytes(self, path: str) -> bytes:
-        """Read raw bytes from S3. Use for binary files or when DB index is insufficient."""
-        return await self.repo_storage.read(path)
-
     async def delete(self, path: str) -> None:
         """Delete a file from S3 and the DB index."""
         await self.repo_storage.delete(path)
@@ -116,9 +105,3 @@ class FileIndexService:
             result = await self.db.execute(select(FileIndex.path))
         return [row[0] for row in result.all()]
 
-    async def get_hash(self, path: str) -> str | None:
-        """Get the content hash for a file."""
-        result = await self.db.execute(
-            select(FileIndex.content_hash).where(FileIndex.path == path)
-        )
-        return result.scalar_one_or_none()
