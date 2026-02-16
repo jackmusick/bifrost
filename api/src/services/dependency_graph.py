@@ -230,7 +230,6 @@ class DependencyGraphService:
         result = await self.db.execute(
             select(FileIndex.content).where(
                 FileIndex.path.startswith(prefix),
-                ~FileIndex.path.endswith("/app.json"),
             )
         )
         wf_id_str = str(workflow_id)
@@ -395,7 +394,6 @@ class DependencyGraphService:
                 fi_result = await self.db.execute(
                     select(FileIndex.content).where(
                         FileIndex.path.startswith(prefix),
-                        ~FileIndex.path.endswith("/app.json"),
                     )
                 )
                 # Collect all workflow refs from all files

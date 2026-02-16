@@ -224,7 +224,6 @@ async def _get_app_workflow_ids(db: DbSession, app_id: UUID) -> set[UUID]:
     fi_result = await db.execute(
         select(FileIndex.content).where(
             FileIndex.path.startswith(prefix),
-            ~FileIndex.path.endswith("/app.json"),
         )
     )
 
@@ -607,7 +606,6 @@ async def get_workflow_usage_stats(
             fi_result = await db.execute(
                 select(FileIndex.content).where(
                     FileIndex.path.startswith(prefix),
-                    ~FileIndex.path.endswith("/app.json"),
                 )
             )
             all_refs: set[str] = set()

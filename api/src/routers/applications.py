@@ -512,7 +512,6 @@ export default function RootLayout() {
         fi_result = await self.session.execute(
             select(FileIndex.path, FileIndex.content).where(
                 FileIndex.path.startswith(prefix),
-                ~FileIndex.path.endswith("/app.json"),
             ).order_by(FileIndex.path)
         )
 
@@ -558,12 +557,11 @@ export default function RootLayout() {
         file_storage = FileStorageService(self.session)
         prefix = f"apps/{application.slug}/"
 
-        # Delete existing files (except app.json)
+        # Delete existing files
         from src.models.orm.file_index import FileIndex
         existing_result = await self.session.execute(
             select(FileIndex.path).where(
                 FileIndex.path.startswith(prefix),
-                ~FileIndex.path.endswith("/app.json"),
             )
         )
         for (path,) in existing_result.all():

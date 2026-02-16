@@ -349,7 +349,6 @@ async def scan_app_dependencies(
             fi_result = await db.execute(
                 select(FileIndex.path, FileIndex.content).where(
                     FileIndex.path.startswith(prefix),
-                    ~FileIndex.path.endswith("/app.json"),
                 )
             )
 
