@@ -413,6 +413,10 @@ class GitHubSyncService:
             async with self.repo_manager.checkout() as work_dir:
                 repo = self._open_or_init(work_dir)
 
+                # Regenerate manifest from DB so working tree reflects current platform state.
+                # This ensures git stash captures the real local state before merging remote.
+                await self._regenerate_manifest_to_dir(self.db, work_dir)
+
                 # Fetch first
                 remote_exists = True
                 try:
