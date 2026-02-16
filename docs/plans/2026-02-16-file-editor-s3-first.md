@@ -10,6 +10,16 @@
 
 **Design doc:** `docs/plans/2026-02-16-file-editor-s3-first-design.md`
 
+## Locked Decisions (Do Not Re-open Mid-Implementation)
+
+- Keep `POST /api/files/editor/folder`. Implement folder creation by writing a placeholder file (`.gitkeep`) under the folder path in S3.
+- Folder/file delete is **S3-gated**:
+  - If S3 delete fails for any target path, fail the request.
+  - After S3 success, side effects (`file_index`, Redis/module cache, app preview/pubsub, metadata cleanup) are best-effort and should not block each other.
+- `file_index` is search-only. Listing/existence semantics come from S3.
+- JSON files are not indexed in `file_index`.
+- Legacy app metadata file format is `app.yaml` only. `app.json` behavior is dead code and should be removed.
+
 ---
 
 ### Task 1: Add S3 list_directory() to RepoStorage
@@ -17,7 +27,7 @@
 `RepoStorage.list()` returns a flat list of all paths under a prefix. The editor needs non-recursive directory listing (direct children + synthesized folders). Add a method that does this using S3 `Delimiter`.
 
 **Files:**
-- Modify: `api/src/services/repo_storage.py:73-98`
+- Modify: `api/src/services/repo_storage.py:73-98` (list method at line 73, _list_from_s3 at line 78)
 - Test: `api/tests/unit/test_repo_storage.py` (create)
 
 **Step 1: Write the test**
@@ -95,9 +105,9 @@ class TestListDirectory:
         with patch.object(repo, "list", new_callable=AsyncMock, return_value=all_paths):
             files, folders = await repo.list_directory("")
 
-        assert files == ["workflows/test.py"]
-        # __pycache__ and .git should not appear as folders
-        assert folders == []
+        # Root listing should synthesize workflows/ folder and hide excluded paths
+        assert files == []
+        assert folders == ["workflows/"]
 
 
 class TestListDirectoryRecursive:
@@ -124,12 +134,13 @@ Expected: FAIL — `list_directory` does not exist on `RepoStorage`
 **Step 3: Implement list_directory()**
 
 Add to `api/src/services/repo_storage.py` after the existing `list()` method (after line 98):
+- Ensure `from typing import Callable` is imported in the module.
 
 ```python
 async def list_directory(
     self,
     prefix: str = "",
-    exclude_fn: callable | None = None,
+    exclude_fn: Callable[[str], bool] | None = None,
 ) -> tuple[list[str], list[str]]:
     """List direct children of a directory in _repo/.
 
@@ -195,7 +206,7 @@ git commit -m "feat: add list_directory() to RepoStorage for S3-first folder lis
 Replace the editor list endpoint's file_index query with `RepoStorage.list_directory()`.
 
 **Files:**
-- Modify: `api/src/routers/files.py:362-401` (list_files_editor)
+- Modify: `api/src/routers/files.py:362-402` (list_files_editor)
 - Test: `api/tests/e2e/api/test_files.py` (existing test_list_files covers this)
 
 **Step 1: Write a focused test for folder listing**
@@ -332,7 +343,7 @@ git commit -m "refactor: editor list endpoint uses S3 instead of file_index"
 Same change for the app files endpoint.
 
 **Files:**
-- Modify: `api/src/routers/app_code_files.py:320-376` (list_app_files)
+- Modify: `api/src/routers/app_code_files.py:315-376` (list_app_files)
 - Test: `api/tests/unit/routers/test_app_code_files.py` (existing)
 
 **Step 1: Write a test**
@@ -412,10 +423,11 @@ git commit -m "refactor: app editor list endpoint uses S3 instead of file_index"
 ### Task 4: Fix editor delete — S3 folder detection + recursive delete
 
 This is the core bug fix. Replace file_index folder marker check with S3 prefix listing.
+Delete semantics are strict: S3 failures fail the request; post-S3 side effects are best-effort.
 
 **Files:**
 - Modify: `api/src/routers/files.py:644-681` (delete_file_editor)
-- Modify: `api/src/services/file_storage/file_ops.py:365-436` (delete_file — used for per-file side effects)
+- Modify: `api/src/services/file_storage/file_ops.py:366-437` (delete_file — used for per-file side effects)
 - Test: `api/tests/e2e/api/test_files.py`
 
 **Step 1: Write the failing test**
@@ -502,12 +514,9 @@ async def delete_file_editor(
         children = await repo.list(folder_prefix)
 
         if children:
-            # Folder delete: delete each child with full side effects
+            # Folder delete: delete each child; any failure should fail request
             for child_path in children:
-                try:
-                    await storage.delete_file(child_path)
-                except Exception as e:
-                    logger.warning(f"Failed to delete child {child_path}: {e}")
+                await storage.delete_file(child_path)
         else:
             # Single file delete
             await storage.delete_file(path)
@@ -518,7 +527,7 @@ async def delete_file_editor(
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=f"Not found: {path}")
 ```
 
-Note: we add `import logging` and `logger = logging.getLogger(__name__)` at the top of the file if not already present.
+Note: no best-effort swallow in the router. If a child delete fails, return failure.
 
 **Step 4: Run tests**
 
@@ -539,7 +548,7 @@ git commit -m "fix: editor folder delete uses S3 prefix listing instead of file_
 Restructure `file_ops.py:delete_file()` so the "S3 first, then side effects" pattern is obvious.
 
 **Files:**
-- Modify: `api/src/services/file_storage/file_ops.py:365-436`
+- Modify: `api/src/services/file_storage/file_ops.py:366-437`
 - Test: existing tests should still pass (refactor only)
 
 **Step 1: Restructure delete_file()**
@@ -559,25 +568,28 @@ async def delete_file(self, path: str) -> None:
             detail=".bifrost/ files are system-generated and cannot be edited directly",
         )
 
-    # === S3: Source of truth ===
+    # === S3: Source of truth (must succeed) ===
     await self._delete_from_s3(path)
 
-    # === Side effects (conditional) ===
-    await self._remove_from_search_index(path)
-    await self._handle_app_file_cleanup(path)
-    await self._remove_metadata(path)
-    await self._invalidate_module_cache_if_python(path)
+    # === Side effects (best-effort, independent) ===
+    for op in (
+        self._remove_from_search_index,
+        self._handle_app_file_cleanup,
+        self._remove_metadata,
+        self._invalidate_module_cache_if_python,
+    ):
+        try:
+            await op(path)
+        except Exception as e:
+            logger.warning(f"Delete side effect failed for {path}: {e}")
 
     logger.info(f"File deleted: {path}")
 
 async def _delete_from_s3(self, path: str) -> None:
-    """Delete from S3 _repo/ — always runs, idempotent."""
+    """Delete from S3 _repo/ — source-of-truth operation."""
     s3_key = f"{REPO_PREFIX}{path}"
     async with self._s3_client.get_client() as s3:
-        try:
-            await s3.delete_object(Bucket=self.settings.s3_bucket, Key=s3_key)
-        except Exception:
-            pass
+        await s3.delete_object(Bucket=self.settings.s3_bucket, Key=s3_key)
 
 async def _remove_from_search_index(self, path: str) -> None:
     """Remove from file_index search table if present."""
@@ -645,37 +657,36 @@ git commit -m "refactor: restructure delete_file() to clarify S3-first, then sid
 
 ### Task 6: Remove dead code
 
-Clean up code that's no longer called.
+Clean up code that's no longer called, but do not break still-live compatibility call sites.
 
 **Files:**
-- Modify: `api/src/services/file_storage/folder_ops.py` — remove `list_files()`, `create_folder()`, `delete_folder()`
-- Modify: `api/src/services/file_storage/service.py` — remove delegations to removed methods
-- Modify: `api/src/routers/files.py` — remove create_folder_editor endpoint (or convert to create .gitkeep)
+- Modify: `api/src/services/file_storage/folder_ops.py` — remove `delete_folder()` implementation (DB marker based)
+- Modify: `api/src/services/file_storage/service.py` — keep compatibility methods required by runtime users
+- Modify: `api/src/routers/files.py` — keep create_folder_editor endpoint and convert to `.gitkeep`
 - Modify: `api/src/services/file_index_service.py` — remove `list_paths()` method
-- Delete obsolete tests that test removed functionality
+- Modify: `api/src/routers/maintenance.py`, `api/src/services/file_backend.py` if needed to avoid regressions
 
 **Step 1: Identify and remove dead code**
 
 In `folder_ops.py`:
-- Remove `list_files()` (lines 142-223) — replaced by RepoStorage.list_directory()
-- Remove `create_folder()` (lines 65-98) — folders are virtual
 - Remove `delete_folder()` (lines 100-140) — replaced by S3 prefix listing in router
+- Keep `list_files()` and `create_folder()` only as compatibility wrappers while legacy call sites exist.
 
 In `file_index_service.py`:
 - Remove `list_paths()` (lines 98-106) — no longer used for listings
 
 In `service.py` (FileStorageService):
-- Remove `list_files()`, `create_folder()`, `delete_folder()` delegations
+- Keep `list_files()` while `maintenance.py`/`file_backend.py` still call it.
+- Keep `create_folder()` and implement with `.gitkeep`.
+- Remove `delete_folder()` delegation.
 
 In `files.py`:
-- Remove or modify `create_folder_editor` endpoint (lines 608-639)
-  - Option A: Remove entirely (folders are virtual)
-  - Option B: Convert to create a `.gitkeep` file in the folder
+- Keep `create_folder_editor` endpoint and create `path/.gitkeep` in S3.
 
 **Step 2: Run all tests**
 
 Run: `./test.sh -v`
-Fix any tests that reference removed code. Tests for removed methods should be deleted.
+Fix any tests that reference removed code. Update tests that assumed folder marker rows.
 
 **Step 3: Run quality checks**
 
@@ -687,12 +698,63 @@ cd api && pyright && ruff check .
 
 ```bash
 git add -A
-git commit -m "chore: remove dead file_index listing code, folder markers, and create_folder"
+git commit -m "chore: remove dead folder-marker delete path and keep .gitkeep folder creation compatibility"
 ```
 
 ---
 
-### Task 7: Final E2E verification
+### Task 7: Canonical App Path in DB (Stop Slug-Derived Path Logic)
+
+This resolves the persistent `apps/{slug}` special-case behavior.
+
+**Goal:** App file ownership and routing should use app identity + canonical repo path, not path string parsing.
+
+**Files:**
+- Migration: add `applications.repo_path` (canonical app source root, e.g. `apps/tickbox-grc`)
+- Modify: `api/src/models/orm/applications.py`
+- Modify: `api/src/services/manifest_generator.py` — use `repo_path` for `ManifestApp.path`
+- Modify: `api/src/services/github_sync.py` — import/export using `ManifestApp.path` directly
+- Modify: `api/src/routers/app_code_files.py`, `api/src/services/file_storage/file_ops.py`, `api/src/services/file_storage/entity_detector.py`
+
+**Step 1: Schema + backfill**
+- Add `repo_path` column.
+- Backfill existing rows from slug (`apps/{slug}`).
+- Make app read/write/delete derive prefixes from `repo_path`, not from slug formatting.
+
+**Step 2: Remove runtime string parsing**
+- Remove slug extraction from `path.split("/")` in core app file side effects.
+- Where app context is available (`app_id` routes), pass explicit app context to service methods.
+- Where only a path is available, resolve app ownership via `repo_path` prefix lookup.
+
+**Step 3: Tests**
+- Add regression tests where slug and repo path are not treated as interchangeable.
+
+---
+
+### Task 8: Stop JSON Indexing in file_index
+
+> **Phase 0 completed most of this task.** The following are already done:
+> - `app.json` → `app.yaml` in entity_detector, entity_metadata, and all query filters
+> - `AppIndexer` and `_serialize_app_to_json` deleted
+> - `github_sync_virtual_files.py` deleted
+> - All 7 `~FileIndex.path.endswith("/app.json")` filters removed
+>
+> **Remaining work:**
+
+**Files:**
+- Modify: `api/src/services/file_index_service.py`
+
+**Step 1: Enforce index policy**
+- Remove `.json` from `FileIndexService.TEXT_EXTENSIONS`.
+- Add tests proving `.json` writes still go to S3 but do not get indexed in `file_index`.
+
+**Step 2: Data cleanup**
+- Add cleanup/migration for legacy `apps/*/app.json` index rows (if any exist).
+- Verify no runtime code path queries or filters on `/app.json` (confirmed clean by Phase 0 grep).
+
+---
+
+### Task 9: Final E2E verification
 
 Run the full test suite and verify the editor works end-to-end.
 
@@ -727,13 +789,58 @@ git commit -m "fix: address issues found during E2E verification"
 
 ## Notes for future sessions
 
-### App path convention cleanup (NOT in scope)
-There are 20+ instances across 9 files of `if path.startswith("apps/")` and slug extraction from path positions. Full audit saved in design doc at `docs/plans/2026-02-16-file-editor-s3-first-design.md` under "Future Work". Track this as a separate task.
+### App path convention cleanup
+This is now in scope in Task 7 and Task 8. Do not defer this work.
 
 ### Key files affected by this plan
 - `api/src/services/repo_storage.py` — new `list_directory()`
 - `api/src/routers/files.py` — list + delete endpoints rewritten
 - `api/src/routers/app_code_files.py` — list endpoint uses S3
 - `api/src/services/file_storage/file_ops.py` — delete_file() restructured
-- `api/src/services/file_storage/folder_ops.py` — dead code removed
+- `api/src/services/file_storage/folder_ops.py` — DB marker delete removed; compatibility methods retained until callers migrate
 - `api/src/services/file_index_service.py` — list_paths() removed
+- `api/src/services/manifest_generator.py` — app path from canonical DB field
+- `api/src/services/github_sync.py` — app import/export uses manifest app path directly
+
+---
+
+## Post-Phase 0 Status (2026-02-16)
+
+Phase 0 (dead code cleanup + bug fixes) has been completed. The following changes were made:
+
+### Completed by Phase 0
+
+| Change | Commit | Impact on S3-first plan |
+|--------|--------|------------------------|
+| Deleted `github_sync_virtual_files.py` + tests | `6e728d63` | Removes dead file referenced in Task 8 |
+| Deleted `AppIndexer` + `_serialize_app_to_json` | `83a77f5a` | Removes dead indexer referenced in Task 8 |
+| entity_detector: `app.json` → `app.yaml` | `66ad6a66` | Task 8 format unification done |
+| entity_metadata: `app.json` → `app.yaml` | `f296f9c2` | Task 8 format unification done |
+| Removed 7 vestigial `app.json` exclusion filters | `4ea86f0d` | Task 8 filter cleanup done |
+| Removed dead `download_workspace()` | `07a9f3e5` | Cleans up folder_ops.py before Task 6 |
+| Fixed S3Backend double-prefix bug | S3Backend commit | Ensures file_backend.py works correctly for Tasks 2-4 |
+| Guarded `get_module()` to .py only | file_ops commit | Reduces unnecessary Redis round-trips |
+
+### Updated line references (post-cleanup)
+
+| File | Lines | Key methods |
+|------|-------|-------------|
+| `repo_storage.py` | 113 total | `list()` at 73, `_list_from_s3()` at 78, `exists()` at 100 |
+| `files.py` | 750 total | `list_files_editor()` at 362, `delete_file_editor()` at 644 |
+| `app_code_files.py` | 691 total | `list_app_files()` at 315, `_repo_prefix()` at 305 |
+| `file_ops.py` | 519 total | `read_file()` at 91, `write_file()` at 164, `delete_file()` at 366 |
+| `folder_ops.py` | 281 total | `list_files()` at 141, `list_all_files()` at 224 (download_workspace removed) |
+| `file_index_service.py` | 107 total | `list_paths()` at 98 (still present — removed in Task 6) |
+| `file_backend.py` | 218 total | S3Backend at 135, methods at 157-209 (double-prefix fixed) |
+
+### Remaining work for S3-first plan
+
+- **Task 1**: Add `list_directory()` to RepoStorage — not started
+- **Task 2**: Switch workspace editor list to S3 — not started
+- **Task 3**: Switch app editor list to S3 — not started
+- **Task 4**: Fix editor delete with S3 folder detection — not started
+- **Task 5**: Restructure `delete_file()` for S3-first clarity — not started
+- **Task 6**: Remove dead code (folder marker delete, `list_paths()`) — not started
+- **Task 7**: Canonical app path in DB — not started
+- **Task 8**: Stop JSON indexing (mostly done by Phase 0, only `.json` TEXT_EXTENSIONS removal remains)
+- **Task 9**: Final E2E verification — not started
