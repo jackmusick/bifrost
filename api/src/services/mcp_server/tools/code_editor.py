@@ -150,32 +150,11 @@ def _find_match_locations(content: str, search_string: str) -> list[dict[str, An
 
 
 async def _read_from_cache_or_s3(path: str) -> str | None:
-    """
-    Load file content from Redis cache -> S3 _repo/ fallback.
+    """Load file content via Redis→S3 cache chain."""
+    from src.core.module_cache import get_module
 
-    file_index is search-only; all code reads go through this path.
-    Returns content string or None if not found.
-    """
-    # Try Redis cache first (async)
-    try:
-        from src.core.module_cache import get_module
-        cached = await get_module(path)
-        if cached:
-            return cached["content"]
-    except Exception as e:
-        logger.debug(f"Redis cache miss for {path}: {e}")
-
-    # Fall back to S3 _repo/
-    try:
-        from src.services.repo_storage import RepoStorage
-        repo = RepoStorage()
-        content_bytes = await repo.read(path)
-        return content_bytes.decode("utf-8")
-    except FileNotFoundError:
-        return None
-    except Exception as e:
-        logger.warning(f"S3 read failed for {path}: {e}")
-        return None
+    cached = await get_module(path)
+    return cached["content"] if cached else None
 
 
 async def _get_content_by_path(
