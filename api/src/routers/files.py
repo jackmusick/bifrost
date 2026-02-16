@@ -375,30 +375,65 @@ async def list_files_editor(
     List files and folders in a directory with rich metadata.
 
     Cloud mode only - used by browser editor.
+    Lists directly from S3 via RepoStorage (source of truth).
     """
+    from src.services.repo_storage import RepoStorage
+
     try:
-        storage = FileStorageService(db)
-        file_entries = await storage.list_files(path, recursive=recursive)
+        repo = RepoStorage()
 
-        files = []
-        for entry in file_entries:
-            is_folder = entry.path.endswith("/")
-            clean_path = entry.path.rstrip("/") if is_folder else entry.path
+        # Normalize path: "." or "" means root
+        prefix = "" if path in (".", "") else path.rstrip("/") + "/"
 
+        if recursive:
+            from src.services.editor.file_filter import is_excluded_path
+            all_paths = await repo.list(prefix)
+            return [
+                FileMetadata(
+                    path=p,
+                    name=p.split("/")[-1],
+                    type=FileType.FILE,
+                    size=None,
+                    extension=p.split(".")[-1] if "." in p.split("/")[-1] else None,
+                    modified=datetime.now(timezone.utc).isoformat(),
+                )
+                for p in sorted(all_paths)
+                if not is_excluded_path(p)
+            ]
+
+        # Non-recursive: get direct children
+        child_files, child_folders = await repo.list_directory(prefix)
+
+        files: list[FileMetadata] = []
+
+        # Folders first
+        for folder_path in child_folders:
+            clean = folder_path.rstrip("/")
             files.append(FileMetadata(
-                path=clean_path,
-                name=clean_path.split("/")[-1],
-                type=FileType.FOLDER if is_folder else FileType.FILE,
-                size=entry.size_bytes if not is_folder else None,
-                extension=entry.path.split(".")[-1] if "." in entry.path and not is_folder else None,
-                modified=entry.updated_at.isoformat() if entry.updated_at else datetime.now(timezone.utc).isoformat(),
+                path=clean,
+                name=clean.split("/")[-1],
+                type=FileType.FOLDER,
+                size=None,
+                extension=None,
+                modified=datetime.now(timezone.utc).isoformat(),
             ))
+
+        # Then files
+        for file_path in child_files:
+            name = file_path.split("/")[-1]
+            files.append(FileMetadata(
+                path=file_path,
+                name=name,
+                type=FileType.FILE,
+                size=None,
+                extension=name.split(".")[-1] if "." in name else None,
+                modified=datetime.now(timezone.utc).isoformat(),
+            ))
+
         return files
 
     except ValueError as e:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))
-    except FileNotFoundError:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=f"Directory not found: {path}")
 
 
 @router.get(

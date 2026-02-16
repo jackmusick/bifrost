@@ -284,6 +284,35 @@ class TestFileOperations:
         )
 
 
+    def test_list_files_shows_folders(self, e2e_client, platform_admin):
+        """Listing a directory shows synthesized folders from child files."""
+        # Write files in a subfolder
+        for name in ["a.py", "b.py"]:
+            e2e_client.put(
+                "/api/files/editor/content",
+                headers=platform_admin.headers,
+                json={"path": f"e2e_folder_test/{name}", "content": f"# {name}"},
+            )
+
+        # List root — should see "e2e_folder_test" as a folder
+        response = e2e_client.get(
+            "/api/files/editor?path=.",
+            headers=platform_admin.headers,
+        )
+        assert response.status_code == 200
+        paths = [f["path"] for f in response.json()]
+        types = {f["path"]: f["type"] for f in response.json()}
+        assert "e2e_folder_test" in paths
+        assert types["e2e_folder_test"] == "folder"
+
+        # Cleanup
+        for name in ["a.py", "b.py"]:
+            e2e_client.delete(
+                f"/api/files/editor?path=e2e_folder_test/{name}",
+                headers=platform_admin.headers,
+            )
+
+
 @pytest.mark.e2e
 class TestFileAccess:
     """Test file access control."""
