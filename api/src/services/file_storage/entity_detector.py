@@ -49,7 +49,7 @@ def detect_platform_entity_type(path: str, content: bytes) -> str | None:
     # App files: apps/{slug}/...
     if path.startswith("apps/"):
         parts = path.split("/")
-        if len(parts) >= 3 and parts[2] == "app.json":
+        if len(parts) >= 3 and parts[2] == "app.yaml":
             return "app"
         return "app_file"
 

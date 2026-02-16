@@ -99,10 +99,10 @@ class TestDetectPlatformEntityType:
 class TestDetectAppEntityType:
     """Tests for app file path detection."""
 
-    def test_detect_app_json(self):
-        """app.json files should be detected as 'app' entity type."""
-        content = b'{"name": "My App", "slug": "my-app"}'
-        result = detect_platform_entity_type("apps/my-app/app.json", content)
+    def test_detect_app_yaml(self):
+        """app.yaml files should be detected as 'app' entity type."""
+        content = b"name: My App\nslug: my-app\n"
+        result = detect_platform_entity_type("apps/my-app/app.yaml", content)
         assert result == "app"
 
     def test_detect_app_tsx_file(self):
