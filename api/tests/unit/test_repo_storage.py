@@ -1,6 +1,6 @@
 """Tests for repo storage service."""
 import pytest
-from unittest.mock import AsyncMock
+from unittest.mock import AsyncMock, MagicMock, patch
 
 
 @pytest.fixture
@@ -79,3 +79,84 @@ def test_compute_hash():
     from src.services.repo_storage import RepoStorage
     h = RepoStorage.compute_hash(b"hello world")
     assert len(h) == 64  # SHA-256 hex
+
+
+from src.services.repo_storage import RepoStorage
+
+
+def _mock_settings():
+    s = MagicMock()
+    s.s3_bucket = "test-bucket"
+    s.s3_endpoint_url = "http://localhost:9000"
+    s.s3_access_key = "test"
+    s.s3_secret_key = "test"
+    s.s3_region = "us-east-1"
+    return s
+
+
+class TestListDirectory:
+    """Test RepoStorage.list_directory() synthesizes folders from S3."""
+
+    @pytest.mark.asyncio
+    async def test_list_directory_returns_files_and_folders(self):
+        """Non-recursive list returns direct files and folder prefixes."""
+        repo = RepoStorage(settings=_mock_settings())
+
+        all_paths = [
+            "file_at_root.py",
+            "workflows/test.py",
+            "workflows/utils.py",
+            "apps/myapp/_layout.tsx",
+            "apps/myapp/pages/index.tsx",
+        ]
+
+        with patch.object(repo, "list", new_callable=AsyncMock, return_value=all_paths):
+            files, folders = await repo.list_directory("")
+
+        assert sorted(files) == ["file_at_root.py"]
+        assert sorted(folders) == ["apps/", "workflows/"]
+
+    @pytest.mark.asyncio
+    async def test_list_directory_with_prefix(self):
+        """List directory scoped to a prefix."""
+        repo = RepoStorage(settings=_mock_settings())
+
+        all_paths = [
+            "apps/myapp/_layout.tsx",
+            "apps/myapp/pages/index.tsx",
+            "apps/myapp/components/Button.tsx",
+        ]
+
+        with patch.object(repo, "list", new_callable=AsyncMock, return_value=all_paths):
+            files, folders = await repo.list_directory("apps/myapp/")
+
+        assert sorted(files) == ["apps/myapp/_layout.tsx"]
+        assert sorted(folders) == ["apps/myapp/components/", "apps/myapp/pages/"]
+
+    @pytest.mark.asyncio
+    async def test_list_directory_excludes_system_files(self):
+        """Excluded paths (.git, __pycache__) are filtered out."""
+        repo = RepoStorage(settings=_mock_settings())
+
+        all_paths = [
+            "workflows/test.py",
+            "__pycache__/test.cpython-312.pyc",
+            ".git/config",
+        ]
+
+        with patch.object(repo, "list", new_callable=AsyncMock, return_value=all_paths):
+            files, folders = await repo.list_directory("")
+
+        assert files == []
+        assert folders == ["workflows/"]
+
+    @pytest.mark.asyncio
+    async def test_list_directory_empty(self):
+        """Empty directory returns empty lists."""
+        repo = RepoStorage(settings=_mock_settings())
+
+        with patch.object(repo, "list", new_callable=AsyncMock, return_value=[]):
+            files, folders = await repo.list_directory("")
+
+        assert files == []
+        assert folders == []

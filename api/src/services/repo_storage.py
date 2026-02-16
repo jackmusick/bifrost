@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import hashlib
 import logging
+from collections.abc import Callable
 from contextlib import asynccontextmanager
 
 from aiobotocore.session import get_session
@@ -96,6 +97,55 @@ class RepoStorage:
             continuation_token = response.get("NextContinuationToken")
 
         return paths
+
+    async def list_directory(
+        self,
+        prefix: str = "",
+        exclude_fn: Callable[[str], bool] | None = None,
+    ) -> tuple[list[str], list[str]]:
+        """List direct children of a directory in _repo/.
+
+        Returns (files, folders) where:
+        - files: full relative paths of direct child files
+        - folders: full relative paths of direct child directories (with trailing /)
+
+        Uses the flat list() result and synthesizes folder entries by
+        checking for path separators relative to the prefix.
+
+        Args:
+            prefix: Directory prefix (e.g. "apps/myapp/"). Empty string for root.
+            exclude_fn: Optional filter function(path) -> bool. If True, path is excluded.
+        """
+        from src.services.editor.file_filter import is_excluded_path
+
+        filter_fn = exclude_fn or is_excluded_path
+
+        all_paths = await self.list(prefix)
+
+        files: list[str] = []
+        folders: set[str] = set()
+
+        for path in all_paths:
+            if filter_fn(path):
+                continue
+
+            # Get the part after the prefix
+            relative = path[len(prefix):]
+            if not relative:
+                continue
+
+            slash_idx = relative.find("/")
+            if slash_idx == -1:
+                # Direct child file
+                files.append(path)
+            else:
+                # Nested — synthesize the folder
+                folder_name = relative[: slash_idx + 1]
+                folder_path = f"{prefix}{folder_name}"
+                if not filter_fn(folder_path.rstrip("/")):
+                    folders.add(folder_path)
+
+        return sorted(files), sorted(folders)
 
     async def exists(self, path: str) -> bool:
         """Check if a file exists in _repo/."""
