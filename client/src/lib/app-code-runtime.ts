@@ -299,6 +299,7 @@ function ErrorComponent({
  * @param source - Source code or pre-compiled JavaScript
  * @param customComponents - Additional components to inject (e.g., app-specific components)
  * @param useCompiled - If true, source is already compiled and doesn't need transformation
+ * @param externalDeps - External npm dependencies loaded from esm.sh (injected as $deps)
  * @returns A React component that renders the code
  *
  * @example
@@ -322,6 +323,7 @@ export function createComponent(
 	source: string,
 	customComponents: Record<string, React.ComponentType> = {},
 	useCompiled: boolean = false,
+	externalDeps: Record<string, Record<string, unknown>> = {},
 ): React.ComponentType {
 	// Step 1: Compile if needed
 	let compiled: string;
@@ -350,6 +352,7 @@ export function createComponent(
 		...$,
 		...customComponents,
 		$: { ...$, ...customComponents }, // Also provide $ for explicit imports
+		$deps: externalDeps,
 	};
 
 	// Step 3: Create argument names and values for the function
