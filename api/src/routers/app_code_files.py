@@ -38,6 +38,7 @@ from src.models.contracts.applications import (
 from src.models.orm.applications import Application
 from src.routers.applications import ApplicationRepository
 from src.services.app_storage import AppStorageService
+from src.core.module_cache import get_module
 from src.services.file_index_service import FileIndexService
 from src.services.file_storage.service import get_file_storage_service
 
@@ -352,8 +353,9 @@ async def list_app_files(
         if rel_path == "app.yaml":
             continue
 
-        # Source from file_index (DB)
-        source = await file_index.read(full_path) or ""
+        # Source from Redis→S3 cache
+        cached = await get_module(full_path)
+        source = cached["content"] if cached else ""
 
         # Compiled from _apps/{app_id}/{mode}/
         compiled: str | None = None
@@ -390,12 +392,12 @@ async def read_app_file(
     The compiled field is only set when it differs from source.
     """
     app = await get_application_or_404(ctx, app_id)
-    file_index = FileIndexService(ctx.db)
     app_storage = AppStorageService()
 
-    # Source from file_index (DB)
+    # Source from Redis→S3 cache
     repo_path = f"{_repo_prefix(app.slug)}{file_path}"
-    source = await file_index.read(repo_path)
+    cached = await get_module(repo_path)
+    source = cached["content"] if cached else None
     if source is None:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
@@ -528,8 +530,8 @@ async def render_app(
     # Read dependencies from app.yaml in file_index (fast DB read, not cached)
     dependencies: dict[str, str] = {}
     try:
-        file_index = FileIndexService(ctx.db)
-        yaml_content = await file_index.read(f"apps/{app.slug}/app.yaml")
+        cached = await get_module(f"apps/{app.slug}/app.yaml")
+        yaml_content = cached["content"] if cached else None
         dependencies = _parse_dependencies(yaml_content)
     except Exception:
         pass
@@ -613,8 +615,8 @@ async def get_dependencies(
 ) -> dict[str, str]:
     """Return the validated dependencies dict from app.yaml."""
     app = await get_application_or_404(ctx, app_id)
-    file_index = FileIndexService(ctx.db)
-    yaml_content = await file_index.read(f"apps/{app.slug}/app.yaml")
+    cached = await get_module(f"apps/{app.slug}/app.yaml")
+    yaml_content = cached["content"] if cached else None
     return _parse_dependencies(yaml_content)
 
 
@@ -655,9 +657,9 @@ async def put_dependencies(
             )
 
     # Read existing app.yaml
-    file_index = FileIndexService(ctx.db)
     yaml_path = f"apps/{app.slug}/app.yaml"
-    existing_yaml = await file_index.read(yaml_path)
+    cached = await get_module(yaml_path)
+    existing_yaml = cached["content"] if cached else None
 
     # Serialize and write back
     new_yaml = _serialize_dependencies(deps, existing_yaml)
