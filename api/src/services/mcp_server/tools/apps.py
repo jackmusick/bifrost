@@ -1049,9 +1049,9 @@ async def get_app_dependencies(
     from sqlalchemy import select
 
     from src.core.database import get_db_context
+    from src.core.module_cache import get_module
     from src.models.orm.applications import Application
     from src.routers.app_code_files import _parse_dependencies
-    from src.services.file_storage.file_index_service import FileIndexService
 
     if not app_id and not app_slug:
         return error_result("Either app_id or app_slug is required")
@@ -1078,8 +1078,8 @@ async def get_app_dependencies(
             if not app:
                 return error_result(f"Application not found: {app_id or app_slug}")
 
-            file_index = FileIndexService(db)
-            yaml_content = await file_index.read(f"apps/{app.slug}/app.yaml")
+            cached = await get_module(f"apps/{app.slug}/app.yaml")
+            yaml_content = cached["content"] if cached else None
             deps = _parse_dependencies(yaml_content)
 
             if not deps:
@@ -1123,10 +1123,10 @@ async def update_app_dependencies(
     from sqlalchemy import select
 
     from src.core.database import get_db_context
+    from src.core.module_cache import get_module
     from src.models.orm.applications import Application
     from src.routers.app_code_files import _serialize_dependencies
     from src.services.app_storage import AppStorageService
-    from src.services.file_storage.file_index_service import FileIndexService
     from src.services.file_storage.file_storage_service import get_file_storage_service
 
     MAX_DEPS = 20
@@ -1163,9 +1163,9 @@ async def update_app_dependencies(
                 return error_result(f"Application not found: {app_id}")
 
             # Read existing app.yaml
-            file_index = FileIndexService(db)
             yaml_path = f"apps/{app.slug}/app.yaml"
-            existing_yaml = await file_index.read(yaml_path)
+            cached = await get_module(yaml_path)
+            existing_yaml = cached["content"] if cached else None
 
             # Serialize and write
             new_yaml = _serialize_dependencies(dependencies, existing_yaml)
