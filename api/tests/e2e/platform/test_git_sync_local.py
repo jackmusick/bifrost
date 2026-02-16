@@ -2200,3 +2200,182 @@ class TestSplitManifestFormat:
         wf = wf_result.scalar_one_or_none()
         assert wf is not None
         assert wf.name == "Legacy Test Workflow"
+
+
+# =============================================================================
+# Cross-Instance Manifest Reconciliation
+# =============================================================================
+
+
+@pytest.mark.e2e
+@pytest.mark.asyncio
+class TestCrossInstanceManifestReconciliation:
+    """Test that manifest regeneration + commit + pull correctly reconciles
+    cross-instance changes to .bifrost/*.yaml files."""
+
+    async def test_config_add_and_delete_merge(
+        self,
+        db_session: AsyncSession,
+        sync_service,
+        bare_repo,
+        working_clone,
+        tmp_path,
+    ):
+        """
+        Instance A (working_clone) adds a config.
+        Instance B (sync_service/prod) deletes a config.
+        After sync, both changes should be reflected.
+        """
+        from src.models.orm.config import Config
+        from src.models.orm.integrations import Integration
+
+        # --- Setup: Create initial state with an integration and 2 configs ---
+        integ_id = uuid4()
+        config_1_id = uuid4()
+        config_2_id = uuid4()
+
+        integ = Integration(id=integ_id, name="TestReconcileInteg", is_deleted=False)
+        db_session.add(integ)
+        cfg1 = Config(
+            id=config_1_id, key="keep_this", value="yes",
+            integration_id=integ_id, updated_by="git-sync",
+        )
+        cfg2 = Config(
+            id=config_2_id, key="delete_this", value="remove_me",
+            integration_id=integ_id, updated_by="git-sync",
+        )
+        db_session.add_all([cfg1, cfg2])
+
+        # Also need a workflow so the manifest isn't empty
+        wf_id = uuid4()
+        wf = Workflow(
+            id=wf_id, name="Reconcile Test WF",
+            function_name="reconcile_test_wf",
+            path="workflows/git_sync_test_reconcile.py",
+            is_active=True,
+        )
+        db_session.add(wf)
+        await db_session.commit()
+
+        # Write workflow file + manifest to persistent dir
+        write_entity_to_repo(
+            sync_service._persistent_dir,
+            "workflows/git_sync_test_reconcile.py",
+            SAMPLE_WORKFLOW_PY,
+        )
+        await write_manifest_to_repo(db_session, sync_service._persistent_dir)
+
+        # Commit + push initial state
+        commit_result = await sync_service.desktop_commit("initial with configs")
+        assert commit_result.success
+        push_result = await sync_service.desktop_push()
+        assert push_result.success
+
+        # --- Instance A (working_clone): Pull, add config-3, push ---
+        working_clone.remotes.origin.pull("main")
+        clone_dir = Path(working_clone.working_dir)
+
+        # Read current configs.yaml and add a new config
+        configs_yaml_path = clone_dir / ".bifrost" / "configs.yaml"
+        configs_yaml = yaml.safe_load(configs_yaml_path.read_text())
+        config_3_id = str(uuid4())
+        configs_yaml["configs"]["new_from_dev"] = {
+            "id": config_3_id,
+            "key": "new_from_dev",
+            "value": "hello_from_dev",
+            "integration_id": str(integ_id),
+        }
+        configs_yaml_path.write_text(
+            yaml.dump(configs_yaml, default_flow_style=False, sort_keys=False)
+        )
+        working_clone.index.add([".bifrost/configs.yaml"])
+        working_clone.index.commit("Dev: add new_from_dev config")
+        working_clone.remotes.origin.push("main")
+
+        # --- Instance B (prod/sync_service): Delete config-2 from DB ---
+        await db_session.execute(
+            delete(Config).where(Config.id == config_2_id)
+        )
+        await db_session.commit()
+
+        # --- Sync: commit (regenerates manifest without config-2) then pull ---
+        commit_result = await sync_service.desktop_commit("Prod: delete config-2")
+        assert commit_result.success
+
+        pull_result = await sync_service.desktop_pull()
+        assert pull_result.success, f"Pull failed: {pull_result.error}"
+
+        # --- Verify: manifest should have config-1 and new_from_dev, NOT config-2 ---
+        persistent_dir = sync_service._persistent_dir
+        final_manifest = read_manifest_from_dir(persistent_dir / ".bifrost")
+
+        config_keys = set(final_manifest.configs.keys())
+        assert "keep_this" in config_keys, f"config-1 should be preserved, got: {config_keys}"
+        assert "new_from_dev" in config_keys, f"dev's new config should be merged in, got: {config_keys}"
+        assert "delete_this" not in config_keys, f"config-2 should be deleted, got: {config_keys}"
+
+    async def test_empty_repo_pull_imports_remote_state(
+        self,
+        db_session: AsyncSession,
+        sync_service,
+        bare_repo,
+        working_clone,
+        tmp_path,
+    ):
+        """
+        Instance A pushes configs/integrations to remote.
+        Instance B has empty _repo (post-upgrade), pulls.
+        All remote entities should be imported, not deleted.
+        """
+        from src.models.orm.config import Config
+        from src.models.orm.integrations import Integration
+
+        # --- Instance A: Push state with integration + config ---
+        clone_dir = Path(working_clone.working_dir)
+        (clone_dir / ".bifrost").mkdir(exist_ok=True)
+
+        integ_id = str(uuid4())
+        config_id = str(uuid4())
+
+        (clone_dir / ".bifrost" / "integrations.yaml").write_text(yaml.dump({
+            "integrations": {
+                "TestRemoteInteg": {
+                    "id": integ_id,
+                    "entity_id": "tenant_id",
+                }
+            }
+        }, default_flow_style=False))
+
+        (clone_dir / ".bifrost" / "configs.yaml").write_text(yaml.dump({
+            "configs": {
+                "remote_config": {
+                    "id": config_id,
+                    "key": "remote_config",
+                    "value": "from_remote",
+                    "integration_id": integ_id,
+                }
+            }
+        }, default_flow_style=False))
+
+        working_clone.index.add([".bifrost/integrations.yaml", ".bifrost/configs.yaml"])
+        working_clone.index.commit("Remote: add integration and config")
+        working_clone.remotes.origin.push("main")
+
+        # --- Instance B: Pull from empty _repo ---
+        # The sync_service starts with an empty persistent dir (no .bifrost/ files).
+        # desktop_pull should regenerate (producing empty manifest), then merge remote.
+        pull_result = await sync_service.desktop_pull()
+        assert pull_result.success, f"Pull failed: {pull_result.error}"
+
+        # Verify the remote entities were imported into DB
+        integ_result = await db_session.execute(
+            select(Integration).where(Integration.name == "TestRemoteInteg")
+        )
+        imported_integ = integ_result.scalar_one_or_none()
+        assert imported_integ is not None, "Integration should be imported from remote"
+
+        config_result = await db_session.execute(
+            select(Config).where(Config.key == "remote_config")
+        )
+        imported_config = config_result.scalar_one_or_none()
+        assert imported_config is not None, "Config should be imported from remote"
