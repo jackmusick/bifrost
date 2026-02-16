@@ -9,11 +9,13 @@ Key patterns:
 - bifrost:module:index - SET of all module paths
 """
 
+import hashlib
 import json
 import logging
 from typing import Awaitable, TypedDict, cast
 
 from src.core.redis_client import get_redis_client
+from src.services.repo_storage import RepoStorage
 
 logger = logging.getLogger(__name__)
 
@@ -31,7 +33,12 @@ class CachedModule(TypedDict):
 
 async def get_module(path: str) -> CachedModule | None:
     """
-    Fetch a single module from cache.
+    Fetch a module from cache, falling back to S3.
+
+    Lookup order:
+    1. Redis cache (fast path)
+    2. S3 _repo/ (fallback, re-caches to Redis)
+    3. None (module not found)
 
     Args:
         path: Module path relative to workspace (e.g., "shared/halopsa.py")
@@ -44,7 +51,37 @@ async def get_module(path: str) -> CachedModule | None:
     data = await redis.get(key)
     if data:
         return json.loads(data)
-    return None
+
+    # Redis miss — try S3 fallback
+    try:
+        repo = RepoStorage()
+        content_bytes = await repo.read(path)
+    except Exception:
+        logger.debug(f"Module not in cache or S3: {path}")
+        return None
+
+    try:
+        content_str = content_bytes.decode("utf-8")
+    except UnicodeDecodeError:
+        logger.warning(f"Could not decode {path} as UTF-8, skipping")
+        return None
+
+    content_hash = hashlib.sha256(content_bytes).hexdigest()
+    module: CachedModule = {
+        "content": content_str,
+        "path": path,
+        "hash": content_hash,
+    }
+
+    # Re-cache to Redis (self-healing)
+    try:
+        await redis.setex(key, 86400, json.dumps(module))
+        redis_conn = await redis._get_redis()
+        await cast(Awaitable[int], redis_conn.sadd(MODULE_INDEX_KEY, path))
+    except Exception as e:
+        logger.warning(f"Failed to re-cache S3 module to Redis: {e}")
+
+    return module
 
 
 async def set_module(path: str, content: str, content_hash: str) -> None:

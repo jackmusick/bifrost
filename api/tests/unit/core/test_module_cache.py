@@ -42,15 +42,78 @@ class TestModuleCacheAsync:
             mock_client.get.assert_called_once_with("bifrost:module:shared/test.py")
 
     async def test_get_module_not_found(self, mock_redis_client):
-        """Test fetching a module that doesn't exist in cache."""
+        """Test fetching a module that doesn't exist in cache or S3."""
         mock_client, _ = mock_redis_client
         mock_client.get.return_value = None
 
-        with patch("src.core.module_cache.get_redis_client", return_value=mock_client):
+        mock_repo = AsyncMock()
+        mock_repo.read.side_effect = Exception("NoSuchKey")
+
+        with (
+            patch("src.core.module_cache.get_redis_client", return_value=mock_client),
+            patch("src.core.module_cache.RepoStorage", return_value=mock_repo),
+        ):
             from src.core.module_cache import get_module
 
             result = await get_module("nonexistent/module.py")
 
+            assert result is None
+
+    async def test_get_module_falls_back_to_s3(self, mock_redis_client):
+        """When Redis misses, get_module should fall back to S3 and re-cache."""
+        mock_client, mock_redis = mock_redis_client
+        mock_client.get.return_value = None  # Redis miss
+
+        mock_repo = AsyncMock()
+        mock_repo.read.return_value = b"print('from s3')"
+
+        with (
+            patch("src.core.module_cache.get_redis_client", return_value=mock_client),
+            patch("src.core.module_cache.RepoStorage", return_value=mock_repo),
+        ):
+            from src.core.module_cache import get_module
+
+            result = await get_module("shared/test.py")
+
+            assert result is not None
+            assert result["content"] == "print('from s3')"
+            assert result["path"] == "shared/test.py"
+            assert result["hash"]  # SHA-256 hash present
+            # Verify re-cached to Redis
+            mock_client.setex.assert_called_once()
+
+    async def test_get_module_s3_not_found(self, mock_redis_client):
+        """When both Redis and S3 miss, get_module returns None."""
+        mock_client, _ = mock_redis_client
+        mock_client.get.return_value = None
+
+        mock_repo = AsyncMock()
+        mock_repo.read.side_effect = Exception("NoSuchKey")
+
+        with (
+            patch("src.core.module_cache.get_redis_client", return_value=mock_client),
+            patch("src.core.module_cache.RepoStorage", return_value=mock_repo),
+        ):
+            from src.core.module_cache import get_module
+
+            result = await get_module("nonexistent.py")
+            assert result is None
+
+    async def test_get_module_s3_fallback_handles_binary(self, mock_redis_client):
+        """S3 fallback gracefully handles non-UTF-8 content."""
+        mock_client, _ = mock_redis_client
+        mock_client.get.return_value = None
+
+        mock_repo = AsyncMock()
+        mock_repo.read.return_value = b"\x89PNG\r\n"  # Binary
+
+        with (
+            patch("src.core.module_cache.get_redis_client", return_value=mock_client),
+            patch("src.core.module_cache.RepoStorage", return_value=mock_repo),
+        ):
+            from src.core.module_cache import get_module
+
+            result = await get_module("image.png")
             assert result is None
 
     async def test_set_module(self, mock_redis_client):
