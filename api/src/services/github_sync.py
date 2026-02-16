@@ -186,6 +186,9 @@ class GitHubSyncService:
             async with self.repo_manager.checkout() as work_dir:
                 repo = self._open_or_init(work_dir)
 
+                # Regenerate manifest from DB so working tree reflects current platform state
+                await self._regenerate_manifest_to_dir(self.db, work_dir)
+
                 # Check for unresolved conflicts BEFORE git add (which would resolve them)
                 conflict_list: list[MergeConflict] = []
                 try:
