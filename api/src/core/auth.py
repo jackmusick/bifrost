@@ -136,6 +136,7 @@ async def get_current_user_optional(
         UserPrincipal if authenticated, None otherwise
     """
     token = None
+    token_type = "access"
 
     # Try Authorization header first (API clients)
     if credentials:
@@ -143,12 +144,16 @@ async def get_current_user_optional(
     # Fall back to cookie (browser clients)
     elif "access_token" in request.cookies:
         token = request.cookies["access_token"]
+    # Fall back to embed_token cookie (iframe embed sessions)
+    elif "embed_token" in request.cookies:
+        token = request.cookies["embed_token"]
+        token_type = "embed"
 
     if not token:
         return None
 
-    # Decode and validate token - must be an access token
-    payload = decode_token(token, expected_type="access")
+    # Decode and validate token
+    payload = decode_token(token, expected_type=token_type)
 
     if payload is None:
         return None

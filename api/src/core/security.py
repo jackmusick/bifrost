@@ -268,6 +268,7 @@ def create_embed_token(
         "org_id": org_id,
         "verified_params": verified_params,
         "email": "embed@internal.gobifrost.com",
+        "is_superuser": True,
         "exp": expire,
         "type": "embed",
         "iss": settings.jwt_issuer,

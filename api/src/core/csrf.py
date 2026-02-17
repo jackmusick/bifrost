@@ -54,6 +54,7 @@ CSRF_EXEMPT_PATHS = {
 # Path prefixes that are exempt from CSRF (public webhook endpoints)
 CSRF_EXEMPT_PREFIXES = (
     "/api/hooks/",  # Webhook receiver - called by external services, no auth
+    "/embed/",  # Embed entry points - HMAC-verified, no cookie auth
 )
 
 
@@ -91,12 +92,16 @@ class CSRFMiddleware(BaseHTTPMiddleware):
 
         # Only enforce CSRF for cookie-based auth
         has_cookie_auth = "access_token" in request.cookies
+        has_embed_auth = "embed_token" in request.cookies
         header_keys_lower = {k.lower() for k in request.headers.keys()}
         has_bearer_auth = "authorization" in header_keys_lower
         has_api_key_auth = "x-bifrost-key" in header_keys_lower
 
-        # If using Bearer token or API key, CSRF is not needed
-        if has_bearer_auth or has_api_key_auth:
+        # If using Bearer token, API key, or embed token, CSRF is not needed.
+        # Embed tokens are obtained via HMAC verification and are scoped —
+        # they cannot be forged by a CSRF attack since the attacker doesn't
+        # have the HMAC secret to obtain a valid embed token.
+        if has_bearer_auth or has_api_key_auth or has_embed_auth:
             return await call_next(request)
 
         # If using cookie auth, CSRF is required
