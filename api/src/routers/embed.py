@@ -2,9 +2,10 @@
 
 import logging
 
-from fastapi import APIRouter, HTTPException, Path, Request, Response
+from fastapi import APIRouter, HTTPException, Path, Request
 from sqlalchemy import select
 from sqlalchemy.orm import selectinload
+from starlette.responses import RedirectResponse
 
 from src.core.database import get_db_context
 from src.core.security import create_embed_token, decrypt_secret
@@ -22,7 +23,6 @@ router = APIRouter(
 @router.get("/apps/{slug}")
 async def embed_app(
     request: Request,
-    response: Response,
     slug: str = Path(...),
 ):
     """Public entry point for HMAC-authenticated iframe embedding.
@@ -72,24 +72,25 @@ async def embed_app(
         verified_params=verified_params,
     )
 
-    # Set cookie for subsequent requests from the iframe
-    response.set_cookie(
+    # Build redirect response
+    redirect = RedirectResponse(
+        url=f"/apps/{app.slug}",
+        status_code=302,
+    )
+
+    # Set cookie on the redirect response
+    redirect.set_cookie(
         key="embed_token",
         value=embed_token,
         httponly=True,
-        samesite="none",  # Required for cross-origin iframes
-        secure=True,  # Required when samesite=none
+        samesite="none",
+        secure=True,
         max_age=8 * 3600,
         path="/",
     )
 
     # Set permissive framing headers for embed route
-    response.headers["Content-Security-Policy"] = "frame-ancestors *"
-    response.headers["X-Frame-Options"] = "ALLOWALL"
+    redirect.headers["Content-Security-Policy"] = "frame-ancestors *"
+    redirect.headers["X-Frame-Options"] = "ALLOWALL"
 
-    return {
-        "status": "ok",
-        "app_id": str(app.id),
-        "app_name": app.name,
-        "verified_params": verified_params,
-    }
+    return redirect

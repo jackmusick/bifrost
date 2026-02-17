@@ -41,8 +41,9 @@ class TestEmbedWorkflowExecution:
         r = e2e_client.get(
             f"/embed/apps/{app['slug']}",
             params={**params, "hmac": hmac_val},
+            follow_redirects=False,
         )
-        assert r.status_code == 200, r.text
+        assert r.status_code == 302, r.text
         embed_token = r.cookies.get("embed_token")
         assert embed_token, "Expected embed_token cookie"
 

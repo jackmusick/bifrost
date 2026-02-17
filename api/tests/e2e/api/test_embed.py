@@ -48,7 +48,9 @@ class TestEmbedEntryPoint:
             params={**params, "hmac": hmac_val},
             follow_redirects=False,
         )
-        assert r.status_code == 200, r.text
+        # Should redirect to /apps/{slug}
+        assert r.status_code == 302, r.text
+        assert f"/apps/{app['slug']}" in r.headers.get("location", "")
         # Should set an embed_token cookie
         assert "embed_token" in r.cookies
 
