@@ -161,7 +161,7 @@ async def login_flow(api_url: str | None = None, auto_open: bool = True) -> bool
 
                 # Success - we have tokens
                 if "access_token" in poll_data:
-                    print(" ✓")
+                    print(" OK")
 
                     # Calculate expiry time
                     expires_at = datetime.now(timezone.utc) + timedelta(seconds=poll_data.get("expires_in", 1800))
@@ -706,7 +706,7 @@ async def _run_session_flow(
                 execution_id = pending_data["execution_id"]
                 workflow_name = pending_data["workflow_name"]
                 params = pending_data["params"]
-                print(f" ✓\n\nExecuting workflow: {workflow_name}")
+                print(f" OK\n\nExecuting workflow: {workflow_name}")
                 break
             elif response.status_code == 404:
                 print("\n\nSession expired or deleted.", file=sys.stderr)

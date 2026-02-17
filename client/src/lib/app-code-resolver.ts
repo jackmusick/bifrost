@@ -87,12 +87,17 @@ export async function resolveFile(
  * ```
  */
 export function extractComponentNames(source: string): string[] {
-	// Match JSX opening tags with PascalCase names
-	// e.g., <ComponentName, <Card>, <MyComponent123>
-	const matches = source.matchAll(/<([A-Z][a-zA-Z0-9]*)/g);
 	const names = new Set<string>();
 
-	for (const match of matches) {
+	// Match JSX opening tags: <ComponentName, <Card>, <MyComponent123>
+	for (const match of source.matchAll(/<([A-Z][a-zA-Z0-9]*)/g)) {
+		names.add(match[1]);
+	}
+
+	// Match compiled createElement calls: React.createElement(ComponentName, ...)
+	for (const match of source.matchAll(
+		/React\.createElement\(([A-Z][a-zA-Z0-9]*)/g,
+	)) {
 		names.add(match[1]);
 	}
 
