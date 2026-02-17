@@ -73,6 +73,7 @@ from src.routers import (
     app_render_router,
     dependencies_router,
     embed_router,
+    form_embed_secrets_router,
     export_import_router,
     platform_workers_router,
     platform_queue_router,
@@ -480,6 +481,7 @@ def create_app() -> FastAPI:
     app.include_router(app_render_router)
     app.include_router(dependencies_router)
     app.include_router(embed_router)
+    app.include_router(form_embed_secrets_router)
     app.include_router(export_import_router)
     app.include_router(platform_workers_router)
     app.include_router(platform_queue_router)
