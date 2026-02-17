@@ -260,6 +260,17 @@ async def cleanup_test_data(db_session: AsyncSession):
         delete(FileIndex).where(FileIndex.path.like("agents/%"))
     )
 
+    # Clean up junction tables first (before parent entities)
+    from src.models.orm.workflow_roles import WorkflowRole
+    from src.models.orm.forms import FormRole
+    from src.models.orm.agents import AgentRole
+    from src.models.orm.app_roles import AppRole
+
+    await db_session.execute(delete(WorkflowRole).where(WorkflowRole.assigned_by.in_(["git-sync", "test"])))
+    await db_session.execute(delete(FormRole).where(FormRole.assigned_by == "git-sync"))
+    await db_session.execute(delete(AgentRole).where(AgentRole.assigned_by == "git-sync"))
+    await db_session.execute(delete(AppRole).where(AppRole.assigned_by == "git-sync"))
+
     # Clean up child records before parents (foreign key dependencies)
     from src.models.orm.agents import Agent, AgentTool
     await db_session.execute(
@@ -344,6 +355,12 @@ async def cleanup_test_data(db_session: AsyncSession):
     await db_session.execute(
         delete(Table).where(Table.created_by == "git-sync")
     )
+
+    # Clean up orgs and roles last (entities FK into these)
+    from src.models.orm.organizations import Organization
+    from src.models.orm.users import Role
+    await db_session.execute(delete(Organization).where(Organization.created_by == "git-sync"))
+    await db_session.execute(delete(Role).where(Role.created_by == "git-sync"))
     await db_session.commit()
 
 
@@ -2857,3 +2874,1246 @@ class TestPullUpsertNaturalKeys:
         app = result.scalar_one_or_none()
         assert app is not None, "App not imported"
         assert app.repo_path == f"apps/{slug}"
+
+
+# =============================================================================
+# Organization & Role Import Tests
+# =============================================================================
+
+
+@pytest.mark.e2e
+@pytest.mark.asyncio
+class TestOrgImport:
+    """Organizations: CREATE / UPDATE / RENAME / DEACTIVATE."""
+
+    async def test_create_org(
+        self, db_session: AsyncSession, sync_service, working_clone,
+    ):
+        """Org in manifest, not in DB → created."""
+        from src.models.orm.organizations import Organization
+
+        org_id = str(uuid4())
+        work_dir = Path(working_clone.working_dir)
+        bifrost_dir = work_dir / ".bifrost"
+        bifrost_dir.mkdir(exist_ok=True)
+        (bifrost_dir / "organizations.yaml").write_text(yaml.dump({
+            "organizations": [{"id": org_id, "name": "TestOrg"}]
+        }, default_flow_style=False))
+        working_clone.index.add([".bifrost/organizations.yaml"])
+        working_clone.index.commit("Add org")
+        working_clone.remotes.origin.push("main")
+
+        result = await sync_service.desktop_pull()
+        assert result.success, f"Pull failed: {result.error}"
+
+        org = await db_session.get(Organization, org_id)
+        assert org is not None, "Org not created"
+        assert org.name == "TestOrg"
+        assert org.is_active is True
+
+    async def test_update_org_by_id_rename(
+        self, db_session: AsyncSession, sync_service, working_clone,
+    ):
+        """Org exists by ID, manifest has new name → name updated."""
+        from src.models.orm.organizations import Organization
+
+        org_id = uuid4()
+        db_session.add(Organization(id=org_id, name="OldName", is_active=True, created_by="git-sync"))
+        await db_session.commit()
+
+        work_dir = Path(working_clone.working_dir)
+        bifrost_dir = work_dir / ".bifrost"
+        bifrost_dir.mkdir(exist_ok=True)
+        (bifrost_dir / "organizations.yaml").write_text(yaml.dump({
+            "organizations": [{"id": str(org_id), "name": "NewName"}]
+        }, default_flow_style=False))
+        working_clone.index.add([".bifrost/organizations.yaml"])
+        working_clone.index.commit("Rename org")
+        working_clone.remotes.origin.push("main")
+
+        result = await sync_service.desktop_pull()
+        assert result.success
+
+        row = (await db_session.execute(
+            select(Organization).where(Organization.id == org_id)
+        )).scalar_one()
+        assert row.name == "NewName"
+
+    async def test_update_org_by_name_new_id(
+        self, db_session: AsyncSession, sync_service, working_clone,
+    ):
+        """Org exists by name with different UUID → ID updated (cross-env)."""
+        from src.models.orm.organizations import Organization
+
+        old_id = uuid4()
+        new_id = uuid4()
+        db_session.add(Organization(id=old_id, name="SharedOrg", is_active=True, created_by="git-sync"))
+        await db_session.commit()
+
+        work_dir = Path(working_clone.working_dir)
+        bifrost_dir = work_dir / ".bifrost"
+        bifrost_dir.mkdir(exist_ok=True)
+        (bifrost_dir / "organizations.yaml").write_text(yaml.dump({
+            "organizations": [{"id": str(new_id), "name": "SharedOrg"}]
+        }, default_flow_style=False))
+        working_clone.index.add([".bifrost/organizations.yaml"])
+        working_clone.index.commit("Cross-env org")
+        working_clone.remotes.origin.push("main")
+
+        result = await sync_service.desktop_pull()
+        assert result.success
+
+        row = (await db_session.execute(
+            select(Organization).where(Organization.id == new_id)
+        )).scalar_one_or_none()
+        assert row is not None, "Org should have new ID"
+        assert row.name == "SharedOrg"
+
+    async def test_org_preserves_domain(
+        self, db_session: AsyncSession, sync_service, working_clone,
+    ):
+        """Org exists with domain/settings, manifest only has id+name → preserved."""
+        from src.models.orm.organizations import Organization
+
+        org_id = uuid4()
+        db_session.add(Organization(
+            id=org_id, name="DomainOrg", domain="example.com",
+            is_active=True, is_provider=True, settings={"key": "val"},
+            created_by="git-sync",
+        ))
+        await db_session.commit()
+
+        work_dir = Path(working_clone.working_dir)
+        bifrost_dir = work_dir / ".bifrost"
+        bifrost_dir.mkdir(exist_ok=True)
+        (bifrost_dir / "organizations.yaml").write_text(yaml.dump({
+            "organizations": [{"id": str(org_id), "name": "DomainOrg"}]
+        }, default_flow_style=False))
+        working_clone.index.add([".bifrost/organizations.yaml"])
+        working_clone.index.commit("Preserve domain")
+        working_clone.remotes.origin.push("main")
+
+        result = await sync_service.desktop_pull()
+        assert result.success
+
+        row = (await db_session.execute(
+            select(Organization).where(Organization.id == org_id)
+        )).scalar_one()
+        assert row.domain == "example.com", "Domain should be preserved"
+        assert row.is_provider is True, "is_provider should be preserved"
+        assert row.settings == {"key": "val"}, "Settings should be preserved"
+
+    async def test_org_idempotent(
+        self, db_session: AsyncSession, sync_service, working_clone,
+    ):
+        """Same manifest pulled twice → no errors, same state."""
+        org_id = str(uuid4())
+        work_dir = Path(working_clone.working_dir)
+        bifrost_dir = work_dir / ".bifrost"
+        bifrost_dir.mkdir(exist_ok=True)
+        (bifrost_dir / "organizations.yaml").write_text(yaml.dump({
+            "organizations": [{"id": org_id, "name": "IdempotentOrg"}]
+        }, default_flow_style=False))
+        working_clone.index.add([".bifrost/organizations.yaml"])
+        working_clone.index.commit("Idempotent org")
+        working_clone.remotes.origin.push("main")
+
+        r1 = await sync_service.desktop_pull()
+        assert r1.success
+        r2 = await sync_service.desktop_pull()
+        assert r2.success
+
+    async def test_deactivate_removed_org(
+        self, db_session: AsyncSession, sync_service, working_clone,
+    ):
+        """Org in DB (is_active=True, created_by=git-sync), not in manifest → is_active=False."""
+        from src.models.orm.organizations import Organization
+
+        org_id = uuid4()
+        keep_id = uuid4()
+        db_session.add(Organization(id=org_id, name="ToDeactivate", is_active=True, created_by="git-sync"))
+        db_session.add(Organization(id=keep_id, name="KeepOrg", is_active=True, created_by="git-sync"))
+        await db_session.commit()
+
+        # Manifest only has keep_id
+        work_dir = Path(working_clone.working_dir)
+        bifrost_dir = work_dir / ".bifrost"
+        bifrost_dir.mkdir(exist_ok=True)
+        (bifrost_dir / "organizations.yaml").write_text(yaml.dump({
+            "organizations": [{"id": str(keep_id), "name": "KeepOrg"}]
+        }, default_flow_style=False))
+        working_clone.index.add([".bifrost/organizations.yaml"])
+        working_clone.index.commit("Remove org")
+        working_clone.remotes.origin.push("main")
+
+        result = await sync_service.desktop_pull()
+        assert result.success
+
+        deactivated = (await db_session.execute(
+            select(Organization).where(Organization.id == org_id)
+        )).scalar_one()
+        assert deactivated.is_active is False
+
+        kept = (await db_session.execute(
+            select(Organization).where(Organization.id == keep_id)
+        )).scalar_one()
+        assert kept.is_active is True
+
+    async def test_reactivate_org(
+        self, db_session: AsyncSession, sync_service, working_clone,
+    ):
+        """Org in DB (is_active=False), appears in manifest → is_active=True."""
+        from src.models.orm.organizations import Organization
+
+        org_id = uuid4()
+        db_session.add(Organization(id=org_id, name="Reactivate", is_active=False, created_by="git-sync"))
+        await db_session.commit()
+
+        work_dir = Path(working_clone.working_dir)
+        bifrost_dir = work_dir / ".bifrost"
+        bifrost_dir.mkdir(exist_ok=True)
+        (bifrost_dir / "organizations.yaml").write_text(yaml.dump({
+            "organizations": [{"id": str(org_id), "name": "Reactivate"}]
+        }, default_flow_style=False))
+        working_clone.index.add([".bifrost/organizations.yaml"])
+        working_clone.index.commit("Reactivate org")
+        working_clone.remotes.origin.push("main")
+
+        result = await sync_service.desktop_pull()
+        assert result.success
+
+        row = (await db_session.execute(
+            select(Organization).where(Organization.id == org_id)
+        )).scalar_one()
+        assert row.is_active is True
+
+
+@pytest.mark.e2e
+@pytest.mark.asyncio
+class TestRoleImport:
+    """Roles: CREATE / UPDATE / RENAME / DEACTIVATE."""
+
+    async def test_create_role(
+        self, db_session: AsyncSession, sync_service, working_clone,
+    ):
+        """Role in manifest → created."""
+        from src.models.orm.users import Role
+
+        role_id = str(uuid4())
+        work_dir = Path(working_clone.working_dir)
+        bifrost_dir = work_dir / ".bifrost"
+        bifrost_dir.mkdir(exist_ok=True)
+        (bifrost_dir / "roles.yaml").write_text(yaml.dump({
+            "roles": [{"id": role_id, "name": "TestRole"}]
+        }, default_flow_style=False))
+        working_clone.index.add([".bifrost/roles.yaml"])
+        working_clone.index.commit("Add role")
+        working_clone.remotes.origin.push("main")
+
+        result = await sync_service.desktop_pull()
+        assert result.success
+
+        row = (await db_session.execute(
+            select(Role).where(Role.id == role_id)
+        )).scalar_one_or_none()
+        assert row is not None
+        assert row.name == "TestRole"
+        assert row.is_active is True
+
+    async def test_update_role_by_id_rename(
+        self, db_session: AsyncSession, sync_service, working_clone,
+    ):
+        """Role exists by ID, new name → name updated."""
+        from src.models.orm.users import Role
+
+        role_id = uuid4()
+        db_session.add(Role(id=role_id, name="OldRole", is_active=True, created_by="git-sync"))
+        await db_session.commit()
+
+        work_dir = Path(working_clone.working_dir)
+        bifrost_dir = work_dir / ".bifrost"
+        bifrost_dir.mkdir(exist_ok=True)
+        (bifrost_dir / "roles.yaml").write_text(yaml.dump({
+            "roles": [{"id": str(role_id), "name": "RenamedRole"}]
+        }, default_flow_style=False))
+        working_clone.index.add([".bifrost/roles.yaml"])
+        working_clone.index.commit("Rename role")
+        working_clone.remotes.origin.push("main")
+
+        result = await sync_service.desktop_pull()
+        assert result.success
+
+        row = (await db_session.execute(
+            select(Role).where(Role.id == role_id)
+        )).scalar_one()
+        assert row.name == "RenamedRole"
+
+    async def test_update_role_by_name_new_id(
+        self, db_session: AsyncSession, sync_service, working_clone,
+    ):
+        """Role exists by name, different UUID → ID updated."""
+        from src.models.orm.users import Role
+
+        old_id = uuid4()
+        new_id = uuid4()
+        db_session.add(Role(id=old_id, name="SharedRole", is_active=True, created_by="git-sync"))
+        await db_session.commit()
+
+        work_dir = Path(working_clone.working_dir)
+        bifrost_dir = work_dir / ".bifrost"
+        bifrost_dir.mkdir(exist_ok=True)
+        (bifrost_dir / "roles.yaml").write_text(yaml.dump({
+            "roles": [{"id": str(new_id), "name": "SharedRole"}]
+        }, default_flow_style=False))
+        working_clone.index.add([".bifrost/roles.yaml"])
+        working_clone.index.commit("Cross-env role")
+        working_clone.remotes.origin.push("main")
+
+        result = await sync_service.desktop_pull()
+        assert result.success
+
+        row = (await db_session.execute(
+            select(Role).where(Role.id == new_id)
+        )).scalar_one_or_none()
+        assert row is not None
+        assert row.name == "SharedRole"
+
+    async def test_role_preserves_permissions(
+        self, db_session: AsyncSession, sync_service, working_clone,
+    ):
+        """Role exists with permissions/description → preserved on pull."""
+        from src.models.orm.users import Role
+
+        role_id = uuid4()
+        db_session.add(Role(
+            id=role_id, name="PermRole", is_active=True, created_by="git-sync",
+            description="Important role", permissions={"read": True},
+        ))
+        await db_session.commit()
+
+        work_dir = Path(working_clone.working_dir)
+        bifrost_dir = work_dir / ".bifrost"
+        bifrost_dir.mkdir(exist_ok=True)
+        (bifrost_dir / "roles.yaml").write_text(yaml.dump({
+            "roles": [{"id": str(role_id), "name": "PermRole"}]
+        }, default_flow_style=False))
+        working_clone.index.add([".bifrost/roles.yaml"])
+        working_clone.index.commit("Preserve perms")
+        working_clone.remotes.origin.push("main")
+
+        result = await sync_service.desktop_pull()
+        assert result.success
+
+        row = (await db_session.execute(
+            select(Role).where(Role.id == role_id)
+        )).scalar_one()
+        assert row.description == "Important role"
+        assert row.permissions == {"read": True}
+
+    async def test_deactivate_removed_role(
+        self, db_session: AsyncSession, sync_service, working_clone,
+    ):
+        """Role in DB not in manifest → is_active=False."""
+        from src.models.orm.users import Role
+
+        role_id = uuid4()
+        keep_id = uuid4()
+        db_session.add(Role(id=role_id, name="ToDeactivateRole", is_active=True, created_by="git-sync"))
+        db_session.add(Role(id=keep_id, name="KeepRole", is_active=True, created_by="git-sync"))
+        await db_session.commit()
+
+        work_dir = Path(working_clone.working_dir)
+        bifrost_dir = work_dir / ".bifrost"
+        bifrost_dir.mkdir(exist_ok=True)
+        (bifrost_dir / "roles.yaml").write_text(yaml.dump({
+            "roles": [{"id": str(keep_id), "name": "KeepRole"}]
+        }, default_flow_style=False))
+        working_clone.index.add([".bifrost/roles.yaml"])
+        working_clone.index.commit("Remove role")
+        working_clone.remotes.origin.push("main")
+
+        result = await sync_service.desktop_pull()
+        assert result.success
+
+        deactivated = (await db_session.execute(
+            select(Role).where(Role.id == role_id)
+        )).scalar_one()
+        assert deactivated.is_active is False
+
+
+@pytest.mark.e2e
+@pytest.mark.asyncio
+class TestRoleAssignmentSync:
+    """Junction tables: ADD / REMOVE / FULL REPLACE."""
+
+    async def test_workflow_role_assignment_created(
+        self, db_session: AsyncSession, sync_service, working_clone,
+    ):
+        """Workflow with roles:[A,B] → workflow_roles has A,B."""
+        from src.models.orm.users import Role
+        from src.models.orm.workflow_roles import WorkflowRole
+
+        role_a = uuid4()
+        role_b = uuid4()
+        db_session.add(Role(id=role_a, name="RoleA", is_active=True, created_by="git-sync"))
+        db_session.add(Role(id=role_b, name="RoleB", is_active=True, created_by="git-sync"))
+        await db_session.commit()
+
+        wf_id = str(uuid4())
+        work_dir = Path(working_clone.working_dir)
+        bifrost_dir = work_dir / ".bifrost"
+        bifrost_dir.mkdir(exist_ok=True)
+
+        # Write workflow file
+        wf_path = work_dir / "workflows" / "role_test.py"
+        wf_path.parent.mkdir(parents=True, exist_ok=True)
+        wf_path.write_text(SAMPLE_WORKFLOW_PY)
+
+        # Write manifest with roles
+        (bifrost_dir / "roles.yaml").write_text(yaml.dump({
+            "roles": [
+                {"id": str(role_a), "name": "RoleA"},
+                {"id": str(role_b), "name": "RoleB"},
+            ]
+        }, default_flow_style=False))
+        (bifrost_dir / "workflows.yaml").write_text(yaml.dump({
+            "workflows": {
+                "role_test_wf": {
+                    "id": wf_id,
+                    "path": "workflows/role_test.py",
+                    "function_name": "git_sync_test",
+                    "type": "workflow",
+                    "roles": [str(role_a), str(role_b)],
+                }
+            }
+        }, default_flow_style=False))
+
+        working_clone.index.add([
+            "workflows/role_test.py",
+            ".bifrost/roles.yaml",
+            ".bifrost/workflows.yaml",
+        ])
+        working_clone.index.commit("Add workflow with roles")
+        working_clone.remotes.origin.push("main")
+
+        result = await sync_service.desktop_pull()
+        assert result.success, f"Pull failed: {result.error}"
+
+        # Check junction table
+        rows = (await db_session.execute(
+            select(WorkflowRole.role_id).where(WorkflowRole.workflow_id == wf_id)
+        )).all()
+        assigned_role_ids = {row[0] for row in rows}
+        assert role_a in assigned_role_ids
+        assert role_b in assigned_role_ids
+
+    async def test_workflow_role_assignment_removed(
+        self, db_session: AsyncSession, sync_service, working_clone,
+    ):
+        """Existing roles A,B, manifest has only A → B removed."""
+        from src.models.orm.users import Role
+        from src.models.orm.workflow_roles import WorkflowRole
+
+        role_a = uuid4()
+        role_b = uuid4()
+        wf_id = uuid4()
+
+        db_session.add(Role(id=role_a, name="KeepRA", is_active=True, created_by="git-sync"))
+        db_session.add(Role(id=role_b, name="RemoveRB", is_active=True, created_by="git-sync"))
+        db_session.add(Workflow(
+            id=wf_id, name="role_removal_wf", function_name="git_sync_test",
+            path="workflows/role_removal.py", is_active=True,
+        ))
+        await db_session.flush()
+
+        # Pre-assign both roles
+        db_session.add(WorkflowRole(workflow_id=wf_id, role_id=role_a, assigned_by="test"))
+        db_session.add(WorkflowRole(workflow_id=wf_id, role_id=role_b, assigned_by="test"))
+        await db_session.commit()
+
+        work_dir = Path(working_clone.working_dir)
+        bifrost_dir = work_dir / ".bifrost"
+        bifrost_dir.mkdir(exist_ok=True)
+
+        wf_path = work_dir / "workflows" / "role_removal.py"
+        wf_path.parent.mkdir(parents=True, exist_ok=True)
+        wf_path.write_text(SAMPLE_WORKFLOW_PY)
+
+        (bifrost_dir / "roles.yaml").write_text(yaml.dump({
+            "roles": [
+                {"id": str(role_a), "name": "KeepRA"},
+                {"id": str(role_b), "name": "RemoveRB"},
+            ]
+        }, default_flow_style=False))
+        (bifrost_dir / "workflows.yaml").write_text(yaml.dump({
+            "workflows": {
+                "role_removal_wf": {
+                    "id": str(wf_id),
+                    "path": "workflows/role_removal.py",
+                    "function_name": "git_sync_test",
+                    "type": "workflow",
+                    "roles": [str(role_a)],  # Only A
+                }
+            }
+        }, default_flow_style=False))
+
+        working_clone.index.add([
+            "workflows/role_removal.py",
+            ".bifrost/roles.yaml",
+            ".bifrost/workflows.yaml",
+        ])
+        working_clone.index.commit("Remove role B from workflow")
+        working_clone.remotes.origin.push("main")
+
+        result = await sync_service.desktop_pull()
+        assert result.success
+
+        rows = (await db_session.execute(
+            select(WorkflowRole.role_id).where(WorkflowRole.workflow_id == wf_id)
+        )).all()
+        assigned = {row[0] for row in rows}
+        assert role_a in assigned
+        assert role_b not in assigned
+
+    async def test_form_role_assignment_synced(
+        self, db_session: AsyncSession, sync_service, working_clone,
+    ):
+        """Form with roles → form_roles synced."""
+        from src.models.orm.forms import FormRole
+        from src.models.orm.users import Role
+
+        role_id = uuid4()
+        db_session.add(Role(id=role_id, name="FormRole", is_active=True, created_by="git-sync"))
+        await db_session.commit()
+
+        wf_id = uuid4()
+        form_id = str(uuid4())
+        org_id = uuid4()
+
+        # Create supporting entities
+        db_session.add(Workflow(
+            id=wf_id, name="form_role_wf", function_name="git_sync_test",
+            path="workflows/form_role.py", is_active=True,
+        ))
+        from src.models.orm.organizations import Organization
+        db_session.add(Organization(id=org_id, name="FormRoleOrg", is_active=True, created_by="git-sync"))
+        await db_session.commit()
+
+        work_dir = Path(working_clone.working_dir)
+        bifrost_dir = work_dir / ".bifrost"
+        bifrost_dir.mkdir(exist_ok=True)
+
+        # Write workflow file
+        wf_path = work_dir / "workflows" / "form_role.py"
+        wf_path.parent.mkdir(parents=True, exist_ok=True)
+        wf_path.write_text(SAMPLE_WORKFLOW_PY)
+
+        # Write form YAML
+        form_path = work_dir / "forms" / f"{form_id}.form.yaml"
+        form_path.parent.mkdir(parents=True, exist_ok=True)
+        form_path.write_text(yaml.dump({
+            "name": "RoleForm",
+            "workflow_id": str(wf_id),
+            "fields": [],
+        }, default_flow_style=False))
+
+        (bifrost_dir / "organizations.yaml").write_text(yaml.dump({
+            "organizations": [{"id": str(org_id), "name": "FormRoleOrg"}]
+        }, default_flow_style=False))
+        (bifrost_dir / "roles.yaml").write_text(yaml.dump({
+            "roles": [{"id": str(role_id), "name": "FormRole"}]
+        }, default_flow_style=False))
+        (bifrost_dir / "workflows.yaml").write_text(yaml.dump({
+            "workflows": {
+                "form_role_wf": {
+                    "id": str(wf_id),
+                    "path": "workflows/form_role.py",
+                    "function_name": "git_sync_test",
+                    "type": "workflow",
+                }
+            }
+        }, default_flow_style=False))
+        (bifrost_dir / "forms.yaml").write_text(yaml.dump({
+            "forms": {
+                "RoleForm": {
+                    "id": form_id,
+                    "path": f"forms/{form_id}.form.yaml",
+                    "organization_id": str(org_id),
+                    "roles": [str(role_id)],
+                }
+            }
+        }, default_flow_style=False))
+
+        working_clone.index.add([
+            "workflows/form_role.py",
+            f"forms/{form_id}.form.yaml",
+            ".bifrost/organizations.yaml",
+            ".bifrost/roles.yaml",
+            ".bifrost/workflows.yaml",
+            ".bifrost/forms.yaml",
+        ])
+        working_clone.index.commit("Add form with role")
+        working_clone.remotes.origin.push("main")
+
+        result = await sync_service.desktop_pull()
+        assert result.success, f"Pull failed: {result.error}"
+
+        rows = (await db_session.execute(
+            select(FormRole.role_id).where(FormRole.form_id == form_id)
+        )).all()
+        assert {row[0] for row in rows} == {role_id}
+
+
+@pytest.mark.e2e
+@pytest.mark.asyncio
+class TestImportOrder:
+    """Dependency chain correctness."""
+
+    async def test_table_with_application_id(
+        self, db_session: AsyncSession, sync_service, working_clone,
+    ):
+        """Table refs app, both in manifest → no FK error (apps before tables)."""
+        from src.models.orm.tables import Table
+
+        org_id = uuid4()
+        app_id = str(uuid4())
+        table_id = str(uuid4())
+
+        from src.models.orm.organizations import Organization
+        db_session.add(Organization(id=org_id, name="TableOrg", is_active=True, created_by="git-sync"))
+        await db_session.commit()
+
+        work_dir = Path(working_clone.working_dir)
+        bifrost_dir = work_dir / ".bifrost"
+        bifrost_dir.mkdir(exist_ok=True)
+
+        # Write app YAML
+        app_path = work_dir / "apps" / "testapp" / "app.yaml"
+        app_path.parent.mkdir(parents=True, exist_ok=True)
+        app_path.write_text(yaml.dump({"name": "TestApp"}, default_flow_style=False))
+
+        (bifrost_dir / "organizations.yaml").write_text(yaml.dump({
+            "organizations": [{"id": str(org_id), "name": "TableOrg"}]
+        }, default_flow_style=False))
+        (bifrost_dir / "apps.yaml").write_text(yaml.dump({
+            "apps": {
+                "testapp": {
+                    "id": app_id,
+                    "path": "apps/testapp/app.yaml",
+                    "slug": "testapp",
+                    "organization_id": str(org_id),
+                }
+            }
+        }, default_flow_style=False))
+        (bifrost_dir / "tables.yaml").write_text(yaml.dump({
+            "tables": {
+                "TestTable": {
+                    "id": table_id,
+                    "organization_id": str(org_id),
+                    "application_id": app_id,
+                }
+            }
+        }, default_flow_style=False))
+
+        working_clone.index.add([
+            "apps/testapp/app.yaml",
+            ".bifrost/organizations.yaml",
+            ".bifrost/apps.yaml",
+            ".bifrost/tables.yaml",
+        ])
+        working_clone.index.commit("Table with app ref")
+        working_clone.remotes.origin.push("main")
+
+        result = await sync_service.desktop_pull()
+        assert result.success, f"Pull failed: {result.error}"
+
+        row = (await db_session.execute(
+            select(Table).where(Table.id == table_id)
+        )).scalar_one_or_none()
+        assert row is not None, "Table not created"
+        assert str(row.application_id) == app_id
+
+    async def test_event_sub_workflow_ref_by_path(
+        self, db_session: AsyncSession, sync_service, working_clone,
+    ):
+        """Subscription workflow_id is path::func → resolves."""
+        from src.models.orm.events import EventSubscription
+
+        wf_id = str(uuid4())
+        es_id = str(uuid4())
+        sub_id = str(uuid4())
+
+        work_dir = Path(working_clone.working_dir)
+        bifrost_dir = work_dir / ".bifrost"
+        bifrost_dir.mkdir(exist_ok=True)
+
+        # Write workflow file so it's included in manifest
+        wf_path = work_dir / "workflows" / "path_ref.py"
+        wf_path.parent.mkdir(parents=True, exist_ok=True)
+        wf_path.write_text(SAMPLE_WORKFLOW_PY)
+
+        (bifrost_dir / "workflows.yaml").write_text(yaml.dump({
+            "workflows": {
+                "path_ref_wf": {
+                    "id": wf_id,
+                    "path": "workflows/path_ref.py",
+                    "function_name": "git_sync_test",
+                    "type": "workflow",
+                }
+            }
+        }, default_flow_style=False))
+        (bifrost_dir / "events.yaml").write_text(yaml.dump({
+            "events": {
+                "PathRefSource": {
+                    "id": es_id,
+                    "source_type": "schedule",
+                    "is_active": True,
+                    "cron_expression": "0 * * * *",
+                    "subscriptions": [{
+                        "id": sub_id,
+                        "workflow_id": "workflows/path_ref.py::git_sync_test",
+                        "is_active": True,
+                    }],
+                }
+            }
+        }, default_flow_style=False))
+
+        working_clone.index.add([
+            "workflows/path_ref.py",
+            ".bifrost/workflows.yaml",
+            ".bifrost/events.yaml",
+        ])
+        working_clone.index.commit("Event sub with path ref")
+        working_clone.remotes.origin.push("main")
+
+        result = await sync_service.desktop_pull()
+        assert result.success, f"Pull failed: {result.error}"
+
+        sub = (await db_session.execute(
+            select(EventSubscription).where(EventSubscription.id == sub_id)
+        )).scalar_one_or_none()
+        assert sub is not None, "Subscription not created"
+        assert str(sub.workflow_id) == wf_id
+
+    async def test_event_sub_workflow_ref_by_name(
+        self, db_session: AsyncSession, sync_service, working_clone,
+    ):
+        """Subscription workflow_id is workflow name → resolves."""
+        from src.models.orm.events import EventSubscription
+
+        wf_id = str(uuid4())
+        es_id = str(uuid4())
+        sub_id = str(uuid4())
+
+        work_dir = Path(working_clone.working_dir)
+        bifrost_dir = work_dir / ".bifrost"
+        bifrost_dir.mkdir(exist_ok=True)
+
+        # Write workflow file so it's included in manifest
+        wf_path = work_dir / "workflows" / "name_ref.py"
+        wf_path.parent.mkdir(parents=True, exist_ok=True)
+        wf_path.write_text(SAMPLE_WORKFLOW_PY)
+
+        (bifrost_dir / "workflows.yaml").write_text(yaml.dump({
+            "workflows": {
+                "name_ref_wf": {
+                    "id": wf_id,
+                    "path": "workflows/name_ref.py",
+                    "function_name": "git_sync_test",
+                    "type": "workflow",
+                }
+            }
+        }, default_flow_style=False))
+        (bifrost_dir / "events.yaml").write_text(yaml.dump({
+            "events": {
+                "NameRefSource": {
+                    "id": es_id,
+                    "source_type": "schedule",
+                    "is_active": True,
+                    "cron_expression": "0 * * * *",
+                    "subscriptions": [{
+                        "id": sub_id,
+                        "workflow_id": "name_ref_wf",
+                        "is_active": True,
+                    }],
+                }
+            }
+        }, default_flow_style=False))
+
+        working_clone.index.add([
+            "workflows/name_ref.py",
+            ".bifrost/workflows.yaml",
+            ".bifrost/events.yaml",
+        ])
+        working_clone.index.commit("Event sub with name ref")
+        working_clone.remotes.origin.push("main")
+
+        result = await sync_service.desktop_pull()
+        assert result.success, f"Pull failed: {result.error}"
+
+        sub = (await db_session.execute(
+            select(EventSubscription).where(EventSubscription.id == sub_id)
+        )).scalar_one_or_none()
+        assert sub is not None
+        assert str(sub.workflow_id) == wf_id
+
+    async def test_event_sub_workflow_ref_missing(
+        self, db_session: AsyncSession, sync_service, working_clone,
+    ):
+        """Subscription references nonexistent workflow → graceful skip."""
+        from src.models.orm.events import EventSubscription
+
+        es_id = str(uuid4())
+        sub_id = str(uuid4())
+
+        work_dir = Path(working_clone.working_dir)
+        bifrost_dir = work_dir / ".bifrost"
+        bifrost_dir.mkdir(exist_ok=True)
+
+        (bifrost_dir / "events.yaml").write_text(yaml.dump({
+            "events": {
+                "MissingWFSource": {
+                    "id": es_id,
+                    "source_type": "schedule",
+                    "is_active": True,
+                    "cron_expression": "0 * * * *",
+                    "subscriptions": [{
+                        "id": sub_id,
+                        "workflow_id": "nonexistent_workflow",
+                        "is_active": True,
+                    }],
+                }
+            }
+        }, default_flow_style=False))
+
+        working_clone.index.add([".bifrost/events.yaml"])
+        working_clone.index.commit("Event sub with missing wf")
+        working_clone.remotes.origin.push("main")
+
+        result = await sync_service.desktop_pull()
+        assert result.success, "Pull should succeed even with missing workflow ref"
+
+        sub = (await db_session.execute(
+            select(EventSubscription).where(EventSubscription.id == sub_id)
+        )).scalar_one_or_none()
+        assert sub is None, "Subscription should be skipped when workflow not found"
+
+    async def test_full_manifest_all_entity_types(
+        self, db_session: AsyncSession, sync_service, working_clone,
+    ):
+        """Manifest with org, role, workflow, integration, config, app, table,
+        event source, form, agent — all cross-referenced — single pull succeeds."""
+        from src.models.orm.organizations import Organization
+        from src.models.orm.tables import Table
+        from src.models.orm.applications import Application
+
+        org_id = str(uuid4())
+        role_id = str(uuid4())
+        wf_id = str(uuid4())
+        integ_id = str(uuid4())
+        config_id = str(uuid4())
+        app_id = str(uuid4())
+        table_id = str(uuid4())
+        es_id = str(uuid4())
+        sub_id = str(uuid4())
+        form_id = str(uuid4())
+        agent_id = str(uuid4())
+
+        work_dir = Path(working_clone.working_dir)
+        bifrost_dir = work_dir / ".bifrost"
+        bifrost_dir.mkdir(exist_ok=True)
+
+        # Write workflow file
+        wf_path = work_dir / "workflows" / "full_test.py"
+        wf_path.parent.mkdir(parents=True, exist_ok=True)
+        wf_path.write_text(SAMPLE_WORKFLOW_PY)
+
+        # Write form YAML
+        form_path = work_dir / "forms" / f"{form_id}.form.yaml"
+        form_path.parent.mkdir(parents=True, exist_ok=True)
+        form_path.write_text(yaml.dump({
+            "name": "FullTestForm", "workflow_id": wf_id, "fields": [],
+        }, default_flow_style=False))
+
+        # Write agent YAML
+        agent_path = work_dir / "agents" / f"{agent_id}.agent.yaml"
+        agent_path.parent.mkdir(parents=True, exist_ok=True)
+        agent_path.write_text(yaml.dump({
+            "name": "FullTestAgent", "system_prompt": "test", "tool_ids": [wf_id],
+        }, default_flow_style=False))
+
+        # Write app YAML
+        app_dir = work_dir / "apps" / "fullapp"
+        app_dir.mkdir(parents=True, exist_ok=True)
+        (app_dir / "app.yaml").write_text(yaml.dump({"name": "FullTestApp"}, default_flow_style=False))
+
+        # Write all manifest files
+        (bifrost_dir / "organizations.yaml").write_text(yaml.dump({
+            "organizations": [{"id": org_id, "name": "FullOrg"}]
+        }, default_flow_style=False))
+        (bifrost_dir / "roles.yaml").write_text(yaml.dump({
+            "roles": [{"id": role_id, "name": "FullRole"}]
+        }, default_flow_style=False))
+        (bifrost_dir / "workflows.yaml").write_text(yaml.dump({
+            "workflows": {
+                "full_test_wf": {
+                    "id": wf_id,
+                    "path": "workflows/full_test.py",
+                    "function_name": "git_sync_test",
+                    "type": "workflow",
+                    "organization_id": org_id,
+                    "roles": [role_id],
+                }
+            }
+        }, default_flow_style=False))
+        (bifrost_dir / "integrations.yaml").write_text(yaml.dump({
+            "integrations": {
+                "TestFullInteg": {
+                    "id": integ_id,
+                    "config_schema": [],
+                    "mappings": [],
+                }
+            }
+        }, default_flow_style=False))
+        (bifrost_dir / "configs.yaml").write_text(yaml.dump({
+            "configs": {
+                "full_cfg": {
+                    "id": config_id,
+                    "integration_id": integ_id,
+                    "key": "full_test_key",
+                    "config_type": "string",
+                    "organization_id": org_id,
+                    "value": "test_value",
+                }
+            }
+        }, default_flow_style=False))
+        (bifrost_dir / "apps.yaml").write_text(yaml.dump({
+            "apps": {
+                "fullapp": {
+                    "id": app_id,
+                    "path": "apps/fullapp/app.yaml",
+                    "slug": "fullapp",
+                    "organization_id": org_id,
+                    "roles": [role_id],
+                }
+            }
+        }, default_flow_style=False))
+        (bifrost_dir / "tables.yaml").write_text(yaml.dump({
+            "tables": {
+                "FullTable": {
+                    "id": table_id,
+                    "organization_id": org_id,
+                    "application_id": app_id,
+                }
+            }
+        }, default_flow_style=False))
+        (bifrost_dir / "events.yaml").write_text(yaml.dump({
+            "events": {
+                "FullEventSource": {
+                    "id": es_id,
+                    "source_type": "schedule",
+                    "is_active": True,
+                    "cron_expression": "0 * * * *",
+                    "organization_id": org_id,
+                    "subscriptions": [{
+                        "id": sub_id,
+                        "workflow_id": wf_id,
+                        "is_active": True,
+                    }],
+                }
+            }
+        }, default_flow_style=False))
+        (bifrost_dir / "forms.yaml").write_text(yaml.dump({
+            "forms": {
+                "FullTestForm": {
+                    "id": form_id,
+                    "path": f"forms/{form_id}.form.yaml",
+                    "organization_id": org_id,
+                    "roles": [role_id],
+                }
+            }
+        }, default_flow_style=False))
+        (bifrost_dir / "agents.yaml").write_text(yaml.dump({
+            "agents": {
+                "FullTestAgent": {
+                    "id": agent_id,
+                    "path": f"agents/{agent_id}.agent.yaml",
+                    "organization_id": org_id,
+                    "roles": [role_id],
+                }
+            }
+        }, default_flow_style=False))
+
+        working_clone.index.add([
+            "workflows/full_test.py",
+            f"forms/{form_id}.form.yaml",
+            f"agents/{agent_id}.agent.yaml",
+            "apps/fullapp/app.yaml",
+            ".bifrost/organizations.yaml",
+            ".bifrost/roles.yaml",
+            ".bifrost/workflows.yaml",
+            ".bifrost/integrations.yaml",
+            ".bifrost/configs.yaml",
+            ".bifrost/apps.yaml",
+            ".bifrost/tables.yaml",
+            ".bifrost/events.yaml",
+            ".bifrost/forms.yaml",
+            ".bifrost/agents.yaml",
+        ])
+        working_clone.index.commit("Full manifest")
+        working_clone.remotes.origin.push("main")
+
+        result = await sync_service.desktop_pull()
+        assert result.success, f"Pull failed: {result.error}"
+
+        # Verify key entities exist
+        org = await db_session.get(Organization, org_id)
+        assert org is not None, "Org not created"
+
+        app = (await db_session.execute(
+            select(Application).where(Application.id == app_id)
+        )).scalar_one_or_none()
+        assert app is not None, "App not created"
+
+        table = (await db_session.execute(
+            select(Table).where(Table.id == table_id)
+        )).scalar_one_or_none()
+        assert table is not None, "Table not created"
+        assert str(table.application_id) == app_id
+
+
+@pytest.mark.e2e
+@pytest.mark.asyncio
+class TestEventSourceNameFix:
+    """Event source name = manifest dict key, not UUID."""
+
+    async def test_event_source_name_from_manifest_key(
+        self, db_session: AsyncSession, sync_service, working_clone,
+    ):
+        """EventSource name = manifest dict key, not UUID."""
+        from src.models.orm.events import EventSource
+
+        es_id = str(uuid4())
+
+        work_dir = Path(working_clone.working_dir)
+        bifrost_dir = work_dir / ".bifrost"
+        bifrost_dir.mkdir(exist_ok=True)
+
+        (bifrost_dir / "events.yaml").write_text(yaml.dump({
+            "events": {
+                "My Cron Source": {
+                    "id": es_id,
+                    "source_type": "schedule",
+                    "is_active": True,
+                    "cron_expression": "0 * * * *",
+                    "subscriptions": [],
+                }
+            }
+        }, default_flow_style=False))
+
+        working_clone.index.add([".bifrost/events.yaml"])
+        working_clone.index.commit("Event source name test")
+        working_clone.remotes.origin.push("main")
+
+        result = await sync_service.desktop_pull()
+        assert result.success
+
+        row = (await db_session.execute(
+            select(EventSource).where(EventSource.id == es_id)
+        )).scalar_one_or_none()
+        assert row is not None
+        assert row.name == "My Cron Source", f"Expected 'My Cron Source', got '{row.name}'"
+
+
+@pytest.mark.e2e
+@pytest.mark.asyncio
+class TestAccessLevelSync:
+    """Access level synced from manifest on import."""
+
+    async def test_workflow_access_level_synced(
+        self, db_session: AsyncSession, sync_service, working_clone,
+    ):
+        """Workflow with access_level in manifest → DB updated."""
+        wf_id = str(uuid4())
+        work_dir = Path(working_clone.working_dir)
+        bifrost_dir = work_dir / ".bifrost"
+        bifrost_dir.mkdir(exist_ok=True)
+
+        wf_path = work_dir / "workflows" / "access_test.py"
+        wf_path.parent.mkdir(parents=True, exist_ok=True)
+        wf_path.write_text(SAMPLE_WORKFLOW_PY)
+
+        (bifrost_dir / "workflows.yaml").write_text(yaml.dump({
+            "workflows": {
+                "access_test_wf": {
+                    "id": wf_id,
+                    "path": "workflows/access_test.py",
+                    "function_name": "git_sync_test",
+                    "type": "workflow",
+                    "access_level": "authenticated",
+                }
+            }
+        }, default_flow_style=False))
+
+        working_clone.index.add([
+            "workflows/access_test.py",
+            ".bifrost/workflows.yaml",
+        ])
+        working_clone.index.commit("Workflow access level")
+        working_clone.remotes.origin.push("main")
+
+        result = await sync_service.desktop_pull()
+        assert result.success
+
+        wf = (await db_session.execute(
+            select(Workflow).where(Workflow.id == wf_id)
+        )).scalar_one()
+        assert wf.access_level == "authenticated"
+
+    async def test_app_access_level_synced(
+        self, db_session: AsyncSession, sync_service, working_clone,
+    ):
+        """App with access_level in manifest → DB updated."""
+        from src.models.orm.applications import Application
+
+        app_id = str(uuid4())
+        work_dir = Path(working_clone.working_dir)
+        bifrost_dir = work_dir / ".bifrost"
+        bifrost_dir.mkdir(exist_ok=True)
+
+        app_dir = work_dir / "apps" / "accessapp"
+        app_dir.mkdir(parents=True, exist_ok=True)
+        (app_dir / "app.yaml").write_text(yaml.dump({"name": "AccessApp"}, default_flow_style=False))
+
+        (bifrost_dir / "apps.yaml").write_text(yaml.dump({
+            "apps": {
+                "accessapp": {
+                    "id": app_id,
+                    "path": "apps/accessapp/app.yaml",
+                    "slug": "accessapp",
+                    "access_level": "public",
+                }
+            }
+        }, default_flow_style=False))
+
+        working_clone.index.add([
+            "apps/accessapp/app.yaml",
+            ".bifrost/apps.yaml",
+        ])
+        working_clone.index.commit("App access level")
+        working_clone.remotes.origin.push("main")
+
+        result = await sync_service.desktop_pull()
+        assert result.success
+
+        app = (await db_session.execute(
+            select(Application).where(Application.id == app_id)
+        )).scalar_one()
+        assert app.access_level == "public"
+
+
+@pytest.mark.e2e
+@pytest.mark.asyncio
+class TestOrgScopedEntities:
+    """organization_id FK resolution across entity types."""
+
+    async def test_workflow_with_org_id(
+        self, db_session: AsyncSession, sync_service, working_clone,
+    ):
+        """Workflow references org from manifest → FK satisfied."""
+        org_id = str(uuid4())
+        wf_id = str(uuid4())
+
+        work_dir = Path(working_clone.working_dir)
+        bifrost_dir = work_dir / ".bifrost"
+        bifrost_dir.mkdir(exist_ok=True)
+
+        wf_path = work_dir / "workflows" / "org_test.py"
+        wf_path.parent.mkdir(parents=True, exist_ok=True)
+        wf_path.write_text(SAMPLE_WORKFLOW_PY)
+
+        (bifrost_dir / "organizations.yaml").write_text(yaml.dump({
+            "organizations": [{"id": org_id, "name": "WFOrg"}]
+        }, default_flow_style=False))
+        (bifrost_dir / "workflows.yaml").write_text(yaml.dump({
+            "workflows": {
+                "org_test_wf": {
+                    "id": wf_id,
+                    "path": "workflows/org_test.py",
+                    "function_name": "git_sync_test",
+                    "type": "workflow",
+                    "organization_id": org_id,
+                }
+            }
+        }, default_flow_style=False))
+
+        working_clone.index.add([
+            "workflows/org_test.py",
+            ".bifrost/organizations.yaml",
+            ".bifrost/workflows.yaml",
+        ])
+        working_clone.index.commit("Workflow with org")
+        working_clone.remotes.origin.push("main")
+
+        result = await sync_service.desktop_pull()
+        assert result.success, f"Pull failed: {result.error}"
+
+        wf = (await db_session.execute(
+            select(Workflow).where(Workflow.id == wf_id)
+        )).scalar_one()
+        assert str(wf.organization_id) == org_id
+
+    async def test_workflow_org_id_updated_on_pull(
+        self, db_session: AsyncSession, sync_service, working_clone,
+    ):
+        """Existing workflow with no org, manifest adds org → org_id updated."""
+        from src.models.orm.organizations import Organization
+
+        org_id = uuid4()
+        wf_id = uuid4()
+
+        db_session.add(Organization(id=org_id, name="AddOrgLater", is_active=True, created_by="git-sync"))
+        db_session.add(Workflow(
+            id=wf_id, name="no_org_wf", function_name="git_sync_test",
+            path="workflows/no_org.py", is_active=True, organization_id=None,
+        ))
+        await db_session.commit()
+
+        work_dir = Path(working_clone.working_dir)
+        bifrost_dir = work_dir / ".bifrost"
+        bifrost_dir.mkdir(exist_ok=True)
+
+        wf_path = work_dir / "workflows" / "no_org.py"
+        wf_path.parent.mkdir(parents=True, exist_ok=True)
+        wf_path.write_text(SAMPLE_WORKFLOW_PY)
+
+        (bifrost_dir / "organizations.yaml").write_text(yaml.dump({
+            "organizations": [{"id": str(org_id), "name": "AddOrgLater"}]
+        }, default_flow_style=False))
+        (bifrost_dir / "workflows.yaml").write_text(yaml.dump({
+            "workflows": {
+                "no_org_wf": {
+                    "id": str(wf_id),
+                    "path": "workflows/no_org.py",
+                    "function_name": "git_sync_test",
+                    "type": "workflow",
+                    "organization_id": str(org_id),
+                }
+            }
+        }, default_flow_style=False))
+
+        working_clone.index.add([
+            "workflows/no_org.py",
+            ".bifrost/organizations.yaml",
+            ".bifrost/workflows.yaml",
+        ])
+        working_clone.index.commit("Add org to workflow")
+        working_clone.remotes.origin.push("main")
+
+        result = await sync_service.desktop_pull()
+        assert result.success
+
+        wf = (await db_session.execute(
+            select(Workflow).where(Workflow.id == wf_id)
+        )).scalar_one()
+        assert wf.organization_id == org_id, "org_id should be updated on existing workflow"
