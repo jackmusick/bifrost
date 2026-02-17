@@ -41,6 +41,12 @@ EMBED_ALLOWED_PATTERNS = [
 
     # Health check
     r"^/health$",
+
+    # Form loading and execution
+    r"^/api/forms/[^/]+$",              # GET /api/forms/{form_id}
+    r"^/api/forms/[^/]+/execute$",      # POST /api/forms/{form_id}/execute
+    r"^/api/forms/[^/]+/startup$",      # POST /api/forms/{form_id}/startup
+    r"^/api/forms/[^/]+/upload$",       # POST /api/forms/{form_id}/upload
 ]
 
 _COMPILED_PATTERNS = [re.compile(p) for p in EMBED_ALLOWED_PATTERNS]

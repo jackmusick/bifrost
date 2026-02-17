@@ -49,6 +49,8 @@ class UserPrincipal:
     roles: list[str] = field(default_factory=list)
     embed: bool = False  # True for embed session tokens (scoped to app_id)
     app_id: str | None = None  # App ID for embed tokens
+    form_id: str | None = None  # Form ID for form embed tokens
+    verified_params: dict[str, str] | None = None  # HMAC-verified query params
 
     @property
     def is_platform_admin(self) -> bool:
@@ -209,6 +211,8 @@ async def get_current_user_optional(
         roles=payload.get("roles", []),
         embed=payload.get("embed", False),
         app_id=payload.get("app_id"),
+        form_id=payload.get("form_id"),
+        verified_params=payload.get("verified_params"),
     )
 
 
@@ -457,4 +461,6 @@ async def get_current_user_ws(websocket) -> UserPrincipal | None:
         roles=payload.get("roles", []),
         embed=payload.get("embed", False),
         app_id=payload.get("app_id"),
+        form_id=payload.get("form_id"),
+        verified_params=payload.get("verified_params"),
     )

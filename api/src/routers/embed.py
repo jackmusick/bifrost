@@ -12,6 +12,7 @@ from src.core.constants import SYSTEM_USER_ID
 from src.core.database import get_db_context
 from src.core.security import create_access_token, decrypt_secret
 from src.models.orm.applications import Application
+from src.models.orm.forms import Form as FormORM
 from src.services.embed_auth import verify_embed_hmac
 
 logger = logging.getLogger(__name__)
@@ -87,6 +88,80 @@ async def embed_app(
     # issues when third-party sites embed Bifrost apps in iframes.
     redirect = RedirectResponse(
         url=f"/apps/{app.slug}#embed_token={access_token}",
+        status_code=302,
+    )
+
+    # Set permissive framing headers for embed route
+    redirect.headers["Content-Security-Policy"] = "frame-ancestors *"
+    redirect.headers["X-Frame-Options"] = "ALLOWALL"
+
+    return redirect
+
+
+@router.get("/forms/{form_id}")
+async def embed_form(
+    request: Request,
+    form_id: str = Path(...),
+):
+    """Public entry point for HMAC-authenticated form iframe embedding."""
+    from uuid import UUID as PyUUID
+
+    query_params = dict(request.query_params)
+
+    if "hmac" not in query_params:
+        raise HTTPException(status_code=403, detail="Missing HMAC signature")
+
+    # Parse form_id as UUID
+    try:
+        form_uuid = PyUUID(form_id)
+    except ValueError:
+        raise HTTPException(status_code=404, detail="Form not found")
+
+    # Look up the form and its active embed secrets
+    async with get_db_context() as db:
+        result = await db.execute(
+            select(FormORM)
+            .where(FormORM.id == form_uuid)
+            .options(selectinload(FormORM.embed_secrets))
+        )
+        form = result.scalar_one_or_none()
+
+    if not form:
+        raise HTTPException(status_code=404, detail="Form not found")
+
+    active_secrets = [s for s in form.embed_secrets if s.is_active]
+    if not active_secrets:
+        raise HTTPException(status_code=403, detail="No embed secrets configured")
+
+    # Try each active secret
+    verified = False
+    for secret_record in active_secrets:
+        raw_secret = decrypt_secret(secret_record.secret_encrypted)
+        if verify_embed_hmac(query_params, raw_secret):
+            verified = True
+            break
+
+    if not verified:
+        raise HTTPException(status_code=403, detail="Invalid HMAC signature")
+
+    # Extract verified params (everything except hmac)
+    verified_params = {k: v for k, v in query_params.items() if k != "hmac"}
+
+    # Issue a scoped embed access token
+    token_data = {
+        "sub": SYSTEM_USER_ID,
+        "form_id": str(form.id),
+        "org_id": str(form.organization_id) if form.organization_id else None,
+        "verified_params": verified_params,
+        "email": "embed@internal.gobifrost.com",
+        "is_superuser": False,
+        "embed": True,
+        "roles": ["EmbedUser"],
+    }
+    access_token = create_access_token(token_data, expires_delta=timedelta(hours=8))
+
+    redirect = RedirectResponse(
+        url=f"/execute/{form.id}#embed_token={access_token}",
         status_code=302,
     )
 
