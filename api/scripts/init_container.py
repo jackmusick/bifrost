@@ -3,9 +3,8 @@
 Init container script for Bifrost.
 
 Runs before API and workers start:
-1. Pre-migration data backfill (preserve data before destructive migrations)
-2. Run database migrations (alembic upgrade head)
-3. Warm Redis requirements cache from database
+1. Run database migrations (alembic upgrade head)
+2. Warm Redis requirements cache from database
 
 Usage:
     python -m scripts.init_container
@@ -117,33 +116,6 @@ async def warm_requirements_cache() -> bool:
         raise
 
 
-async def run_backfill() -> dict[str, int] | None:
-    """
-    Run pre-migration data backfill.
-
-    Preserves data from tables that will be dropped by upcoming migrations
-    (workspace_files, workflows.code) by writing to file_index + S3.
-
-    Non-fatal: logs warnings but never blocks startup.
-
-    Returns:
-        Stats dict if backfill ran, None if skipped/failed
-    """
-    logger.info("Running pre-migration data backfill...")
-
-    try:
-        from scripts.pre_migration_backfill import backfill_workspace_data
-        from src.core.database import get_db_context
-
-        async with get_db_context() as db:
-            stats = await backfill_workspace_data(db)
-            return stats
-
-    except Exception as e:
-        logger.warning(f"Pre-migration backfill failed (non-fatal): {e}")
-        return None
-
-
 async def main() -> int:
     """
     Main entry point for init container.
@@ -155,25 +127,18 @@ async def main() -> int:
     logger.info("Bifrost Init Container Starting")
     logger.info("=" * 60)
 
-    # Step 1: Pre-migration data backfill
+    # Step 1: Run migrations
     logger.info("")
-    logger.info("Step 1/3: Pre-migration Data Backfill")
-    logger.info("-" * 40)
-
-    backfill_stats = await run_backfill()
-
-    # Step 2: Run migrations
-    logger.info("")
-    logger.info("Step 2/3: Database Migrations")
+    logger.info("Step 1/2: Database Migrations")
     logger.info("-" * 40)
 
     if not run_migrations():
         logger.error("FAILED: Database migrations failed - aborting startup")
         return 1
 
-    # Step 3: Warm requirements cache
+    # Step 2: Warm requirements cache
     logger.info("")
-    logger.info("Step 3/3: Requirements Cache Warming")
+    logger.info("Step 2/2: Requirements Cache Warming")
     logger.info("-" * 40)
 
     try:
@@ -186,11 +151,6 @@ async def main() -> int:
     logger.info("")
     logger.info("=" * 60)
     logger.info("Init Container Completed Successfully")
-    if backfill_stats:
-        total = sum(backfill_stats.values())
-        logger.info(f"  - Backfill: {total} items migrated")
-    else:
-        logger.info("  - Backfill: skipped or nothing to migrate")
     logger.info("  - Migrations: Applied")
     logger.info(f"  - Requirements cache: {'cached' if requirements_found else 'empty'}")
     logger.info("=" * 60)
