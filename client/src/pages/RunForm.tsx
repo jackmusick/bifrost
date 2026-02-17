@@ -14,7 +14,8 @@ export function RunForm() {
 	const { formId } = useParams();
 	const navigate = useNavigate();
 	const { data: form, isLoading, error } = useForm(formId);
-	const { isPlatformAdmin } = useAuth();
+	const { isPlatformAdmin, hasRole } = useAuth();
+	const isEmbed = hasRole("EmbedUser");
 
 	// Developer mode state - persisted to localStorage
 	const [devMode, setDevMode] = useState(() => {
@@ -69,6 +70,27 @@ export function RunForm() {
 					<ArrowLeft className="mr-2 h-4 w-4" />
 					Back to Forms
 				</Button>
+			</div>
+		);
+	}
+
+	if (isEmbed) {
+		return (
+			<div className="p-6 max-w-2xl mx-auto space-y-6">
+				<div className="text-center">
+					<h1 className="text-4xl font-extrabold tracking-tight">
+						{form.name}
+					</h1>
+					{form.description && (
+						<p className="mt-2 text-muted-foreground">
+							{form.description}
+						</p>
+					)}
+				</div>
+				<FormRenderer
+					form={form}
+					preventNavigation
+				/>
 			</div>
 		);
 	}
