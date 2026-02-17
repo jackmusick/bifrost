@@ -2,6 +2,8 @@
 import pytest
 from unittest.mock import AsyncMock, MagicMock, patch
 
+from src.services.repo_storage import RepoStorage
+
 
 @pytest.fixture
 def mock_s3_client():
@@ -79,9 +81,6 @@ def test_compute_hash():
     from src.services.repo_storage import RepoStorage
     h = RepoStorage.compute_hash(b"hello world")
     assert len(h) == 64  # SHA-256 hex
-
-
-from src.services.repo_storage import RepoStorage
 
 
 def _mock_settings():
