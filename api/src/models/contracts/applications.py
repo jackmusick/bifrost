@@ -312,5 +312,41 @@ class AppRenderResponse(BaseModel):
     )
 
 
+# ==================== EMBED SECRET MODELS ====================
+
+
+class EmbedSecretCreate(BaseModel):
+    """Request to create an embed secret for an app."""
+
+    name: str = Field(..., max_length=255, description="Label for this secret (e.g., 'Halo Production')")
+    secret: str | None = Field(default=None, description="Shared secret. If omitted, one is auto-generated.")
+
+
+class EmbedSecretResponse(BaseModel):
+    """Embed secret metadata (never includes the raw secret after creation)."""
+
+    id: str
+    name: str
+    is_active: bool
+    created_at: datetime
+
+    @field_serializer("created_at")
+    def serialize_dt(self, dt: datetime) -> str:
+        return dt.isoformat()
+
+
+class EmbedSecretCreatedResponse(EmbedSecretResponse):
+    """Response when creating an embed secret — includes raw secret shown once."""
+
+    raw_secret: str
+
+
+class EmbedSecretUpdate(BaseModel):
+    """Request to update an embed secret."""
+
+    is_active: bool | None = None
+    name: str | None = Field(default=None, max_length=255)
+
+
 # ==================== IMPORT MODELS ====================
 # Applications use file sync (like forms/agents), not a dedicated import endpoint

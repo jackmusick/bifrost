@@ -19,6 +19,7 @@ from src.models.enums import AppAccessLevel
 from src.models.orm.base import Base
 
 if TYPE_CHECKING:
+    from src.models.orm.app_embed_secrets import AppEmbedSecret
     from src.models.orm.app_roles import AppRole
     from src.models.orm.organizations import Organization
     from src.models.orm.tables import Table
@@ -79,6 +80,9 @@ class Application(Base):
     tables: Mapped[list["Table"]] = relationship("Table", back_populates="application")
     roles: Mapped[list["AppRole"]] = relationship(
         "AppRole", cascade="all, delete-orphan", passive_deletes=True
+    )
+    embed_secrets: Mapped[list["AppEmbedSecret"]] = relationship(
+        "AppEmbedSecret", back_populates="application", cascade="all, delete-orphan", passive_deletes=True
     )
 
     __table_args__ = (
