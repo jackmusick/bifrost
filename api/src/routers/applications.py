@@ -305,6 +305,7 @@ class ApplicationRepository(OrgScopedRepository[Application]):
             organization_id=self.org_id,
             created_by=created_by,
             access_level=data.access_level,
+            repo_path=f"apps/{data.slug}",
         )
         self.session.add(application)
         await self.session.flush()

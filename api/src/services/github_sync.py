@@ -1354,6 +1354,7 @@ class GitHubSyncService:
                     name=data.get("name", ""),
                     description=data.get("description"),
                     slug=slug,
+                    repo_path=f"apps/{slug}",
                     updated_at=datetime.now(timezone.utc),
                 )
             )
@@ -1365,6 +1366,7 @@ class GitHubSyncService:
                 name=data.get("name", ""),
                 description=data.get("description"),
                 slug=slug,
+                repo_path=f"apps/{slug}",
                 organization_id=org_id,
             ).on_conflict_do_update(
                 index_elements=["id"],
@@ -1372,6 +1374,7 @@ class GitHubSyncService:
                     "name": data.get("name", ""),
                     "description": data.get("description"),
                     "slug": slug,
+                    "repo_path": f"apps/{slug}",
                     "updated_at": datetime.now(timezone.utc),
                 },
             )

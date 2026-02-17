@@ -145,6 +145,7 @@ async def create_app(
                 description=description,
                 organization_id=effective_org_id,
                 created_by=str(context.user_id),
+                repo_path=f"apps/{slug}",
             )
             db.add(app)
             await db.flush()

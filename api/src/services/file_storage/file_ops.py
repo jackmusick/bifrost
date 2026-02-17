@@ -27,6 +27,7 @@ from .indexers.agent import _serialize_agent_to_yaml
 from .entity_detector import detect_platform_entity_type
 
 if TYPE_CHECKING:
+    from src.models.orm.applications import Application
     from .diagnostics import DiagnosticsService
     from .deactivation import DeactivationProtectionService
 
@@ -309,49 +310,43 @@ class FileOperationsService:
                 logger.warning(f"Failed to clear diagnostic notification for {path}: {e}")
 
         # App files: fire pubsub for real-time preview
-        if path.startswith("apps/"):
-            parts = path.split("/")
-            if len(parts) >= 2:
-                slug = parts[1]
-                try:
-                    from src.models.orm.applications import Application
-                    app_stmt = select(Application).where(Application.slug == slug)
-                    app_result = await self.db.execute(app_stmt)
-                    app = app_result.scalar_one_or_none()
-                    if app:
-                        from src.core.pubsub import publish_app_code_file_update
-                        # Relative path within app (strip "apps/{slug}/")
-                        relative_path = "/".join(parts[2:]) if len(parts) > 2 else ""
+        app = await self._find_app_by_path(path)
+        if app:
+            try:
+                from src.core.pubsub import publish_app_code_file_update
+                # Derive relative path by stripping the app's repo_path prefix
+                app_prefix = (app.repo_path or f"apps/{app.slug}").rstrip("/") + "/"
+                relative_path = path[len(app_prefix):] if path.startswith(app_prefix) else path
 
-                        # Compile TSX/TS files server-side
-                        compiled_js = None
-                        if relative_path.endswith((".tsx", ".ts")):
-                            from src.services.app_compiler import AppCompilerService
-                            compiler = AppCompilerService()
-                            result = await compiler.compile_file(content_str, relative_path)
-                            if result.success:
-                                compiled_js = result.compiled
-                            else:
-                                logger.warning(f"Compilation failed for {relative_path}: {result.error}")
+                # Compile TSX/TS files server-side
+                compiled_js = None
+                if relative_path.endswith((".tsx", ".ts")):
+                    from src.services.app_compiler import AppCompilerService
+                    compiler = AppCompilerService()
+                    result = await compiler.compile_file(content_str, relative_path)
+                    if result.success:
+                        compiled_js = result.compiled
+                    else:
+                        logger.warning(f"Compilation failed for {relative_path}: {result.error}")
 
-                        await publish_app_code_file_update(
-                            app_id=str(app.id),
-                            user_id=updated_by,
-                            user_name=updated_by,
-                            path=relative_path,
-                            source=content_str,
-                            compiled=compiled_js,
-                            action="update",
-                        )
-                        # Write compiled JS (or raw source if compile failed) to preview
-                        preview_content = compiled_js.encode("utf-8") if compiled_js else final_content
-                        from src.services.app_storage import AppStorageService
-                        app_storage = AppStorageService()
-                        await app_storage.write_preview_file(
-                            str(app.id), relative_path, preview_content
-                        )
-                except Exception as e:
-                    logger.warning(f"Failed to publish app file update for {path}: {e}")
+                await publish_app_code_file_update(
+                    app_id=str(app.id),
+                    user_id=updated_by,
+                    user_name=updated_by,
+                    path=relative_path,
+                    source=content_str,
+                    compiled=compiled_js,
+                    action="update",
+                )
+                # Write compiled JS (or raw source if compile failed) to preview
+                preview_content = compiled_js.encode("utf-8") if compiled_js else final_content
+                from src.services.app_storage import AppStorageService
+                app_storage = AppStorageService()
+                await app_storage.write_preview_file(
+                    str(app.id), relative_path, preview_content
+                )
+            except Exception as e:
+                logger.warning(f"Failed to publish app file update for {path}: {e}")
 
         logger.info(f"File written: {path} ({size_bytes} bytes) by {updated_by}")
         return WriteResult(
@@ -404,24 +399,39 @@ class FileOperationsService:
         del_stmt = delete(FileIndex).where(FileIndex.path == path)
         await self.db.execute(del_stmt)
 
-    async def _handle_app_file_cleanup(self, path: str) -> None:
-        """If this file belongs to an app, clean up preview and notify clients."""
+    async def _find_app_by_path(self, path: str) -> "Application | None":
+        """Find the Application that owns a file path via repo_path or slug fallback."""
         if not path.startswith("apps/"):
-            return
+            return None
 
+        from src.models.orm.applications import Application
+
+        # Extract candidate slug from path (apps/{slug}/...)
         parts = path.split("/")
         if len(parts) < 2:
-            return
+            return None
+        candidate_prefix = f"apps/{parts[1]}"
 
-        slug = parts[1]
-        from src.models.orm.applications import Application
-        app_stmt = select(Application).where(Application.slug == slug)
-        app_result = await self.db.execute(app_stmt)
-        app = app_result.scalar_one_or_none()
+        # Try repo_path match first
+        stmt = select(Application).where(Application.repo_path == candidate_prefix)
+        result = await self.db.execute(stmt)
+        app = result.scalar_one_or_none()
+        if app:
+            return app
+
+        # Fallback for rows without repo_path: match by slug
+        stmt = select(Application).where(Application.slug == parts[1])
+        result = await self.db.execute(stmt)
+        return result.scalar_one_or_none()
+
+    async def _handle_app_file_cleanup(self, path: str) -> None:
+        """If this file belongs to an app, clean up preview and notify clients."""
+        app = await self._find_app_by_path(path)
         if not app:
             return
 
-        relative_path = "/".join(parts[2:]) if len(parts) > 2 else ""
+        app_prefix = (app.repo_path or f"apps/{app.slug}").rstrip("/") + "/"
+        relative_path = path[len(app_prefix):] if path.startswith(app_prefix) else path
 
         from src.core.pubsub import publish_app_code_file_update
         await publish_app_code_file_update(
