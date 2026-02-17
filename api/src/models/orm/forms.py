@@ -17,6 +17,7 @@ from src.models.orm.base import Base
 
 if TYPE_CHECKING:
     from src.models.orm.executions import Execution
+    from src.models.orm.form_embed_secrets import FormEmbedSecret
     from src.models.orm.organizations import Organization
 
 
@@ -131,6 +132,9 @@ class Form(Base):
         back_populates="form",
         cascade="all, delete-orphan",
         order_by="FormField.position",
+    )
+    embed_secrets: Mapped[list["FormEmbedSecret"]] = relationship(
+        "FormEmbedSecret", back_populates="form", cascade="all, delete-orphan", passive_deletes=True
     )
 
     __table_args__: tuple = ()
