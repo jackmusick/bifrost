@@ -1314,6 +1314,7 @@ class GitHubSyncService:
 
     async def _import_app(self, mapp, content: bytes) -> None:
         """Import an app from repo into the DB (metadata only)."""
+        from pathlib import PurePosixPath
         from uuid import UUID
 
         from sqlalchemy import update
@@ -1325,11 +1326,18 @@ class GitHubSyncService:
         if not data:
             return
 
-        # Slug from manifest entry, or derive from path (e.g. "apps/tickbox-grc/app.yaml" -> "tickbox-grc")
-        slug = mapp.slug or (mapp.path.split("/")[1] if mapp.path else None)
+        # Derive repo_path from the manifest's canonical path (e.g. "custom/path/app.yaml" -> "custom/path")
+        repo_path = str(PurePosixPath(mapp.path).parent) if mapp.path else None
+
+        # Slug from manifest entry, or derive from repo_path leaf
+        slug = mapp.slug or (PurePosixPath(repo_path).name if repo_path else None)
         if not slug:
             logger.warning(f"App {mapp.id} has no slug or path, skipping")
             return
+
+        # Ensure repo_path is set even if only slug was available
+        if not repo_path:
+            repo_path = f"apps/{slug}"
 
         app_id = UUID(mapp.id)
         org_id = UUID(mapp.organization_id) if mapp.organization_id else None
@@ -1354,7 +1362,7 @@ class GitHubSyncService:
                     name=data.get("name", ""),
                     description=data.get("description"),
                     slug=slug,
-                    repo_path=f"apps/{slug}",
+                    repo_path=repo_path,
                     updated_at=datetime.now(timezone.utc),
                 )
             )
@@ -1366,7 +1374,7 @@ class GitHubSyncService:
                 name=data.get("name", ""),
                 description=data.get("description"),
                 slug=slug,
-                repo_path=f"apps/{slug}",
+                repo_path=repo_path,
                 organization_id=org_id,
             ).on_conflict_do_update(
                 index_elements=["id"],
@@ -1374,7 +1382,7 @@ class GitHubSyncService:
                     "name": data.get("name", ""),
                     "description": data.get("description"),
                     "slug": slug,
-                    "repo_path": f"apps/{slug}",
+                    "repo_path": repo_path,
                     "updated_at": datetime.now(timezone.utc),
                 },
             )

@@ -400,27 +400,29 @@ class FileOperationsService:
         await self.db.execute(del_stmt)
 
     async def _find_app_by_path(self, path: str) -> "Application | None":
-        """Find the Application that owns a file path via repo_path or slug fallback."""
-        if not path.startswith("apps/"):
-            return None
+        """Find the Application that owns a file path via repo_path prefix match.
+
+        Uses a DB query to find apps whose repo_path is a prefix of the given
+        path, selecting the longest (most specific) match. This supports apps
+        at any repo_path, not just apps/{slug}.
+        """
+        from sqlalchemy import func, text
 
         from src.models.orm.applications import Application
 
-        # Extract candidate slug from path (apps/{slug}/...)
-        parts = path.split("/")
-        if len(parts) < 2:
-            return None
-        candidate_prefix = f"apps/{parts[1]}"
-
-        # Try repo_path match first
-        stmt = select(Application).where(Application.repo_path == candidate_prefix)
-        result = await self.db.execute(stmt)
-        app = result.scalar_one_or_none()
-        if app:
-            return app
-
-        # Fallback for rows without repo_path: match by slug
-        stmt = select(Application).where(Application.slug == parts[1])
+        # Find the app whose repo_path is the longest prefix of this path.
+        # e.g. path="custom/deep/app/pages/index.tsx" matches repo_path="custom/deep/app"
+        # We append "/" to repo_path so "apps/my" doesn't match "apps/myapp/file.tsx"
+        # SQL: WHERE :path LIKE repo_path || '/%'
+        stmt = (
+            select(Application)
+            .where(
+                Application.repo_path.isnot(None),
+                text(":path LIKE repo_path || '/%'").bindparams(path=path),
+            )
+            .order_by(func.length(Application.repo_path).desc())
+            .limit(1)
+        )
         result = await self.db.execute(stmt)
         return result.scalar_one_or_none()
 
