@@ -1,3 +1,123 @@
+# Embed UI Implementation Plan
+
+> **For Claude:** REQUIRED SUB-SKILL: Use superpowers:executing-plans to implement this plan task-by-task.
+
+**Goal:** Add an "Embed" settings dialog to the app editor with secret CRUD and integration guide, plus change the embed entry point to redirect to the app.
+
+**Architecture:** New `EmbedSettingsDialog` component opened from the app editor header. Uses `authFetch` for CRUD against `/api/applications/{appId}/embed-secrets`. Backend embed entry point changes from JSON to redirect. The embed secrets endpoints are not yet in the OpenAPI spec's generated types, so we use `authFetch` directly.
+
+**Tech Stack:** React, TypeScript, shadcn/ui (Dialog, AlertDialog, Badge, Alert), lucide-react icons, authFetch, Sonner toast
+
+**Design doc:** `docs/plans/2026-02-16-embed-ui-design.md`
+
+---
+
+### Task 1: Backend — Change Embed Entry Point to Redirect
+
+**Files:**
+- Modify: `api/src/routers/embed.py`
+- Modify: `api/tests/e2e/api/test_embed.py`
+
+**Step 1: Update the embed endpoint to redirect**
+
+In `api/src/routers/embed.py`, change the return value from JSON to a `RedirectResponse`. Import `RedirectResponse` from starlette and redirect to `/apps/{slug}`:
+
+```python
+from starlette.responses import RedirectResponse
+```
+
+Replace the return block (the `response.set_cookie(...)` and `return {...}` at the end of `embed_app`) with:
+
+```python
+    # Build redirect response
+    redirect = RedirectResponse(
+        url=f"/apps/{app.slug}",
+        status_code=302,
+    )
+
+    # Set cookie on the redirect response
+    redirect.set_cookie(
+        key="embed_token",
+        value=embed_token,
+        httponly=True,
+        samesite="none",
+        secure=True,
+        max_age=8 * 3600,
+        path="/",
+    )
+
+    # Set permissive framing headers for embed route
+    redirect.headers["Content-Security-Policy"] = "frame-ancestors *"
+    redirect.headers["X-Frame-Options"] = "ALLOWALL"
+
+    return redirect
+```
+
+Remove the `response: Response` parameter from the function signature since we're returning a `RedirectResponse` directly instead of modifying the injected response.
+
+**Step 2: Update the E2E test**
+
+In `api/tests/e2e/api/test_embed.py`, update `test_valid_hmac_returns_embed_token`:
+
+```python
+    def test_valid_hmac_returns_embed_token(self, e2e_client, test_app_with_secret):
+        app = test_app_with_secret["app"]
+        secret = test_app_with_secret["secret"]
+        params = {"agent_id": "42"}
+        hmac_val = _compute_hmac(params, secret)
+
+        r = e2e_client.get(
+            f"/embed/apps/{app['slug']}",
+            params={**params, "hmac": hmac_val},
+            follow_redirects=False,
+        )
+        # Should redirect to /apps/{slug}
+        assert r.status_code == 302, r.text
+        assert f"/apps/{app['slug']}" in r.headers.get("location", "")
+        # Should set an embed_token cookie
+        assert "embed_token" in r.cookies
+```
+
+Also update `test_embed_workflow_execution.py` — the `embed_session` fixture needs to follow the redirect or extract the cookie from the 302:
+
+```python
+        # Get embed token via HMAC-verified entry point
+        params = {"agent_id": "42"}
+        hmac_val = _compute_hmac(params, raw_secret)
+        r = e2e_client.get(
+            f"/embed/apps/{app['slug']}",
+            params={**params, "hmac": hmac_val},
+            follow_redirects=False,
+        )
+        assert r.status_code == 302, r.text
+        embed_token = r.cookies.get("embed_token")
+        assert embed_token, "Expected embed_token cookie"
+```
+
+**Step 3: Run tests**
+
+Run: `./test.sh tests/e2e/api/test_embed.py tests/e2e/api/test_embed_workflow_execution.py -v`
+Expected: PASS
+
+**Step 4: Commit**
+
+```bash
+git add api/src/routers/embed.py api/tests/e2e/api/test_embed.py api/tests/e2e/api/test_embed_workflow_execution.py
+git commit -m "feat: change embed entry point from JSON to redirect"
+```
+
+---
+
+### Task 2: Frontend — EmbedSettingsDialog Component
+
+**Files:**
+- Create: `client/src/components/app-builder/EmbedSettingsDialog.tsx`
+
+**Step 1: Create the component**
+
+Create `client/src/components/app-builder/EmbedSettingsDialog.tsx`. This is a Dialog component with two sections: secret management and integration guide.
+
+```typescript
 /**
  * Embed Settings Dialog
  *
@@ -80,7 +200,6 @@ export function EmbedSettingsDialog({
   // Create dialog state
   const [isCreateOpen, setIsCreateOpen] = useState(false);
   const [createName, setCreateName] = useState("");
-  const [createSecret, setCreateSecret] = useState("");
   const [isCreating, setIsCreating] = useState(false);
 
   // Reveal dialog state (shown once after creation)
@@ -131,10 +250,7 @@ export function EmbedSettingsDialog({
         {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            name: createName.trim(),
-            ...(createSecret.trim() && { secret: createSecret.trim() }),
-          }),
+          body: JSON.stringify({ name: createName.trim() }),
         },
       );
       if (!res.ok) throw new Error(await res.text());
@@ -142,7 +258,6 @@ export function EmbedSettingsDialog({
       setRevealedSecret(created);
       setIsCreateOpen(false);
       setCreateName("");
-      setCreateSecret("");
       fetchSecrets();
       toast.success("Embed secret created");
     } catch {
@@ -409,7 +524,7 @@ const url = await embedUrl({ agent_id: "42", ticket_id: "1001" }, "YOUR_SECRET")
               <DialogTitle>Create Embed Secret</DialogTitle>
               <DialogDescription>
                 Create a shared secret for HMAC-authenticated embedding.
-                Provide your own secret or leave blank to auto-generate.
+                A secret will be auto-generated.
               </DialogDescription>
             </DialogHeader>
             <div className="space-y-4 py-4">
@@ -421,16 +536,6 @@ const url = await embedUrl({ agent_id: "42", ticket_id: "1001" }, "YOUR_SECRET")
                   value={createName}
                   onChange={(e) => setCreateName(e.target.value)}
                   autoFocus
-                />
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="secret-value">Secret (optional)</Label>
-                <Input
-                  id="secret-value"
-                  placeholder="Leave blank to auto-generate"
-                  value={createSecret}
-                  onChange={(e) => setCreateSecret(e.target.value)}
-                  className="font-mono text-sm"
                 />
               </div>
             </div>
@@ -524,3 +629,100 @@ const url = await embedUrl({ agent_id: "42", ticket_id: "1001" }, "YOUR_SECRET")
     </>
   );
 }
+```
+
+**Step 2: Commit**
+
+```bash
+git add client/src/components/app-builder/EmbedSettingsDialog.tsx
+git commit -m "feat: add EmbedSettingsDialog component"
+```
+
+---
+
+### Task 3: Frontend — Wire Up Dialog in App Editor
+
+**Files:**
+- Modify: `client/src/pages/AppCodeEditorPage.tsx`
+
+**Step 1: Add import, state, and button**
+
+Add import at the top of `AppCodeEditorPage.tsx`:
+
+```typescript
+import { EmbedSettingsDialog } from "@/components/app-builder/EmbedSettingsDialog";
+```
+
+Add the `Link` icon import alongside existing lucide imports:
+
+```typescript
+import { ArrowLeft, Upload, Settings, Loader2, Link } from "lucide-react";
+```
+
+Add state variable alongside the existing `isSettingsOpen`:
+
+```typescript
+const [isEmbedOpen, setIsEmbedOpen] = useState(false);
+```
+
+Add the embed button and dialog in the header bar, right before the Settings button (inside the `<div className="flex items-center gap-2">` block):
+
+```tsx
+{/* Embed */}
+{isEditing && existingApp && (
+  <>
+    <Button
+      variant="ghost"
+      size="icon"
+      onClick={() => setIsEmbedOpen(true)}
+      title="Embed settings"
+    >
+      <Link className="h-4 w-4" />
+    </Button>
+    <EmbedSettingsDialog
+      appId={existingApp.id}
+      appSlug={existingApp.slug}
+      open={isEmbedOpen}
+      onOpenChange={setIsEmbedOpen}
+    />
+  </>
+)}
+```
+
+**Step 2: Run TypeScript check**
+
+Run: `cd client && npm run tsc`
+Expected: PASS (no type errors)
+
+**Step 3: Run lint**
+
+Run: `cd client && npm run lint`
+Expected: PASS
+
+**Step 4: Commit**
+
+```bash
+git add client/src/pages/AppCodeEditorPage.tsx
+git commit -m "feat: wire up embed settings dialog in app editor"
+```
+
+---
+
+### Task 4: Verification — Full Test Suite and Manual Check
+
+**Step 1: Run full backend test suite**
+
+Run: `./test.sh`
+Expected: All tests pass
+
+**Step 2: Run frontend checks**
+
+Run: `cd client && npm run tsc && npm run lint`
+Expected: PASS
+
+**Step 3: Commit any fixes**
+
+```bash
+git add -A
+git commit -m "fix: address lint/test issues from embed UI"
+```

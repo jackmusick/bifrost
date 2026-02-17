@@ -130,7 +130,7 @@ export async function executeFormStartup(
  * - "global": show only global forms (org_id IS NULL)
  * - UUID string: show that org's forms + global forms
  */
-export function useForms(filterScope?: string | null) {
+export function useForms(filterScope?: string | null, options?: { enabled?: boolean }) {
 	// Build query params - scope is the new filter parameter
 	const queryParams: Record<string, string | undefined> = {};
 	if (filterScope === null) {
@@ -148,6 +148,8 @@ export function useForms(filterScope?: string | null) {
 			query:
 				Object.keys(queryParams).length > 0 ? queryParams : undefined,
 		} as { query?: { scope?: string } },
+	}, {
+		enabled: options?.enabled,
 	});
 }
 

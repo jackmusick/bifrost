@@ -1,0 +1,83 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+  <title>Embed Demo</title>
+  <style>
+    body {
+      font-family: sans-serif;
+      max-width: 800px;
+      margin: 40px auto;
+      padding: 0 20px;
+    }
+
+    iframe {
+      width: 100%;
+      height: 500px;
+      border: 1px solid #ccc;
+      border-radius: 8px;
+      margin-top: 20px;
+    }
+
+    code {
+      background: #f0f0f0;
+      padding: 2px 6px;
+      border-radius: 4px;
+    }
+
+    .note {
+      color: #666;
+      font-size: 14px;
+    }
+  </style>
+</head>
+
+<body>
+  <h1>Embed Demo</h1>
+  <p class="note">
+    Edit the <code>APP_SLUG</code> and <code>SECRET</code> below, then open this file in a browser.
+    The iframe should load the app. Change the secret to test invalid HMAC rejection.
+  </p>
+
+  <div id="status">Signing...</div>
+  <iframe id="embed"></iframe>
+
+  <script>
+    // ========== EDIT THESE ==========
+    const APP_SLUG = "embed-text";
+    const SECRET = "foo";
+    // ================================
+
+    const PARAMS = { agent_id: "42" };
+    const BASE_URL = window.location.origin;
+
+    async function hmacSign(params, secret) {
+      const message = Object.keys(params)
+        .sort()
+        .map(k => `${k}=${params[k]}`)
+        .join("&");
+
+      const encoder = new TextEncoder();
+      const key = await crypto.subtle.importKey(
+        "raw", encoder.encode(secret),
+        { name: "HMAC", hash: "SHA-256" }, false, ["sign"]
+      );
+      const sig = await crypto.subtle.sign("HMAC", key, encoder.encode(message));
+      return Array.from(new Uint8Array(sig))
+        .map(b => b.toString(16).padStart(2, "0")).join("");
+    }
+
+    async function load() {
+      const hmac = await hmacSign(PARAMS, SECRET);
+      const qs = new URLSearchParams({ ...PARAMS, hmac }).toString();
+      const url = `${BASE_URL}/embed/apps/${APP_SLUG}?${qs}`;
+
+      document.getElementById("status").textContent = `Loading: ${url}`;
+      document.getElementById("embed").src = url;
+    }
+
+    load();
+  </script>
+</body>
+
+</html>

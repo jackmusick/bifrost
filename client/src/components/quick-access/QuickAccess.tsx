@@ -46,10 +46,11 @@ export function QuickAccess({ isOpen, onClose }: QuickAccessProps) {
 	const searchTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 	const resultsRef = useRef<(HTMLButtonElement | null)[]>([]);
 
-	const { data: formsData } = useForms();
+	// Defer data fetching until QuickAccess is actually opened
+	const { data: formsData } = useForms(undefined, { enabled: isOpen });
 	// Only fetch workflows for platform admins (endpoint requires superuser)
 	const { data: workflowsData } = useWorkflowsMetadata({
-		enabled: isPlatformAdmin,
+		enabled: isOpen && isPlatformAdmin,
 	});
 
 	// Focus input when opened

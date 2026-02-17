@@ -17,6 +17,15 @@ import { parseApiError, ApiError, RateLimitError } from "./api-error";
 // Note: Refresh token is stored in HttpOnly cookie only (more secure)
 const ACCESS_TOKEN_KEY = "bifrost_access_token";
 
+// Extract embed token from URL fragment before any API calls run.
+// The /embed/apps/{slug} endpoint redirects to /apps/{slug}#embed_token=<jwt>
+// and we need this in localStorage before the first ensureValidToken() call.
+if (window.location.hash.startsWith("#embed_token=")) {
+	const token = window.location.hash.slice("#embed_token=".length);
+	localStorage.setItem(ACCESS_TOKEN_KEY, token);
+	window.history.replaceState(null, "", window.location.pathname + window.location.search);
+}
+
 // Buffer time before expiration to trigger refresh (60 seconds)
 const TOKEN_REFRESH_BUFFER_SECONDS = 60;
 
@@ -202,9 +211,15 @@ baseClient.use({
 			}
 		}
 
-		// Authentication via HttpOnly cookie (set by backend on login)
-		// No need to manually add Authorization header - cookies are sent automatically
-		// For service-to-service auth, clients can still use Authorization: Bearer header
+		// Authentication: prefer HttpOnly cookie (sent automatically by browser).
+		// Fall back to Bearer header from localStorage for embed sessions where
+		// no cookie is set (token arrives via URL fragment, not Set-Cookie).
+		if (!request.headers.has("Authorization")) {
+			const token = localStorage.getItem(ACCESS_TOKEN_KEY);
+			if (token) {
+				request.headers.set("Authorization", `Bearer ${token}`);
+			}
+		}
 
 		return request;
 	},
@@ -378,8 +393,13 @@ export async function authFetch(
 	const headers = new Headers(options.headers);
 	const method = options.method?.toUpperCase() || "GET";
 
-	// Auth via cookie (sent automatically by browser)
-	// No need to manually add Authorization header
+	// Auth: prefer cookie (automatic), fall back to Bearer from localStorage
+	if (!headers.has("Authorization")) {
+		const token = localStorage.getItem(ACCESS_TOKEN_KEY);
+		if (token) {
+			headers.set("Authorization", `Bearer ${token}`);
+		}
+	}
 
 	// Add user context
 	const userId = sessionStorage.getItem("userId");

@@ -21,6 +21,7 @@ import {
 	CardTitle,
 } from "@/components/ui/card";
 import { useApplication } from "@/hooks/useApplications";
+import { useAuth } from "@/contexts/AuthContext";
 import { JsxAppShell } from "@/components/jsx-app/JsxAppShell";
 import { AppLayout } from "@/components/layout/AppLayout";
 
@@ -32,6 +33,8 @@ interface AppRouterProps {
 export function AppRouter({ preview = false }: AppRouterProps) {
 	const { applicationId: slugParam } = useParams();
 	const navigate = useNavigate();
+	const { hasRole } = useAuth();
+	const isEmbed = hasRole("EmbedUser");
 
 	// Fetch application metadata
 	const {
@@ -139,13 +142,21 @@ export function AppRouter({ preview = false }: AppRouterProps) {
 		);
 	}
 
+	const shell = (
+		<JsxAppShell
+			appId={application.id}
+			appSlug={application.slug}
+			isPreview={preview}
+		/>
+	);
+
+	if (isEmbed) {
+		return <div className="h-screen overflow-auto">{shell}</div>;
+	}
+
 	return (
 		<AppLayout appName={application.name} isPreview={preview}>
-			<JsxAppShell
-				appId={application.id}
-				appSlug={application.slug}
-				isPreview={preview}
-			/>
+			{shell}
 		</AppLayout>
 	);
 }

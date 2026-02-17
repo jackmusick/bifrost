@@ -227,6 +227,11 @@ export default defineConfig({
 				target: process.env.API_URL || "http://localhost:8000",
 				changeOrigin: true,
 			},
+			// Embed entry point (HMAC-verified iframe loading)
+			"/embed": {
+				target: process.env.API_URL || "http://localhost:8000",
+				changeOrigin: true,
+			},
 			// Proxy /auth/* to backend EXCEPT /auth/callback/* which is handled client-side
 			"/auth": {
 				target: process.env.API_URL || "http://localhost:8000",

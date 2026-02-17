@@ -2,6 +2,7 @@
 
 import hashlib
 import hmac as hmac_module
+from urllib.parse import urlparse
 
 import pytest
 
@@ -9,6 +10,15 @@ import pytest
 def _compute_hmac(params: dict[str, str], secret: str) -> str:
     message = "&".join(f"{k}={v}" for k, v in sorted(params.items()))
     return hmac_module.new(secret.encode(), message.encode(), hashlib.sha256).hexdigest()
+
+
+def _extract_token_from_redirect(response) -> str:
+    """Extract the access token from the redirect URL fragment."""
+    location = response.headers.get("location", "")
+    parsed = urlparse(location)
+    fragment = parsed.fragment  # e.g. "embed_token=eyJ..."
+    assert fragment.startswith("embed_token="), f"Expected embed_token in fragment, got: {fragment}"
+    return fragment.split("=", 1)[1]
 
 
 @pytest.mark.e2e
@@ -44,8 +54,7 @@ class TestEmbedWorkflowExecution:
             follow_redirects=False,
         )
         assert r.status_code == 302, r.text
-        embed_token = r.cookies.get("embed_token")
-        assert embed_token, "Expected embed_token cookie"
+        embed_token = _extract_token_from_redirect(r)
 
         yield {
             "app": app,
@@ -64,7 +73,7 @@ class TestEmbedWorkflowExecution:
         """
         r = e2e_client.post(
             "/api/workflows/execute",
-            cookies={"embed_token": embed_session["embed_token"]},
+            headers={"Authorization": f"Bearer {embed_session['embed_token']}"},
             json={
                 "workflow_id": "nonexistent-workflow-for-auth-test",
                 "parameters": {},
@@ -75,14 +84,10 @@ class TestEmbedWorkflowExecution:
         assert r.status_code != 403, f"Embed token rejected as forbidden: {r.text}"
 
     def test_embed_token_cannot_access_admin_endpoints(self, e2e_client, embed_session):
-        """Embed tokens should NOT grant access to admin endpoints like user listing."""
+        """Embed tokens should be blocked from admin endpoints by EmbedScopeMiddleware."""
         r = e2e_client.get(
             "/api/users",
-            cookies={"embed_token": embed_session["embed_token"]},
+            headers={"Authorization": f"Bearer {embed_session['embed_token']}"},
         )
-        # The users endpoint requires superuser. While embed tokens have is_superuser=True
-        # (system account), this test documents the current behavior. If we want to restrict
-        # embed tokens further, we'd add explicit checks in admin endpoints.
-        # For now, this is acceptable since embed tokens are only obtainable via HMAC.
-        # The real security boundary is HMAC verification, not token permissions.
-        assert r.status_code in (200, 403), f"Unexpected status: {r.status_code} {r.text}"
+        assert r.status_code == 403, f"Expected 403, got {r.status_code}: {r.text}"
+        assert "Embed tokens cannot access" in r.text

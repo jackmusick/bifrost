@@ -18,7 +18,7 @@ export function ProtectedRoute({
 	requirePlatformAdmin = false,
 	requireOrgUser = false,
 }: ProtectedRouteProps) {
-	const { isPlatformAdmin, isOrgUser, isLoading } = useAuth();
+	const { isPlatformAdmin, isOrgUser, isLoading, hasRole } = useAuth();
 
 	// Wait for auth to load
 	if (isLoading) {
@@ -30,8 +30,8 @@ export function ProtectedRoute({
 		return <NoAccess />;
 	}
 
-	// Check for OrgUser requirement (PlatformAdmin also has access)
-	if (requireOrgUser && !isOrgUser && !isPlatformAdmin) {
+	// Check for OrgUser requirement (PlatformAdmin and EmbedUser also have access)
+	if (requireOrgUser && !isOrgUser && !isPlatformAdmin && !hasRole("EmbedUser")) {
 		return <NoAccess />;
 	}
 

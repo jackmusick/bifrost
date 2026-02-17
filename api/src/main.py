@@ -18,6 +18,7 @@ from sqlalchemy.exc import IntegrityError, NoResultFound, OperationalError
 from src.config import get_settings
 from src.models.contracts.common import ErrorResponse
 from src.core.csrf import CSRFMiddleware
+from src.core.embed_middleware import EmbedScopeMiddleware
 from src.core.database import close_db, init_db
 from src.core.pubsub import manager as pubsub_manager
 from src.routers import (
@@ -423,6 +424,9 @@ def create_app() -> FastAPI:
     # Only enforces for cookie-based auth with unsafe methods (POST, PUT, DELETE, PATCH)
     # Bearer token auth is exempt since browsers don't automatically include it
     app.add_middleware(CSRFMiddleware)
+
+    # Restrict embed tokens to app-rendering endpoints only
+    app.add_middleware(EmbedScopeMiddleware)
 
     # Register routers
     app.include_router(health_router)

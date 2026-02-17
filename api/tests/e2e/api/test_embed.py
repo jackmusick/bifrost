@@ -48,11 +48,10 @@ class TestEmbedEntryPoint:
             params={**params, "hmac": hmac_val},
             follow_redirects=False,
         )
-        # Should redirect to /apps/{slug}
+        # Should redirect to /apps/{slug}#embed_token=<jwt>
         assert r.status_code == 302, r.text
-        assert f"/apps/{app['slug']}" in r.headers.get("location", "")
-        # Should set an embed_token cookie
-        assert "embed_token" in r.cookies
+        location = r.headers.get("location", "")
+        assert f"/apps/{app['slug']}#embed_token=" in location
 
     def test_invalid_hmac_rejected(self, e2e_client, test_app_with_secret):
         app = test_app_with_secret["app"]

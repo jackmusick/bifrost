@@ -156,6 +156,8 @@ export function AuthProvider({ children }: AuthProviderProps) {
 			}
 
 			// Check for existing token
+			// Note: embed tokens from URL fragments are extracted at module load
+			// time in api-client.ts, before any API calls or auth checks run.
 			let token = localStorage.getItem(ACCESS_TOKEN_KEY);
 			if (!token) {
 				// No access token in localStorage, but refresh_token cookie may still be valid

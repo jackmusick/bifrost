@@ -47,6 +47,8 @@ class UserPrincipal:
     is_superuser: bool = False
     is_verified: bool = False
     roles: list[str] = field(default_factory=list)
+    embed: bool = False  # True for embed session tokens (scoped to app_id)
+    app_id: str | None = None  # App ID for embed tokens
 
     @property
     def is_platform_admin(self) -> bool:
@@ -205,6 +207,8 @@ async def get_current_user_optional(
         is_superuser=is_superuser,
         is_verified=True,
         roles=payload.get("roles", []),
+        embed=payload.get("embed", False),
+        app_id=payload.get("app_id"),
     )
 
 
@@ -451,4 +455,6 @@ async def get_current_user_ws(websocket) -> UserPrincipal | None:
         is_superuser=is_superuser,
         is_verified=True,
         roles=payload.get("roles", []),
+        embed=payload.get("embed", False),
+        app_id=payload.get("app_id"),
     )
