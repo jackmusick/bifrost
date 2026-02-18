@@ -131,15 +131,20 @@ export function Forms() {
 		navigate(`/forms/${formId}/edit`);
 	};
 
-	const handleDelete = (formId: string, formName: string) => {
-		setSelectedForm({ id: formId, name: formName, isActive: false });
+	const handleDelete = (formId: string, formName: string, isActive: boolean) => {
+		setSelectedForm({ id: formId, name: formName, isActive });
 		setIsDeleteDialogOpen(true);
 	};
 
 	const handleConfirmDelete = async () => {
 		if (!selectedForm) return;
+		// If the form is already inactive, purge it permanently
+		const purge = !selectedForm.isActive;
 		await deleteForm.mutateAsync({
-			params: { path: { form_id: selectedForm.id } },
+			params: {
+				path: { form_id: selectedForm.id },
+				query: { purge },
+			},
 		});
 		setIsDeleteDialogOpen(false);
 		setSelectedForm(null);
@@ -450,6 +455,7 @@ export function Forms() {
 														handleDelete(
 															form.id,
 															form.name,
+															form.is_active,
 														)
 													}
 													title="Delete form"
@@ -629,6 +635,7 @@ export function Forms() {
 																	handleDelete(
 																		form.id,
 																		form.name,
+																		form.is_active,
 																	)
 																}
 																title="Delete form"
@@ -736,10 +743,9 @@ export function Forms() {
 					<AlertDialogHeader>
 						<AlertDialogTitle>Are you sure?</AlertDialogTitle>
 						<AlertDialogDescription>
-							This will permanently delete the form "
-							{selectedForm?.name}". This action cannot be undone.
-							Users will no longer be able to access or execute
-							this form.
+							{selectedForm && !selectedForm.isActive
+								? `This will permanently remove the inactive form "${selectedForm.name}" from the database. This action cannot be undone.`
+								: `This will deactivate the form "${selectedForm?.name}". Users will no longer be able to access or execute this form.`}
 						</AlertDialogDescription>
 					</AlertDialogHeader>
 					<AlertDialogFooter>
