@@ -648,6 +648,190 @@ async def e2e_form_test_dp(org_id: str | None = None):
 
 
 @pytest.mark.e2e
+class TestFormAutoFill:
+    """Test auto_fill feature for form fields."""
+
+    @pytest.fixture(scope="class")
+    def dp_with_metadata(self, e2e_client, platform_admin):
+        """Create a data provider that returns options with metadata."""
+        dp_content = '''"""Data Provider with Metadata for Auto-Fill Tests"""
+from bifrost import data_provider
+
+@data_provider(
+    name="e2e_auto_fill_dp",
+    description="Data provider returning metadata for auto-fill tests"
+)
+async def e2e_auto_fill_dp(org_id: str | None = None):
+    """Returns options with metadata for auto-fill testing."""
+    return [
+        {
+            "value": "acme_corp",
+            "label": "Acme Corporation",
+            "metadata": {
+                "employee_count": 150,
+                "industry": "Manufacturing",
+                "city": "Springfield",
+            },
+        },
+        {
+            "value": "globex",
+            "label": "Globex Inc",
+            "metadata": {
+                "employee_count": 500,
+                "industry": "Technology",
+                "city": "Shelbyville",
+            },
+        },
+    ]
+'''
+        result = write_and_register(
+            e2e_client, platform_admin.headers,
+            "e2e_auto_fill_dp.py", dp_content, "e2e_auto_fill_dp",
+        )
+
+        yield {
+            "id": result["id"],
+            "name": result["name"],
+            "path": "e2e_auto_fill_dp.py",
+        }
+
+        # Cleanup
+        e2e_client.delete(
+            "/api/files/editor?path=e2e_auto_fill_dp.py",
+            headers=platform_admin.headers,
+        )
+
+    def test_create_form_with_auto_fill(self, e2e_client, platform_admin, dp_with_metadata):
+        """Form with auto_fill configuration is created and preserved."""
+        auto_fill_config = {
+            "employee_count_field": "employee_count",
+            "industry_field": "industry",
+        }
+        response = e2e_client.post(
+            "/api/forms",
+            headers=platform_admin.headers,
+            json={
+                "name": "Auto-Fill Test Form",
+                "form_schema": {
+                    "fields": [
+                        {
+                            "name": "company_select",
+                            "type": "select",
+                            "label": "Select Company",
+                            "data_provider_id": dp_with_metadata["id"],
+                            "auto_fill": auto_fill_config,
+                            "required": True,
+                        },
+                        {
+                            "name": "employee_count_field",
+                            "type": "number",
+                            "label": "Employee Count",
+                        },
+                        {
+                            "name": "industry_field",
+                            "type": "text",
+                            "label": "Industry",
+                        },
+                    ]
+                },
+                "access_level": "authenticated",
+            },
+        )
+        assert response.status_code == 201, f"Create form failed: {response.text}"
+        form = response.json()
+        fields = form["form_schema"]["fields"]
+
+        dp_field = next((f for f in fields if f["name"] == "company_select"), None)
+        assert dp_field is not None
+        assert dp_field.get("auto_fill") == auto_fill_config
+
+        # Cleanup
+        e2e_client.delete(f"/api/forms/{form['id']}", headers=platform_admin.headers)
+
+    def test_auto_fill_preserved_on_update(self, e2e_client, platform_admin, dp_with_metadata):
+        """auto_fill configuration survives form updates."""
+        auto_fill_config = {"city_field": "city"}
+
+        # Create
+        response = e2e_client.post(
+            "/api/forms",
+            headers=platform_admin.headers,
+            json={
+                "name": "Auto-Fill Update Test",
+                "form_schema": {
+                    "fields": [
+                        {
+                            "name": "company",
+                            "type": "select",
+                            "label": "Company",
+                            "data_provider_id": dp_with_metadata["id"],
+                            "auto_fill": auto_fill_config,
+                        },
+                        {
+                            "name": "city_field",
+                            "type": "text",
+                            "label": "City",
+                        },
+                    ]
+                },
+                "access_level": "authenticated",
+            },
+        )
+        assert response.status_code == 201
+        form_id = response.json()["id"]
+
+        # Update description (not schema)
+        response = e2e_client.patch(
+            f"/api/forms/{form_id}",
+            headers=platform_admin.headers,
+            json={"description": "Updated"},
+        )
+        assert response.status_code == 200
+
+        # Re-fetch and verify auto_fill preserved
+        response = e2e_client.get(
+            f"/api/forms/{form_id}",
+            headers=platform_admin.headers,
+        )
+        assert response.status_code == 200
+        fields = response.json()["form_schema"]["fields"]
+        dp_field = next((f for f in fields if f["name"] == "company"), None)
+        assert dp_field is not None
+        assert dp_field.get("auto_fill") == auto_fill_config, \
+            "auto_fill lost after form update"
+
+        # Cleanup
+        e2e_client.delete(f"/api/forms/{form_id}", headers=platform_admin.headers)
+
+    def test_auto_fill_null_by_default(self, e2e_client, platform_admin):
+        """Fields without auto_fill have it as null."""
+        response = e2e_client.post(
+            "/api/forms",
+            headers=platform_admin.headers,
+            json={
+                "name": "No Auto-Fill Form",
+                "form_schema": {
+                    "fields": [
+                        {
+                            "name": "plain_field",
+                            "type": "text",
+                            "label": "Plain Field",
+                        },
+                    ]
+                },
+                "access_level": "authenticated",
+            },
+        )
+        assert response.status_code == 201
+        form = response.json()
+        fields = form["form_schema"]["fields"]
+        assert fields[0].get("auto_fill") is None
+
+        # Cleanup
+        e2e_client.delete(f"/api/forms/{form['id']}", headers=platform_admin.headers)
+
+
+@pytest.mark.e2e
 class TestFormValidation:
     """Test form validation and error handling."""
 
