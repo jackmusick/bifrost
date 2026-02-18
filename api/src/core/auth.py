@@ -48,6 +48,7 @@ class UserPrincipal:
     is_verified: bool = False
     roles: list[str] = field(default_factory=list)
     embed: bool = False  # True for embed session tokens (scoped to app_id)
+    jti: str | None = None  # JWT ID for embed tokens (used for execution scoping)
     app_id: str | None = None  # App ID for embed tokens
     form_id: str | None = None  # Form ID for form embed tokens
     verified_params: dict[str, str] | None = None  # HMAC-verified query params
@@ -213,6 +214,7 @@ async def get_current_user_optional(
         is_verified=True,
         roles=payload.get("roles", []),
         embed=payload.get("embed", False),
+        jti=payload.get("jti"),
         app_id=payload.get("app_id"),
         form_id=payload.get("form_id"),
         verified_params=payload.get("verified_params"),
@@ -408,6 +410,10 @@ async def get_current_user_ws(websocket) -> UserPrincipal | None:
         if auth_header.lower().startswith("bearer "):
             token = auth_header[7:]
 
+    # Try query parameter (for embed tokens — browser WebSocket API can't set headers)
+    if not token:
+        token = websocket.query_params.get("token")
+
     if not token:
         return None
 
@@ -464,6 +470,7 @@ async def get_current_user_ws(websocket) -> UserPrincipal | None:
         is_verified=True,
         roles=payload.get("roles", []),
         embed=payload.get("embed", False),
+        jti=payload.get("jti"),
         app_id=payload.get("app_id"),
         form_id=payload.get("form_id"),
         verified_params=payload.get("verified_params"),

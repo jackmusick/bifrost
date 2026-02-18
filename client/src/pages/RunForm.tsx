@@ -89,7 +89,6 @@ export function RunForm() {
 				</div>
 				<FormRenderer
 					form={form}
-					preventNavigation
 				/>
 			</div>
 		);

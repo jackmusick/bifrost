@@ -7,7 +7,8 @@ import { NoAccess } from "@/components/NoAccess";
 import { Skeleton } from "@/components/ui/skeleton";
 
 export function ContentLayout() {
-	const { isLoading, isPlatformAdmin, isOrgUser } = useAuth();
+	const { isLoading, isPlatformAdmin, isOrgUser, hasRole } = useAuth();
+	const isEmbed = hasRole("EmbedUser");
 	const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
 	const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(() => {
 		// Load collapsed state from localStorage
@@ -36,9 +37,14 @@ export function ContentLayout() {
 	}
 
 	// Show no access page if user has no role (only authenticated, no PlatformAdmin or OrgUser)
-	const hasAccess = isPlatformAdmin || isOrgUser;
+	const hasAccess = isPlatformAdmin || isOrgUser || isEmbed;
 	if (!hasAccess) {
 		return <NoAccess />;
+	}
+
+	// Embed users get bare content — no sidebar, header, or chrome
+	if (isEmbed) {
+		return <Outlet />;
 	}
 
 	const toggleSidebar = () => {

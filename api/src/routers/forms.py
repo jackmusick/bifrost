@@ -758,6 +758,18 @@ async def execute_form(
 
         logger.info(f"Form {form_id} executed by user {ctx.user.email}, execution_id={response.execution_id}")
 
+        # Register execution in Redis for embed session scoping
+        if ctx.user.embed and ctx.user.jti:
+            from src.core.cache.keys import embed_execution_key, TTL_EMBED_EXECUTION
+            from src.core.cache.redis_client import get_redis
+
+            async with get_redis() as r:
+                await r.setex(
+                    embed_execution_key(ctx.user.jti, response.execution_id),
+                    TTL_EMBED_EXECUTION,
+                    "1",
+                )
+
         return response
 
     except WorkflowNotFoundError as e:

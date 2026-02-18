@@ -1,6 +1,7 @@
 """Public embed entry point — HMAC-verified iframe loading."""
 
 import logging
+import uuid
 from datetime import timedelta
 
 from fastapi import APIRouter, HTTPException, Path, Request
@@ -73,6 +74,7 @@ async def embed_app(
     # auth middleware can restrict it to app-rendering endpoints only.
     token_data = {
         "sub": SYSTEM_USER_ID,
+        "jti": str(uuid.uuid4()),
         "app_id": str(app.id),
         "org_id": str(app.organization_id) if app.organization_id else None,
         "verified_params": verified_params,
@@ -150,6 +152,7 @@ async def embed_form(
     # Issue a scoped embed access token
     token_data = {
         "sub": SYSTEM_USER_ID,
+        "jti": str(uuid.uuid4()),
         "form_id": str(form.id),
         "org_id": str(form.organization_id) if form.organization_id else None,
         "verified_params": verified_params,

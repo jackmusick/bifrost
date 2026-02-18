@@ -8,14 +8,15 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { PasskeySetupBanner } from "@/components/PasskeySetupBanner";
 
 export function Layout() {
-	const { isLoading, isPlatformAdmin, isOrgUser } = useAuth();
+	const { isLoading, isPlatformAdmin, isOrgUser, hasRole } = useAuth();
+	const isEmbed = hasRole("EmbedUser");
 	const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
 	const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(() => {
 		// Load collapsed state from localStorage
 		return localStorage.getItem("sidebar-collapsed") === "true";
 	});
 
-	const hasAccess = isPlatformAdmin || isOrgUser;
+	const hasAccess = isPlatformAdmin || isOrgUser || isEmbed;
 
 	// Show loading state while checking authentication
 	if (isLoading) {
@@ -41,6 +42,11 @@ export function Layout() {
 	// Show no access page if user has no role (only authenticated, no PlatformAdmin or OrgUser)
 	if (!hasAccess) {
 		return <NoAccess />;
+	}
+
+	// Embed users get bare content — no sidebar, header, or chrome
+	if (isEmbed) {
+		return <Outlet />;
 	}
 
 	const toggleSidebar = () => {

@@ -38,7 +38,6 @@ import {
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
-import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { authFetch } from "@/lib/api-client";
 import { toast } from "sonner";
@@ -222,7 +221,7 @@ export function EmbedSettingsDialog({
             </DialogDescription>
           </DialogHeader>
 
-          <Tabs defaultValue="secrets" className="mt-2">
+          <Tabs defaultValue="secrets" className="mt-2 min-w-0">
             <TabsList>
               <TabsTrigger value="secrets">Secrets</TabsTrigger>
               <TabsTrigger value="guide">Integration Guide</TabsTrigger>
@@ -307,7 +306,7 @@ export function EmbedSettingsDialog({
               <p className="text-sm text-muted-foreground">
                 Embed this app in an iframe using HMAC-signed URLs.
               </p>
-              <div className="relative overflow-hidden rounded-md">
+              <div className="relative rounded-md overflow-hidden">
                 <SyntaxHighlighter
                   language="html"
                   style={oneDark}
@@ -394,21 +393,20 @@ export function EmbedSettingsDialog({
             </DialogTitle>
           </DialogHeader>
           <div className="space-y-4 py-2">
-            <Alert variant="destructive">
-              <AlertTriangle className="h-4 w-4" />
-              <AlertDescription>
-                Copy this secret now. It will not be shown again.
-              </AlertDescription>
-            </Alert>
+            <div className="rounded-lg border border-amber-500/30 bg-amber-500/10 p-3 flex items-start gap-2">
+              <AlertTriangle className="h-4 w-4 text-amber-500 mt-0.5 shrink-0" />
+              <p className="text-sm">
+                Copy this secret now — it will not be shown again.
+              </p>
+            </div>
             <div className="flex gap-2">
-              <Input
-                value={revealedSecret?.raw_secret || ""}
-                readOnly
-                className="font-mono text-sm"
-              />
+              <code className="flex-1 rounded bg-muted px-3 py-2 font-mono text-sm select-all truncate">
+                {revealedSecret?.raw_secret || ""}
+              </code>
               <Button
                 variant="outline"
                 size="icon"
+                className="shrink-0"
                 onClick={() =>
                   handleCopy(revealedSecret?.raw_secret || "")
                 }

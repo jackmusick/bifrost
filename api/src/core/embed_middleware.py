@@ -4,6 +4,9 @@ Embed Token Scope Middleware
 Restricts embed tokens to only the API endpoints needed for rendering
 an embedded app. Embed tokens are NOT superusers and should only access
 app rendering, workflow execution, and related endpoints.
+
+Also enforces execution scoping: embed tokens can only access executions
+they created (tracked via Redis using the token's jti).
 """
 
 import logging
@@ -51,19 +54,25 @@ EMBED_ALLOWED_PATTERNS = [
 
 _COMPILED_PATTERNS = [re.compile(p) for p in EMBED_ALLOWED_PATTERNS]
 
+# Pattern to extract execution_id from /api/executions/{id}... paths
+_EXECUTION_PATH_RE = re.compile(r"^/api/executions/([0-9a-f-]{36})")
 
-def _is_embed_token(request: Request) -> bool:
-    """Check if the request uses an embed token (Bearer with embed=true claim)."""
+
+def _get_embed_payload(request: Request) -> dict | None:
+    """Return the decoded JWT payload if this is an embed token, else None."""
     auth_header = request.headers.get("authorization", "")
     if not auth_header.lower().startswith("bearer "):
-        return False
+        return None
 
     token = auth_header[7:]  # Strip "Bearer "
     payload = decode_token(token)
     if payload is None:
-        return False
+        return None
 
-    return payload.get("embed", False) is True
+    if payload.get("embed", False) is not True:
+        return None
+
+    return payload
 
 
 def _path_allowed(path: str) -> bool:
@@ -76,7 +85,8 @@ class EmbedScopeMiddleware(BaseHTTPMiddleware):
 
     async def dispatch(self, request: Request, call_next):
         # Only check requests with Bearer tokens that have embed=true
-        if not _is_embed_token(request):
+        payload = _get_embed_payload(request)
+        if payload is None:
             return await call_next(request)
 
         if not _path_allowed(request.url.path):
@@ -87,5 +97,28 @@ class EmbedScopeMiddleware(BaseHTTPMiddleware):
                 status_code=403,
                 content={"detail": "Embed tokens cannot access this endpoint"},
             )
+
+        # Enforce execution scoping: embed tokens can only access their own executions
+        match = _EXECUTION_PATH_RE.match(request.url.path)
+        if match:
+            execution_id = match.group(1)
+            jti = payload.get("jti")
+            if not jti:
+                return JSONResponse(
+                    status_code=403,
+                    content={"detail": "Embed token missing session identifier"},
+                )
+
+            from src.core.cache.keys import embed_execution_key
+            from src.core.cache.redis_client import get_redis
+
+            async with get_redis() as r:
+                exists = await r.exists(embed_execution_key(jti, execution_id))
+
+            if not exists:
+                return JSONResponse(
+                    status_code=403,
+                    content={"detail": "Access denied to this execution"},
+                )
 
         return await call_next(request)

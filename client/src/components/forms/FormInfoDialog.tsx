@@ -689,7 +689,9 @@ export function FormInfoDialog({
 				</div>
 
 				{isEditing && formId && (
-					<FormEmbedSection formId={formId} />
+					<div className="min-w-0 overflow-hidden">
+						<FormEmbedSection formId={formId} />
+					</div>
 				)}
 
 				<DialogFooter>

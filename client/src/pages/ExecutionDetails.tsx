@@ -138,7 +138,8 @@ export function ExecutionDetails({
 	const executionId = propExecutionId || urlExecutionId;
 	const navigate = useNavigate();
 	const location = useLocation();
-	const { isPlatformAdmin } = useAuth();
+	const { isPlatformAdmin, hasRole } = useAuth();
+	const isEmbed = hasRole("EmbedUser");
 	const queryClient = useQueryClient();
 
 	// Check if we came from an execution trigger (has navigation state)
@@ -674,7 +675,7 @@ export function ExecutionDetails({
 			}
 		>
 			{/* Page Header - hidden in embedded mode */}
-			{!embedded && (
+			{!embedded && !isEmbed && (
 				<div className="sticky top-0 bg-background/80 backdrop-blur-sm py-6 border-b flex items-center gap-4 px-6 lg:px-8 z-10">
 					<Button
 						variant="ghost"

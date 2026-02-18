@@ -75,6 +75,14 @@ async def can_access_execution(user: UserPrincipal, execution_id: str) -> bool:
     if user.is_superuser:
         return True
 
+    # Embed users: check Redis key linking their session (jti) to the execution
+    if user.embed and user.jti:
+        from src.core.cache.keys import embed_execution_key
+        from src.core.cache.redis_client import get_redis
+
+        async with get_redis() as r:
+            return bool(await r.exists(embed_execution_key(user.jti, execution_id)))
+
     try:
         execution_uuid = UUID(execution_id)
     except ValueError:

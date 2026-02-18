@@ -132,6 +132,16 @@ def orgs_list_key() -> str:
 
 
 # =============================================================================
+# Embed Execution Scoping Keys
+# =============================================================================
+
+
+def embed_execution_key(jti: str, execution_id: str) -> str:
+    """Key linking an embed session (jti) to an execution it created."""
+    return f"bifrost:embed:exec:{jti}:{execution_id}"
+
+
+# =============================================================================
 # Execution-Scoped Keys (Process Isolation)
 # =============================================================================
 
@@ -276,6 +286,9 @@ TTL_ROLES = 600  # 10 minutes
 TTL_ORGS = 3600  # 1 hour
 TTL_PENDING = 3600  # 1 hour (safety for orphaned changes)
 TTL_PENDING_EXECUTION = 3600  # 1 hour (safety for orphaned pending executions)
+
+# Embed TTLs
+TTL_EMBED_EXECUTION = 86400  # 24 hours (embed session → execution link)
 
 # Auth TTLs
 TTL_REFRESH_TOKEN = 604800  # 7 days (matches refresh token expiry)

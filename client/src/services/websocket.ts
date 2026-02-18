@@ -432,6 +432,20 @@ type AppCodeFileUpdateCallback = (update: AppCodeFileUpdate) => void;
 type AppPublishedUpdateCallback = (update: AppPublishedUpdate) => void;
 type PoolMessageCallback = (message: PoolMessage) => void;
 
+/**
+ * Check if a JWT token is an embed token by inspecting its claims.
+ */
+function isEmbedToken(token: string): boolean {
+	try {
+		const parts = token.split(".");
+		if (parts.length !== 3) return false;
+		const payload = JSON.parse(atob(parts[1]));
+		return payload.embed === true;
+	} catch {
+		return false;
+	}
+}
+
 class WebSocketService {
 	private ws: WebSocket | null = null;
 	private connectionPromise: Promise<void> | null = null;
@@ -536,6 +550,13 @@ class WebSocketService {
 			// Add channels as query params
 			const params = new URLSearchParams();
 			channels.forEach((ch) => params.append("channels", ch));
+
+			// For embed tokens (stored in localStorage), pass as query param
+			// since browser WebSocket API can't set custom headers
+			const embedToken = localStorage.getItem("bifrost_access_token");
+			if (embedToken && isEmbedToken(embedToken)) {
+				params.set("token", embedToken);
+			}
 
 			const wsUrl = `${protocol}//${host}/ws/connect?${params.toString()}`;
 

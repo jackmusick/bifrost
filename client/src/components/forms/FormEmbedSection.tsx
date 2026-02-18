@@ -14,6 +14,7 @@ import {
   AlertTriangle,
   Link,
   ChevronRight,
+  X,
 } from "lucide-react";
 import { Prism as SyntaxHighlighter } from "react-syntax-highlighter";
 import { oneDark } from "react-syntax-highlighter/dist/esm/styles/prism";
@@ -21,7 +22,6 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
-import { Alert, AlertDescription } from "@/components/ui/alert";
 import {
   Collapsible,
   CollapsibleContent,
@@ -335,44 +335,45 @@ export function FormEmbedSection({ formId }: FormEmbedSectionProps) {
 
             {/* One-time secret reveal */}
             {revealedSecret && (
-              <Alert variant="destructive">
-                <AlertTriangle className="h-4 w-4" />
-                <AlertDescription className="space-y-2">
-                  <p>Copy this secret now. It will not be shown again.</p>
-                  <div className="flex gap-2">
-                    <Input
-                      value={revealedSecret.raw_secret}
-                      readOnly
-                      className="font-mono text-sm"
-                    />
-                    <Button
-                      variant="outline"
-                      size="icon"
-                      onClick={() => handleCopy(revealedSecret.raw_secret)}
-                    >
-                      {copied ? (
-                        <Check className="h-4 w-4" />
-                      ) : (
-                        <Copy className="h-4 w-4" />
-                      )}
-                    </Button>
-                  </div>
+              <div className="relative rounded-lg border border-amber-500/30 bg-amber-500/10 p-4 pr-10 space-y-3">
+                <button
+                  type="button"
+                  className="absolute top-3 right-3 text-muted-foreground hover:text-foreground"
+                  onClick={() => setRevealedSecret(null)}
+                >
+                  <X className="h-4 w-4" />
+                </button>
+                <div className="flex items-start gap-2">
+                  <AlertTriangle className="h-4 w-4 text-amber-500 mt-0.5 shrink-0" />
+                  <p className="text-sm font-medium">
+                    Copy this secret now — it will not be shown again.
+                  </p>
+                </div>
+                <div className="flex gap-2">
+                  <code className="flex-1 rounded bg-black/30 px-3 py-2 font-mono text-sm select-all truncate">
+                    {revealedSecret.raw_secret}
+                  </code>
                   <Button
-                    variant="ghost"
-                    size="sm"
-                    onClick={() => setRevealedSecret(null)}
+                    variant="outline"
+                    size="icon"
+                    className="shrink-0"
+                    onClick={() => handleCopy(revealedSecret.raw_secret)}
                   >
-                    Dismiss
+                    {copied ? (
+                      <Check className="h-4 w-4" />
+                    ) : (
+                      <Copy className="h-4 w-4" />
+                    )}
                   </Button>
-                </AlertDescription>
-              </Alert>
+                </div>
+              </div>
             )}
           </div>
 
           {/* ============ Integration Guide ============ */}
           <div className="space-y-2 pt-2">
             <p className="text-xs text-muted-foreground">Embed iframe</p>
-            <div className="relative overflow-hidden rounded-md">
+            <div className="relative rounded-md overflow-hidden">
               <SyntaxHighlighter
                 language="html"
                 style={oneDark}
