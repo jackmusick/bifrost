@@ -2304,6 +2304,7 @@ export interface paths {
          * @description List files and folders in a directory with rich metadata.
          *
          *     Cloud mode only - used by browser editor.
+         *     Lists directly from S3 via RepoStorage (source of truth).
          */
         get: operations["list_files_editor_api_files_editor_get"];
         put?: never;
@@ -2313,6 +2314,7 @@ export interface paths {
          * @description Delete a file or folder recursively.
          *
          *     Cloud mode only - used by browser editor.
+         *     Uses S3 prefix listing to detect folders (no file_index markers needed).
          */
         delete: operations["delete_file_editor_api_files_editor_delete"];
         options?: never;
@@ -3310,22 +3312,22 @@ export interface paths {
          * Execute workflow via API key
          * @description Execute an endpoint-enabled workflow using an API key for authentication
          */
-        get: operations["execute_endpoint_api_endpoints__workflow_name__delete"];
+        get: operations["execute_endpoint_api_endpoints__workflow_name__get"];
         /**
          * Execute workflow via API key
          * @description Execute an endpoint-enabled workflow using an API key for authentication
          */
-        put: operations["execute_endpoint_api_endpoints__workflow_name__delete"];
+        put: operations["execute_endpoint_api_endpoints__workflow_name__get"];
         /**
          * Execute workflow via API key
          * @description Execute an endpoint-enabled workflow using an API key for authentication
          */
-        post: operations["execute_endpoint_api_endpoints__workflow_name__delete"];
+        post: operations["execute_endpoint_api_endpoints__workflow_name__get"];
         /**
          * Execute workflow via API key
          * @description Execute an endpoint-enabled workflow using an API key for authentication
          */
-        delete: operations["execute_endpoint_api_endpoints__workflow_name__delete"];
+        delete: operations["execute_endpoint_api_endpoints__workflow_name__get"];
         options?: never;
         head?: never;
         patch?: never;
@@ -6250,6 +6252,42 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/applications/{app_id}/embed-secrets": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List embed secrets for an app */
+        get: operations["list_embed_secrets_api_applications__app_id__embed_secrets_get"];
+        put?: never;
+        /** Create an embed secret for an app */
+        post: operations["create_embed_secret_api_applications__app_id__embed_secrets_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/applications/{app_id}/embed-secrets/{secret_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /** Delete an embed secret */
+        delete: operations["delete_embed_secret_api_applications__app_id__embed_secrets__secret_id__delete"];
+        options?: never;
+        head?: never;
+        /** Update an embed secret */
+        patch: operations["update_embed_secret_api_applications__app_id__embed_secrets__secret_id__patch"];
+        trace?: never;
+    };
     "/api/applications": {
         parameters: {
             query?: never;
@@ -6448,7 +6486,7 @@ export interface paths {
          * List app files
          * @description List all files for an application.
          *
-         *     Source content is read from the file_index (_repo/apps/{slug}/).
+         *     Source content is read from S3 (_repo/apps/{slug}/).
          *     Compiled content is read from _apps/{app_id}/{mode}/.
          *     The compiled field is only set when it differs from source.
          */
@@ -6585,6 +6623,85 @@ export interface paths {
         options?: never;
         head?: never;
         patch?: never;
+        trace?: never;
+    };
+    "/embed/apps/{slug}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Embed App
+         * @description Public entry point for HMAC-authenticated iframe embedding.
+         *
+         *     Verifies the HMAC signature against the app's embed secrets,
+         *     issues an 8-hour embed JWT cookie, and returns a confirmation response.
+         */
+        get: operations["embed_app_embed_apps__slug__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/embed/forms/{form_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Embed Form
+         * @description Public entry point for HMAC-authenticated form iframe embedding.
+         */
+        get: operations["embed_form_embed_forms__form_id__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/forms/{form_id}/embed-secrets": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List embed secrets for a form */
+        get: operations["list_form_embed_secrets_api_forms__form_id__embed_secrets_get"];
+        put?: never;
+        /** Create an embed secret for a form */
+        post: operations["create_form_embed_secret_api_forms__form_id__embed_secrets_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/forms/{form_id}/embed-secrets/{secret_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /** Delete a form embed secret */
+        delete: operations["delete_form_embed_secret_api_forms__form_id__embed_secrets__secret_id__delete"];
+        options?: never;
+        head?: never;
+        /** Update a form embed secret */
+        patch: operations["update_form_embed_secret_api_forms__form_id__embed_secrets__secret_id__patch"];
         trace?: never;
     };
     "/api/export-import/export/knowledge": {
@@ -9057,6 +9174,11 @@ export interface components {
              */
             scopes: string;
             /**
+             * Audience
+             * @description OAuth audience parameter - identifies the target API/resource for the token request (e.g., required by Pax8, Auth0)
+             */
+            audience?: string | null;
+            /**
              * Redirect Uri
              * @description OAuth redirect URI (defaults to /oauth/callback/{connection_name})
              */
@@ -9692,6 +9814,12 @@ export interface components {
              * @default 0
              */
             offset: number;
+            /**
+             * Skip Count
+             * @description Skip the total count query (returns total=-1). Use for faster paginated fetches after the first page.
+             * @default false
+             */
+            skip_count: boolean;
         };
         /**
          * DocumentUpdate
@@ -9789,6 +9917,62 @@ export interface components {
             missing_params?: string[] | null;
             /** Extra Required Params */
             extra_required_params?: string[] | null;
+        };
+        /**
+         * EmbedSecretCreate
+         * @description Request to create an embed secret for an app.
+         */
+        EmbedSecretCreate: {
+            /**
+             * Name
+             * @description Label for this secret (e.g., 'Halo Production')
+             */
+            name: string;
+            /**
+             * Secret
+             * @description Shared secret. If omitted, one is auto-generated.
+             */
+            secret?: string | null;
+        };
+        /**
+         * EmbedSecretCreatedResponse
+         * @description Response when creating an embed secret — includes raw secret shown once.
+         */
+        EmbedSecretCreatedResponse: {
+            /** Id */
+            id: string;
+            /** Name */
+            name: string;
+            /** Is Active */
+            is_active: boolean;
+            /** Created At */
+            created_at: string;
+            /** Raw Secret */
+            raw_secret: string;
+        };
+        /**
+         * EmbedSecretResponse
+         * @description Embed secret metadata (never includes the raw secret after creation).
+         */
+        EmbedSecretResponse: {
+            /** Id */
+            id: string;
+            /** Name */
+            name: string;
+            /** Is Active */
+            is_active: boolean;
+            /** Created At */
+            created_at: string;
+        };
+        /**
+         * EmbedSecretUpdate
+         * @description Request to update an embed secret.
+         */
+        EmbedSecretUpdate: {
+            /** Is Active */
+            is_active?: boolean | null;
+            /** Name */
+            name?: string | null;
         };
         /**
          * EmbeddingConfigRequest
@@ -13450,6 +13634,11 @@ export interface components {
             /** Scopes */
             scopes: string;
             /**
+             * Audience
+             * @description OAuth audience parameter for token requests
+             */
+            audience?: string | null;
+            /**
              * Status
              * @enum {string}
              */
@@ -15156,7 +15345,9 @@ export interface components {
              */
             is_active: boolean;
             /** Permissions */
-            permissions?: Record<string, unknown> | null;
+            permissions?: {
+                [key: string]: unknown;
+            } | null;
         };
         /**
          * RoleFormsResponse
@@ -15213,7 +15404,9 @@ export interface components {
             /** Is Active */
             is_active?: boolean | null;
             /** Permissions */
-            permissions?: Record<string, unknown> | null;
+            permissions?: {
+                [key: string]: unknown;
+            } | null;
         };
         /**
          * RoleUsersResponse
@@ -15446,6 +15639,12 @@ export interface components {
              * @default 0
              */
             offset: number;
+            /**
+             * Skip Count
+             * @description Skip the total count query (returns total=-1). Use for faster paginated fetches after the first page.
+             * @default false
+             */
+            skip_count: boolean;
             /**
              * Scope
              * @description Organization scope
@@ -16529,6 +16728,11 @@ export interface components {
              * @description List of OAuth scopes
              */
             scopes?: string[] | null;
+            /**
+             * Audience
+             * @description OAuth audience parameter
+             */
+            audience?: string | null;
         };
         /**
          * UpdatePropertiesRequest
@@ -16781,6 +16985,11 @@ export interface components {
              * @default true
              */
             is_registered: boolean;
+            /**
+             * Is System
+             * @default false
+             */
+            is_system: boolean;
             /**
              * Mfa Enabled
              * @default false
@@ -19140,6 +19349,8 @@ export interface operations {
                 type?: string | null;
                 /** @description Filter scope: omit for all (superusers), 'global' for global only, or org UUID for specific org. */
                 scope?: string | null;
+                /** @description Include inactive (disabled) users */
+                include_inactive?: boolean;
             };
             header?: never;
             path?: never;
@@ -22994,7 +23205,7 @@ export interface operations {
             };
         };
     };
-    execute_endpoint_api_endpoints__workflow_name__delete: {
+    execute_endpoint_api_endpoints__workflow_name__get: {
         parameters: {
             query?: never;
             header: {
@@ -23027,7 +23238,7 @@ export interface operations {
             };
         };
     };
-    execute_endpoint_api_endpoints__workflow_name__delete: {
+    execute_endpoint_api_endpoints__workflow_name__get: {
         parameters: {
             query?: never;
             header: {
@@ -23060,7 +23271,7 @@ export interface operations {
             };
         };
     };
-    execute_endpoint_api_endpoints__workflow_name__delete: {
+    execute_endpoint_api_endpoints__workflow_name__get: {
         parameters: {
             query?: never;
             header: {
@@ -23093,7 +23304,7 @@ export interface operations {
             };
         };
     };
-    execute_endpoint_api_endpoints__workflow_name__delete: {
+    execute_endpoint_api_endpoints__workflow_name__get: {
         parameters: {
             query?: never;
             header: {
@@ -28525,6 +28736,138 @@ export interface operations {
             };
         };
     };
+    list_embed_secrets_api_applications__app_id__embed_secrets_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                app_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EmbedSecretResponse"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    create_embed_secret_api_applications__app_id__embed_secrets_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                app_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["EmbedSecretCreate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EmbedSecretCreatedResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    delete_embed_secret_api_applications__app_id__embed_secrets__secret_id__delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                app_id: string;
+                secret_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    update_embed_secret_api_applications__app_id__embed_secrets__secret_id__patch: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                app_id: string;
+                secret_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["EmbedSecretUpdate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EmbedSecretResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     list_applications_api_applications_get: {
         parameters: {
             query?: {
@@ -29170,6 +29513,200 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["DependencyGraphResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    embed_app_embed_apps__slug__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                slug: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    embed_form_embed_forms__form_id__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                form_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_form_embed_secrets_api_forms__form_id__embed_secrets_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                form_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EmbedSecretResponse"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    create_form_embed_secret_api_forms__form_id__embed_secrets_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                form_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["EmbedSecretCreate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EmbedSecretCreatedResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    delete_form_embed_secret_api_forms__form_id__embed_secrets__secret_id__delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                form_id: string;
+                secret_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    update_form_embed_secret_api_forms__form_id__embed_secrets__secret_id__patch: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                form_id: string;
+                secret_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["EmbedSecretUpdate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EmbedSecretResponse"];
                 };
             };
             /** @description Validation Error */

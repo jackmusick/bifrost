@@ -34,6 +34,7 @@ class OAuthProvider(Base):
     encrypted_client_secret: Mapped[bytes] = mapped_column(LargeBinary)
     authorization_url: Mapped[str | None] = mapped_column(String(500), default=None)
     token_url: Mapped[str | None] = mapped_column(String(500), default=None)
+    audience: Mapped[str | None] = mapped_column(String(500), default=None)
     token_url_defaults: Mapped[dict] = mapped_column(
         JSONB,
         default={},

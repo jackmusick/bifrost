@@ -65,6 +65,11 @@ class CreateOAuthConnectionRequest(BaseModel):
         default="",
         description="Comma-separated list of OAuth scopes to request"
     )
+    audience: str | None = Field(
+        None,
+        max_length=500,
+        description="OAuth audience parameter - identifies the target API/resource for the token request (e.g., required by Pax8, Auth0)"
+    )
     redirect_uri: str | None = Field(
         None,
         description="OAuth redirect URI (defaults to /oauth/callback/{connection_name})"
@@ -114,6 +119,11 @@ class UpdateOAuthConnectionRequest(BaseModel):
         description="Default values for token_url placeholders"
     )
     scopes: list[str] | None = Field(default=None, description="List of OAuth scopes")
+    audience: str | None = Field(
+        default=None,
+        max_length=500,
+        description="OAuth audience parameter"
+    )
 
     @field_validator('scopes', mode='before')
     @classmethod
@@ -184,6 +194,10 @@ class OAuthConnectionDetail(BaseModel):
     )
     token_url: str
     scopes: str
+    audience: str | None = Field(
+        default=None,
+        description="OAuth audience parameter for token requests"
+    )
 
     # Status information
     status: OAuthStatus

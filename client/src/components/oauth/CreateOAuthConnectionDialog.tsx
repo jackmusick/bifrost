@@ -18,25 +18,20 @@ import {
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Alert, AlertDescription } from "@/components/ui/alert";
-import { Info, Sparkles, Copy, Check } from "lucide-react";
+import { Info, Copy, Check } from "lucide-react";
 import {
 	useCreateOAuthConnection,
 	useUpdateOAuthConnection,
 	useOAuthConnection,
 } from "@/hooks/useOAuth";
 import type { components } from "@/lib/v1";
-import {
-	OAuthProviderPreset,
-	OAUTH_PROVIDER_PRESETS,
-} from "@/lib/client-types";
 type CreateOAuthConnectionRequest =
 	components["schemas"]["CreateOAuthConnectionRequest"];
 type UpdateOAuthConnectionRequest =
 	components["schemas"]["UpdateOAuthConnectionRequest"];
 type OAuthConnectionDetail = components["schemas"]["OAuthConnectionDetail"];
-type OAuthFlowType = OAuthProviderPreset["oauth_flow_type"];
+type OAuthFlowType = "authorization_code" | "client_credentials";
 import { toast } from "sonner";
 
 interface CreateOAuthConnectionDialogProps {
@@ -71,6 +66,7 @@ export function CreateOAuthConnectionDialog({
 				token_url: existingConnection.token_url,
 				scopes: existingConnection.scopes || "",
 				integration_id: integrationId,
+				audience: existingConnection.audience || "",
 			};
 		}
 		return {
@@ -82,11 +78,10 @@ export function CreateOAuthConnectionDialog({
 			token_url: "",
 			scopes: "",
 			integration_id: integrationId,
+			audience: "",
 		};
 	}, [isEditMode, existingConnection, integrationId]);
 
-	const [mode, setMode] = useState<"preset" | "custom">("preset");
-	const [selectedPreset, setSelectedPreset] = useState<string>("");
 	const [copiedRedirect, setCopiedRedirect] = useState(false);
 	const [formData, setFormData] =
 		useState<CreateOAuthConnectionRequest>(initialFormData);
@@ -97,7 +92,6 @@ export function CreateOAuthConnectionDialog({
 		const timeoutId = setTimeout(() => {
 			if (open) {
 				setFormData(initialFormData);
-				setSelectedPreset("");
 			}
 		}, 0);
 		return () => clearTimeout(timeoutId);
@@ -110,20 +104,6 @@ export function CreateOAuthConnectionDialog({
 	]);
 
 	const redirectUri = `${window.location.origin}/oauth/callback/${integrationId}`;
-
-	const handlePresetSelect = (presetName: string) => {
-		setSelectedPreset(presetName);
-		const preset = OAUTH_PROVIDER_PRESETS[presetName];
-		if (preset) {
-			setFormData({
-				...formData,
-				oauth_flow_type: preset.oauth_flow_type,
-				authorization_url: preset.authorization_url,
-				token_url: preset.token_url,
-				scopes: preset.default_scopes,
-			});
-		}
-	};
 
 	const handleCopyRedirectUri = () => {
 		navigator.clipboard.writeText(redirectUri);
@@ -144,6 +124,7 @@ export function CreateOAuthConnectionDialog({
 				authorization_url: formData.authorization_url || null,
 				token_url: formData.token_url,
 				scopes: formData.scopes as unknown as string[],
+				audience: formData.audience || null,
 			};
 
 			await updateMutation.mutateAsync({
@@ -161,7 +142,6 @@ export function CreateOAuthConnectionDialog({
 
 		// Reset form and close
 		setFormData(initialFormData);
-		setSelectedPreset("");
 		onOpenChange(false);
 	};
 
@@ -226,95 +206,6 @@ export function CreateOAuthConnectionDialog({
 								</div>
 							</AlertDescription>
 						</Alert>
-						<Tabs
-							value={mode}
-							onValueChange={(v) =>
-								setMode(v as "preset" | "custom")
-							}
-						>
-							<TabsList className="grid w-full grid-cols-2">
-								<TabsTrigger value="preset">
-									<Sparkles className="mr-2 h-4 w-4" />
-									Quick Start (Presets)
-								</TabsTrigger>
-								<TabsTrigger value="custom">
-									Custom Provider
-								</TabsTrigger>
-							</TabsList>
-
-							<TabsContent value="preset" className="space-y-4">
-								<div className="space-y-2">
-									<Label>Select Provider</Label>
-									<Select
-										value={selectedPreset}
-										onValueChange={handlePresetSelect}
-									>
-										<SelectTrigger>
-											<SelectValue placeholder="Choose a provider..." />
-										</SelectTrigger>
-										<SelectContent>
-											{Object.entries(
-												OAUTH_PROVIDER_PRESETS,
-											).map(([key, preset]) => (
-												<SelectItem
-													key={key}
-													value={key}
-												>
-													<div className="flex items-center gap-2">
-														<span>
-															{preset.icon}
-														</span>
-														<span>
-															{preset.displayName}
-														</span>
-													</div>
-												</SelectItem>
-											))}
-										</SelectContent>
-									</Select>
-									{selectedPreset &&
-										OAUTH_PROVIDER_PRESETS[
-											selectedPreset
-										] && (
-											<Alert>
-												<Info className="h-4 w-4" />
-												<AlertDescription className="text-xs">
-													<a
-														href={
-															OAUTH_PROVIDER_PRESETS[
-																selectedPreset
-															].documentation_url
-														}
-														target="_blank"
-														rel="noopener noreferrer"
-														className="text-blue-600 hover:underline"
-													>
-														View{" "}
-														{
-															OAUTH_PROVIDER_PRESETS[
-																selectedPreset
-															].displayName
-														}{" "}
-														documentation →
-													</a>
-												</AlertDescription>
-											</Alert>
-										)}
-								</div>
-							</TabsContent>
-
-							<TabsContent value="custom" className="space-y-4">
-								<Alert>
-									<Info className="h-4 w-4" />
-									<AlertDescription className="text-xs">
-										Configure a custom OAuth 2.0 provider.
-										You'll need the authorization and token
-										URLs from the provider's documentation.
-									</AlertDescription>
-								</Alert>
-							</TabsContent>
-						</Tabs>
-
 						<div className="space-y-4">
 							<div className="space-y-2">
 								<Label htmlFor="oauth_flow_type">
@@ -452,6 +343,29 @@ export function CreateOAuthConnectionDialog({
 									required
 									className="font-mono text-xs"
 								/>
+							</div>
+
+							<div className="space-y-2">
+								<Label htmlFor="audience">
+									Audience
+								</Label>
+								<Input
+									id="audience"
+									value={formData.audience || ""}
+									onChange={(e) =>
+										setFormData({
+											...formData,
+											audience: e.target.value,
+										})
+									}
+									placeholder="https://api.example.com"
+									className="font-mono text-xs"
+								/>
+								<p className="text-xs text-muted-foreground">
+									Target API identifier sent with token
+									requests. Required by some providers
+									(e.g., Pax8, Auth0).
+								</p>
 							</div>
 
 							<div className="space-y-2">

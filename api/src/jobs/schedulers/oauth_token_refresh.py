@@ -222,6 +222,7 @@ async def _refresh_single_token(
             refresh_token=refresh_token,
             client_id=provider.client_id,
             client_secret=client_secret,
+            audience=provider.audience,
         )
 
         if not success:

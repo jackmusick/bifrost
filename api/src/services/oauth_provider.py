@@ -114,7 +114,8 @@ class OAuthProviderClient:
         code: str,
         client_id: str,
         client_secret: str | None,
-        redirect_uri: str
+        redirect_uri: str,
+        audience: str | None = None,
     ) -> tuple[bool, dict]:
         """
         Exchange authorization code for access token (authorization code flow)
@@ -145,6 +146,9 @@ class OAuthProviderClient:
         else:
             logger.info(f"Exchanging authorization code for token at {token_url} (PKCE flow - no client_secret)")
 
+        if audience:
+            payload["audience"] = audience
+
         return await self._make_token_request(token_url, payload)
 
     async def refresh_access_token(
@@ -152,7 +156,8 @@ class OAuthProviderClient:
         token_url: str,
         refresh_token: str,
         client_id: str,
-        client_secret: str | None
+        client_secret: str | None,
+        audience: str | None = None,
     ) -> tuple[bool, dict]:
         """
         Refresh access token using refresh token
@@ -179,6 +184,9 @@ class OAuthProviderClient:
         else:
             logger.info(f"Refreshing access token at {token_url} (PKCE flow - no client_secret)")
 
+        if audience:
+            payload["audience"] = audience
+
         return await self._make_token_request(token_url, payload)
 
     async def get_client_credentials_token(
@@ -186,7 +194,8 @@ class OAuthProviderClient:
         token_url: str,
         client_id: str,
         client_secret: str,
-        scopes: str = ""
+        scopes: str = "",
+        audience: str | None = None,
     ) -> tuple[bool, dict]:
         """
         Get token using client credentials flow (service-to-service)
@@ -209,6 +218,9 @@ class OAuthProviderClient:
         if scopes:
             # Normalize scopes to space-separated (OAuth 2.0 standard)
             payload["scope"] = scopes.replace(",", " ")
+
+        if audience:
+            payload["audience"] = audience
 
         logger.info(f"Requesting client credentials token at {token_url}")
 
