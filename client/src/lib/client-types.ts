@@ -95,6 +95,7 @@ export interface FormField {
 	max_size_mb?: number | null;
 	content?: string | null;
 	allow_as_query_param?: boolean | null;
+	auto_fill?: Record<string, string> | null;
 }
 
 /**

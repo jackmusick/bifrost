@@ -421,6 +421,13 @@ async def get_form(
                         "options": field.options,
                         "data_provider_id": field.data_provider_id,
                         "data_provider_inputs": field.data_provider_inputs,
+                        "visibility_expression": field.visibility_expression,
+                        "validation": field.validation,
+                        "allowed_types": field.allowed_types,
+                        "multiple": field.multiple,
+                        "max_size_mb": field.max_size_mb,
+                        "content": field.content,
+                        "auto_fill": field.auto_fill,
                         "position": field.position,
                     }
                     for field in sorted_fields
