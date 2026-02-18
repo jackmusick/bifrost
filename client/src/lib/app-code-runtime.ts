@@ -185,7 +185,7 @@ import * as ComboboxModule from "@/components/ui/combobox";
 import * as PaginationModule from "@/components/ui/pagination";
 import * as TagsInputModule from "@/components/ui/tags-input";
 import * as MultiComboboxModule from "@/components/ui/multi-combobox";
-import * as CalendarModule from "@/components/ui/calendar";
+import { Calendar as CalendarPicker, CalendarDayButton } from "@/components/ui/calendar";
 import * as DateRangePickerModule from "@/components/ui/date-range-picker";
 
 // Utilities - date-fns
@@ -259,7 +259,8 @@ export const $: Record<string, unknown> = {
 	...PaginationModule,
 	...TagsInputModule,
 	...MultiComboboxModule,
-	...CalendarModule,
+	CalendarPicker,
+	CalendarDayButton,
 	...DateRangePickerModule,
 
 	// Utilities - date-fns

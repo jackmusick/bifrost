@@ -114,7 +114,7 @@ import {
 } from "@/components/ui/popover";
 
 // Calendar and Date Components
-import { Calendar } from "@/components/ui/calendar";
+import { Calendar as CalendarPicker } from "@/components/ui/calendar";
 import { DateRangePicker } from "@/components/ui/date-range-picker";
 
 // Toast notifications via Sonner
@@ -261,7 +261,7 @@ export const APP_CODE_COMPONENTS = {
 	TableCaption,
 
 	// Calendar and Date
-	Calendar,
+	CalendarPicker,
 	DateRangePicker,
 
 	// Utilities
@@ -373,7 +373,7 @@ export {
 };
 
 // Calendar and Date
-export { Calendar };
+export { Calendar as CalendarPicker } from "@/components/ui/calendar";
 export { DateRangePicker };
 
 // Utilities

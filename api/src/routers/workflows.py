@@ -24,6 +24,7 @@ from fastapi.responses import JSONResponse
 from sqlalchemy import delete, distinct, func, or_, select, union_all
 
 # Import existing Pydantic models for API compatibility
+from src.models.enums import ExecutionStatus
 from src.models import (
     AssignRolesToWorkflowRequest,
     CompatibleReplacement,
@@ -800,6 +801,11 @@ async def execute_workflow(
                 status_code=status.HTTP_400_BAD_REQUEST,
                 detail="Either workflow_id or code must be provided",
             )
+
+        # If the result already has a terminal status (sync mode), mark as transient
+        # so the frontend uses the inline result instead of waiting on WebSocket
+        if result.status and result.status not in (ExecutionStatus.PENDING, ExecutionStatus.RUNNING):
+            result.is_transient = True
 
         # Publish execution update via WebSocket
         if not request.transient and result.execution_id:

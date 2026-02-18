@@ -176,14 +176,63 @@ def get_module_sync(path: str) -> CachedModule | None:
         return None
 
 
+def _list_s3_modules() -> set[str]:
+    """
+    List all Python module paths in S3 _repo/ (synchronous).
+
+    Used as a fallback when the Redis module index is empty, which can happen
+    after Redis restarts or cache eviction. Returns paths relative to _repo/
+    (e.g. "features/spotify_journal/services/spotify_api.py").
+    """
+    bucket = os.environ.get("BIFROST_S3_BUCKET")
+    if not bucket:
+        return set()
+
+    client = _get_s3_client()
+    if client is None:
+        return set()
+
+    paths: set[str] = set()
+    try:
+        paginator = client.get_paginator("list_objects_v2")
+        for page in paginator.paginate(Bucket=bucket, Prefix=REPO_PREFIX):
+            for obj in page.get("Contents", []):
+                key: str = obj["Key"]
+                if key.endswith(".py"):
+                    # Strip the _repo/ prefix to get the relative path
+                    paths.add(key[len(REPO_PREFIX):])
+    except Exception as e:
+        logger.warning(f"S3 list error when rebuilding module index: {e}")
+
+    return paths
+
+
 def get_module_index_sync() -> set[str]:
     """
     Get all cached module paths (synchronous).
+
+    When the Redis index is empty (cold cache after restart or eviction),
+    falls back to listing S3 and repopulates Redis so subsequent calls are fast.
     """
     try:
         client = _get_sync_redis()
         paths = client.smembers(MODULE_INDEX_KEY)
-        return {p if isinstance(p, str) else p.decode() for p in paths}
+        if paths:
+            return {p if isinstance(p, str) else p.decode() for p in paths}
+
+        # Redis index is empty — could be cold cache. Try S3.
+        logger.debug("Module index empty in Redis, falling back to S3 listing")
+        s3_paths = _list_s3_modules()
+        if s3_paths:
+            # Repopulate Redis index so subsequent calls are fast
+            try:
+                client.sadd(MODULE_INDEX_KEY, *s3_paths)
+                client.expire(MODULE_INDEX_KEY, MODULE_CACHE_TTL)
+            except redis.RedisError as e:
+                logger.warning(f"Failed to repopulate module index in Redis: {e}")
+            return s3_paths
+
+        return set()
     except redis.RedisError as e:
         logger.warning(f"Redis error fetching module index: {e}")
         return set()
