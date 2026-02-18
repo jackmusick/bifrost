@@ -372,16 +372,15 @@ export function FormEmbedSection({ formId }: FormEmbedSectionProps) {
           {/* ============ Integration Guide ============ */}
           <div className="space-y-2 pt-2">
             <p className="text-xs text-muted-foreground">Embed iframe</p>
-            <div className="relative">
-              <div className="overflow-x-auto rounded-md">
-                <SyntaxHighlighter
-                  language="html"
-                  style={oneDark}
-                  customStyle={{ margin: 0, fontSize: "0.75rem" }}
-                >
-                  {iframeSnippet}
-                </SyntaxHighlighter>
-              </div>
+            <div className="relative overflow-hidden rounded-md">
+              <SyntaxHighlighter
+                language="html"
+                style={oneDark}
+                wrapLongLines
+                customStyle={{ margin: 0, fontSize: "0.75rem" }}
+              >
+                {iframeSnippet}
+              </SyntaxHighlighter>
               <Button
                 variant="ghost"
                 size="icon"
