@@ -110,6 +110,7 @@ class UpdateOAuthConnectionRequest(BaseModel):
     PUT /api/oauth/connections/{connection_name}
     """
     name: str | None = Field(default=None, max_length=255, description="Display name")
+    oauth_flow_type: OAuthFlowType | None = Field(default=None, description="OAuth 2.0 flow type")
     client_id: str | None = Field(default=None, min_length=1)
     client_secret: str | None = Field(default=None, min_length=1)
     authorization_url: str | None = Field(default=None, pattern=r"^https://")

@@ -119,6 +119,7 @@ export function CreateOAuthConnectionDialog({
 			// Update existing connection
 			// Backend accepts scopes as string (comma/space separated) via Pydantic validator
 			const updateData: UpdateOAuthConnectionRequest = {
+				oauth_flow_type: formData.oauth_flow_type,
 				client_id: formData.client_id,
 				client_secret: formData.client_secret || null,
 				authorization_url: formData.authorization_url || null,

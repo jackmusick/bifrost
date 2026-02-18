@@ -238,6 +238,8 @@ class OAuthConnectionRepository:
 
         if request.name is not None:
             provider.display_name = request.name
+        if request.oauth_flow_type is not None:
+            provider.oauth_flow_type = request.oauth_flow_type
         if request.client_id is not None:
             provider.client_id = request.client_id
         if request.client_secret is not None:
