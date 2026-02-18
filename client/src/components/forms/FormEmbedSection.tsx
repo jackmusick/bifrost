@@ -12,10 +12,11 @@ import {
   Copy,
   Check,
   AlertTriangle,
-  Code,
   Link,
   ChevronRight,
 } from "lucide-react";
+import { Prism as SyntaxHighlighter } from "react-syntax-highlighter";
+import { oneDark } from "react-syntax-highlighter/dist/esm/styles/prism";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -190,42 +191,6 @@ export function FormEmbedSection({ formId }: FormEmbedSectionProps) {
   style="width: 100%; height: 600px; border: none;"
   allow="clipboard-write"
 ></iframe>`;
-
-  const pythonSnippet = `import hashlib
-import hmac
-from urllib.parse import urlencode
-
-def embed_url(params: dict, secret: str) -> str:
-    """Build a signed embed URL."""
-    message = "&".join(f"{k}={v}" for k, v in sorted(params.items()))
-    signature = hmac.new(
-        secret.encode(), message.encode(), hashlib.sha256
-    ).hexdigest()
-    return f"${embedUrl}?{urlencode(params)}&hmac={signature}"
-
-# Example:
-url = embed_url({"agent_id": "42", "ticket_id": "1001"}, "YOUR_SECRET")`;
-
-  const jsSnippet = `async function embedUrl(params, secret) {
-  const message = Object.keys(params)
-    .sort()
-    .map(k => \`\${k}=\${params[k]}\`)
-    .join("&");
-
-  const encoder = new TextEncoder();
-  const key = await crypto.subtle.importKey(
-    "raw", encoder.encode(secret), { name: "HMAC", hash: "SHA-256" }, false, ["sign"]
-  );
-  const sig = await crypto.subtle.sign("HMAC", key, encoder.encode(message));
-  const hmac = Array.from(new Uint8Array(sig))
-    .map(b => b.toString(16).padStart(2, "0")).join("");
-
-  const qs = new URLSearchParams({ ...params, hmac }).toString();
-  return \`${embedUrl}?\${qs}\`;
-}
-
-// Example:
-const url = await embedUrl({ agent_id: "42", ticket_id: "1001" }, "YOUR_SECRET");`;
 
   // ========================================================================
   // Render
@@ -405,65 +370,26 @@ const url = await embedUrl({ agent_id: "42", ticket_id: "1001" }, "YOUR_SECRET")
           </div>
 
           {/* ============ Integration Guide ============ */}
-          <div className="space-y-4 pt-2">
-            <h4 className="text-sm font-semibold flex items-center gap-2">
-              <Code className="h-4 w-4" />
-              Integration Guide
-            </h4>
-
-            <div>
-              <p className="text-xs text-muted-foreground mb-1">iframe HTML</p>
-              <div className="relative">
-                <pre className="bg-muted p-3 rounded-md text-xs overflow-x-auto">
+          <div className="space-y-2 pt-2">
+            <p className="text-xs text-muted-foreground">Embed iframe</p>
+            <div className="relative">
+              <div className="overflow-x-auto rounded-md">
+                <SyntaxHighlighter
+                  language="html"
+                  style={oneDark}
+                  customStyle={{ margin: 0, fontSize: "0.75rem" }}
+                >
                   {iframeSnippet}
-                </pre>
-                <Button
-                  variant="ghost"
-                  size="icon"
-                  className="absolute top-2 right-2 h-6 w-6"
-                  onClick={() => handleCopy(iframeSnippet)}
-                >
-                  <Copy className="h-3 w-3" />
-                </Button>
+                </SyntaxHighlighter>
               </div>
-            </div>
-
-            <div>
-              <p className="text-xs text-muted-foreground mb-1">
-                HMAC Signing — Python
-              </p>
-              <div className="relative">
-                <pre className="bg-muted p-3 rounded-md text-xs overflow-x-auto">
-                  {pythonSnippet}
-                </pre>
-                <Button
-                  variant="ghost"
-                  size="icon"
-                  className="absolute top-2 right-2 h-6 w-6"
-                  onClick={() => handleCopy(pythonSnippet)}
-                >
-                  <Copy className="h-3 w-3" />
-                </Button>
-              </div>
-            </div>
-
-            <div>
-              <p className="text-xs text-muted-foreground mb-1">
-                HMAC Signing — JavaScript
-              </p>
-              <div className="relative">
-                <pre className="bg-muted p-3 rounded-md text-xs overflow-x-auto">
-                  {jsSnippet}
-                </pre>
-                <Button
-                  variant="ghost"
-                  size="icon"
-                  className="absolute top-2 right-2 h-6 w-6"
-                  onClick={() => handleCopy(jsSnippet)}
-                >
-                  <Copy className="h-3 w-3" />
-                </Button>
-              </div>
+              <Button
+                variant="ghost"
+                size="icon"
+                className="absolute top-2 right-2 h-6 w-6"
+                onClick={() => handleCopy(iframeSnippet)}
+              >
+                <Copy className="h-3 w-3" />
+              </Button>
             </div>
           </div>
         </CollapsibleContent>
