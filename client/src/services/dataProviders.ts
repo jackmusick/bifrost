@@ -19,6 +19,7 @@ export type DataProviderOption = {
 	label: string;
 	value: string;
 	description?: string;
+	metadata?: Record<string, unknown>;
 };
 
 /**
@@ -68,6 +69,7 @@ export async function getDataProviderOptions(
 			value?: string;
 			label?: string;
 			description?: string;
+			metadata?: Record<string, unknown>;
 		}> | null;
 
 		if (!options || !Array.isArray(options)) {
@@ -78,6 +80,7 @@ export async function getDataProviderOptions(
 			value: String(opt.value ?? ""),
 			label: String(opt.label ?? opt.value ?? ""),
 			description: opt.description,
+			metadata: opt.metadata,
 		}));
 	} catch (error) {
 		console.error("Error invoking data provider:", error);

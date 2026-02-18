@@ -64,6 +64,9 @@ class FormField(Base):
     # For markdown/html fields
     content: Mapped[str | None] = mapped_column(Text, default=None)
 
+    # Auto-fill sibling fields from data provider metadata
+    auto_fill: Mapped[dict | None] = mapped_column(JSONB, default=None)
+
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=lambda: datetime.now(timezone.utc), server_default=text("NOW()")
     )
