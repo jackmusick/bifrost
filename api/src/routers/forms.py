@@ -15,7 +15,7 @@ from datetime import datetime, timedelta, timezone
 from uuid import UUID, uuid4
 
 from fastapi import APIRouter, Body, HTTPException, Query, status
-from sqlalchemy import delete, select
+from sqlalchemy import delete, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
@@ -24,6 +24,7 @@ from src.core.database import DbSession
 from src.core.org_filter import resolve_org_filter
 from src.models.enums import FormAccessLevel
 from src.repositories.forms import FormRepository
+from src.models import Execution as ExecutionORM
 from src.models import Form as FormORM, FormField as FormFieldORM, FormRole as FormRoleORM, UserRole as UserRoleORM
 from src.models import Workflow as WorkflowORM
 from src.models import FormCreate, FormUpdate, FormPublic
@@ -562,19 +563,20 @@ async def update_form_put(
     "/{form_id}",
     status_code=status.HTTP_204_NO_CONTENT,
     summary="Delete a form",
-    description="Soft delete a form (Platform admin only)",
+    description="Delete a form. Use ?purge=true to permanently remove it from the database (Platform admin only)",
 )
 async def delete_form(
     form_id: UUID,
     ctx: Context,
     user: CurrentSuperuser,
     db: DbSession,
+    purge: bool = Query(False, description="Permanently remove the form from the database instead of soft-deleting"),
 ) -> None:
     """
-    Soft delete a form.
+    Delete a form.
 
-    Sets is_active=False in the database. Forms are virtual entities
-    and are serialized to JSON on-the-fly for git sync operations.
+    By default, sets is_active=False (soft delete).
+    With purge=true, permanently removes the form and its related records from the database.
     """
     result = await db.execute(
         select(FormORM)
@@ -588,17 +590,32 @@ async def delete_form(
             detail="Form not found",
         )
 
-    form.is_active = False
-    form.updated_at = datetime.now(timezone.utc)
-
-    await db.flush()
-
     # Dual-write: remove form YAML from S3 _repo/
     from src.services.repo_sync_writer import RepoSyncWriter
     writer = RepoSyncWriter(db)
     await writer.delete_entity_file(f"forms/{form_id}.form.yaml")
 
-    logger.info(f"Soft deleted form {form_id}")
+    if purge:
+        # Unlink executions that reference this form (nullable FK)
+        await db.execute(
+            update(ExecutionORM)
+            .where(ExecutionORM.form_id == form_id)
+            .values(form_id=None)
+        )
+        # Delete form roles
+        await db.execute(
+            delete(FormRoleORM).where(FormRoleORM.form_id == form_id)
+        )
+        # Delete the form (form_fields cascade via ORM relationship)
+        await db.execute(
+            delete(FormORM).where(FormORM.id == form_id)
+        )
+        logger.info(f"Purged form {form_id}")
+    else:
+        form.is_active = False
+        form.updated_at = datetime.now(timezone.utc)
+        await db.flush()
+        logger.info(f"Soft deleted form {form_id}")
 
     # Invalidate cache
     if CACHE_INVALIDATION_AVAILABLE and invalidate_form:

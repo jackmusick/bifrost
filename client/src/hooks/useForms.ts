@@ -224,10 +224,13 @@ export function useDeleteForm() {
 	const queryClient = useQueryClient();
 
 	return $api.useMutation("delete", "/api/forms/{form_id}", {
-		onSuccess: () => {
+		onSuccess: (_data, variables) => {
 			queryClient.invalidateQueries({ queryKey: ["get", "/api/forms"] });
-			toast.success("Form deleted", {
-				description: "The form has been deactivated",
+			const purged = variables?.params?.query?.purge;
+			toast.success(purged ? "Form permanently removed" : "Form deleted", {
+				description: purged
+					? "The form has been permanently removed from the database"
+					: "The form has been deactivated",
 			});
 		},
 		onError: (error) => {
