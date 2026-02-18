@@ -125,6 +125,12 @@ function FormRendererInner({
 		new Set(),
 	);
 
+	// Ref for setValue so loadDataProviders can call it for auto_fill
+	// (loadDataProviders is defined before useForm, so we use a ref bridge)
+	const setValueRef = useRef<
+		((name: string, value: unknown, options?: { shouldValidate?: boolean }) => void) | null
+	>(null);
+
 	// Helper to evaluate data provider inputs (T040, T055, T075 - All three modes)
 	// Accepts optional fieldOverrides to use fresh values before context has updated
 	const evaluateDataProviderInputs = useCallback(
@@ -298,6 +304,28 @@ function FormRendererInner({
 							successfullyLoaded: newSuccessfullyLoaded,
 						};
 					});
+
+					// Auto-fill sibling fields from data provider metadata
+					if (field.auto_fill && options.length > 0) {
+						const metadata = options[0].metadata;
+						if (metadata && setValueRef.current) {
+							Object.entries(field.auto_fill).forEach(
+								([targetField, metadataKey]) => {
+									const value = metadata[metadataKey];
+									if (
+										value !== undefined &&
+										value !== null
+									) {
+										setValueRef.current?.(
+											targetField,
+											value,
+											{ shouldValidate: true },
+										);
+									}
+								},
+							);
+						}
+					}
 				} catch {
 					// Update error state in one batch
 					setDataProviderState((prev) => ({
@@ -478,6 +506,9 @@ function FormRendererInner({
 			{} as Record<string, unknown>,
 		),
 	});
+
+	// Bridge setValue to the ref so loadDataProviders (defined earlier) can use it for auto_fill
+	setValueRef.current = setValue;
 
 	// Watch all field values and sync to FormContext for visibility evaluation
 	// Use ref to track previous values to avoid infinite loops

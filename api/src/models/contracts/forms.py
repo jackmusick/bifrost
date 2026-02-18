@@ -90,6 +90,11 @@ class FormField(BaseModel):
         default=None, description="Static content for markdown/HTML components")
     allow_as_query_param: bool | None = Field(
         default=None, description="Whether this field's value can be populated from URL query parameters")
+    auto_fill: dict[str, str] | None = Field(
+        default=None,
+        description="Map of sibling field names to metadata paths. When this field's data provider "
+                    "returns results, auto-populate sibling fields from the first result's metadata. "
+                    "Example: {\"employee_count\": \"recommended_employee_count\"}")
 
     @model_validator(mode='after')
     def validate_field_requirements(self):
@@ -274,6 +279,7 @@ class FormPublic(BaseModel):
                     multiple=field.multiple,
                     max_size_mb=field.max_size_mb,
                     content=field.content,
+                    auto_fill=field.auto_fill,
                 )
                 form_fields.append(form_field)
 
