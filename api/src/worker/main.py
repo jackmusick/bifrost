@@ -33,6 +33,10 @@ logging.basicConfig(
 # Suppress noisy third-party loggers
 logging.getLogger("aiormq").setLevel(logging.WARNING)
 logging.getLogger("aio_pika").setLevel(logging.WARNING)
+logging.getLogger("botocore").setLevel(logging.WARNING)
+logging.getLogger("aiobotocore").setLevel(logging.WARNING)
+logging.getLogger("s3transfer").setLevel(logging.WARNING)
+logging.getLogger("urllib3").setLevel(logging.WARNING)
 
 # Enable DEBUG for execution engine to troubleshoot workflows
 logging.getLogger("src.services.execution").setLevel(logging.DEBUG)

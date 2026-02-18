@@ -268,18 +268,39 @@ def _clear_workspace_modules() -> None:
     are picked up. The virtual import hook will re-fetch from Redis
     on the next import.
 
-    We identify workspace modules by checking if their __loader__ is
-    our VirtualModuleLoader class.
+    We clear modules loaded by our virtual import system (VirtualModuleLoader
+    and NamespacePackageLoader), plus any modules registered by exec_from_db
+    which sets __loader__ = None. Without clearing all of these, stale
+    references can persist — e.g. a data provider's `from modules import pax8`
+    resolves to an old module object cached on a namespace package.
     """
-    from src.services.execution.virtual_import import VirtualModuleLoader
+    from src.services.execution.virtual_import import VirtualModuleLoader, NamespacePackageLoader
+    from src.core.module_cache_sync import get_module_index_sync
 
-    # Find all modules loaded by our virtual import system
+    # Build set of known workspace module names from the Redis module index.
+    # Paths like "modules/pax8.py" -> module names "modules", "modules.pax8"
+    # Paths like "shared/pax8/data_providers.py" -> "shared", "shared.pax8", "shared.pax8.data_providers"
+    module_index = get_module_index_sync()
+    workspace_names: set[str] = set()
+    for path in module_index:
+        # Convert file path to module name: "shared/pax8/data_providers.py" -> "shared.pax8.data_providers"
+        mod_name = path.replace("/", ".").removesuffix(".py").removesuffix(".__init__")
+        parts = mod_name.split(".")
+        # Add all prefixes: "shared", "shared.pax8", "shared.pax8.data_providers"
+        for i in range(1, len(parts) + 1):
+            workspace_names.add(".".join(parts[:i]))
+
+    # Find all workspace modules to clear
     modules_to_clear = [
         name for name, module in sys.modules.items()
-        if (
-            module is not None
-            and hasattr(module, '__loader__')
-            and isinstance(module.__loader__, VirtualModuleLoader)
+        if module is not None and (
+            # Modules loaded by our virtual import hook
+            (hasattr(module, '__loader__') and isinstance(
+                module.__loader__, (VirtualModuleLoader, NamespacePackageLoader)
+            ))
+            # Modules registered by exec_from_db (which sets __loader__ = None)
+            # matched by known workspace paths from Redis index
+            or name in workspace_names
         )
     ]
 
