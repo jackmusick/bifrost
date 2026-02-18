@@ -21,6 +21,7 @@ import {
 import { assignRolesToForm } from "@/hooks/useRoles";
 import { useWorkflowsMetadata } from "@/hooks/useWorkflows";
 import { FormInfoDialog } from "@/components/forms/FormInfoDialog";
+import type { FormInfoValues } from "@/components/forms/FormInfoDialog";
 import { FieldsPanelDnD } from "@/components/forms/FieldsPanelDnD";
 import { FormPreview } from "@/components/forms/FormPreview";
 import { WorkflowParametersForm } from "@/components/workflows/WorkflowParametersForm";
@@ -45,57 +46,17 @@ export function FormBuilder() {
 	const updateForm = useUpdateForm();
 	const { data: workflowsMetadata } = useWorkflowsMetadata();
 
-	// Default organization_id for org users is their org, for platform admins it's null (global)
 	const defaultOrgId = isPlatformAdmin
 		? null
 		: (user?.organizationId ?? null);
 
-	// Form state - initialize from existingForm
-	const [formName, setFormName] = useState(() => existingForm?.name || "");
-	const [formDescription, setFormDescription] = useState(
-		() => existingForm?.description || "",
-	);
-	const [linkedWorkflow, setLinkedWorkflow] = useState(
-		() => existingForm?.workflow_id || "",
-	);
-	// FormPublic excludes organization_id from API response, cast to access if present
-	type FormWithOrgAndAccess = typeof existingForm & { organization_id?: string | null; access_level?: string | null };
-	const [organizationId, setOrganizationId] = useState<string | null>(
-		() => (existingForm as FormWithOrgAndAccess)?.organization_id ?? defaultOrgId,
-	);
-	// Determine if form is global based on organizationId
-	const isGlobal = organizationId === null;
-	const [launchWorkflowId, setLaunchWorkflowId] = useState<string | null>(
-		() => existingForm?.launch_workflow_id || null,
-	);
-	const [defaultLaunchParams, setDefaultLaunchParams] = useState<Record<
-		string,
-		unknown
-	> | null>(() => existingForm?.default_launch_params || null);
-	const [accessLevel, setAccessLevel] = useState<
-		"authenticated" | "role_based"
-	>(
-		() =>
-			((existingForm as FormWithOrgAndAccess)?.access_level as "authenticated" | "role_based") ||
-			"role_based",
-	);
-	const [selectedRoleIds, setSelectedRoleIds] = useState<string[]>([]);
-	const [fields, setFields] = useState<FormField[]>(() => {
-		if (existingForm?.form_schema) {
-			if (
-				typeof existingForm.form_schema === "object" &&
-				existingForm.form_schema !== null &&
-				"fields" in existingForm.form_schema
-			) {
-				const schema = existingForm.form_schema as {
-					fields: unknown[];
-				};
-				return schema.fields as FormField[];
-			}
-		}
-		return [];
-	});
-	// Open info dialog automatically for new forms
+	// Lightweight state for form metadata (set when dialog saves, or synced from existingForm)
+	const [formInfo, setFormInfo] = useState<FormInfoValues | null>(null);
+
+	// Fields state for the drag-and-drop builder (separate from dialog metadata)
+	const [fields, setFields] = useState<FormField[]>([]);
+
+	// UI state
 	const [isInfoDialogOpen, setIsInfoDialogOpen] = useState(() => !isEditing);
 	const [isContextDialogOpen, setIsContextDialogOpen] = useState(false);
 	const [workflowResultsDialogOpen, setWorkflowResultsDialogOpen] =
@@ -108,24 +69,10 @@ export function FormBuilder() {
 	> | null>(null);
 	const [isTestingWorkflow, setIsTestingWorkflow] = useState(false);
 
-	// Sync state when existingForm data loads (for edit mode)
+	// Sync fields and formInfo when existingForm loads
 	useEffect(() => {
 		if (existingForm) {
-			setFormName(existingForm.name || "");
-			setFormDescription(existingForm.description || "");
-			setLinkedWorkflow(existingForm.workflow_id || "");
-			setOrganizationId((existingForm as FormWithOrgAndAccess).organization_id ?? defaultOrgId);
-			setLaunchWorkflowId(existingForm.launch_workflow_id || null);
-			setDefaultLaunchParams(
-				(existingForm.default_launch_params as Record<
-					string,
-					unknown
-				>) || null,
-			);
-			setAccessLevel(
-				((existingForm as FormWithOrgAndAccess).access_level as "authenticated" | "role_based") ||
-					"role_based",
-			);
+			// Sync fields from form_schema
 			if (
 				existingForm.form_schema &&
 				typeof existingForm.form_schema === "object" &&
@@ -136,11 +83,43 @@ export function FormBuilder() {
 				};
 				setFields(schema.fields as FormField[]);
 			}
-		}
-	}, [existingForm, defaultOrgId]);
 
-	// Note: Opening info dialog for new forms is handled by checking
-	// isEditing and formName state at render time to avoid effect loops
+			// Sync formInfo from existingForm (only if not already overridden by dialog save)
+			if (!formInfo) {
+				setFormInfo({
+					name: existingForm.name || "",
+					description: existingForm.description || "",
+					workflow_id: existingForm.workflow_id || "",
+					launch_workflow_id: existingForm.launch_workflow_id || "",
+					default_launch_params:
+						(existingForm.default_launch_params as Record<string, unknown>) || {},
+					access_level:
+						(existingForm.access_level as "authenticated" | "role_based") || "role_based",
+					role_ids: [],
+					organization_id: existingForm.organization_id ?? defaultOrgId,
+				});
+			}
+		}
+	// eslint-disable-next-line react-hooks/exhaustive-deps
+	}, [existingForm]);
+
+	// Derive display values from formInfo (dialog-saved) or existingForm (server data)
+	const formName = formInfo?.name || existingForm?.name || "";
+	const formDescription = formInfo?.description || existingForm?.description || "";
+	const linkedWorkflow = formInfo?.workflow_id || existingForm?.workflow_id || "";
+	const launchWorkflowId = formInfo?.launch_workflow_id || existingForm?.launch_workflow_id || "";
+	const defaultLaunchParams = formInfo?.default_launch_params ||
+		(existingForm?.default_launch_params as Record<string, unknown>) || {};
+	const accessLevel = formInfo?.access_level ||
+		(existingForm?.access_level as "authenticated" | "role_based") || "role_based";
+	const selectedRoleIds = formInfo?.role_ids || [];
+	const organizationId = formInfo?.organization_id ??
+		existingForm?.organization_id ?? defaultOrgId;
+	const isGlobal = organizationId === null;
+
+	const handleInfoSave = (info: FormInfoValues) => {
+		setFormInfo(info);
+	};
 
 	const handleSave = async () => {
 		try {
@@ -157,13 +136,15 @@ export function FormBuilder() {
 					form_schema: { fields },
 					is_active: true,
 					access_level: accessLevel,
-					// NEW MVP fields
 					launch_workflow_id: launchWorkflowId || null,
 					allowed_query_params:
 						autoGeneratedParams.length > 0
 							? autoGeneratedParams
 							: null,
-					default_launch_params: defaultLaunchParams,
+					default_launch_params:
+						Object.keys(defaultLaunchParams).length > 0
+							? defaultLaunchParams
+							: null,
 					clear_roles: false,
 				};
 				await updateForm.mutateAsync({
@@ -171,11 +152,9 @@ export function FormBuilder() {
 					body: updateRequest,
 				});
 
-				// Update role assignments if access level is role_based
 				if (accessLevel === "role_based") {
 					await assignRolesToForm(formId, selectedRoleIds);
 				} else {
-					// If not role-based, clear all role assignments
 					await assignRolesToForm(formId, []);
 				}
 			} else {
@@ -186,19 +165,20 @@ export function FormBuilder() {
 					form_schema: { fields },
 					access_level: accessLevel,
 					organization_id: organizationId,
-					// NEW MVP fields
 					launch_workflow_id: launchWorkflowId || null,
 					allowed_query_params:
 						autoGeneratedParams.length > 0
 							? autoGeneratedParams
 							: null,
-					default_launch_params: defaultLaunchParams,
+					default_launch_params:
+						Object.keys(defaultLaunchParams).length > 0
+							? defaultLaunchParams
+							: null,
 				};
 				const createdForm = await createForm.mutateAsync({
 					body: createRequest,
 				});
 
-				// Assign roles if access level is role_based
 				if (
 					accessLevel === "role_based" &&
 					createdForm?.id &&
@@ -210,7 +190,6 @@ export function FormBuilder() {
 
 			navigate("/forms");
 		} catch (error: unknown) {
-			// Extract error message from response
 			const errorResponse = error as {
 				response?: {
 					data?: {
@@ -226,7 +205,6 @@ export function FormBuilder() {
 			const errorDetails = errorResponse?.response?.data?.details;
 
 			if (errorDetails?.errors) {
-				// Show validation errors with better formatting
 				const validationErrors = errorDetails.errors
 					.map(
 						(err: { loc: string[]; msg: string }) =>
@@ -234,12 +212,11 @@ export function FormBuilder() {
 					)
 					.join("\n");
 				toast.error(`Validation Error\n${validationErrors}`, {
-					duration: 8000, // 8 seconds for validation errors
+					duration: 8000,
 				});
 			} else {
-				// For long error messages (like parameter validation), increase duration
 				toast.error(errorMessage, {
-					duration: errorMessage.length > 150 ? 10000 : 6000, // 10s for long messages, 6s otherwise
+					duration: errorMessage.length > 150 ? 10000 : 6000,
 				});
 			}
 		}
@@ -254,7 +231,6 @@ export function FormBuilder() {
 			return { valid: true, missingParams: [] };
 		}
 
-		// Find the linked workflow's metadata (linkedWorkflow is now a workflow ID)
 		const workflow = (
 			workflowsMetadata.workflows as WorkflowMetadata[]
 		).find((w: WorkflowMetadata) => w.id === linkedWorkflow);
@@ -262,15 +238,12 @@ export function FormBuilder() {
 			return { valid: true, missingParams: [] };
 		}
 
-		// Get all required parameter names
 		const requiredParams = workflow.parameters
 			.filter((param) => param.required)
 			.map((param) => param.name);
 
-		// Get all form field names
 		const fieldNames = new Set(fields.map((field) => field.name));
 
-		// Find missing required parameters
 		const missingParams = requiredParams.filter(
 			(paramName) => !fieldNames.has(paramName),
 		);
@@ -295,7 +268,6 @@ export function FormBuilder() {
 			return;
 		}
 
-		// Need a saved form ID to test
 		if (!formId) {
 			toast.error(
 				"Please save the form first before testing the launch workflow",
@@ -306,13 +278,9 @@ export function FormBuilder() {
 		try {
 			setIsTestingWorkflow(true);
 
-			// Prepare input data (merge default params if available)
 			const inputData = defaultLaunchParams || {};
-
-			// Call the startup endpoint
 			const response = await executeFormStartup(formId, inputData);
 
-			// Extract result from response and update workflow results
 			if (response.result) {
 				setWorkflowResults(response.result as Record<string, unknown>);
 				setWorkflowResultsDialogOpen(true);
@@ -340,14 +308,12 @@ export function FormBuilder() {
 
 	// Build real context preview based on current user and form state
 	const previewContext = useMemo(() => {
-		// Build workflow context with real user data or workflow results if available
 		const workflowContext = workflowResults || {
 			user_id: user?.id || "user-123",
 			user_email: user?.email || "user@example.com",
 			organization_id: scope.orgId || null,
 		};
 
-		// Build query context from fields with allow_as_query_param enabled
 		const queryContext: Record<string, string> = {};
 		fields
 			.filter((field) => field.allow_as_query_param)
@@ -453,11 +419,7 @@ export function FormBuilder() {
 										? `Missing required parameters: ${validationResult.missingParams.join(", ")}`
 										: "Save Form"
 							}
-							className={
-								launchWorkflowId
-									? "rounded-l-none border-l-0"
-									: "rounded-l-none border-l-0"
-							}
+							className="rounded-l-none border-l-0"
 						>
 							<Save className="h-4 w-4" />
 						</Button>
@@ -505,26 +467,9 @@ export function FormBuilder() {
 				open={isInfoDialogOpen}
 				onClose={() => setIsInfoDialogOpen(false)}
 				formId={formId}
-				onSave={(info) => {
-					setFormName(info.formName);
-					setFormDescription(info.formDescription);
-					setLinkedWorkflow(info.linkedWorkflow);
-					setLaunchWorkflowId(info.launchWorkflowId);
-					setDefaultLaunchParams(info.defaultLaunchParams);
-					setAccessLevel(info.accessLevel);
-					setSelectedRoleIds(info.selectedRoleIds);
-					setOrganizationId(info.organizationId);
-				}}
-				initialData={{
-					formName,
-					formDescription,
-					linkedWorkflow,
-					launchWorkflowId,
-					defaultLaunchParams,
-					accessLevel,
-					selectedRoleIds,
-					organizationId,
-				}}
+				onSave={handleInfoSave}
+				initialData={existingForm}
+				initialRoleIds={selectedRoleIds}
 				isEditing={isEditing}
 			/>
 

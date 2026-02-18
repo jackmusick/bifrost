@@ -1,4 +1,7 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
+import { useForm, useWatch } from "react-hook-form";
+import { zodResolver } from "@hookform/resolvers/zod";
+import * as z from "zod";
 import {
 	Dialog,
 	DialogContent,
@@ -7,6 +10,15 @@ import {
 	DialogHeader,
 	DialogTitle,
 } from "@/components/ui/dialog";
+import {
+	Form,
+	FormControl,
+	FormDescription,
+	FormField,
+	FormItem,
+	FormLabel,
+	FormMessage,
+} from "@/components/ui/form";
 import { Combobox } from "@/components/ui/combobox";
 import {
 	Command,
@@ -22,11 +34,11 @@ import {
 	PopoverTrigger,
 } from "@/components/ui/popover";
 import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { Badge } from "@/components/ui/badge";
 import { Checkbox } from "@/components/ui/checkbox";
+import { Label } from "@/components/ui/label";
 import { Check, ChevronsUpDown, X } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useWorkflowsMetadata } from "@/hooks/useWorkflows";
@@ -39,34 +51,32 @@ import type { components } from "@/lib/v1";
 type WorkflowParameter = components["schemas"]["WorkflowParameter"];
 type Role = components["schemas"]["RolePublic"];
 type WorkflowMetadata = components["schemas"]["WorkflowMetadata"];
+type FormPublic = components["schemas"]["FormPublic"];
+
+const formInfoSchema = z.object({
+	name: z.string().min(1, "Name is required"),
+	description: z.string(),
+	workflow_id: z.string().min(1, "Linked workflow is required"),
+	launch_workflow_id: z.string(),
+	default_launch_params: z.record(z.unknown()),
+	access_level: z.enum(["authenticated", "role_based"]),
+	role_ids: z.array(z.string()),
+	organization_id: z.string().nullable(),
+});
+
+export type FormInfoValues = z.infer<typeof formInfoSchema>;
 
 interface FormInfoDialogProps {
 	open: boolean;
 	onClose: () => void;
-	onSave: (info: {
-		formName: string;
-		formDescription: string;
-		linkedWorkflow: string;
-		launchWorkflowId: string | null;
-		defaultLaunchParams: Record<string, unknown> | null;
-		accessLevel: "authenticated" | "role_based";
-		selectedRoleIds: string[];
-		organizationId: string | null;
-	}) => void;
-	initialData?: {
-		formName: string;
-		formDescription: string;
-		linkedWorkflow: string;
-		launchWorkflowId?: string | null;
-		defaultLaunchParams?: Record<string, unknown> | null;
-		accessLevel?: "authenticated" | "role_based";
-		selectedRoleIds?: string[];
-		organizationId?: string | null;
-	};
+	onSave: (info: FormInfoValues) => void;
+	initialData?: FormPublic | null;
 	/** Whether this is editing an existing form (org cannot be changed) */
 	isEditing?: boolean;
 	/** Form ID for embed settings (only available when editing) */
 	formId?: string;
+	/** Role IDs currently assigned to this form */
+	initialRoleIds?: string[];
 }
 
 export function FormInfoDialog({
@@ -76,6 +86,7 @@ export function FormInfoDialog({
 	initialData,
 	isEditing = false,
 	formId,
+	initialRoleIds,
 }: FormInfoDialogProps) {
 	const [rolesPopoverOpen, setRolesPopoverOpen] = useState(false);
 	const { isPlatformAdmin, user } = useAuth();
@@ -86,40 +97,61 @@ export function FormInfoDialog({
 			isLoading: boolean;
 		};
 
-	// Fetch available roles using the hook
 	const { data: roles, isLoading: rolesLoading } = useRoles();
 
-	// Default organization_id for org users is their org, for platform admins it's null (global)
 	const defaultOrgId = isPlatformAdmin
 		? null
 		: (user?.organizationId ?? null);
 
-	// Initialize form state from initialData
-	const [formName, setFormName] = useState(() => initialData?.formName || "");
-	const [formDescription, setFormDescription] = useState(
-		() => initialData?.formDescription || "",
-	);
-	const [linkedWorkflow, setLinkedWorkflow] = useState(
-		() => initialData?.linkedWorkflow || "",
-	);
-	const [launchWorkflowId, setLaunchWorkflowId] = useState<string>(
-		() => initialData?.launchWorkflowId || "",
-	);
-	const [defaultLaunchParams, setDefaultLaunchParams] = useState<
-		Record<string, unknown>
-	>(
-		() =>
-			(initialData?.defaultLaunchParams as Record<string, unknown>) || {},
-	);
-	const [accessLevel, setAccessLevel] = useState<
-		"authenticated" | "role_based"
-	>(() => initialData?.accessLevel || "role_based");
-	const [selectedRoleIds, setSelectedRoleIds] = useState<string[]>(
-		() => initialData?.selectedRoleIds || [],
-	);
-	const [organizationId, setOrganizationId] = useState<
-		string | null | undefined
-	>(() => initialData?.organizationId ?? defaultOrgId ?? null);
+	const form = useForm<FormInfoValues>({
+		resolver: zodResolver(formInfoSchema),
+		defaultValues: {
+			name: "",
+			description: "",
+			workflow_id: "",
+			launch_workflow_id: "",
+			default_launch_params: {},
+			access_level: "role_based",
+			role_ids: [],
+			organization_id: defaultOrgId,
+		},
+	});
+
+	const accessLevel = useWatch({ control: form.control, name: "access_level" });
+	const launchWorkflowId = useWatch({ control: form.control, name: "launch_workflow_id" });
+	const defaultLaunchParams = useWatch({ control: form.control, name: "default_launch_params" });
+	const selectedRoleIds = useWatch({ control: form.control, name: "role_ids" });
+
+	// Reset form when dialog opens or initialData changes
+	useEffect(() => {
+		if (open) {
+			if (initialData) {
+				form.reset({
+					name: initialData.name || "",
+					description: initialData.description || "",
+					workflow_id: initialData.workflow_id || "",
+					launch_workflow_id: initialData.launch_workflow_id || "",
+					default_launch_params:
+						(initialData.default_launch_params as Record<string, unknown>) || {},
+					access_level:
+						(initialData.access_level as "authenticated" | "role_based") || "role_based",
+					role_ids: initialRoleIds || [],
+					organization_id: initialData.organization_id ?? defaultOrgId,
+				});
+			} else {
+				form.reset({
+					name: "",
+					description: "",
+					workflow_id: "",
+					launch_workflow_id: "",
+					default_launch_params: {},
+					access_level: "role_based",
+					role_ids: [],
+					organization_id: defaultOrgId,
+				});
+			}
+		}
+	}, [open, initialData, initialRoleIds, form, defaultOrgId]);
 
 	// Get selected launch workflow metadata
 	const selectedLaunchWorkflow = metadata?.workflows?.find(
@@ -128,10 +160,11 @@ export function FormInfoDialog({
 	const launchWorkflowParams = selectedLaunchWorkflow?.parameters || [];
 
 	const handleParameterChange = (paramName: string, value: unknown) => {
-		setDefaultLaunchParams((prev) => ({
-			...prev,
+		const current = form.getValues("default_launch_params");
+		form.setValue("default_launch_params", {
+			...current,
 			[paramName]: value,
-		}));
+		});
 	};
 
 	const renderParameterInput = (param: WorkflowParameter) => {
@@ -329,53 +362,47 @@ export function FormInfoDialog({
 		}
 	};
 
-	const handleSave = () => {
+	const handleSave = (values: FormInfoValues) => {
 		// Handle "__none__" special value for launch workflow
 		const finalLaunchWorkflowId =
-			launchWorkflowId === "__none__" || !launchWorkflowId.trim()
-				? null
-				: launchWorkflowId.trim();
+			values.launch_workflow_id === "__none__" || !values.launch_workflow_id.trim()
+				? ""
+				: values.launch_workflow_id.trim();
 
 		// Only include defaultLaunchParams if launch workflow is set and params exist
 		const finalDefaultParams =
-			finalLaunchWorkflowId && Object.keys(defaultLaunchParams).length > 0
-				? defaultLaunchParams
-				: null;
+			finalLaunchWorkflowId && Object.keys(values.default_launch_params).length > 0
+				? values.default_launch_params
+				: {};
 
 		onSave({
-			formName,
-			formDescription,
-			linkedWorkflow,
-			launchWorkflowId: finalLaunchWorkflowId,
-			defaultLaunchParams: finalDefaultParams,
-			accessLevel,
-			selectedRoleIds,
-			organizationId: organizationId ?? null,
+			...values,
+			launch_workflow_id: finalLaunchWorkflowId,
+			default_launch_params: finalDefaultParams,
 		});
 		onClose();
 	};
 
-	const toggleRole = (roleId: string) => {
-		setSelectedRoleIds((prev) =>
-			prev.includes(roleId)
-				? prev.filter((id) => id !== roleId)
-				: [...prev, roleId],
-		);
+	const handleLaunchWorkflowChange = (value: string) => {
+		form.setValue("launch_workflow_id", value);
+		if (!value || value === "__none__") {
+			form.setValue("default_launch_params", {});
+		}
 	};
 
-	const handleLaunchWorkflowChange = (value: string) => {
-		setLaunchWorkflowId(value);
-		// Clear default params when launch workflow changes
-		if (!value || value === "__none__") {
-			setDefaultLaunchParams({});
+	const toggleRole = (roleId: string) => {
+		const current = form.getValues("role_ids");
+		if (current.includes(roleId)) {
+			form.setValue("role_ids", current.filter((id) => id !== roleId));
+		} else {
+			form.setValue("role_ids", [...current, roleId]);
 		}
 	};
 
 	const removeRole = (roleId: string) => {
-		setSelectedRoleIds((prev) => prev.filter((id) => id !== roleId));
+		const current = form.getValues("role_ids");
+		form.setValue("role_ids", current.filter((id) => id !== roleId));
 	};
-
-	const isSaveDisabled = !formName || !linkedWorkflow;
 
 	return (
 		<Dialog open={open} onOpenChange={onClose}>
@@ -388,320 +415,373 @@ export function FormInfoDialog({
 					</DialogDescription>
 				</DialogHeader>
 
-				<div className="space-y-4">
-					{/* Organization Scope - Only show for platform admins */}
-					{isPlatformAdmin && (
-						<div className="space-y-2">
-							<Label htmlFor="organizationId">Organization</Label>
-							<OrganizationSelect
-								value={organizationId}
-								onChange={(value) =>
-									setOrganizationId(value ?? null)
-								}
-								showGlobal={true}
-								disabled={isEditing}
+				<Form {...form}>
+					<form
+						onSubmit={form.handleSubmit(handleSave)}
+						className="space-y-4"
+					>
+						{/* Organization Scope - Only show for platform admins */}
+						{isPlatformAdmin && (
+							<FormField
+								control={form.control}
+								name="organization_id"
+								render={({ field }) => (
+									<FormItem>
+										<FormLabel>Organization</FormLabel>
+										<FormControl>
+											<OrganizationSelect
+												value={field.value}
+												onChange={field.onChange}
+												showGlobal={true}
+												disabled={isEditing}
+											/>
+										</FormControl>
+										<FormDescription>
+											{isEditing
+												? "Organization cannot be changed after form creation"
+												: "Global forms are available to all organizations"}
+										</FormDescription>
+										<FormMessage />
+									</FormItem>
+								)}
 							/>
-							<p className="text-xs text-muted-foreground">
-								{isEditing
-									? "Organization cannot be changed after form creation"
-									: "Global forms are available to all organizations"}
-							</p>
-						</div>
-					)}
+						)}
 
-					<div className="space-y-2">
-						<Label htmlFor="formName">Form Name *</Label>
-						<Input
-							id="formName"
-							placeholder="User Onboarding Form"
-							value={formName}
-							onChange={(e) => setFormName(e.target.value)}
+						<FormField
+							control={form.control}
+							name="name"
+							render={({ field }) => (
+								<FormItem>
+									<FormLabel>Form Name *</FormLabel>
+									<FormControl>
+										<Input
+											placeholder="User Onboarding Form"
+											{...field}
+										/>
+									</FormControl>
+									<FormMessage />
+								</FormItem>
+							)}
 						/>
-					</div>
 
-					<div className="space-y-2">
-						<Label htmlFor="linkedWorkflow">
-							Linked Workflow *
-						</Label>
-						<Combobox
-							id="linkedWorkflow"
-							value={linkedWorkflow}
-							onValueChange={setLinkedWorkflow}
-							options={
-								metadata?.workflows?.map(
-									(workflow: WorkflowMetadata) => {
-										const option: {
-											value: string;
-											label: string;
-											description?: string;
-										} = {
-											value: workflow.id ?? "",
-											label: workflow.name ?? "Unnamed",
-										};
-										if (workflow.description) {
-											option.description =
-												workflow.description;
-										}
-										return option;
-									},
-								) ?? []
-							}
-							placeholder="Select a workflow"
-							searchPlaceholder="Search workflows..."
-							emptyText="No workflows found."
-							isLoading={metadataLoading}
-						/>
-						<p className="text-xs text-muted-foreground">
-							The workflow that will be executed when this form is
-							submitted
-						</p>
-					</div>
-
-					<div className="space-y-2">
-						<Label htmlFor="formDescription">Description</Label>
-						<Textarea
-							id="formDescription"
-							placeholder="Describe what this form does..."
-							value={formDescription}
-							onChange={(e) => setFormDescription(e.target.value)}
-							rows={3}
-						/>
-					</div>
-
-					<div className="space-y-2">
-						<Label htmlFor="accessLevel">Access Level</Label>
-						<Combobox
-							id="accessLevel"
-							value={accessLevel}
-							onValueChange={(value: string) =>
-								setAccessLevel(
-									value as "authenticated" | "role_based",
-								)
-							}
-							options={[
-								{
-									value: "role_based",
-									label: "Role-Based",
-									description:
-										"Only users with assigned roles can access",
-								},
-								{
-									value: "authenticated",
-									label: "Authenticated Users",
-									description:
-										"Any authenticated user can access",
-								},
-							]}
-							placeholder="Select access level"
-						/>
-						<p className="text-xs text-muted-foreground">
-							Controls who can view and execute this form
-						</p>
-					</div>
-
-					{accessLevel === "role_based" && (
-						<div className="space-y-2">
-							<Label>
-								Assigned Roles{" "}
-								{selectedRoleIds.length > 0 &&
-									`(${selectedRoleIds.length})`}
-							</Label>
-							<Popover
-								open={rolesPopoverOpen}
-								onOpenChange={setRolesPopoverOpen}
-							>
-								<PopoverTrigger asChild>
-									<Button
-										variant="outline"
-										role="combobox"
-										className="w-full justify-between font-normal"
-										disabled={rolesLoading}
-									>
-										<span className="text-muted-foreground">
-											{rolesLoading
-												? "Loading roles..."
-												: "Select roles..."}
-										</span>
-										<ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
-									</Button>
-								</PopoverTrigger>
-								<PopoverContent
-									className="w-[var(--radix-popover-trigger-width)] p-0"
-									align="start"
-								>
-									<Command>
-										<CommandInput placeholder="Search roles..." />
-										<CommandList>
-											<CommandEmpty>
-												No roles found.
-											</CommandEmpty>
-											<CommandGroup>
-												{roles?.map((role: Role) => (
-													<CommandItem
-														key={role.id}
-														value={role.name || ""}
-														onSelect={() =>
-															toggleRole(role.id)
+						<FormField
+							control={form.control}
+							name="workflow_id"
+							render={({ field }) => (
+								<FormItem>
+									<FormLabel>Linked Workflow *</FormLabel>
+									<FormControl>
+										<Combobox
+											value={field.value}
+											onValueChange={field.onChange}
+											options={
+												metadata?.workflows?.map(
+													(workflow: WorkflowMetadata) => {
+														const option: {
+															value: string;
+															label: string;
+															description?: string;
+														} = {
+															value: workflow.id ?? "",
+															label: workflow.name ?? "Unnamed",
+														};
+														if (workflow.description) {
+															option.description =
+																workflow.description;
 														}
+														return option;
+													},
+												) ?? []
+											}
+											placeholder="Select a workflow"
+											searchPlaceholder="Search workflows..."
+											emptyText="No workflows found."
+											isLoading={metadataLoading}
+										/>
+									</FormControl>
+									<FormDescription>
+										The workflow that will be executed when this form is
+										submitted
+									</FormDescription>
+									<FormMessage />
+								</FormItem>
+							)}
+						/>
+
+						<FormField
+							control={form.control}
+							name="description"
+							render={({ field }) => (
+								<FormItem>
+									<FormLabel>Description</FormLabel>
+									<FormControl>
+										<Textarea
+											placeholder="Describe what this form does..."
+											rows={3}
+											{...field}
+										/>
+									</FormControl>
+									<FormMessage />
+								</FormItem>
+							)}
+						/>
+
+						<FormField
+							control={form.control}
+							name="access_level"
+							render={({ field }) => (
+								<FormItem>
+									<FormLabel>Access Level</FormLabel>
+									<FormControl>
+										<Combobox
+											value={field.value}
+											onValueChange={field.onChange}
+											options={[
+												{
+													value: "role_based",
+													label: "Role-Based",
+													description:
+														"Only users with assigned roles can access",
+												},
+												{
+													value: "authenticated",
+													label: "Authenticated Users",
+													description:
+														"Any authenticated user can access",
+												},
+											]}
+											placeholder="Select access level"
+										/>
+									</FormControl>
+									<FormDescription>
+										Controls who can view and execute this form
+									</FormDescription>
+									<FormMessage />
+								</FormItem>
+							)}
+						/>
+
+						{accessLevel === "role_based" && (
+							<FormField
+								control={form.control}
+								name="role_ids"
+								render={({ field }) => (
+									<FormItem>
+										<FormLabel>
+											Assigned Roles{" "}
+											{field.value.length > 0 &&
+												`(${field.value.length})`}
+										</FormLabel>
+										<Popover
+											open={rolesPopoverOpen}
+											onOpenChange={setRolesPopoverOpen}
+										>
+											<PopoverTrigger asChild>
+												<FormControl>
+													<Button
+														variant="outline"
+														role="combobox"
+														className="w-full justify-between font-normal"
+														disabled={rolesLoading}
 													>
-														<div className="flex items-center gap-2 flex-1">
-															<Checkbox
-																checked={selectedRoleIds.includes(
-																	role.id,
-																)}
-																onCheckedChange={() =>
-																	toggleRole(
-																		role.id,
-																	)
+														<span className="text-muted-foreground">
+															{rolesLoading
+																? "Loading roles..."
+																: "Select roles..."}
+														</span>
+														<ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
+													</Button>
+												</FormControl>
+											</PopoverTrigger>
+											<PopoverContent
+												className="w-[var(--radix-popover-trigger-width)] p-0"
+												align="start"
+											>
+												<Command>
+													<CommandInput placeholder="Search roles..." />
+													<CommandList>
+														<CommandEmpty>
+															No roles found.
+														</CommandEmpty>
+														<CommandGroup>
+															{roles?.map((role: Role) => (
+																<CommandItem
+																	key={role.id}
+																	value={role.name || ""}
+																	onSelect={() =>
+																		toggleRole(role.id)
+																	}
+																>
+																	<div className="flex items-center gap-2 flex-1">
+																		<Checkbox
+																			checked={selectedRoleIds.includes(
+																				role.id,
+																			)}
+																			onCheckedChange={() =>
+																				toggleRole(
+																					role.id,
+																				)
+																			}
+																		/>
+																		<div className="flex flex-col">
+																			<span className="font-medium">
+																				{role.name}
+																			</span>
+																			{role.description && (
+																				<span className="text-xs text-muted-foreground">
+																					{
+																						role.description
+																					}
+																				</span>
+																			)}
+																		</div>
+																	</div>
+																	<Check
+																		className={cn(
+																			"ml-auto h-4 w-4",
+																			selectedRoleIds.includes(
+																				role.id,
+																			)
+																				? "opacity-100"
+																				: "opacity-0",
+																		)}
+																	/>
+																</CommandItem>
+															))}
+														</CommandGroup>
+													</CommandList>
+												</Command>
+											</PopoverContent>
+										</Popover>
+										{selectedRoleIds.length > 0 && (
+											<div className="flex flex-wrap gap-2 p-2 border rounded-md bg-muted/50">
+												{selectedRoleIds.map((roleId) => {
+													const role = roles?.find(
+														(r: Role) => r.id === roleId,
+													);
+													return (
+														<Badge
+															key={roleId}
+															variant="secondary"
+															className="gap-1"
+														>
+															{role?.name || roleId}
+															<X
+																className="h-3 w-3 cursor-pointer"
+																onClick={() =>
+																	removeRole(roleId)
 																}
 															/>
-															<div className="flex flex-col">
-																<span className="font-medium">
-																	{role.name}
-																</span>
-																{role.description && (
-																	<span className="text-xs text-muted-foreground">
-																		{
-																			role.description
-																		}
-																	</span>
-																)}
-															</div>
-														</div>
-														<Check
-															className={cn(
-																"ml-auto h-4 w-4",
-																selectedRoleIds.includes(
-																	role.id,
-																)
-																	? "opacity-100"
-																	: "opacity-0",
-															)}
-														/>
-													</CommandItem>
-												))}
-											</CommandGroup>
-										</CommandList>
-									</Command>
-								</PopoverContent>
-							</Popover>
-							{selectedRoleIds.length > 0 && (
-								<div className="flex flex-wrap gap-2 p-2 border rounded-md bg-muted/50">
-									{selectedRoleIds.map((roleId) => {
-										const role = roles?.find(
-											(r: Role) => r.id === roleId,
-										);
-										return (
-											<Badge
-												key={roleId}
-												variant="secondary"
-												className="gap-1"
-											>
-												{role?.name || roleId}
-												<X
-													className="h-3 w-3 cursor-pointer"
-													onClick={() =>
-														removeRole(roleId)
-													}
-												/>
-											</Badge>
-										);
-									})}
+														</Badge>
+													);
+												})}
+											</div>
+										)}
+										<FormDescription>
+											Users must have at least one of these roles to
+											access the form
+										</FormDescription>
+										<FormMessage />
+									</FormItem>
+								)}
+							/>
+						)}
+
+						<FormField
+							control={form.control}
+							name="launch_workflow_id"
+							render={({ field }) => (
+								<FormItem>
+									<FormLabel>
+										Launch Workflow (Optional)
+									</FormLabel>
+									<FormControl>
+										<Combobox
+											value={field.value}
+											onValueChange={handleLaunchWorkflowChange}
+											options={[
+												{
+													value: "__none__",
+													label: "None",
+												},
+												...(metadata?.workflows?.map(
+													(workflow: WorkflowMetadata) => {
+														const option: {
+															value: string;
+															label: string;
+															description?: string;
+														} = {
+															value: workflow.id ?? "",
+															label: workflow.name ?? "Unnamed",
+														};
+														if (workflow.description) {
+															option.description =
+																workflow.description;
+														}
+														return option;
+													},
+												) ?? []),
+											]}
+											placeholder="Select a workflow (or leave empty)"
+											searchPlaceholder="Search workflows..."
+											emptyText="No workflows found."
+											isLoading={metadataLoading}
+										/>
+									</FormControl>
+									<FormDescription>
+										Workflow to execute when form loads (results
+										available in context.workflow)
+									</FormDescription>
+									<FormMessage />
+								</FormItem>
+							)}
+						/>
+
+						{/* Default Launch Parameters */}
+						{launchWorkflowId &&
+							launchWorkflowId !== "__none__" &&
+							launchWorkflowParams.length > 0 && (
+								<div className="space-y-3 rounded-lg border p-4 bg-muted/50">
+									<div>
+										<Label className="text-sm font-medium">
+											Default Launch Parameters
+										</Label>
+										<p className="text-xs text-muted-foreground mt-1">
+											Set default values for workflow
+											parameters. Required parameters must
+											have either a default value or a form
+											field with "Allow as Query Param"
+											enabled.
+										</p>
+									</div>
+									<div className="space-y-3">
+										{launchWorkflowParams.map(
+											(param: WorkflowParameter) => (
+												<div key={param.name}>
+													{renderParameterInput(param)}
+												</div>
+											),
+										)}
+									</div>
 								</div>
 							)}
-							<p className="text-xs text-muted-foreground">
-								Users must have at least one of these roles to
-								access the form
-							</p>
-						</div>
-					)}
 
-					<div className="space-y-2">
-						<Label htmlFor="launchWorkflowId">
-							Launch Workflow (Optional)
-						</Label>
-						<Combobox
-							id="launchWorkflowId"
-							value={launchWorkflowId}
-							onValueChange={handleLaunchWorkflowChange}
-							options={[
-								{
-									value: "__none__",
-									label: "None",
-								},
-								...(metadata?.workflows?.map(
-									(workflow: WorkflowMetadata) => {
-										const option: {
-											value: string;
-											label: string;
-											description?: string;
-										} = {
-											value: workflow.id ?? "",
-											label: workflow.name ?? "Unnamed",
-										};
-										if (workflow.description) {
-											option.description =
-												workflow.description;
-										}
-										return option;
-									},
-								) ?? []),
-							]}
-							placeholder="Select a workflow (or leave empty)"
-							searchPlaceholder="Search workflows..."
-							emptyText="No workflows found."
-							isLoading={metadataLoading}
-						/>
-						<p className="text-xs text-muted-foreground">
-							Workflow to execute when form loads (results
-							available in context.workflow)
-						</p>
-					</div>
-
-					{/* Default Launch Parameters */}
-					{launchWorkflowId &&
-						launchWorkflowId !== "__none__" &&
-						launchWorkflowParams.length > 0 && (
-							<div className="space-y-3 rounded-lg border p-4 bg-muted/50">
-								<div>
-									<Label className="text-sm font-medium">
-										Default Launch Parameters
-									</Label>
-									<p className="text-xs text-muted-foreground mt-1">
-										Set default values for workflow
-										parameters. Required parameters must
-										have either a default value or a form
-										field with "Allow as Query Param"
-										enabled.
-									</p>
-								</div>
-								<div className="space-y-3">
-									{launchWorkflowParams.map(
-										(param: WorkflowParameter) => (
-											<div key={param.name}>
-												{renderParameterInput(param)}
-											</div>
-										),
-									)}
-								</div>
-							</div>
-						)}
-				</div>
+						<DialogFooter>
+							<Button type="button" variant="outline" onClick={onClose}>
+								Cancel
+							</Button>
+							<Button type="submit">
+								Save
+							</Button>
+						</DialogFooter>
+					</form>
+				</Form>
 
 				{isEditing && formId && (
 					<div className="min-w-0 overflow-hidden">
 						<FormEmbedSection formId={formId} />
 					</div>
 				)}
-
-				<DialogFooter>
-					<Button type="button" variant="outline" onClick={onClose}>
-						Cancel
-					</Button>
-					<Button onClick={handleSave} disabled={isSaveDisabled}>
-						Save
-					</Button>
-				</DialogFooter>
 			</DialogContent>
 		</Dialog>
 	);
