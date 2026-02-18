@@ -188,7 +188,7 @@ export function DeveloperSettings() {
 						</Button>
 						<Button variant="outline" asChild>
 							<a
-								href="https://docs.bifrost.io/sdk"
+								href="https://docs.gobifrost.com/sdk"
 								target="_blank"
 								rel="noopener noreferrer"
 							>
