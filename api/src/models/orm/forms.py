@@ -64,6 +64,9 @@ class FormField(Base):
     # For markdown/html fields
     content: Mapped[str | None] = mapped_column(Text, default=None)
 
+    # Allow field value to be populated from URL query parameters
+    allow_as_query_param: Mapped[bool | None] = mapped_column(Boolean, default=None)
+
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=lambda: datetime.now(timezone.utc), server_default=text("NOW()")
     )
