@@ -4,7 +4,7 @@ Stores a mapping of sibling field names to data provider metadata paths,
 enabling auto-population of form fields when a data provider returns results.
 
 Revision ID: 20260217_auto_fill
-Revises: 20260212_drop_old_app_tables
+Revises: 20260218_is_system_users
 Create Date: 2026-02-17
 """
 
@@ -12,7 +12,7 @@ import sqlalchemy as sa
 from alembic import op
 
 revision = "20260217_auto_fill"
-down_revision = "20260212_drop_old_app_tables"
+down_revision = "20260218_is_system_users"
 branch_labels = None
 depends_on = None
 
