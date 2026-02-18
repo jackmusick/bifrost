@@ -766,6 +766,7 @@ function FormRendererInner({
 						<div className="flex items-center space-x-2">
 							<Checkbox
 								id={field.name}
+								checked={watch(field.name) as boolean}
 								onCheckedChange={(checked) =>
 									setValue(field.name, checked, {
 										shouldValidate: true,

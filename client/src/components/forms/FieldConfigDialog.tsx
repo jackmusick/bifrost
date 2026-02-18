@@ -146,9 +146,20 @@ function FieldConfigDialogContent({
 	const [helpText, setHelpText] = useState(
 		() => field?.help_text ?? workflowInputData?.helpText ?? "",
 	);
-	const [defaultValue, setDefaultValue] = useState(
-		() => (field?.default_value as string) ?? "",
-	);
+	const [defaultValue, setDefaultValue] = useState<string | boolean>(() => {
+		if (field?.default_value === undefined || field?.default_value === null)
+			return (field?.type ?? (defaultType as FormFieldType) ?? "text") ===
+				"checkbox"
+				? false
+				: "";
+		// Checkbox fields: coerce to boolean
+		if (
+			(field?.type ?? (defaultType as FormFieldType) ?? "text") ===
+			"checkbox"
+		)
+			return Boolean(field.default_value);
+		return String(field.default_value);
+	});
 	const [dataProvider, setDataProvider] = useState<string | undefined>(
 		() =>
 			field?.data_provider_id ??
@@ -316,7 +327,12 @@ function FieldConfigDialogContent({
 			required,
 			validation: null,
 			data_provider_id: dataProvider ?? null,
-			default_value: defaultValue || null,
+			default_value:
+				type === "checkbox"
+					? (defaultValue as boolean)
+					: defaultValue !== ""
+						? defaultValue
+						: null,
 			placeholder: placeholder || null,
 			help_text: helpText || null,
 			// NEW MVP fields
@@ -467,9 +483,16 @@ function FieldConfigDialogContent({
 									</Label>
 									<Select
 										value={type}
-										onValueChange={(v) =>
-											setType(v as FormFieldType)
-										}
+										onValueChange={(v) => {
+											const newType = v as FormFieldType;
+											setType(newType);
+											// Reset default value when switching to/from checkbox
+											if (newType === "checkbox" && typeof defaultValue !== "boolean") {
+												setDefaultValue(false);
+											} else if (newType !== "checkbox" && typeof defaultValue === "boolean") {
+												setDefaultValue("");
+											}
+										}}
 									>
 										<SelectTrigger id="fieldType">
 											<SelectValue />
@@ -668,14 +691,34 @@ function FieldConfigDialogContent({
 									<Label htmlFor="defaultValue">
 										Default Value
 									</Label>
-									<Input
-										id="defaultValue"
-										placeholder="Optional default value..."
-										value={defaultValue}
-										onChange={(e) =>
-											setDefaultValue(e.target.value)
-										}
-									/>
+									{type === "checkbox" ? (
+										<div className="flex items-center space-x-2 pt-1">
+											<Checkbox
+												id="defaultValue"
+												checked={defaultValue as boolean}
+												onCheckedChange={(checked) =>
+													setDefaultValue(checked as boolean)
+												}
+											/>
+											<Label
+												htmlFor="defaultValue"
+												className="cursor-pointer text-sm font-normal"
+											>
+												{defaultValue
+													? "Checked by default"
+													: "Unchecked by default"}
+											</Label>
+										</div>
+									) : (
+										<Input
+											id="defaultValue"
+											placeholder="Optional default value..."
+											value={defaultValue as string}
+											onChange={(e) =>
+												setDefaultValue(e.target.value)
+											}
+										/>
+									)}
 								</div>
 
 								<div className="grid grid-cols-2 gap-4">
