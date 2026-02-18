@@ -1,7 +1,7 @@
 """add form_embed_secrets table
 
 Revision ID: 20260217_form_embed_secrets
-Revises: 20260216_embed_secrets
+Revises: 20260217_cascade_remaining
 Create Date: 2026-02-17
 """
 
@@ -10,7 +10,7 @@ import sqlalchemy as sa
 from sqlalchemy.dialects import postgresql
 
 revision = "20260217_form_embed_secrets"
-down_revision = "20260216_embed_secrets"
+down_revision = "20260217_cascade_remaining"
 branch_labels = None
 depends_on = None
 
