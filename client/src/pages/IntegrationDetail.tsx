@@ -755,7 +755,6 @@ export function IntegrationDetail() {
 				isOAuthExpired={isOAuthExpired}
 				isOAuthExpiringSoon={isOAuthExpiringSoon}
 				canUseAuthCodeFlow={canUseAuthCodeFlow}
-				onEditIntegration={() => setEditDialogOpen(true)}
 				onOpenDefaultsDialog={handleOpenDefaultsDialog}
 				onOAuthConnect={handleIntegrationOAuthConnect}
 				onOAuthRefresh={handleIntegrationOAuthRefresh}

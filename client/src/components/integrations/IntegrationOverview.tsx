@@ -110,7 +110,6 @@ export interface IntegrationOverviewProps {
 	isOAuthExpired: boolean | "" | null | undefined;
 	isOAuthExpiringSoon: boolean | "" | null | undefined;
 	canUseAuthCodeFlow: boolean | undefined;
-	onEditIntegration: () => void;
 	onOpenDefaultsDialog: () => void;
 	onOAuthConnect: () => void;
 	onOAuthRefresh: () => void;
@@ -128,7 +127,6 @@ export function IntegrationOverview({
 	isOAuthExpired,
 	isOAuthExpiringSoon,
 	canUseAuthCodeFlow,
-	onEditIntegration,
 	onOpenDefaultsDialog,
 	onOAuthConnect,
 	onOAuthRefresh,
@@ -143,26 +141,13 @@ export function IntegrationOverview({
 			{/* Configuration Defaults */}
 			<Card>
 				<CardHeader className="pb-3">
-					<div className="flex items-center justify-between">
-						<div>
-							<CardTitle className="text-base">
-								Configuration Defaults
-							</CardTitle>
-							<CardDescription>
-								Default config values for new mappings
-							</CardDescription>
-						</div>
-						{integration.config_schema &&
-							integration.config_schema.length > 0 && (
-								<Button
-									variant="outline"
-									size="sm"
-									onClick={onOpenDefaultsDialog}
-								>
-									<Pencil className="h-3 w-3 mr-1" />
-									Edit
-								</Button>
-							)}
+					<div>
+						<CardTitle className="text-base">
+							Configuration Defaults
+						</CardTitle>
+						<CardDescription>
+							Default config values for new mappings
+						</CardDescription>
 					</div>
 				</CardHeader>
 				<CardContent>
@@ -187,8 +172,8 @@ export function IntegrationOverview({
 									variant="ghost"
 									size="sm"
 									className="h-6 w-6 p-0"
-									onClick={onEditIntegration}
-									title="Edit integration settings"
+									onClick={onOpenDefaultsDialog}
+									title="Edit default values"
 								>
 									<Pencil className="h-3 w-3" />
 								</Button>

@@ -550,6 +550,35 @@ class IntegrationsRepository:
 
         return config
 
+    async def get_all_org_config_overrides(
+        self, integration_id: UUID
+    ) -> dict[UUID, dict[str, Any]]:
+        """
+        Get org-specific config overrides for ALL orgs mapped to this integration.
+        Returns {org_id: {key: value, ...}} dict.
+        """
+        config_query = select(ConfigModel).where(
+            and_(
+                ConfigModel.integration_id == integration_id,
+                ConfigModel.organization_id.isnot(None),
+            )
+        )
+        result = await self.db.execute(config_query)
+        config_entries = result.scalars().all()
+
+        configs_by_org: dict[UUID, dict[str, Any]] = {}
+        for entry in config_entries:
+            org_id = entry.organization_id
+            if org_id not in configs_by_org:
+                configs_by_org[org_id] = {}
+            value = entry.value
+            if isinstance(value, dict) and "value" in value:
+                configs_by_org[org_id][entry.key] = value["value"]
+            else:
+                configs_by_org[org_id][entry.key] = value
+
+        return configs_by_org
+
     async def get_config_for_mapping(
         self, integration_id: UUID, org_id: UUID
     ) -> dict[str, Any]:
@@ -676,9 +705,10 @@ async def get_integration(
 
     # Build mapping responses with org-specific overrides only (not merged with defaults)
     # This prevents users from accidentally saving defaults back to org config
+    all_org_configs = await repo.get_all_org_config_overrides(integration.id)
     mapping_responses = []
     for m in integration.mappings:
-        org_config = await repo.get_org_config_overrides(integration.id, m.organization_id)
+        org_config = all_org_configs.get(m.organization_id, {}) if m.organization_id else {}
         mapping_responses.append(
             IntegrationMappingResponse(
                 id=m.id,

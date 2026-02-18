@@ -11,7 +11,7 @@ import logging
 from datetime import datetime, timedelta, timezone
 from typing import Any
 
-from sqlalchemy import select
+from sqlalchemy import or_, select
 from sqlalchemy.orm import selectinload
 
 from src.core.database import get_db_context
@@ -75,11 +75,19 @@ async def run_refresh_job(
 
     try:
         async with get_db_context() as db:
-            # Get all tokens with refresh tokens, eager-loading provider to avoid N+1
+            # Get all tokens that can be refreshed:
+            # - authorization_code tokens with a refresh token
+            # - client_credentials tokens (re-fetch using client credentials, no refresh token needed)
             query = (
                 select(OAuthToken)
+                .join(OAuthToken.provider)
                 .options(selectinload(OAuthToken.provider))
-                .where(OAuthToken.encrypted_refresh_token.isnot(None))
+                .where(
+                    or_(
+                        OAuthToken.encrypted_refresh_token.isnot(None),
+                        OAuthProvider.oauth_flow_type == "client_credentials",
+                    )
+                )
             )
             result = await db.execute(query)
             all_tokens = result.scalars().all()
@@ -183,13 +191,6 @@ async def _refresh_single_token(
         True if refresh succeeded, False otherwise
     """
     try:
-        # Decrypt the refresh token
-        if not token.encrypted_refresh_token:
-            logger.warning(f"No refresh token for token {token.id}")
-            return False
-
-        refresh_token = decrypt_secret(token.encrypted_refresh_token.decode())
-
         # Get client secret if exists
         client_secret = None
         if provider.encrypted_client_secret:
@@ -217,13 +218,35 @@ async def _refresh_single_token(
 
         # Use the shared OAuth provider client
         oauth_client = OAuthProviderClient()
-        success, result = await oauth_client.refresh_access_token(
-            token_url=token_url,
-            refresh_token=refresh_token,
-            client_id=provider.client_id,
-            client_secret=client_secret,
-            audience=provider.audience,
-        )
+
+        if provider.oauth_flow_type == "client_credentials":
+            # Client credentials flow: re-fetch token using client credentials
+            if not client_secret:
+                logger.warning(f"No client secret for client_credentials provider {provider.provider_name}")
+                return False
+
+            scopes = " ".join(provider.scopes) if provider.scopes else ""
+            success, result = await oauth_client.get_client_credentials_token(
+                token_url=token_url,
+                client_id=provider.client_id,
+                client_secret=client_secret,
+                scopes=scopes,
+                audience=provider.audience,
+            )
+        else:
+            # Authorization code flow: use refresh token
+            if not token.encrypted_refresh_token:
+                logger.warning(f"No refresh token for token {token.id}")
+                return False
+
+            refresh_token = decrypt_secret(token.encrypted_refresh_token.decode())
+            success, result = await oauth_client.refresh_access_token(
+                token_url=token_url,
+                refresh_token=refresh_token,
+                client_id=provider.client_id,
+                client_secret=client_secret,
+                audience=provider.audience,
+            )
 
         if not success:
             error_msg = result.get("error_description", result.get("error", "Refresh failed"))
@@ -234,7 +257,6 @@ async def _refresh_single_token(
 
         # Update token in database
         new_access_token = result.get("access_token")
-        new_refresh_token = result.get("refresh_token") or refresh_token  # Keep old if not returned
         expires_at = result.get("expires_at")
 
         if not new_access_token:
@@ -243,8 +265,14 @@ async def _refresh_single_token(
 
         # Encrypt and store new tokens
         token.encrypted_access_token = encrypt_secret(new_access_token).encode()
-        token.encrypted_refresh_token = encrypt_secret(new_refresh_token).encode()
         token.expires_at = expires_at
+
+        # Update refresh token only for authorization_code flow
+        if provider.oauth_flow_type != "client_credentials":
+            refresh_token_value = decrypt_secret(token.encrypted_refresh_token.decode()) if token.encrypted_refresh_token else None
+            new_refresh_token = result.get("refresh_token") or refresh_token_value
+            if new_refresh_token:
+                token.encrypted_refresh_token = encrypt_secret(new_refresh_token).encode()
 
         # Update scopes if returned
         new_scopes = result.get("scope")
