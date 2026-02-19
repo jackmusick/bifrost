@@ -183,6 +183,7 @@ function EditSubscriptionDialogContent({
 								onExecute={() => {}}
 								showExecuteButton={false}
 								renderAsDiv
+								disableRequired
 								values={inputMapping}
 								onChange={setInputMapping}
 							/>

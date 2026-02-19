@@ -26,6 +26,8 @@ interface WorkflowParametersFormProps {
 	onChange?: (values: Record<string, unknown>) => void;
 	// When true, renders a div instead of a form element (avoids nested forms)
 	renderAsDiv?: boolean;
+	// When true, don't set HTML required attribute on inputs (e.g. for optional input mapping)
+	disableRequired?: boolean;
 }
 
 /**
@@ -42,6 +44,7 @@ export function WorkflowParametersForm({
 	values: controlledValues,
 	onChange,
 	renderAsDiv = false,
+	disableRequired = false,
 }: WorkflowParametersFormProps) {
 	// Initialize internal state with default values (used when uncontrolled)
 	const [internalValues, setInternalValues] = useState<
@@ -192,7 +195,7 @@ export function WorkflowParametersForm({
 									? `Default: ${param.default_value}`
 									: undefined
 							}
-							required={param.required}
+							required={!disableRequired && param.required}
 							disabled={isExecuting}
 						/>
 						{param.description && (
@@ -323,7 +326,7 @@ export function WorkflowParametersForm({
 									? `Default: ${param.default_value}`
 									: undefined
 							}
-							required={param.required}
+							required={!disableRequired && param.required}
 							disabled={isExecuting}
 						/>
 						{param.description && (

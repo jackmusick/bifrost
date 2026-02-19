@@ -204,6 +204,7 @@ function CreateSubscriptionDialogContent({
 								onExecute={() => {}}
 								showExecuteButton={false}
 								renderAsDiv
+								disableRequired
 								values={inputMapping}
 								onChange={setInputMapping}
 							/>
