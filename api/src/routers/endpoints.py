@@ -159,7 +159,7 @@ async def execute_endpoint(
             workflow_metadata = CachedWorkflowMetadata(
                 workflow_id=str(workflow.id),
                 file_path=workflow.path,
-                execution_mode=workflow.execution_mode or "async",
+                execution_mode=workflow.execution_mode or "sync",
                 timeout_seconds=workflow.timeout_seconds or 1800,
                 allowed_methods=workflow.allowed_methods or ["POST"],
             )

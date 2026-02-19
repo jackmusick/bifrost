@@ -20,6 +20,8 @@ import {
 	Bot,
 	Database,
 	Globe,
+	Copy,
+	RefreshCw,
 } from "lucide-react";
 import {
 	Dialog,
@@ -67,6 +69,7 @@ import {
 	useAssignRolesToWorkflow,
 	useRemoveRoleFromWorkflow,
 } from "@/hooks/useWorkflowRoles";
+import { useWorkflowKeys, useCreateWorkflowKey } from "@/hooks/useWorkflowKeys";
 import { OrganizationSelect } from "@/components/forms/OrganizationSelect";
 import type { components } from "@/lib/v1";
 
@@ -102,6 +105,7 @@ interface WorkflowEditDialogProps {
 	open: boolean;
 	onOpenChange: (open: boolean) => void;
 	onSuccess?: () => void;
+	initialTab?: string;
 }
 
 export function WorkflowEditDialog({
@@ -109,6 +113,7 @@ export function WorkflowEditDialog({
 	open,
 	onOpenChange,
 	onSuccess,
+	initialTab,
 }: WorkflowEditDialogProps) {
 	const { data: roles } = useRoles();
 	const updateWorkflow = useUpdateWorkflow();
@@ -127,7 +132,6 @@ export function WorkflowEditDialog({
 
 	// Execution tab state
 	const [timeoutSeconds, setTimeoutSeconds] = useState(1800);
-	const [executionMode, setExecutionMode] = useState<"sync" | "async">("sync");
 
 	// Economics tab state
 	const [timeSaved, setTimeSaved] = useState(0);
@@ -144,8 +148,22 @@ export function WorkflowEditDialog({
 	const [allowedMethods, setAllowedMethods] = useState<string[]>(["POST"]);
 	const [publicEndpoint, setPublicEndpoint] = useState(false);
 	const [disableGlobalKey, setDisableGlobalKey] = useState(false);
+	const [executionMode, setExecutionMode] = useState<"sync" | "async">("sync");
+	const [newlyGeneratedKey, setNewlyGeneratedKey] = useState<string | null>(null);
+	const [copiedCurl, setCopiedCurl] = useState(false);
+	const [activeTab, setActiveTab] = useState("general");
 
 	const [isSaving, setIsSaving] = useState(false);
+
+	// API key management for endpoint tab
+	const { data: existingKeys, refetch: refetchKeys } = useWorkflowKeys({
+		workflowId: workflow?.name ?? undefined,
+		includeRevoked: false,
+	});
+	const createKeyMutation = useCreateWorkflowKey();
+	const workflowKey = existingKeys?.[0];
+	const displayKey = newlyGeneratedKey || workflowKey?.masked_key || "";
+	const hasKey = !!workflowKey || !!newlyGeneratedKey;
 
 	// Fetch current workflow roles
 	const workflowRolesQuery = useWorkflowRoles(workflow?.id);
@@ -163,7 +181,6 @@ export function WorkflowEditDialog({
 
 			// Execution
 			setTimeoutSeconds(workflow.timeout_seconds ?? 1800);
-			setExecutionMode(workflow.execution_mode ?? "sync");
 
 			// Economics
 			setTimeSaved(workflow.time_saved ?? 0);
@@ -180,6 +197,16 @@ export function WorkflowEditDialog({
 			setAllowedMethods(workflow.allowed_methods ?? ["POST"]);
 			setPublicEndpoint(workflow.public_endpoint ?? false);
 			setDisableGlobalKey(workflow.disable_global_key ?? false);
+			setExecutionMode(workflow.execution_mode ?? "sync");
+			setNewlyGeneratedKey(null);
+			setCopiedCurl(false);
+
+			// Set initial tab
+			if (initialTab) {
+				setActiveTab(initialTab);
+			} else {
+				setActiveTab("general");
+			}
 
 			// Fetch roles
 			workflowRolesQuery.refetch().then((result) => {
@@ -265,13 +292,71 @@ export function WorkflowEditDialog({
 		);
 	};
 
+	const handleGenerateKey = async () => {
+		if (!workflow?.name) return;
+		try {
+			const result = await createKeyMutation.mutateAsync({
+				workflow_name: workflow.name,
+				disable_global_key: false,
+			});
+			if (result.raw_key) {
+				setNewlyGeneratedKey(result.raw_key);
+				refetchKeys();
+			}
+		} catch {
+			// Error handled by mutation hook
+		}
+	};
+
+	const copyToClipboard = async (text: string) => {
+		try {
+			await navigator.clipboard.writeText(text);
+			setCopiedCurl(true);
+			setTimeout(() => setCopiedCurl(false), 2000);
+		} catch {
+			// Silently handle clipboard error
+		}
+	};
+
 	// Determine which tabs to show based on workflow type
 	const isToolType = workflow?.type === "tool";
 	const isDataProviderType = workflow?.type === "data_provider";
 
+	// Endpoint tab computed values
+	const baseUrl = typeof window !== "undefined"
+		? `${window.location.protocol}//${window.location.host}`
+		: "";
+	const endpointUrl = workflow?.name ? `${baseUrl}/api/endpoints/${workflow.name}` : "";
+	const isPublicEndpoint = publicEndpoint;
+	const apiKeyValue = displayKey || "YOUR_API_KEY";
+
+	const exampleParams = workflow?.parameters?.reduce(
+		(acc, param) => ({
+			...acc,
+			[param.name ?? "param"]:
+				param.type === "string"
+					? "<string>"
+					: param.type === "int"
+						? 0
+						: param.type === "bool"
+							? false
+							: null,
+		}),
+		{} as Record<string, unknown>,
+	) ?? {};
+
+	const curlExample = isPublicEndpoint
+		? `curl -X POST "${endpointUrl}" \\
+  -H "Content-Type: application/json" \\
+  -d '${JSON.stringify(exampleParams, null, 2)}'`
+		: `curl -X POST "${endpointUrl}" \\
+  -H "Content-Type: application/json" \\
+  -H "X-Bifrost-Key: ${apiKeyValue}" \\
+  -d '${JSON.stringify(exampleParams, null, 2)}'`;
+
 	return (
 		<Dialog open={open} onOpenChange={handleClose}>
-			<DialogContent className="sm:max-w-[600px] max-h-[85vh] overflow-hidden flex flex-col">
+			<DialogContent className="sm:max-w-[650px] max-h-[85vh] overflow-hidden flex flex-col">
 				<DialogHeader>
 					<DialogTitle>Edit Workflow Settings</DialogTitle>
 					<DialogDescription>
@@ -279,7 +364,7 @@ export function WorkflowEditDialog({
 					</DialogDescription>
 				</DialogHeader>
 
-				<Tabs defaultValue="general" className="flex-1 overflow-hidden flex flex-col">
+				<Tabs value={activeTab} onValueChange={setActiveTab} className="flex-1 overflow-hidden flex flex-col">
 					<TabsList className="w-full flex-shrink-0">
 						<TabsTrigger value="general" className="gap-1.5">
 							<Settings className="h-3.5 w-3.5" />
@@ -379,36 +464,6 @@ export function WorkflowEditDialog({
 								<p className="text-xs text-muted-foreground">
 									Maximum execution time (1-7200 seconds, default 1800)
 								</p>
-							</div>
-
-							<div className="space-y-2">
-								<Label>Execution Mode</Label>
-								<Select
-									value={executionMode}
-									onValueChange={(v) => setExecutionMode(v as "sync" | "async")}
-								>
-									<SelectTrigger>
-										<SelectValue />
-									</SelectTrigger>
-									<SelectContent>
-										<SelectItem value="sync">
-											<div className="flex flex-col">
-												<span>Synchronous</span>
-												<span className="text-xs text-muted-foreground">
-													Wait for result before responding
-												</span>
-											</div>
-										</SelectItem>
-										<SelectItem value="async">
-											<div className="flex flex-col">
-												<span>Asynchronous</span>
-												<span className="text-xs text-muted-foreground">
-													Run in background, return immediately
-												</span>
-											</div>
-										</SelectItem>
-									</SelectContent>
-								</Select>
 							</div>
 						</TabsContent>
 
@@ -650,6 +705,41 @@ export function WorkflowEditDialog({
 
 							{endpointEnabled && (
 								<>
+									{/* Execution Mode */}
+									<div className="space-y-2">
+										<Label>Execution Mode</Label>
+										<Select
+											value={executionMode}
+											onValueChange={(v) => setExecutionMode(v as "sync" | "async")}
+										>
+											<SelectTrigger>
+												<SelectValue />
+											</SelectTrigger>
+											<SelectContent>
+												<SelectItem value="sync">
+													<div className="flex flex-col">
+														<span>Synchronous</span>
+														<span className="text-xs text-muted-foreground">
+															Wait for result before responding
+														</span>
+													</div>
+												</SelectItem>
+												<SelectItem value="async">
+													<div className="flex flex-col">
+														<span>Asynchronous</span>
+														<span className="text-xs text-muted-foreground">
+															Return immediately, poll for result
+														</span>
+													</div>
+												</SelectItem>
+											</SelectContent>
+										</Select>
+										<p className="text-xs text-muted-foreground">
+											Controls whether HTTP endpoint calls wait for the result
+										</p>
+									</div>
+
+									{/* Allowed Methods */}
 									<div className="space-y-2">
 										<Label>Allowed Methods</Label>
 										<div className="flex flex-wrap gap-2">
@@ -695,6 +785,90 @@ export function WorkflowEditDialog({
 											checked={disableGlobalKey}
 											onCheckedChange={setDisableGlobalKey}
 										/>
+									</div>
+
+									{/* Endpoint URL */}
+									<div className="space-y-2">
+										<Label>Endpoint URL</Label>
+										<Input
+											value={endpointUrl}
+											readOnly
+											className="font-mono text-xs"
+										/>
+									</div>
+
+									{/* API Key Management - Hidden for public endpoints */}
+									{!isPublicEndpoint && (
+										<div className="space-y-2">
+											<Label>Workflow API Key</Label>
+											{hasKey ? (
+												<div className="flex items-center gap-2">
+													<Input
+														type="text"
+														value={displayKey}
+														readOnly
+														className="font-mono text-xs flex-1"
+													/>
+													<Button
+														variant="outline"
+														size="sm"
+														onClick={handleGenerateKey}
+														disabled={createKeyMutation.isPending}
+														title="Regenerate API key"
+													>
+														<RefreshCw className={cn("h-4 w-4", createKeyMutation.isPending && "animate-spin")} />
+													</Button>
+												</div>
+											) : (
+												<div className="flex items-center gap-2">
+													<p className="text-sm text-muted-foreground flex-1">
+														No API key configured
+													</p>
+													<Button
+														variant="default"
+														size="sm"
+														onClick={handleGenerateKey}
+														disabled={createKeyMutation.isPending}
+													>
+														{createKeyMutation.isPending ? (
+															<>
+																<RefreshCw className="mr-2 h-4 w-4 animate-spin" />
+																Generating...
+															</>
+														) : (
+															"Generate Key"
+														)}
+													</Button>
+												</div>
+											)}
+											<p className="text-xs text-muted-foreground">
+												{hasKey
+													? "This key is specific to this workflow. Click refresh to regenerate."
+													: "Generate a workflow-specific API key for authenticating HTTP requests."}
+											</p>
+										</div>
+									)}
+
+									{/* cURL Example */}
+									<div className="space-y-2">
+										<Label>Example Request</Label>
+										<div className="relative">
+											<pre className="p-4 bg-muted rounded-md text-xs overflow-x-auto">
+												<code>{curlExample}</code>
+											</pre>
+											<Button
+												variant="ghost"
+												size="sm"
+												className="absolute top-2 right-2"
+												onClick={() => copyToClipboard(curlExample)}
+											>
+												{copiedCurl ? (
+													<Check className="h-3 w-3" />
+												) : (
+													<Copy className="h-3 w-3" />
+												)}
+											</Button>
+										</div>
 									</div>
 								</>
 							)}

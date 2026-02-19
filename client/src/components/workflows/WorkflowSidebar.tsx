@@ -15,6 +15,7 @@ import {
 	X,
 	Tag,
 	PanelLeftClose,
+	Globe,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -234,6 +235,10 @@ export interface WorkflowSidebarProps {
 	onAppSelect: (appId: string | null) => void;
 	/** Callback when agent filter changes */
 	onAgentSelect: (agentId: string | null) => void;
+	/** Whether endpoint filter is active */
+	endpointFilter: boolean;
+	/** Callback when endpoint filter changes */
+	onEndpointFilterChange: (enabled: boolean) => void;
 	/** Organization scope for filtering */
 	scope?: string;
 	/** Callback to close/collapse the sidebar */
@@ -259,6 +264,8 @@ export function WorkflowSidebar({
 	onFormSelect,
 	onAppSelect,
 	onAgentSelect,
+	endpointFilter,
+	onEndpointFilterChange,
 	scope,
 	onClose,
 	className,
@@ -279,17 +286,22 @@ export function WorkflowSidebar({
 		selectedCategory !== null ||
 		selectedFormId !== null ||
 		selectedAppId !== null ||
-		selectedAgentId !== null;
+		selectedAgentId !== null ||
+		endpointFilter;
 
 	const clearFilters = () => {
 		onCategorySelect(null);
 		onFormSelect(null);
 		onAppSelect(null);
 		onAgentSelect(null);
+		onEndpointFilterChange(false);
 	};
 
 	// Find selected filter name for display
 	const getSelectedFilterName = (): string | null => {
+		if (endpointFilter) {
+			return "Endpoint Enabled";
+		}
 		if (selectedCategory) {
 			return selectedCategory;
 		}
@@ -371,6 +383,29 @@ export function WorkflowSidebar({
 					onSelect={onCategorySelect}
 					isLoading={categoriesLoading}
 				/>
+
+				{/* By Status */}
+				<div className="px-3 pt-3 pb-1">
+					<span className="text-xs font-medium text-muted-foreground uppercase tracking-wider">
+						By Status
+					</span>
+				</div>
+				<div className="border-b">
+					<button
+						onClick={() => onEndpointFilterChange(!endpointFilter)}
+						className={cn(
+							"flex items-center w-full px-6 py-2 text-sm transition-colors",
+							endpointFilter
+								? "bg-primary/10 text-primary font-medium"
+								: "hover:bg-muted/50 text-foreground",
+						)}
+					>
+						<Globe className="h-4 w-4 mr-2 text-muted-foreground" />
+						<span className="truncate flex-1 text-left min-w-0">
+							Endpoint Enabled
+						</span>
+					</button>
+				</div>
 
 				{/* By Usage */}
 				<div className="px-3 pt-3 pb-1">

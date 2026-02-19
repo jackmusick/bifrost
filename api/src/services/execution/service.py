@@ -72,7 +72,7 @@ async def get_workflow_metadata_only(
             timeout_seconds=cached.get("timeout_seconds", 1800),
             time_saved=cached.get("time_saved", 0),
             value=cached.get("value", 0.0),
-            execution_mode=cached.get("execution_mode", "async"),
+            execution_mode=cached.get("execution_mode", "sync"),
         )
         metadata.id = cached["id"]
         metadata.source_file_path = cached["file_path"]
@@ -103,7 +103,7 @@ async def get_workflow_metadata_only(
         timeout_seconds=workflow_record.timeout_seconds or 1800,
         time_saved=workflow_record.time_saved or 0,
         value=float(workflow_record.value) if workflow_record.value else 0.0,
-        execution_mode=workflow_record.execution_mode or "async",
+        execution_mode=workflow_record.execution_mode or "sync",
     )
     metadata.id = str(workflow_record.id)
     metadata.source_file_path = workflow_record.path
@@ -116,7 +116,7 @@ async def get_workflow_metadata_only(
         timeout_seconds=workflow_record.timeout_seconds or 1800,
         time_saved=workflow_record.time_saved or 0,
         value=float(workflow_record.value) if workflow_record.value else 0.0,
-        execution_mode=workflow_record.execution_mode or "async",
+        execution_mode=workflow_record.execution_mode or "sync",
     )
 
     logger.debug(f"Loaded workflow metadata from DB: {workflow_id} -> {workflow_record.name}")
@@ -357,20 +357,15 @@ async def run_workflow(
             f"Failed to validate workflow '{workflow_id}': {str(e)}"
         )
 
-    # Determine sync mode - if not explicitly set, use workflow's execution_mode
-    use_sync = sync
-    if not sync and workflow_metadata.execution_mode == "sync":
-        use_sync = True
-        logger.debug(f"Workflow {workflow_id} has execution_mode='sync', waiting for result")
-
     # Enqueue for execution via worker
+    # sync is only True when explicitly passed by the caller (e.g. endpoints.py)
     return await _enqueue_workflow_async(
         context=context,
         workflow_id=workflow_id,
         workflow_name=workflow_metadata.name,
         parameters=parameters,
         form_id=form_id,
-        sync=use_sync,
+        sync=sync,
     )
 
 

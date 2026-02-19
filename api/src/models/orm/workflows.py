@@ -71,7 +71,7 @@ class Workflow(Base):
     allowed_methods: Mapped[list] = mapped_column(JSONB, default=["POST"])
     public_endpoint: Mapped[bool] = mapped_column(Boolean, default=False)
     disable_global_key: Mapped[bool] = mapped_column(Boolean, default=False)
-    execution_mode: Mapped[str] = mapped_column(String(20), default="async")
+    execution_mode: Mapped[str] = mapped_column(String(20), default="sync")
     timeout_seconds: Mapped[int] = mapped_column(Integer, default=1800)  # 30 min default
 
     # Tool configuration (for AI agent tool calling when type='tool')

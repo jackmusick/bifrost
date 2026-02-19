@@ -52,7 +52,6 @@ import { useWorkflowKeys } from "@/hooks/useWorkflowKeys";
 import { useOrgScope } from "@/contexts/OrgScopeContext";
 import { useAuth } from "@/contexts/AuthContext";
 import { useOrganizations } from "@/hooks/useOrganizations";
-import { HttpTriggerDialog } from "@/components/workflows/HttpTriggerDialog";
 import { OrphanedWorkflowDialog } from "@/components/workflows/OrphanedWorkflowDialog";
 import { WorkflowEditDialog } from "@/components/workflows/WorkflowEditDialog";
 import { WorkflowSidebar } from "@/components/workflows/WorkflowSidebar";
@@ -83,10 +82,6 @@ export function Workflows() {
 	const [filterOrgId, setFilterOrgId] = useState<string | null | undefined>(
 		undefined,
 	);
-	const [webhookDialogOpen, setWebhookDialogOpen] = useState(false);
-	const [selectedWorkflow, setSelectedWorkflow] = useState<Workflow | null>(
-		null,
-	);
 	const [searchTerm, setSearchTerm] = useState("");
 	const [viewMode, setViewMode] = useState<"grid" | "table">("grid");
 	const [typeFilter, setTypeFilter] = useState<string>("all");
@@ -100,6 +95,7 @@ export function Workflows() {
 	// Edit workflow dialog state
 	const [editDialogOpen, setEditDialogOpen] = useState(false);
 	const [editingWorkflow, setEditingWorkflow] = useState<Workflow | null>(null);
+	const [editDialogInitialTab, setEditDialogInitialTab] = useState<string | undefined>(undefined);
 
 	// Orphaned workflow dialog state
 	const [orphanedDialogOpen, setOrphanedDialogOpen] = useState(false);
@@ -110,6 +106,7 @@ export function Workflows() {
 	const [selectedFormId, setSelectedFormId] = useState<string | null>(null);
 	const [selectedAppId, setSelectedAppId] = useState<string | null>(null);
 	const [selectedAgentId, setSelectedAgentId] = useState<string | null>(null);
+	const [endpointFilter, setEndpointFilter] = useState(false);
 
 	// Open in editor state
 	const [openingWorkflowId, setOpeningWorkflowId] = useState<string | null>(null);
@@ -158,11 +155,17 @@ export function Workflows() {
 			.sort((a, b) => a.name.localeCompare(b.name));
 	}, [workflows]);
 
-	// Apply category filter first
+	// Apply category and endpoint filters
 	const categoryFilteredWorkflows = useMemo(() => {
-		if (!selectedCategory) return workflows;
-		return workflows.filter((w) => w.category === selectedCategory);
-	}, [workflows, selectedCategory]);
+		let filtered = workflows;
+		if (selectedCategory) {
+			filtered = filtered.filter((w) => w.category === selectedCategory);
+		}
+		if (endpointFilter) {
+			filtered = filtered.filter((w) => w.endpoint_enabled);
+		}
+		return filtered;
+	}, [workflows, selectedCategory, endpointFilter]);
 
 	// Apply search filter (type filtering is now done server-side)
 	const filteredWorkflows = useSearch(categoryFilteredWorkflows, searchTerm, [
@@ -194,13 +197,9 @@ export function Workflows() {
 		navigate(`/workflows/${workflowName}/execute`);
 	};
 
-	const handleShowWebhook = (workflow: Workflow) => {
-		setSelectedWorkflow(workflow);
-		setWebhookDialogOpen(true);
-	};
-
-	const handleEditWorkflow = (workflow: Workflow) => {
+	const handleEditWorkflow = (workflow: Workflow, tab?: string) => {
 		setEditingWorkflow(workflow);
+		setEditDialogInitialTab(tab);
 		setEditDialogOpen(true);
 	};
 
@@ -375,6 +374,8 @@ export function Workflows() {
 						onFormSelect={setSelectedFormId}
 						onAppSelect={setSelectedAppId}
 						onAgentSelect={setSelectedAgentId}
+						endpointFilter={endpointFilter}
+						onEndpointFilterChange={setEndpointFilter}
 						scope={isPlatformAdmin ? filterOrgId ?? undefined : undefined}
 						onClose={() => setSidebarOpen(false)}
 						className="w-64 shrink-0"
@@ -602,7 +603,7 @@ export function Workflows() {
 															}`}
 															onClick={(e) => {
 																e.stopPropagation();
-																handleShowWebhook(workflow);
+																handleEditWorkflow(workflow, "endpoint");
 															}}
 															title={
 																workflow.public_endpoint
@@ -791,15 +792,6 @@ export function Workflows() {
 				</div>
 			</div>
 
-			{/* HTTP Trigger Dialog */}
-			{selectedWorkflow && (
-				<HttpTriggerDialog
-					workflow={selectedWorkflow}
-					open={webhookDialogOpen}
-					onOpenChange={setWebhookDialogOpen}
-				/>
-			)}
-
 			{/* Orphaned Workflow Dialog */}
 			{orphanedWorkflow && (
 				<OrphanedWorkflowDialog
@@ -816,6 +808,7 @@ export function Workflows() {
 				open={editDialogOpen}
 				onOpenChange={setEditDialogOpen}
 				onSuccess={() => refetch()}
+				initialTab={editDialogInitialTab}
 			/>
 		</div>
 	);

@@ -89,7 +89,7 @@ class WorkflowMetadata(ExecutableMetadata):
     scheduling, HTTP endpoints, and tool configuration.
     """
     # Execution mode
-    execution_mode: Literal["sync", "async"] = "async"
+    execution_mode: Literal["sync", "async"] = "sync"
 
     # Retry (for future use)
     retry_policy: dict[str, Any] | None = None
