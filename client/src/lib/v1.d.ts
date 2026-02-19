@@ -3301,7 +3301,7 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/api/endpoints/{workflow_name}": {
+    "/api/endpoints/{workflow_id}": {
         parameters: {
             query?: never;
             header?: never;
@@ -3312,22 +3312,22 @@ export interface paths {
          * Execute workflow via API key
          * @description Execute an endpoint-enabled workflow using an API key for authentication
          */
-        get: operations["execute_endpoint_api_endpoints__workflow_name__put"];
+        get: operations["execute_endpoint_api_endpoints__workflow_id__put"];
         /**
          * Execute workflow via API key
          * @description Execute an endpoint-enabled workflow using an API key for authentication
          */
-        put: operations["execute_endpoint_api_endpoints__workflow_name__put"];
+        put: operations["execute_endpoint_api_endpoints__workflow_id__put"];
         /**
          * Execute workflow via API key
          * @description Execute an endpoint-enabled workflow using an API key for authentication
          */
-        post: operations["execute_endpoint_api_endpoints__workflow_name__put"];
+        post: operations["execute_endpoint_api_endpoints__workflow_id__put"];
         /**
          * Execute workflow via API key
          * @description Execute an endpoint-enabled workflow using an API key for authentication
          */
-        delete: operations["execute_endpoint_api_endpoints__workflow_name__put"];
+        delete: operations["execute_endpoint_api_endpoints__workflow_id__put"];
         options?: never;
         head?: never;
         patch?: never;
@@ -5742,7 +5742,7 @@ export interface paths {
         post?: never;
         /**
          * Delete event source
-         * @description Soft delete an event source (Platform admin only).
+         * @description Delete an event source and all related data (Platform admin only).
          */
         delete: operations["delete_source_api_events_sources__source_id__delete"];
         options?: never;
@@ -8938,6 +8938,16 @@ export interface components {
              * @description Organization ID (only for org-specific config)
              */
             org_id?: string | null;
+            /**
+             * Integration Id
+             * @description Integration ID (if config is managed by an integration)
+             */
+            integration_id?: string | null;
+            /**
+             * Integration Name
+             * @description Integration name (if config is managed by an integration)
+             */
+            integration_name?: string | null;
             /** Description */
             description?: string | null;
             /** Updated At */
@@ -17410,10 +17420,10 @@ export interface components {
          */
         WorkflowKeyCreateRequest: {
             /**
-             * Workflow Name
-             * @description Workflow-specific key, or None for global
+             * Workflow Id
+             * @description Workflow UUID for workflow-specific key
              */
-            workflow_name?: string | null;
+            workflow_id?: string | null;
             /**
              * Expires In Days
              * @description Days until key expires (default: no expiration)
@@ -17448,6 +17458,8 @@ export interface components {
              * @description Last 4 characters for display
              */
             masked_key?: string | null;
+            /** Workflow Id */
+            workflow_id?: string | null;
             /** Workflow Name */
             workflow_name?: string | null;
             /** Created By */
@@ -17489,6 +17501,8 @@ export interface components {
              * @description Last 4 characters for display
              */
             masked_key?: string | null;
+            /** Workflow Id */
+            workflow_id?: string | null;
             /** Workflow Name */
             workflow_name?: string | null;
             /** Created By */
@@ -21881,7 +21895,9 @@ export interface operations {
     };
     list_keys_api_workflow_keys_get: {
         parameters: {
-            query?: never;
+            query?: {
+                workflow_id?: string | null;
+            };
             header?: never;
             path?: never;
             cookie?: never;
@@ -21895,6 +21911,15 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["WorkflowKeyResponse"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
                 };
             };
         };
@@ -23210,14 +23235,14 @@ export interface operations {
             };
         };
     };
-    execute_endpoint_api_endpoints__workflow_name__put: {
+    execute_endpoint_api_endpoints__workflow_id__put: {
         parameters: {
             query?: never;
             header: {
                 "X-Bifrost-Key": string;
             };
             path: {
-                workflow_name: string;
+                workflow_id: string;
             };
             cookie?: never;
         };
@@ -23243,14 +23268,14 @@ export interface operations {
             };
         };
     };
-    execute_endpoint_api_endpoints__workflow_name__put: {
+    execute_endpoint_api_endpoints__workflow_id__put: {
         parameters: {
             query?: never;
             header: {
                 "X-Bifrost-Key": string;
             };
             path: {
-                workflow_name: string;
+                workflow_id: string;
             };
             cookie?: never;
         };
@@ -23276,14 +23301,14 @@ export interface operations {
             };
         };
     };
-    execute_endpoint_api_endpoints__workflow_name__put: {
+    execute_endpoint_api_endpoints__workflow_id__put: {
         parameters: {
             query?: never;
             header: {
                 "X-Bifrost-Key": string;
             };
             path: {
-                workflow_name: string;
+                workflow_id: string;
             };
             cookie?: never;
         };
@@ -23309,14 +23334,14 @@ export interface operations {
             };
         };
     };
-    execute_endpoint_api_endpoints__workflow_name__put: {
+    execute_endpoint_api_endpoints__workflow_id__put: {
         parameters: {
             query?: never;
             header: {
                 "X-Bifrost-Key": string;
             };
             path: {
-                workflow_name: string;
+                workflow_id: string;
             };
             cookie?: never;
         };
