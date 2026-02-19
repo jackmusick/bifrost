@@ -542,7 +542,7 @@ async def update_source(
     "/sources/{source_id}",
     status_code=status.HTTP_204_NO_CONTENT,
     summary="Delete event source",
-    description="Soft delete an event source (Platform admin only).",
+    description="Delete an event source and all related data (Platform admin only).",
 )
 async def delete_source(
     source_id: UUID,
@@ -551,11 +551,11 @@ async def delete_source(
     db: DbSession,
 ) -> None:
     """
-    Soft delete an event source.
+    Delete an event source.
 
     This will:
-    1. Deactivate the source
-    2. Call adapter unsubscribe (for external subscriptions)
+    1. Call adapter unsubscribe (for external subscriptions)
+    2. Hard delete the source and all related data (cascades)
     """
     repo = EventSourceRepository(db)
     source = await repo.get_by_id_with_details(source_id)
@@ -579,14 +579,12 @@ async def delete_source(
                 )
             except Exception as e:
                 logger.warning(f"Failed to unsubscribe webhook: {e}")
-                # Continue with soft delete anyway
+                # Continue with delete anyway
 
-    source.is_active = False
-    source.updated_at = datetime.now(timezone.utc)
-
+    await db.delete(source)
     await db.flush()
 
-    logger.info(f"Soft deleted event source {source_id}")
+    logger.info(f"Deleted event source {source_id}")
 
 
 # =============================================================================
