@@ -27,6 +27,8 @@ from src.models import (
     IntegrationDetailResponse,
     IntegrationListResponse,
     IntegrationMapping,
+    IntegrationMappingBatchRequest,
+    IntegrationMappingBatchResponse,
     IntegrationMappingCreate,
     IntegrationMappingListResponse,
     IntegrationMappingResponse,
@@ -1168,6 +1170,71 @@ async def update_mapping(
         config=org_config if org_config else None,
         created_at=mapping.created_at,
         updated_at=mapping.updated_at,
+    )
+
+
+@router.post(
+    "/{integration_id}/mappings/batch",
+    response_model=IntegrationMappingBatchResponse,
+    summary="Batch upsert integration mappings",
+    description="Create or update multiple mappings in a single request (Platform admin only)",
+)
+async def batch_upsert_mappings(
+    integration_id: UUID,
+    request: IntegrationMappingBatchRequest,
+    ctx: Context,
+    user: CurrentSuperuser,
+) -> IntegrationMappingBatchResponse:
+    """Batch create/update integration mappings."""
+    repo = IntegrationsRepository(ctx.db)
+
+    # Verify integration exists
+    integration = await repo.get_integration_by_id(integration_id)
+    if not integration:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Integration not found",
+        )
+
+    created = 0
+    updated = 0
+    errors: list[str] = []
+
+    for item in request.mappings:
+        try:
+            existing = await repo.get_mapping_by_org(integration_id, item.organization_id)
+            if existing:
+                update_data = IntegrationMappingUpdate(
+                    entity_id=item.entity_id,
+                    entity_name=item.entity_name,
+                )
+                await repo.update_mapping(
+                    integration_id, existing.id, update_data, updated_by=user.email
+                )
+                updated += 1
+            else:
+                create_data = IntegrationMappingCreate(
+                    organization_id=item.organization_id,
+                    entity_id=item.entity_id,
+                    entity_name=item.entity_name,
+                )
+                await repo.create_mapping(create_data, integration_id, updated_by=user.email)
+                created += 1
+        except Exception as e:
+            errors.append(f"org {item.organization_id}: {str(e)}")
+            logger.error(f"Batch mapping error for org {item.organization_id}: {e}")
+
+    await ctx.db.commit()
+
+    logger.info(
+        f"Batch upsert for integration {integration_id}: "
+        f"created={created}, updated={updated}, errors={len(errors)}"
+    )
+
+    return IntegrationMappingBatchResponse(
+        created=created,
+        updated=updated,
+        errors=errors,
     )
 
 

@@ -194,6 +194,45 @@ class IntegrationMappingUpdate(BaseModel):
     )
 
 
+class IntegrationMappingBatchItem(BaseModel):
+    """A single mapping in a batch upsert request."""
+
+    organization_id: UUID = Field(
+        ...,
+        description="Organization ID to map",
+    )
+    entity_id: str = Field(
+        ...,
+        min_length=1,
+        max_length=255,
+        description="External entity ID",
+    )
+    entity_name: str | None = Field(
+        default=None,
+        max_length=255,
+        description="Display name for the external entity",
+    )
+
+
+class IntegrationMappingBatchRequest(BaseModel):
+    """Batch upsert request for integration mappings."""
+
+    mappings: list[IntegrationMappingBatchItem] = Field(
+        ...,
+        min_length=1,
+        max_length=500,
+        description="List of mappings to create or update",
+    )
+
+
+class IntegrationMappingBatchResponse(BaseModel):
+    """Response from batch mapping upsert."""
+
+    created: int = Field(..., description="Number of new mappings created")
+    updated: int = Field(..., description="Number of existing mappings updated")
+    errors: list[str] = Field(default_factory=list, description="Error messages for failed items")
+
+
 # ==================== INTEGRATION RESPONSE MODELS ====================
 
 
