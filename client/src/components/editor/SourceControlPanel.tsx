@@ -1046,7 +1046,7 @@ function ChangesSection({
 						</span>
 					</button>
 				</ContextMenuTrigger>
-				<ContextMenuContent>
+				<ContextMenuContent className="z-[200]">
 					<ContextMenuItem
 						disabled={!hasChanges || disabled}
 						onClick={() => setShowDiscardAllConfirm(true)}

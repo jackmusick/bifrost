@@ -48,7 +48,7 @@ def upgrade() -> None:
                 conn.execute(
                     sa.text(
                         "UPDATE configs SET config_type = :schema_type, "
-                        "value = jsonb_build_object('value', :enc_val) "
+                        "value = jsonb_build_object('value', CAST(:enc_val AS text)) "
                         "WHERE id = :config_id"
                     ),
                     {

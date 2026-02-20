@@ -327,8 +327,8 @@ export function Config() {
 								{isPlatformAdmin && (
 									<DataTableHead className="w-0 whitespace-nowrap">Organization</DataTableHead>
 								)}
-								<DataTableHead>Key</DataTableHead>
 								<DataTableHead className="w-0 whitespace-nowrap">Integration</DataTableHead>
+								<DataTableHead>Key</DataTableHead>
 								<DataTableHead className="w-0 whitespace-nowrap">Value</DataTableHead>
 								<DataTableHead className="w-0 whitespace-nowrap">Type</DataTableHead>
 								<DataTableHead>Description</DataTableHead>
@@ -375,9 +375,6 @@ export function Config() {
 											)}
 										</DataTableCell>
 									)}
-									<DataTableCell className="font-mono">
-										{config.key}
-									</DataTableCell>
 									<DataTableCell className="w-0 whitespace-nowrap">
 										{config.integration_name ? (
 											<Badge variant="outline" className="text-xs">
@@ -386,6 +383,9 @@ export function Config() {
 										) : (
 											<span className="text-muted-foreground">-</span>
 										)}
+									</DataTableCell>
+									<DataTableCell className="font-mono">
+										{config.key}
 									</DataTableCell>
 									<DataTableCell className="w-0 whitespace-nowrap max-w-xs truncate">
 										{maskValue(config.value, config.type)}
