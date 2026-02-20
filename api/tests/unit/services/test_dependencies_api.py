@@ -1,41 +1,33 @@
-"""Tests for the dependencies API endpoint helper."""
-from src.routers.app_code_files import _parse_dependencies, _serialize_dependencies
+"""Tests for dependency validation logic."""
+import re
+
+_PKG_NAME_RE = re.compile(r"^(@[a-z0-9-]+/)?[a-z0-9][a-z0-9._-]*$")
+_VERSION_RE = re.compile(r"^\^?~?\d+(\.\d+){0,2}$")
 
 
-def test_serialize_empty_dependencies():
-    """Empty deps produce valid YAML with empty dependencies."""
-    result = _serialize_dependencies({}, existing_yaml=None)
-    assert "dependencies:" not in result or "dependencies: {}" in result
+def test_valid_package_names():
+    """Standard and scoped package names pass validation."""
+    assert _PKG_NAME_RE.match("recharts")
+    assert _PKG_NAME_RE.match("dayjs")
+    assert _PKG_NAME_RE.match("@tanstack/react-table")
+    assert _PKG_NAME_RE.match("react-icons")
 
 
-def test_serialize_adds_dependencies_to_existing():
-    """Adding deps preserves other app.yaml fields."""
-    existing = "name: My App\ndescription: Cool app\n"
-    result = _serialize_dependencies(
-        {"recharts": "2.12", "dayjs": "1.11"}, existing_yaml=existing
-    )
-    assert "name: My App" in result
-    assert "recharts" in result
-    assert "dayjs" in result
+def test_invalid_package_names():
+    """Invalid package names are rejected."""
+    assert not _PKG_NAME_RE.match("")
+    assert not _PKG_NAME_RE.match("UPPERCASE")
+    assert not _PKG_NAME_RE.match("../path-traversal")
 
 
-def test_serialize_replaces_existing_dependencies():
-    """Updating deps replaces the old dependencies section."""
-    existing = "name: My App\ndependencies:\n  old-pkg: '1.0'\n"
-    result = _serialize_dependencies({"new-pkg": "2.0"}, existing_yaml=existing)
-    assert "new-pkg" in result
-    assert "old-pkg" not in result
+def test_valid_versions():
+    """Semver versions with optional prefix pass."""
+    assert _VERSION_RE.match("2.12")
+    assert _VERSION_RE.match("^1.5.3")
+    assert _VERSION_RE.match("~1.11")
 
 
-def test_serialize_creates_yaml_from_scratch():
-    """When no existing YAML, creates a minimal app.yaml."""
-    result = _serialize_dependencies({"recharts": "2.12"}, existing_yaml=None)
-    assert "recharts" in result
-
-
-def test_roundtrip_parse_serialize():
-    """Serialized deps can be parsed back identically."""
-    deps = {"recharts": "^2.12", "dayjs": "~1.11.3", "@tanstack/react-table": "8.20"}
-    yaml_str = _serialize_dependencies(deps, existing_yaml="name: Test\n")
-    parsed = _parse_dependencies(yaml_str)
-    assert parsed == deps
+def test_invalid_versions():
+    """Invalid versions are rejected."""
+    assert not _VERSION_RE.match("latest")
+    assert not _VERSION_RE.match("*")

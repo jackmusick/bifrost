@@ -22,16 +22,6 @@ def test_extract_entity_metadata_for_agent():
     assert metadata.parent_slug is None
 
 
-def test_extract_entity_metadata_for_app():
-    """App metadata should extract name and include parent_slug."""
-    content = b"name: Dashboard App\nversion: '1.0'\n"
-    metadata = extract_entity_metadata("apps/dashboard/app.yaml", content)
-
-    assert metadata.entity_type == "app"
-    assert metadata.display_name == "Dashboard App"
-    assert metadata.parent_slug == "dashboard"
-
-
 def test_extract_entity_metadata_for_app_file():
     """App files should have parent_slug and relative path as display_name."""
     metadata = extract_entity_metadata("apps/dashboard/src/index.tsx", None)

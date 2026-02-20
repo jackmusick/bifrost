@@ -29,17 +29,6 @@ class TestExtractEntityMetadata:
         assert result.display_name == "Support Bot"
         assert result.parent_slug is None
 
-    def test_app_yaml_extracts_name(self):
-        """App app.yaml extracts name as display_name."""
-        path = "apps/dashboard/app.yaml"
-        content = b"name: Dashboard\nslug: dashboard\n"
-
-        result = extract_entity_metadata(path, content)
-
-        assert result.entity_type == "app"
-        assert result.display_name == "Dashboard"
-        assert result.parent_slug == "dashboard"
-
     def test_app_file_extracts_parent_slug(self):
         """App code file extracts parent slug."""
         path = "apps/dashboard/pages/index.tsx"

@@ -2826,13 +2826,10 @@ class TestPullUpsertNaturalKeys:
         id_b = uuid4()
         clone_dir = Path(working_clone.working_dir)
 
-        # Write app.yaml file
+        # Write app layout file
         app_dir = clone_dir / "apps" / "natural-key-app"
         app_dir.mkdir(parents=True, exist_ok=True)
-        (app_dir / "app.yaml").write_text(yaml.dump({
-            "name": "Natural Key App Updated",
-            "description": "Updated from remote",
-        }, default_flow_style=False))
+        (app_dir / "_layout.tsx").write_text("export default function Layout({ children }) { return <>{children}</>; }\n")
 
         bifrost_dir = clone_dir / ".bifrost"
         bifrost_dir.mkdir(exist_ok=True)
@@ -2840,15 +2837,17 @@ class TestPullUpsertNaturalKeys:
             "apps": {
                 "natural-key-app": {
                     "id": str(id_b),
-                    "path": "apps/natural-key-app/app.yaml",
+                    "path": "apps/natural-key-app",
                     "slug": "natural-key-app",
+                    "name": "Natural Key App Updated",
+                    "description": "Updated from remote",
                 }
             }
         }, default_flow_style=False, sort_keys=False)
         (bifrost_dir / "metadata.yaml").write_text(manifest_content)
 
         working_clone.index.add([
-            "apps/natural-key-app/app.yaml",
+            "apps/natural-key-app/_layout.tsx",
             ".bifrost/metadata.yaml",
         ])
         working_clone.index.commit("Add app with different ID")
@@ -3056,10 +3055,7 @@ class TestPullUpsertNaturalKeys:
         custom_path = "custom/team/dashboard"
         app_dir = clone_dir / custom_path
         app_dir.mkdir(parents=True, exist_ok=True)
-        (app_dir / "app.yaml").write_text(yaml.dump({
-            "name": "Team Dashboard",
-            "description": "Custom path app",
-        }, default_flow_style=False))
+        (app_dir / "_layout.tsx").write_text("export default function Layout({ children }) { return <>{children}</>; }\n")
 
         bifrost_dir = clone_dir / ".bifrost"
         bifrost_dir.mkdir(exist_ok=True)
@@ -3067,15 +3063,17 @@ class TestPullUpsertNaturalKeys:
             "apps": {
                 "team-dashboard": {
                     "id": str(app_id),
-                    "path": f"{custom_path}/app.yaml",
+                    "path": custom_path,
                     "slug": "team-dashboard",
+                    "name": "Team Dashboard",
+                    "description": "Custom path app",
                 }
             }
         }, default_flow_style=False, sort_keys=False)
         (bifrost_dir / "metadata.yaml").write_text(manifest_content)
 
         working_clone.index.add([
-            f"{custom_path}/app.yaml",
+            f"{custom_path}/_layout.tsx",
             ".bifrost/metadata.yaml",
         ])
         working_clone.index.commit("Add app at custom path")
@@ -3109,10 +3107,7 @@ class TestPullUpsertNaturalKeys:
         slug = "my_app"
         app_dir = clone_dir / "apps" / slug
         app_dir.mkdir(parents=True, exist_ok=True)
-        (app_dir / "app.yaml").write_text(yaml.dump({
-            "name": "My Underscore App",
-            "description": "Has underscores in slug",
-        }, default_flow_style=False))
+        (app_dir / "_layout.tsx").write_text("export default function Layout({ children }) { return <>{children}</>; }\n")
 
         bifrost_dir = clone_dir / ".bifrost"
         bifrost_dir.mkdir(exist_ok=True)
@@ -3120,15 +3115,17 @@ class TestPullUpsertNaturalKeys:
             "apps": {
                 slug: {
                     "id": str(app_id),
-                    "path": f"apps/{slug}/app.yaml",
+                    "path": f"apps/{slug}",
                     "slug": slug,
+                    "name": "My Underscore App",
+                    "description": "Has underscores in slug",
                 }
             }
         }, default_flow_style=False, sort_keys=False)
         (bifrost_dir / "metadata.yaml").write_text(manifest_content)
 
         working_clone.index.add([
-            f"apps/{slug}/app.yaml",
+            f"apps/{slug}/_layout.tsx",
             ".bifrost/metadata.yaml",
         ])
         working_clone.index.commit("Add app with underscore slug")
@@ -3757,10 +3754,10 @@ class TestImportOrder:
         bifrost_dir = work_dir / ".bifrost"
         bifrost_dir.mkdir(exist_ok=True)
 
-        # Write app YAML
-        app_path = work_dir / "apps" / "testapp" / "app.yaml"
-        app_path.parent.mkdir(parents=True, exist_ok=True)
-        app_path.write_text(yaml.dump({"name": "TestApp"}, default_flow_style=False))
+        # Write app layout file
+        app_dir = work_dir / "apps" / "testapp"
+        app_dir.mkdir(parents=True, exist_ok=True)
+        (app_dir / "_layout.tsx").write_text("export default function Layout({ children }) { return <>{children}</>; }\n")
 
         (bifrost_dir / "organizations.yaml").write_text(yaml.dump({
             "organizations": [{"id": str(org_id), "name": "TableOrg"}]
@@ -3769,8 +3766,9 @@ class TestImportOrder:
             "apps": {
                 "testapp": {
                     "id": app_id,
-                    "path": "apps/testapp/app.yaml",
+                    "path": "apps/testapp",
                     "slug": "testapp",
+                    "name": "TestApp",
                     "organization_id": str(org_id),
                 }
             }
@@ -3786,7 +3784,7 @@ class TestImportOrder:
         }, default_flow_style=False))
 
         working_clone.index.add([
-            "apps/testapp/app.yaml",
+            "apps/testapp/_layout.tsx",
             ".bifrost/organizations.yaml",
             ".bifrost/apps.yaml",
             ".bifrost/tables.yaml",
@@ -4012,10 +4010,10 @@ class TestImportOrder:
             "name": "FullTestAgent", "system_prompt": "test", "tool_ids": [wf_id],
         }, default_flow_style=False))
 
-        # Write app YAML
+        # Write app layout file
         app_dir = work_dir / "apps" / "fullapp"
         app_dir.mkdir(parents=True, exist_ok=True)
-        (app_dir / "app.yaml").write_text(yaml.dump({"name": "FullTestApp"}, default_flow_style=False))
+        (app_dir / "_layout.tsx").write_text("export default function Layout({ children }) { return <>{children}</>; }\n")
 
         # Write all manifest files
         (bifrost_dir / "organizations.yaml").write_text(yaml.dump({
@@ -4061,8 +4059,9 @@ class TestImportOrder:
             "apps": {
                 "fullapp": {
                     "id": app_id,
-                    "path": "apps/fullapp/app.yaml",
+                    "path": "apps/fullapp",
                     "slug": "fullapp",
+                    "name": "FullTestApp",
                     "organization_id": org_id,
                     "roles": [role_id],
                 }
@@ -4118,7 +4117,7 @@ class TestImportOrder:
             "workflows/full_test.py",
             f"forms/{form_id}.form.yaml",
             f"agents/{agent_id}.agent.yaml",
-            "apps/fullapp/app.yaml",
+            "apps/fullapp/_layout.tsx",
             ".bifrost/organizations.yaml",
             ".bifrost/roles.yaml",
             ".bifrost/workflows.yaml",
@@ -4253,21 +4252,22 @@ class TestAccessLevelSync:
 
         app_dir = work_dir / "apps" / "accessapp"
         app_dir.mkdir(parents=True, exist_ok=True)
-        (app_dir / "app.yaml").write_text(yaml.dump({"name": "AccessApp"}, default_flow_style=False))
+        (app_dir / "_layout.tsx").write_text("export default function Layout({ children }) { return <>{children}</>; }\n")
 
         (bifrost_dir / "apps.yaml").write_text(yaml.dump({
             "apps": {
                 "accessapp": {
                     "id": app_id,
-                    "path": "apps/accessapp/app.yaml",
+                    "path": "apps/accessapp",
                     "slug": "accessapp",
+                    "name": "AccessApp",
                     "access_level": "public",
                 }
             }
         }, default_flow_style=False))
 
         working_clone.index.add([
-            "apps/accessapp/app.yaml",
+            "apps/accessapp/_layout.tsx",
             ".bifrost/apps.yaml",
         ])
         working_clone.index.commit("App access level")
