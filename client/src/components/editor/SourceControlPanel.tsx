@@ -26,6 +26,22 @@ import {
 	AlertTriangle,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import {
+	ContextMenu,
+	ContextMenuContent,
+	ContextMenuItem,
+	ContextMenuTrigger,
+} from "@/components/ui/context-menu";
+import {
+	AlertDialog,
+	AlertDialogAction,
+	AlertDialogCancel,
+	AlertDialogContent,
+	AlertDialogDescription,
+	AlertDialogFooter,
+	AlertDialogHeader,
+	AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 import { cn } from "@/lib/utils";
 import { toast } from "sonner";
 import {
@@ -622,6 +638,27 @@ export function SourceControlPanel() {
 		}
 	}, [discardOp, refreshStatus]);
 
+	const handleDiscardAll = useCallback(async () => {
+		if (changedFiles.length === 0) return;
+		try {
+			const result = await runGitOp<DiscardResult>(
+				() => discardOp.mutateAsync(changedFiles.map((f) => f.path)),
+				"discard",
+			);
+			if (result.success) {
+				toast.success(`Discarded all ${changedFiles.length} changes`);
+				setChangedFiles([]);
+				refreshStatus();
+			} else {
+				toast.error(result.error || "Discard all failed");
+			}
+		} catch (error) {
+			if (error instanceof Error) {
+				toast.error(error.message);
+			}
+		}
+	}, [changedFiles, discardOp, refreshStatus]);
+
 	// Auto-refresh on visibility change
 	useEffect(() => {
 		if (sidebarPanel !== "sourceControl") return;
@@ -768,6 +805,7 @@ export function SourceControlPanel() {
 					onPush={handlePush}
 					onShowDiff={handleShowDiff}
 					onDiscard={handleDiscard}
+					onDiscardAll={handleDiscardAll}
 					commitsBehind={commitsBehind}
 					commitsAhead={commitsAhead}
 					loading={loading}
@@ -950,6 +988,7 @@ function ChangesSection({
 	onPush,
 	onShowDiff,
 	onDiscard,
+	onDiscardAll,
 	commitsBehind,
 	commitsAhead,
 	loading,
@@ -969,6 +1008,7 @@ function ChangesSection({
 	onPush: () => void;
 	onShowDiff: (file: ChangedFile) => void;
 	onDiscard: (file: ChangedFile) => void;
+	onDiscardAll: () => void;
 	commitsBehind: number;
 	commitsAhead: number;
 	loading: "fetching" | "committing" | "pulling" | "pushing" | "resolving" | "loading_changes" | null;
@@ -981,27 +1021,41 @@ function ChangesSection({
 	onDismissCleanup?: () => void;
 }) {
 	const [expanded, setExpanded] = useState(true);
+	const [showDiscardAllConfirm, setShowDiscardAllConfirm] = useState(false);
 
 	const hasChanges = changedFiles.length > 0;
 	const canCommit = hasChanges && commitMessage.trim().length > 0;
 
 	return (
 		<div className={cn("border-t flex flex-col min-h-0", expanded && "flex-1")}>
-			<button
-				onClick={() => setExpanded(!expanded)}
-				className="w-full px-4 py-2 flex items-center gap-2 hover:bg-muted/30 transition-colors text-left flex-shrink-0"
-			>
-				{expanded ? (
-					<ChevronDown className="h-4 w-4 flex-shrink-0" />
-				) : (
-					<ChevronRight className="h-4 w-4 flex-shrink-0" />
-				)}
-				<Edit3 className="h-4 w-4 flex-shrink-0" />
-				<span className="text-sm font-medium flex-1 truncate">Changes</span>
-				<span className="text-xs text-muted-foreground bg-muted w-10 text-center py-0.5 rounded-full flex-shrink-0">
-					{changedFiles.length}
-				</span>
-			</button>
+			<ContextMenu>
+				<ContextMenuTrigger asChild>
+					<button
+						onClick={() => setExpanded(!expanded)}
+						className="w-full px-4 py-2 flex items-center gap-2 hover:bg-muted/30 transition-colors text-left flex-shrink-0"
+					>
+						{expanded ? (
+							<ChevronDown className="h-4 w-4 flex-shrink-0" />
+						) : (
+							<ChevronRight className="h-4 w-4 flex-shrink-0" />
+						)}
+						<Edit3 className="h-4 w-4 flex-shrink-0" />
+						<span className="text-sm font-medium flex-1 truncate">Changes</span>
+						<span className="text-xs text-muted-foreground bg-muted w-10 text-center py-0.5 rounded-full flex-shrink-0">
+							{changedFiles.length}
+						</span>
+					</button>
+				</ContextMenuTrigger>
+				<ContextMenuContent>
+					<ContextMenuItem
+						disabled={!hasChanges || disabled}
+						onClick={() => setShowDiscardAllConfirm(true)}
+					>
+						<Undo2 className="h-4 w-4 mr-2" />
+						Discard All Changes
+					</ContextMenuItem>
+				</ContextMenuContent>
+			</ContextMenu>
 			{expanded && (
 				<div className="flex-1 flex flex-col overflow-hidden min-h-0">
 					{/* Commit message input (shown when there are uncommitted changes) */}
@@ -1189,6 +1243,26 @@ function ChangesSection({
 					</div>
 				</div>
 			)}
+
+			<AlertDialog open={showDiscardAllConfirm} onOpenChange={setShowDiscardAllConfirm}>
+				<AlertDialogContent>
+					<AlertDialogHeader>
+						<AlertDialogTitle>Discard All Changes?</AlertDialogTitle>
+						<AlertDialogDescription>
+							This will discard all {changedFiles.length} uncommitted change(s). This cannot be undone.
+						</AlertDialogDescription>
+					</AlertDialogHeader>
+					<AlertDialogFooter>
+						<AlertDialogCancel>Cancel</AlertDialogCancel>
+						<AlertDialogAction
+							onClick={onDiscardAll}
+							className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+						>
+							Discard All
+						</AlertDialogAction>
+					</AlertDialogFooter>
+				</AlertDialogContent>
+			</AlertDialog>
 		</div>
 	);
 }
