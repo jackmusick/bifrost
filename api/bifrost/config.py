@@ -75,7 +75,11 @@ class config:
             result = response.json()
             if result is None:
                 return default
-            return result.get("value", default)
+            value = result.get("value", default)
+            if result.get("config_type") == "secret" and isinstance(value, str):
+                from ._context import register_secret
+                register_secret(value)
+            return value
         else:
             return default
 
