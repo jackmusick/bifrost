@@ -3312,22 +3312,22 @@ export interface paths {
          * Execute workflow via API key
          * @description Execute an endpoint-enabled workflow using an API key for authentication
          */
-        get: operations["execute_endpoint_api_endpoints__workflow_id__put"];
+        get: operations["execute_endpoint_api_endpoints__workflow_id__post"];
         /**
          * Execute workflow via API key
          * @description Execute an endpoint-enabled workflow using an API key for authentication
          */
-        put: operations["execute_endpoint_api_endpoints__workflow_id__put"];
+        put: operations["execute_endpoint_api_endpoints__workflow_id__post"];
         /**
          * Execute workflow via API key
          * @description Execute an endpoint-enabled workflow using an API key for authentication
          */
-        post: operations["execute_endpoint_api_endpoints__workflow_id__put"];
+        post: operations["execute_endpoint_api_endpoints__workflow_id__post"];
         /**
          * Execute workflow via API key
          * @description Execute an endpoint-enabled workflow using an API key for authentication
          */
-        delete: operations["execute_endpoint_api_endpoints__workflow_id__put"];
+        delete: operations["execute_endpoint_api_endpoints__workflow_id__post"];
         options?: never;
         head?: never;
         patch?: never;
@@ -4914,6 +4914,26 @@ export interface paths {
         get: operations["get_mapping_by_org_api_integrations__integration_id__mappings_by_org__org_id__get"];
         put?: never;
         post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/integrations/{integration_id}/mappings/batch": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Batch upsert integration mappings
+         * @description Create or update multiple mappings in a single request (Platform admin only)
+         */
+        post: operations["batch_upsert_mappings_api_integrations__integration_id__mappings_batch_post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -12146,6 +12166,60 @@ export interface components {
              * @description Total number of integrations
              */
             total: number;
+        };
+        /**
+         * IntegrationMappingBatchItem
+         * @description A single mapping in a batch upsert request.
+         */
+        IntegrationMappingBatchItem: {
+            /**
+             * Organization Id
+             * Format: uuid
+             * @description Organization ID to map
+             */
+            organization_id: string;
+            /**
+             * Entity Id
+             * @description External entity ID
+             */
+            entity_id: string;
+            /**
+             * Entity Name
+             * @description Display name for the external entity
+             */
+            entity_name?: string | null;
+        };
+        /**
+         * IntegrationMappingBatchRequest
+         * @description Batch upsert request for integration mappings.
+         */
+        IntegrationMappingBatchRequest: {
+            /**
+             * Mappings
+             * @description List of mappings to create or update
+             */
+            mappings: components["schemas"]["IntegrationMappingBatchItem"][];
+        };
+        /**
+         * IntegrationMappingBatchResponse
+         * @description Response from batch mapping upsert.
+         */
+        IntegrationMappingBatchResponse: {
+            /**
+             * Created
+             * @description Number of new mappings created
+             */
+            created: number;
+            /**
+             * Updated
+             * @description Number of existing mappings updated
+             */
+            updated: number;
+            /**
+             * Errors
+             * @description Error messages for failed items
+             */
+            errors?: string[];
         };
         /**
          * IntegrationMappingCreate
@@ -23235,7 +23309,7 @@ export interface operations {
             };
         };
     };
-    execute_endpoint_api_endpoints__workflow_id__put: {
+    execute_endpoint_api_endpoints__workflow_id__post: {
         parameters: {
             query?: never;
             header: {
@@ -23268,7 +23342,7 @@ export interface operations {
             };
         };
     };
-    execute_endpoint_api_endpoints__workflow_id__put: {
+    execute_endpoint_api_endpoints__workflow_id__post: {
         parameters: {
             query?: never;
             header: {
@@ -23301,7 +23375,7 @@ export interface operations {
             };
         };
     };
-    execute_endpoint_api_endpoints__workflow_id__put: {
+    execute_endpoint_api_endpoints__workflow_id__post: {
         parameters: {
             query?: never;
             header: {
@@ -23334,7 +23408,7 @@ export interface operations {
             };
         };
     };
-    execute_endpoint_api_endpoints__workflow_id__put: {
+    execute_endpoint_api_endpoints__workflow_id__post: {
         parameters: {
             query?: never;
             header: {
@@ -26236,6 +26310,41 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["IntegrationMappingResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    batch_upsert_mappings_api_integrations__integration_id__mappings_batch_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                integration_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["IntegrationMappingBatchRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["IntegrationMappingBatchResponse"];
                 };
             };
             /** @description Validation Error */

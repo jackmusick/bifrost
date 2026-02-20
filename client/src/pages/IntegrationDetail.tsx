@@ -31,7 +31,6 @@ import {
 import { toast } from "sonner";
 import {
 	useIntegration,
-	useCreateMapping,
 	useUpdateMapping,
 	useDeleteMapping,
 	useUpdateIntegration,
@@ -105,7 +104,6 @@ export function IntegrationDetail() {
 		"/api/organizations",
 	);
 
-	const createMutation = useCreateMapping();
 	const updateMutation = useUpdateMapping();
 	const deleteMutation = useDeleteMapping();
 	const updateIntegrationMutation = useUpdateIntegration();
@@ -286,63 +284,6 @@ export function IntegrationDetail() {
 		});
 	};
 
-	const handleSaveMapping = async (org: OrgWithMapping) => {
-		if (!integrationId) return;
-
-		try {
-			if (org.mapping) {
-				// Update existing mapping
-				await updateMutation.mutateAsync({
-					params: {
-						path: {
-							integration_id: integrationId,
-							mapping_id: org.mapping.id,
-						},
-					},
-					body: {
-						entity_id: org.formData.entity_id,
-						entity_name: org.formData.entity_name || undefined,
-						oauth_token_id:
-							org.formData.oauth_token_id || undefined,
-						config:
-							Object.keys(org.formData.config).length > 0
-								? org.formData.config
-								: undefined,
-					},
-				});
-				toast.success(`Mapping updated for ${org.name}`);
-			} else {
-				// Create new mapping
-				await createMutation.mutateAsync({
-					params: { path: { integration_id: integrationId } },
-					body: {
-						organization_id: org.id,
-						entity_id: org.formData.entity_id,
-						entity_name: org.formData.entity_name || undefined,
-						oauth_token_id:
-							org.formData.oauth_token_id || undefined,
-						config:
-							Object.keys(org.formData.config).length > 0
-								? org.formData.config
-								: undefined,
-					},
-				});
-				toast.success(`Mapping created for ${org.name}`);
-			}
-
-			// Mark as not dirty (remove from dirty edits)
-			setDirtyEdits((prev) => {
-				const next = new Map(prev);
-				next.delete(org.id);
-				return next;
-			});
-			// Cache invalidation in useCreateMapping/useUpdateMapping handles refetch
-		} catch (error) {
-			console.error("Failed to save mapping:", error);
-			toast.error(`Failed to save mapping for ${org.name}`);
-		}
-	};
-
 	const handleDeleteMappingClick = (org: OrgWithMapping) => {
 		setDeleteMappingConfirm(org);
 	};
@@ -467,11 +408,12 @@ export function IntegrationDetail() {
 			});
 
 			const total = result.created + result.updated;
-			if (result.errors.length === 0) {
+			const errorCount = result.errors?.length ?? 0;
+			if (errorCount === 0) {
 				toast.success(`Saved ${total} mapping(s)`);
 			} else {
 				toast.warning(
-					`Saved ${total} mapping(s), ${result.errors.length} failed`,
+					`Saved ${total} mapping(s), ${errorCount} failed`,
 				);
 			}
 		} catch {
