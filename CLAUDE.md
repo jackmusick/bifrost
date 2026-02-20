@@ -71,6 +71,44 @@ The client at `localhost:3000` proxies `/api/*` to the API container. This means
 
 **`get_module()` must NOT be used for non-Python files.** App source reads (TSX, YAML, etc.) go to S3 directly via `RepoStorage.read()`.
 
+## Manifest Serialization & Git Sync (Integration Data)
+
+The git sync system uses a **manifest** (`.bifrost/*.yaml`) to round-trip platform entities between the database and git. The `_resolve_*` methods in `github_sync.py` handle importing manifest data into the DB.
+
+### Key files
+
+| File | Purpose |
+|------|---------|
+| `api/src/services/manifest.py` | Pydantic models for manifest data (`ManifestIntegration`, `ManifestIntegrationMapping`, `ManifestConfig`, etc.) |
+| `api/src/services/manifest_generator.py` | DB → manifest serialization (generates `.bifrost/*.yaml` from DB state) |
+| `api/src/services/github_sync.py` | Manifest → DB import (`_resolve_integration`, `_resolve_config`, etc.) + stale-entity cleanup |
+
+### Integration sync: what gets serialized
+
+| Entity | Manifest model | DB model | Natural key for upsert |
+|--------|---------------|----------|----------------------|
+| Integration | `ManifestIntegration` | `Integration` | `name` or `id` |
+| Config schema | `ManifestConfigSchemaItem` (list in integration) | `IntegrationConfigSchema` | `(integration_id, key)` |
+| Mappings | `ManifestIntegrationMapping` (list in integration) | `IntegrationMapping` | `(integration_id, organization_id)` |
+| Config values | `ManifestConfig` (separate `configs` dict) | `Config` | `id` (UUID) |
+
+### Critical: non-destructive upsert pattern
+
+`_resolve_integration` syncs config schema and mappings using **upsert-by-natural-key** (not delete-all + re-insert):
+
+-   **Why**: `IntegrationConfigSchema` rows are referenced by `Config` rows via FK (`config_schema_id`). Deleting schema rows cascades to Config values set by users in the UI.
+-   **Why**: `IntegrationMapping` rows carry `oauth_token_id` set by users via OAuth flow. Deleting and re-creating mappings loses this.
+-   **Pattern**: Query existing rows → update matching → insert new → delete removed.
+-   **Stale-entity cleanup**: Config rows with a `config_schema_id` (user-set integration values) are excluded from the "delete configs not in manifest" sweep, since their lifecycle is managed by IntegrationConfigSchema cascade.
+
+### When adding new fields to manifest models
+
+1. Add the field to the Pydantic model in `manifest.py` (e.g., `ManifestIntegrationMapping`)
+2. Add serialization in `manifest_generator.py` (DB → manifest)
+3. Add deserialization in `github_sync.py` `_resolve_*` method (manifest → DB)
+4. **For upserted entities**: ensure the new field is included in BOTH the update-existing AND insert-new code paths
+5. Write a round-trip unit test in `tests/unit/test_manifest.py` and an E2E test in `tests/e2e/platform/test_git_sync_local.py`
+
 ## Project Structure
 
 ```
@@ -139,6 +177,8 @@ export async function getDataProviders() {
     -   Run specific test: `./test.sh tests/e2e/platform/test_sdk_from_workflow.py::TestSDKFileOperations::test_file_path_sandboxing -v`
     -   Run with coverage: `./test.sh --coverage`
     -   Run E2E tests: `./test.sh --e2e`
+    -   **Test results**: `./test.sh` exports JUnit XML to `/tmp/bifrost/test-results.xml` — parse this for pass/fail details instead of grepping stdout
+    -   **Logs**: Container logs are exported to `/tmp/bifrost/*.log` after test runs
 -   **Type Checking**: Must pass `pyright` (API) and `npm run tsc` (client)
 -   **Linting**: Must pass `ruff check` (API) and `npm run lint` (client)
 
