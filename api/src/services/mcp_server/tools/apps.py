@@ -586,7 +586,7 @@ App files use standard ES import syntax. The server-side compiler transforms imp
 import { Button, Card, useWorkflowQuery, useState } from "bifrost";
 ```
 
-**External npm imports** — packages declared in `app.yaml` dependencies:
+**External npm imports** — packages declared in app dependencies:
 ```tsx
 import dayjs from "dayjs";
 import { LineChart, Line } from "recharts";
@@ -607,38 +607,16 @@ Everything from `"bifrost"` is also available in scope without importing (for ba
 
 Apps can use npm packages loaded at runtime from esm.sh CDN.
 
-### Declaring dependencies in `app.yaml`:
-```yaml
-name: My Dashboard
-description: Analytics dashboard
-dependencies:
-  recharts: "2.12"
-  dayjs: "1.11"
-```
+### Managing dependencies:
+- Use `get_app_dependencies` / `update_app_dependencies` tools
+- Or use the REST API: `GET/PUT /api/applications/{app_id}/dependencies`
+- Dependencies are stored in `.bifrost/apps.yaml` and synced via git
 
 ### Using in code:
 ```tsx
 import { LineChart, Line, XAxis, YAxis } from "recharts";
 import dayjs from "dayjs";
-
-export default function Dashboard() {
-  const { data } = useWorkflowQuery("workflow-uuid");
-  return (
-    <LineChart data={data}>
-      <XAxis dataKey="date" tickFormatter={(d) => dayjs(d).format("MMM D")} />
-      <YAxis />
-      <Line dataKey="value" />
-    </LineChart>
-  );
-}
 ```
-
-### Managing dependencies via API:
-- `GET /api/applications/{app_id}/dependencies` — returns current deps
-- `PUT /api/applications/{app_id}/dependencies` — update deps (max 20, validates package names and versions)
-
-### Via `push_files`:
-Include the `dependencies` field in `app.yaml` when pushing files.
 
 ### Rules:
 - Max 20 dependencies per app
@@ -718,8 +696,8 @@ async def validate_app(context: Any, app_id: str) -> ToolResult:
 
     Compiles all files and runs static analysis checking for:
     - Compilation errors (syntax, JSX, TypeScript)
-    - Missing dependencies (imported but not in app.yaml)
-    - Unused dependencies (in app.yaml but not imported)
+    - Missing dependencies (imported but not declared)
+    - Unused dependencies (declared but not imported)
     - Unknown components
     - Invalid workflow IDs
     - Missing required files (_layout.tsx)
@@ -774,11 +752,8 @@ async def validate_app(context: Any, app_id: str) -> ToolResult:
             if f"{prefix}pages/index.tsx" not in files:
                 warnings.append({"severity": "warning", "file": "pages/index.tsx", "message": "Missing pages/index.tsx"})
 
-            # Parse declared dependencies from app.yaml
-            from src.routers.app_code_files import _parse_dependencies
-
-            yaml_content = files.get(f"{prefix}app.yaml", "")
-            declared_deps = _parse_dependencies(yaml_content) if yaml_content else {}
+            # Get declared dependencies from DB
+            declared_deps = app.dependencies or {}
             referenced_deps: set[str] = set()
 
             # Collect TSX/TS files for compilation
@@ -836,10 +811,10 @@ async def validate_app(context: Any, app_id: str) -> ToolResult:
             # Check for missing/unused dependencies
             for dep in referenced_deps:
                 if dep not in declared_deps:
-                    errors.append({"severity": "error", "file": "app.yaml", "message": f"Missing dependency: '{dep}' is imported but not in app.yaml dependencies"})
+                    errors.append({"severity": "error", "file": "dependencies", "message": f"Missing dependency: '{dep}' is imported but not declared in app dependencies"})
             for dep in declared_deps:
                 if dep not in referenced_deps:
-                    warnings.append({"severity": "warning", "file": "app.yaml", "message": f"Unused dependency: '{dep}' is declared but not imported by any file"})
+                    warnings.append({"severity": "warning", "file": "dependencies", "message": f"Unused dependency: '{dep}' is declared but not imported by any file"})
 
             # Build result
             lines = []
@@ -1036,7 +1011,7 @@ async def get_app_dependencies(
     app_slug: str | None = None,
 ) -> ToolResult:
     """
-    Get npm dependencies declared in an app's app.yaml.
+    Get npm dependencies declared for an app.
 
     Args:
         app_id: Application UUID
@@ -1051,8 +1026,6 @@ async def get_app_dependencies(
 
     from src.core.database import get_db_context
     from src.models.orm.applications import Application
-    from src.routers.app_code_files import _parse_dependencies
-    from src.services.repo_storage import RepoStorage
 
     if not app_id and not app_slug:
         return error_result("Either app_id or app_slug is required")
@@ -1079,12 +1052,7 @@ async def get_app_dependencies(
             if not app:
                 return error_result(f"Application not found: {app_id or app_slug}")
 
-            repo = RepoStorage()
-            try:
-                yaml_content = (await repo.read(f"apps/{app.slug}/app.yaml")).decode("utf-8", errors="replace")
-            except Exception:
-                yaml_content = None
-            deps = _parse_dependencies(yaml_content)
+            deps = app.dependencies or {}
 
             if not deps:
                 return success_result(
@@ -1109,7 +1077,7 @@ async def update_app_dependencies(
     dependencies: dict[str, str],
 ) -> ToolResult:
     """
-    Update npm dependencies in an app's app.yaml.
+    Update npm dependencies for an app.
 
     Args:
         app_id: Application UUID (required)
@@ -1128,10 +1096,7 @@ async def update_app_dependencies(
 
     from src.core.database import get_db_context
     from src.models.orm.applications import Application
-    from src.routers.app_code_files import _serialize_dependencies
     from src.services.app_storage import AppStorageService
-    from src.services.file_storage.file_storage_service import get_file_storage_service
-    from src.services.repo_storage import RepoStorage
 
     MAX_DEPS = 20
     PKG_NAME_RE = re.compile(r"^(@[a-z0-9-]+/)?[a-z0-9][a-z0-9._-]*$")
@@ -1145,7 +1110,6 @@ async def update_app_dependencies(
     if len(dependencies) > MAX_DEPS:
         return error_result(f"Too many dependencies (max {MAX_DEPS})")
 
-    # Validate
     for name, version in dependencies.items():
         if not PKG_NAME_RE.match(name):
             return error_result(f"Invalid package name: {name}")
@@ -1166,23 +1130,8 @@ async def update_app_dependencies(
             if not app:
                 return error_result(f"Application not found: {app_id}")
 
-            # Read existing app.yaml
-            yaml_path = f"apps/{app.slug}/app.yaml"
-            repo = RepoStorage()
-            try:
-                existing_yaml = (await repo.read(yaml_path)).decode("utf-8", errors="replace")
-            except Exception:
-                existing_yaml = None
-
-            # Serialize and write
-            new_yaml = _serialize_dependencies(dependencies, existing_yaml)
-            storage = get_file_storage_service(db)
-            user_email = context.user_email or "mcp"
-            await storage.write_file(
-                path=yaml_path,
-                content=new_yaml.encode("utf-8"),
-                updated_by=user_email,
-            )
+            app.dependencies = dependencies if dependencies else None
+            await db.commit()
 
             # Invalidate render cache
             app_storage = AppStorageService()
@@ -1216,8 +1165,8 @@ TOOLS = [
     ("push_files", "Push Files", "Push multiple files to _repo/ in a single batch. Useful for creating or updating entire apps or workflow sets."),
     ("get_app_schema", "Get App Schema", "Get documentation about App Builder application structure and code-based files."),
     ("get_component_docs", "Get Component Docs", "Get detailed UI component documentation (props, variants, examples). Filter by component names or category."),
-    ("get_app_dependencies", "Get App Dependencies", "Get npm dependencies declared in an app's app.yaml."),
-    ("update_app_dependencies", "Update App Dependencies", "Update npm dependencies in an app's app.yaml. Pass a dict of {package: version}."),
+    ("get_app_dependencies", "Get App Dependencies", "Get npm dependencies declared for an app."),
+    ("update_app_dependencies", "Update App Dependencies", "Update npm dependencies for an app. Pass a dict of {package: version}."),
 ]
 
 
