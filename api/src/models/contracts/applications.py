@@ -308,7 +308,7 @@ class AppRenderResponse(BaseModel):
     total: int
     dependencies: dict[str, str] = Field(
         default_factory=dict,
-        description="npm dependencies from app.yaml {name: version} for esm.sh loading",
+        description="npm dependencies {name: version} for esm.sh loading",
     )
 
 

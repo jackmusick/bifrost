@@ -22,8 +22,6 @@ import re
 from enum import Enum
 from uuid import UUID
 
-import yaml
-
 from fastapi import APIRouter, HTTPException, Path, status
 
 from src.core.auth import Context, CurrentUser
@@ -77,72 +75,6 @@ VALID_FILENAME_PATTERN = re.compile(r"^[\w-]+\.tsx?$")
 _PKG_NAME_RE = re.compile(r"^(@[a-z0-9-]+/)?[a-z0-9][a-z0-9._-]*$")
 _VERSION_RE = re.compile(r"^\^?~?\d+(\.\d+){0,2}$")
 _MAX_DEPENDENCIES = 20
-
-
-def _parse_dependencies(yaml_content: str | None) -> dict[str, str]:
-    """Parse and validate dependencies from app.yaml content.
-
-    Returns validated {name: version} dict. Skips invalid entries,
-    never raises.
-    """
-    if not yaml_content:
-        return {}
-
-    try:
-        data = yaml.safe_load(yaml_content)
-    except Exception:
-        return {}
-
-    if not isinstance(data, dict):
-        return {}
-
-    raw_deps = data.get("dependencies")
-    if not isinstance(raw_deps, dict):
-        return {}
-
-    deps: dict[str, str] = {}
-    for name, version in raw_deps.items():
-        if len(deps) >= _MAX_DEPENDENCIES:
-            break
-
-        name_str = str(name)
-        version_str = str(version)
-
-        if not _PKG_NAME_RE.match(name_str):
-            logger.warning(f"Skipping invalid package name: {name_str}")
-            continue
-        if not _VERSION_RE.match(version_str):
-            logger.warning(f"Skipping invalid version for {name_str}: {version_str}")
-            continue
-
-        deps[name_str] = version_str
-
-    return deps
-
-
-def _serialize_dependencies(
-    deps: dict[str, str], existing_yaml: str | None
-) -> str:
-    """Serialize dependencies back into app.yaml content.
-
-    Preserves existing non-dependency fields. If no existing YAML,
-    creates a minimal file.
-    """
-    data: dict = {}
-    if existing_yaml:
-        try:
-            parsed = yaml.safe_load(existing_yaml)
-            if isinstance(parsed, dict):
-                data = parsed
-        except Exception:
-            pass
-
-    if deps:
-        data["dependencies"] = deps
-    else:
-        data.pop("dependencies", None)
-
-    return yaml.dump(data, default_flow_style=False, sort_keys=False)
 
 
 def validate_file_path(path: str) -> None:
@@ -349,9 +281,6 @@ async def list_app_files(
         rel_path = full_path[len(repo_prefix):]
         if not rel_path:
             continue
-        # Skip app.yaml (manifest metadata, not a source file)
-        if rel_path == "app.yaml":
-            continue
         # Skip folder marker entries
         if rel_path.endswith("/"):
             continue
@@ -534,15 +463,8 @@ async def render_app(
     storage_mode = "preview" if mode == FileMode.draft else "live"
     app_id_str = str(app.id)
 
-    # Read dependencies from app.yaml in S3
-    dependencies: dict[str, str] = {}
-    try:
-        repo = RepoStorage()
-        yaml_bytes = await repo.read(f"{_repo_prefix(app)}app.yaml")
-        yaml_content = yaml_bytes.decode("utf-8", errors="replace")
-        dependencies = _parse_dependencies(yaml_content)
-    except Exception:
-        pass
+    # Read dependencies from DB
+    dependencies: dict[str, str] = app.dependencies or {}
 
     # 1. Try Redis cache first
     cached = await app_storage.get_render_cache(app_id_str, storage_mode)
@@ -560,8 +482,6 @@ async def render_app(
 
     file_contents: dict[str, str] = {}
     for rel_path in rel_paths:
-        if rel_path == "app.yaml":
-            continue
         content_bytes = await app_storage.read_file(app_id_str, storage_mode, rel_path)
         file_contents[rel_path] = content_bytes.decode("utf-8", errors="replace")
 
@@ -607,7 +527,7 @@ async def render_app(
 
 
 # =============================================================================
-# Dependencies endpoints — read/write app.yaml dependencies section
+# Dependencies endpoints — read/write Application.dependencies
 # =============================================================================
 
 
@@ -621,14 +541,9 @@ async def get_dependencies(
     ctx: Context = None,
     user: CurrentUser = None,
 ) -> dict[str, str]:
-    """Return the validated dependencies dict from app.yaml."""
+    """Return the app's npm dependencies."""
     app = await get_application_or_404(ctx, app_id)
-    repo = RepoStorage()
-    try:
-        yaml_content = (await repo.read(f"{_repo_prefix(app)}app.yaml")).decode("utf-8", errors="replace")
-    except Exception:
-        yaml_content = None
-    return _parse_dependencies(yaml_content)
+    return app.dependencies or {}
 
 
 @render_router.put(
@@ -642,10 +557,9 @@ async def put_dependencies(
     ctx: Context = None,
     user: CurrentUser = None,
 ) -> dict[str, str]:
-    """Replace the dependencies section of app.yaml.
+    """Replace the app's npm dependencies.
 
-    Validates every package name and version, enforces the max-dependency
-    limit, then writes back to app.yaml preserving other fields.
+    Validates every package name and version, enforces the max-dependency limit.
     """
     app = await get_application_or_404(ctx, app_id)
 
@@ -667,26 +581,12 @@ async def put_dependencies(
                 detail=f"Invalid version for {name}: {version}",
             )
 
-    # Read existing app.yaml
-    yaml_path = f"{_repo_prefix(app)}app.yaml"
-    repo = RepoStorage()
-    try:
-        existing_yaml = (await repo.read(yaml_path)).decode("utf-8", errors="replace")
-    except Exception:
-        existing_yaml = None
-
-    # Serialize and write back
-    new_yaml = _serialize_dependencies(deps, existing_yaml)
-    storage = get_file_storage_service(ctx.db)
-    await storage.write_file(
-        path=yaml_path,
-        content=new_yaml.encode("utf-8"),
-        updated_by=user.email or "unknown",
-    )
+    # Update DB
+    app.dependencies = deps if deps else None
+    await ctx.db.commit()
 
     # Invalidate render cache
     app_storage = AppStorageService()
     await app_storage.invalidate_render_cache(str(app.id))
 
-    logger.info(f"Updated dependencies for app {app_id}: {list(deps.keys())}")
     return deps
