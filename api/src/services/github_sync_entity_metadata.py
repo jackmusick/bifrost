@@ -17,7 +17,6 @@ logger = logging.getLogger(__name__)
 # Path patterns for entity detection
 FORM_PATTERN = re.compile(r"^forms/.*\.form\.yaml$")
 AGENT_PATTERN = re.compile(r"^agents/.*\.agent\.yaml$")
-APP_YAML_PATTERN = re.compile(r"^apps/([^/]+)/app\.yaml$")
 APP_FILE_PATTERN = re.compile(r"^apps/([^/]+)/(.+)$")
 WORKFLOW_PATTERN = re.compile(r"^(workflows|data_providers)/.*\.py$")
 
@@ -53,25 +52,16 @@ def extract_entity_metadata(path: str, content: bytes | None = None) -> EntityMe
         display_name = _extract_yaml_name(content, filename)
         return EntityMetadata(entity_type="agent", display_name=display_name)
 
-    # App metadata: apps/{slug}/app.yaml
-    match = APP_YAML_PATTERN.match(path)
-    if match:
-        slug = match.group(1)
-        display_name = _extract_yaml_name(content, slug)
-        return EntityMetadata(entity_type="app", display_name=display_name, parent_slug=slug)
-
     # App file: apps/{slug}/**/*
     match = APP_FILE_PATTERN.match(path)
     if match:
         slug = match.group(1)
         relative_path = match.group(2)
-        # Skip app.yaml (handled above)
-        if relative_path != "app.yaml":
-            return EntityMetadata(
-                entity_type="app_file",
-                display_name=relative_path,
-                parent_slug=slug
-            )
+        return EntityMetadata(
+            entity_type="app_file",
+            display_name=relative_path,
+            parent_slug=slug
+        )
 
     # Workflow: workflows/*.py or data_providers/*.py
     if WORKFLOW_PATTERN.match(path):

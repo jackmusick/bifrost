@@ -97,10 +97,6 @@ class AppStorageService:
                 if not rel_path:
                     continue
 
-                # Skip app.yaml (manifest metadata, not a source file)
-                if rel_path == "app.yaml":
-                    continue
-
                 new_relative.add(rel_path)
                 dest_key = f"{preview_prefix}{rel_path}"
 
@@ -165,9 +161,6 @@ class AppStorageService:
                 rel_path = source_key[len(source_prefix):]
                 if not rel_path:
                     continue
-                if rel_path == "app.yaml":
-                    continue
-
                 response = await client.get_object(Bucket=self._bucket, Key=source_key)
                 content = await response["Body"].read()
                 source_files.append((rel_path, content))
