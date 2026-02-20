@@ -1548,11 +1548,14 @@ class GitHubSyncService:
                 logger.info(f"Deleting integration {integ_id} — removed from repo")
                 ops.append(Delete(model=Integration, id=UUID(integ_id)))
 
-        # Delete configs not in manifest
-        config_result = await self.db.execute(select(Config.id))
+        # Delete configs not in manifest (skip integration-schema-linked configs —
+        # those are user-set values managed by IntegrationConfigSchema cascade)
+        config_result = await self.db.execute(
+            select(Config.id, Config.config_schema_id)
+        )
         for row in config_result.all():
             config_id = str(row[0])
-            if config_id not in present_config_ids:
+            if config_id not in present_config_ids and row[1] is None:
                 logger.info(f"Deleting config {config_id} — removed from repo")
                 ops.append(Delete(model=Config, id=UUID(config_id)))
 
@@ -1691,24 +1694,45 @@ class GitHubSyncService:
             )
         await upsert_op.execute(self.db)
 
-        # Sync config schema items: delete all + re-insert (direct execution — complex sub-object)
+        # Sync config schema items: upsert by (integration_id, key) to preserve IDs
+        # (Config rows reference schema IDs via FK — deleting schema cascades to configs)
         from sqlalchemy import delete as sa_delete
-        await self.db.execute(
-            sa_delete(IntegrationConfigSchema).where(
+        existing_cs_result = await self.db.execute(
+            select(IntegrationConfigSchema).where(
                 IntegrationConfigSchema.integration_id == integ_id
             )
         )
+        existing_cs_by_key = {cs.key: cs for cs in existing_cs_result.scalars().all()}
+        manifest_cs_keys = {cs.key for cs in minteg.config_schema}
+
         for cs in minteg.config_schema:
-            cs_stmt = insert(IntegrationConfigSchema).values(
-                integration_id=integ_id,
-                key=cs.key,
-                type=cs.type,
-                required=cs.required,
-                description=cs.description,
-                options=cs.options,
-                position=cs.position,
+            if cs.key in existing_cs_by_key:
+                existing_cs = existing_cs_by_key[cs.key]
+                existing_cs.type = cs.type
+                existing_cs.required = cs.required
+                existing_cs.description = cs.description
+                existing_cs.options = cs.options
+                existing_cs.position = cs.position
+            else:
+                cs_stmt = insert(IntegrationConfigSchema).values(
+                    integration_id=integ_id,
+                    key=cs.key,
+                    type=cs.type,
+                    required=cs.required,
+                    description=cs.description,
+                    options=cs.options,
+                    position=cs.position,
+                )
+                await self.db.execute(cs_stmt)
+
+        removed_keys = set(existing_cs_by_key.keys()) - manifest_cs_keys
+        if removed_keys:
+            await self.db.execute(
+                sa_delete(IntegrationConfigSchema).where(
+                    IntegrationConfigSchema.integration_id == integ_id,
+                    IntegrationConfigSchema.key.in_(removed_keys),
+                )
             )
-            await self.db.execute(cs_stmt)
 
         # Sync OAuth provider (structure only — client_secret never imported)
         if minteg.oauth_provider:
@@ -1745,20 +1769,43 @@ class GitHubSyncService:
             )
             await self.db.execute(op_stmt)
 
-        # Sync mappings: delete all + re-insert
-        await self.db.execute(
-            sa_delete(IntegrationMapping).where(
+        # Sync mappings: upsert by (integration_id, organization_id) to preserve oauth_token_id
+        existing_m_result = await self.db.execute(
+            select(IntegrationMapping).where(
                 IntegrationMapping.integration_id == integ_id
             )
         )
+        existing_m_by_org: dict[str | None, IntegrationMapping] = {
+            str(m.organization_id) if m.organization_id else None: m
+            for m in existing_m_result.scalars().all()
+        }
+        manifest_org_ids = {mapping.organization_id for mapping in minteg.mappings}
+
         for mapping in minteg.mappings:
-            m_stmt = insert(IntegrationMapping).values(
-                integration_id=integ_id,
-                organization_id=UUID(mapping.organization_id) if mapping.organization_id else None,
-                entity_id=mapping.entity_id,
-                entity_name=mapping.entity_name,
-            )
-            await self.db.execute(m_stmt)
+            org_key = mapping.organization_id  # str or None
+            if org_key in existing_m_by_org:
+                existing_m = existing_m_by_org[org_key]
+                existing_m.entity_id = mapping.entity_id
+                existing_m.entity_name = mapping.entity_name
+                if mapping.oauth_token_id is not None:
+                    existing_m.oauth_token_id = UUID(mapping.oauth_token_id)
+            else:
+                m_stmt = insert(IntegrationMapping).values(
+                    integration_id=integ_id,
+                    organization_id=UUID(mapping.organization_id) if mapping.organization_id else None,
+                    entity_id=mapping.entity_id,
+                    entity_name=mapping.entity_name,
+                    oauth_token_id=UUID(mapping.oauth_token_id) if mapping.oauth_token_id else None,
+                )
+                await self.db.execute(m_stmt)
+
+        for org_key, existing_m in existing_m_by_org.items():
+            if org_key not in manifest_org_ids:
+                await self.db.execute(
+                    sa_delete(IntegrationMapping).where(
+                        IntegrationMapping.id == existing_m.id
+                    )
+                )
 
         # Return empty list — all operations executed directly above
         return []

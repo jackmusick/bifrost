@@ -323,7 +323,7 @@ async def cleanup_test_data(db_session: AsyncSession):
         delete(EventSource).where(EventSource.created_by == "git-sync")
     )
     await db_session.execute(
-        delete(Config).where(Config.updated_by == "git-sync")
+        delete(Config).where(Config.updated_by.in_(["git-sync", "test"]))
     )
     await db_session.execute(
         delete(IntegrationConfigSchema).where(
@@ -340,9 +340,23 @@ async def cleanup_test_data(db_session: AsyncSession):
         )
     )
     await db_session.execute(
+        delete(IntegrationConfigSchema).where(
+            IntegrationConfigSchema.integration_id.in_(
+                select(Integration.id).where(Integration.name.like("%TestInteg"))
+            )
+        )
+    )
+    await db_session.execute(
         delete(IntegrationMapping).where(
             IntegrationMapping.integration_id.in_(
                 select(Integration.id).where(Integration.name.like("Test%"))
+            )
+        )
+    )
+    await db_session.execute(
+        delete(IntegrationMapping).where(
+            IntegrationMapping.integration_id.in_(
+                select(Integration.id).where(Integration.name.like("%TestInteg"))
             )
         )
     )
@@ -353,13 +367,16 @@ async def cleanup_test_data(db_session: AsyncSession):
         delete(Integration).where(Integration.name.like("Idempotent%"))
     )
     await db_session.execute(
+        delete(Integration).where(Integration.name.like("%TestInteg"))
+    )
+    await db_session.execute(
         delete(Table).where(Table.created_by == "git-sync")
     )
 
     # Clean up orgs and roles last (entities FK into these)
     from src.models.orm.organizations import Organization
     from src.models.orm.users import Role
-    await db_session.execute(delete(Organization).where(Organization.created_by == "git-sync"))
+    await db_session.execute(delete(Organization).where(Organization.created_by.in_(["git-sync", "test"])))
     await db_session.execute(delete(Role).where(Role.created_by == "git-sync"))
     await db_session.commit()
 
@@ -2217,6 +2234,259 @@ class TestSplitManifestFormat:
         wf = wf_result.scalar_one_or_none()
         assert wf is not None
         assert wf.name == "Legacy Test Workflow"
+
+    async def test_pull_integration_preserves_config_values(
+        self,
+        db_session: AsyncSession,
+        sync_service,
+        working_clone,
+    ):
+        """Pulling integration manifest preserves existing Config values
+        that reference IntegrationConfigSchema rows."""
+        from uuid import UUID as UUIDType
+
+        from src.models.orm.config import Config
+        from src.models.orm.integrations import IntegrationConfigSchema
+
+        work_dir = Path(working_clone.working_dir)
+        integ_id = str(uuid4())
+
+        # First pull: create integration with config schema
+        bifrost_dir = work_dir / ".bifrost"
+        bifrost_dir.mkdir(exist_ok=True)
+        (bifrost_dir / "integrations.yaml").write_text(yaml.dump({
+            "integrations": {
+                "ConfigTestInteg": {
+                    "id": integ_id,
+                    "config_schema": [
+                        {"key": "api_url", "type": "string", "required": True, "position": 0},
+                        {"key": "api_key", "type": "secret", "required": True, "position": 1},
+                    ],
+                },
+            },
+        }, default_flow_style=False))
+
+        working_clone.index.add([".bifrost/integrations.yaml"])
+        working_clone.index.commit("add integration")
+        working_clone.remotes.origin.push()
+
+        result = await sync_service.desktop_pull()
+        assert result.success is True
+
+        # Manually create Config values (simulating user setting values in UI)
+        cs_result = await db_session.execute(
+            select(IntegrationConfigSchema).where(
+                IntegrationConfigSchema.integration_id == UUIDType(integ_id)
+            )
+        )
+        schemas = {cs.key: cs for cs in cs_result.scalars().all()}
+
+        config_api_url = Config(
+            integration_id=UUIDType(integ_id),
+            organization_id=None,
+            key="api_url",
+            value={"value": "https://my-instance.example.com"},
+            config_type="string",
+            config_schema_id=schemas["api_url"].id,
+            updated_by="test",
+        )
+        config_api_key = Config(
+            integration_id=UUIDType(integ_id),
+            organization_id=None,
+            key="api_key",
+            value={"value": "super-secret-key-encrypted"},
+            config_type="secret",
+            config_schema_id=schemas["api_key"].id,
+            updated_by="test",
+        )
+        db_session.add_all([config_api_url, config_api_key])
+        await db_session.commit()
+
+        # Second pull: same manifest — config values must survive
+        (work_dir / ".bifrost" / "trigger.txt").write_text("trigger re-sync")
+        working_clone.index.add([".bifrost/trigger.txt"])
+        working_clone.index.commit("trigger re-sync")
+        working_clone.remotes.origin.push()
+
+        result2 = await sync_service.desktop_pull()
+        assert result2.success is True
+
+        # Verify Config values still exist
+        db_session.expire_all()
+        cfg_result = await db_session.execute(
+            select(Config).where(Config.integration_id == UUIDType(integ_id))
+        )
+        configs = {c.key: c for c in cfg_result.scalars().all()}
+        assert "api_url" in configs, "api_url Config was destroyed by sync"
+        assert configs["api_url"].value == {"value": "https://my-instance.example.com"}
+        assert "api_key" in configs, "api_key Config was destroyed by sync"
+        assert configs["api_key"].value == {"value": "super-secret-key-encrypted"}
+
+    async def test_pull_integration_preserves_mapping_identity(
+        self,
+        db_session: AsyncSession,
+        sync_service,
+        working_clone,
+    ):
+        """Pulling integration manifest preserves existing mapping rows (upsert, not recreate)."""
+        from uuid import UUID as UUIDType
+
+        from src.models.orm.integrations import IntegrationMapping
+        from src.models.orm.organizations import Organization
+
+        work_dir = Path(working_clone.working_dir)
+        integ_id = str(uuid4())
+        org_id = str(uuid4())
+
+        # Create org in DB (needed for FK)
+        org = Organization(id=UUIDType(org_id), name="MappingTestOrg", created_by="test")
+        db_session.add(org)
+        await db_session.commit()
+
+        # First pull: create integration with mapping
+        bifrost_dir = work_dir / ".bifrost"
+        bifrost_dir.mkdir(exist_ok=True)
+        (bifrost_dir / "integrations.yaml").write_text(yaml.dump({
+            "integrations": {
+                "MappingTestInteg": {
+                    "id": integ_id,
+                    "mappings": [
+                        {"organization_id": org_id, "entity_id": "tenant-1"},
+                    ],
+                },
+            },
+        }, default_flow_style=False))
+
+        working_clone.index.add([".bifrost/integrations.yaml"])
+        working_clone.index.commit("add integration")
+        working_clone.remotes.origin.push()
+
+        result = await sync_service.desktop_pull()
+        assert result.success is True
+
+        # Get original mapping row ID
+        mapping_result = await db_session.execute(
+            select(IntegrationMapping).where(
+                IntegrationMapping.integration_id == UUIDType(integ_id)
+            )
+        )
+        mapping = mapping_result.scalar_one()
+        original_mapping_id = mapping.id
+
+        # Second pull: same manifest
+        (work_dir / ".bifrost" / "trigger.txt").write_text("trigger re-sync")
+        working_clone.index.add([".bifrost/trigger.txt"])
+        working_clone.index.commit("trigger re-sync")
+        working_clone.remotes.origin.push()
+
+        result2 = await sync_service.desktop_pull()
+        assert result2.success is True
+
+        # Verify mapping was preserved (not deleted + re-created)
+        db_session.expire_all()
+        mapping_result2 = await db_session.execute(
+            select(IntegrationMapping).where(
+                IntegrationMapping.integration_id == UUIDType(integ_id)
+            )
+        )
+        mapping2 = mapping_result2.scalar_one()
+        assert mapping2.entity_id == "tenant-1"
+        assert mapping2.id == original_mapping_id, "Mapping was recreated instead of upserted"
+
+    async def test_pull_integration_schema_key_add_remove(
+        self,
+        db_session: AsyncSession,
+        sync_service,
+        working_clone,
+    ):
+        """Adding/removing config schema keys via manifest works correctly."""
+        from uuid import UUID as UUIDType
+
+        from src.models.orm.config import Config
+        from src.models.orm.integrations import IntegrationConfigSchema
+
+        work_dir = Path(working_clone.working_dir)
+        integ_id = str(uuid4())
+        bifrost_dir = work_dir / ".bifrost"
+        bifrost_dir.mkdir(exist_ok=True)
+
+        # Pull 1: Two keys
+        (bifrost_dir / "integrations.yaml").write_text(yaml.dump({
+            "integrations": {
+                "SchemaTestInteg": {
+                    "id": integ_id,
+                    "config_schema": [
+                        {"key": "keep_me", "type": "string", "required": True, "position": 0},
+                        {"key": "remove_me", "type": "string", "required": False, "position": 1},
+                    ],
+                },
+            },
+        }, default_flow_style=False))
+        working_clone.index.add([".bifrost/integrations.yaml"])
+        working_clone.index.commit("initial schema")
+        working_clone.remotes.origin.push()
+        result = await sync_service.desktop_pull()
+        assert result.success is True
+
+        # Add a Config value for "keep_me"
+        cs_result = await db_session.execute(
+            select(IntegrationConfigSchema).where(
+                IntegrationConfigSchema.integration_id == UUIDType(integ_id),
+                IntegrationConfigSchema.key == "keep_me",
+            )
+        )
+        keep_schema = cs_result.scalar_one()
+        config_val = Config(
+            integration_id=UUIDType(integ_id),
+            organization_id=None,
+            key="keep_me",
+            value={"value": "preserved"},
+            config_type="string",
+            config_schema_id=keep_schema.id,
+            updated_by="test",
+        )
+        db_session.add(config_val)
+        await db_session.commit()
+
+        # Pull 2: Remove "remove_me", add "new_key"
+        (bifrost_dir / "integrations.yaml").write_text(yaml.dump({
+            "integrations": {
+                "SchemaTestInteg": {
+                    "id": integ_id,
+                    "config_schema": [
+                        {"key": "keep_me", "type": "string", "required": True, "position": 0},
+                        {"key": "new_key", "type": "int", "required": False, "position": 1},
+                    ],
+                },
+            },
+        }, default_flow_style=False))
+        working_clone.index.add([".bifrost/integrations.yaml"])
+        working_clone.index.commit("update schema")
+        working_clone.remotes.origin.push()
+        result2 = await sync_service.desktop_pull()
+        assert result2.success is True
+
+        # Verify: keep_me config value survived, remove_me schema gone, new_key added
+        cs_result2 = await db_session.execute(
+            select(IntegrationConfigSchema).where(
+                IntegrationConfigSchema.integration_id == UUIDType(integ_id)
+            ).order_by(IntegrationConfigSchema.position)
+        )
+        schemas = cs_result2.scalars().all()
+        schema_keys = [s.key for s in schemas]
+        assert "keep_me" in schema_keys
+        assert "new_key" in schema_keys
+        assert "remove_me" not in schema_keys
+
+        cfg_result = await db_session.execute(
+            select(Config).where(
+                Config.integration_id == UUIDType(integ_id),
+                Config.key == "keep_me",
+            )
+        )
+        cfg = cfg_result.scalar_one_or_none()
+        assert cfg is not None, "keep_me Config value was destroyed"
+        assert cfg.value == {"value": "preserved"}
 
 
 # =============================================================================
