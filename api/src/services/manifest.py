@@ -96,8 +96,11 @@ class ManifestAgent(BaseModel):
 class ManifestApp(BaseModel):
     """App entry in manifest."""
     id: str
-    path: str
+    path: str              # app source directory (e.g. "apps/my-app"), NOT app.yaml
     slug: str | None = None
+    name: str | None = None
+    description: str | None = None
+    dependencies: dict[str, str] = Field(default_factory=dict)
     organization_id: str | None = None
     roles: list[str] = Field(default_factory=list)
     access_level: str = "authenticated"

@@ -566,7 +566,10 @@ def full_manifest_data():
             "apps": {
                 "my_app": {
                     "id": app_id,
-                    "path": "apps/my-app/app.yaml",
+                    "path": "apps/my-app",
+                    "name": "My App",
+                    "description": "Test app",
+                    "dependencies": {"recharts": "2.12"},
                     "organization_id": org_id,
                     "roles": [role_id],
                 },
