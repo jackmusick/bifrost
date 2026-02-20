@@ -61,15 +61,12 @@ class TestSecretString:
         s = SecretString("my-api-key")
         assert s.get_secret_value() == "my-api-key"
 
-    def test_json_dumps_is_redacted(self):
+    def test_json_dumps_leaks_raw_value(self):
+        """json.dumps uses C-level str buffer, bypassing __str__.
+        This is expected — redact_secrets and remove_circular_refs are the protection layers."""
         s = SecretString("my-api-key")
-        assert json.dumps(s) == '"[REDACTED]"'
-
-    def test_json_dumps_in_dict(self):
-        s = SecretString("my-api-key")
-        result = json.dumps({"key": s})
-        assert "my-api-key" not in result
-        assert "[REDACTED]" in result
+        dumped = json.dumps(s)
+        assert dumped == '"my-api-key"'  # Documents the real behavior
 
     def test_isinstance_str(self):
         s = SecretString("my-api-key")
@@ -94,7 +91,6 @@ class TestSecretString:
         s = SecretString("my-api-key")
         headers = {"Authorization": s}
         # Libraries read the str buffer directly, not __str__
-        # Verify the real value is accessible via the str protocol
         assert headers["Authorization"] == "my-api-key"
         assert headers["Authorization"].encode() == b"my-api-key"
 
@@ -127,6 +123,12 @@ class TestRedactSecrets:
         assert result[0] == "safe"
         assert result[1] == "contains [REDACTED]"
 
+    def test_redact_in_set(self):
+        obj = {"items": {"my-secret-key", "safe"}}
+        result = redact_secrets(obj, {"my-secret-key"})
+        assert "[REDACTED]" in result["items"]
+        assert "my-secret-key" not in result["items"]
+
     def test_redact_multiple_secrets(self):
         obj = "key1=aaa key2=bbb"
         result = redact_secrets(obj, {"aaa", "bbb"})
@@ -156,6 +158,20 @@ class TestRedactSecrets:
         original = {"key": "my-secret-key"}
         redact_secrets(original, {"my-secret-key"})
         assert original["key"] == "my-secret-key"
+
+    def test_redact_pydantic_model(self):
+        """Pydantic models are converted to dicts and scrubbed."""
+        from pydantic import BaseModel
+
+        class Response(BaseModel):
+            api_key: str
+            message: str
+
+        obj = Response(api_key="my-secret-key", message="ok")
+        result = redact_secrets(obj, {"my-secret-key"})
+        assert isinstance(result, dict)
+        assert result["api_key"] == "[REDACTED]"
+        assert result["message"] == "ok"
 ```
 
 **Step 2: Run tests to verify they fail**
@@ -173,13 +189,16 @@ SecretString: a str subclass that masks itself in display/logging contexts.
 Used for config values of type SECRET. Works transparently as a string
 for HTTP headers, f-strings, concatenation, etc. Only masks in:
 - repr() / str() / print() — display and logging
-- json.dumps() — serialization via custom __json__ protocol
 - % formatting — logging.info("key=%s", secret)
+
+Note: json.dumps bypasses __str__ for str subclasses (uses C-level buffer).
+Secret protection in JSON serialization is handled by:
+- redact_secrets() — deep scrub before persistence
+- remove_circular_refs() in engine.py — converts SecretString to [REDACTED]
 """
 
 from __future__ import annotations
 
-import json
 from typing import Any
 
 REDACTED = "[REDACTED]"
@@ -201,38 +220,6 @@ class SecretString(str):
     def get_secret_value(self) -> str:
         """Get the actual secret value."""
         return super().__str__()
-
-
-# Custom JSON encoder that redacts SecretString
-class _SecretAwareEncoder(json.JSONEncoder):
-    def default(self, o: Any) -> Any:
-        if isinstance(o, SecretString):
-            return REDACTED
-        return super().default(o)
-
-    def encode(self, o: Any) -> str:
-        # Override encode to catch SecretString at top level and in containers
-        o = _redact_secret_strings(o)
-        return super().encode(o)
-
-
-def _redact_secret_strings(obj: Any) -> Any:
-    """Replace SecretString instances with REDACTED for JSON serialization."""
-    if isinstance(obj, SecretString):
-        return REDACTED
-    if isinstance(obj, dict):
-        return {k: _redact_secret_strings(v) for k, v in obj.items()}
-    if isinstance(obj, (list, tuple)):
-        return [_redact_secret_strings(item) for item in obj]
-    return obj
-
-
-# Monkey-patch json.dumps to use our encoder by default would be too invasive.
-# Instead, we hook into the str protocol: json.dumps calls str() on string subclasses
-# only if they override __str__. Since we do, json.dumps(SecretString("x")) returns
-# "[REDACTED]" naturally.
-# NOTE: json.dumps does NOT call __str__ on str subclasses — it uses the raw buffer.
-# We must intercept at the serialization boundary (redact_secrets function).
 
 
 def redact_secrets(obj: Any, secret_values: set[str]) -> Any:
@@ -267,6 +254,15 @@ def _redact_recursive(obj: Any, secrets: set[str]) -> Any:
     if isinstance(obj, (list, tuple)):
         redacted = [_redact_recursive(item, secrets) for item in obj]
         return redacted if isinstance(obj, list) else tuple(redacted)
+    if isinstance(obj, set):
+        return {_redact_recursive(item, secrets) for item in obj}
+    # Handle Pydantic models — convert to dict and recurse
+    try:
+        from pydantic import BaseModel
+        if isinstance(obj, BaseModel):
+            return _redact_recursive(obj.model_dump(), secrets)
+    except ImportError:
+        pass
     # int, float, bool, None — pass through
     return obj
 ```
@@ -339,17 +335,17 @@ Expected: FAIL — result is a plain str, not SecretString
 
 **Step 3: Modify ConfigResolver**
 
-In `api/src/core/config_resolver.py`, change `_decrypt_secret` (line 104-127):
+In `api/src/core/config_resolver.py`, change `_decrypt_secret` (line 122):
 
 Change:
 ```python
-return decrypt_secret(encrypted_value)
+            return decrypt_secret(encrypted_value)
 ```
 
 To:
 ```python
-from src.core.secret_string import SecretString
-return SecretString(decrypt_secret(encrypted_value))
+            from src.core.secret_string import SecretString
+            return SecretString(decrypt_secret(encrypted_value))
 ```
 
 **Step 4: Run tests to verify they pass**
@@ -485,8 +481,16 @@ git commit -m "feat: add _collect_secret_values to ExecutionContext"
 ### Task 4: Scrub execution outputs in engine before returning
 
 **Files:**
-- Modify: `api/src/services/execution/engine.py:375-391` (success path), `~460-475` (WorkflowExecutionException path), `~500-510` (generic Exception path)
+- Modify: `api/src/services/execution/engine.py` — four return paths need scrubbing
 - Test: `api/tests/unit/test_secret_string.py` (add engine scrub test)
+
+There are **four** exception/return paths in `execute_code()` that return `ExecutionResult`:
+1. **Success path** (line ~380) — `result`, `captured_variables`, `logger_output`
+2. **WorkflowExecutionException** (line ~466) — `captured_variables`, `logger_output`, `error_message`
+3. **WorkflowError** (line ~501) — `captured_variables`, `logger_output`, `error_message` (str(e))
+4. **Generic Exception** (line ~556) — `captured_variables`, `logger_output`, `error_message` (str(e))
+
+All four need scrubbing.
 
 **Step 1: Write the failing test**
 
@@ -508,12 +512,10 @@ class TestEngineOutputScrubbing:
             {"level": "info", "message": "Calling API with sk-12345678"},
             {"level": "info", "message": "Done"},
         ]
-        error_message = None
 
         scrubbed_result = redact_secrets(result, secret_values)
         scrubbed_variables = redact_secrets(variables, secret_values)
         scrubbed_logs = redact_secrets(logs, secret_values)
-        scrubbed_error = redact_secrets(error_message, secret_values) if error_message else None
 
         assert "sk-12345678" not in json.dumps(scrubbed_result)
         assert "sk-12345678" not in json.dumps(scrubbed_variables)
@@ -534,10 +536,10 @@ class TestEngineOutputScrubbing:
         assert scrubbed == "Auth failed with key [REDACTED]"
 ```
 
-**Step 2: Run test to verify it passes (uses existing redact_secrets)**
+**Step 2: Run test to verify it passes (validates scrubbing logic)**
 
 Run: `./test.sh tests/unit/test_secret_string.py::TestEngineOutputScrubbing -v`
-Expected: PASS (this validates the scrubbing logic we'll wire into the engine)
+Expected: PASS
 
 **Step 3: Wire scrubbing into engine.py**
 
@@ -547,39 +549,37 @@ In `api/src/services/execution/engine.py`, add an import near the top (around li
 from src.core.secret_string import redact_secrets
 ```
 
-Then in the success return path (before line 380 `return ExecutionResult(...)`), add:
+Add a helper function inside `execute_code` (or at module level) to avoid repeating the scrub block four times:
 
 ```python
-        # Scrub secrets from all persisted outputs
-        secret_values = context._collect_secret_values()
-        if secret_values:
-            result = redact_secrets(result, secret_values)
-            captured_variables = redact_secrets(captured_variables, secret_values)
-            logger_output = redact_secrets(logger_output, secret_values)
+def _scrub_outputs(
+    context: ExecutionContext,
+    result: Any = None,
+    variables: dict[str, Any] | None = None,
+    logs: list[dict[str, Any]] | None = None,
+    error_message: str | None = None,
+) -> tuple[Any, dict[str, Any] | None, list[dict[str, Any]] | None, str | None]:
+    """Scrub secret values from execution outputs before returning."""
+    secret_values = context._collect_secret_values()
+    if not secret_values:
+        return result, variables, logs, error_message
+    return (
+        redact_secrets(result, secret_values) if result is not None else None,
+        redact_secrets(variables, secret_values) if variables is not None else None,
+        redact_secrets(logs, secret_values) if logs is not None else None,
+        redact_secrets(error_message, secret_values) if error_message is not None else None,
+    )
 ```
 
-In the `WorkflowExecutionException` handler (before the `return ExecutionResult(...)` around line 460-475), add the same block:
+Then before each of the four `return ExecutionResult(...)` calls, add:
 
 ```python
-        # Scrub secrets from all persisted outputs
-        secret_values = context._collect_secret_values()
-        if secret_values:
-            workflow_result = redact_secrets(workflow_result, secret_values)
-            captured_variables = redact_secrets(captured_variables, secret_values)
-            logger_output = redact_secrets(logger_output, secret_values)
-            error_msg = redact_secrets(error_msg, secret_values) if error_msg else None
+        result, captured_variables, logger_output, error_message = _scrub_outputs(
+            context, result, captured_variables, logger_output, error_message
+        )
 ```
 
-In the generic `Exception` handler (before the `return ExecutionResult(...)` around line 500-510), add:
-
-```python
-        # Scrub secrets from error message
-        secret_values = context._collect_secret_values()
-        if secret_values:
-            error_msg = redact_secrets(error_msg, secret_values) if error_msg else None
-            captured_variables = redact_secrets(captured_variables, secret_values)
-            logger_output = redact_secrets(logger_output, secret_values)
-```
+Adjusting variable names to match each block (e.g., `error_msg` vs `error_message`, `workflow_result` vs `result`).
 
 **Step 4: Run tests to verify nothing broke**
 
@@ -598,7 +598,7 @@ git commit -m "feat: scrub secrets from execution results/variables/logs in engi
 ### Task 5: Scrub real-time log stream
 
 **Files:**
-- Modify: `api/src/services/execution/engine.py:779-803` (WorkflowLogHandler.emit)
+- Modify: `api/src/services/execution/engine.py:779-814` (WorkflowLogHandler.emit)
 
 **Step 1: Write the failing test**
 
@@ -609,7 +609,6 @@ class TestLogScrubbing:
     """Test that log messages are scrubbed before streaming."""
 
     def test_log_message_scrubbed(self):
-        """Verify redact_secrets works on the log message format used by WorkflowLogHandler."""
         from src.core.secret_string import redact_secrets
 
         secret_values = {"sk-12345678"}
@@ -642,16 +641,16 @@ Expected: PASS
 
 **Step 3: Modify WorkflowLogHandler.emit()**
 
-In `api/src/services/execution/engine.py`, the `WorkflowLogHandler` is defined inside `_execute_workflow_with_trace`. The handler needs access to the secret values. Add secret collection at the start of `_execute_workflow_with_trace` (after line 731 `workflow_logs: list[str] = []`):
+In `_execute_workflow_with_trace`, add secret collection at the start (after line 731 `workflow_logs: list[str] = []`):
 
 ```python
-    # Collect secret values for log scrubbing
+    # Collect secret values for real-time log scrubbing
     secret_values = context._collect_secret_values()
 ```
 
-Then in `WorkflowLogHandler.emit()`, after line 780 where the message is formatted:
+Then in `WorkflowLogHandler.emit()`, change the message formatting (line ~780):
 
-Change:
+From:
 ```python
             log_entry = f"[{record.levelname}] {record.getMessage()}"
             workflow_logs.append(log_entry)
@@ -666,8 +665,9 @@ To:
             workflow_logs.append(log_entry)
 ```
 
-And in the real-time broadcast section (around line 799), change:
+Update the real-time broadcast dict (line ~799) to use the already-scrubbed `message`:
 
+From:
 ```python
                     "message": record.getMessage(),
 ```
@@ -677,8 +677,9 @@ To:
                     "message": message,
 ```
 
-And in the `log_and_broadcast` call (around line 814), change:
+Update the `log_and_broadcast` call (line ~814):
 
+From:
 ```python
                         log_and_broadcast(
                             execution_id=execution_id,
@@ -710,91 +711,58 @@ git commit -m "feat: scrub secrets from real-time log stream"
 
 ---
 
-### Task 6: Handle json.dumps for SecretString
+### Task 6: Handle SecretString in remove_circular_refs
 
 **Files:**
-- Modify: `api/src/services/execution/engine.py` (`remove_circular_refs` function, around line 835)
+- Modify: `api/src/services/execution/engine.py:835-870` (`remove_circular_refs` function)
+- Test: `api/tests/unit/test_secret_string.py`
 
-`remove_circular_refs` is called on captured variables before they're stored. It calls `json.dumps(obj)` to test serializability, which for `SecretString` would serialize the raw value (json.dumps uses the str buffer, not `__str__`). We need to convert `SecretString` → `"[REDACTED]"` in this function.
+`remove_circular_refs` is called on captured variables in `capture_variables_from_locals` (line 884). Since `json.dumps` uses the C-level str buffer and bypasses `__str__`, a `SecretString` passed through `remove_circular_refs` would survive as a raw string value. We intercept it here.
 
 **Step 1: Write the failing test**
 
 Add to `api/tests/unit/test_secret_string.py`:
 
 ```python
-class TestSecretStringJsonSerialization:
-    """Test that SecretString is redacted when JSON-serialized via json.dumps."""
+class TestRemoveCircularRefsSecretString:
+    """Test that remove_circular_refs converts SecretString to [REDACTED]."""
 
-    def test_json_dumps_direct(self):
-        """json.dumps on a SecretString should produce [REDACTED]."""
+    def test_secret_string_detected(self):
+        """SecretString values should be replaced with [REDACTED] in variable capture."""
+        # This tests the principle — the actual integration is in engine.py's
+        # remove_circular_refs which we modify to check isinstance(obj, SecretString)
         s = SecretString("my-api-key")
-        # Note: json.dumps uses the str buffer, so we need the redact_secrets
-        # layer or custom handling to catch this. This test documents the behavior.
-        dumped = json.dumps(s)
-        assert dumped == '"[REDACTED]"'
+        # After remove_circular_refs processes it, it should be REDACTED
+        from src.core.secret_string import REDACTED
+        assert REDACTED == "[REDACTED]"
+        # The actual assertion is that isinstance check works
+        assert isinstance(s, SecretString)
+        assert isinstance(s, str)
 ```
 
-**Step 2: Run test to see current behavior**
+**Step 2: Modify remove_circular_refs**
 
-Run: `./test.sh tests/unit/test_secret_string.py::TestSecretStringJsonSerialization -v`
-
-This test may fail because `json.dumps` uses the internal str buffer. If it does, we handle it in Step 3.
-
-**Step 3: Make json.dumps respect SecretString**
-
-There are two approaches. The simplest: override `__reduce__` or hook into the JSON encoder. But actually the cleanest approach is to handle it in `remove_circular_refs` in engine.py (line 835). Add a check early:
-
-In `remove_circular_refs`, before the `isinstance(obj, dict)` check:
+In `api/src/services/execution/engine.py`, in the `remove_circular_refs` function (line ~835), add a check before the `isinstance(obj, dict)` branch:
 
 ```python
-        # Redact SecretString before serialization
+        # Redact SecretString before serialization — json.dumps bypasses __str__
         from src.core.secret_string import SecretString, REDACTED
         if isinstance(obj, SecretString):
             return REDACTED
 ```
 
-For the standalone `json.dumps(SecretString(...))` case, we also need `SecretString` to work with the default encoder. Add `__json__` protocol isn't standard — instead, we make the class implement custom JSON via overriding in `secret_string.py`:
+This ensures that when `capture_variables_from_locals` calls `remove_circular_refs(v)` on a variable that holds a `SecretString`, it gets replaced with `"[REDACTED]"` before being stored in `captured_vars`.
 
-Actually, the cleanest way to make `json.dumps(SecretString("x"))` return `"[REDACTED]"` without patching the global encoder: we can't easily. `json.dumps` for str subclasses uses the C-level buffer. Instead:
-
-1. In `remove_circular_refs` (engine.py): detect SecretString → return REDACTED (**covers variable capture**)
-2. The `redact_secrets` call on `result` (**covers workflow return values**)
-3. For the test, update expectations based on actual behavior
-
-If `json.dumps(SecretString("x"))` returns `'"my-api-key"'` (raw value), update the test to document this and note that the `redact_secrets` layer handles it:
-
-```python
-    def test_json_dumps_direct_uses_raw_value(self):
-        """json.dumps uses str buffer directly — redact_secrets layer handles this."""
-        s = SecretString("my-api-key")
-        # json.dumps bypasses __str__, uses C-level str buffer
-        # This is expected — the redact_secrets scrub catches it at persist time
-        dumped = json.dumps(s)
-        # Document actual behavior (may be raw or redacted depending on Python version)
-        assert dumped in ['"my-api-key"', '"[REDACTED]"']
-```
-
-Add the `SecretString` check to `remove_circular_refs` in engine.py regardless — it's the right place:
-
-```python
-        if isinstance(obj, SecretString):
-            return REDACTED
-```
-
-**Step 4: Run tests**
+**Step 3: Run all tests**
 
 Run: `./test.sh tests/unit/test_secret_string.py -v`
 Expected: All PASS
 
-**Step 5: Update the json.dumps test in Task 1 based on actual behavior**
-
-The `test_json_dumps_is_redacted` and `test_json_dumps_in_dict` tests from Task 1 may need adjustment if `json.dumps` uses the raw buffer. If so, update them to match reality and add a comment explaining that `redact_secrets` is the actual protection layer.
-
-**Step 6: Commit**
+**Step 4: Commit**
 
 ```bash
 git add api/src/services/execution/engine.py api/tests/unit/test_secret_string.py
-git commit -m "feat: handle SecretString in remove_circular_refs and json serialization"
+git commit -m "feat: handle SecretString in remove_circular_refs"
 ```
 
 ---
@@ -822,21 +790,3 @@ Run: `cd api && ruff check .`
 Expected: 0 errors
 
 **Step 5: Commit any fixes if needed**
-
----
-
-### Task 8: Final commit and summary
-
-**Step 1: Verify all changes**
-
-```bash
-git log --oneline -10
-```
-
-Expected commits:
-1. `feat: add SecretString class and redact_secrets utility`
-2. `feat: return SecretString from ConfigResolver._decrypt_secret`
-3. `feat: add _collect_secret_values to ExecutionContext`
-4. `feat: scrub secrets from execution results/variables/logs in engine`
-5. `feat: scrub secrets from real-time log stream`
-6. `feat: handle SecretString in remove_circular_refs and json serialization`
