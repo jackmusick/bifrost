@@ -333,8 +333,11 @@ async def generate_manifest(db: AsyncSession) -> Manifest:
         apps={
             app.name: ManifestApp(
                 id=str(app.id),
-                path=f"{(app.repo_path or f'apps/{app.slug}').rstrip('/')}/app.yaml",
+                path=(app.repo_path or f"apps/{app.slug}").rstrip("/"),
                 slug=app.slug,
+                name=app.name,
+                description=app.description,
+                dependencies=app.dependencies or {},
                 organization_id=str(app.organization_id) if app.organization_id else None,
                 roles=app_roles_by_app.get(str(app.id), []),
                 access_level=app.access_level if app.access_level else "authenticated",
