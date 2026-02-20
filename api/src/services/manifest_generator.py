@@ -273,6 +273,7 @@ async def generate_manifest(db: AsyncSession) -> Manifest:
                         organization_id=str(im.organization_id) if im.organization_id else None,
                         entity_id=im.entity_id,
                         entity_name=im.entity_name,
+                        oauth_token_id=str(im.oauth_token_id) if im.oauth_token_id else None,
                     )
                     for im in mappings_by_integ.get(str(integ.id), [])
                 ],
