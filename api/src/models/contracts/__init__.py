@@ -171,6 +171,7 @@ from src.models.contracts.config import (
     SecretUpdateRequest,
     SetConfigRequest,
     SetIntegrationConfigRequest,
+    UpdateConfigRequest,
 )
 
 # OAuth Connections
@@ -624,6 +625,7 @@ __all__ = [
     "SystemLogsListResponse",
     # Config - use ConfigResponse or ConfigPublic for responses
     "SetConfigRequest",
+    "UpdateConfigRequest",
     "ConfigBase",
     "ConfigCreate",
     "ConfigUpdate",

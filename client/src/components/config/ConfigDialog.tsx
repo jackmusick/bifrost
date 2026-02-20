@@ -37,18 +37,32 @@ import type { components } from "@/lib/v1";
 
 type Config = components["schemas"]["ConfigResponse"];
 
-const formSchema = z.object({
-	key: z
-		.string()
-		.min(1, "Key is required")
-		.regex(/^[a-zA-Z0-9_]+$/, "Key must be alphanumeric with underscores"),
-	value: z.string().min(1, "Value is required"),
-	type: z.enum(["string", "int", "bool", "json", "secret"]),
-	description: z.string().optional(),
-	organization_id: z.string().nullable(),
-});
+const createFormSchema = (isEditing: boolean) =>
+	z
+		.object({
+			key: z
+				.string()
+				.min(1, "Key is required")
+				.regex(
+					/^[a-zA-Z0-9_]+$/,
+					"Key must be alphanumeric with underscores",
+				),
+			value: z.string(),
+			type: z.enum(["string", "int", "bool", "json", "secret"]),
+			description: z.string().optional(),
+			organization_id: z.string().nullable(),
+		})
+		.refine(
+			(data) => {
+				// When editing secrets, value is optional (empty = keep existing)
+				if (isEditing && data.type === "secret") return true;
+				// Otherwise value is required
+				return data.value.length > 0;
+			},
+			{ message: "Value is required", path: ["value"] },
+		);
 
-type FormValues = z.infer<typeof formSchema>;
+type FormValues = z.infer<ReturnType<typeof createFormSchema>>;
 
 interface ConfigDialogProps {
 	config?: Config | undefined;
@@ -68,7 +82,7 @@ export function ConfigDialog({ config, open, onClose }: ConfigDialogProps) {
 		: (user?.organizationId ?? null);
 
 	const form = useForm<FormValues>({
-		resolver: zodResolver(formSchema),
+		resolver: zodResolver(createFormSchema(isEditing)),
 		defaultValues: {
 			key: "",
 			value: "",
@@ -104,21 +118,32 @@ export function ConfigDialog({ config, open, onClose }: ConfigDialogProps) {
 	}, [config, form, open, defaultOrgId]);
 
 	const onSubmit = async (values: FormValues) => {
-		const body = {
-			key: values.key,
-			value: values.value,
-			type: values.type,
-			description: values.description ?? null,
-			organization_id: values.organization_id,
-		};
-
 		if (isEditing && config.id) {
+			// For updates, send null for empty secret values to keep existing
+			const updateBody = {
+				key: values.key,
+				value:
+					values.type === "secret" && !values.value
+						? null
+						: values.value,
+				type: values.type,
+				description: values.description ?? null,
+				organization_id: values.organization_id,
+			};
 			await updateConfig.mutateAsync({
 				params: { path: { config_id: config.id } },
-				body,
+				body: updateBody as typeof updateBody & { value: string },
 			});
 		} else {
-			await setConfig.mutateAsync({ body });
+			await setConfig.mutateAsync({
+				body: {
+					key: values.key,
+					value: values.value,
+					type: values.type,
+					description: values.description ?? null,
+					organization_id: values.organization_id,
+				},
+			});
 		}
 		onClose();
 	};
@@ -246,7 +271,7 @@ export function ConfigDialog({ config, open, onClose }: ConfigDialogProps) {
 												type="password"
 												placeholder={
 													isEditing
-														? "Enter new value to update"
+														? "Leave empty to keep existing..."
 														: "Enter secret value"
 												}
 												className="font-mono"
@@ -263,7 +288,7 @@ export function ConfigDialog({ config, open, onClose }: ConfigDialogProps) {
 									<FormDescription>
 										{selectedType === "secret"
 											? isEditing
-												? "Enter a new value to update the secret"
+												? "Leave empty to keep the existing secret, or enter a new value to update"
 												: "Secret will be encrypted and stored securely"
 											: "Enter the configuration value"}
 									</FormDescription>

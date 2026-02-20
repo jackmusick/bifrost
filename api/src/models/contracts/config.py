@@ -46,6 +46,19 @@ class SetConfigRequest(BaseModel):
     organization_id: UUID | None = Field(default=None, description="Organization ID. Null for global config.")
 
 
+class UpdateConfigRequest(BaseModel):
+    """Request model for updating an existing config by ID.
+
+    All fields are optional. For SECRET type configs, omitting value (or sending
+    empty string) preserves the existing encrypted value.
+    """
+    key: str | None = Field(default=None, pattern=r"^[a-zA-Z0-9_]+$")
+    value: str | None = Field(default=None, description="Config value. For SECRET type, leave empty to keep existing value.")
+    type: ConfigType | None = Field(default=None)
+    description: str | None = Field(default=None, description="Optional description of this config entry")
+    organization_id: UUID | None = Field(default=None, description="Organization ID. Null for global config.")
+
+
 # CRUD Pattern Models for Config
 class ConfigBase(BaseModel):
     """Shared config fields."""

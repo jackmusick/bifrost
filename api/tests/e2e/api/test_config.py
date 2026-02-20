@@ -211,6 +211,118 @@ class TestConfigAccess:
 
 
 @pytest.mark.e2e
+class TestConfigPartialUpdate:
+    """Test partial update (PUT) for config entries, especially secrets."""
+
+    def test_update_secret_without_value_preserves_existing(self, e2e_client, platform_admin):
+        """Updating a secret config without providing a value keeps the existing encrypted value."""
+        # Create a secret config
+        created = _create_config(
+            e2e_client, platform_admin.headers,
+            "e2e_secret_partial", "my-original-secret", "secret",
+            description="Secret for partial update test",
+        )
+        config_id = created["id"]
+
+        # Update only the description, sending null for value
+        response = e2e_client.put(
+            f"/api/config/{config_id}",
+            headers=platform_admin.headers,
+            json={"description": "Updated description"},
+        )
+        assert response.status_code == 200, f"Update failed: {response.text}"
+        data = response.json()
+        assert data["description"] == "Updated description"
+        assert data["type"] == "secret"
+        # Value should still be the encrypted secret (not empty/null)
+        assert data["value"] is not None
+        assert data["value"] != ""
+
+        # Cleanup
+        _delete_config(e2e_client, platform_admin.headers, config_id)
+
+    def test_update_secret_with_empty_string_preserves_existing(self, e2e_client, platform_admin):
+        """Sending empty string for secret value keeps existing value."""
+        created = _create_config(
+            e2e_client, platform_admin.headers,
+            "e2e_secret_empty", "original-secret-value", "secret",
+        )
+        config_id = created["id"]
+        original_value = created["value"]
+
+        # Update with empty string value
+        response = e2e_client.put(
+            f"/api/config/{config_id}",
+            headers=platform_admin.headers,
+            json={"value": ""},
+        )
+        assert response.status_code == 200, f"Update failed: {response.text}"
+        data = response.json()
+        # The encrypted value should be unchanged
+        assert data["value"] == original_value
+
+        # Cleanup
+        _delete_config(e2e_client, platform_admin.headers, config_id)
+
+    def test_update_secret_with_new_value_re_encrypts(self, e2e_client, platform_admin):
+        """Providing a new value for a secret config re-encrypts it."""
+        created = _create_config(
+            e2e_client, platform_admin.headers,
+            "e2e_secret_reencrypt", "original-secret", "secret",
+        )
+        config_id = created["id"]
+        original_value = created["value"]
+
+        # Update with a new secret value
+        response = e2e_client.put(
+            f"/api/config/{config_id}",
+            headers=platform_admin.headers,
+            json={"value": "new-secret-value"},
+        )
+        assert response.status_code == 200, f"Update failed: {response.text}"
+        data = response.json()
+        # The encrypted value should be different now
+        assert data["value"] != original_value
+        assert data["value"] is not None
+
+        # Cleanup
+        _delete_config(e2e_client, platform_admin.headers, config_id)
+
+    def test_update_non_secret_still_requires_value_concept(self, e2e_client, platform_admin):
+        """Non-secret configs can be partially updated too (only provided fields change)."""
+        created = _create_config(
+            e2e_client, platform_admin.headers,
+            "e2e_string_partial", "original-value", "string",
+            description="Original description",
+        )
+        config_id = created["id"]
+
+        # Update only description
+        response = e2e_client.put(
+            f"/api/config/{config_id}",
+            headers=platform_admin.headers,
+            json={"description": "New description"},
+        )
+        assert response.status_code == 200, f"Update failed: {response.text}"
+        data = response.json()
+        assert data["description"] == "New description"
+        # Value should be preserved
+        assert data["value"] == "original-value"
+
+        # Cleanup
+        _delete_config(e2e_client, platform_admin.headers, config_id)
+
+    def test_update_config_not_found(self, e2e_client, platform_admin):
+        """Updating a non-existent config returns 404."""
+        response = e2e_client.put(
+            "/api/config/00000000-0000-0000-0000-000000000000",
+            headers=platform_admin.headers,
+            json={"description": "ghost"},
+        )
+        assert response.status_code == 404
+
+
+@pytest.mark.e2e
 class TestConfigScoping:
     """Test configuration scoping (global vs org-scoped)."""
 

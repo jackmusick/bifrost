@@ -6,7 +6,7 @@ Tests Pydantic validation rules for request/response models
 import pytest
 from pydantic import ValidationError
 
-from src.models import ConfigType, SetConfigRequest, ConfigResponse
+from src.models import ConfigType, SetConfigRequest, UpdateConfigRequest, ConfigResponse
 
 
 # Note: Models use snake_case (e.g., updated_at, updated_by, org_id)
@@ -97,6 +97,61 @@ class TestSetConfigRequest:
 
         errors = exc_info.value.errors()
         assert any(e["loc"] == ("type",) for e in errors)
+
+
+class TestUpdateConfigRequest:
+    """Test validation for UpdateConfigRequest model (partial updates)"""
+
+    def test_all_fields_optional(self):
+        """Test that all fields can be omitted."""
+        req = UpdateConfigRequest()
+        assert req.key is None
+        assert req.value is None
+        assert req.type is None
+        assert req.description is None
+        assert req.organization_id is None
+
+    def test_partial_update_only_value(self):
+        """Test sending only value field."""
+        req = UpdateConfigRequest(value="new-value")
+        assert req.value == "new-value"
+        assert req.key is None
+        assert req.type is None
+
+    def test_partial_update_only_description(self):
+        """Test sending only description field."""
+        req = UpdateConfigRequest(description="updated desc")
+        assert req.description == "updated desc"
+        assert req.value is None
+
+    def test_empty_string_value_accepted(self):
+        """Test that empty string value is accepted (used to signal keep-existing for secrets)."""
+        req = UpdateConfigRequest(value="")
+        assert req.value == ""
+
+    def test_null_value_accepted(self):
+        """Test that None value is the default (signals no change)."""
+        req = UpdateConfigRequest(type=ConfigType.SECRET)
+        assert req.value is None
+
+    def test_key_pattern_still_enforced(self):
+        """Test that key pattern validation still applies when key is provided."""
+        with pytest.raises(ValidationError) as exc_info:
+            UpdateConfigRequest(key="invalid key!")
+        errors = exc_info.value.errors()
+        assert any(e["loc"] == ("key",) for e in errors)
+
+    def test_valid_key_accepted(self):
+        """Test valid key is accepted."""
+        req = UpdateConfigRequest(key="valid_key_123")
+        assert req.key == "valid_key_123"
+
+    def test_model_fields_set_tracks_explicit_fields(self):
+        """Test that model_fields_set correctly tracks which fields were explicitly set."""
+        req = UpdateConfigRequest(description=None)
+        assert "description" in req.model_fields_set
+        # organization_id was NOT explicitly set
+        assert "organization_id" not in req.model_fields_set
 
 
 class TestConfigResponse:

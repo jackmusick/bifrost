@@ -18,6 +18,7 @@ from src.models import (
     ConfigResponse,
     ConfigType,
     SetConfigRequest,
+    UpdateConfigRequest,
 )
 
 from src.core.auth import Context, CurrentSuperuser
@@ -212,10 +213,14 @@ class ConfigRepository(OrgScopedRepository[ConfigModel]):  # type: ignore[type-v
     async def update_config_by_id(
         self,
         config_id: UUID,
-        request: SetConfigRequest,
+        request: UpdateConfigRequest,
         updated_by: str,
     ) -> ConfigResponse | None:
-        """Update a config by ID. Allows changing organization scope."""
+        """Update a config by ID. Allows changing organization scope.
+
+        For SECRET type configs, if value is None or empty string, the existing
+        encrypted value is preserved.
+        """
         query = select(self.model).where(self.model.id == config_id)
         result = await self.session.execute(query)
         config = result.scalar_one_or_none()
@@ -224,33 +229,45 @@ class ConfigRepository(OrgScopedRepository[ConfigModel]):  # type: ignore[type-v
 
         now = datetime.now(timezone.utc)
 
-        # Handle secret encryption
-        stored_value = request.value
-        if request.type == ConfigType.SECRET:
-            from src.core.security import encrypt_secret
-            stored_value = encrypt_secret(request.value)
+        # Determine the effective type (use request type if provided, else keep existing)
+        effective_type = request.type if request.type is not None else (
+            ConfigType(config.config_type.value) if config.config_type else ConfigType.STRING
+        )
 
-        config_value = {"value": stored_value}
-        db_config_type = ConfigTypeEnum(request.type.value) if request.type else ConfigTypeEnum.STRING
+        # Handle value update — for secrets, empty/None means keep existing
+        if request.value is not None and request.value != "":
+            stored_value = request.value
+            if effective_type == ConfigType.SECRET:
+                from src.core.security import encrypt_secret
+                stored_value = encrypt_secret(request.value)
+            config.value = {"value": stored_value}
+        elif effective_type != ConfigType.SECRET:
+            # Non-secret types: empty string is a valid value, None means no change
+            if request.value is not None:
+                config.value = {"value": request.value}
 
-        config.key = request.key
-        config.value = config_value
-        config.config_type = db_config_type
-        config.description = request.description
-        config.organization_id = request.organization_id
+        if request.key is not None:
+            config.key = request.key
+        if request.type is not None:
+            config.config_type = ConfigTypeEnum(request.type.value)
+        if "description" in (request.model_fields_set or set()):
+            config.description = request.description
+        if "organization_id" in (request.model_fields_set or set()):
+            config.organization_id = request.organization_id
         config.updated_at = now
         config.updated_by = updated_by
         await self.session.flush()
         await self.session.refresh(config)
 
-        logger.info(f"Updated config {config.key} (id={config_id}) org={request.organization_id}")
+        logger.info(f"Updated config {config.key} (id={config_id}) org={config.organization_id}")
 
+        response_type = ConfigType(config.config_type.value) if config.config_type else ConfigType.STRING
         stored_value = config.value.get("value") if isinstance(config.value, dict) else config.value
         return ConfigResponse(
             id=config.id,
             key=config.key,
             value=stored_value,
-            type=request.type if request.type else ConfigType.STRING,
+            type=response_type,
             scope="org" if config.organization_id else "GLOBAL",
             org_id=str(config.organization_id) if config.organization_id else None,
             description=config.description,
@@ -385,7 +402,7 @@ async def set_config(
 )
 async def update_config(
     config_id: UUID,
-    request: SetConfigRequest,
+    request: UpdateConfigRequest,
     ctx: Context,
     user: CurrentSuperuser,
 ) -> ConfigResponse:
@@ -393,6 +410,9 @@ async def update_config(
 
     Unlike POST (which upserts by key within an org scope), this updates the
     specific config row by ID — allowing changes to organization_id (scope).
+
+    For SECRET type configs, omit value or send empty string to keep the
+    existing encrypted value.
     """
     # Use is_superuser=True; org scoping not needed since we look up by ID
     repo = ConfigRepository(ctx.db, org_id=ctx.org_id, is_superuser=True)
@@ -406,10 +426,10 @@ async def update_config(
 
     # Upsert to cache after successful write
     if CACHE_AVAILABLE and upsert_config:
-        org_id_str = str(request.organization_id) if request.organization_id else None
-        config_type_str = request.type.value if request.type else "string"
+        org_id_str = str(result.org_id) if result.org_id else None
+        config_type_str = result.type.value if result.type else "string"
         stored_value = result.value
-        await upsert_config(org_id_str, request.key, stored_value, config_type_str)
+        await upsert_config(org_id_str, result.key, stored_value, config_type_str)
 
     return result
 

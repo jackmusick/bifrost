@@ -3316,22 +3316,22 @@ export interface paths {
          * Execute workflow via API key
          * @description Execute an endpoint-enabled workflow using an API key for authentication
          */
-        get: operations["execute_endpoint_api_endpoints__workflow_id__put"];
+        get: operations["execute_endpoint_api_endpoints__workflow_id__get"];
         /**
          * Execute workflow via API key
          * @description Execute an endpoint-enabled workflow using an API key for authentication
          */
-        put: operations["execute_endpoint_api_endpoints__workflow_id__put"];
+        put: operations["execute_endpoint_api_endpoints__workflow_id__get"];
         /**
          * Execute workflow via API key
          * @description Execute an endpoint-enabled workflow using an API key for authentication
          */
-        post: operations["execute_endpoint_api_endpoints__workflow_id__put"];
+        post: operations["execute_endpoint_api_endpoints__workflow_id__get"];
         /**
          * Execute workflow via API key
          * @description Execute an endpoint-enabled workflow using an API key for authentication
          */
-        delete: operations["execute_endpoint_api_endpoints__workflow_id__put"];
+        delete: operations["execute_endpoint_api_endpoints__workflow_id__get"];
         options?: never;
         head?: never;
         patch?: never;
@@ -16790,6 +16790,33 @@ export interface components {
             devices: components["schemas"]["TrustedDeviceResponse"][];
         };
         /**
+         * UpdateConfigRequest
+         * @description Request model for updating an existing config by ID.
+         *
+         *     All fields are optional. For SECRET type configs, omitting value (or sending
+         *     empty string) preserves the existing encrypted value.
+         */
+        UpdateConfigRequest: {
+            /** Key */
+            key?: string | null;
+            /**
+             * Value
+             * @description Config value. For SECRET type, leave empty to keep existing value.
+             */
+            value?: string | null;
+            type?: components["schemas"]["ConfigType"] | null;
+            /**
+             * Description
+             * @description Optional description of this config entry
+             */
+            description?: string | null;
+            /**
+             * Organization Id
+             * @description Organization ID. Null for global config.
+             */
+            organization_id?: string | null;
+        };
+        /**
          * UpdateOAuthConnectionRequest
          * @description Request model for updating an OAuth connection
          *     PUT /api/oauth/connections/{connection_name}
@@ -21293,7 +21320,7 @@ export interface operations {
         };
         requestBody: {
             content: {
-                "application/json": components["schemas"]["SetConfigRequest"];
+                "application/json": components["schemas"]["UpdateConfigRequest"];
             };
         };
         responses: {
@@ -23352,7 +23379,7 @@ export interface operations {
             };
         };
     };
-    execute_endpoint_api_endpoints__workflow_id__put: {
+    execute_endpoint_api_endpoints__workflow_id__get: {
         parameters: {
             query?: never;
             header: {
@@ -23385,7 +23412,7 @@ export interface operations {
             };
         };
     };
-    execute_endpoint_api_endpoints__workflow_id__put: {
+    execute_endpoint_api_endpoints__workflow_id__get: {
         parameters: {
             query?: never;
             header: {
@@ -23418,7 +23445,7 @@ export interface operations {
             };
         };
     };
-    execute_endpoint_api_endpoints__workflow_id__put: {
+    execute_endpoint_api_endpoints__workflow_id__get: {
         parameters: {
             query?: never;
             header: {
@@ -23451,7 +23478,7 @@ export interface operations {
             };
         };
     };
-    execute_endpoint_api_endpoints__workflow_id__put: {
+    execute_endpoint_api_endpoints__workflow_id__get: {
         parameters: {
             query?: never;
             header: {
