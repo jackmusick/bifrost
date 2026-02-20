@@ -22,7 +22,7 @@ function buildUrl(name: string, version: string): string {
 /**
  * Load all dependencies from esm.sh in parallel.
  *
- * @param deps - Map of {packageName: version} from app.yaml
+ * @param deps - Map of {packageName: version} from app dependencies
  * @returns Map of {packageName: moduleExports} for injection as $deps
  */
 export async function loadDependencies(
