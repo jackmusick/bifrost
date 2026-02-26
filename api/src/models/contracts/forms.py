@@ -131,6 +131,21 @@ class FormSchema(BaseModel):
             raise ValueError("Field names must be unique")
         return v
 
+    @model_validator(mode='after')
+    def validate_auto_fill_targets(self):
+        """Ensure auto_fill target field names reference fields that exist in this form."""
+        field_names = {field.name for field in self.fields}
+        for field in self.fields:
+            if not field.auto_fill:
+                continue
+            invalid = set(field.auto_fill.keys()) - field_names
+            if invalid:
+                raise ValueError(
+                    f"Field '{field.name}' auto_fill references non-existent "
+                    f"target field(s): {', '.join(sorted(invalid))}"
+                )
+        return self
+
 
 class Form(BaseModel):
     """Form entity (response model)"""

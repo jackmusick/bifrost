@@ -709,16 +709,72 @@ function FormRendererInner({
 		Record<string, (value: string) => void>
 	>({});
 
+	// Helper: apply auto_fill from a selected option's metadata to sibling fields
+	const applyAutoFill = useCallback(
+		(field: FormField, selectedValue: string) => {
+			if (!field.auto_fill || !field.data_provider_id) return;
+			const providerId = field.data_provider_id as string;
+			const cacheKey = `${providerId}_${field.name}`;
+			const options = dataProviderState.options[cacheKey];
+			if (!options) return;
+
+			const selectedOption = options.find(
+				(opt) => opt.value === selectedValue,
+			);
+			const metadata = selectedOption?.metadata;
+			if (!metadata) return;
+
+			Object.entries(field.auto_fill).forEach(
+				([targetField, metadataKey]) => {
+					const value = metadata[metadataKey];
+					if (value !== undefined && value !== null) {
+						setValue(targetField, value, {
+							shouldValidate: true,
+						});
+					}
+				},
+			);
+		},
+		[dataProviderState.options, setValue],
+	);
+
 	const getFieldValueChangeCallback = useCallback(
-		(fieldName: string) => {
-			if (!fieldValueChangeCallbacks.current[fieldName]) {
+		(fieldName: string, field?: FormField) => {
+			// Invalidate cached callback when auto_fill options change so
+			// the closure always references the latest options array.
+			const providerId = field?.data_provider_id as string | undefined;
+			const cacheKey = providerId
+				? `${providerId}_${fieldName}`
+				: undefined;
+			const currentOptions = cacheKey
+				? dataProviderState.options[cacheKey]
+				: undefined;
+			const cacheId = `${fieldName}_${field?.auto_fill ? "af" : ""}${currentOptions ? currentOptions.length : 0}`;
+
+			if (
+				!fieldValueChangeCallbacks.current[fieldName] ||
+				(fieldValueChangeCallbacks.current as Record<string, unknown>)[
+					`${fieldName}_cacheId`
+				] !== cacheId
+			) {
 				fieldValueChangeCallbacks.current[fieldName] = (
 					value: string,
-				) => setValue(fieldName, value, { shouldValidate: true });
+				) => {
+					setValue(fieldName, value, { shouldValidate: true });
+					if (field?.auto_fill) {
+						applyAutoFill(field, value);
+					}
+				};
+				(
+					fieldValueChangeCallbacks.current as Record<
+						string,
+						unknown
+					>
+				)[`${fieldName}_cacheId`] = cacheId;
 			}
 			return fieldValueChangeCallbacks.current[fieldName];
 		},
-		[setValue],
+		[setValue, applyAutoFill, dataProviderState.options],
 	);
 
 	const renderField = (field: FormField) => {
@@ -757,7 +813,7 @@ function FormRendererInner({
 					providerError={providerError || undefined}
 					isEnabled={hasSuccessfullyLoaded}
 					value={(formValues[field.name] as string) || ""}
-					onValueChange={getFieldValueChangeCallback(field.name)}
+					onValueChange={getFieldValueChangeCallback(field.name, field)}
 				/>
 			);
 		}
