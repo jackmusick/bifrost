@@ -258,6 +258,7 @@ class FormIndexer:
                     multiple=form_field.multiple,
                     max_size_mb=form_field.max_size_mb,
                     content=form_field.content,
+                    allow_as_query_param=form_field.allow_as_query_param,
                 )
                 self.db.add(field_orm)
 

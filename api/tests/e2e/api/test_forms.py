@@ -567,8 +567,7 @@ async def e2e_form_test_dp(org_id: str | None = None):
         assert text_field.get("help_text") == "This is help text for the field", "help_text not preserved"
         assert text_field.get("default_value") == "default_text", "default_value not preserved"
         assert text_field.get("required") is True, "required not preserved"
-        # Note: allow_as_query_param is in the contract but not yet in the database schema
-        # This would require a migration to add the column - skipping for now
+        assert text_field.get("allow_as_query_param") is True, "allow_as_query_param not preserved"
 
     def test_form_static_options_preserved(self, comprehensive_form):
         """Verify static options on select/radio fields are preserved."""
