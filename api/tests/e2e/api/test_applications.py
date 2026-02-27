@@ -369,8 +369,7 @@ class TestApplicationAccess:
         response = e2e_client.post(
             "/api/applications",
             headers=platform_admin.headers,
-            params={"scope": "global"},
-            json={"name": "Global App", "slug": "global-app"},
+            json={"name": "Global App", "slug": "global-app", "organization_id": None},
         )
         assert response.status_code == 201
         app = response.json()
@@ -401,8 +400,7 @@ class TestApplicationScopeFiltering:
         response = e2e_client.post(
             "/api/applications",
             headers=platform_admin.headers,
-            params={"scope": "global"},
-            json={"name": "Global App", "slug": f"global-scope-app-{suffix}"},
+            json={"name": "Global App", "slug": f"global-scope-app-{suffix}", "organization_id": None},
         )
         assert response.status_code == 201
         apps["global"] = response.json()
@@ -411,8 +409,7 @@ class TestApplicationScopeFiltering:
         response = e2e_client.post(
             "/api/applications",
             headers=platform_admin.headers,
-            params={"scope": org1["id"]},
-            json={"name": "Org App", "slug": f"org-scope-app-{suffix}"},
+            json={"name": "Org App", "slug": f"org-scope-app-{suffix}", "organization_id": org1["id"]},
         )
         assert response.status_code == 201
         apps["org"] = response.json()

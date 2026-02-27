@@ -52,6 +52,10 @@ class ApplicationCreate(ApplicationBase):
         default_factory=list,
         description="Role IDs for role_based access (ignored if access_level is 'authenticated')",
     )
+    organization_id: UUID | None = Field(
+        default=None,
+        description="Organization ID. Null for global application.",
+    )
 
     @field_validator("slug")
     @classmethod

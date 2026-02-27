@@ -14,19 +14,19 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import joinedload, selectinload
 
 from src.core.security import decrypt_secret
-from src.models.enums import ConfigType
-from src.models.orm.config import Config
-from src.models.orm.integrations import Integration, IntegrationConfigSchema, IntegrationMapping
-
-logger = logging.getLogger(__name__)
 from src.models.contracts.integrations import (
     IntegrationCreate,
     IntegrationUpdate,
     IntegrationMappingCreate,
     IntegrationMappingUpdate,
 )
+from src.models.enums import ConfigType
+from src.models.orm.config import Config
+from src.models.orm.integrations import Integration, IntegrationConfigSchema, IntegrationMapping
 from src.repositories.base import BaseRepository
 from src.repositories.org_scoped import OrgScopedRepository
+
+logger = logging.getLogger(__name__)
 
 
 class IntegrationMappingRepository(OrgScopedRepository[IntegrationMapping]):

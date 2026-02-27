@@ -44,10 +44,30 @@ def org1_table_data(
     scope_test_table_name,
 ):
     """Create test data in org1's table."""
-    response = e2e_client.post(
-        f"/api/tables/{scope_test_table_name}/documents",
+    # Create the table first
+    table_resp = e2e_client.post(
+        "/api/tables",
         headers=platform_admin.headers,
         params={"scope": org1["id"]},
+        json={"name": scope_test_table_name},
+    )
+    assert table_resp.status_code in (201, 409), (
+        f"Failed to create org1 table: {table_resp.text}"
+    )
+    if table_resp.status_code == 201:
+        table_id = table_resp.json()["id"]
+    else:
+        # Table already exists, fetch it
+        list_resp = e2e_client.get(
+            "/api/tables",
+            headers=platform_admin.headers,
+            params={"scope": org1["id"]},
+        )
+        table_id = next(t["id"] for t in list_resp.json()["tables"] if t["name"] == scope_test_table_name)
+
+    response = e2e_client.post(
+        f"/api/tables/{table_id}/documents",
+        headers=platform_admin.headers,
         json={"data": {"scope_marker": "org1", "name": "Org 1 Test Record"}},
     )
     assert response.status_code == 201, (
@@ -55,13 +75,12 @@ def org1_table_data(
     )
     doc = response.json()
 
-    yield {"org_id": org1["id"], "doc_id": doc["id"], "scope_marker": "org1"}
+    yield {"org_id": org1["id"], "doc_id": doc["id"], "scope_marker": "org1", "table_id": table_id}
 
     # Cleanup
     e2e_client.delete(
-        f"/api/tables/{scope_test_table_name}/documents/{doc['id']}",
+        f"/api/tables/{table_id}/documents/{doc['id']}",
         headers=platform_admin.headers,
-        params={"scope": org1["id"]},
     )
 
 
@@ -73,10 +92,29 @@ def org2_table_data(
     scope_test_table_name,
 ):
     """Create test data in org2's table."""
-    response = e2e_client.post(
-        f"/api/tables/{scope_test_table_name}/documents",
+    # Create the table first
+    table_resp = e2e_client.post(
+        "/api/tables",
         headers=platform_admin.headers,
         params={"scope": org2["id"]},
+        json={"name": scope_test_table_name},
+    )
+    assert table_resp.status_code in (201, 409), (
+        f"Failed to create org2 table: {table_resp.text}"
+    )
+    if table_resp.status_code == 201:
+        table_id = table_resp.json()["id"]
+    else:
+        list_resp = e2e_client.get(
+            "/api/tables",
+            headers=platform_admin.headers,
+            params={"scope": org2["id"]},
+        )
+        table_id = next(t["id"] for t in list_resp.json()["tables"] if t["name"] == scope_test_table_name)
+
+    response = e2e_client.post(
+        f"/api/tables/{table_id}/documents",
+        headers=platform_admin.headers,
         json={"data": {"scope_marker": "org2", "name": "Org 2 Test Record"}},
     )
     assert response.status_code == 201, (
@@ -84,13 +122,12 @@ def org2_table_data(
     )
     doc = response.json()
 
-    yield {"org_id": org2["id"], "doc_id": doc["id"], "scope_marker": "org2"}
+    yield {"org_id": org2["id"], "doc_id": doc["id"], "scope_marker": "org2", "table_id": table_id}
 
     # Cleanup
     e2e_client.delete(
-        f"/api/tables/{scope_test_table_name}/documents/{doc['id']}",
+        f"/api/tables/{table_id}/documents/{doc['id']}",
         headers=platform_admin.headers,
-        params={"scope": org2["id"]},
     )
 
 
@@ -101,10 +138,29 @@ def global_table_data(
     scope_test_table_name,
 ):
     """Create test data in global table (no org)."""
-    response = e2e_client.post(
-        f"/api/tables/{scope_test_table_name}/documents",
+    # Create the table first
+    table_resp = e2e_client.post(
+        "/api/tables",
         headers=platform_admin.headers,
         params={"scope": "global"},
+        json={"name": scope_test_table_name},
+    )
+    assert table_resp.status_code in (201, 409), (
+        f"Failed to create global table: {table_resp.text}"
+    )
+    if table_resp.status_code == 201:
+        table_id = table_resp.json()["id"]
+    else:
+        list_resp = e2e_client.get(
+            "/api/tables",
+            headers=platform_admin.headers,
+            params={"scope": "global"},
+        )
+        table_id = next(t["id"] for t in list_resp.json()["tables"] if t["name"] == scope_test_table_name)
+
+    response = e2e_client.post(
+        f"/api/tables/{table_id}/documents",
+        headers=platform_admin.headers,
         json={"data": {"scope_marker": "global", "name": "Global Test Record"}},
     )
     assert response.status_code == 201, (
@@ -112,13 +168,12 @@ def global_table_data(
     )
     doc = response.json()
 
-    yield {"org_id": None, "doc_id": doc["id"], "scope_marker": "global"}
+    yield {"org_id": None, "doc_id": doc["id"], "scope_marker": "global", "table_id": table_id}
 
     # Cleanup
     e2e_client.delete(
-        f"/api/tables/{scope_test_table_name}/documents/{doc['id']}",
+        f"/api/tables/{table_id}/documents/{doc['id']}",
         headers=platform_admin.headers,
-        params={"scope": "global"},
     )
 
 

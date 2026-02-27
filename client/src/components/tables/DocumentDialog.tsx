@@ -22,10 +22,9 @@ import {
 
 interface DocumentDialogProps {
 	document?: DocumentPublic | undefined;
-	tableName: string;
+	tableId: string;
 	open: boolean;
 	onClose: () => void;
-	scope?: string;
 }
 
 /**
@@ -35,9 +34,8 @@ interface DocumentDialogProps {
  */
 function DocumentDialogInner({
 	document,
-	tableName,
+	tableId,
 	onClose,
-	scope,
 }: Omit<DocumentDialogProps, "open">) {
 	const insertDocument = useInsertDocument();
 	const updateDocument = useUpdateDocument();
@@ -96,16 +94,14 @@ function DocumentDialogInner({
 		if (isEditing && document) {
 			await updateDocument.mutateAsync({
 				params: {
-					path: { name: tableName, doc_id: document.id },
-					query: scope ? { scope } : undefined,
+					path: { table_id: tableId, doc_id: document.id },
 				},
 				body: { data },
 			});
 		} else {
 			await insertDocument.mutateAsync({
 				params: {
-					path: { name: tableName },
-					query: scope ? { scope } : undefined,
+					path: { table_id: tableId },
 				},
 				body: { data },
 			});
@@ -132,7 +128,7 @@ function DocumentDialogInner({
 				<DialogDescription>
 					{isEditing
 						? "Update the document data (will merge with existing)"
-						: `Add a new document to the "${tableName}" table`}
+						: "Add a new document to this table"}
 				</DialogDescription>
 			</DialogHeader>
 
@@ -219,10 +215,9 @@ function DocumentDialogInner({
  */
 export function DocumentDialog({
 	document,
-	tableName,
+	tableId,
 	open,
 	onClose,
-	scope,
 }: DocumentDialogProps) {
 	const handleOpenChange = useCallback(
 		(isOpen: boolean) => {
@@ -243,9 +238,8 @@ export function DocumentDialog({
 				<DocumentDialogInner
 					key={dialogKey}
 					document={document}
-					tableName={tableName}
+					tableId={tableId}
 					onClose={onClose}
-					scope={scope}
 				/>
 			</DialogContent>
 		</Dialog>

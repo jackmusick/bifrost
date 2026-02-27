@@ -108,9 +108,11 @@ async def test_generate_manifest_with_workflow(mock_db):
 
     manifest = await generate_manifest(mock_db)
 
-    assert "test_wf" in manifest.workflows
-    assert manifest.workflows["test_wf"].id == str(wf.id)
-    assert manifest.workflows["test_wf"].path == "workflows/test_wf.py"
+    wf_key = str(wf.id)
+    assert wf_key in manifest.workflows
+    assert manifest.workflows[wf_key].id == str(wf.id)
+    assert manifest.workflows[wf_key].name == "test_wf"
+    assert manifest.workflows[wf_key].path == "workflows/test_wf.py"
 
 
 @pytest.mark.asyncio
@@ -200,15 +202,17 @@ async def test_generate_manifest_with_roles(mock_db):
     manifest = await generate_manifest(mock_db)
 
     # Verify workflow roles
-    assert "admin_wf" in manifest.workflows
-    assert len(manifest.workflows["admin_wf"].roles) == 2
-    assert str(role_id_1) in manifest.workflows["admin_wf"].roles
-    assert str(role_id_2) in manifest.workflows["admin_wf"].roles
+    wf_key = str(wf.id)
+    assert wf_key in manifest.workflows
+    assert len(manifest.workflows[wf_key].roles) == 2
+    assert str(role_id_1) in manifest.workflows[wf_key].roles
+    assert str(role_id_2) in manifest.workflows[wf_key].roles
 
     # Verify form roles
-    assert "admin_form" in manifest.forms
-    assert len(manifest.forms["admin_form"].roles) == 1
-    assert str(role_id_1) in manifest.forms["admin_form"].roles
+    form_key = str(form.id)
+    assert form_key in manifest.forms
+    assert len(manifest.forms[form_key].roles) == 1
+    assert str(role_id_1) in manifest.forms[form_key].roles
 
 
 @pytest.mark.asyncio
@@ -261,8 +265,8 @@ async def test_generate_manifest_with_organizations(mock_db):
     manifest = await generate_manifest(mock_db)
 
     # Verify org bindings
-    assert manifest.workflows["org_wf"].organization_id == str(org_id)
-    assert manifest.forms["org_form"].organization_id == str(org_id)
+    assert manifest.workflows[str(wf.id)].organization_id == str(org_id)
+    assert manifest.forms[str(form.id)].organization_id == str(org_id)
 
 
 @pytest.mark.asyncio
@@ -313,9 +317,9 @@ async def test_generate_manifest_access_levels(mock_db):
 
     manifest = await generate_manifest(mock_db)
 
-    assert manifest.forms["auth_form"].access_level == "authenticated"
-    assert manifest.agents["private_agent"].access_level == "private"
-    assert manifest.apps["locked_app"].access_level == "role_based"
+    assert manifest.forms[str(form.id)].access_level == "authenticated"
+    assert manifest.agents[str(agent.id)].access_level == "private"
+    assert manifest.apps[str(app.id)].access_level == "role_based"
 
 
 @pytest.mark.asyncio
@@ -360,5 +364,6 @@ async def test_generate_manifest_excludes_system_agents(mock_db):
 
     manifest = await generate_manifest(mock_db)
 
-    assert "User Agent" in manifest.agents
-    assert "Platform Assistant" not in manifest.agents
+    assert str(user_agent.id) in manifest.agents
+    assert manifest.agents[str(user_agent.id)].name == "User Agent"
+    assert str(system_agent.id) not in manifest.agents

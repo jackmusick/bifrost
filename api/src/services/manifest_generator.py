@@ -217,8 +217,9 @@ async def generate_manifest(db: AsyncSession) -> Manifest:
             for role in roles_list
         ],
         workflows={
-            wf.name: ManifestWorkflow(
+            str(wf.id): ManifestWorkflow(
                 id=str(wf.id),
+                name=wf.name,
                 path=wf.path,
                 function_name=wf.function_name,
                 type=wf.type or "workflow",
@@ -234,8 +235,9 @@ async def generate_manifest(db: AsyncSession) -> Manifest:
             for wf in workflows_list
         },
         integrations={
-            integ.name: ManifestIntegration(
+            str(integ.id): ManifestIntegration(
                 id=str(integ.id),
+                name=integ.name,
                 entity_id=integ.entity_id,
                 entity_id_name=integ.entity_id_name,
                 default_entity_id=integ.default_entity_id,
@@ -294,24 +296,26 @@ async def generate_manifest(db: AsyncSession) -> Manifest:
             for cfg in configs_list
         },
         tables={
-            table.name: ManifestTable(
+            str(table.id): ManifestTable(
                 id=str(table.id),
+                name=table.name,
                 description=table.description,
                 organization_id=str(table.organization_id) if table.organization_id else None,
                 application_id=str(table.application_id) if table.application_id else None,
-                **{"schema": table.schema},  # alias for table_schema
+                **{"schema": table.schema},  # type: ignore[arg-type]  # alias for table_schema
             )
             for table in tables_list
         },
         events={
-            es.name: _build_event_source_manifest(
+            str(es.id): _build_event_source_manifest(
                 es, schedule_by_source, webhook_by_source, subs_by_source
             )
             for es in event_sources_list
         },
         forms={
-            form.name: ManifestForm(
+            str(form.id): ManifestForm(
                 id=str(form.id),
+                name=form.name,
                 path=f"forms/{form.id}.form.yaml",
                 organization_id=str(form.organization_id) if form.organization_id else None,
                 roles=form_roles_by_form.get(str(form.id), []),
@@ -320,8 +324,9 @@ async def generate_manifest(db: AsyncSession) -> Manifest:
             for form in forms_list
         },
         agents={
-            agent.name: ManifestAgent(
+            str(agent.id): ManifestAgent(
                 id=str(agent.id),
+                name=agent.name,
                 path=f"agents/{agent.id}.agent.yaml",
                 organization_id=str(agent.organization_id) if agent.organization_id else None,
                 roles=agent_roles_by_agent.get(str(agent.id), []),
@@ -331,7 +336,7 @@ async def generate_manifest(db: AsyncSession) -> Manifest:
             if not agent.is_system  # Exclude system agents
         },
         apps={
-            app.name: ManifestApp(
+            str(app.id): ManifestApp(
                 id=str(app.id),
                 path=(app.repo_path or f"apps/{app.slug}").rstrip("/"),
                 slug=app.slug,
@@ -383,6 +388,7 @@ def _build_event_source_manifest(
 
     return ManifestEventSource(
         id=es_id,
+        name=es.name,
         source_type=es.source_type if isinstance(es.source_type, str) else es.source_type.value,
         organization_id=str(es.organization_id) if es.organization_id else None,
         is_active=es.is_active,

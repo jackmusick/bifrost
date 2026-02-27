@@ -23,7 +23,7 @@ from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 
 from src.core.auth import Context, CurrentUser
-from src.core.org_filter import OrgFilterType, resolve_org_filter, resolve_target_org
+from src.core.org_filter import OrgFilterType, resolve_org_filter
 from src.core.pubsub import publish_app_draft_update, publish_app_published
 from src.models.contracts.applications import (
     ApplicationCreate,
@@ -581,21 +581,9 @@ async def application_to_public(
     )
 
 
-def _resolve_target_org_safe(ctx: Context, scope: str | None) -> UUID | None:
-    """Resolve target org ID with proper auth check, raising HTTPException on error."""
-    try:
-        return resolve_target_org(ctx.user, scope, ctx.org_id)
-    except ValueError as e:
-        raise HTTPException(
-            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
-            detail=str(e),
-        )
-
-
 async def get_application_or_404(
     ctx: Context,
     slug: str,
-    scope: str | None = None,
 ) -> Application:
     """Get application by slug with access control.
 
@@ -609,10 +597,9 @@ async def get_application_or_404(
     Raises:
         HTTPException 404 if not found or access denied
     """
-    target_org_id = _resolve_target_org_safe(ctx, scope)
     repo = ApplicationRepository(
         session=ctx.db,
-        org_id=target_org_id,
+        org_id=ctx.org_id,
         user_id=ctx.user.user_id,
         is_superuser=ctx.user.is_platform_admin,
     )
@@ -634,7 +621,6 @@ async def get_application_or_404(
 async def get_application_by_id_or_404(
     ctx: Context,
     app_id: UUID,
-    scope: str | None = None,
 ) -> Application:
     """Get application by UUID with access control.
 
@@ -648,10 +634,9 @@ async def get_application_by_id_or_404(
     Raises:
         HTTPException 404 if not found or access denied
     """
-    target_org_id = _resolve_target_org_safe(ctx, scope)
     repo = ApplicationRepository(
         session=ctx.db,
-        org_id=target_org_id,
+        org_id=ctx.org_id,
         user_id=ctx.user.user_id,
         is_superuser=ctx.user.is_platform_admin,
     )
@@ -679,13 +664,13 @@ async def create_application(
     data: ApplicationCreate,
     ctx: Context,
     user: CurrentUser,
-    scope: str | None = Query(
-        default=None,
-        description="Target scope: 'global' or org UUID. Defaults to current org.",
-    ),
 ) -> ApplicationPublic:
     """Create a new application."""
-    target_org_id = _resolve_target_org_safe(ctx, scope)
+    # Use organization_id from request body if explicitly provided, else default to current org
+    if "organization_id" in (data.model_fields_set or set()):
+        target_org_id = data.organization_id
+    else:
+        target_org_id = ctx.org_id
     repo = ApplicationRepository(
         ctx.db,
         target_org_id,
@@ -762,17 +747,15 @@ async def get_application(
     slug: str,
     ctx: Context,
     user: CurrentUser,
-    scope: str | None = Query(default=None),
 ) -> ApplicationPublic:
-    """Get application metadata by slug."""
-    target_org_id = _resolve_target_org_safe(ctx, scope)
+    """Get application metadata by slug (globally unique)."""
     repo = ApplicationRepository(
         ctx.db,
-        target_org_id,
+        ctx.org_id,
         user_id=user.user_id,
         is_superuser=user.is_platform_admin,
     )
-    application = await get_application_or_404(ctx, slug, scope)
+    application = await get_application_or_404(ctx, slug)
     return await application_to_public(application, repo)
 
 
@@ -871,21 +854,19 @@ async def get_draft(
     app_id: UUID,
     ctx: Context,
     user: CurrentUser,
-    scope: str | None = Query(default=None),
 ) -> ApplicationDefinition:
     """
     Get the current draft definition.
 
     Returns the draft files serialized as JSON.
     """
-    target_org_id = _resolve_target_org_safe(ctx, scope)
     repo = ApplicationRepository(
         ctx.db,
-        target_org_id,
+        ctx.org_id,
         user_id=user.user_id,
         is_superuser=user.is_platform_admin,
     )
-    app = await get_application_by_id_or_404(ctx, app_id, scope)
+    app = await get_application_by_id_or_404(ctx, app_id)
     export_data = await repo.export_application(app)
     return ApplicationDefinition(
         definition=export_data,
@@ -904,21 +885,19 @@ async def save_draft(
     data: ApplicationDraftSave,
     ctx: Context,
     user: CurrentUser,
-    scope: str | None = Query(default=None),
 ) -> ApplicationDefinition:
     """
     Save a new draft definition.
 
     Replaces all existing draft files with the provided definition.
     """
-    target_org_id = _resolve_target_org_safe(ctx, scope)
     repo = ApplicationRepository(
         ctx.db,
-        target_org_id,
+        ctx.org_id,
         user_id=user.user_id,
         is_superuser=user.is_platform_admin,
     )
-    app = await get_application_by_id_or_404(ctx, app_id, scope)
+    app = await get_application_by_id_or_404(ctx, app_id)
 
     # Extract files from definition and update
     files_data = data.definition.get("files", [])
@@ -947,17 +926,15 @@ async def publish_application(
     ctx: Context,
     user: CurrentUser,
     data: ApplicationPublishRequest | None = None,
-    scope: str | None = Query(default=None),
 ) -> ApplicationPublic:
     """
     Publish the draft to live.
 
     Copies all draft files to a new live version.
     """
-    target_org_id = _resolve_target_org_safe(ctx, scope)
     repo = ApplicationRepository(
         ctx.db,
-        target_org_id,
+        ctx.org_id,
         user_id=user.user_id,
         is_superuser=user.is_platform_admin,
     )
@@ -1131,7 +1108,6 @@ async def export_application(
     ctx: Context,
     user: CurrentUser,
     version_id: UUID | None = Query(default=None, description="Version UUID to export (defaults to draft)"),
-    scope: str | None = Query(default=None),
 ) -> ApplicationPublic:
     """
     Export full application to JSON for GitHub sync/portability.
@@ -1139,14 +1115,13 @@ async def export_application(
     Returns the complete application structure including all files.
     Pass version_id to export a specific version, or omit to export draft.
     """
-    target_org_id = _resolve_target_org_safe(ctx, scope)
     repo = ApplicationRepository(
         ctx.db,
-        target_org_id,
+        ctx.org_id,
         user_id=user.user_id,
         is_superuser=user.is_platform_admin,
     )
-    application = await get_application_by_id_or_404(ctx, app_id, scope)
+    application = await get_application_by_id_or_404(ctx, app_id)
     export_data = await repo.export_application(application, version_id)
 
     return ApplicationPublic.model_validate(export_data)
@@ -1167,7 +1142,6 @@ async def rollback_application(
     data: ApplicationRollbackRequest,
     ctx: Context,
     user: CurrentUser,
-    scope: str | None = Query(default=None),
 ) -> ApplicationPublic:
     """
     Rollback the application's active (live) version to a previous version.
@@ -1175,14 +1149,13 @@ async def rollback_application(
     Sets the specified version as the new active version.
     The draft version remains unchanged.
     """
-    target_org_id = _resolve_target_org_safe(ctx, scope)
     repo = ApplicationRepository(
         ctx.db,
-        target_org_id,
+        ctx.org_id,
         user_id=user.user_id,
         is_superuser=user.is_platform_admin,
     )
-    application = await get_application_by_id_or_404(ctx, app_id, scope)
+    application = await get_application_by_id_or_404(ctx, app_id)
 
     try:
         await repo.rollback_to_version(application, data.version_id)

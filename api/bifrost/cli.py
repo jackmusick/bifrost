@@ -258,7 +258,6 @@ Examples:
   bifrost run workflow.py -w greet | jq .
   bifrost run workflow.py --interactive
   bifrost sync
-  bifrost sync --preview
   bifrost sync --resolve workflows/billing.py=keep_remote
   bifrost push apps/my-app
   bifrost push apps/my-app --clean

@@ -204,7 +204,7 @@ class TestOrgUserRestrictions:
     def test_org_user_cannot_get_table(self, e2e_client, org1_user):
         """Org user cannot get table metadata (403)."""
         response = e2e_client.get(
-            "/api/tables/any_table",
+            "/api/tables/00000000-0000-0000-0000-000000000000",
             headers=org1_user.headers,
         )
         assert response.status_code == 403, \
@@ -213,7 +213,7 @@ class TestOrgUserRestrictions:
     def test_org_user_cannot_query_documents(self, e2e_client, org1_user):
         """Org user cannot query documents (403)."""
         response = e2e_client.post(
-            "/api/tables/any_table/documents/query",
+            "/api/tables/00000000-0000-0000-0000-000000000000/documents/query",
             headers=org1_user.headers,
             json={"limit": 10},
         )
@@ -223,7 +223,7 @@ class TestOrgUserRestrictions:
     def test_org_user_cannot_insert_documents(self, e2e_client, org1_user):
         """Org user cannot insert documents (403)."""
         response = e2e_client.post(
-            "/api/tables/any_table/documents",
+            "/api/tables/00000000-0000-0000-0000-000000000000/documents",
             headers=org1_user.headers,
             json={"data": {"key": "value"}},
         )

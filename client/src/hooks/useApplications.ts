@@ -72,16 +72,15 @@ export function useApplications(scope?: string) {
 }
 
 /**
- * Hook to fetch a single application by slug
+ * Hook to fetch a single application by slug (globally unique)
  */
-export function useApplication(slug: string | undefined, scope?: string) {
+export function useApplication(slug: string | undefined) {
 	return $api.useQuery(
 		"get",
 		"/api/applications/{slug}",
 		{
 			params: {
 				path: { slug: slug ?? "" },
-				query: scope ? { scope } : undefined,
 			},
 		},
 		{ enabled: !!slug },
@@ -190,12 +189,10 @@ export function usePublishApplication() {
  * Hook to export an application to JSON
  * @param appId - Application ID
  * @param versionId - Version ID (optional, defaults to current draft)
- * @param scope - Optional scope parameter
  */
 export function useExportApplication(
 	appId: string | undefined,
 	versionId: string | undefined,
-	scope?: string,
 ) {
 	return $api.useQuery(
 		"get",
@@ -205,7 +202,6 @@ export function useExportApplication(
 				path: { app_id: appId ?? "" },
 				query: {
 					version_id: versionId,
-					...(scope ? { scope } : {}),
 				},
 			},
 		},
@@ -238,12 +234,10 @@ export async function listApplications(
  */
 export async function getApplication(
 	slug: string,
-	scope?: string,
 ): Promise<ApplicationPublic> {
 	const { data, error } = await apiClient.GET("/api/applications/{slug}", {
 		params: {
 			path: { slug },
-			query: scope ? { scope } : undefined,
 		},
 	});
 	if (error)
@@ -256,12 +250,8 @@ export async function getApplication(
  */
 export async function createApplication(
 	appData: ApplicationCreate,
-	scope?: string,
 ): Promise<ApplicationPublic> {
 	const { data, error } = await apiClient.POST("/api/applications", {
-		params: {
-			query: scope ? { scope } : undefined,
-		},
 		body: appData,
 	});
 	if (error)
@@ -309,14 +299,12 @@ export async function deleteApplication(appId: string): Promise<void> {
 export async function publishApplication(
 	appId: string,
 	message?: string,
-	scope?: string,
 ): Promise<ApplicationPublic> {
 	const { data, error } = await apiClient.POST(
 		"/api/applications/{app_id}/publish",
 		{
 			params: {
 				path: { app_id: appId },
-				query: scope ? { scope } : undefined,
 			},
 			body: message ? { message } : {},
 		},
@@ -332,12 +320,10 @@ export async function publishApplication(
  * Export application (imperative)
  * @param appId - Application ID
  * @param versionId - Version ID (optional, defaults to current draft)
- * @param scope - Optional scope parameter
  */
 export async function exportApplication(
 	appId: string,
 	versionId: string,
-	scope?: string,
 ): Promise<ApplicationExport> {
 	const { data, error } = await apiClient.GET(
 		"/api/applications/{app_id}/export",
@@ -346,7 +332,6 @@ export async function exportApplication(
 				path: { app_id: appId },
 				query: {
 					version_id: versionId,
-					...(scope ? { scope } : {}),
 				},
 			},
 		},

@@ -397,7 +397,7 @@ class TestWorkflowToolIdResolution:
             mock_agent = MagicMock()
             mock_agent.organization_id = uuid4()
 
-            result = await executor._execute_tool(
+            await executor._execute_tool(
                 tool_call, agent=mock_agent, conversation=mock_conversation
             )
 

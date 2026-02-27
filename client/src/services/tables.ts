@@ -67,7 +67,7 @@ const DEFAULT_QUERY: DocumentQuery = {
 // =============================================================================
 
 /**
- * Hook to fetch all tables
+ * Hook to fetch all tables (list endpoint — scope is valid here)
  */
 export function useTables(scope?: string) {
 	return $api.useQuery(
@@ -78,19 +78,18 @@ export function useTables(scope?: string) {
 }
 
 /**
- * Hook to fetch a single table by name
+ * Hook to fetch a single table by UUID
  */
-export function useTable(tableName: string, scope?: string) {
+export function useTable(tableId: string) {
 	return $api.useQuery(
 		"get",
-		"/api/tables/{name}",
+		"/api/tables/{table_id}",
 		{
 			params: {
-				path: { name: tableName },
-				query: scope ? { scope } : undefined,
+				path: { table_id: tableId },
 			},
 		},
-		{ enabled: !!tableName },
+		{ enabled: !!tableId },
 	);
 }
 
@@ -148,40 +147,37 @@ export function useDeleteTable() {
  * Hook to query documents with filtering and pagination
  */
 export function useDocuments(
-	tableName: string,
+	tableId: string,
 	query: Partial<DocumentQuery> = {},
-	scope?: string,
 ) {
 	const fullQuery: DocumentQuery = { ...DEFAULT_QUERY, ...query };
 
 	return $api.useQuery(
 		"post",
-		"/api/tables/{name}/documents/query",
+		"/api/tables/{table_id}/documents/query",
 		{
 			params: {
-				path: { name: tableName },
-				query: scope ? { scope } : undefined,
+				path: { table_id: tableId },
 			},
 			body: fullQuery,
 		},
-		{ enabled: !!tableName },
+		{ enabled: !!tableId },
 	);
 }
 
 /**
  * Hook to count documents in a table
  */
-export function useDocumentCount(tableName: string, scope?: string) {
+export function useDocumentCount(tableId: string) {
 	return $api.useQuery(
 		"get",
-		"/api/tables/{name}/documents/count",
+		"/api/tables/{table_id}/documents/count",
 		{
 			params: {
-				path: { name: tableName },
-				query: scope ? { scope } : undefined,
+				path: { table_id: tableId },
 			},
 		},
-		{ enabled: !!tableName },
+		{ enabled: !!tableId },
 	);
 }
 
@@ -191,11 +187,11 @@ export function useDocumentCount(tableName: string, scope?: string) {
 export function useInsertDocument() {
 	const queryClient = useQueryClient();
 
-	return $api.useMutation("post", "/api/tables/{name}/documents", {
+	return $api.useMutation("post", "/api/tables/{table_id}/documents", {
 		onSuccess: () => {
 			// Invalidate document queries
 			queryClient.invalidateQueries({
-				queryKey: ["post", "/api/tables/{name}/documents/query"],
+				queryKey: ["post", "/api/tables/{table_id}/documents/query"],
 			});
 			toast.success("Document created", {
 				description: "Document has been inserted",
@@ -210,17 +206,24 @@ export function useInsertDocument() {
 export function useUpdateDocument() {
 	const queryClient = useQueryClient();
 
-	return $api.useMutation("patch", "/api/tables/{name}/documents/{doc_id}", {
-		onSuccess: () => {
-			// Invalidate document queries
-			queryClient.invalidateQueries({
-				queryKey: ["post", "/api/tables/{name}/documents/query"],
-			});
-			toast.success("Document updated", {
-				description: "Document has been updated",
-			});
+	return $api.useMutation(
+		"patch",
+		"/api/tables/{table_id}/documents/{doc_id}",
+		{
+			onSuccess: () => {
+				// Invalidate document queries
+				queryClient.invalidateQueries({
+					queryKey: [
+						"post",
+						"/api/tables/{table_id}/documents/query",
+					],
+				});
+				toast.success("Document updated", {
+					description: "Document has been updated",
+				});
+			},
 		},
-	});
+	);
 }
 
 /**
@@ -229,17 +232,24 @@ export function useUpdateDocument() {
 export function useDeleteDocument() {
 	const queryClient = useQueryClient();
 
-	return $api.useMutation("delete", "/api/tables/{name}/documents/{doc_id}", {
-		onSuccess: () => {
-			// Invalidate document queries
-			queryClient.invalidateQueries({
-				queryKey: ["post", "/api/tables/{name}/documents/query"],
-			});
-			toast.success("Document deleted", {
-				description: "Document has been deleted",
-			});
+	return $api.useMutation(
+		"delete",
+		"/api/tables/{table_id}/documents/{doc_id}",
+		{
+			onSuccess: () => {
+				// Invalidate document queries
+				queryClient.invalidateQueries({
+					queryKey: [
+						"post",
+						"/api/tables/{table_id}/documents/query",
+					],
+				});
+				toast.success("Document deleted", {
+					description: "Document has been deleted",
+				});
+			},
 		},
-	});
+	);
 }
 
 // =============================================================================
@@ -260,16 +270,12 @@ export async function listTables(scope?: string): Promise<TableListResponse> {
 }
 
 /**
- * Get a table by name (imperative)
+ * Get a table by UUID (imperative)
  */
-export async function getTable(
-	name: string,
-	scope?: string,
-): Promise<TablePublic> {
-	const { data, error } = await apiClient.GET("/api/tables/{name}", {
+export async function getTable(tableId: string): Promise<TablePublic> {
+	const { data, error } = await apiClient.GET("/api/tables/{table_id}", {
 		params: {
-			path: { name },
-			query: scope ? { scope } : undefined,
+			path: { table_id: tableId },
 		},
 	});
 	if (error) throw new Error("Failed to get table");
@@ -326,17 +332,15 @@ export async function deleteTable(tableId: string): Promise<void> {
  * Query documents (imperative)
  */
 export async function queryDocuments(
-	tableName: string,
+	tableId: string,
 	query: Partial<DocumentQuery> = {},
-	scope?: string,
 ): Promise<DocumentListResponse> {
 	const fullQuery: DocumentQuery = { ...DEFAULT_QUERY, ...query };
 	const { data, error } = await apiClient.POST(
-		"/api/tables/{name}/documents/query",
+		"/api/tables/{table_id}/documents/query",
 		{
 			params: {
-				path: { name: tableName },
-				query: scope ? { scope } : undefined,
+				path: { table_id: tableId },
 			},
 			body: fullQuery,
 		},
@@ -349,16 +353,14 @@ export async function queryDocuments(
  * Insert a document (imperative)
  */
 export async function insertDocument(
-	tableName: string,
+	tableId: string,
 	documentData: DocumentCreate,
-	scope?: string,
 ): Promise<DocumentPublic> {
 	const { data, error } = await apiClient.POST(
-		"/api/tables/{name}/documents",
+		"/api/tables/{table_id}/documents",
 		{
 			params: {
-				path: { name: tableName },
-				query: scope ? { scope } : undefined,
+				path: { table_id: tableId },
 			},
 			body: documentData,
 		},
@@ -371,16 +373,14 @@ export async function insertDocument(
  * Get a document by ID (imperative)
  */
 export async function getDocument(
-	tableName: string,
+	tableId: string,
 	documentId: string,
-	scope?: string,
 ): Promise<DocumentPublic> {
 	const { data, error } = await apiClient.GET(
-		"/api/tables/{name}/documents/{doc_id}",
+		"/api/tables/{table_id}/documents/{doc_id}",
 		{
 			params: {
-				path: { name: tableName, doc_id: documentId },
-				query: scope ? { scope } : undefined,
+				path: { table_id: tableId, doc_id: documentId },
 			},
 		},
 	);
@@ -392,17 +392,15 @@ export async function getDocument(
  * Update a document (imperative)
  */
 export async function updateDocument(
-	tableName: string,
+	tableId: string,
 	documentId: string,
 	documentData: DocumentUpdate,
-	scope?: string,
 ): Promise<DocumentPublic> {
 	const { data, error } = await apiClient.PATCH(
-		"/api/tables/{name}/documents/{doc_id}",
+		"/api/tables/{table_id}/documents/{doc_id}",
 		{
 			params: {
-				path: { name: tableName, doc_id: documentId },
-				query: scope ? { scope } : undefined,
+				path: { table_id: tableId, doc_id: documentId },
 			},
 			body: documentData,
 		},
@@ -415,16 +413,14 @@ export async function updateDocument(
  * Delete a document (imperative)
  */
 export async function deleteDocument(
-	tableName: string,
+	tableId: string,
 	documentId: string,
-	scope?: string,
 ): Promise<void> {
 	const { error } = await apiClient.DELETE(
-		"/api/tables/{name}/documents/{doc_id}",
+		"/api/tables/{table_id}/documents/{doc_id}",
 		{
 			params: {
-				path: { name: tableName, doc_id: documentId },
-				query: scope ? { scope } : undefined,
+				path: { table_id: tableId, doc_id: documentId },
 			},
 		},
 	);
@@ -434,16 +430,12 @@ export async function deleteDocument(
 /**
  * Count documents (imperative)
  */
-export async function countDocuments(
-	tableName: string,
-	scope?: string,
-): Promise<number> {
+export async function countDocuments(tableId: string): Promise<number> {
 	const { data, error } = await apiClient.GET(
-		"/api/tables/{name}/documents/count",
+		"/api/tables/{table_id}/documents/count",
 		{
 			params: {
-				path: { name: tableName },
-				query: scope ? { scope } : undefined,
+				path: { table_id: tableId },
 			},
 		},
 	);

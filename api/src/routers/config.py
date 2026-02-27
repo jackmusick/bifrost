@@ -22,7 +22,7 @@ from src.models import (
 )
 
 from src.core.auth import Context, CurrentSuperuser
-from src.core.org_filter import resolve_org_filter, resolve_target_org, OrgFilterType
+from src.core.org_filter import resolve_org_filter, OrgFilterType
 from src.models import Config as ConfigModel
 from src.models.enums import ConfigType as ConfigTypeEnum
 from src.repositories.org_scoped import OrgScopedRepository
@@ -341,34 +341,16 @@ async def set_config(
     request: SetConfigRequest,
     ctx: Context,
     user: CurrentSuperuser,
-    scope: str | None = Query(
-        default=None,
-        description="Deprecated: use organization_id in the request body instead. "
-        "Target scope: 'global' for global config, or org UUID for org-specific config. "
-        "If omitted, uses the user's current organization context.",
-    ),
 ) -> ConfigResponse:
     """Set a configuration key-value pair.
 
     Superusers can specify organization_id in the request body to target a
     specific organization, or set it to null for global configs.
-    The scope query param is supported for backward compatibility.
     """
-    # Prefer organization_id from request body; fall back to scope query param
-    if scope is not None:
-        # Legacy: scope query param takes precedence if explicitly provided
-        try:
-            target_org_id = resolve_target_org(ctx.user, scope, ctx.org_id)
-        except ValueError as e:
-            raise HTTPException(
-                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
-                detail=str(e),
-            )
-    elif "organization_id" in (request.model_fields_set or set()):
-        # Body explicitly included organization_id (even if null → global)
+    # Use organization_id from request body if explicitly provided, else default to current org
+    if "organization_id" in (request.model_fields_set or set()):
         target_org_id = request.organization_id
     else:
-        # Neither provided — default to user's current org
         target_org_id = ctx.org_id
 
     # Config endpoints are superuser-only, so is_superuser=True (no role checks)

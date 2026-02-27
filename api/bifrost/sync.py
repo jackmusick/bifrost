@@ -2,7 +2,7 @@
 Bifrost CLI Sync Command
 
 Triggers GitHub sync via the platform API.
-Polls for results and displays preview/execution summary.
+Polls for results and displays summary.
 Uses BifrostClient from bifrost.client for authenticated requests.
 """
 
@@ -16,93 +16,64 @@ EXIT_CLEAN = 0      # Sync completed or no changes
 EXIT_CONFLICTS = 1  # Conflicts need resolution
 EXIT_ERROR = 2      # Error occurred
 
+# Map CLI-friendly names to API resolution strategies
+RESOLUTION_MAP = {
+    "keep_local": "ours",
+    "keep_remote": "theirs",
+}
 
-def format_preview_summary(preview: dict) -> list[str]:
+
+def format_sync_result(result: dict) -> list[str]:
     """
-    Format sync preview data into human-readable lines.
+    Format sync result data into human-readable lines.
 
     Args:
-        preview: Preview dict with to_pull, to_push, conflicts, preflight, is_empty
+        result: Job result dict with status, pulled, pushed, commit_sha, conflicts, error
 
     Returns:
         List of output lines
     """
     lines: list[str] = []
+    status = result.get("status", "unknown")
 
-    if preview.get("is_empty"):
-        lines.append("Already up to date - no changes to sync.")
+    if status in ("success", "completed"):
+        pulled = result.get("pulled", 0)
+        pushed = result.get("pushed", 0)
+        commit_sha = result.get("commit_sha")
+        parts = []
+        if pulled:
+            parts.append(f"pulled {pulled} change{'s' if pulled != 1 else ''}")
+        if pushed:
+            parts.append(f"pushed {pushed} commit{'s' if pushed != 1 else ''}")
+        summary = ", ".join(parts) if parts else "no changes"
+        sha_info = f" (commit {commit_sha[:7]})" if commit_sha else ""
+        lines.append(f"Sync complete: {summary}{sha_info}")
         return lines
 
-    to_pull = preview.get("to_pull", [])
-    to_push = preview.get("to_push", [])
-    conflicts = preview.get("conflicts", [])
-    preflight = preview.get("preflight", {})
-
-    # Summary counts
-    parts = []
-    if to_pull:
-        parts.append(f"{len(to_pull)} to pull")
-    if to_push:
-        parts.append(f"{len(to_push)} to push")
-    if conflicts:
-        parts.append(f"{len(conflicts)} conflict{'s' if len(conflicts) != 1 else ''}")
-    lines.append(", ".join(parts) if parts else "No changes.")
-
-    # Pull details
-    if to_pull:
+    if status == "conflict":
+        conflicts = result.get("conflicts", [])
+        lines.append(f"{len(conflicts)} conflict{'s' if len(conflicts) != 1 else ''} detected:")
         lines.append("")
-        lines.append("Pull from GitHub:")
-        for action in to_pull:
-            name = action.get("display_name") or action["path"]
-            lines.append(f"  {action['action']:8s} {action['path']} ({name})")
-
-    # Push details
-    if to_push:
-        lines.append("")
-        lines.append("Push to GitHub:")
-        for action in to_push:
-            name = action.get("display_name") or action["path"]
-            lines.append(f"  {action['action']:8s} {action['path']} ({name})")
-
-    # Conflicts
-    if conflicts:
-        lines.append("")
-        lines.append("Conflicts:")
         for conflict in conflicts:
-            name = conflict.get("display_name") or conflict["path"]
+            name = conflict.get("display_name") or conflict.get("path", "unknown")
             entity_type = conflict.get("entity_type", "file")
-            lines.append(f"  {conflict['path']} ({entity_type}: {name})")
-            lines.append("    Modified in both platform and GitHub")
+            path = conflict.get("path", "unknown")
+            lines.append(f"  {path} ({entity_type}: {name})")
         lines.append("")
         lines.append("To resolve conflicts, run:")
         for conflict in conflicts:
-            path = conflict["path"]
+            path = conflict.get("path", "unknown")
             lines.append(f"  bifrost sync --resolve {path}=keep_remote")
             lines.append(f"  bifrost sync --resolve {path}=keep_local")
         lines.append("")
         lines.append(
             "Or manage this in the Code Editor's Source Control at your Bifrost instance."
         )
+        return lines
 
-    # Preflight issues
-    issues = preflight.get("issues", [])
-    errors = [i for i in issues if i.get("severity") == "error"]
-    warnings = [i for i in issues if i.get("severity") == "warning"]
-
-    if errors:
-        lines.append("")
-        lines.append("Preflight errors (must fix before sync):")
-        for issue in errors:
-            line_info = f":{issue['line']}" if issue.get("line") else ""
-            lines.append(f"  {issue['path']}{line_info}: {issue['message']} [{issue['category']}]")
-
-    if warnings:
-        lines.append("")
-        lines.append("Preflight warnings:")
-        for issue in warnings:
-            line_info = f":{issue['line']}" if issue.get("line") else ""
-            lines.append(f"  {issue['path']}{line_info}: {issue['message']} [{issue['category']}]")
-
+    # Failed or unknown
+    error = result.get("error") or result.get("message") or "Unknown error"
+    lines.append(f"Sync failed: {error}")
     return lines
 
 
@@ -149,9 +120,8 @@ def run_sync(args: list[str]) -> int:
     Main sync command handler.
 
     Usage:
-        bifrost sync              Preview changes, auto-execute if no conflicts
+        bifrost sync              Sync changes (pull + push)
         bifrost sync --resolve path=keep_remote [--resolve path2=keep_local]
-        bifrost sync --preview    Preview only, don't execute
 
     Args:
         args: Command arguments
@@ -159,34 +129,26 @@ def run_sync(args: list[str]) -> int:
     Returns:
         Exit code: 0=success, 1=conflicts, 2=error
     """
-    preview_only = False
     resolutions: dict[str, str] = {}
-    confirm_orphans = False
 
     # Parse arguments
     i = 0
     while i < len(args):
         arg = args[i]
-        if arg == "--preview":
-            preview_only = True
-            i += 1
-        elif arg == "--resolve":
+        if arg == "--resolve":
             if i + 1 >= len(args):
                 print("Error: --resolve requires path=resolution", file=sys.stderr)
                 return EXIT_ERROR
             parts = args[i + 1].split("=", 1)
-            if len(parts) != 2 or parts[1] not in ("keep_local", "keep_remote", "skip"):
+            if len(parts) != 2 or parts[1] not in ("keep_local", "keep_remote"):
                 print(
                     f"Error: invalid resolution '{args[i + 1]}'. "
-                    "Use path=keep_local, path=keep_remote, or path=skip",
+                    "Use path=keep_local or path=keep_remote",
                     file=sys.stderr,
                 )
                 return EXIT_ERROR
             resolutions[parts[0]] = parts[1]
             i += 2
-        elif arg == "--confirm-orphans":
-            confirm_orphans = True
-            i += 1
         elif arg in ("--help", "-h"):
             print_sync_help()
             return EXIT_CLEAN
@@ -201,75 +163,51 @@ def run_sync(args: list[str]) -> int:
         print(f"Error: {e}", file=sys.stderr)
         return EXIT_ERROR
 
-    # If resolutions provided, go straight to execute
+    # Resolve conflicts or run sync
     if resolutions:
-        return _execute_sync(client, resolutions, confirm_orphans)
-
-    # Otherwise, run preview first
-    return _preview_sync(client, preview_only, confirm_orphans)
+        return _resolve_conflicts(client, resolutions)
+    return _run_sync(client)
 
 
-def _preview_sync(
-    client: BifrostClient,
-    preview_only: bool,
-    confirm_orphans: bool,
-) -> int:
-    """Run sync preview, optionally followed by execution."""
-    # Queue preview
-    response = client.get_sync("/api/github/sync")
+def _run_sync(client: BifrostClient) -> int:
+    """Queue sync and poll for result."""
+    response = client.post_sync("/api/github/sync", json={})
     if response.status_code != 200:
         print(f"Error: {response.status_code} - {response.text}", file=sys.stderr)
         return EXIT_ERROR
 
     job_id = response.json()["job_id"]
 
-    # Poll for preview result
     try:
         result = poll_job(client, job_id)
     except (TimeoutError, RuntimeError) as e:
         print(f"Error: {e}", file=sys.stderr)
         return EXIT_ERROR
 
-    if result.get("status") == "error":
-        print(f"Sync error: {result.get('error', 'Unknown error')}", file=sys.stderr)
-        return EXIT_ERROR
-
-    preview = result.get("preview", {})
-    lines = format_preview_summary(preview)
+    lines = format_sync_result(result)
     for line in lines:
         print(line)
 
-    # Check for preflight errors
-    preflight = preview.get("preflight", {})
-    if not preflight.get("valid", True):
-        print("\nPreflight validation failed. Fix errors before syncing.", file=sys.stderr)
+    status = result.get("status", "unknown")
+    if status in ("success", "completed"):
+        return EXIT_CLEAN
+    elif status == "conflict":
+        return EXIT_CONFLICTS
+    else:
         return EXIT_ERROR
 
-    # Check for conflicts
-    conflicts = preview.get("conflicts", [])
-    if conflicts:
-        return EXIT_CONFLICTS
 
-    # If preview only, stop here
-    if preview_only or preview.get("is_empty"):
-        return EXIT_CLEAN
+def _resolve_conflicts(client: BifrostClient, resolutions: dict[str, str]) -> int:
+    """Post conflict resolutions and poll for result."""
+    # Map CLI names to API names
+    api_resolutions = {
+        path: RESOLUTION_MAP[resolution]
+        for path, resolution in resolutions.items()
+    }
 
-    # No conflicts - auto-execute
-    return _execute_sync(client, {}, confirm_orphans)
-
-
-def _execute_sync(
-    client: BifrostClient,
-    resolutions: dict[str, str],
-    confirm_orphans: bool,
-) -> int:
-    """Execute sync with conflict resolutions."""
     response = client.post_sync(
-        "/api/github/sync",
-        json={
-            "conflict_resolutions": resolutions,
-            "confirm_orphans": confirm_orphans,
-        },
+        "/api/github/resolve",
+        json={"resolutions": api_resolutions},
     )
 
     if response.status_code != 200:
@@ -278,29 +216,22 @@ def _execute_sync(
 
     job_id = response.json()["job_id"]
 
-    # Poll for execution result
     try:
         result = poll_job(client, job_id)
     except (TimeoutError, RuntimeError) as e:
         print(f"Error: {e}", file=sys.stderr)
         return EXIT_ERROR
 
-    if result.get("status") in ("success", "completed"):
-        pulled = result.get("pulled", 0)
-        pushed = result.get("pushed", 0)
-        commit_sha = result.get("commit_sha")
-        parts = []
-        if pulled:
-            parts.append(f"pulled {pulled} file{'s' if pulled != 1 else ''}")
-        if pushed:
-            parts.append(f"pushed {pushed} file{'s' if pushed != 1 else ''}")
-        summary = ", ".join(parts) if parts else "no changes"
-        sha_info = f" (commit {commit_sha[:7]})" if commit_sha else ""
-        print(f"Sync complete: {summary}{sha_info}")
+    lines = format_sync_result(result)
+    for line in lines:
+        print(line)
+
+    status = result.get("status", "unknown")
+    if status in ("success", "completed"):
         return EXIT_CLEAN
+    elif status == "conflict":
+        return EXIT_CONFLICTS
     else:
-        error = result.get("error") or result.get("message") or "Unknown error"
-        print(f"Sync failed: {error}", file=sys.stderr)
         return EXIT_ERROR
 
 
@@ -311,22 +242,17 @@ Usage: bifrost sync [options]
 
 Sync local changes with the Bifrost platform via GitHub.
 
-Runs a sync preview first. If there are no conflicts and preflight passes,
-automatically executes the sync. If conflicts exist, shows them and exits
-with code 1 so you can resolve them.
+Pulls remote changes and pushes local commits. If conflicts are
+detected, shows them and exits with code 1 so you can resolve them.
 
 Options:
-  --preview                   Preview only, don't execute
-  --resolve PATH=RESOLUTION   Resolve a conflict (keep_local, keep_remote, skip)
-  --confirm-orphans           Acknowledge orphaned workflows
+  --resolve PATH=RESOLUTION   Resolve a conflict (keep_local, keep_remote)
   --help, -h                  Show this help message
 
 Examples:
-  bifrost sync                              # Preview and auto-sync if clean
-  bifrost sync --preview                    # Preview only
+  bifrost sync                              # Pull + push sync
   bifrost sync --resolve workflows/billing.py=keep_remote
   bifrost sync --resolve a.py=keep_local --resolve b.py=keep_remote
-  bifrost sync --confirm-orphans            # Acknowledge orphan warnings
 
 Exit codes:
   0  Sync completed successfully (or no changes)

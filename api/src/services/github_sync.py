@@ -91,12 +91,58 @@ def _walk_tree(root: Path) -> dict[str, bytes]:
     return files
 
 
+def _three_way_merge_dicts(
+    base: dict, ours: dict, theirs: dict
+) -> dict:
+    """3-way merge two dicts against a common base.
+
+    - Keys deleted by either side (present in base but absent in ours/theirs)
+      stay deleted unless the other side modified the value.
+    - Keys added by either side are included.
+    - When both sides modify the same key, theirs wins.
+    """
+    merged = {}
+    all_keys = set(base.keys()) | set(ours.keys()) | set(theirs.keys())
+
+    for key in all_keys:
+        in_base = key in base
+        in_ours = key in ours
+        in_theirs = key in theirs
+
+        if in_ours and in_theirs:
+            # Both have it — if both are dicts, recurse; otherwise theirs wins
+            if isinstance(ours[key], dict) and isinstance(theirs[key], dict):
+                base_val = base.get(key, {}) if isinstance(base.get(key), dict) else {}
+                merged[key] = _three_way_merge_dicts(base_val, ours[key], theirs[key])
+            else:
+                merged[key] = theirs[key]
+        elif in_ours and not in_theirs:
+            if in_base:
+                # Theirs deleted it — honor the deletion unless ours modified it
+                if base.get(key) != ours[key]:
+                    merged[key] = ours[key]  # Ours modified, keep it
+                # else: theirs deleted, ours unchanged → delete
+            else:
+                merged[key] = ours[key]  # Added by ours
+        elif in_theirs and not in_ours:
+            if in_base:
+                # Ours deleted it — honor the deletion unless theirs modified it
+                if base.get(key) != theirs[key]:
+                    merged[key] = theirs[key]  # Theirs modified, keep it
+                # else: ours deleted, theirs unchanged → delete
+            else:
+                merged[key] = theirs[key]  # Added by theirs
+        # else: neither has it (shouldn't happen since key came from one of them)
+
+    return merged
+
+
 def _auto_resolve_manifest_conflicts(repo: GitRepo, work_dir: Path, unmerged: dict) -> set[str]:
-    """Auto-resolve .bifrost/*.yaml manifest conflicts via YAML union merge.
+    """Auto-resolve .bifrost/*.yaml manifest conflicts via 3-way YAML merge.
 
     For each conflicted manifest file:
-    1. Parse ours (stage 2) and theirs (stage 3) YAML
-    2. Union merge at top-level dict key level (theirs wins on value conflicts)
+    1. Parse base (stage 1), ours (stage 2), and theirs (stage 3) YAML
+    2. 3-way merge respecting additions and deletions from both sides
     3. Write merged YAML to working tree and git add
     4. On failure, accept theirs entirely
 
@@ -110,9 +156,15 @@ def _auto_resolve_manifest_conflicts(repo: GitRepo, work_dir: Path, unmerged: di
             continue
 
         try:
-            # Parse both sides
-            ours_yaml = None
-            theirs_yaml = None
+            # Parse all three sides (base, ours, theirs)
+            base_yaml: dict = {}
+            ours_yaml: dict = {}
+            theirs_yaml: dict = {}
+            try:
+                base_raw = repo.git.show(f":1:{cpath_str}")
+                base_yaml = yaml.safe_load(base_raw) or {}
+            except Exception:
+                base_yaml = {}
             try:
                 ours_raw = repo.git.show(f":2:{cpath_str}")
                 ours_yaml = yaml.safe_load(ours_raw) or {}
@@ -127,29 +179,11 @@ def _auto_resolve_manifest_conflicts(repo: GitRepo, work_dir: Path, unmerged: di
             if not isinstance(ours_yaml, dict) or not isinstance(theirs_yaml, dict):
                 # Not a dict-shaped YAML — fall back to accepting theirs
                 raise ValueError("Non-dict YAML")
+            if not isinstance(base_yaml, dict):
+                base_yaml = {}
 
-            # Union merge: for each top-level key, merge the sub-dicts/lists
-            merged = {}
-            all_keys = set(ours_yaml.keys()) | set(theirs_yaml.keys())
-            for key in all_keys:
-                ours_val = ours_yaml.get(key)
-                theirs_val = theirs_yaml.get(key)
-
-                if key not in ours_yaml:
-                    merged[key] = theirs_val
-                elif key not in theirs_yaml:
-                    merged[key] = ours_val
-                elif isinstance(ours_val, dict) and isinstance(theirs_val, dict):
-                    # Merge dict entries (keyed by sub-key); theirs wins on conflicts
-                    merged_dict = dict(ours_val)
-                    merged_dict.update(theirs_val)
-                    merged[key] = merged_dict
-                elif isinstance(ours_val, list) and isinstance(theirs_val, list):
-                    # For lists, use theirs (lists aren't keyed, can't union safely)
-                    merged[key] = theirs_val
-                else:
-                    # Scalar or mismatched types — theirs wins
-                    merged[key] = theirs_val
+            # 3-way merge respecting deletions
+            merged = _three_way_merge_dicts(base_yaml, ours_yaml, theirs_yaml)
 
             # Write merged YAML
             merged_yaml = yaml.dump(merged, default_flow_style=False, sort_keys=True, allow_unicode=True)
@@ -672,34 +706,49 @@ class GitHubSyncService:
 
                 conflicted_files = sorted(str(k) for k in unmerged.keys())
 
-                for cpath in conflicted_files:
-                    ours_content = None
-                    theirs_content = None
-                    try:
-                        ours_content = repo.git.show(f":2:{cpath}")
-                    except Exception:
-                        pass
-                    try:
-                        theirs_content = repo.git.show(f":3:{cpath}")
-                    except Exception:
-                        pass
+                if not conflicted_files:
+                    # All conflicts were auto-resolved, commit the merge
+                    logger.info("All merge conflicts auto-resolved, completing merge")
+                    repo.index.commit(
+                        "Merge remote-tracking branch (auto-resolved)",
+                        parent_commits=[
+                            repo.head.commit,
+                            repo.commit("MERGE_HEAD"),
+                        ],
+                    )
+                    # Remove MERGE_HEAD to complete merge state
+                    merge_head = work_dir / ".git" / "MERGE_HEAD"
+                    if merge_head.exists():
+                        merge_head.unlink()
+                else:
+                    for cpath in conflicted_files:
+                        ours_content = None
+                        theirs_content = None
+                        try:
+                            ours_content = repo.git.show(f":2:{cpath}")
+                        except Exception:
+                            pass
+                        try:
+                            theirs_content = repo.git.show(f":3:{cpath}")
+                        except Exception:
+                            pass
 
-                    metadata = extract_entity_metadata(cpath)
-                    conflicts.append(MergeConflict(
-                        path=cpath,
-                        ours_content=ours_content,
-                        theirs_content=theirs_content,
-                        display_name=metadata.display_name,
-                        entity_type=metadata.entity_type,
-                        conflict_type=_classify_conflict_type(unmerged, cpath),
-                    ))
+                        metadata = extract_entity_metadata(cpath)
+                        conflicts.append(MergeConflict(
+                            path=cpath,
+                            ours_content=ours_content,
+                            theirs_content=theirs_content,
+                            display_name=metadata.display_name,
+                            entity_type=metadata.entity_type,
+                            conflict_type=_classify_conflict_type(unmerged, cpath),
+                        ))
 
-                logger.info(f"Merge conflict: returning {len(conflicts)} conflicts to UI")
-                return PullResult(
-                    success=False,
-                    conflicts=conflicts,
-                    error="Merge conflicts detected",
-                )
+                    logger.info(f"Merge conflict: returning {len(conflicts)} conflicts to UI")
+                    return PullResult(
+                        success=False,
+                        conflicts=conflicts,
+                        error="Merge conflicts detected",
+                    )
             else:
                 raise
 
@@ -1238,17 +1287,17 @@ class GitHubSyncService:
         all_ops.extend(role_ops)
 
         # 1. Resolve workflows — execute immediately
-        for wf_name, mwf in manifest.workflows.items():
+        for key, mwf in manifest.workflows.items():
             wf_path = work_dir / mwf.path
             if wf_path.exists():
-                wf_ops = await self._resolve_workflow(wf_name, mwf)
+                wf_ops = await self._resolve_workflow(mwf.name or key, mwf)
                 for op in wf_ops:
                     await op.execute(self.db)
                 all_ops.extend(wf_ops)
 
         # 2. Resolve integrations (with config_schema, oauth_provider, mappings)
-        for integ_name, minteg in manifest.integrations.items():
-            integ_ops = await self._resolve_integration(integ_name, minteg)
+        for key, minteg in manifest.integrations.items():
+            integ_ops = await self._resolve_integration(minteg.name or key, minteg)
             for op in integ_ops:
                 await op.execute(self.db)
             all_ops.extend(integ_ops)
@@ -1268,15 +1317,15 @@ class GitHubSyncService:
             all_ops.extend(app_ops)
 
         # 5. Resolve tables (refs org + app UUIDs)
-        for table_name, mtable in manifest.tables.items():
-            table_ops = await self._resolve_table(table_name, mtable)
+        for key, mtable in manifest.tables.items():
+            table_ops = await self._resolve_table(mtable.name or key, mtable)
             for op in table_ops:
                 await op.execute(self.db)
             all_ops.extend(table_ops)
 
         # 6. Resolve event sources + subscriptions
-        for es_name, mes in manifest.events.items():
-            es_ops = await self._resolve_event_source(es_name, mes)
+        for key, mes in manifest.events.items():
+            es_ops = await self._resolve_event_source(mes.name or key, mes)
             for op in es_ops:
                 await op.execute(self.db)
             all_ops.extend(es_ops)
@@ -2002,7 +2051,10 @@ class GitHubSyncService:
 
         # Delete forms synced from git that are no longer present
         form_result = await self.db.execute(
-            select(Form.id).where(Form.created_by == "git-sync")
+            select(Form.id).where(
+                Form.created_by == "git-sync",
+                Form.is_active == True,  # noqa: E712
+            )
         )
         for row in form_result.all():
             form_id = str(row[0])

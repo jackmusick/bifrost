@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import {
 	Card,
 	CardContent,
@@ -25,12 +25,39 @@ import {
 	ExternalLink,
 	AlertCircle,
 	Star,
+	Copy,
+	Check,
 } from "lucide-react";
 import { sdkService, type DeveloperContext } from "@/services/sdk";
 import { apiClient } from "@/lib/api-client";
 import type { components } from "@/lib/v1";
 
 type Organization = components["schemas"]["OrganizationPublic"];
+
+function CopyButton({ text }: { text: string }) {
+	const [copied, setCopied] = useState(false);
+
+	const handleCopy = useCallback(() => {
+		navigator.clipboard.writeText(text);
+		setCopied(true);
+		setTimeout(() => setCopied(false), 2000);
+	}, [text]);
+
+	return (
+		<button
+			type="button"
+			onClick={handleCopy}
+			className="ml-auto flex-shrink-0 p-1 rounded hover:bg-muted-foreground/20 text-muted-foreground hover:text-foreground transition-colors"
+			title="Copy to clipboard"
+		>
+			{copied ? (
+				<Check className="h-3.5 w-3.5" />
+			) : (
+				<Copy className="h-3.5 w-3.5" />
+			)}
+		</button>
+	);
+}
 
 export function DeveloperSettings() {
 	const [_context, setContext] = useState<DeveloperContext | null>(null);
@@ -146,11 +173,11 @@ export function DeveloperSettings() {
 								<span className="bg-primary text-primary-foreground rounded-full w-5 h-5 flex items-center justify-center text-xs flex-shrink-0 mt-0.5">
 									1
 								</span>
-								<div>
+								<div className="flex-1">
 									<p>Install the SDK:</p>
-									<code className="block mt-1 p-2 bg-background rounded text-xs">
-										pip install {window.location.origin}
-										/api/cli/download
+									<code className="flex items-center mt-1 p-2 bg-background rounded text-xs">
+										<span>pipx install --force {window.location.origin}/api/cli/download</span>
+										<CopyButton text={`pipx install --force ${window.location.origin}/api/cli/download`} />
 									</code>
 								</div>
 							</div>
@@ -158,10 +185,11 @@ export function DeveloperSettings() {
 								<span className="bg-primary text-primary-foreground rounded-full w-5 h-5 flex items-center justify-center text-xs flex-shrink-0 mt-0.5">
 									2
 								</span>
-								<div>
+								<div className="flex-1">
 									<p>Login to authenticate:</p>
-									<code className="block mt-1 p-2 bg-background rounded text-xs">
-										bifrost login
+									<code className="flex items-center mt-1 p-2 bg-background rounded text-xs">
+										<span>bifrost login</span>
+										<CopyButton text="bifrost login" />
 									</code>
 								</div>
 							</div>
@@ -169,10 +197,11 @@ export function DeveloperSettings() {
 								<span className="bg-primary text-primary-foreground rounded-full w-5 h-5 flex items-center justify-center text-xs flex-shrink-0 mt-0.5">
 									3
 								</span>
-								<div>
+								<div className="flex-1">
 									<p>Run your workflow:</p>
-									<code className="block mt-1 p-2 bg-background rounded text-xs">
-										bifrost run my_workflow.py
+									<code className="flex items-center mt-1 p-2 bg-background rounded text-xs">
+										<span>bifrost run my_workflow.py</span>
+										<CopyButton text="bifrost run my_workflow.py" />
 									</code>
 								</div>
 							</div>

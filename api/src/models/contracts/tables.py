@@ -32,7 +32,10 @@ class TableBase(BaseModel):
 class TableCreate(TableBase):
     """Input for creating a table."""
 
-    pass
+    organization_id: UUID | None = Field(
+        default=None,
+        description="Organization ID. Null for global table.",
+    )
 
 
 class TableUpdate(BaseModel):

@@ -1975,7 +1975,7 @@ export interface paths {
         post?: never;
         /**
          * Delete a form
-         * @description Soft delete a form (Platform admin only)
+         * @description Delete a form. Use ?purge=true to permanently remove it from the database (Platform admin only)
          */
         delete: operations["delete_form_api_forms__form_id__delete"];
         options?: never;
@@ -6144,7 +6144,7 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/api/tables/{name}": {
+    "/api/tables/{table_id}": {
         parameters: {
             query?: never;
             header?: never;
@@ -6153,25 +6153,9 @@ export interface paths {
         };
         /**
          * Get table metadata
-         * @description Get table metadata by name (platform admin only).
+         * @description Get table metadata by UUID (platform admin only).
          */
-        get: operations["get_table_api_tables__name__get"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/tables/{table_id}": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
+        get: operations["get_table_api_tables__table_id__get"];
         put?: never;
         post?: never;
         /**
@@ -6188,7 +6172,7 @@ export interface paths {
         patch: operations["update_table_api_tables__table_id__patch"];
         trace?: never;
     };
-    "/api/tables/{name}/documents": {
+    "/api/tables/{table_id}/documents": {
         parameters: {
             query?: never;
             header?: never;
@@ -6200,17 +6184,15 @@ export interface paths {
         /**
          * Insert a document
          * @description Insert a new document into the table (platform admin only).
-         *
-         *     Auto-creates the table if it doesn't exist.
          */
-        post: operations["insert_document_api_tables__name__documents_post"];
+        post: operations["insert_document_api_tables__table_id__documents_post"];
         delete?: never;
         options?: never;
         head?: never;
         patch?: never;
         trace?: never;
     };
-    "/api/tables/{name}/documents/{doc_id}": {
+    "/api/tables/{table_id}/documents/{doc_id}": {
         parameters: {
             query?: never;
             header?: never;
@@ -6221,24 +6203,24 @@ export interface paths {
          * Get a document
          * @description Get a document by ID (platform admin only).
          */
-        get: operations["get_document_api_tables__name__documents__doc_id__get"];
+        get: operations["get_document_api_tables__table_id__documents__doc_id__get"];
         put?: never;
         post?: never;
         /**
          * Delete a document
          * @description Delete a document (platform admin only).
          */
-        delete: operations["delete_document_api_tables__name__documents__doc_id__delete"];
+        delete: operations["delete_document_api_tables__table_id__documents__doc_id__delete"];
         options?: never;
         head?: never;
         /**
          * Update a document
          * @description Update a document (platform admin only, partial update, merges with existing).
          */
-        patch: operations["update_document_api_tables__name__documents__doc_id__patch"];
+        patch: operations["update_document_api_tables__table_id__documents__doc_id__patch"];
         trace?: never;
     };
-    "/api/tables/{name}/documents/query": {
+    "/api/tables/{table_id}/documents/query": {
         parameters: {
             query?: never;
             header?: never;
@@ -6253,14 +6235,14 @@ export interface paths {
          *
          *     Returns 404 if the table doesn't exist.
          */
-        post: operations["query_documents_api_tables__name__documents_query_post"];
+        post: operations["query_documents_api_tables__table_id__documents_query_post"];
         delete?: never;
         options?: never;
         head?: never;
         patch?: never;
         trace?: never;
     };
-    "/api/tables/{name}/documents/count": {
+    "/api/tables/{table_id}/documents/count": {
         parameters: {
             query?: never;
             header?: never;
@@ -6273,7 +6255,7 @@ export interface paths {
          *
          *     Returns 404 if the table doesn't exist.
          */
-        get: operations["count_documents_api_tables__name__documents_count_get"];
+        get: operations["count_documents_api_tables__table_id__documents_count_get"];
         put?: never;
         post?: never;
         delete?: never;
@@ -6535,7 +6517,7 @@ export interface paths {
         };
         /**
          * Get application metadata
-         * @description Get application metadata by slug.
+         * @description Get application metadata by slug (globally unique).
          */
         get: operations["get_application_api_applications__slug__get"];
         put?: never;
@@ -7950,6 +7932,11 @@ export interface components {
              * @description Role IDs for role_based access (ignored if access_level is 'authenticated')
              */
             role_ids?: string[];
+            /**
+             * Organization Id
+             * @description Organization ID. Null for global application.
+             */
+            organization_id?: string | null;
         };
         /**
          * ApplicationDefinition
@@ -8230,10 +8217,7 @@ export interface components {
         };
         /** Body_import_all_api_export_import_import_all_post */
         Body_import_all_api_export_import_import_all_post: {
-            /**
-             * File
-             * Format: binary
-             */
+            /** File */
             file: string;
             /**
              * Replace Existing
@@ -8247,10 +8231,7 @@ export interface components {
         };
         /** Body_import_configs_api_export_import_import_configs_post */
         Body_import_configs_api_export_import_import_configs_post: {
-            /**
-             * File
-             * Format: binary
-             */
+            /** File */
             file: string;
             /**
              * Replace Existing
@@ -8264,10 +8245,7 @@ export interface components {
         };
         /** Body_import_integrations_api_export_import_import_integrations_post */
         Body_import_integrations_api_export_import_import_integrations_post: {
-            /**
-             * File
-             * Format: binary
-             */
+            /** File */
             file: string;
             /**
              * Replace Existing
@@ -8281,10 +8259,7 @@ export interface components {
         };
         /** Body_import_knowledge_api_export_import_import_knowledge_post */
         Body_import_knowledge_api_export_import_import_knowledge_post: {
-            /**
-             * File
-             * Format: binary
-             */
+            /** File */
             file: string;
             /**
              * Replace Existing
@@ -8296,10 +8271,7 @@ export interface components {
         };
         /** Body_import_tables_api_export_import_import_tables_post */
         Body_import_tables_api_export_import_import_tables_post: {
-            /**
-             * File
-             * Format: binary
-             */
+            /** File */
             file: string;
             /**
              * Replace Existing
@@ -8335,17 +8307,13 @@ export interface components {
         };
         /** Body_upload_avatar_api_profile_avatar_post */
         Body_upload_avatar_api_profile_avatar_post: {
-            /**
-             * File
-             * Format: binary
-             */
+            /** File */
             file: string;
         };
         /** Body_upload_logo_api_branding_logo__logo_type__post */
         Body_upload_logo_api_branding_logo__logo_type__post: {
             /**
              * File
-             * Format: binary
              * @description Logo image file
              */
             file: string;
@@ -11678,6 +11646,13 @@ export interface components {
              * @description Whether this field's value can be populated from URL query parameters
              */
             allow_as_query_param?: boolean | null;
+            /**
+             * Auto Fill
+             * @description Map of sibling field names to metadata paths. When this field's data provider returns results, auto-populate sibling fields from the first result's metadata. Example: {"employee_count": "recommended_employee_count"}
+             */
+            auto_fill?: {
+                [key: string]: string;
+            } | null;
         };
         /**
          * FormField
@@ -11759,6 +11734,13 @@ export interface components {
              * @description Whether this field's value can be populated from URL query parameters
              */
             allow_as_query_param?: boolean | null;
+            /**
+             * Auto Fill
+             * @description Map of sibling field names to metadata paths. When this field's data provider returns results, auto-populate sibling fields from the first result's metadata. Example: {"employee_count": "recommended_employee_count"}
+             */
+            auto_fill?: {
+                [key: string]: string;
+            } | null;
         };
         /**
          * FormFieldType
@@ -12955,6 +12937,13 @@ export interface components {
             preview?: {
                 [key: string]: unknown;
             } | null;
+            /**
+             * Conflicts
+             * @description Merge conflicts if any (git sync)
+             */
+            conflicts?: {
+                [key: string]: unknown;
+            }[] | null;
         };
         /**
          * KnowledgeDocumentBulkScopeUpdate
@@ -17167,6 +17156,11 @@ export interface components {
             schema?: {
                 [key: string]: unknown;
             } | null;
+            /**
+             * Organization Id
+             * @description Organization ID. Null for global table.
+             */
+            organization_id?: string | null;
         };
         /**
          * TableListResponse
@@ -21657,7 +21651,10 @@ export interface operations {
     };
     delete_form_api_forms__form_id__delete: {
         parameters: {
-            query?: never;
+            query?: {
+                /** @description Permanently remove the form from the database instead of soft-deleting */
+                purge?: boolean;
+            };
             header?: never;
             path: {
                 form_id: string;
@@ -21860,10 +21857,7 @@ export interface operations {
     };
     set_config_api_config_post: {
         parameters: {
-            query?: {
-                /** @description Deprecated: use organization_id in the request body instead. Target scope: 'global' for global config, or org UUID for org-specific config. If omitted, uses the user's current organization context. */
-                scope?: string | null;
-            };
+            query?: never;
             header?: never;
             path?: never;
             cookie?: never;
@@ -29130,14 +29124,12 @@ export interface operations {
             };
         };
     };
-    get_table_api_tables__name__get: {
+    get_table_api_tables__table_id__get: {
         parameters: {
-            query?: {
-                scope?: string | null;
-            };
+            query?: never;
             header?: never;
             path: {
-                name: string;
+                table_id: string;
             };
             cookie?: never;
         };
@@ -29227,14 +29219,12 @@ export interface operations {
             };
         };
     };
-    insert_document_api_tables__name__documents_post: {
+    insert_document_api_tables__table_id__documents_post: {
         parameters: {
-            query?: {
-                scope?: string | null;
-            };
+            query?: never;
             header?: never;
             path: {
-                name: string;
+                table_id: string;
             };
             cookie?: never;
         };
@@ -29264,14 +29254,12 @@ export interface operations {
             };
         };
     };
-    get_document_api_tables__name__documents__doc_id__get: {
+    get_document_api_tables__table_id__documents__doc_id__get: {
         parameters: {
-            query?: {
-                scope?: string | null;
-            };
+            query?: never;
             header?: never;
             path: {
-                name: string;
+                table_id: string;
                 doc_id: string;
             };
             cookie?: never;
@@ -29298,14 +29286,12 @@ export interface operations {
             };
         };
     };
-    delete_document_api_tables__name__documents__doc_id__delete: {
+    delete_document_api_tables__table_id__documents__doc_id__delete: {
         parameters: {
-            query?: {
-                scope?: string | null;
-            };
+            query?: never;
             header?: never;
             path: {
-                name: string;
+                table_id: string;
                 doc_id: string;
             };
             cookie?: never;
@@ -29330,14 +29316,12 @@ export interface operations {
             };
         };
     };
-    update_document_api_tables__name__documents__doc_id__patch: {
+    update_document_api_tables__table_id__documents__doc_id__patch: {
         parameters: {
-            query?: {
-                scope?: string | null;
-            };
+            query?: never;
             header?: never;
             path: {
-                name: string;
+                table_id: string;
                 doc_id: string;
             };
             cookie?: never;
@@ -29368,14 +29352,12 @@ export interface operations {
             };
         };
     };
-    query_documents_api_tables__name__documents_query_post: {
+    query_documents_api_tables__table_id__documents_query_post: {
         parameters: {
-            query?: {
-                scope?: string | null;
-            };
+            query?: never;
             header?: never;
             path: {
-                name: string;
+                table_id: string;
             };
             cookie?: never;
         };
@@ -29405,14 +29387,12 @@ export interface operations {
             };
         };
     };
-    count_documents_api_tables__name__documents_count_get: {
+    count_documents_api_tables__table_id__documents_count_get: {
         parameters: {
-            query?: {
-                scope?: string | null;
-            };
+            query?: never;
             header?: never;
             path: {
-                name: string;
+                table_id: string;
             };
             cookie?: never;
         };
@@ -29992,10 +29972,7 @@ export interface operations {
     };
     create_application_api_applications_post: {
         parameters: {
-            query?: {
-                /** @description Target scope: 'global' or org UUID. Defaults to current org. */
-                scope?: string | null;
-            };
+            query?: never;
             header?: never;
             path?: never;
             cookie?: never;
@@ -30028,9 +30005,7 @@ export interface operations {
     };
     get_application_api_applications__slug__get: {
         parameters: {
-            query?: {
-                scope?: string | null;
-            };
+            query?: never;
             header?: never;
             path: {
                 slug: string;
@@ -30125,9 +30100,7 @@ export interface operations {
     };
     get_draft_api_applications__app_id__draft_get: {
         parameters: {
-            query?: {
-                scope?: string | null;
-            };
+            query?: never;
             header?: never;
             path: {
                 app_id: string;
@@ -30158,9 +30131,7 @@ export interface operations {
     };
     save_draft_api_applications__app_id__draft_put: {
         parameters: {
-            query?: {
-                scope?: string | null;
-            };
+            query?: never;
             header?: never;
             path: {
                 app_id: string;
@@ -30195,9 +30166,7 @@ export interface operations {
     };
     publish_application_api_applications__app_id__publish_post: {
         parameters: {
-            query?: {
-                scope?: string | null;
-            };
+            query?: never;
             header?: never;
             path: {
                 app_id: string;
@@ -30266,7 +30235,6 @@ export interface operations {
             query?: {
                 /** @description Version UUID to export (defaults to draft) */
                 version_id?: string | null;
-                scope?: string | null;
             };
             header?: never;
             path: {
@@ -30298,9 +30266,7 @@ export interface operations {
     };
     rollback_application_api_applications__app_id__rollback_post: {
         parameters: {
-            query?: {
-                scope?: string | null;
-            };
+            query?: never;
             header?: never;
             path: {
                 app_id: string;

@@ -12,6 +12,7 @@ dependencies = [
     "httpx>=0.24.0",
     "pydantic>=2.0.0",
     "watchdog>=4.0.0",
+    "PyYAML>=6.0",
 ]
 
 [project.optional-dependencies]

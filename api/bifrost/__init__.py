@@ -76,6 +76,7 @@ Example:
 """
 
 # SDK Modules
+from .api import api
 from .ai import ai
 from .config import config
 from .executions import executions
@@ -184,6 +185,7 @@ except ImportError:
 
 __all__ = [
     # SDK Modules
+    'api',
     'ai',
     'config',
     'email',

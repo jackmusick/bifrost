@@ -395,6 +395,10 @@ class Scheduler:
                         job_id, status=status_str, result_type="sync",
                         data=op_result.model_dump(),
                         error=op_result.error if not op_result.success else None,
+                        pulled=op_result.pulled,
+                        pushed=op_result.pushed_commits,
+                        commit_sha=op_result.commit_sha,
+                        conflicts=[c.model_dump() for c in op_result.conflicts] if op_result.conflicts else None,
                     )
 
                     # Clear repo dirty flag after successful sync

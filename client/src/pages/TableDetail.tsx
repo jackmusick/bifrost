@@ -1,5 +1,5 @@
 import { useState, useMemo } from "react";
-import { useParams, useSearchParams, Link } from "react-router-dom";
+import { useParams, Link } from "react-router-dom";
 import {
 	ArrowLeft,
 	ChevronLeft,
@@ -57,9 +57,7 @@ import type { DocumentPublic } from "@/services/tables";
 const PAGE_SIZES = [10, 25, 50, 100];
 
 export function TableDetail() {
-	const { tableName } = useParams<{ tableName: string }>();
-	const [searchParams] = useSearchParams();
-	const scope = searchParams.get("scope") || undefined;
+	const { tableId } = useParams<{ tableId: string }>();
 	const [selectedDocument, setSelectedDocument] = useState<
 		DocumentPublic | undefined
 	>();
@@ -90,12 +88,12 @@ export function TableDetail() {
 		[whereClause, pageSize, currentPage],
 	);
 
-	const { data: table, isLoading: tableLoading } = useTable(tableName || "", scope);
+	const { data: table, isLoading: tableLoading } = useTable(tableId || "");
 	const {
 		data: documentsData,
 		isLoading: documentsLoading,
 		refetch,
-	} = useDocuments(tableName || "", query, scope);
+	} = useDocuments(tableId || "", query);
 	const deleteDocument = useDeleteDocument();
 
 	const documents = useMemo(
@@ -129,11 +127,10 @@ export function TableDetail() {
 	};
 
 	const handleConfirmDelete = async () => {
-		if (!documentToDelete || !tableName) return;
+		if (!documentToDelete || !tableId) return;
 		await deleteDocument.mutateAsync({
 			params: {
-				path: { name: tableName, doc_id: documentToDelete.id },
-				query: scope ? { scope } : undefined,
+				path: { table_id: tableId, doc_id: documentToDelete.id },
 			},
 		});
 		setIsDeleteDialogOpen(false);
@@ -212,7 +209,7 @@ export function TableDetail() {
 				<FileJson2 className="h-12 w-12 text-muted-foreground" />
 				<h3 className="mt-4 text-lg font-semibold">Table not found</h3>
 				<p className="mt-2 text-sm text-muted-foreground">
-					The table "{tableName}" does not exist or you don't have
+					The table "{tableId}" does not exist or you don't have
 					access.
 				</p>
 				<Button variant="outline" asChild className="mt-4">
@@ -570,13 +567,12 @@ export function TableDetail() {
 				</div>
 			</div>
 
-			{tableName && (
+			{tableId && (
 				<DocumentDialog
 					document={selectedDocument}
-					tableName={tableName}
+					tableId={tableId}
 					open={isDialogOpen}
 					onClose={handleDialogClose}
-					scope={scope}
 				/>
 			)}
 

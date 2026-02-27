@@ -222,11 +222,7 @@ export function AppInfoDialog({
 						description: values.description || null,
 						access_level: values.access_level,
 						role_ids: values.role_ids,
-					},
-					params: {
-						query: values.organization_id
-							? { scope: values.organization_id }
-							: undefined,
+						organization_id: values.organization_id || null,
 					},
 				});
 				handleClose();

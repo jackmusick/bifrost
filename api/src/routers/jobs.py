@@ -31,6 +31,10 @@ class JobStatusResponse(BaseModel):
     error: str | None = Field(default=None, description="Error message if failed")
     # Preview data for sync preview jobs
     preview: dict[str, Any] | None = Field(default=None, description="Sync preview data")
+    # Conflict data for sync operations
+    conflicts: list[dict[str, Any]] | None = Field(
+        default=None, description="Merge conflicts if any (git sync)"
+    )
 
 
 @router.get(
@@ -69,6 +73,7 @@ async def get_job_status(job_id: str) -> JobStatusResponse:
                     commit_sha=result.get("commit_sha"),
                     error=result.get("error"),
                     preview=result.get("preview"),
+                    conflicts=result.get("conflicts"),
                 )
         else:
             logger.warning(f"Redis client is None for job {job_id}")

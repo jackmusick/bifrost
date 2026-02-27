@@ -408,17 +408,17 @@ async def execute(request: ExecutionRequest) -> ExecutionResult:
             "value": context.roi.value,
         }
 
-        result, captured_variables, logger_output, _ = _scrub_outputs(
+        scrubbed_result, scrubbed_vars, scrubbed_logs, _ = _scrub_outputs(
             context, result, captured_variables, logger_output
         )
 
         return ExecutionResult(
             execution_id=request.execution_id,
             status=status,
-            result=result,
+            result=scrubbed_result,
             duration_ms=duration_ms,
-            logs=logger_output,
-            variables=captured_variables,
+            logs=scrubbed_logs or [],
+            variables=scrubbed_vars or {},
             integration_calls=context._integration_calls,
             roi=roi_data,
             cached=False,
@@ -498,7 +498,7 @@ async def execute(request: ExecutionRequest) -> ExecutionResult:
         else:
             status = ExecutionStatus.FAILED
 
-        _, captured_variables, logger_output, error_message = _scrub_outputs(
+        _, scrubbed_vars, scrubbed_logs, scrubbed_err = _scrub_outputs(
             context, None, captured_variables, logger_output, error_message
         )
 
@@ -507,10 +507,10 @@ async def execute(request: ExecutionRequest) -> ExecutionResult:
             status=status,
             result=None,
             duration_ms=duration_ms,
-            logs=logger_output,
-            variables=captured_variables,
+            logs=scrubbed_logs or [],
+            variables=scrubbed_vars or {},
             integration_calls=context._integration_calls,
-            error_message=error_message,
+            error_message=scrubbed_err,
             error_type=error_type
         )
 
@@ -538,7 +538,7 @@ async def execute(request: ExecutionRequest) -> ExecutionResult:
                 })
 
         _wf_err_msg = str(e)
-        _, captured_variables, logger_output, _wf_err_msg = _scrub_outputs(
+        _, scrubbed_vars, scrubbed_logs, scrubbed_err = _scrub_outputs(
             context, None, captured_variables, logger_output, _wf_err_msg
         )
 
@@ -547,10 +547,10 @@ async def execute(request: ExecutionRequest) -> ExecutionResult:
             status=ExecutionStatus.FAILED,
             result=None,
             duration_ms=duration_ms,
-            logs=logger_output,
-            variables=captured_variables,
+            logs=scrubbed_logs or [],
+            variables=scrubbed_vars or {},
             integration_calls=context._integration_calls,
-            error_message=_wf_err_msg,
+            error_message=scrubbed_err,
             error_type=type(e).__name__
         )
 
@@ -598,7 +598,7 @@ async def execute(request: ExecutionRequest) -> ExecutionResult:
                     })
 
         _gen_err_msg = str(e)
-        _, captured_variables, logger_output, _gen_err_msg = _scrub_outputs(
+        _, scrubbed_vars, scrubbed_logs, scrubbed_err = _scrub_outputs(
             context, None, captured_variables, logger_output, _gen_err_msg
         )
 
@@ -607,10 +607,10 @@ async def execute(request: ExecutionRequest) -> ExecutionResult:
             status=ExecutionStatus.FAILED,
             result=None,
             duration_ms=duration_ms,
-            logs=logger_output,
-            variables=captured_variables,
+            logs=scrubbed_logs or [],
+            variables=scrubbed_vars or {},
             integration_calls=context._integration_calls,
-            error_message=_gen_err_msg,
+            error_message=scrubbed_err,
             error_type=type(e).__name__
         )
 

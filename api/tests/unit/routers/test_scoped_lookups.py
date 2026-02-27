@@ -15,6 +15,7 @@ import pytest
 from unittest.mock import AsyncMock, MagicMock
 from uuid import uuid4
 
+from src.models.orm.applications import Application
 from src.models.orm.tables import Table
 from src.models.orm.config import Config
 from src.models.orm.workflows import Workflow
@@ -928,10 +929,8 @@ class TestOrgScopedRepositoryRegularUserAccess:
 # =============================================================================
 
 
-def make_application(slug: str, org_id=None) -> "Application":
+def make_application(slug: str, org_id=None) -> Application:
     """Create an Application instance for testing."""
-    from src.models.orm.applications import Application
-
     return Application(
         id=uuid4(),
         name=slug.replace("-", " ").title(),
@@ -1236,7 +1235,7 @@ class TestGetApplicationOr404SuperuserSlug:
             )
 
             result = await get_application_or_404(
-                ctx=mock_ctx, slug="org-b-app", scope=None
+                ctx=mock_ctx, slug="org-b-app"
             )
 
         assert result is org_b_app
@@ -1260,7 +1259,7 @@ class TestGetApplicationOr404SuperuserSlug:
 
             with pytest.raises(HTTPException) as exc_info:
                 await get_application_or_404(
-                    ctx=mock_ctx, slug="nonexistent", scope=None
+                    ctx=mock_ctx, slug="nonexistent"
                 )
 
         assert exc_info.value.status_code == 404
@@ -1280,7 +1279,7 @@ class TestGetApplicationOr404SuperuserSlug:
             repo_instance.can_access = AsyncMock(return_value=org_b_app)
 
             result = await get_application_or_404(
-                ctx=mock_ctx, slug="org-b-app", scope=None
+                ctx=mock_ctx, slug="org-b-app"
             )
 
         assert result is org_b_app

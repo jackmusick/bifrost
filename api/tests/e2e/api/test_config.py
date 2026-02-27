@@ -331,12 +331,12 @@ class TestConfigScoping:
         response = e2e_client.post(
             "/api/config",
             headers=platform_admin.headers,
-            params={"scope": org1["id"]},
             json={
                 "key": "e2e_org_config",
                 "value": "org-specific-value",
                 "type": "string",
                 "description": "Org-scoped config",
+                "organization_id": org1["id"],
             },
         )
         assert response.status_code == 201, \
@@ -359,12 +359,12 @@ class TestConfigScopeFiltering:
         response = e2e_client.post(
             "/api/config",
             headers=platform_admin.headers,
-            params={"scope": "global"},
             json={
                 "key": "scope_test_global",
                 "value": "global-value",
                 "type": "string",
                 "description": "Global config for scope testing",
+                "organization_id": None,
             },
         )
         assert response.status_code == 201, f"Failed to create global config: {response.text}"
@@ -374,12 +374,12 @@ class TestConfigScopeFiltering:
         response = e2e_client.post(
             "/api/config",
             headers=platform_admin.headers,
-            params={"scope": org1["id"]},
             json={
                 "key": "scope_test_org1",
                 "value": "org1-value",
                 "type": "string",
                 "description": "Org1 config for scope testing",
+                "organization_id": org1["id"],
             },
         )
         assert response.status_code == 201, f"Failed to create org1 config: {response.text}"
@@ -389,12 +389,12 @@ class TestConfigScopeFiltering:
         response = e2e_client.post(
             "/api/config",
             headers=platform_admin.headers,
-            params={"scope": org2["id"]},
             json={
                 "key": "scope_test_org2",
                 "value": "org2-value",
                 "type": "string",
                 "description": "Org2 config for scope testing",
+                "organization_id": org2["id"],
             },
         )
         assert response.status_code == 201, f"Failed to create org2 config: {response.text}"

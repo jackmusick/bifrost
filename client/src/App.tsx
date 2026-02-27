@@ -363,7 +363,7 @@ function AppRoutes() {
 							}
 						/>
 						<Route
-							path="tables/:tableName"
+							path="tables/:tableId"
 							element={
 								<ProtectedRoute requirePlatformAdmin>
 									<TableDetail />

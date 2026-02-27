@@ -546,6 +546,7 @@ async def publish_git_op_completed(
     pulled: int = 0,
     pushed: int = 0,
     commit_sha: str | None = None,
+    conflicts: list[dict[str, Any]] | None = None,
 ) -> None:
     """
     Publish git operation completion.
@@ -563,6 +564,7 @@ async def publish_git_op_completed(
         pulled: Number of files pulled (for sync_execute ops)
         pushed: Number of files pushed (for sync_execute ops)
         commit_sha: Commit SHA if created (for sync_execute ops)
+        conflicts: List of merge conflict dicts (for sync ops with conflicts)
     """
     import json
 
@@ -584,6 +586,8 @@ async def publish_git_op_completed(
         completion_message["pushed"] = pushed
     if commit_sha is not None:
         completion_message["commit_sha"] = commit_sha
+    if conflicts is not None:
+        completion_message["conflicts"] = conflicts
 
     await manager.broadcast(f"git:{job_id}", completion_message)
 

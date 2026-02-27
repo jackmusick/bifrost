@@ -7,7 +7,6 @@ plus schema documentation.
 Applications use code-based files (TSX/TypeScript) stored in file_index table.
 
 Note: `get_app_schema` provides a concise platform overview and component index.
-For detailed component documentation (props, variants, examples), use `get_component_docs`.
 """
 
 import logging
@@ -423,125 +422,6 @@ async def publish_app(context: Any, app_id: str) -> ToolResult:
         return error_result(f"Error publishing app: {str(e)}")
 
 
-async def get_component_docs(
-    context: Any,  # noqa: ARG001
-    components: str = "",
-    category: str = "",
-) -> ToolResult:
-    """
-    Get detailed documentation for available UI components.
-
-    Args:
-        components: Comma-separated component names (e.g. "Button,Card,Table").
-                    Returns detailed docs for those specific components.
-        category: Filter by category. One of: layout, forms, display, navigation,
-                  feedback, data, typography.
-                  Returns all components in that category.
-
-    If neither components nor category is provided, returns a category index
-    listing all available components grouped by category.
-    """
-    from src.services.mcp_server.component_docs import CATEGORIES, COMPONENT_DOCS
-
-    # Case 1: Specific components requested
-    if components:
-        names = [c.strip() for c in components.split(",") if c.strip()]
-        results: dict[str, dict] = {}
-        not_found: list[str] = []
-        for name in names:
-            if name in COMPONENT_DOCS:
-                results[name] = COMPONENT_DOCS[name]
-            else:
-                not_found.append(name)
-
-        lines = []
-        for name, doc in results.items():
-            lines.append(f"## {name}")
-            lines.append(f"**Category**: {CATEGORIES.get(doc.get('category', ''), doc.get('category', ''))}")
-            lines.append(f"**Description**: {doc['description']}")
-            if doc.get("children"):
-                lines.append(f"**Children**: {', '.join(doc['children'])}")
-            if doc.get("props"):
-                lines.append("**Props**:")
-                for prop_name, prop_desc in doc["props"].items():
-                    lines.append(f"  - `{prop_name}`: {prop_desc}")
-            if doc.get("example"):
-                lines.append(f"**Example**:\n```tsx\n{doc['example']}\n```")
-            lines.append("")
-
-        if not_found:
-            lines.append(f"**Not found**: {', '.join(not_found)}")
-
-        display_text = "\n".join(lines)
-        return success_result(display_text, {
-            "components": results,
-            "not_found": not_found,
-        })
-
-    # Case 2: Category filter
-    if category:
-        if category not in CATEGORIES:
-            return error_result(
-                f"Unknown category '{category}'. Valid categories: {', '.join(CATEGORIES.keys())}"
-            )
-
-        cat_components: dict[str, dict] = {
-            name: doc for name, doc in COMPONENT_DOCS.items()
-            if doc.get("category") == category
-        }
-
-        lines = [f"# {CATEGORIES[category]}", ""]
-        for name, doc in cat_components.items():
-            lines.append(f"## {name}")
-            lines.append(f"**Description**: {doc['description']}")
-            if doc.get("children"):
-                lines.append(f"**Children**: {', '.join(doc['children'])}")
-            if doc.get("props"):
-                lines.append("**Props**:")
-                for prop_name, prop_desc in doc["props"].items():
-                    lines.append(f"  - `{prop_name}`: {prop_desc}")
-            if doc.get("example"):
-                lines.append(f"**Example**:\n```tsx\n{doc['example']}\n```")
-            lines.append("")
-
-        display_text = "\n".join(lines)
-        return success_result(display_text, {
-            "category": category,
-            "category_label": CATEGORIES[category],
-            "components": cat_components,
-            "count": len(cat_components),
-        })
-
-    # Case 3: No filter -- return category index
-    index: dict[str, list[str]] = {cat: [] for cat in CATEGORIES}
-    for name, doc in COMPONENT_DOCS.items():
-        cat = doc.get("category", "")
-        if cat in index:
-            index[cat].append(name)
-
-    lines = ["# Component Categories", ""]
-    for cat_key, cat_label in CATEGORIES.items():
-        comp_names = index.get(cat_key, [])
-        lines.append(f"## {cat_label} ({len(comp_names)} components)")
-        lines.append(", ".join(comp_names))
-        lines.append("")
-
-    lines.append("Use `components` parameter for specific component docs,")
-    lines.append("or `category` parameter to see all components in a category.")
-
-    display_text = "\n".join(lines)
-    return success_result(display_text, {
-        "categories": {
-            cat_key: {
-                "label": cat_label,
-                "components": index.get(cat_key, []),
-            }
-            for cat_key, cat_label in CATEGORIES.items()
-        },
-        "total_components": sum(len(v) for v in index.values()),
-    })
-
-
 async def get_app_schema(context: Any) -> ToolResult:  # noqa: ARG001
     """Get application schema documentation for code-based apps."""
     from src.models.contracts.applications import (
@@ -555,10 +435,10 @@ async def get_app_schema(context: Any) -> ToolResult:  # noqa: ARG001
         (ApplicationUpdate, "ApplicationUpdate (for updating apps)"),
     ], "Application Models")
 
-    # Documentation for code-based apps (concise overview; use get_component_docs for detailed component API)
+    # Documentation for code-based apps
     overview = r"""# App Builder Schema Documentation
 
-Applications in Bifrost use TypeScript/TSX files. For detailed component docs (props, variants, examples), use the `get_component_docs` tool.
+Applications in Bifrost use TypeScript/TSX files.
 
 ## Tool Hierarchy
 
@@ -619,7 +499,7 @@ import dayjs from "dayjs";
 - Version format: semver with optional `^` or `~` prefix (e.g., `"2.12"`, `"^1.5.3"`)
 - Package names: lowercase, hyphens, optional `@scope/` prefix
 
-## Available Components (use `get_component_docs` for full API)
+## Available Components
 
 **Layout**: Card, CardHeader, CardTitle, CardDescription, CardContent, CardFooter, Separator
 **Data Display**: Table, TableHeader, TableBody, TableRow, TableHead, TableCell, Badge, Skeleton

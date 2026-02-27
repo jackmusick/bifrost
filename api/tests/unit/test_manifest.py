@@ -16,8 +16,9 @@ def sample_manifest():
         "organizations": [{"id": org_id, "name": "TestOrg"}],
         "roles": [{"id": role_id, "name": "admin", "organization_id": org_id}],
         "workflows": {
-            "my_workflow": {
+            wf_id: {
                 "id": wf_id,
+                "name": "my_workflow",
                 "path": "workflows/my_workflow.py",
                 "function_name": "my_workflow",
                 "type": "workflow",
@@ -29,8 +30,9 @@ def sample_manifest():
             },
         },
         "forms": {
-            "my_form": {
+            form_id: {
                 "id": form_id,
+                "name": "my_form",
                 "path": "forms/my_form.form.yaml",
                 "organization_id": org_id,
                 "roles": [role_id],
@@ -39,6 +41,8 @@ def sample_manifest():
         },
         "agents": {},
         "apps": {},
+        "_wf_id": wf_id,
+        "_form_id": form_id,
     }
 
 
@@ -48,10 +52,12 @@ def test_parse_manifest_from_yaml(sample_manifest):
 
     yaml_str = yaml.dump(sample_manifest, default_flow_style=False)
     manifest = parse_manifest(yaml_str)
-    assert "my_workflow" in manifest.workflows
-    assert manifest.workflows["my_workflow"].path == "workflows/my_workflow.py"
-    assert manifest.workflows["my_workflow"].function_name == "my_workflow"
-    assert manifest.workflows["my_workflow"].type == "workflow"
+    wf_id = sample_manifest["_wf_id"]
+    assert wf_id in manifest.workflows
+    assert manifest.workflows[wf_id].name == "my_workflow"
+    assert manifest.workflows[wf_id].path == "workflows/my_workflow.py"
+    assert manifest.workflows[wf_id].function_name == "my_workflow"
+    assert manifest.workflows[wf_id].type == "workflow"
 
 
 def test_serialize_manifest(sample_manifest):
@@ -64,7 +70,8 @@ def test_serialize_manifest(sample_manifest):
     # Should be valid YAML
     reparsed = yaml.safe_load(output)
     assert "workflows" in reparsed
-    assert "my_workflow" in reparsed["workflows"]
+    wf_id = sample_manifest["_wf_id"]
+    assert wf_id in reparsed["workflows"]
 
 
 def test_serialize_manifest_round_trip_stability(sample_manifest):
@@ -123,7 +130,8 @@ def test_validate_manifest_missing_org(sample_manifest):
     """Detect reference to non-existent organization."""
     from src.services.manifest import parse_manifest, validate_manifest
 
-    sample_manifest["workflows"]["my_workflow"]["organization_id"] = str(uuid4())
+    wf_id = sample_manifest["_wf_id"]
+    sample_manifest["workflows"][wf_id]["organization_id"] = str(uuid4())
     yaml_str = yaml.dump(sample_manifest, default_flow_style=False)
     manifest = parse_manifest(yaml_str)
     errors = validate_manifest(manifest)
@@ -134,7 +142,8 @@ def test_validate_manifest_missing_role(sample_manifest):
     """Detect reference to non-existent role."""
     from src.services.manifest import parse_manifest, validate_manifest
 
-    sample_manifest["workflows"]["my_workflow"]["roles"] = [str(uuid4())]
+    wf_id = sample_manifest["_wf_id"]
+    sample_manifest["workflows"][wf_id]["roles"] = [str(uuid4())]
     yaml_str = yaml.dump(sample_manifest, default_flow_style=False)
     manifest = parse_manifest(yaml_str)
     errors = validate_manifest(manifest)
@@ -216,7 +225,8 @@ class TestSerializeManifestDir:
         # Verify YAML content is correct
         wf_data = yaml.safe_load(files["workflows.yaml"])
         assert "workflows" in wf_data
-        assert "my_workflow" in wf_data["workflows"]
+        wf_id = sample_manifest["_wf_id"]
+        assert wf_id in wf_data["workflows"]
 
         org_data = yaml.safe_load(files["organizations.yaml"])
         assert "organizations" in org_data
@@ -439,21 +449,24 @@ def full_manifest_data():
             "organizations": [{"id": org_id, "name": "TestOrg"}],
             "roles": [{"id": role_id, "name": "admin"}],
             "workflows": {
-                "my_workflow": {
+                wf_id: {
                     "id": wf_id,
+                    "name": "my_workflow",
                     "path": "workflows/my_workflow.py",
                     "function_name": "my_workflow",
                 },
-                "list_entities_dp": {
+                dp_wf_id: {
                     "id": dp_wf_id,
+                    "name": "list_entities_dp",
                     "path": "workflows/list_entities_dp.py",
                     "function_name": "list_entities_dp",
                     "type": "data_provider",
                 },
             },
             "integrations": {
-                "HaloPSA": {
+                integ_id: {
                     "id": integ_id,
+                    "name": "HaloPSA",
                     "entity_id": "tenant_id",
                     "entity_id_name": "Tenant",
                     "default_entity_id": "default-tenant",
@@ -514,8 +527,9 @@ def full_manifest_data():
                 },
             },
             "tables": {
-                "ticket_cache": {
+                table_id: {
                     "id": table_id,
+                    "name": "ticket_cache",
                     "description": "Cached ticket data",
                     "organization_id": org_id,
                     "application_id": app_id,
@@ -528,8 +542,9 @@ def full_manifest_data():
                 },
             },
             "events": {
-                "Ticket Webhook": {
+                event_source_id: {
                     "id": event_source_id,
+                    "name": "Ticket Webhook",
                     "source_type": "webhook",
                     "organization_id": org_id,
                     "is_active": True,
@@ -548,23 +563,25 @@ def full_manifest_data():
                 },
             },
             "forms": {
-                "my_form": {
+                form_id: {
                     "id": form_id,
+                    "name": "my_form",
                     "path": "forms/my_form.form.yaml",
                     "organization_id": org_id,
                     "roles": [role_id],
                 },
             },
             "agents": {
-                "my_agent": {
+                agent_id: {
                     "id": agent_id,
+                    "name": "my_agent",
                     "path": "agents/my_agent.agent.yaml",
                     "organization_id": org_id,
                     "roles": [role_id],
                 },
             },
             "apps": {
-                "my_app": {
+                app_id: {
                     "id": app_id,
                     "path": "apps/my-app",
                     "name": "My App",
@@ -588,8 +605,10 @@ class TestIntegrationManifest:
         yaml_str = yaml.dump(full_manifest_data["manifest"], default_flow_style=False)
         manifest = parse_manifest(yaml_str)
 
-        assert "HaloPSA" in manifest.integrations
-        integ = manifest.integrations["HaloPSA"]
+        integ_id = full_manifest_data["integ_id"]
+        assert integ_id in manifest.integrations
+        integ = manifest.integrations[integ_id]
+        assert integ.name == "HaloPSA"
         assert integ.id == full_manifest_data["integ_id"]
         assert integ.entity_id == "tenant_id"
         assert integ.entity_id_name == "Tenant"
@@ -626,8 +645,9 @@ class TestIntegrationManifest:
         output = serialize_manifest(original)
         restored = parse_manifest(output)
 
-        integ_orig = original.integrations["HaloPSA"]
-        integ_rest = restored.integrations["HaloPSA"]
+        integ_id = full_manifest_data["integ_id"]
+        integ_orig = original.integrations[integ_id]
+        integ_rest = restored.integrations[integ_id]
         assert integ_rest.id == integ_orig.id
         assert integ_rest.entity_id == integ_orig.entity_id
         assert len(integ_rest.config_schema) == len(integ_orig.config_schema)
@@ -690,12 +710,13 @@ class TestIntegrationManifest:
         assert "integrations.yaml" in files
         integ_data = yaml.safe_load(files["integrations.yaml"])
         assert "integrations" in integ_data
-        assert "HaloPSA" in integ_data["integrations"]
+        integ_id = full_manifest_data["integ_id"]
+        assert integ_id in integ_data["integrations"]
 
         # Round-trip through split format
         restored = parse_manifest_dir(files)
-        assert "HaloPSA" in restored.integrations
-        assert restored.integrations["HaloPSA"].id == full_manifest_data["integ_id"]
+        assert integ_id in restored.integrations
+        assert restored.integrations[integ_id].id == integ_id
 
 
 class TestConfigManifest:
@@ -763,9 +784,11 @@ class TestTableManifest:
         yaml_str = yaml.dump(full_manifest_data["manifest"], default_flow_style=False)
         manifest = parse_manifest(yaml_str)
 
-        assert "ticket_cache" in manifest.tables
-        table = manifest.tables["ticket_cache"]
-        assert table.id == full_manifest_data["table_id"]
+        table_id = full_manifest_data["table_id"]
+        assert table_id in manifest.tables
+        table = manifest.tables[table_id]
+        assert table.id == table_id
+        assert table.name == "ticket_cache"
         assert table.description == "Cached ticket data"
         assert table.organization_id == full_manifest_data["org_id"]
         assert table.application_id == full_manifest_data["app_id"]
@@ -782,7 +805,8 @@ class TestTableManifest:
         output = serialize_manifest(manifest)
         data = yaml.safe_load(output)
 
-        table_data = data["tables"]["ticket_cache"]
+        table_id = full_manifest_data["table_id"]
+        table_data = data["tables"][table_id]
         assert "schema" in table_data
         assert "table_schema" not in table_data
 
@@ -795,8 +819,9 @@ class TestTableManifest:
         output = serialize_manifest(original)
         restored = parse_manifest(output)
 
-        assert "ticket_cache" in restored.tables
-        assert restored.tables["ticket_cache"].table_schema == original.tables["ticket_cache"].table_schema
+        table_id = full_manifest_data["table_id"]
+        assert table_id in restored.tables
+        assert restored.tables[table_id].table_schema == original.tables[table_id].table_schema
 
     def test_table_split_file(self, full_manifest_data):
         """Tables serialize to tables.yaml in split format."""
@@ -809,9 +834,10 @@ class TestTableManifest:
         assert "tables.yaml" in files
         table_data = yaml.safe_load(files["tables.yaml"])
         assert "tables" in table_data
-        assert "ticket_cache" in table_data["tables"]
+        table_id = full_manifest_data["table_id"]
+        assert table_id in table_data["tables"]
         # Alias should appear in YAML
-        assert "schema" in table_data["tables"]["ticket_cache"]
+        assert "schema" in table_data["tables"][table_id]
 
 
 class TestEventManifest:
@@ -824,9 +850,11 @@ class TestEventManifest:
         yaml_str = yaml.dump(full_manifest_data["manifest"], default_flow_style=False)
         manifest = parse_manifest(yaml_str)
 
-        assert "Ticket Webhook" in manifest.events
-        evt = manifest.events["Ticket Webhook"]
-        assert evt.id == full_manifest_data["event_source_id"]
+        es_id = full_manifest_data["event_source_id"]
+        assert es_id in manifest.events
+        evt = manifest.events[es_id]
+        assert evt.id == es_id
+        assert evt.name == "Ticket Webhook"
         assert evt.source_type == "webhook"
         assert evt.organization_id == full_manifest_data["org_id"]
         assert evt.adapter_name == "halopsa"
@@ -851,15 +879,17 @@ class TestEventManifest:
         es_id = str(uuid4())
         yaml_str = yaml.dump({
             "workflows": {
-                "sync_job": {
+                wf_id: {
                     "id": wf_id,
+                    "name": "sync_job",
                     "path": "workflows/sync_job.py",
                     "function_name": "sync_job",
                 },
             },
             "events": {
-                "Daily Sync": {
+                es_id: {
                     "id": es_id,
+                    "name": "Daily Sync",
                     "source_type": "schedule",
                     "cron_expression": "0 6 * * *",
                     "timezone": "America/New_York",
@@ -875,7 +905,7 @@ class TestEventManifest:
         }, default_flow_style=False)
         manifest = parse_manifest(yaml_str)
 
-        evt = manifest.events["Daily Sync"]
+        evt = manifest.events[es_id]
         assert evt.source_type == "schedule"
         assert evt.cron_expression == "0 6 * * *"
         assert evt.timezone == "America/New_York"
@@ -891,9 +921,10 @@ class TestEventManifest:
         output = serialize_manifest(original)
         restored = parse_manifest(output)
 
-        assert "Ticket Webhook" in restored.events
-        evt_orig = original.events["Ticket Webhook"]
-        evt_rest = restored.events["Ticket Webhook"]
+        es_id = full_manifest_data["event_source_id"]
+        assert es_id in restored.events
+        evt_orig = original.events[es_id]
+        evt_rest = restored.events[es_id]
         assert evt_rest.id == evt_orig.id
         assert evt_rest.source_type == evt_orig.source_type
         assert len(evt_rest.subscriptions) == len(evt_orig.subscriptions)
@@ -910,12 +941,13 @@ class TestEventManifest:
         assert "events.yaml" in files
         evt_data = yaml.safe_load(files["events.yaml"])
         assert "events" in evt_data
-        assert "Ticket Webhook" in evt_data["events"]
+        es_id = full_manifest_data["event_source_id"]
+        assert es_id in evt_data["events"]
 
         # Round-trip split
         restored = parse_manifest_dir(files)
-        assert "Ticket Webhook" in restored.events
-        assert len(restored.events["Ticket Webhook"].subscriptions) == 1
+        assert es_id in restored.events
+        assert len(restored.events[es_id].subscriptions) == 1
 
 
 class TestFullManifestSplitRoundTrip:
@@ -981,7 +1013,7 @@ class TestValidateManifestNewTypes:
         from src.services.manifest import parse_manifest, validate_manifest
 
         data = full_manifest_data["manifest"]
-        data["integrations"]["HaloPSA"]["list_entities_data_provider_id"] = str(uuid4())
+        data["integrations"][full_manifest_data["integ_id"]]["list_entities_data_provider_id"] = str(uuid4())
         yaml_str = yaml.dump(data, default_flow_style=False)
         manifest = parse_manifest(yaml_str)
         errors = validate_manifest(manifest)
@@ -992,7 +1024,7 @@ class TestValidateManifestNewTypes:
         from src.services.manifest import parse_manifest, validate_manifest
 
         data = full_manifest_data["manifest"]
-        data["integrations"]["HaloPSA"]["mappings"][0]["organization_id"] = str(uuid4())
+        data["integrations"][full_manifest_data["integ_id"]]["mappings"][0]["organization_id"] = str(uuid4())
         yaml_str = yaml.dump(data, default_flow_style=False)
         manifest = parse_manifest(yaml_str)
         errors = validate_manifest(manifest)
@@ -1027,7 +1059,7 @@ class TestValidateManifestNewTypes:
         from src.services.manifest import parse_manifest, validate_manifest
 
         data = full_manifest_data["manifest"]
-        data["tables"]["ticket_cache"]["organization_id"] = str(uuid4())
+        data["tables"][full_manifest_data["table_id"]]["organization_id"] = str(uuid4())
         yaml_str = yaml.dump(data, default_flow_style=False)
         manifest = parse_manifest(yaml_str)
         errors = validate_manifest(manifest)
@@ -1038,7 +1070,7 @@ class TestValidateManifestNewTypes:
         from src.services.manifest import parse_manifest, validate_manifest
 
         data = full_manifest_data["manifest"]
-        data["tables"]["ticket_cache"]["application_id"] = str(uuid4())
+        data["tables"][full_manifest_data["table_id"]]["application_id"] = str(uuid4())
         yaml_str = yaml.dump(data, default_flow_style=False)
         manifest = parse_manifest(yaml_str)
         errors = validate_manifest(manifest)
@@ -1049,7 +1081,7 @@ class TestValidateManifestNewTypes:
         from src.services.manifest import parse_manifest, validate_manifest
 
         data = full_manifest_data["manifest"]
-        data["events"]["Ticket Webhook"]["organization_id"] = str(uuid4())
+        data["events"][full_manifest_data["event_source_id"]]["organization_id"] = str(uuid4())
         yaml_str = yaml.dump(data, default_flow_style=False)
         manifest = parse_manifest(yaml_str)
         errors = validate_manifest(manifest)
@@ -1060,7 +1092,7 @@ class TestValidateManifestNewTypes:
         from src.services.manifest import parse_manifest, validate_manifest
 
         data = full_manifest_data["manifest"]
-        data["events"]["Ticket Webhook"]["webhook_integration_id"] = str(uuid4())
+        data["events"][full_manifest_data["event_source_id"]]["webhook_integration_id"] = str(uuid4())
         yaml_str = yaml.dump(data, default_flow_style=False)
         manifest = parse_manifest(yaml_str)
         errors = validate_manifest(manifest)
@@ -1071,7 +1103,7 @@ class TestValidateManifestNewTypes:
         from src.services.manifest import parse_manifest, validate_manifest
 
         data = full_manifest_data["manifest"]
-        data["events"]["Ticket Webhook"]["subscriptions"][0]["workflow_id"] = str(uuid4())
+        data["events"][full_manifest_data["event_source_id"]]["subscriptions"][0]["workflow_id"] = str(uuid4())
         yaml_str = yaml.dump(data, default_flow_style=False)
         manifest = parse_manifest(yaml_str)
         errors = validate_manifest(manifest)
@@ -1121,6 +1153,94 @@ class TestConfigDictKeyCollision:
         assert restored.configs[config_id_2].value == "https://org2.example.com"
 
 
+class TestBackwardCompatNameKeys:
+    """Legacy manifests with name-based dict keys still parse correctly."""
+
+    def test_legacy_name_keyed_manifest_parses(self):
+        """Old-format YAML with name keys parses; name field defaults to empty."""
+        from src.services.manifest import parse_manifest
+
+        yaml_str = """
+workflows:
+  my_workflow:
+    id: "11111111-1111-1111-1111-111111111111"
+    path: workflows/my_workflow.py
+    function_name: my_workflow
+integrations:
+  HaloPSA:
+    id: "22222222-2222-2222-2222-222222222222"
+tables:
+  ticket_cache:
+    id: "33333333-3333-3333-3333-333333333333"
+events:
+  Daily Sync:
+    id: "44444444-4444-4444-4444-444444444444"
+    source_type: schedule
+forms:
+  my_form:
+    id: "55555555-5555-5555-5555-555555555555"
+    path: forms/my_form.form.yaml
+agents:
+  my_agent:
+    id: "66666666-6666-6666-6666-666666666666"
+    path: agents/my_agent.agent.yaml
+"""
+        manifest = parse_manifest(yaml_str)
+        assert "my_workflow" in manifest.workflows
+        assert manifest.workflows["my_workflow"].name == ""
+        assert manifest.workflows["my_workflow"].id == "11111111-1111-1111-1111-111111111111"
+        assert "HaloPSA" in manifest.integrations
+        assert manifest.integrations["HaloPSA"].name == ""
+        assert "ticket_cache" in manifest.tables
+        assert manifest.tables["ticket_cache"].name == ""
+        assert "Daily Sync" in manifest.events
+        assert manifest.events["Daily Sync"].name == ""
+        assert "my_form" in manifest.forms
+        assert manifest.forms["my_form"].name == ""
+        assert "my_agent" in manifest.agents
+        assert manifest.agents["my_agent"].name == ""
+
+
+class TestDuplicateNamesSurvive:
+    """UUID-keyed manifests preserve entities with duplicate names."""
+
+    def test_duplicate_workflow_names_survive_round_trip(self):
+        """Two workflows with the same name but different UUIDs both survive."""
+        from src.services.manifest import (
+            Manifest, ManifestWorkflow, serialize_manifest, parse_manifest,
+        )
+
+        wf_id_1 = str(uuid4())
+        wf_id_2 = str(uuid4())
+        org_id = str(uuid4())
+
+        manifest = Manifest(
+            workflows={
+                wf_id_1: ManifestWorkflow(
+                    id=wf_id_1,
+                    name="onboard_user",
+                    path="workflows/onboard_user.py",
+                    function_name="onboard_user",
+                ),
+                wf_id_2: ManifestWorkflow(
+                    id=wf_id_2,
+                    name="onboard_user",
+                    path="workflows/onboard_user_v2.py",
+                    function_name="onboard_user",
+                    organization_id=org_id,
+                ),
+            },
+        )
+        output = serialize_manifest(manifest)
+        restored = parse_manifest(output)
+
+        assert len(restored.workflows) == 2
+        assert wf_id_1 in restored.workflows
+        assert wf_id_2 in restored.workflows
+        assert restored.workflows[wf_id_1].name == "onboard_user"
+        assert restored.workflows[wf_id_2].name == "onboard_user"
+
+
 class TestGetAllEntityIdsNewTypes:
     """Test that get_all_entity_ids includes all new entity types."""
 
@@ -1158,8 +1278,7 @@ class TestManifestSchemaCoverage:
     # Columns that are intentionally NOT in the manifest — either internal
     # bookkeeping or UI-managed state.
     INTEGRATION_IGNORED = {
-        "id",            # manifest uses dict key (name) for identity; id is a field inside
-        "name",          # used as the manifest dict key, not a model field
+        "id",            # manifest uses UUID dict key; id is a field inside
         "is_deleted",    # soft-delete flag, internal
         "created_at",
         "updated_at",

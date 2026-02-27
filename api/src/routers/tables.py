@@ -381,18 +381,32 @@ def _resolve_target_org_safe(ctx: Context, scope: str | None) -> UUID | None:
 
 async def get_table_or_404(
     ctx: Context,
-    name: str,
+    name_or_id: str,
     scope: str | None = None,
 ) -> Table:
-    """Get table by name or raise 404."""
+    """Get table by name or UUID, raise 404 if not found."""
     target_org_id = _resolve_target_org_safe(ctx, scope)
     repo = TableRepository(ctx.db, target_org_id, is_superuser=True)
-    table = await repo.get_by_name(name)
+
+    # Try UUID lookup first
+    table: Table | None = None
+    try:
+        table_uuid = UUID(name_or_id)
+        result = await ctx.db.execute(
+            select(Table).where(Table.id == table_uuid)
+        )
+        table = result.scalar_one_or_none()
+    except ValueError:
+        pass
+
+    # Fall back to name lookup
+    if not table:
+        table = await repo.get_by_name(name_or_id)
 
     if not table:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
-            detail=f"Table '{name}' not found",
+            detail=f"Table '{name_or_id}' not found",
         )
 
     return table
@@ -400,26 +414,40 @@ async def get_table_or_404(
 
 async def get_or_create_table(
     ctx: Context,
-    name: str,
+    name_or_id: str,
     scope: str | None = None,
     created_by: str | None = None,
 ) -> Table:
-    """Get table by name, auto-creating if it doesn't exist.
+    """Get table by name or UUID, auto-creating if it doesn't exist.
 
     This is used by insert/upsert/query operations to enable
     schema-less table usage without explicit table creation.
     """
     target_org_id = _resolve_target_org_safe(ctx, scope)
     repo = TableRepository(ctx.db, target_org_id, is_superuser=True)
-    table = await repo.get_by_name(name)
+
+    # Try UUID lookup first
+    table: Table | None = None
+    try:
+        table_uuid = UUID(name_or_id)
+        result = await ctx.db.execute(
+            select(Table).where(Table.id == table_uuid)
+        )
+        table = result.scalar_one_or_none()
+    except ValueError:
+        pass
+
+    # Fall back to name lookup
+    if not table:
+        table = await repo.get_by_name(name_or_id)
 
     if not table:
-        # Auto-create table with minimal defaults
+        # Auto-create table with minimal defaults (only for name-based access)
         from src.models.contracts.tables import TableCreate
 
-        table_data = TableCreate(name=name)
+        table_data = TableCreate(name=name_or_id)
         table = await repo.create_table(table_data, created_by=created_by or "system")
-        logger.info(f"Auto-created table '{name}' in org {target_org_id}")
+        logger.info(f"Auto-created table '{name_or_id}' in org {target_org_id}")
 
     return table
 
@@ -445,7 +473,13 @@ async def create_table(
     ),
 ) -> TablePublic:
     """Create a new table for storing documents (platform admin only)."""
-    target_org_id = _resolve_target_org_safe(ctx, scope)
+    # Prefer organization_id from request body; fall back to scope query param (legacy)
+    if "organization_id" in (data.model_fields_set or set()):
+        target_org_id = data.organization_id
+    elif scope is not None:
+        target_org_id = _resolve_target_org_safe(ctx, scope)
+    else:
+        target_org_id = ctx.org_id
     repo = TableRepository(ctx.db, target_org_id, is_superuser=True)
 
     try:
@@ -490,18 +524,23 @@ async def list_tables(
 
 
 @router.get(
-    "/{name}",
+    "/{table_id}",
     response_model=TablePublic,
     summary="Get table metadata",
 )
 async def get_table(
-    name: str,
+    table_id: UUID,
     ctx: Context,
     user: CurrentSuperuser,
-    scope: str | None = Query(default=None),
 ) -> TablePublic:
-    """Get table metadata by name (platform admin only)."""
-    table = await get_table_or_404(ctx, name, scope)
+    """Get table metadata by UUID (platform admin only)."""
+    result = await ctx.db.execute(select(Table).where(Table.id == table_id))
+    table = result.scalar_one_or_none()
+    if not table:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Table '{table_id}' not found",
+        )
     return TablePublic.model_validate(table)
 
 
@@ -556,23 +595,25 @@ async def delete_table(
 
 
 @router.post(
-    "/{name}/documents",
+    "/{table_id}/documents",
     response_model=DocumentPublic,
     status_code=status.HTTP_201_CREATED,
     summary="Insert a document",
 )
 async def insert_document(
-    name: str,
+    table_id: UUID,
     data: DocumentCreate,
     ctx: Context,
     user: CurrentSuperuser,
-    scope: str | None = Query(default=None),
 ) -> DocumentPublic:
-    """Insert a new document into the table (platform admin only).
-
-    Auto-creates the table if it doesn't exist.
-    """
-    table = await get_or_create_table(ctx, name, scope, created_by=user.email)
+    """Insert a new document into the table (platform admin only)."""
+    result = await ctx.db.execute(select(Table).where(Table.id == table_id))
+    table = result.scalar_one_or_none()
+    if not table:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Table '{table_id}' not found",
+        )
     repo = DocumentRepository(ctx.db, table)
 
     doc = await repo.insert(data.data, created_by=user.email)
@@ -580,19 +621,24 @@ async def insert_document(
 
 
 @router.get(
-    "/{name}/documents/{doc_id}",
+    "/{table_id}/documents/{doc_id}",
     response_model=DocumentPublic,
     summary="Get a document",
 )
 async def get_document(
-    name: str,
+    table_id: UUID,
     doc_id: str,
     ctx: Context,
     user: CurrentSuperuser,
-    scope: str | None = Query(default=None),
 ) -> DocumentPublic:
     """Get a document by ID (platform admin only)."""
-    table = await get_table_or_404(ctx, name, scope)
+    result = await ctx.db.execute(select(Table).where(Table.id == table_id))
+    table = result.scalar_one_or_none()
+    if not table:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Table '{table_id}' not found",
+        )
     repo = DocumentRepository(ctx.db, table)
 
     doc = await repo.get(doc_id)
@@ -606,20 +652,25 @@ async def get_document(
 
 
 @router.patch(
-    "/{name}/documents/{doc_id}",
+    "/{table_id}/documents/{doc_id}",
     response_model=DocumentPublic,
     summary="Update a document",
 )
 async def update_document(
-    name: str,
+    table_id: UUID,
     doc_id: str,
     data: DocumentUpdate,
     ctx: Context,
     user: CurrentSuperuser,
-    scope: str | None = Query(default=None),
 ) -> DocumentPublic:
     """Update a document (platform admin only, partial update, merges with existing)."""
-    table = await get_table_or_404(ctx, name, scope)
+    result = await ctx.db.execute(select(Table).where(Table.id == table_id))
+    table = result.scalar_one_or_none()
+    if not table:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Table '{table_id}' not found",
+        )
     repo = DocumentRepository(ctx.db, table)
 
     doc = await repo.update(doc_id, data.data, updated_by=user.email)
@@ -633,19 +684,24 @@ async def update_document(
 
 
 @router.delete(
-    "/{name}/documents/{doc_id}",
+    "/{table_id}/documents/{doc_id}",
     status_code=status.HTTP_204_NO_CONTENT,
     summary="Delete a document",
 )
 async def delete_document(
-    name: str,
+    table_id: UUID,
     doc_id: str,
     ctx: Context,
     user: CurrentSuperuser,
-    scope: str | None = Query(default=None),
 ) -> None:
     """Delete a document (platform admin only)."""
-    table = await get_table_or_404(ctx, name, scope)
+    result = await ctx.db.execute(select(Table).where(Table.id == table_id))
+    table = result.scalar_one_or_none()
+    if not table:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Table '{table_id}' not found",
+        )
     repo = DocumentRepository(ctx.db, table)
 
     success = await repo.delete(doc_id)
@@ -657,22 +713,27 @@ async def delete_document(
 
 
 @router.post(
-    "/{name}/documents/query",
+    "/{table_id}/documents/query",
     response_model=DocumentListResponse,
     summary="Query documents",
 )
 async def query_documents(
-    name: str,
+    table_id: UUID,
     query_params: DocumentQuery,
     ctx: Context,
     user: CurrentSuperuser,
-    scope: str | None = Query(default=None),
 ) -> DocumentListResponse:
     """Query documents with filtering and pagination (platform admin only).
 
     Returns 404 if the table doesn't exist.
     """
-    table = await get_table_or_404(ctx, name, scope)
+    result = await ctx.db.execute(select(Table).where(Table.id == table_id))
+    table = result.scalar_one_or_none()
+    if not table:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Table '{table_id}' not found",
+        )
     repo = DocumentRepository(ctx.db, table)
 
     documents, total = await repo.query(query_params)
@@ -686,21 +747,26 @@ async def query_documents(
 
 
 @router.get(
-    "/{name}/documents/count",
+    "/{table_id}/documents/count",
     response_model=DocumentCountResponse,
     summary="Count documents",
 )
 async def count_documents(
-    name: str,
+    table_id: UUID,
     ctx: Context,
     user: CurrentSuperuser,
-    scope: str | None = Query(default=None),
 ) -> DocumentCountResponse:
     """Count documents in a table (platform admin only).
 
     Returns 404 if the table doesn't exist.
     """
-    table = await get_table_or_404(ctx, name, scope)
+    result = await ctx.db.execute(select(Table).where(Table.id == table_id))
+    table = result.scalar_one_or_none()
+    if not table:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Table '{table_id}' not found",
+        )
     repo = DocumentRepository(ctx.db, table)
 
     count = await repo.count()

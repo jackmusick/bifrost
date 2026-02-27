@@ -14,7 +14,7 @@
     ],
     "venvPath": "..",
     "venv": ".venv",
-    "pythonVersion": "3.11",
+    "pythonVersion": "3.12",
     "pythonPlatform": "Linux",
     "typeCheckingMode": "basic",
     "useLibraryCodeForTypes": true,
