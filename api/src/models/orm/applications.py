@@ -108,3 +108,13 @@ class Application(Base):
         # Conservative: assume changes exist. A more precise check would
         # compare file_index entries for apps/{slug}/ against the snapshot.
         return True
+
+    @property
+    def repo_prefix(self) -> str:
+        """Return the repo path prefix for this app, with trailing slash.
+
+        Uses repo_path from DB (set by git sync / manifest import).
+        Falls back to convention default apps/{slug} for legacy apps.
+        """
+        base = self.repo_path or f"apps/{self.slug}"
+        return f"{base.rstrip('/')}/"
