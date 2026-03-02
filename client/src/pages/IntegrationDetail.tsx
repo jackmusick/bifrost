@@ -125,7 +125,7 @@ export function IntegrationDetail() {
 	);
 
 	// Fetch entities from data provider
-	const { data: entities = [], isLoading: isLoadingEntities } =
+	const { data: entities = [], isLoading: isLoadingEntities, isError: isEntitiesError } =
 		useIntegrationEntities(integration?.list_entities_data_provider_id);
 
 	// Auto-match hook
@@ -734,6 +734,7 @@ export function IntegrationDetail() {
 						orgsWithMappings={orgsWithMappings}
 						entities={entities}
 						isLoadingEntities={isLoadingEntities}
+						isEntitiesError={isEntitiesError}
 						hasDataProvider={!!integration.list_entities_data_provider_id}
 						configSchema={integration?.config_schema || []}
 						configDefaults={integration?.config_defaults}

@@ -60,6 +60,7 @@ export interface IntegrationMappingsTabProps {
 	orgsWithMappings: OrgWithMapping[];
 	entities: Entity[];
 	isLoadingEntities: boolean;
+	isEntitiesError?: boolean;
 	hasDataProvider: boolean;
 	configSchema: ConfigSchemaField[];
 	configDefaults: Record<string, unknown> | null | undefined;
@@ -82,6 +83,7 @@ export function IntegrationMappingsTab({
 	orgsWithMappings,
 	entities,
 	isLoadingEntities,
+	isEntitiesError,
 	hasDataProvider,
 	configSchema,
 	configDefaults,
@@ -269,6 +271,7 @@ export function IntegrationMappingsTab({
 														isLoading={
 															isLoadingEntities
 														}
+														isError={isEntitiesError}
 														placeholder="Select entity..."
 													/>
 												)}

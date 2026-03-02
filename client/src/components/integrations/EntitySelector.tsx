@@ -5,7 +5,6 @@
  */
 
 import { Skeleton } from "@/components/ui/skeleton";
-import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Combobox, type ComboboxOption } from "@/components/ui/combobox";
 import { AlertCircle, RotateCw } from "lucide-react";
@@ -60,21 +59,20 @@ export function EntitySelector({
 		);
 	}
 
-	// Fall back to text input if no entities available
+	// Fall back to text input only when data provider actually failed
 	if (!entities || entities.length === 0) {
+		// All entities assigned to other orgs — show disabled combobox
 		return (
-			<div className="space-y-1">
-				<Input
-					placeholder="entity-id"
-					value={value}
-					onChange={(e) => onChange(e.target.value, e.target.value)}
-					disabled={disabled}
-					className="h-8 text-sm"
-				/>
-				<p className="text-xs text-muted-foreground">
-					No entities available from data provider. Enter ID manually.
-				</p>
-			</div>
+			<Combobox
+				options={[]}
+				value={value}
+				onValueChange={(selectedValue) => onChange(selectedValue, selectedValue)}
+				placeholder="All entities assigned"
+				searchPlaceholder="Search entities..."
+				emptyText="All entities are assigned to other organizations."
+				disabled={disabled}
+				className="h-8 text-sm"
+			/>
 		);
 	}
 
