@@ -26,6 +26,8 @@ def poll_job(client: BifrostClient, job_id: str, label: str = "Working", timeout
     """
     Poll job status endpoint until completion or timeout.
 
+    Shows phase-by-phase progress when the server provides it.
+
     Args:
         client: BifrostClient instance (uses sync HTTP methods)
         job_id: Job ID to poll
@@ -39,6 +41,7 @@ def poll_job(client: BifrostClient, job_id: str, label: str = "Working", timeout
         TimeoutError: If job doesn't complete within timeout
     """
     start = time.time()
+    current_phase = ""
     print(label, end="", flush=True)
 
     while time.time() - start < timeout:
@@ -50,11 +53,19 @@ def poll_job(client: BifrostClient, job_id: str, label: str = "Working", timeout
         result = response.json()
 
         if result["status"] == "pending":
-            print(".", end="", flush=True)
-            time.sleep(2)
+            # Show phase progress if available
+            phase = result.get("message") or ""
+            if phase and phase != current_phase:
+                if current_phase:
+                    print()  # Newline after previous phase
+                print(f"  {phase}", end="", flush=True)
+                current_phase = phase
+            else:
+                print(".", end="", flush=True)
+            time.sleep(1)
             continue
 
-        print()  # Newline after dots
+        print()  # Newline after progress
         return result
 
     print()
@@ -127,7 +138,7 @@ def _format_sync_result(result: dict) -> list[str]:
         lines.append(f"Push complete: {summary}{sha_info}")
 
         # Display entity-level changes
-        entity_changes = result.get("data") or {}.get("entity_changes") or result.get("entity_changes") or []
+        entity_changes = (result.get("data") or {}).get("entity_changes") or result.get("entity_changes") or []
         if entity_changes:
             added = [c for c in entity_changes if c.get("action") == "added"]
             updated = [c for c in entity_changes if c.get("action") == "updated"]
@@ -247,7 +258,7 @@ def run_git_commit(client: BifrostClient, message: str) -> int:
 
     data = result.get("data") or {}
     commit_sha = data.get("commit_sha")
-    files_committed = data.get("files_committed") or []
+    files_committed = data.get("files_committed", 0)
 
     if commit_sha:
         print(f"Committed {commit_sha[:7]}")
@@ -255,9 +266,7 @@ def run_git_commit(client: BifrostClient, message: str) -> int:
         print("Nothing to commit")
 
     if files_committed:
-        print(f"  {len(files_committed)} file(s) committed")
-        for f in files_committed:
-            print(f"    {f}")
+        print(f"  {files_committed} file(s) committed")
 
     # Show preflight results
     preflight = data.get("preflight")

@@ -83,5 +83,17 @@ async def get_job_status(job_id: str) -> JobStatusResponse:
     except Exception as e:
         logger.warning(f"Error fetching job status from Redis: {e}")
 
-    # Job not found or not yet complete
-    return JobStatusResponse(status="pending")
+    # Job not found or not yet complete — check for progress phase
+    phase_message: str | None = None
+    try:
+        redis_client = get_redis_client()
+        if redis_client:
+            progress_key = f"bifrost:job:{job_id}:progress"
+            progress_data = await redis_client.get(progress_key)
+            if progress_data:
+                progress = json.loads(progress_data)
+                phase_message = progress.get("phase")
+    except Exception:
+        pass
+
+    return JobStatusResponse(status="pending", message=phase_message)

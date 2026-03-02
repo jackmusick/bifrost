@@ -244,7 +244,6 @@ function getChangeBadge(changeType: string) {
 async function runGitOp<T>(
 	queueFn: (jobId: string) => Promise<{ job_id: string }>,
 	resultType: string,
-	onProgress?: (phase: string) => void,
 ): Promise<T> {
 	// Generate job_id client-side and subscribe BEFORE queueing to avoid
 	// race condition where fast operations (e.g. diff) complete before
@@ -253,19 +252,46 @@ async function runGitOp<T>(
 
 	await webSocketService.connectToGitSync(job_id);
 
-	let unsubProgress: (() => void) | undefined;
-	if (onProgress) {
-		unsubProgress = webSocketService.onGitProgress(job_id, (progress) => {
-			onProgress(progress.phase);
+	// Accumulate git log messages for the terminal
+	const logs: Array<{ level: string; message: string; source: string; timestamp: string }> = [];
+
+	const unsubLog = webSocketService.onGitSyncLog(job_id, (log) => {
+		logs.push({
+			level: log.level,
+			message: log.message,
+			source: "git",
+			timestamp: new Date().toISOString(),
 		});
-	}
+	});
+
+	const unsubProgress = webSocketService.onGitProgress(job_id, (progress) => {
+		logs.push({
+			level: "INFO",
+			message: progress.phase,
+			source: "git",
+			timestamp: new Date().toISOString(),
+		});
+	});
 
 	const resultPromise = new Promise<T>((resolve, reject) => {
 		const unsub = webSocketService.onGitOpComplete(
 			job_id,
 			(complete: GitOpComplete) => {
 				unsub();
-				unsubProgress?.();
+				unsubLog();
+				unsubProgress();
+
+				// Flush accumulated logs to terminal
+				if (logs.length > 0) {
+					useEditorStore.getState().appendTerminalOutput({
+						loggerOutput: logs,
+						variables: {},
+						status: complete.status === "success" ? "Success" : "Failed",
+						executionId: `git-${resultType}-${job_id.slice(0, 8)}`,
+						error: complete.status !== "success" ? complete.error : undefined,
+					});
+				}
+
 				if (complete.status === "success" || complete.resultType === resultType) {
 					if (complete.error && complete.status !== "success") {
 						reject(new GitOpError(complete.error, complete.data as Record<string, unknown>));
@@ -296,7 +322,7 @@ export function SourceControlPanel() {
 	const [conflicts, setConflicts] = useState<MergeConflict[]>([]);
 	const [conflictResolutions, setConflictResolutions] = useState<Record<string, "ours" | "theirs">>({});
 	const [loading, setLoading] = useState<"fetching" | "committing" | "syncing" | "resolving" | "loading_changes" | null>(null);
-	const [gitPhase, setGitPhase] = useState<string | null>(null);
+
 	const [commitsAhead, setCommitsAhead] = useState(0);
 	const [commitsBehind, setCommitsBehind] = useState(0);
 	const [needsSync, setNeedsSync] = useState(false);
@@ -388,12 +414,10 @@ export function SourceControlPanel() {
 
 	const handleFetch = useCallback(async () => {
 		setLoading("fetching");
-		setGitPhase(null);
 		try {
 			const result = await runGitOp<FetchResult>(
 				(jobId) => fetchOp.mutateAsync(jobId),
 				"fetch",
-				(phase) => setGitPhase(phase),
 			);
 			toast.success(
 				result.commits_behind > 0 || result.commits_ahead > 0
@@ -408,7 +432,6 @@ export function SourceControlPanel() {
 			toast.error(`Fetch failed: ${msg}`);
 		} finally {
 			setLoading(null);
-			setGitPhase(null);
 		}
 	}, [fetchOp, loadChanges]);
 
@@ -537,12 +560,10 @@ export function SourceControlPanel() {
 
 	const handleSync = useCallback(async () => {
 		setLoading("syncing");
-		setGitPhase(null);
 		try {
 			const result = await runGitOp<SyncResult>(
 				(jobId) => syncOp.mutateAsync(jobId),
 				"sync",
-				(phase) => setGitPhase(phase),
 			);
 			if (result.success) {
 				const parts = [];
@@ -577,7 +598,6 @@ export function SourceControlPanel() {
 			toast.error(`Sync failed: ${msg}`);
 		} finally {
 			setLoading(null);
-			setGitPhase(null);
 		}
 	}, [syncOp, refreshStatus, loadChanges]);
 
@@ -813,9 +833,6 @@ export function SourceControlPanel() {
 								</>
 							)}
 						</Button>
-						{loading === "fetching" && gitPhase && (
-							<p className="text-xs text-muted-foreground mt-2">{gitPhase}</p>
-						)}
 					</div>
 				</div>
 			);
@@ -908,7 +925,7 @@ export function SourceControlPanel() {
 					commitsAhead={commitsAhead}
 					needsSync={needsSync}
 					loading={loading}
-					gitPhase={gitPhase}
+
 					disabled={!!loading}
 					branch={status.current_branch || "main"}
 					showCleanupPrompt={showCleanupPrompt}
@@ -986,7 +1003,6 @@ function ChangesSection({
 	commitsAhead,
 	needsSync,
 	loading,
-	gitPhase,
 	disabled,
 	branch,
 	showCleanupPrompt,
@@ -1012,7 +1028,6 @@ function ChangesSection({
 	commitsAhead: number;
 	needsSync: boolean;
 	loading: "fetching" | "committing" | "syncing" | "resolving" | "loading_changes" | null;
-	gitPhase?: string | null;
 	disabled: boolean;
 	branch: string;
 	showCleanupPrompt?: boolean;
@@ -1146,9 +1161,6 @@ function ChangesSection({
 										</Button>
 										{hasChanges && (commitsAhead > 0 || commitsBehind > 0) && (
 											<p className="text-[10px] text-muted-foreground text-center">Commit changes before syncing</p>
-										)}
-										{(loading === "syncing" || loading === "fetching") && gitPhase && (
-											<p className="text-xs text-muted-foreground text-center">{gitPhase}</p>
 										)}
 									</div>
 								)}
