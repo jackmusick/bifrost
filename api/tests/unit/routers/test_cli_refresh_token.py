@@ -1,0 +1,465 @@
+"""Tests for POST /api/cli/integrations/refresh_token endpoint."""
+
+import pytest
+from datetime import datetime, timedelta, timezone
+from unittest.mock import MagicMock, AsyncMock, patch
+from uuid import uuid4
+
+
+class TestRefreshTokenClientCredentials:
+    """Test refresh_token endpoint for client_credentials flows."""
+
+    @pytest.mark.asyncio
+    async def test_refreshes_client_credentials_token(self):
+        """Should fetch a fresh token and persist it to DB."""
+        from src.routers.cli import sdk_integrations_refresh_token
+        from src.models.contracts.cli import SDKIntegrationsRefreshTokenRequest
+
+        request = SDKIntegrationsRefreshTokenRequest(
+            connection_name="Pax8",
+        )
+
+        mock_user = MagicMock()
+        mock_user.user_id = uuid4()
+        mock_user.email = "test@example.com"
+
+        mock_db = AsyncMock()
+
+        provider_id = uuid4()
+
+        mock_provider = MagicMock()
+        mock_provider.id = provider_id
+        mock_provider.provider_name = "Pax8"
+        mock_provider.client_id = "pax8-client-id"
+        mock_provider.encrypted_client_secret = "encrypted-secret"
+        mock_provider.token_url = "https://login.pax8.com/oauth/token"
+        mock_provider.token_url_defaults = {}
+        mock_provider.oauth_flow_type = "client_credentials"
+        mock_provider.scopes = ["read", "write"]
+        mock_provider.integration_id = None
+        mock_provider.organization_id = None
+        mock_provider.audience = None
+
+        # Mock DB execute for provider lookup
+        provider_result = MagicMock()
+        provider_result.scalars.return_value.first.return_value = mock_provider
+
+        # Mock DB execute for token lookup (no existing token)
+        token_result = MagicMock()
+        token_result.scalars.return_value.first.return_value = None
+
+        mock_db.execute = AsyncMock(side_effect=[provider_result, token_result])
+        mock_db.add = MagicMock()
+        mock_db.commit = AsyncMock()
+
+        mock_token_response = {
+            "access_token": "fresh-pax8-token",
+            "expires_at": datetime.now(timezone.utc) + timedelta(hours=24),
+        }
+
+        with (
+            patch("src.routers.cli._get_cli_org_id", new_callable=AsyncMock, return_value=None),
+            patch("src.services.oauth_provider.OAuthProviderClient") as mock_client_class,
+            patch("src.core.security.decrypt_secret", return_value="decrypted-secret"),
+            patch("src.core.security.encrypt_secret", return_value="encrypted-new-token"),
+        ):
+            mock_instance = MagicMock()
+            mock_instance.get_client_credentials_token = AsyncMock(
+                return_value=(True, mock_token_response)
+            )
+            mock_client_class.return_value = mock_instance
+
+            result = await sdk_integrations_refresh_token(request, mock_user, mock_db)
+
+        assert result.access_token == "fresh-pax8-token"
+        assert result.expires_at is not None
+        mock_instance.get_client_credentials_token.assert_called_once_with(
+            token_url="https://login.pax8.com/oauth/token",
+            client_id="pax8-client-id",
+            client_secret="decrypted-secret",
+            scopes="read write",
+        )
+        # Token should be persisted (new record since no existing token)
+        mock_db.add.assert_called_once()
+        mock_db.commit.assert_called_once()
+
+    @pytest.mark.asyncio
+    async def test_updates_existing_token_record(self):
+        """Should update existing token record instead of creating new one."""
+        from src.routers.cli import sdk_integrations_refresh_token
+        from src.models.contracts.cli import SDKIntegrationsRefreshTokenRequest
+
+        request = SDKIntegrationsRefreshTokenRequest(connection_name="Pax8")
+
+        mock_user = MagicMock()
+        mock_user.user_id = uuid4()
+        mock_user.email = "test@example.com"
+        mock_db = AsyncMock()
+
+        provider_id = uuid4()
+        mock_provider = MagicMock()
+        mock_provider.id = provider_id
+        mock_provider.provider_name = "Pax8"
+        mock_provider.client_id = "pax8-client-id"
+        mock_provider.encrypted_client_secret = "encrypted-secret"
+        mock_provider.token_url = "https://login.pax8.com/oauth/token"
+        mock_provider.token_url_defaults = {}
+        mock_provider.oauth_flow_type = "client_credentials"
+        mock_provider.scopes = []
+        mock_provider.integration_id = None
+        mock_provider.organization_id = None
+        mock_provider.audience = None
+
+        # Existing token
+        mock_existing_token = MagicMock()
+
+        provider_result = MagicMock()
+        provider_result.scalars.return_value.first.return_value = mock_provider
+        token_result = MagicMock()
+        token_result.scalars.return_value.first.return_value = mock_existing_token
+
+        mock_db.execute = AsyncMock(side_effect=[provider_result, token_result])
+        mock_db.commit = AsyncMock()
+
+        expires_at = datetime.now(timezone.utc) + timedelta(hours=24)
+        mock_token_response = {
+            "access_token": "new-token",
+            "expires_at": expires_at,
+        }
+
+        with (
+            patch("src.routers.cli._get_cli_org_id", new_callable=AsyncMock, return_value=None),
+            patch("src.services.oauth_provider.OAuthProviderClient") as mock_client_class,
+            patch("src.core.security.decrypt_secret", return_value="decrypted-secret"),
+            patch("src.core.security.encrypt_secret", return_value="encrypted-new-token"),
+        ):
+            mock_instance = MagicMock()
+            mock_instance.get_client_credentials_token = AsyncMock(
+                return_value=(True, mock_token_response)
+            )
+            mock_client_class.return_value = mock_instance
+
+            result = await sdk_integrations_refresh_token(request, mock_user, mock_db)
+
+        assert result.access_token == "new-token"
+        # Existing token should be updated, not a new one added
+        mock_db.add.assert_not_called()
+        assert mock_existing_token.expires_at == expires_at
+
+
+class TestRefreshTokenAuthorizationCode:
+    """Test refresh_token endpoint for authorization_code flows."""
+
+    @pytest.mark.asyncio
+    async def test_refreshes_authorization_code_token(self):
+        """Should use stored refresh_token for authorization_code flows."""
+        from src.routers.cli import sdk_integrations_refresh_token
+        from src.models.contracts.cli import SDKIntegrationsRefreshTokenRequest
+
+        request = SDKIntegrationsRefreshTokenRequest(connection_name="Microsoft")
+
+        mock_user = MagicMock()
+        mock_user.user_id = uuid4()
+        mock_user.email = "test@example.com"
+        mock_db = AsyncMock()
+
+        provider_id = uuid4()
+        mock_provider = MagicMock()
+        mock_provider.id = provider_id
+        mock_provider.provider_name = "Microsoft"
+        mock_provider.client_id = "ms-client-id"
+        mock_provider.encrypted_client_secret = "encrypted-secret"
+        mock_provider.token_url = "https://login.microsoftonline.com/common/oauth2/v2.0/token"
+        mock_provider.token_url_defaults = {}
+        mock_provider.oauth_flow_type = "authorization_code"
+        mock_provider.scopes = ["openid", "profile"]
+        mock_provider.integration_id = None
+        mock_provider.organization_id = None
+        mock_provider.audience = None
+
+        # Mock stored token with refresh_token
+        mock_stored_token = MagicMock()
+        mock_stored_token.encrypted_refresh_token = b"encrypted-refresh-token"
+
+        provider_result = MagicMock()
+        provider_result.scalars.return_value.first.return_value = mock_provider
+
+        # Calls: provider lookup, get_provider_org_token (for refresh), token persist lookup
+        token_for_refresh = MagicMock()
+        token_for_refresh.scalars.return_value.first.return_value = mock_stored_token
+
+        token_persist_result = MagicMock()
+        token_persist_result.scalars.return_value.first.return_value = None  # no existing token to update
+
+        mock_db.execute = AsyncMock(side_effect=[
+            provider_result,
+            token_for_refresh,
+            token_persist_result,
+        ])
+        mock_db.commit = AsyncMock()
+        mock_db.add = MagicMock()
+
+        expires_at = datetime.now(timezone.utc) + timedelta(hours=1)
+        mock_token_response = {
+            "access_token": "refreshed-ms-token",
+            "refresh_token": "new-refresh-token",
+            "expires_at": expires_at,
+        }
+
+        with (
+            patch("src.routers.cli._get_cli_org_id", new_callable=AsyncMock, return_value=None),
+            patch("src.services.oauth_provider.OAuthProviderClient") as mock_client_class,
+            patch("src.core.security.decrypt_secret", return_value="decrypted-value"),
+            patch("src.core.security.encrypt_secret", return_value="encrypted-new-value"),
+        ):
+            mock_instance = MagicMock()
+            mock_instance.refresh_access_token = AsyncMock(
+                return_value=(True, mock_token_response)
+            )
+            mock_client_class.return_value = mock_instance
+
+            result = await sdk_integrations_refresh_token(request, mock_user, mock_db)
+
+        assert result.access_token == "refreshed-ms-token"
+        mock_instance.refresh_access_token.assert_called_once()
+
+    @pytest.mark.asyncio
+    async def test_fails_when_no_refresh_token_stored(self):
+        """Should fail when no refresh_token is available for authorization_code flow."""
+        from fastapi import HTTPException
+        from src.routers.cli import sdk_integrations_refresh_token
+        from src.models.contracts.cli import SDKIntegrationsRefreshTokenRequest
+
+        request = SDKIntegrationsRefreshTokenRequest(connection_name="NoRefresh")
+
+        mock_user = MagicMock()
+        mock_user.user_id = uuid4()
+        mock_user.email = "test@example.com"
+        mock_db = AsyncMock()
+
+        mock_provider = MagicMock()
+        mock_provider.id = uuid4()
+        mock_provider.provider_name = "NoRefresh"
+        mock_provider.client_id = "client-id"
+        mock_provider.encrypted_client_secret = "encrypted-secret"
+        mock_provider.token_url = "https://oauth.example.com/token"
+        mock_provider.token_url_defaults = {}
+        mock_provider.oauth_flow_type = "authorization_code"
+        mock_provider.scopes = []
+        mock_provider.integration_id = None
+        mock_provider.organization_id = None
+        mock_provider.audience = None
+
+        # Token with no refresh_token
+        mock_stored_token = MagicMock()
+        mock_stored_token.encrypted_refresh_token = None
+
+        provider_result = MagicMock()
+        provider_result.scalars.return_value.first.return_value = mock_provider
+
+        token_result = MagicMock()
+        token_result.scalars.return_value.first.return_value = mock_stored_token
+
+        mock_db.execute = AsyncMock(side_effect=[
+            provider_result,
+            token_result,
+        ])
+
+        with (
+            patch("src.routers.cli._get_cli_org_id", new_callable=AsyncMock, return_value=None),
+            patch("src.core.security.decrypt_secret", return_value="decrypted"),
+            pytest.raises(HTTPException) as exc_info,
+        ):
+            await sdk_integrations_refresh_token(request, mock_user, mock_db)
+
+        assert exc_info.value.status_code == 400
+        assert "no refresh_token" in exc_info.value.detail
+
+
+class TestRefreshTokenErrorHandling:
+    """Test error handling in refresh_token endpoint."""
+
+    @pytest.mark.asyncio
+    async def test_provider_not_found(self):
+        """Should return 404 when provider doesn't exist."""
+        from fastapi import HTTPException
+        from src.routers.cli import sdk_integrations_refresh_token
+        from src.models.contracts.cli import SDKIntegrationsRefreshTokenRequest
+
+        request = SDKIntegrationsRefreshTokenRequest(connection_name="NonExistent")
+
+        mock_user = MagicMock()
+        mock_user.user_id = uuid4()
+        mock_user.email = "test@example.com"
+        mock_db = AsyncMock()
+
+        # Provider not found
+        provider_result = MagicMock()
+        provider_result.scalars.return_value.first.return_value = None
+        mock_db.execute = AsyncMock(return_value=provider_result)
+
+        with (
+            patch("src.routers.cli._get_cli_org_id", new_callable=AsyncMock, return_value=None),
+            pytest.raises(HTTPException) as exc_info,
+        ):
+            await sdk_integrations_refresh_token(request, mock_user, mock_db)
+
+        assert exc_info.value.status_code == 404
+
+    @pytest.mark.asyncio
+    async def test_token_refresh_failure_returns_502(self):
+        """Should return 502 when the OAuth provider rejects the request."""
+        from fastapi import HTTPException
+        from src.routers.cli import sdk_integrations_refresh_token
+        from src.models.contracts.cli import SDKIntegrationsRefreshTokenRequest
+
+        request = SDKIntegrationsRefreshTokenRequest(connection_name="Pax8")
+
+        mock_user = MagicMock()
+        mock_user.user_id = uuid4()
+        mock_user.email = "test@example.com"
+        mock_db = AsyncMock()
+
+        mock_provider = MagicMock()
+        mock_provider.id = uuid4()
+        mock_provider.provider_name = "Pax8"
+        mock_provider.client_id = "pax8-client-id"
+        mock_provider.encrypted_client_secret = "encrypted-secret"
+        mock_provider.token_url = "https://login.pax8.com/oauth/token"
+        mock_provider.token_url_defaults = {}
+        mock_provider.oauth_flow_type = "client_credentials"
+        mock_provider.scopes = []
+        mock_provider.integration_id = None
+        mock_provider.organization_id = None
+        mock_provider.audience = None
+
+        provider_result = MagicMock()
+        provider_result.scalars.return_value.first.return_value = mock_provider
+        mock_db.execute = AsyncMock(return_value=provider_result)
+
+        with (
+            patch("src.routers.cli._get_cli_org_id", new_callable=AsyncMock, return_value=None),
+            patch("src.services.oauth_provider.OAuthProviderClient") as mock_client_class,
+            patch("src.core.security.decrypt_secret", return_value="decrypted-secret"),
+            pytest.raises(HTTPException) as exc_info,
+        ):
+            mock_instance = MagicMock()
+            mock_instance.get_client_credentials_token = AsyncMock(
+                return_value=(False, {"error": "invalid_client", "error_description": "Bad credentials"})
+            )
+            mock_client_class.return_value = mock_instance
+
+            await sdk_integrations_refresh_token(request, mock_user, mock_db)
+
+        assert exc_info.value.status_code == 502
+        assert "Bad credentials" in exc_info.value.detail
+
+
+class TestRefreshTokenSDKModel:
+    """Test the OAuthCredentials.refresh() SDK method."""
+
+    @pytest.mark.asyncio
+    async def test_refresh_updates_access_token(self):
+        """refresh() should update access_token and expires_at in place."""
+        from bifrost.models import OAuthCredentials
+
+        creds = OAuthCredentials(
+            connection_name="Pax8",
+            client_id="test",
+            client_secret=None,
+            authorization_url=None,
+            token_url=None,
+            scopes=[],
+            access_token="old-token",
+            refresh_token=None,
+            expires_at=None,
+        )
+
+        mock_response = MagicMock()
+        mock_response.status_code = 200
+        mock_response.json.return_value = {
+            "access_token": "fresh-token",
+            "expires_at": "2026-03-02T00:00:00+00:00",
+        }
+
+        mock_client = MagicMock()
+        mock_client.post = AsyncMock(return_value=mock_response)
+
+        with (
+            patch("bifrost.client.get_client", return_value=mock_client),
+            patch("bifrost._context.register_secret"),
+        ):
+            result = await creds.refresh()
+
+        assert result is creds  # returns self
+        assert creds.access_token == "fresh-token"
+        assert creds.expires_at == "2026-03-02T00:00:00+00:00"
+        mock_client.post.assert_called_once_with(
+            "/api/cli/integrations/refresh_token",
+            json={"connection_name": "Pax8"},
+        )
+
+    @pytest.mark.asyncio
+    async def test_refresh_registers_secret(self):
+        """refresh() should register the new token as a secret."""
+        from bifrost.models import OAuthCredentials
+
+        creds = OAuthCredentials(
+            connection_name="Pax8",
+            client_id="test",
+            client_secret=None,
+            authorization_url=None,
+            token_url=None,
+            scopes=[],
+            access_token="old-token",
+            refresh_token=None,
+            expires_at=None,
+        )
+
+        mock_response = MagicMock()
+        mock_response.status_code = 200
+        mock_response.json.return_value = {
+            "access_token": "secret-token",
+            "expires_at": None,
+        }
+
+        mock_client = MagicMock()
+        mock_client.post = AsyncMock(return_value=mock_response)
+
+        with (
+            patch("bifrost.client.get_client", return_value=mock_client),
+            patch("bifrost._context.register_secret") as mock_register,
+        ):
+            await creds.refresh()
+
+        mock_register.assert_called_once_with("secret-token")
+
+    @pytest.mark.asyncio
+    async def test_refresh_raises_on_failure(self):
+        """refresh() should raise RuntimeError on non-200 response."""
+        from bifrost.models import OAuthCredentials
+
+        creds = OAuthCredentials(
+            connection_name="Pax8",
+            client_id="test",
+            client_secret=None,
+            authorization_url=None,
+            token_url=None,
+            scopes=[],
+            access_token="old-token",
+            refresh_token=None,
+            expires_at=None,
+        )
+
+        mock_response = MagicMock()
+        mock_response.status_code = 502
+        mock_response.text = "Token refresh failed: Bad credentials"
+
+        mock_client = MagicMock()
+        mock_client.post = AsyncMock(return_value=mock_response)
+
+        with (
+            patch("bifrost.client.get_client", return_value=mock_client),
+            pytest.raises(RuntimeError, match="Token refresh failed"),
+        ):
+            await creds.refresh()

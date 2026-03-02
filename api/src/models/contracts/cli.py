@@ -318,6 +318,25 @@ class SDKIntegrationsDeleteMappingRequest(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
 
+class SDKIntegrationsRefreshTokenRequest(BaseModel):
+    """Request to refresh an OAuth token for an integration."""
+    connection_name: str = Field(..., description="OAuth connection/provider name")
+    scope: str | None = Field(
+        default=None,
+        description="Organization scope: None=context default, UUID=specific org, 'global'=global scope"
+    )
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+class SDKIntegrationsRefreshTokenResponse(BaseModel):
+    """Response from refreshing an OAuth token."""
+    access_token: str = Field(..., description="New access token (decrypted)")
+    expires_at: str | None = Field(None, description="Token expiration (ISO format)")
+
+    model_config = ConfigDict(from_attributes=True)
+
+
 # ==================== SDK AI MODELS ====================
 
 

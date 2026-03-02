@@ -153,6 +153,42 @@ class OAuthCredentials(BaseModel):
     refresh_token: str | None
     expires_at: str | None
 
+    async def refresh(self) -> "OAuthCredentials":
+        """Fetch a fresh OAuth token from the provider.
+
+        For client_credentials flows, requests a new token directly.
+        For authorization_code flows, uses the stored refresh_token.
+
+        Updates access_token and expires_at in-place and persists
+        the new token to the database.
+
+        Returns:
+            self (for chaining)
+
+        Example:
+            >>> integration = await integrations.get("Pax8")
+            >>> await integration.oauth.refresh()
+            >>> # integration.oauth.access_token is now fresh
+        """
+        from .client import get_client
+        from ._context import register_secret
+
+        client = get_client()
+        response = await client.post(
+            "/api/cli/integrations/refresh_token",
+            json={"connection_name": self.connection_name},
+        )
+
+        if response.status_code != 200:
+            detail = response.text
+            raise RuntimeError(f"Token refresh failed: {response.status_code} - {detail}")
+
+        data = response.json()
+        self.access_token = data["access_token"]
+        self.expires_at = data.get("expires_at")
+        register_secret(self.access_token)
+        return self
+
 
 class IntegrationMappingResponse(BaseModel):
     """Integration mapping record."""
