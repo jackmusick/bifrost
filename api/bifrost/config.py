@@ -12,14 +12,7 @@ from typing import Any
 
 from .client import get_client, raise_for_status_with_detail
 from .models import ConfigData
-from ._context import get_default_scope
-
-
-def _resolve_scope(scope: str | None) -> str | None:
-    """Resolve effective scope - explicit override or default from context."""
-    if scope is not None:
-        return scope
-    return get_default_scope()
+from ._context import resolve_scope
 
 
 class config:
@@ -65,7 +58,7 @@ class config:
             >>> org_setting = await config.get("key", scope="org-uuid-here")
         """
         client = get_client()
-        effective_scope = _resolve_scope(scope)
+        effective_scope = resolve_scope(scope)
         response = await client.post(
             "/api/cli/config/get",
             json={"key": key, "scope": effective_scope}
@@ -116,7 +109,7 @@ class config:
             >>> await config.set("org_setting", "value", scope="org-uuid-here")
         """
         client = get_client()
-        effective_scope = _resolve_scope(scope)
+        effective_scope = resolve_scope(scope)
         response = await client.post(
             "/api/cli/config/set",
             json={
@@ -160,7 +153,7 @@ class config:
             >>> global_cfg = await config.list(scope="global")
         """
         client = get_client()
-        effective_scope = _resolve_scope(scope)
+        effective_scope = resolve_scope(scope)
         response = await client.post(
             "/api/cli/config/list",
             json={"scope": effective_scope}
@@ -194,7 +187,7 @@ class config:
             >>> await config.delete("global_key", scope="global")
         """
         client = get_client()
-        effective_scope = _resolve_scope(scope)
+        effective_scope = resolve_scope(scope)
         response = await client.post(
             "/api/cli/config/delete",
             json={"key": key, "scope": effective_scope}

@@ -12,16 +12,9 @@ import logging
 
 from .client import get_client
 from .models import IntegrationData, IntegrationMappingResponse
-from ._context import get_default_scope
+from ._context import resolve_scope
 
 logger = logging.getLogger(__name__)
-
-
-def _resolve_scope(scope: str | None) -> str | None:
-    """Resolve effective scope - explicit override or default from context."""
-    if scope is not None:
-        return scope
-    return get_default_scope()
 
 
 class integrations:
@@ -94,7 +87,7 @@ class integrations:
             ... )
         """
         client = get_client()
-        effective_scope = _resolve_scope(scope)
+        effective_scope = resolve_scope(scope)
         request_data = {"name": name, "scope": effective_scope}
         if oauth_scope:
             request_data["oauth_scope"] = oauth_scope
@@ -209,7 +202,7 @@ class integrations:
             >>> mapping = await integrations.get_mapping("HaloPSA", entity_id="tenant-456")
         """
         client = get_client()
-        effective_scope = _resolve_scope(scope)
+        effective_scope = resolve_scope(scope)
         response = await client.post(
             "/api/cli/integrations/get_mapping",
             json={"name": name, "scope": effective_scope, "entity_id": entity_id}

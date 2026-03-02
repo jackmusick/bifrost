@@ -126,6 +126,27 @@ def get_default_scope() -> str | None:
     return ctx.org_id  # Returns None for GLOBAL scope, org UUID otherwise
 
 
+def resolve_scope(scope: str | None) -> str | None:
+    """Resolve scope for SDK calls with provider org authorization.
+
+    If explicit scope differs from default scope, requires provider org context.
+    """
+    default = get_default_scope()
+    if scope is None:
+        return default
+    if scope == default:
+        return scope
+    ctx = _execution_context.get()
+    if ctx is None:
+        return scope  # CLI mode — user authenticates with their own JWT
+    if ctx.organization and ctx.organization.is_provider:
+        return scope
+    raise PermissionError(
+        f"Scope override to '{scope}' denied. "
+        "Only provider organizations can access other org scopes."
+    )
+
+
 def register_secret(value: "str | None") -> None:
     """
     Register a plaintext secret value with the active ExecutionContext.

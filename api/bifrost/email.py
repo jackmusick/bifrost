@@ -15,14 +15,7 @@ Usage:
 """
 
 from .client import get_client, raise_for_status_with_detail
-from ._context import get_default_scope
-
-
-def _resolve_scope(scope: str | None) -> str | None:
-    """Resolve effective scope - explicit override or default from context."""
-    if scope is not None:
-        return scope
-    return get_default_scope()
+from ._context import resolve_scope
 
 
 class email:
@@ -64,7 +57,7 @@ class email:
             ...     print(f"Failed: {result['error']}")
         """
         client = get_client()
-        scope = _resolve_scope(None)
+        scope = resolve_scope(None)
         response = await client.post(
             "/api/email/send",
             json={

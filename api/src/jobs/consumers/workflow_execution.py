@@ -729,6 +729,7 @@ class WorkflowExecutionConsumer(BaseConsumer):
                         "id": org.id,
                         "name": org.name,
                         "is_active": org.is_active,
+                        "is_provider": org.is_provider,
                     }
             else:
                 from src.core.config_resolver import ConfigResolver

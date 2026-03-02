@@ -32,6 +32,7 @@ class Organization:
     id: str
     name: str
     is_active: bool = True
+    is_provider: bool = False
 
     @property
     def org_id(self) -> str:
@@ -124,12 +125,15 @@ class ExecutionContext:
     _integration_cache: dict = field(default_factory=dict)
     _integration_calls: list = field(default_factory=list)
     _dynamic_secrets: set[str] = field(default_factory=set, repr=False)
+    _scope_override: str | None = field(default=None, repr=False)
 
     # ==================== COMPUTED PROPERTIES ====================
 
     @property
     def org_id(self) -> str | None:
         """Organization ID (None for GLOBAL scope)"""
+        if self._scope_override is not None:
+            return self._scope_override
         return self.organization.id if self.organization else None
 
     @property
@@ -141,6 +145,26 @@ class ExecutionContext:
     def is_global_scope(self) -> bool:
         """True if executing in GLOBAL scope (no organization)"""
         return self.scope == "GLOBAL"
+
+    def set_scope(self, org_id: str | None) -> None:
+        """Override the effective scope for all subsequent SDK calls.
+
+        Only provider organizations can override to a different org.
+        Pass None to reset to the original scope.
+        """
+        if org_id is None:
+            self._scope_override = None
+            return
+        original_org_id = self.organization.id if self.organization else None
+        if org_id == original_org_id:
+            self._scope_override = None
+            return
+        if not self.organization or not self.organization.is_provider:
+            raise PermissionError(
+                f"Scope override to '{org_id}' denied. "
+                "Only provider organizations can access other org scopes."
+            )
+        self._scope_override = org_id
 
     @property
     def db(self) -> "AsyncSession":

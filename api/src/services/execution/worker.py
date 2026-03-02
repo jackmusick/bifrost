@@ -144,7 +144,8 @@ async def _run_execution(execution_id: str, context_data: dict[str, Any]) -> dic
             org = Organization(
                 id=org_data["id"],
                 name=org_data["name"],
-                is_active=org_data.get("is_active", True)
+                is_active=org_data.get("is_active", True),
+                is_provider=org_data.get("is_provider", False),
             )
 
         # Reconstruct Caller

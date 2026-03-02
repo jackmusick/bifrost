@@ -37,14 +37,7 @@ from typing import Any
 
 from .client import get_client, raise_for_status_with_detail
 from .models import KnowledgeDocument, NamespaceInfo
-from ._context import get_default_scope
-
-
-def _resolve_scope(scope: str | None) -> str | None:
-    """Resolve effective scope - explicit override or default from context."""
-    if scope is not None:
-        return scope
-    return get_default_scope()
+from ._context import resolve_scope
 
 
 class knowledge:
@@ -94,7 +87,7 @@ class knowledge:
             ... )
         """
         client = get_client()
-        effective_scope = _resolve_scope(scope)
+        effective_scope = resolve_scope(scope)
         response = await client.post(
             "/api/cli/knowledge/store",
             json={
@@ -141,7 +134,7 @@ class knowledge:
             ... ], namespace="faq")
         """
         client = get_client()
-        effective_scope = _resolve_scope(scope)
+        effective_scope = resolve_scope(scope)
         response = await client.post(
             "/api/cli/knowledge/store-many",
             json={
@@ -195,7 +188,7 @@ class knowledge:
             ...     print(f"{doc.score:.2f}: {doc.content[:100]}")
         """
         client = get_client()
-        effective_scope = _resolve_scope(scope)
+        effective_scope = resolve_scope(scope)
         response = await client.post(
             "/api/cli/knowledge/search",
             json={
@@ -239,7 +232,7 @@ class knowledge:
             >>> deleted = await knowledge.delete("ticket-123", namespace="tickets")
         """
         client = get_client()
-        effective_scope = _resolve_scope(scope)
+        effective_scope = resolve_scope(scope)
         response = await client.post(
             "/api/cli/knowledge/delete",
             json={
@@ -275,7 +268,7 @@ class knowledge:
             >>> print(f"Deleted {count} documents")
         """
         client = get_client()
-        effective_scope = _resolve_scope(scope)
+        effective_scope = resolve_scope(scope)
         params = {}
         if effective_scope:
             params["scope"] = effective_scope
@@ -309,7 +302,7 @@ class knowledge:
             ...     print(f"{ns.namespace}: {ns.scopes['total']} docs")
         """
         client = get_client()
-        effective_scope = _resolve_scope(scope)
+        effective_scope = resolve_scope(scope)
         params: dict[str, Any] = {"include_global": include_global}
         if effective_scope:
             params["scope"] = effective_scope
@@ -350,7 +343,7 @@ class knowledge:
             ...     print(doc.content)
         """
         client = get_client()
-        effective_scope = _resolve_scope(scope)
+        effective_scope = resolve_scope(scope)
         params: dict[str, Any] = {
             "key": key,
             "namespace": namespace,

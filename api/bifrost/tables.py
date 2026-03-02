@@ -12,14 +12,7 @@ from typing import Any
 
 from .client import get_client, raise_for_status_with_detail
 from .models import TableInfo, DocumentData, DocumentList, BatchResult, BatchDeleteResult
-from ._context import get_default_scope
-
-
-def _resolve_scope(scope: str | None) -> str | None:
-    """Resolve effective scope - explicit override or default from context."""
-    if scope is not None:
-        return scope
-    return get_default_scope()
+from ._context import resolve_scope
 
 
 class tables:
@@ -88,7 +81,7 @@ class tables:
             >>> app_table = await tables.create("app_data", app="app-uuid")
         """
         client = get_client()
-        effective_scope = _resolve_scope(scope)
+        effective_scope = resolve_scope(scope)
         response = await client.post(
             "/api/cli/tables/create",
             json={
@@ -129,7 +122,7 @@ class tables:
             >>> app_tables = await tables.list(app="app-uuid")
         """
         client = get_client()
-        effective_scope = _resolve_scope(scope)
+        effective_scope = resolve_scope(scope)
         response = await client.post(
             "/api/cli/tables/list",
             json={
@@ -213,7 +206,7 @@ class tables:
             ... })
         """
         client = get_client()
-        effective_scope = _resolve_scope(scope)
+        effective_scope = resolve_scope(scope)
         response = await client.post(
             "/api/cli/tables/documents/insert",
             json={
@@ -263,7 +256,7 @@ class tables:
             ... })
         """
         client = get_client()
-        effective_scope = _resolve_scope(scope)
+        effective_scope = resolve_scope(scope)
         response = await client.post(
             "/api/cli/tables/documents/upsert",
             json={
@@ -304,7 +297,7 @@ class tables:
             >>> doc = await tables.get("customers", "acme-001")
         """
         client = get_client()
-        effective_scope = _resolve_scope(scope)
+        effective_scope = resolve_scope(scope)
         response = await client.post(
             "/api/cli/tables/documents/get",
             json={
@@ -351,7 +344,7 @@ class tables:
             >>> doc = await tables.update("customers", "uuid-here", {"status": "inactive"})
         """
         client = get_client()
-        effective_scope = _resolve_scope(scope)
+        effective_scope = resolve_scope(scope)
         response = await client.post(
             "/api/cli/tables/documents/update",
             json={
@@ -397,7 +390,7 @@ class tables:
             >>> deleted = await tables.delete_document("customers", "uuid-here")
         """
         client = get_client()
-        effective_scope = _resolve_scope(scope)
+        effective_scope = resolve_scope(scope)
         response = await client.post(
             "/api/cli/tables/documents/delete",
             json={
@@ -461,7 +454,7 @@ class tables:
             ... ])
         """
         client = get_client()
-        effective_scope = _resolve_scope(scope)
+        effective_scope = resolve_scope(scope)
 
         # Normalize items: if no "data" key, the entire dict becomes the data
         items = []
@@ -522,7 +515,7 @@ class tables:
             >>> print(result.count)  # 2
         """
         client = get_client()
-        effective_scope = _resolve_scope(scope)
+        effective_scope = resolve_scope(scope)
 
         items = [{"id": doc["id"], "data": doc["data"]} for doc in documents]
 
@@ -574,7 +567,7 @@ class tables:
             >>> print(result.deleted_ids)  # ["acme-001", "beta-001"]
         """
         client = get_client()
-        effective_scope = _resolve_scope(scope)
+        effective_scope = resolve_scope(scope)
         response = await client.post(
             "/api/cli/tables/documents/delete/batch",
             json={
@@ -647,7 +640,7 @@ class tables:
             ... )
         """
         client = get_client()
-        effective_scope = _resolve_scope(scope)
+        effective_scope = resolve_scope(scope)
         response = await client.post(
             "/api/cli/tables/documents/query",
             json={
@@ -702,7 +695,7 @@ class tables:
             >>> active = await tables.count("customers", where={"status": "active"})
         """
         client = get_client()
-        effective_scope = _resolve_scope(scope)
+        effective_scope = resolve_scope(scope)
         response = await client.post(
             "/api/cli/tables/documents/count",
             json={

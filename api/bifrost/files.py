@@ -29,17 +29,10 @@ Usage:
 from typing import Literal
 
 from .client import get_client, raise_for_status_with_detail
-from ._context import get_default_scope
+from ._context import resolve_scope
 
 Location = Literal["workspace", "temp", "uploads"]
 Mode = Literal["local", "cloud"]
-
-
-def _resolve_scope(scope: str | None) -> str | None:
-    """Resolve effective scope - explicit override or default from context."""
-    if scope is not None:
-        return scope
-    return get_default_scope()
 
 
 class files:
@@ -297,7 +290,7 @@ class files:
             dict with keys: url, path, expires_in
         """
         client = get_client()
-        scope = _resolve_scope(None)
+        scope = resolve_scope(None)
         response = await client.post(
             "/api/files/signed-url",
             json={"path": path, "method": method, "content_type": content_type, "scope": scope}
