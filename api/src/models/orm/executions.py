@@ -70,7 +70,7 @@ class Execution(Base):
         ForeignKey("workflows.id", ondelete="SET NULL", onupdate="CASCADE"), default=None
     )  # FK to the workflow that was executed (null for inline scripts/legacy)
     api_key_id: Mapped[UUID | None] = mapped_column(
-        ForeignKey("workflows.id", onupdate="CASCADE"), default=None
+        ForeignKey("workflows.id", ondelete="SET NULL", onupdate="CASCADE"), default=None
     )  # Workflow whose API key triggered this execution (null for user-triggered)
     is_local_execution: Mapped[bool] = mapped_column(Boolean, default=False, server_default="false")
     execution_model: Mapped[str | None] = mapped_column(
