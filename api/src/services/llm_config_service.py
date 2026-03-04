@@ -33,7 +33,7 @@ class LLMProviderConfig:
     provider: Literal["openai", "anthropic"]
     model: str
     endpoint: str | None = None  # For custom OpenAI-compatible providers
-    max_tokens: int = 4096
+    max_tokens: int = 16384
     temperature: float = 0.7
     default_system_prompt: str | None = None  # Default system prompt for agentless chat
     is_configured: bool = False
@@ -110,7 +110,7 @@ class LLMConfigService:
             provider=provider,
             model=config_data.get("model", ""),
             endpoint=config_data.get("endpoint"),
-            max_tokens=config_data.get("max_tokens", 4096),
+            max_tokens=config_data.get("max_tokens", 16384),
             temperature=config_data.get("temperature", 0.7),
             default_system_prompt=config_data.get("default_system_prompt"),
             is_configured=True,
@@ -121,9 +121,9 @@ class LLMConfigService:
         self,
         provider: Literal["openai", "anthropic"],
         model: str,
-        api_key: str,
+        api_key: str | None = None,
         endpoint: str | None = None,
-        max_tokens: int = 4096,
+        max_tokens: int = 16384,
         temperature: float = 0.7,
         default_system_prompt: str | None = None,
         updated_by: str = "system",
@@ -134,7 +134,7 @@ class LLMConfigService:
         Args:
             provider: LLM provider type
             model: Model identifier
-            api_key: API key (will be encrypted)
+            api_key: API key (will be encrypted). If None, preserves existing key.
             endpoint: Custom endpoint URL (for custom providers)
             max_tokens: Maximum tokens for completion
             temperature: Temperature for sampling
@@ -142,9 +142,6 @@ class LLMConfigService:
             updated_by: Email/ID of user making the change
         """
         fernet = self._get_fernet()
-
-        # Encrypt the API key
-        encrypted_api_key = fernet.encrypt(api_key.encode()).decode()
 
         # Check if config already exists
         result = await self.session.execute(
@@ -155,6 +152,14 @@ class LLMConfigService:
             )
         )
         existing = result.scalars().first()
+
+        # Determine encrypted API key
+        if api_key:
+            encrypted_api_key = fernet.encrypt(api_key.encode()).decode()
+        elif existing and existing.value_json and existing.value_json.get("encrypted_api_key"):
+            encrypted_api_key = existing.value_json["encrypted_api_key"]
+        else:
+            raise ValueError("API key is required for initial configuration")
 
         config_data = {
             "provider": provider,
@@ -264,7 +269,17 @@ class LLMConfigService:
                 date_pattern = re.compile(r"-\d{4}-\d{2}-\d{2}$")
                 seen_display_names: set[str] = set()
 
+                # Filter to chat-capable models (skip embeddings, tts, whisper, dall-e, etc.)
+                chat_prefixes = ("gpt-", "o1", "o3", "o4", "chatgpt-")
+                all_model_ids: list[str] = []
+
                 for m in sorted(models_response.data, key=lambda x: x.id, reverse=True):
+                    all_model_ids.append(m.id)
+
+                    # Only include chat/completion models
+                    if not any(m.id.startswith(p) for p in chat_prefixes):
+                        continue
+
                     # Derive display name by stripping date suffix
                     display_name = date_pattern.sub("", m.id)
 
@@ -279,7 +294,6 @@ class LLMConfigService:
                 model_infos.sort(key=lambda x: x.display_name)
 
                 # Check if the configured model is available
-                all_model_ids = [m.id for m in models_response.data]
                 model_available = model in all_model_ids
             except Exception as e:
                 error_str = str(e).lower()
@@ -292,7 +306,7 @@ class LLMConfigService:
                 return LLMTestResult(
                     success=True,
                     message=f"Connected to {endpoint_label}. Model '{model}' {'is' if model_available else 'may not be'} available.",
-                    models=model_infos[:20],
+                    models=model_infos,
                 )
             else:
                 return LLMTestResult(

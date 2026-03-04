@@ -81,20 +81,27 @@ async def set_llm_config(
     """
     service = LLMConfigService(db)
 
-    await service.save_config(
-        provider=request.provider,
-        model=request.model,
-        api_key=request.api_key,
-        endpoint=request.endpoint,
-        max_tokens=request.max_tokens,
-        temperature=request.temperature,
-        default_system_prompt=request.default_system_prompt,
-        updated_by=user.email,
-    )
+    try:
+        await service.save_config(
+            provider=request.provider,
+            model=request.model,
+            api_key=request.api_key,
+            endpoint=request.endpoint,
+            max_tokens=request.max_tokens,
+            temperature=request.temperature,
+            default_system_prompt=request.default_system_prompt,
+            updated_by=user.email,
+        )
+    except ValueError as e:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))
 
     await db.commit()
 
     logger.info(f"LLM config updated by {user.email}: provider={request.provider}, model={request.model}")
+
+    # Determine if API key is set: either a new key was provided, or an existing one was preserved
+    config = await service.get_config()
+    api_key_set = bool(config and config.api_key_set)
 
     return LLMConfigResponse(
         provider=request.provider,
@@ -104,7 +111,7 @@ async def set_llm_config(
         temperature=request.temperature,
         default_system_prompt=request.default_system_prompt,
         is_configured=True,
-        api_key_set=True,
+        api_key_set=api_key_set,
     )
 
 
@@ -324,17 +331,6 @@ async def set_embedding_config(
 
     settings = get_settings()
 
-    # Encrypt the API key
-    key_bytes = settings.secret_key.encode()[:32].ljust(32, b"0")
-    fernet = Fernet(base64.urlsafe_b64encode(key_bytes))
-    encrypted_key = fernet.encrypt(request.api_key.encode()).decode()
-
-    config_data = {
-        "model": request.model,
-        "dimensions": request.dimensions,
-        "encrypted_api_key": encrypted_key,
-    }
-
     # Upsert the config
     result = await db.execute(
         select(SystemConfig).where(
@@ -344,6 +340,27 @@ async def set_embedding_config(
         )
     )
     existing = result.scalars().first()
+
+    # Determine encrypted API key
+    if request.api_key:
+        key_bytes = settings.secret_key.encode()[:32].ljust(32, b"0")
+        fernet = Fernet(base64.urlsafe_b64encode(key_bytes))
+        encrypted_key = fernet.encrypt(request.api_key.encode()).decode()
+    elif existing and existing.value_json and existing.value_json.get("encrypted_api_key"):
+        encrypted_key = existing.value_json["encrypted_api_key"]
+    else:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="API key is required for initial embedding configuration",
+        )
+
+    config_data = {
+        "model": request.model,
+        "dimensions": request.dimensions,
+        "encrypted_api_key": encrypted_key,
+    }
+
+    api_key_set = bool(encrypted_key)
 
     if existing:
         existing.value_json = config_data
@@ -366,7 +383,7 @@ async def set_embedding_config(
         model=request.model,
         dimensions=request.dimensions,
         is_configured=True,
-        api_key_set=True,
+        api_key_set=api_key_set,
         uses_llm_key=False,
     )
 
@@ -417,14 +434,44 @@ async def test_embedding_connection(
     Test embedding connection with provided credentials.
 
     Tests the connection without saving the configuration.
+    If no API key is provided, uses the saved embedding key.
     Requires platform admin access.
     """
+    import base64
+    from cryptography.fernet import Fernet
+    from src.config import get_settings
     from src.services.embeddings.base import EmbeddingConfig
     from src.services.embeddings.openai_client import OpenAIEmbeddingClient
 
     try:
+        api_key = request.api_key
+        if not api_key:
+            # Try to use the saved embedding key
+            from sqlalchemy import select as sa_select
+            from src.models.orm import SystemConfig
+
+            result = await db.execute(
+                sa_select(SystemConfig).where(
+                    SystemConfig.category == EMBEDDING_CONFIG_CATEGORY,
+                    SystemConfig.key == EMBEDDING_CONFIG_KEY,
+                    SystemConfig.organization_id.is_(None),
+                )
+            )
+            existing = result.scalars().first()
+            if existing and existing.value_json and existing.value_json.get("encrypted_api_key"):
+                settings = get_settings()
+                key_bytes = settings.secret_key.encode()[:32].ljust(32, b"0")
+                fernet = Fernet(base64.urlsafe_b64encode(key_bytes))
+                api_key = fernet.decrypt(existing.value_json["encrypted_api_key"].encode()).decode()
+            else:
+                return EmbeddingTestResponse(
+                    success=False,
+                    message="No API key provided and no saved key found",
+                    dimensions=None,
+                )
+
         config = EmbeddingConfig(
-            api_key=request.api_key,
+            api_key=api_key,
             model=request.model,
             dimensions=request.dimensions,
         )

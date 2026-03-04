@@ -93,10 +93,15 @@ export function ChatSidebar({ className }: ChatSidebarProps) {
 	// Handle delete confirmation
 	const handleDeleteConfirm = () => {
 		if (deleteTarget) {
+			const wasActive = activeConversationId === deleteTarget.id;
 			deleteConversation.mutate({
 				params: { path: { conversation_id: deleteTarget.id } },
 			});
 			setDeleteTarget(null);
+			// Navigate to clean /chat URL so it looks like a fresh screen
+			if (wasActive) {
+				navigate("/chat");
+			}
 		}
 	};
 

@@ -694,6 +694,37 @@ IMPORTANT: When the user's request can be fulfilled using one of your tools, you
                         tool_calls=tool_calls,
                     )
                 )
+            elif msg.role == MessageRole.TOOL_CALL:
+                # TOOL_CALL rows are stored separately from the assistant message.
+                # Attach them as tool_calls on the preceding assistant LLMMessage
+                # so the LLM sees the correct assistant→tool_use→tool_result sequence.
+                # Note: DB order may be assistant, tool_call, tool, tool_call, tool
+                # so we search backward past any tool results to find the assistant.
+                tc_request = ToolCallRequest(
+                    id=msg.tool_call_id or "",
+                    name=msg.tool_name or "",
+                    arguments=msg.tool_input if isinstance(msg.tool_input, dict) else {},
+                )
+                # Find the last assistant message (may have tool results between)
+                last_assistant_idx = None
+                for idx in range(len(messages) - 1, -1, -1):
+                    if messages[idx].role == "assistant":
+                        last_assistant_idx = idx
+                        break
+                if last_assistant_idx is not None:
+                    assistant_msg = messages[last_assistant_idx]
+                    if assistant_msg.tool_calls is None:
+                        assistant_msg.tool_calls = []
+                    assistant_msg.tool_calls.append(tc_request)
+                else:
+                    # No preceding assistant message — create a minimal one
+                    messages.append(
+                        LLMMessage(
+                            role="assistant",
+                            content=None,
+                            tool_calls=[tc_request],
+                        )
+                    )
             elif msg.role == MessageRole.TOOL:
                 messages.append(
                     LLMMessage(

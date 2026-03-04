@@ -220,16 +220,34 @@ export const useChatStore = create<ChatStore>((set, get) => ({
 		set((state) => {
 			const { [conversationId]: _, ...remainingMessages } =
 				state.messagesByConversation;
+			const { [conversationId]: _events, ...remainingEvents } =
+				state.systemEventsByConversation;
+			const { [conversationId]: _tools, ...remainingTools } =
+				state.toolExecutionsByConversation;
+			const { [conversationId]: _dedup, ...remainingDedup } =
+				state.dedupStateByConversation;
+			const { [conversationId]: _streaming, ...remainingStreamingIds } =
+				state.streamingMessageIds;
+			const wasActive =
+				state.activeConversationId === conversationId;
 			return {
 				conversations: state.conversations.filter(
 					(c) => c.id !== conversationId,
 				),
 				messagesByConversation: remainingMessages,
+				systemEventsByConversation: remainingEvents,
+				toolExecutionsByConversation: remainingTools,
+				dedupStateByConversation: remainingDedup,
+				streamingMessageIds: remainingStreamingIds,
 				// Clear active if this was selected
-				activeConversationId:
-					state.activeConversationId === conversationId
-						? null
-						: state.activeConversationId,
+				activeConversationId: wasActive
+					? null
+					: state.activeConversationId,
+				// Reset streaming and todos if this was the active conversation
+				...(wasActive && {
+					isStreaming: false,
+					todos: [],
+				}),
 			};
 		});
 	},

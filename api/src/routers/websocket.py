@@ -550,8 +550,7 @@ async def _generate_conversation_title(
                     content=user_message,
                 ),
             ],
-            max_tokens=30,
-            temperature=0.7,
+            max_tokens=1024,
         )
 
         if response.content:
@@ -676,15 +675,17 @@ async def _process_chat_message(
                 title = await _generate_conversation_title(db, conversation, message)
                 if title:
                     conversation.title = title
-                    # Send title update to client
-                    await websocket.send_json({
-                        "type": "title_update",
-                        "conversation_id": conversation_id,
-                        "title": title,
-                    })
 
-            # Commit the transaction
+            # Commit the transaction (before sending title_update so refetch sees new data)
             await db.commit()
+
+            # Send title update to client AFTER commit
+            if needs_title and conversation.title:
+                await websocket.send_json({
+                    "type": "title_update",
+                    "conversation_id": conversation_id,
+                    "title": conversation.title,
+                })
 
     except Exception as e:
         logger.error(f"Chat processing error: {e}", exc_info=True)

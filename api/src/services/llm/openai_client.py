@@ -52,10 +52,12 @@ class OpenAIClient(BaseLLMClient):
         kwargs: dict[str, Any] = {
             "model": model or self.config.model,
             "messages": openai_messages,
-            "max_tokens": max_tokens or self.config.max_tokens,
-            "temperature": temperature if temperature is not None else self.config.temperature,
+            "max_completion_tokens": max_tokens or self.config.max_tokens,
         }
 
+        # Only send temperature if explicitly passed — modern models have good defaults
+        if temperature is not None:
+            kwargs["temperature"] = temperature
         if openai_tools:
             kwargs["tools"] = openai_tools
 
@@ -102,12 +104,13 @@ class OpenAIClient(BaseLLMClient):
         kwargs: dict[str, Any] = {
             "model": model or self.config.model,
             "messages": openai_messages,
-            "max_tokens": max_tokens or self.config.max_tokens,
-            "temperature": temperature if temperature is not None else self.config.temperature,
+            "max_completion_tokens": max_tokens or self.config.max_tokens,
             "stream": True,
             "stream_options": {"include_usage": True},
         }
 
+        if temperature is not None:
+            kwargs["temperature"] = temperature
         if openai_tools:
             kwargs["tools"] = openai_tools
 

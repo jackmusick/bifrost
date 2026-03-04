@@ -10,6 +10,7 @@ import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import * as z from "zod";
 import { Loader2, Check, ChevronsUpDown, X, AlertTriangle } from "lucide-react";
+import { Combobox } from "@/components/ui/combobox";
 import { MultiCombobox } from "@/components/ui/multi-combobox";
 import {
 	Dialog,
@@ -54,7 +55,6 @@ import { Textarea } from "@/components/ui/textarea";
 import { TiptapEditor } from "@/components/ui/tiptap-editor";
 import { Badge } from "@/components/ui/badge";
 import { Checkbox } from "@/components/ui/checkbox";
-import { Slider } from "@/components/ui/slider";
 import { cn } from "@/lib/utils";
 import {
 	useAgent,
@@ -1350,183 +1350,46 @@ export function AgentDialog({ agentId, open, onOpenChange }: AgentDialogProps) {
 															<FormLabel>
 																Model
 															</FormLabel>
-															<Select
-																onValueChange={(
-																	value,
-																) =>
-																	field.onChange(
-																		value ===
-																			"__default__"
-																			? null
-																			: value,
-																	)
-																}
-																value={
-																	field.value ??
-																	"__default__"
-																}
-															>
-																<FormControl>
-																	<SelectTrigger>
-																		<SelectValue placeholder="Use platform default" />
-																	</SelectTrigger>
-																</FormControl>
-																<SelectContent>
-																	<SelectItem value="__default__">
-																		Use
-																		platform
-																		default
-																	</SelectItem>
-																	{availableModels.map(
-																		(
-																			model,
-																		) => (
-																			<SelectItem
-																				key={
-																					model.id
-																				}
-																				value={
-																					model.id
-																				}
-																			>
-																				{
-																					model.display_name
-																				}
-																			</SelectItem>
-																		),
-																	)}
-																</SelectContent>
-															</Select>
-															<FormMessage />
-														</FormItem>
-													)}
-												/>
-
-												{/* Max Tokens */}
-												<FormField
-													control={form.control}
-													name="llm_max_tokens"
-													render={({ field }) => (
-														<FormItem>
-															<FormLabel>
-																Max Tokens
-															</FormLabel>
 															<FormControl>
-																<Input
-																	type="number"
-																	placeholder="Use platform default"
+																<Combobox
 																	value={
 																		field.value ??
-																		""
+																		"__default__"
 																	}
-																	onChange={(
-																		e,
-																	) => {
-																		const val =
-																			e
-																				.target
-																				.value;
+																	onValueChange={(
+																		value,
+																	) =>
 																		field.onChange(
-																			val
-																				? parseInt(
-																						val,
-																						10,
-																					)
-																				: null,
-																		);
-																	}}
+																			value ===
+																				"__default__"
+																				? null
+																				: value,
+																		)
+																	}
+																	placeholder="Use platform default"
+																	searchPlaceholder="Search models..."
+																	emptyText="No models found."
+																	options={[
+																		{
+																			value: "__default__",
+																			label: "Use platform default",
+																		},
+																		...availableModels.map(
+																			(
+																				model,
+																			) => ({
+																				value: model.id,
+																				label: model.display_name,
+																			}),
+																		),
+																	]}
 																/>
 															</FormControl>
-															<FormDescription>
-																Maximum response
-																length
-																(1-200,000)
-															</FormDescription>
 															<FormMessage />
 														</FormItem>
 													)}
 												/>
 
-												{/* Temperature */}
-												<FormField
-													control={form.control}
-													name="llm_temperature"
-													render={({ field }) => (
-														<FormItem>
-															<div className="flex items-center justify-between">
-																<FormLabel>
-																	Temperature:{" "}
-																	{field.value?.toFixed(
-																		1,
-																	) ??
-																		"default"}
-																</FormLabel>
-																{field.value !==
-																	null && (
-																	<Button
-																		type="button"
-																		variant="ghost"
-																		size="sm"
-																		onClick={() =>
-																			field.onChange(
-																				null,
-																			)
-																		}
-																		className="h-6 text-xs"
-																	>
-																		Reset
-																		to
-																		default
-																	</Button>
-																)}
-															</div>
-															<FormControl>
-																{field.value !==
-																null ? (
-																	<Slider
-																		min={0}
-																		max={2}
-																		step={
-																			0.1
-																		}
-																		value={[
-																			field.value,
-																		]}
-																		onValueChange={([
-																			val,
-																		]) =>
-																			field.onChange(
-																				val,
-																			)
-																		}
-																		className="flex-1"
-																	/>
-																) : (
-																	<Button
-																		type="button"
-																		variant="outline"
-																		size="sm"
-																		className="w-full"
-																		onClick={() =>
-																			field.onChange(
-																				0.7,
-																			)
-																		}
-																	>
-																		Customize
-																		temperature
-																	</Button>
-																)}
-															</FormControl>
-															<FormDescription>
-																0 =
-																deterministic, 2
-																= creative
-															</FormDescription>
-															<FormMessage />
-														</FormItem>
-													)}
-												/>
 											</div>
 										)}
 									</div>

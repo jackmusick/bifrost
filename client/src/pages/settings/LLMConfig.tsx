@@ -23,6 +23,7 @@ import {
 	SelectTrigger,
 	SelectValue,
 } from "@/components/ui/select";
+import { Combobox } from "@/components/ui/combobox";
 import { Slider } from "@/components/ui/slider";
 import { Textarea } from "@/components/ui/textarea";
 import {
@@ -277,7 +278,7 @@ export function LLMConfig() {
 				body: {
 					provider,
 					model,
-					api_key: apiKey || "unchanged", // Backend handles "unchanged" specially if key already set
+					api_key: apiKey || undefined,
 					endpoint: isDefaultEndpoint ? undefined : endpoint || undefined,
 					max_tokens: maxTokens,
 					temperature,
@@ -318,7 +319,7 @@ export function LLMConfig() {
 			setModel(DEFAULT_MODELS.openai);
 			setApiKey("");
 			setEndpoint(DEFAULT_ENDPOINTS.openai);
-			setMaxTokens(4096);
+			setMaxTokens(16384);
 			setTemperature(0.7);
 			setDefaultSystemPrompt("");
 			setTestResult(null);
@@ -546,30 +547,19 @@ export function LLMConfig() {
 						</Label>
 						{canSelectModel ? (
 							hasModels ? (
-								<Select value={model} onValueChange={setModel}>
-									<SelectTrigger id="model">
-										<SelectValue placeholder="Select model">
-											{/* Show display name in trigger if we have model info */}
-											{availableModels.find(
-												(m) => m.id === model,
-											)?.display_name || model}
-										</SelectValue>
-									</SelectTrigger>
-									<SelectContent>
-										{availableModels.map((m) => (
-											<SelectItem key={m.id} value={m.id}>
-												<div className="flex flex-col">
-													<span>
-														{m.display_name}
-													</span>
-													<span className="text-xs text-muted-foreground">
-														{m.id}
-													</span>
-												</div>
-											</SelectItem>
-										))}
-									</SelectContent>
-								</Select>
+								<Combobox
+									id="model"
+									value={model}
+									onValueChange={setModel}
+									placeholder="Select model..."
+									searchPlaceholder="Search models..."
+									emptyText="No models found."
+									options={availableModels.map((m) => ({
+										value: m.id,
+										label: m.display_name,
+										description: m.id !== m.display_name ? m.id : undefined,
+									}))}
+								/>
 							) : (
 								<Input
 									id="model"
@@ -597,48 +587,27 @@ export function LLMConfig() {
 						{/* Max Tokens */}
 						<div className="space-y-3">
 							<div className="flex items-center justify-between">
-								<Label htmlFor="max-tokens">Max Tokens</Label>
+								<Label htmlFor="max-tokens">
+									Max Output Tokens
+								</Label>
 								<span className="text-sm text-muted-foreground">
 									{maxTokens.toLocaleString()}
 								</span>
 							</div>
 							<Slider
 								id="max-tokens"
-								min={256}
+								min={1024}
 								max={32768}
-								step={256}
+								step={1024}
 								value={[maxTokens]}
 								onValueChange={(values: number[]) =>
 									setMaxTokens(values[0])
 								}
 							/>
 							<p className="text-xs text-muted-foreground">
-								Maximum tokens in the response (higher = longer
-								responses)
-							</p>
-						</div>
-
-						{/* Temperature */}
-						<div className="space-y-3">
-							<div className="flex items-center justify-between">
-								<Label htmlFor="temperature">Temperature</Label>
-								<span className="text-sm text-muted-foreground">
-									{temperature.toFixed(1)}
-								</span>
-							</div>
-							<Slider
-								id="temperature"
-								min={0}
-								max={2}
-								step={0.1}
-								value={[temperature]}
-								onValueChange={(values: number[]) =>
-									setTemperature(values[0])
-								}
-							/>
-							<p className="text-xs text-muted-foreground">
-								Controls randomness (0 = deterministic, 2 =
-								creative)
+								Maximum tokens per response. Most models
+								default to 4,096 but can generate up to
+								32K+.
 							</p>
 						</div>
 
@@ -812,7 +781,7 @@ function EmbeddingConfigCard({ llmProvider }: { llmProvider?: string }) {
 		try {
 			const result = await testMutation.mutateAsync({
 				body: {
-					api_key: apiKey || "use-saved",
+					api_key: apiKey || undefined,
 					model,
 					dimensions,
 				},
@@ -850,7 +819,7 @@ function EmbeddingConfigCard({ llmProvider }: { llmProvider?: string }) {
 		try {
 			await saveMutation.mutateAsync({
 				body: {
-					api_key: apiKey || "unchanged",
+					api_key: apiKey || undefined,
 					model,
 					dimensions,
 				},

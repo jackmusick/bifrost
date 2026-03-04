@@ -161,17 +161,18 @@ Your response (agent name or DIRECT):"""
             llm_client = await get_llm_client(self.session)
 
             # Use non-streaming for quick routing decision
+            # Don't pass temperature or max_tokens — some models (e.g. OpenAI o-series)
+            # reject temperature, and a low max_tokens can truncate responses with preamble.
             response = await llm_client.complete(
                 messages=[
                     LLMMessage(role="system", content="You are a routing assistant. Respond only with the agent name or DIRECT."),
                     LLMMessage(role="user", content=router_prompt),
                 ],
-                max_tokens=50,
-                temperature=0,  # Deterministic routing
             )
 
             if response.content:
                 agent_name = response.content.strip()
+                logger.debug(f"Router LLM response: '{agent_name}'")
 
                 if agent_name.upper() == "DIRECT":
                     return None
@@ -182,10 +183,17 @@ Your response (agent name or DIRECT):"""
                         logger.info(f"AI routing to agent: {agent.name}")
                         return agent
 
+                logger.warning(
+                    f"Router response '{agent_name}' did not match any agent. "
+                    f"Available: {[a.name for a in available_agents]}"
+                )
+            else:
+                logger.warning("Router LLM returned empty response")
+
             return None
 
         except Exception as e:
-            logger.error(f"Agent routing failed: {e}")
+            logger.error(f"Agent routing failed: {e}", exc_info=True)
             return None
 
     async def get_available_agents(self) -> list[Agent]:

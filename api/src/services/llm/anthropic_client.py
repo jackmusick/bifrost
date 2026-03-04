@@ -60,13 +60,13 @@ class AnthropicClient(BaseLLMClient):
         kwargs: dict[str, Any] = {
             "model": model or self.config.model,
             "messages": anthropic_messages,
-            "max_tokens": max_tokens or self.config.max_tokens,
-            "temperature": temperature if temperature is not None else self.config.temperature,
+            "max_tokens": max_tokens or self.config.max_tokens,  # Anthropic requires this param
         }
 
+        if temperature is not None:
+            kwargs["temperature"] = temperature
         if system_prompt:
             kwargs["system"] = system_prompt
-
         if anthropic_tools:
             kwargs["tools"] = anthropic_tools
 
@@ -113,13 +113,13 @@ class AnthropicClient(BaseLLMClient):
         kwargs: dict[str, Any] = {
             "model": model or self.config.model,
             "messages": anthropic_messages,
-            "max_tokens": max_tokens or self.config.max_tokens,
-            "temperature": temperature if temperature is not None else self.config.temperature,
+            "max_tokens": max_tokens or self.config.max_tokens,  # Anthropic requires this param
         }
 
+        if temperature is not None:
+            kwargs["temperature"] = temperature
         if system_prompt:
             kwargs["system"] = system_prompt
-
         if anthropic_tools:
             kwargs["tools"] = anthropic_tools
 
@@ -244,17 +244,26 @@ class AnthropicClient(BaseLLMClient):
                 })
 
             elif msg.role == "tool":
-                # Anthropic expects tool results as user messages with tool_result content
-                result.append({
-                    "role": "user",
-                    "content": [
-                        ToolResultBlockParam(
-                            type="tool_result",
-                            tool_use_id=msg.tool_call_id or "",
-                            content=msg.content or "",
-                        )
-                    ],
-                })
+                # Anthropic expects tool results as user messages with tool_result content.
+                # Multiple consecutive tool results must be in a SINGLE user message,
+                # not separate ones — otherwise the API rejects with "unexpected tool_use_id".
+                tool_result_block = ToolResultBlockParam(
+                    type="tool_result",
+                    tool_use_id=msg.tool_call_id or "",
+                    content=msg.content or "",
+                )
+                # Merge into previous user message if it already has tool_result blocks
+                if (
+                    result
+                    and result[-1]["role"] == "user"
+                    and isinstance(result[-1]["content"], list)
+                ):
+                    result[-1]["content"].append(tool_result_block)  # type: ignore[union-attr]
+                else:
+                    result.append({
+                        "role": "user",
+                        "content": [tool_result_block],
+                    })
 
         return system_prompt, result
 

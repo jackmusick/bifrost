@@ -15,7 +15,7 @@ class LLMConfigResponse(BaseModel):
     provider: Literal["openai", "anthropic"]
     model: str
     endpoint: str | None = None
-    max_tokens: int = 4096
+    max_tokens: int = 16384
     temperature: float = 0.7
     default_system_prompt: str | None = None
     is_configured: bool = True
@@ -34,17 +34,16 @@ class LLMConfigRequest(BaseModel):
         min_length=1,
         description="Model identifier (e.g., 'gpt-4o', 'claude-sonnet-4-20250514')",
     )
-    api_key: str = Field(
-        ...,
-        min_length=1,
-        description="API key for the provider",
+    api_key: str | None = Field(
+        None,
+        description="API key for the provider. Omit to preserve existing key.",
     )
     endpoint: str | None = Field(
         None,
         description="Custom API endpoint URL (e.g., for Azure OpenAI, Ollama, or other compatible providers)",
     )
     max_tokens: int = Field(
-        4096,
+        16384,
         ge=1,
         le=128000,
         description="Maximum tokens for completion",
@@ -124,10 +123,9 @@ class EmbeddingConfigResponse(BaseModel):
 class EmbeddingConfigRequest(BaseModel):
     """Request to set dedicated embedding configuration."""
 
-    api_key: str = Field(
-        ...,
-        min_length=1,
-        description="OpenAI API key for embeddings",
+    api_key: str | None = Field(
+        None,
+        description="OpenAI API key for embeddings. Omit to preserve existing key.",
     )
     model: str = Field(
         "text-embedding-3-small",

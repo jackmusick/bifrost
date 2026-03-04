@@ -26,7 +26,7 @@ logger = logging.getLogger(__name__)
 DEFAULT_PROVIDER: Literal["openai", "anthropic"] = "openai"
 DEFAULT_OPENAI_MODEL = "gpt-4o"
 DEFAULT_ANTHROPIC_MODEL = "claude-sonnet-4-20250514"
-DEFAULT_MAX_TOKENS = 4096
+DEFAULT_MAX_TOKENS = 16384
 DEFAULT_TEMPERATURE = 0.7
 
 # SystemConfig keys (follows GitHub integration pattern)
