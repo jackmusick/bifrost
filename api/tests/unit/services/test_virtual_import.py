@@ -416,7 +416,7 @@ class TestInstallRemoveHook:
 
         assert isinstance(finder, VirtualModuleFinder)
         assert len(sys.meta_path) == initial_count + 1
-        assert sys.meta_path[0] is finder
+        assert sys.meta_path[-1] is finder
 
     def test_install_virtual_import_hook_idempotent(self):
         """Test that installing twice returns same finder."""

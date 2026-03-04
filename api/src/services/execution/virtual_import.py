@@ -205,7 +205,7 @@ class VirtualModuleLoader(Loader):
     setting __file__ to the relative path for meaningful tracebacks.
     """
 
-    def __init__(self, path: str, content: str, is_package: bool = False):
+    def __init__(self, path: str, content: str, is_package: bool = False, content_hash: str = ""):
         """
         Initialize loader with module content.
 
@@ -213,10 +213,12 @@ class VirtualModuleLoader(Loader):
             path: Relative file path (e.g., "shared/halopsa.py")
             content: Python source code
             is_package: True if this is a package (__init__.py)
+            content_hash: SHA-256 hash of content for change detection
         """
         self.path = path
         self.content = content
         self.is_package = is_package
+        self.content_hash = content_hash
 
     def create_module(self, spec: ModuleSpec) -> ModuleType | None:
         """Return None to use default module creation semantics."""
@@ -228,6 +230,7 @@ class VirtualModuleLoader(Loader):
         # Tracebacks will show: "shared/halopsa.py", line 42
         module.__file__ = self.path
         module.__loader__ = self
+        module.__content_hash__ = self.content_hash
 
         if self.is_package:
             # Packages need __path__ for submodule imports
@@ -326,7 +329,7 @@ class VirtualModuleFinder(MetaPathFinder):
                 continue
 
             # Create loader and spec
-            loader = VirtualModuleLoader(file_path, cached["content"], is_package)
+            loader = VirtualModuleLoader(file_path, cached["content"], is_package, cached.get("hash", ""))
             spec = ModuleSpec(
                 fullname,
                 loader,
@@ -429,7 +432,7 @@ def install_virtual_import_hook() -> VirtualModuleFinder:
     # Create finder and install the hook
     # No index pre-loading needed - we fetch modules directly from Redis
     _finder = VirtualModuleFinder()
-    sys.meta_path.insert(0, _finder)
+    sys.meta_path.append(_finder)
 
     logger.info("Virtual import hook installed")
     return _finder

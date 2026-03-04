@@ -7,7 +7,6 @@ Key Components:
     - keys: Redis key generation functions (single source of truth)
     - redis_client: Async Redis connection factory
     - invalidation: Cache invalidation functions (used by API routes)
-    - warming: Pre-warming functions (used by worker before execution)
 
 Usage (SDK reads):
     from src.core.cache import get_redis, config_hash_key
@@ -19,11 +18,6 @@ Usage (API invalidation):
     from src.core.cache import invalidate_config
 
     await invalidate_config(org_id, key)
-
-Usage (Pre-warming):
-    from src.core.cache import prewarm_sdk_cache
-
-    await prewarm_sdk_cache(execution_id, org_id, user_id)
 """
 
 # Key generation functions
@@ -73,9 +67,6 @@ from .invalidation import (
     upsert_config,
     upsert_org,
 )
-
-# Pre-warming
-from .warming import prewarm_sdk_cache
 
 # Data provider cache
 from .data_provider_cache import (
@@ -130,8 +121,6 @@ __all__ = [
     "cleanup_execution_cache",
     "upsert_config",
     "upsert_org",
-    # Pre-warming
-    "prewarm_sdk_cache",
     # Data provider cache
     "TTL_DATA_PROVIDER",
     "data_provider_cache_key",

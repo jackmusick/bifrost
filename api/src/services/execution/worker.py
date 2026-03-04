@@ -125,11 +125,13 @@ async def _run_execution(execution_id: str, context_data: dict[str, Any]) -> dic
     from src.services.execution.engine import ExecutionRequest, execute
     from src.models.enums import ExecutionStatus
     from src.core.security import authenticate_engine
+    from bifrost.credentials import is_token_expired
 
-    # Ensure engine has valid credentials for SDK calls
-    # This creates/refreshes a superuser token in ~/.bifrost/credentials.json
-    # so that SDK calls (files.read, etc.) work identically to CLI mode
-    authenticate_engine()
+    # Only refresh engine credentials when token is expired or close to expiry.
+    # This avoids a file-write race when multiple worker processes all call
+    # authenticate_engine() simultaneously with identical content.
+    if is_token_expired(buffer_seconds=3600):
+        authenticate_engine()
 
     start_time = datetime.now(timezone.utc)
 

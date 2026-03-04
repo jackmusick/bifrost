@@ -190,7 +190,7 @@ def run_worker_process(
     # This ensures packages persist across container restarts
     _install_requirements_from_cache_sync(worker_id)
 
-    # Install virtual import hook FIRST (before any workspace imports)
+    # Install virtual import hook (after default finders so filesystem is checked first)
     from src.services.execution.virtual_import import install_virtual_import_hook
     install_virtual_import_hook()
 
@@ -262,54 +262,104 @@ def run_worker_process(
 
 def _clear_workspace_modules() -> None:
     """
-    Clear workspace modules from sys.modules.
+    Clear workspace modules from sys.modules only if their content changed.
 
-    Called before each execution to ensure any code changes from Redis
-    are picked up. The virtual import hook will re-fetch from Redis
-    on the next import.
+    Called before each execution. For each workspace module already loaded,
+    checks the content hash against Redis. If unchanged, the module stays
+    in sys.modules and the next `import` is a no-op. If changed (or if the
+    hash check fails), the module is evicted so it gets re-fetched.
 
-    We clear modules loaded by our virtual import system (VirtualModuleLoader
-    and NamespacePackageLoader), plus any modules registered by exec_from_db
-    which sets __loader__ = None. Without clearing all of these, stale
-    references can persist — e.g. a data provider's `from modules import pax8`
-    resolves to an old module object cached on a namespace package.
+    This avoids re-exec'ing large unchanged modules on every execution.
     """
     from src.services.execution.virtual_import import VirtualModuleLoader, NamespacePackageLoader
-    from src.core.module_cache_sync import get_module_index_sync
+    from src.core.module_cache_sync import get_module_index_sync, get_module_sync
 
     # Build set of known workspace module names from the Redis module index.
-    # Paths like "modules/pax8.py" -> module names "modules", "modules.pax8"
-    # Paths like "shared/pax8/data_providers.py" -> "shared", "shared.pax8", "shared.pax8.data_providers"
     module_index = get_module_index_sync()
     workspace_names: set[str] = set()
+    # Also build a map from module name -> file path for hash checking
+    name_to_path: dict[str, str] = {}
     for path in module_index:
-        # Convert file path to module name: "shared/pax8/data_providers.py" -> "shared.pax8.data_providers"
         mod_name = path.replace("/", ".").removesuffix(".py").removesuffix(".__init__")
         parts = mod_name.split(".")
-        # Add all prefixes: "shared", "shared.pax8", "shared.pax8.data_providers"
         for i in range(1, len(parts) + 1):
-            workspace_names.add(".".join(parts[:i]))
+            prefix = ".".join(parts[:i])
+            workspace_names.add(prefix)
+        # Map the full module name to its file path
+        name_to_path[mod_name] = path
 
-    # Find all workspace modules to clear
-    modules_to_clear = [
-        name for name, module in sys.modules.items()
+    # Find workspace modules currently loaded
+    workspace_modules = [
+        (name, module) for name, module in sys.modules.items()
         if module is not None and (
-            # Modules loaded by our virtual import hook
             (hasattr(module, '__loader__') and isinstance(
                 module.__loader__, (VirtualModuleLoader, NamespacePackageLoader)
             ))
-            # Modules registered by exec_from_db (which sets __loader__ = None)
-            # matched by known workspace paths from Redis index
             or name in workspace_names
         )
     ]
 
-    # Remove them from sys.modules so they'll be re-imported
-    for name in modules_to_clear:
-        del sys.modules[name]
+    # Check each module's hash — only clear if content changed
+    modules_to_clear: list[str] = []
+    modules_kept = 0
 
-    if modules_to_clear:
-        logger.debug(f"Cleared {len(modules_to_clear)} workspace modules: {modules_to_clear}")
+    for name, module in workspace_modules:
+        cached_hash = getattr(module, '__content_hash__', None)
+
+        if not cached_hash:
+            # No hash stored — could be a namespace package or exec_from_db module.
+            # Namespace packages are kept if any child modules are kept (decided later).
+            # For now, check if this is a namespace package (has __path__ but no __file__).
+            if isinstance(getattr(module, '__loader__', None), NamespacePackageLoader):
+                # Defer — we'll keep it if any children survive
+                continue
+            # exec_from_db module with no hash — always clear
+            modules_to_clear.append(name)
+            continue
+
+        # Look up current hash in Redis
+        file_path = name_to_path.get(name)
+        if not file_path:
+            # Can't map to a file path — clear to be safe
+            modules_to_clear.append(name)
+            continue
+
+        cached = get_module_sync(file_path)
+        if not cached:
+            # Module removed from cache — clear
+            modules_to_clear.append(name)
+            continue
+
+        if cached.get("hash") != cached_hash:
+            # Content changed — clear
+            modules_to_clear.append(name)
+        else:
+            # Unchanged — keep it
+            modules_kept += 1
+
+    # Clear namespace packages only if ALL their children were cleared
+    cleared_set = set(modules_to_clear)
+    for name, module in workspace_modules:
+        if not isinstance(getattr(module, '__loader__', None), NamespacePackageLoader):
+            continue
+        # Check if any child module survived (not in cleared_set and still in sys.modules)
+        prefix = name + "."
+        has_surviving_child = any(
+            n.startswith(prefix) and n not in cleared_set
+            for n in sys.modules
+        )
+        if not has_surviving_child:
+            modules_to_clear.append(name)
+
+    for name in modules_to_clear:
+        if name in sys.modules:
+            del sys.modules[name]
+
+    if modules_to_clear or modules_kept:
+        logger.debug(
+            f"Workspace modules: cleared={len(modules_to_clear)} kept={modules_kept}"
+            + (f" (cleared: {modules_to_clear})" if modules_to_clear else "")
+        )
 
 
 def _execute_sync(execution_id: str, worker_id: str) -> dict[str, Any]:
