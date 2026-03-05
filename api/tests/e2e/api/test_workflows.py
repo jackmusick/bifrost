@@ -226,20 +226,13 @@ async def update_persist_workflow() -> str:
         )
         original_id = original["id"]
 
-        # Update workflow
-        updated_content = '''"""Updated Version"""
-from bifrost import workflow
-
-@workflow(name="update_persist_workflow", description="Updated description")
-async def update_persist_workflow() -> str:
-    return "updated"
-'''
-        updated = write_and_register(
-            e2e_client, platform_admin.headers,
-            "update_persist_workflow.py", updated_content,
-            "update_persist_workflow",
+        # Update workflow description via API (not re-registration, which is set-once)
+        response = e2e_client.patch(
+            f"/api/workflows/{original_id}",
+            headers=platform_admin.headers,
+            json={"description": "Updated description"},
         )
-        assert updated["id"] == original_id, "ID should remain stable"
+        assert response.status_code == 200, f"Patch failed: {response.text}"
 
         # Verify update persisted via workflow list
         response = e2e_client.get(
