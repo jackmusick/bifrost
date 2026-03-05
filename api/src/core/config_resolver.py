@@ -340,9 +340,14 @@ class ConfigResolver:
 
             # For GLOBAL, get configs with no organization_id
             # For org scope, get global + org-specific configs (org overrides global)
+            # Always exclude integration-scoped configs (integration_id IS NOT NULL)
+            # — those are accessed via the integration system, not config.get()
             if scope == "GLOBAL":
                 result = await session.execute(
-                    select(Config).where(Config.organization_id.is_(None))
+                    select(Config).where(
+                        Config.organization_id.is_(None),
+                        Config.integration_id.is_(None),
+                    )
                 )
                 for config in result.scalars():
                     config_dict[config.key] = {
@@ -358,7 +363,10 @@ class ConfigResolver:
 
                 # Get global configs first
                 global_result = await session.execute(
-                    select(Config).where(Config.organization_id.is_(None))
+                    select(Config).where(
+                        Config.organization_id.is_(None),
+                        Config.integration_id.is_(None),
+                    )
                 )
                 for config in global_result.scalars():
                     config_dict[config.key] = {
@@ -368,7 +376,10 @@ class ConfigResolver:
 
                 # Get org-specific configs (these override global)
                 result = await session.execute(
-                    select(Config).where(Config.organization_id == org_uuid_obj)
+                    select(Config).where(
+                        Config.organization_id == org_uuid_obj,
+                        Config.integration_id.is_(None),
+                    )
                 )
                 for config in result.scalars():
                     config_dict[config.key] = {
