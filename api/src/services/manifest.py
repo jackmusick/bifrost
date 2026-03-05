@@ -94,6 +94,8 @@ class ManifestAgent(BaseModel):
     organization_id: str | None = Field(default=None, description="Org UUID (null = global)")
     roles: list[str] = Field(default_factory=list, description="Role UUIDs that can access this agent")
     access_level: str = Field(default="role_based", description="role_based | authenticated | public")
+    max_iterations: int | None = Field(default=None, description="Max LLM iterations for autonomous runs")
+    max_token_budget: int | None = Field(default=None, description="Max token budget for autonomous runs")
 
 
 class ManifestApp(BaseModel):
@@ -190,7 +192,9 @@ class ManifestTable(BaseModel):
 class ManifestEventSubscription(BaseModel):
     """Event subscription within an event source."""
     id: str = Field(description="Subscription UUID")
-    workflow_id: str = Field(description="Workflow UUID to trigger")
+    target_type: str = Field(default="workflow", description="'workflow' or 'agent'")
+    workflow_id: str | None = Field(default=None, description="Workflow UUID to trigger (when target_type='workflow')")
+    agent_id: str | None = Field(default=None, description="Agent UUID to run (when target_type='agent')")
     event_type: str | None = Field(default=None, description="Filter by event type (e.g. 'ticket.created')")
     filter_expression: str | None = Field(default=None, description="JSONPath filter expression")
     input_mapping: dict | None = Field(default=None, description="Map event fields to workflow params")
@@ -381,6 +385,7 @@ def validate_manifest(manifest: Manifest) -> list[str]:
     wf_ids = {wf.id for wf in manifest.workflows.values()}
     integration_ids = {integ.id for integ in manifest.integrations.values()}
     app_ids = {app.id for app in manifest.apps.values()}
+    agent_ids = {a.id for a in manifest.agents.values()}
 
     # Check organization references
     for _key, wf in manifest.workflows.items():
@@ -456,11 +461,18 @@ def validate_manifest(manifest: Manifest) -> list[str]:
                 f"{evt.webhook_integration_id}"
             )
         for sub in evt.subscriptions:
-            if sub.workflow_id not in wf_ids:
-                errors.append(
-                    f"Event source '{evt_label}' subscription '{sub.id}' references unknown workflow: "
-                    f"{sub.workflow_id}"
-                )
+            if sub.target_type == "agent":
+                if sub.agent_id and sub.agent_id not in agent_ids:
+                    errors.append(
+                        f"Event source '{evt_label}' subscription '{sub.id}' references unknown agent: "
+                        f"{sub.agent_id}"
+                    )
+            else:
+                if sub.workflow_id and sub.workflow_id not in wf_ids:
+                    errors.append(
+                        f"Event source '{evt_label}' subscription '{sub.id}' references unknown workflow: "
+                        f"{sub.workflow_id}"
+                    )
 
     return errors
 

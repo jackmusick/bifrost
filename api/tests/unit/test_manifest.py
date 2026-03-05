@@ -1436,3 +1436,109 @@ class TestEventSubscriptionManifestFields:
         assert parsed_sub.target_type == "workflow"
         assert parsed_sub.workflow_id == workflow_id
         assert parsed_sub.agent_id is None
+
+
+class TestManifestValidationAgents:
+    """Test manifest validation catches agent subscription issues."""
+
+    def test_validate_unknown_agent_in_subscription(self):
+        """Subscription referencing non-existent agent_id should fail validation."""
+        from src.services.manifest import (
+            Manifest, ManifestEventSource, ManifestEventSubscription,
+            validate_manifest,
+        )
+
+        sub_id = str(uuid4())
+        source_id = str(uuid4())
+        sub = ManifestEventSubscription(
+            id=sub_id,
+            target_type="agent",
+            agent_id=str(uuid4()),  # Unknown agent
+            is_active=True,
+        )
+        source = ManifestEventSource(
+            id=source_id,
+            name="Source",
+            source_type="webhook",
+            is_active=True,
+            subscriptions=[sub],
+        )
+        manifest = Manifest(events={source_id: source})
+
+        errors = validate_manifest(manifest)
+        assert any("agent" in e.lower() for e in errors), f"Expected agent validation error, got: {errors}"
+
+    def test_validate_known_agent_in_subscription(self):
+        """Subscription referencing existing agent_id should pass."""
+        from src.services.manifest import (
+            Manifest, ManifestEventSource, ManifestEventSubscription,
+            ManifestAgent, validate_manifest,
+        )
+
+        agent_id = str(uuid4())
+        sub_id = str(uuid4())
+        source_id = str(uuid4())
+        agent = ManifestAgent(
+            id=agent_id,
+            name="Test Agent",
+            path=f"agents/{agent_id}.agent.yaml",
+        )
+        sub = ManifestEventSubscription(
+            id=sub_id,
+            target_type="agent",
+            agent_id=agent_id,
+            is_active=True,
+        )
+        source = ManifestEventSource(
+            id=source_id,
+            name="Source",
+            source_type="webhook",
+            is_active=True,
+            subscriptions=[sub],
+        )
+        manifest = Manifest(
+            agents={agent_id: agent},
+            events={source_id: source},
+        )
+
+        errors = validate_manifest(manifest)
+        agent_errors = [e for e in errors if "agent" in e.lower()]
+        assert len(agent_errors) == 0, f"Unexpected agent errors: {agent_errors}"
+
+    def test_validate_agent_subscription_no_false_workflow_error(self):
+        """Agent subscription with workflow_id=None should not produce workflow error."""
+        from src.services.manifest import (
+            Manifest, ManifestEventSource, ManifestEventSubscription,
+            ManifestAgent, validate_manifest,
+        )
+
+        agent_id = str(uuid4())
+        sub_id = str(uuid4())
+        source_id = str(uuid4())
+        agent = ManifestAgent(
+            id=agent_id,
+            name="Test Agent",
+            path=f"agents/{agent_id}.agent.yaml",
+        )
+        sub = ManifestEventSubscription(
+            id=sub_id,
+            target_type="agent",
+            agent_id=agent_id,
+            workflow_id=None,
+            is_active=True,
+        )
+        source = ManifestEventSource(
+            id=source_id,
+            name="Source",
+            source_type="webhook",
+            is_active=True,
+            subscriptions=[sub],
+        )
+        manifest = Manifest(
+            agents={agent_id: agent},
+            events={source_id: source},
+        )
+
+        errors = validate_manifest(manifest)
+        workflow_errors = [e for e in errors if "workflow" in e.lower()]
+        assert len(workflow_errors) == 0, f"Agent subscription should not produce workflow errors: {workflow_errors}"
