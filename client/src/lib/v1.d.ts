@@ -3415,22 +3415,22 @@ export interface paths {
          * Execute workflow via API key
          * @description Execute an endpoint-enabled workflow using an API key for authentication
          */
-        get: operations["execute_endpoint_api_endpoints__workflow_id__get"];
+        get: operations["execute_endpoint_api_endpoints__workflow_id__put"];
         /**
          * Execute workflow via API key
          * @description Execute an endpoint-enabled workflow using an API key for authentication
          */
-        put: operations["execute_endpoint_api_endpoints__workflow_id__get"];
+        put: operations["execute_endpoint_api_endpoints__workflow_id__put"];
         /**
          * Execute workflow via API key
          * @description Execute an endpoint-enabled workflow using an API key for authentication
          */
-        post: operations["execute_endpoint_api_endpoints__workflow_id__get"];
+        post: operations["execute_endpoint_api_endpoints__workflow_id__put"];
         /**
          * Execute workflow via API key
          * @description Execute an endpoint-enabled workflow using an API key for authentication
          */
-        delete: operations["execute_endpoint_api_endpoints__workflow_id__get"];
+        delete: operations["execute_endpoint_api_endpoints__workflow_id__put"];
         options?: never;
         head?: never;
         patch?: never;
@@ -4700,6 +4700,66 @@ export interface paths {
          * @description Remove a delegation from an agent (platform admin only).
          */
         delete: operations["remove_delegation_from_agent_api_agents__agent_id__delegations__delegate_id__delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/agent-runs": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Agent Runs
+         * @description List agent runs with optional filters.
+         */
+        get: operations["list_agent_runs_api_agent_runs_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/agent-runs/{run_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Agent Run
+         * @description Get agent run detail with steps.
+         */
+        get: operations["get_agent_run_api_agent_runs__run_id__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/agent-runs/execute": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Execute Agent Run
+         * @description Execute an agent synchronously via the SDK.
+         */
+        post: operations["execute_agent_run_api_agent_runs_execute_post"];
+        delete?: never;
         options?: never;
         head?: never;
         patch?: never;
@@ -7659,6 +7719,16 @@ export interface components {
              * @description Override temperature
              */
             llm_temperature?: number | null;
+            /**
+             * Max Iterations
+             * @description Max LLM iterations for autonomous runs
+             */
+            max_iterations?: number | null;
+            /**
+             * Max Token Budget
+             * @description Max token budget for autonomous runs
+             */
+            max_token_budget?: number | null;
         };
         /**
          * AgentPromoteRequest
@@ -7727,6 +7797,200 @@ export interface components {
             llm_max_tokens?: number | null;
             /** Llm Temperature */
             llm_temperature?: number | null;
+            /** Max Iterations */
+            max_iterations?: number | null;
+            /** Max Token Budget */
+            max_token_budget?: number | null;
+        };
+        /** AgentRunCreateRequest */
+        AgentRunCreateRequest: {
+            /** Agent Name */
+            agent_name: string;
+            /** Input */
+            input?: {
+                [key: string]: unknown;
+            } | null;
+            /** Output Schema */
+            output_schema?: {
+                [key: string]: unknown;
+            } | null;
+            /**
+             * Timeout
+             * @default 1800
+             */
+            timeout: number;
+        };
+        /** AgentRunDetailResponse */
+        AgentRunDetailResponse: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /**
+             * Agent Id
+             * Format: uuid
+             */
+            agent_id: string;
+            /** Agent Name */
+            agent_name?: string | null;
+            /** Trigger Type */
+            trigger_type: string;
+            /** Trigger Source */
+            trigger_source?: string | null;
+            /** Conversation Id */
+            conversation_id?: string | null;
+            /** Event Delivery Id */
+            event_delivery_id?: string | null;
+            /** Input */
+            input?: {
+                [key: string]: unknown;
+            } | null;
+            /** Output */
+            output?: {
+                [key: string]: unknown;
+            } | null;
+            /** Status */
+            status: string;
+            /** Error */
+            error?: string | null;
+            /** Org Id */
+            org_id?: string | null;
+            /** Caller User Id */
+            caller_user_id?: string | null;
+            /** Caller Email */
+            caller_email?: string | null;
+            /** Caller Name */
+            caller_name?: string | null;
+            /** Iterations Used */
+            iterations_used: number;
+            /** Tokens Used */
+            tokens_used: number;
+            /** Budget Max Iterations */
+            budget_max_iterations?: number | null;
+            /** Budget Max Tokens */
+            budget_max_tokens?: number | null;
+            /** Duration Ms */
+            duration_ms?: number | null;
+            /** Llm Model */
+            llm_model?: string | null;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /** Started At */
+            started_at?: string | null;
+            /** Completed At */
+            completed_at?: string | null;
+            /** Steps */
+            steps?: components["schemas"]["AgentRunStepResponse"][];
+            /** Ai Usage */
+            ai_usage?: components["schemas"]["AIUsagePublicSimple"][] | null;
+            ai_totals?: components["schemas"]["AIUsageTotalsSimple"] | null;
+        };
+        /** AgentRunListResponse */
+        AgentRunListResponse: {
+            /** Items */
+            items: components["schemas"]["AgentRunResponse"][];
+            /** Total */
+            total: number;
+            /** Next Cursor */
+            next_cursor?: string | null;
+        };
+        /** AgentRunResponse */
+        AgentRunResponse: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /**
+             * Agent Id
+             * Format: uuid
+             */
+            agent_id: string;
+            /** Agent Name */
+            agent_name?: string | null;
+            /** Trigger Type */
+            trigger_type: string;
+            /** Trigger Source */
+            trigger_source?: string | null;
+            /** Conversation Id */
+            conversation_id?: string | null;
+            /** Event Delivery Id */
+            event_delivery_id?: string | null;
+            /** Input */
+            input?: {
+                [key: string]: unknown;
+            } | null;
+            /** Output */
+            output?: {
+                [key: string]: unknown;
+            } | null;
+            /** Status */
+            status: string;
+            /** Error */
+            error?: string | null;
+            /** Org Id */
+            org_id?: string | null;
+            /** Caller User Id */
+            caller_user_id?: string | null;
+            /** Caller Email */
+            caller_email?: string | null;
+            /** Caller Name */
+            caller_name?: string | null;
+            /** Iterations Used */
+            iterations_used: number;
+            /** Tokens Used */
+            tokens_used: number;
+            /** Budget Max Iterations */
+            budget_max_iterations?: number | null;
+            /** Budget Max Tokens */
+            budget_max_tokens?: number | null;
+            /** Duration Ms */
+            duration_ms?: number | null;
+            /** Llm Model */
+            llm_model?: string | null;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /** Started At */
+            started_at?: string | null;
+            /** Completed At */
+            completed_at?: string | null;
+        };
+        /** AgentRunStepResponse */
+        AgentRunStepResponse: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /**
+             * Run Id
+             * Format: uuid
+             */
+            run_id: string;
+            /** Step Number */
+            step_number: number;
+            /** Type */
+            type: string;
+            /** Content */
+            content?: {
+                [key: string]: unknown;
+            } | null;
+            /** Tokens Used */
+            tokens_used?: number | null;
+            /** Duration Ms */
+            duration_ms?: number | null;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
         };
         /**
          * AgentSummary
@@ -7826,6 +8090,41 @@ export interface components {
              * @description Override temperature
              */
             llm_temperature?: number | null;
+            /**
+             * Max Iterations
+             * @description Max LLM iterations for autonomous runs
+             */
+            max_iterations?: number | null;
+            /**
+             * Max Token Budget
+             * @description Max token budget for autonomous runs
+             */
+            max_token_budget?: number | null;
+        };
+        /**
+         * AgentUsage
+         * @description AI usage by agent.
+         */
+        AgentUsage: {
+            /** Agent Name */
+            agent_name: string;
+            /**
+             * Run Count
+             * @default 0
+             */
+            run_count: number;
+            /**
+             * Input Tokens
+             * @default 0
+             */
+            input_tokens: number;
+            /**
+             * Output Tokens
+             * @default 0
+             */
+            output_tokens: number;
+            /** Ai Cost */
+            ai_cost?: string;
         };
         /**
          * AppDependencyIssue
@@ -10433,20 +10732,40 @@ export interface components {
             event_subscription_id: string;
             /**
              * Workflow Id
-             * Format: uuid
              * @description Workflow ID
              */
-            workflow_id: string;
+            workflow_id?: string | null;
             /**
              * Workflow Name
              * @description Workflow name (for display)
              */
             workflow_name?: string | null;
             /**
+             * Target Type
+             * @description Target type: 'workflow' or 'agent'
+             * @default workflow
+             */
+            target_type: string;
+            /**
+             * Agent Id
+             * @description Agent ID (when target_type='agent')
+             */
+            agent_id?: string | null;
+            /**
+             * Agent Name
+             * @description Agent name (for display)
+             */
+            agent_name?: string | null;
+            /**
              * Execution Id
              * @description Execution ID (set when execution starts)
              */
             execution_id?: string | null;
+            /**
+             * Agent Run Id
+             * @description Agent run ID (set when agent run is queued)
+             */
+            agent_run_id?: string | null;
             /**
              * Status
              * @description Delivery status
@@ -10734,11 +11053,21 @@ export interface components {
          */
         EventSubscriptionCreate: {
             /**
-             * Workflow Id
-             * Format: uuid
-             * @description Workflow ID to trigger when events arrive
+             * Target Type
+             * @description Target type: 'workflow' or 'agent'
+             * @default workflow
              */
-            workflow_id: string;
+            target_type: string;
+            /**
+             * Workflow Id
+             * @description Workflow ID (required when target_type='workflow')
+             */
+            workflow_id?: string | null;
+            /**
+             * Agent Id
+             * @description Agent ID (required when target_type='agent')
+             */
+            agent_id?: string | null;
             /**
              * Event Type
              * @description Optional event type filter (e.g., 'ticket.created')
@@ -10793,11 +11122,26 @@ export interface components {
              */
             event_source_id: string;
             /**
+             * Target Type
+             * @description Target type
+             * @default workflow
+             */
+            target_type: string;
+            /**
              * Workflow Id
-             * Format: uuid
              * @description Workflow ID
              */
-            workflow_id: string;
+            workflow_id?: string | null;
+            /**
+             * Agent Id
+             * @description Agent ID
+             */
+            agent_id?: string | null;
+            /**
+             * Agent Name
+             * @description Agent name (for display)
+             */
+            agent_name?: string | null;
             /**
              * Workflow Name
              * @description Workflow name (for display)
@@ -17647,6 +17991,8 @@ export interface components {
             by_workflow?: components["schemas"]["WorkflowUsage"][];
             /** By Conversation */
             by_conversation?: components["schemas"]["ConversationUsage"][];
+            /** By Agent */
+            by_agent?: components["schemas"]["AgentUsage"][];
             /** By Organization */
             by_organization?: components["schemas"]["OrganizationUsage"][];
             /** Knowledge Storage */
@@ -18098,6 +18444,10 @@ export interface components {
             /** Ai Usage */
             ai_usage?: components["schemas"]["AIUsagePublicSimple"][] | null;
             ai_totals?: components["schemas"]["AIUsageTotalsSimple"] | null;
+            /** Execution Context */
+            execution_context?: {
+                [key: string]: unknown;
+            } | null;
         };
         /**
          * WorkflowExecutionRequest
@@ -24244,7 +24594,7 @@ export interface operations {
             };
         };
     };
-    execute_endpoint_api_endpoints__workflow_id__get: {
+    execute_endpoint_api_endpoints__workflow_id__put: {
         parameters: {
             query?: never;
             header: {
@@ -24277,7 +24627,7 @@ export interface operations {
             };
         };
     };
-    execute_endpoint_api_endpoints__workflow_id__get: {
+    execute_endpoint_api_endpoints__workflow_id__put: {
         parameters: {
             query?: never;
             header: {
@@ -24310,7 +24660,7 @@ export interface operations {
             };
         };
     };
-    execute_endpoint_api_endpoints__workflow_id__get: {
+    execute_endpoint_api_endpoints__workflow_id__put: {
         parameters: {
             query?: never;
             header: {
@@ -24343,7 +24693,7 @@ export interface operations {
             };
         };
     };
-    execute_endpoint_api_endpoints__workflow_id__get: {
+    execute_endpoint_api_endpoints__workflow_id__put: {
         parameters: {
             query?: never;
             header: {
@@ -26505,6 +26855,110 @@ export interface operations {
             };
         };
     };
+    list_agent_runs_api_agent_runs_get: {
+        parameters: {
+            query?: {
+                agent_id?: string | null;
+                status?: string | null;
+                trigger_type?: string | null;
+                org_id?: string | null;
+                start_date?: string | null;
+                end_date?: string | null;
+                limit?: number;
+                offset?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AgentRunListResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_agent_run_api_agent_runs__run_id__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                run_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AgentRunDetailResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    execute_agent_run_api_agent_runs_execute_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AgentRunCreateRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     list_conversations_api_chat_conversations_get: {
         parameters: {
             query?: {
@@ -27987,8 +28441,8 @@ export interface operations {
                 start_date: string;
                 /** @description End date (inclusive) */
                 end_date: string;
-                /** @description Source filter: executions, chat, or all */
-                source?: "executions" | "chat" | "all";
+                /** @description Source filter: executions, chat, agents, or all */
+                source?: "executions" | "chat" | "agents" | "all";
                 /** @description Filter by organization ID */
                 org_id?: string | null;
             };
