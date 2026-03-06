@@ -756,7 +756,7 @@ class WorkflowExecutionConsumer(BaseConsumer):
                 "tags": ["workflow"] if not is_script else [],
                 "timeout_seconds": timeout_seconds,
                 "transient": False,
-                "is_platform_admin": False,
+                "is_platform_admin": pending.get("is_platform_admin", False),
                 "startup": startup,  # Launch workflow results (available via context.startup)
                 "roi": {
                     "time_saved": roi_time_saved,

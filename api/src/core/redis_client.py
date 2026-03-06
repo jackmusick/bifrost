@@ -60,6 +60,7 @@ class PendingExecution(TypedDict):
     api_key_id: str | None  # Workflow ID whose API key triggered this (for audit trail)
     startup: dict[str, Any] | None  # Launch workflow results (available via context.startup)
     sync: bool  # If True, worker pushes result to Redis for sync execution
+    is_platform_admin: bool  # Whether the caller is a platform admin
     created_at: str  # ISO format
     cancelled: bool
 
@@ -105,6 +106,7 @@ class RedisClient:
         startup: dict[str, Any] | None = None,
         api_key_id: str | None = None,
         sync: bool = False,
+        is_platform_admin: bool = False,
     ) -> None:
         """
         Store pending execution in Redis.
@@ -142,6 +144,7 @@ class RedisClient:
             "api_key_id": api_key_id,
             "startup": startup,
             "sync": sync,
+            "is_platform_admin": is_platform_admin,
             "created_at": datetime.now(timezone.utc).isoformat(),
             "cancelled": False,
         }

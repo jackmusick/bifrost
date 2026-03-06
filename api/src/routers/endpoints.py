@@ -301,6 +301,7 @@ async def _execute_sync(
         form_id=None,
         api_key_id=api_key_id,
         sync=True,
+        is_platform_admin=context.is_platform_admin,
     )
 
     # Queue execution with sync=True

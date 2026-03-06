@@ -78,6 +78,7 @@ async def enqueue_workflow_execution(
         startup=context.startup,  # Pass launch workflow results to worker
         api_key_id=api_key_id,
         sync=sync,
+        is_platform_admin=context.is_platform_admin,
     )
 
     # Add to queue tracking (publishes position updates to all queued executions)
