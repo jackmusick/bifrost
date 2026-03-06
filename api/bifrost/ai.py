@@ -250,6 +250,7 @@ class ai:
         temperature: float | None = None,
         org_id: str | None = None,
         model: str | None = None,
+        timeout: float | None = None,
     ) -> AIResponse | T:
         """
         Generate an AI completion.
@@ -267,6 +268,7 @@ class ai:
             temperature: Override default temperature (0.0-2.0)
             org_id: Organization scope for knowledge search
             model: Override default model (must be compatible with configured provider)
+            timeout: Override default HTTP timeout in seconds (default: 30s)
 
         Returns:
             AIResponse with content, or parsed Pydantic model if response_format provided
@@ -324,7 +326,8 @@ class ai:
                 "org_id": org_id,
                 "model": model,
                 "execution_id": execution_id,
-            }
+            },
+            timeout=timeout,
         )
         if not response.is_success:
             # Extract error detail from response if available

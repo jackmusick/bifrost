@@ -210,8 +210,10 @@ class AgentExecutor:
 
             # 4b. Delegation tools are now included by resolve_agent_tools
 
-            # 5. Build message history
+            # 5. Build message history and fix any corrupted ordering
             messages = await self._build_message_history(agent, conversation)
+            messages = self._fix_interleaved_messages(messages)
+            messages = self._fix_dangling_tool_calls(messages)
 
             # 5b. Enhance system prompt with tool-use instructions if tools available
             if tool_definitions and messages and messages[0].role == "system":
@@ -732,6 +734,43 @@ IMPORTANT: When the user's request can be fulfilled using one of your tools, you
                 )
             else:
                 result.append(msg)
+        return result
+
+    def _fix_interleaved_messages(
+        self, messages: list[LLMMessage]
+    ) -> list[LLMMessage]:
+        """Fix user messages wedged between tool_use and tool_result.
+
+        When a user sends a message while a tool call is executing, the DB can
+        end up with: assistant(tool_use) → user → tool(result).  The Anthropic
+        API requires tool_result to immediately follow its tool_use.  This
+        method moves such user messages after the tool_result block.
+        """
+        result = list(messages)
+        i = 0
+        while i < len(result):
+            msg = result[i]
+            if msg.role == "assistant" and msg.tool_calls:
+                expected_ids = {tc.id for tc in msg.tool_calls}
+                # Scan ahead: collect interleaved non-tool messages and tool results
+                j = i + 1
+                tool_results: list[LLMMessage] = []
+                displaced: list[LLMMessage] = []
+                while j < len(result):
+                    tcid = result[j].tool_call_id
+                    if result[j].role == "tool" and tcid and tcid in expected_ids:
+                        tool_results.append(result[j])
+                        expected_ids.discard(tcid)
+                    elif not expected_ids:
+                        # All tool results found, stop scanning
+                        break
+                    else:
+                        displaced.append(result[j])
+                    j += 1
+                if displaced and tool_results:
+                    # Rewrite: assistant, tool_results, then displaced messages
+                    result[i + 1 : j] = tool_results + displaced
+            i += 1
         return result
 
     def _fix_dangling_tool_calls(

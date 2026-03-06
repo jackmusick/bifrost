@@ -290,6 +290,7 @@ async def websocket_connect(
 
     # Track active chat tasks per conversation so they can be cancelled
     active_chat_tasks: dict[str, asyncio.Task] = {}
+    pending_messages: dict[str, tuple[str, str | None]] = {}  # conversation_id -> (message, local_id)
 
     try:
         await manager.connect(websocket, allowed_channels)
@@ -450,35 +451,50 @@ async def websocket_connect(
                     })
                     continue
 
-                # Cancel any existing task for this conversation
-                existing_task = active_chat_tasks.pop(conversation_id, None)
+                # If a task is already running for this conversation, queue the
+                # message instead of cancelling.  Cancelling mid-tool-call causes
+                # interleaved messages that break the Anthropic API contract.
+                existing_task = active_chat_tasks.get(conversation_id)
                 if existing_task and not existing_task.done():
-                    existing_task.cancel()
+                    pending_messages[conversation_id] = (message_text, local_id)
+                    continue
 
-                # Process chat message in background task
-                task = asyncio.create_task(
-                    _process_chat_message(
-                        websocket=websocket,
-                        user=user,
-                        conversation_id=conversation_id,
-                        message=message_text,
-                        local_id=local_id,
+                # No running task — process immediately
+                def _start_chat_task(cid: str, msg: str, lid: str | None) -> asyncio.Task:
+                    t = asyncio.create_task(
+                        _process_chat_message(
+                            websocket=websocket,
+                            user=user,
+                            conversation_id=cid,
+                            message=msg,
+                            local_id=lid,
+                        )
                     )
-                )
-                active_chat_tasks[conversation_id] = task
-                task.add_done_callback(
-                    lambda t, cid=conversation_id: active_chat_tasks.pop(cid, None)
-                )
+                    active_chat_tasks[cid] = t
+
+                    def _on_task_done(_t: asyncio.Task, _cid: str = cid) -> None:
+                        active_chat_tasks.pop(_cid, None)
+                        queued = pending_messages.pop(_cid, None)
+                        if queued:
+                            q_msg, q_lid = queued
+                            _start_chat_task(_cid, q_msg, q_lid)
+
+                    t.add_done_callback(_on_task_done)
+                    return t
+
+                _start_chat_task(conversation_id, message_text, local_id)
 
             elif data.get("type") == "chat_stop":
                 conversation_id = data.get("conversation_id")
                 if conversation_id:
+                    pending_messages.pop(conversation_id, None)
                     task = active_chat_tasks.pop(conversation_id, None)
                     if task and not task.done():
                         task.cancel()
 
     except WebSocketDisconnect:
         # Cancel all active chat tasks for this connection
+        pending_messages.clear()
         for task in active_chat_tasks.values():
             if not task.done():
                 task.cancel()
@@ -487,6 +503,7 @@ async def websocket_connect(
         logger.info(f"WebSocket disconnected for user {user.user_id}")
     except Exception as e:
         # Cancel all active chat tasks for this connection
+        pending_messages.clear()
         for task in active_chat_tasks.values():
             if not task.done():
                 task.cancel()

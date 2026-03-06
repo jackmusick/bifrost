@@ -594,7 +594,7 @@ async def _execute_workflow_tool_impl(
     workflow_id: str,
     workflow_name: str,
     **inputs: Any,
-) -> str:
+) -> Any:
     """Execute a specific workflow tool by ID."""
     from src.core.database import get_db_context
     from src.repositories.workflows import WorkflowRepository
@@ -607,7 +607,7 @@ async def _execute_workflow_tool_impl(
                 db,
                 org_id=context.org_id,
                 user_id=context.user_id,
-                is_superuser=False,
+                is_superuser=context.is_platform_admin,
             )
             workflow = await repo.get(id=workflow_id)
 
@@ -619,13 +619,21 @@ async def _execute_workflow_tool_impl(
 
             # Execute the workflow
             result = await execute_tool(
-                workflow=workflow,
-                inputs=inputs,
+                workflow_id=str(workflow.id),
+                workflow_name=workflow.name,
+                parameters=inputs,
                 user_id=str(context.user_id),
+                user_email=context.user_email,
+                user_name=context.user_name or "MCP User",
                 org_id=str(context.org_id) if context.org_id else None,
+                is_platform_admin=context.is_platform_admin,
             )
 
-            return result
+            success = result.status.value == "Success"
+            if success:
+                return result.result
+            else:
+                return f"Error: {result.error}"
 
     except Exception as e:
         logger.exception(f"Error executing workflow tool {workflow_name}: {e}")

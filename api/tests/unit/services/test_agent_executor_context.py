@@ -506,6 +506,84 @@ class TestCompactToolOutputs:
         assert result[0].content == small_content
 
 
+class TestFixInterleavedMessages:
+    """Test reordering of user messages wedged between tool_use and tool_result."""
+
+    def test_no_interleaving_unchanged(self, executor):
+        """Normal sequence passes through unchanged."""
+        messages = [
+            LLMMessage(role="user", content="Search for X"),
+            LLMMessage(
+                role="assistant",
+                content="Searching...",
+                tool_calls=[ToolCallRequest(id="c1", name="search", arguments={})],
+            ),
+            LLMMessage(role="tool", content="Result", tool_call_id="c1", tool_name="search"),
+            LLMMessage(role="assistant", content="Found it"),
+        ]
+        result = executor._fix_interleaved_messages(messages)
+        assert result == messages
+
+    def test_user_between_tool_use_and_result(self, executor):
+        """User message wedged between tool_use and tool_result gets moved after."""
+        messages = [
+            LLMMessage(role="user", content="Search for X"),
+            LLMMessage(
+                role="assistant",
+                content="Searching...",
+                tool_calls=[ToolCallRequest(id="c1", name="search", arguments={})],
+            ),
+            LLMMessage(role="user", content="Actually nevermind"),  # interleaved
+            LLMMessage(role="tool", content="Result", tool_call_id="c1", tool_name="search"),
+            LLMMessage(role="assistant", content="Found it"),
+        ]
+        result = executor._fix_interleaved_messages(messages)
+        assert len(result) == 5
+        # tool_result should immediately follow tool_use
+        assert result[1].role == "assistant"
+        assert result[1].tool_calls is not None
+        assert result[2].role == "tool"
+        assert result[2].tool_call_id == "c1"
+        # user message moved after tool result
+        assert result[3].role == "user"
+        assert result[3].content == "Actually nevermind"
+        assert result[4].role == "assistant"
+
+    def test_multiple_tool_results_with_interleaved_user(self, executor):
+        """User message between multi-tool assistant and results."""
+        messages = [
+            LLMMessage(
+                role="assistant",
+                content=None,
+                tool_calls=[
+                    ToolCallRequest(id="c1", name="tool_a", arguments={}),
+                    ToolCallRequest(id="c2", name="tool_b", arguments={}),
+                ],
+            ),
+            LLMMessage(role="user", content="Oops"),  # interleaved
+            LLMMessage(role="tool", content="Result A", tool_call_id="c1", tool_name="tool_a"),
+            LLMMessage(role="tool", content="Result B", tool_call_id="c2", tool_name="tool_b"),
+            LLMMessage(role="assistant", content="Done"),
+        ]
+        result = executor._fix_interleaved_messages(messages)
+        # assistant, tool_a, tool_b, user, assistant
+        assert result[0].role == "assistant"
+        assert result[1].role == "tool" and result[1].tool_call_id == "c1"
+        assert result[2].role == "tool" and result[2].tool_call_id == "c2"
+        assert result[3].role == "user" and result[3].content == "Oops"
+        assert result[4].role == "assistant"
+
+    def test_no_tool_calls_unchanged(self, executor):
+        """Plain conversation without tools passes through unchanged."""
+        messages = [
+            LLMMessage(role="user", content="Hello"),
+            LLMMessage(role="assistant", content="Hi"),
+            LLMMessage(role="user", content="Bye"),
+        ]
+        result = executor._fix_interleaved_messages(messages)
+        assert result == messages
+
+
 class TestFixDanglingToolCalls:
     """Test dangling tool_call prevention."""
 
