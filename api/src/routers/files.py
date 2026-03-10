@@ -360,7 +360,7 @@ async def push_files(
             )
             existing_hash = existing.scalar_one_or_none()
 
-            content_bytes = content.encode("utf-8")
+            content_bytes = base64.b64decode(content)
             new_hash = hashlib.sha256(content_bytes).hexdigest()
 
             if existing_hash == new_hash:
@@ -430,7 +430,7 @@ async def push_files(
         # Write .bifrost/ files to S3 (not counted in created/updated tallies)
         for repo_path, content in bifrost_files.items():
             try:
-                content_bytes = content.encode("utf-8")
+                content_bytes = base64.b64decode(content)
                 # Normalize: strip any prefix before .bifrost/ to prevent
                 # duplicates from clients sending prefixed manifest paths
                 parts = repo_path.replace("\\", "/").split("/")
@@ -458,7 +458,7 @@ async def push_files(
                 try:
                     idx = parts.index(".bifrost")
                     fname = "/".join(parts[idx + 1:])
-                    pushed_hashes[fname] = hashlib.sha256(c.encode("utf-8")).hexdigest()
+                    pushed_hashes[fname] = hashlib.sha256(base64.b64decode(c)).hexdigest()
                 except ValueError:
                     pass
             for filename, content in import_result.manifest_files.items():

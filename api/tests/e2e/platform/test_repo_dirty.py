@@ -1,4 +1,5 @@
 """E2E tests for repo dirty flag and repo-status endpoint."""
+import base64
 
 
 def test_repo_status_default(e2e_client, platform_admin):
@@ -30,7 +31,7 @@ def test_cli_push_does_not_set_dirty(e2e_client, platform_admin):
 
     # Push a file via CLI endpoint
     resp = e2e_client.post("/api/files/push", headers=platform_admin.headers, json={
-        "files": {"test-push-no-dirty.py": "# test push"},
+        "files": {"test-push-no-dirty.py": base64.b64encode(b"# test push").decode("ascii")},
     })
     assert resp.status_code == 200
 

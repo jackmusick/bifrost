@@ -1,13 +1,19 @@
 """E2E tests for CLI push/pull endpoints and manifest round-tripping."""
+import base64
 import hashlib
+
+
+def _b64(text: str) -> str:
+    """Encode text as base64 string (matching CLI push format)."""
+    return base64.b64encode(text.encode("utf-8")).decode("ascii")
 
 
 def test_push_basic_files(e2e_client, platform_admin):
     """Push regular files and verify counts."""
     resp = e2e_client.post("/api/files/push", headers=platform_admin.headers, json={
         "files": {
-            "apps/test-app/index.tsx": "export default () => <div>Hello</div>",
-            "apps/test-app/styles.css": "body { margin: 0; }",
+            "apps/test-app/index.tsx": _b64("export default () => <div>Hello</div>"),
+            "apps/test-app/styles.css": _b64("body { margin: 0; }"),
         },
     })
     assert resp.status_code == 200
@@ -19,7 +25,7 @@ def test_push_basic_files(e2e_client, platform_admin):
 def test_push_unchanged_files(e2e_client, platform_admin):
     """Pushing the same files twice reports them as unchanged."""
     files = {
-        "apps/push-unchanged/index.tsx": "export default () => <div>Static</div>",
+        "apps/push-unchanged/index.tsx": _b64("export default () => <div>Static</div>"),
     }
     e2e_client.post("/api/files/push", headers=platform_admin.headers, json={"files": files})
     resp = e2e_client.post("/api/files/push", headers=platform_admin.headers, json={"files": files})
@@ -40,12 +46,12 @@ def test_push_bifrost_manifest(e2e_client, platform_admin):
     # Push the workflow source file first so the manifest import can resolve it
     e2e_client.post("/api/files/push", headers=platform_admin.headers, json={
         "files": {
-            "workflows/test_wf.py": "from bifrost import workflow\n\n@workflow\ndef test_wf():\n    pass\n",
+            "workflows/test_wf.py": _b64("from bifrost import workflow\n\n@workflow\ndef test_wf():\n    pass\n"),
         },
     })
     resp = e2e_client.post("/api/files/push", headers=platform_admin.headers, json={
         "files": {
-            ".bifrost/workflows.yaml": workflows_yaml,
+            ".bifrost/workflows.yaml": _b64(workflows_yaml),
         },
     })
     assert resp.status_code == 200
@@ -60,7 +66,7 @@ def test_push_manifest_response_shape(e2e_client, platform_admin):
     """Push response should include manifest_files and modified_files dicts."""
     resp = e2e_client.post("/api/files/push", headers=platform_admin.headers, json={
         "files": {
-            ".bifrost/workflows.yaml": "workflows: {}\n",
+            ".bifrost/workflows.yaml": _b64("workflows: {}\n"),
         },
     })
     assert resp.status_code == 200
@@ -74,7 +80,7 @@ def test_pull_only_returns_manifests(e2e_client, platform_admin):
     """Pull should only return manifest files, not code files."""
     content = "# pull test file"
     e2e_client.post("/api/files/push", headers=platform_admin.headers, json={
-        "files": {"modules/pull_test.py": content},
+        "files": {"modules/pull_test.py": _b64(content)},
     })
     resp = e2e_client.post("/api/files/pull", headers=platform_admin.headers, json={
         "prefix": "modules",
@@ -153,7 +159,7 @@ def test_push_does_not_mark_dirty(e2e_client, platform_admin):
     before = e2e_client.get("/api/github/repo-status", headers=platform_admin.headers).json()
 
     e2e_client.post("/api/files/push", headers=platform_admin.headers, json={
-        "files": {"test-no-dirty.py": "# test"},
+        "files": {"test-no-dirty.py": _b64("# test")},
     })
     after = e2e_client.get("/api/github/repo-status", headers=platform_admin.headers).json()
 
@@ -166,13 +172,28 @@ def test_push_delete_missing_prefix(e2e_client, platform_admin):
     """delete_missing_prefix should remove files not in the push batch."""
     e2e_client.post("/api/files/push", headers=platform_admin.headers, json={
         "files": {
-            "apps/cleanup/keep.tsx": "keep",
-            "apps/cleanup/remove.tsx": "remove",
+            "apps/cleanup/keep.tsx": _b64("keep"),
+            "apps/cleanup/remove.tsx": _b64("remove"),
         },
     })
     resp = e2e_client.post("/api/files/push", headers=platform_admin.headers, json={
-        "files": {"apps/cleanup/keep.tsx": "keep"},
+        "files": {"apps/cleanup/keep.tsx": _b64("keep")},
         "delete_missing_prefix": "apps/cleanup",
     })
     data = resp.json()
     assert data["deleted"] >= 1
+
+
+def test_push_pull_binary_file(e2e_client, platform_admin):
+    """Push and pull a binary file via base64 encoding."""
+    # Binary content with null bytes (would fail with text encoding)
+    binary_content = b"\x00\x01\x02\xff\xfe\xfd\x89PNG\r\n\x1a\n"
+    b64_content = base64.b64encode(binary_content).decode("ascii")
+
+    resp = e2e_client.post("/api/files/push", headers=platform_admin.headers, json={
+        "files": {"assets/test.bin": b64_content},
+    })
+    assert resp.status_code == 200
+    data = resp.json()
+    assert data["created"] + data["updated"] + data["unchanged"] == 1
+    assert data["errors"] == []

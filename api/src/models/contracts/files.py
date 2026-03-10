@@ -8,7 +8,7 @@ from pydantic import BaseModel, Field
 
 class FilePushRequest(BaseModel):
     """Request to push multiple files to _repo/."""
-    files: dict[str, str] = Field(..., description="Map of repo_path to content")
+    files: dict[str, str] = Field(..., description="Map of repo_path to base64-encoded content")
     delete_missing_prefix: str | None = Field(
         default=None,
         description="If set, delete files under this prefix not in the push batch",
@@ -40,7 +40,7 @@ class FilePullResponse(BaseModel):
     """Response for file pull."""
     files: dict[str, str] = Field(
         default_factory=dict,
-        description="Map of path to content for changed files",
+        description="Map of path to base64-encoded content for changed files",
     )
     deleted: list[str] = Field(
         default_factory=list,
