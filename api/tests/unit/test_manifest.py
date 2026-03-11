@@ -1552,7 +1552,7 @@ class TestManifestValidationAgents:
 class TestDiffManifests:
     """Tests for _diff_manifests()."""
 
-    def _make_manifest(self, **kwargs) -> "Manifest":
+    def _make_manifest(self, **kwargs):
         from src.services.manifest import Manifest
         return Manifest(**kwargs)
 
@@ -1666,7 +1666,7 @@ class TestDiffManifests:
 class TestCollectChangedIds:
     """Tests for _collect_changed_ids()."""
 
-    def _make_manifest(self, **kwargs) -> "Manifest":
+    def _make_manifest(self, **kwargs):
         from src.services.manifest import Manifest
         return Manifest(**kwargs)
 
