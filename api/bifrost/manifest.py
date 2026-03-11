@@ -67,6 +67,7 @@ class ManifestRole(BaseModel):
 class ManifestWorkflow(BaseModel):
     """Workflow entry in manifest."""
     id: str
+    name: str | None = None
     path: str
     function_name: str
     type: str = "workflow"  # workflow | tool | data_provider
@@ -84,6 +85,7 @@ class ManifestWorkflow(BaseModel):
 class ManifestForm(BaseModel):
     """Form entry in manifest."""
     id: str
+    name: str | None = None
     path: str
     organization_id: str | None = None
     roles: list[str] = Field(default_factory=list)
@@ -93,6 +95,7 @@ class ManifestForm(BaseModel):
 class ManifestAgent(BaseModel):
     """Agent entry in manifest."""
     id: str
+    name: str | None = None
     path: str
     organization_id: str | None = None
     roles: list[str] = Field(default_factory=list)
@@ -153,6 +156,7 @@ class ManifestIntegrationMapping(BaseModel):
 class ManifestIntegration(BaseModel):
     """Integration entry in manifest."""
     id: str
+    name: str | None = None
     entity_id: str | None = None
     entity_id_name: str | None = None
     default_entity_id: str | None = None
@@ -180,6 +184,7 @@ class ManifestTable(BaseModel):
     via the alias, matching the DB column name.
     """
     id: str
+    name: str | None = None
     description: str | None = None
     organization_id: str | None = None
     application_id: str | None = None
@@ -203,6 +208,7 @@ class ManifestEventSubscription(BaseModel):
 class ManifestEventSource(BaseModel):
     """Event source entry in manifest."""
     id: str
+    name: str | None = None
     source_type: str  # webhook, schedule, internal
     organization_id: str | None = None
     is_active: bool = True

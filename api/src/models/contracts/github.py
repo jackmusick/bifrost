@@ -382,7 +382,7 @@ class WorkingTreeStatus(BaseModel):
 
 class EntityChange(BaseModel):
     """A single entity-level change tracked during commit or sync."""
-    action: Literal["added", "updated", "removed"] = Field(..., description="Type of change")
+    action: Literal["added", "updated", "removed", "keep"] = Field(..., description="Type of change")
     entity_type: str = Field(..., description="Entity type: workflow, form, agent, app, integration, config, table, event, organization, role")
     name: str = Field(..., description="Entity display name")
     path: str | None = Field(default=None, description="File path (for file-backed entities)")

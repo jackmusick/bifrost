@@ -1,5 +1,4 @@
 """E2E tests for repo dirty flag and repo-status endpoint."""
-import base64
 
 
 def test_repo_status_default(e2e_client, platform_admin):
@@ -25,15 +24,18 @@ def test_repo_status_dirty_after_editor_write(e2e_client, platform_admin):
 
 
 def test_cli_push_does_not_set_dirty(e2e_client, platform_admin):
-    """CLI push endpoint should not mark repo as dirty."""
+    """CLI per-file write should not mark repo as dirty."""
     # Get current dirty state
     before = e2e_client.get("/api/github/repo-status", headers=platform_admin.headers).json()
 
-    # Push a file via CLI endpoint
-    resp = e2e_client.post("/api/files/push", headers=platform_admin.headers, json={
-        "files": {"test-push-no-dirty.py": base64.b64encode(b"# test push").decode("ascii")},
+    # Push a file via per-file write endpoint
+    resp = e2e_client.post("/api/files/write", headers=platform_admin.headers, json={
+        "path": "test-push-no-dirty.py",
+        "content": "# test push",
+        "mode": "cloud",
+        "location": "workspace",
     })
-    assert resp.status_code == 200
+    assert resp.status_code == 204
 
     # If it was clean before, it should still be clean
     after = e2e_client.get("/api/github/repo-status", headers=platform_admin.headers).json()

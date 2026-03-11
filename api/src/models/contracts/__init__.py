@@ -272,8 +272,7 @@ from src.models.contracts.editor import (
 from src.models.contracts.files import (
     FilePullRequest,
     FilePullResponse,
-    FilePushRequest,
-    FilePushResponse,
+    ManifestImportResponse,
     WatchSessionRequest,
 )
 
@@ -942,10 +941,9 @@ __all__ = [
     "StuckHistoryResponse",
     "StuckWorkflowStats",
     # File Operations (CLI push/pull)
-    "FilePushRequest",
-    "FilePushResponse",
     "FilePullRequest",
     "FilePullResponse",
+    "ManifestImportResponse",
     "WatchSessionRequest",
     # Export/Import
     "ExportMetadata",

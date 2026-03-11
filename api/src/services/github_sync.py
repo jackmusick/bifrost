@@ -252,6 +252,150 @@ def _classify_conflict_type(unmerged: dict, cpath: str) -> str:
 
 
 # =============================================================================
+# Manifest diff (pure in-memory comparison)
+# =============================================================================
+
+
+def _diff_manifests(incoming: "Manifest", current: "Manifest") -> list[dict[str, str]]:
+    """Compare two Manifest objects and return entity-level changes.
+
+    Returns list of dicts with keys: action, entity_type, name, organization.
+    Only changed entities are included (unchanged are omitted).
+    """
+    # Build org ID → name lookup from both manifests
+    org_lookup: dict[str, str] = {}
+    for org in incoming.organizations:
+        org_lookup[org.id] = org.name
+    for org in current.organizations:
+        org_lookup.setdefault(org.id, org.name)
+
+    # Build integration ID → name lookup for config display
+    integ_lookup: dict[str, str] = {}
+    for integ in incoming.integrations.values():
+        integ_lookup[integ.id] = integ.name
+    for integ in current.integrations.values():
+        integ_lookup.setdefault(integ.id, integ.name)
+
+    def _resolve_org(entity: object) -> str:
+        oid = getattr(entity, "organization_id", None)
+        if not oid:
+            return "Global"
+        return org_lookup.get(oid, oid) or "Global"
+
+    changes: list[dict[str, str]] = []
+
+    # -- List-based entities (organizations, roles) --
+    _diff_list_entities(
+        incoming.organizations, current.organizations,
+        "organizations", org_lookup, changes,
+    )
+    _diff_list_entities(
+        incoming.roles, current.roles,
+        "roles", org_lookup, changes,
+    )
+
+    # -- Dict-based entities --
+    _DICT_ENTITY_TYPES: list[tuple[str, str]] = [
+        ("workflows", "workflows"),
+        ("integrations", "integrations"),
+        ("configs", "configs"),
+        ("tables", "tables"),
+        ("events", "events"),
+        ("forms", "forms"),
+        ("agents", "agents"),
+        ("apps", "apps"),
+    ]
+
+    for attr, entity_type in _DICT_ENTITY_TYPES:
+        incoming_dict: dict = getattr(incoming, attr)
+        current_dict: dict = getattr(current, attr)
+
+        # Index by entity .id
+        incoming_by_id = {v.id: v for v in incoming_dict.values()}
+        current_by_id = {v.id: v for v in current_dict.values()}
+
+        all_ids = set(incoming_by_id) | set(current_by_id)
+        for eid in all_ids:
+            inc = incoming_by_id.get(eid)
+            cur = current_by_id.get(eid)
+
+            if inc and not cur:
+                action = "add"
+                entity = inc
+            elif cur and not inc:
+                action = "delete"
+                entity = cur
+            else:
+                assert inc is not None and cur is not None
+                # Compare serialized form
+                if inc.model_dump(mode="json", by_alias=True) == cur.model_dump(mode="json", by_alias=True):
+                    continue  # No change
+                action = "update"
+                entity = inc
+
+            # Resolve display name
+            if entity_type == "configs":
+                name = getattr(entity, "key", "") or str(eid)
+                iid = getattr(entity, "integration_id", None)
+                if iid and iid in integ_lookup:
+                    name = f"{integ_lookup[iid]}/{name}"
+            else:
+                name = getattr(entity, "name", None) or getattr(entity, "function_name", None) or str(eid)
+
+            changes.append({
+                "action": action,
+                "entity_type": entity_type,
+                "name": name,
+                "organization": _resolve_org(entity),
+            })
+
+    # Sort: entity_type, then action priority (add > update > delete), then name
+    _ACTION_ORDER = {"add": 0, "update": 1, "delete": 2, "keep": 3}
+    changes.sort(key=lambda c: (c["entity_type"], _ACTION_ORDER.get(c["action"], 9), c["name"]))
+
+    return changes
+
+
+def _diff_list_entities(
+    incoming_list: list,
+    current_list: list,
+    entity_type: str,
+    org_lookup: dict[str, str],
+    changes: list[dict[str, str]],
+) -> None:
+    """Diff list-based manifest entities (organizations, roles)."""
+    incoming_by_id = {e.id: e for e in incoming_list}
+    current_by_id = {e.id: e for e in current_list}
+
+    for eid in set(incoming_by_id) | set(current_by_id):
+        inc = incoming_by_id.get(eid)
+        cur = current_by_id.get(eid)
+
+        if inc and not cur:
+            action = "add"
+            entity = inc
+        elif cur and not inc:
+            action = "delete"
+            entity = cur
+        else:
+            assert inc is not None and cur is not None
+            if inc.model_dump(mode="json", by_alias=True) == cur.model_dump(mode="json", by_alias=True):
+                continue
+            action = "update"
+            entity = inc
+
+        oid = getattr(entity, "organization_id", None)
+        org = (org_lookup.get(oid, oid) or "Global") if oid else "Global"
+
+        changes.append({
+            "action": action,
+            "entity_type": entity_type,
+            "name": getattr(entity, "name", "") or str(eid),
+            "organization": org,
+        })
+
+
+# =============================================================================
 # Standalone manifest import (no git, reads from S3)
 # =============================================================================
 
@@ -259,12 +403,19 @@ def _classify_conflict_type(unmerged: dict, cpath: str) -> str:
 class ManifestImportResult:
     """Result of importing manifest from repo."""
     applied: bool = False
+    dry_run: bool = False
     warnings: list[str] = field(default_factory=list)
     manifest_files: dict[str, str] = field(default_factory=dict)
     modified_files: dict[str, str] = field(default_factory=dict)
+    deleted_entities: list[str] = field(default_factory=list)
+    entity_changes: list[dict[str, str]] = field(default_factory=list)
 
 
-async def import_manifest_from_repo(db: AsyncSession) -> ManifestImportResult:
+async def import_manifest_from_repo(
+    db: AsyncSession,
+    delete_removed_entities: bool = False,
+    dry_run: bool = False,
+) -> ManifestImportResult:
     """Import manifest from S3 _repo/.bifrost/ into DB.
 
     Standalone function (not a method on GitHubSyncService) that:
@@ -315,6 +466,13 @@ async def import_manifest_from_repo(db: AsyncSession) -> ManifestImportResult:
         result.warnings.extend(validation_errors)
         return result
 
+    # 4. Dry-run: pure manifest comparison (no DB writes)
+    if dry_run:
+        db_manifest = await generate_manifest(db)
+        result.entity_changes = _diff_manifests(manifest, db_manifest)
+        result.dry_run = True
+        return result
+
     # Helper: read a file from S3, returning None on failure
     async def _read_or_none(path: str) -> bytes | None:
         try:
@@ -322,12 +480,22 @@ async def import_manifest_from_repo(db: AsyncSession) -> ManifestImportResult:
         except Exception:
             return None
 
-    # 4. Run entity resolution via direct S3 reads (no temp dir needed)
+    # 5. Run entity resolution via direct S3 reads (no temp dir needed)
     service = GitHubSyncService(db, repo_url="", branch="main")
 
     try:
         async with db.begin_nested():
-            await service.plan_import(manifest, repo=repo)
+            all_ops = await service.plan_import(manifest, repo=repo, dry_run=False)
+
+            # Build entity_changes from upsert ops
+            from src.services.sync_ops import Upsert as UpsertOp
+            for op in all_ops:
+                if isinstance(op, UpsertOp) and op.action_taken:
+                    result.entity_changes.append({
+                        "action": "add" if op.action_taken == "inserted" else "update",
+                        "entity_type": getattr(op.model, "__tablename__", "unknown"),
+                        "name": op.values.get("name") or op.values.get("function_name") or op.values.get("key") or str(op.id),
+                    })
 
             # Run indexer side-effects (same as _import_all_entities)
             from src.services.file_storage.indexers.form import FormIndexer
@@ -401,13 +569,28 @@ async def import_manifest_from_repo(db: AsyncSession) -> ManifestImportResult:
                             sa_update(Agent).where(Agent.id == agent_id_uuid).values(**post_values_a)
                         )
 
+            # Run entity deletions if requested
+            if delete_removed_entities:
+                deletion_changes = await service._resolve_deletions(
+                    manifest=manifest, repo=repo, dry_run=False,
+                )
+                for ec in deletion_changes:
+                    result.deleted_entities.append(
+                        f"{ec.entity_type}: {ec.name}"
+                    )
+                    result.entity_changes.append({
+                        "action": "delete" if ec.action == "removed" else ec.action,
+                        "entity_type": ec.entity_type,
+                        "name": ec.name,
+                    })
+
             result.applied = True
 
     except Exception as e:
         result.warnings.append(f"Entity resolution failed: {e}")
         logger.warning(f"Manifest import entity resolution failed: {e}", exc_info=True)
 
-    # 6. Regenerate manifest from DB
+    # 7. Regenerate manifest from DB
     try:
         new_manifest = await generate_manifest(db)
         result.manifest_files = serialize_manifest_dir(new_manifest)
@@ -1381,7 +1564,7 @@ class GitHubSyncService:
 
         return cache
 
-    async def plan_import(self, manifest: "Manifest", work_dir: Path | None = None, progress_fn=None, repo: "RepoStorage | None" = None) -> "list[SyncOp]":
+    async def plan_import(self, manifest: "Manifest", work_dir: Path | None = None, progress_fn=None, repo: "RepoStorage | None" = None, dry_run: bool = False) -> "list[SyncOp]":
         """Build and execute SyncOps for importing a manifest (entities only).
 
         Resolves and immediately executes ops in dependency order.
@@ -1409,7 +1592,7 @@ class GitHubSyncService:
         Returns the collected ops for callers that want to inspect them
         (e.g. for entity change tracking or dry-run analysis).
         """
-        from src.services.sync_ops import SyncOp  # noqa: F401
+        from src.services.sync_ops import SyncOp, Upsert  # noqa: F401
 
         if not work_dir and not repo:
             raise ValueError("plan_import requires either work_dir or repo")
@@ -1459,7 +1642,11 @@ class GitHubSyncService:
             await _prog(f"Importing organization: {morg.name}")
             org_ops.extend(self._resolve_organization(morg, cache))
         for op in org_ops:
-            await op.execute(self.db)
+            if dry_run:
+                if isinstance(op, Upsert):
+                    op.action_taken = "updated" if op.id in cache.get("org_ids", set()) else "inserted"
+            else:
+                await op.execute(self.db)
         all_ops.extend(org_ops)
 
         # 0b. Resolve roles (no deps) — execute immediately
@@ -1468,7 +1655,11 @@ class GitHubSyncService:
             await _prog(f"Importing role: {mrole.name}")
             role_ops.extend(self._resolve_role(mrole, cache))
         for op in role_ops:
-            await op.execute(self.db)
+            if dry_run:
+                if isinstance(op, Upsert):
+                    op.action_taken = "updated" if op.id in cache.get("role_ids", set()) else "inserted"
+            else:
+                await op.execute(self.db)
         all_ops.extend(role_ops)
 
         # 1. Resolve workflows — execute immediately
@@ -1479,7 +1670,11 @@ class GitHubSyncService:
                 await _prog(f"Importing workflow: {mwf.name or key}")
                 wf_ops = self._resolve_workflow(mwf.name or key, mwf, cache)
                 for op in wf_ops:
-                    await op.execute(self.db)
+                    if dry_run:
+                        if isinstance(op, Upsert):
+                            op.action_taken = "updated" if op.id in cache.get("wf_ids", set()) else "inserted"
+                    else:
+                        await op.execute(self.db)
                 all_ops.extend(wf_ops)
                 imported_wf_ids.add(mwf.id)
 
@@ -1488,22 +1683,36 @@ class GitHubSyncService:
             await _prog(f"Importing integration: {minteg.name or key}")
             integ_ops = await self._resolve_integration(minteg.name or key, minteg, cache)
             for op in integ_ops:
-                await op.execute(self.db)
+                if dry_run:
+                    if isinstance(op, Upsert):
+                        op.action_taken = "updated" if op.id in cache.get("integ_ids", set()) else "inserted"
+                else:
+                    await op.execute(self.db)
             all_ops.extend(integ_ops)
 
         # 3. Resolve configs
+        _config_id_set = {v[0] for v in cache.get("config_by_natural", {}).values()}
         for _config_key, mcfg in manifest.configs.items():
             cfg_ops = self._resolve_config(mcfg, cache)
             for op in cfg_ops:
-                await op.execute(self.db)
+                if dry_run:
+                    if isinstance(op, Upsert):
+                        op.action_taken = "updated" if op.id in _config_id_set else "inserted"
+                else:
+                    await op.execute(self.db)
             all_ops.extend(cfg_ops)
 
         # 4. Resolve apps (before tables — tables ref application_id)
+        _app_id_set = set(cache.get("app_by_slug", {}).values())
         for _app_name, mapp in manifest.apps.items():
             await _prog(f"Importing app: {mapp.name}")
             app_ops = self._resolve_app(mapp, cache)
             for op in app_ops:
-                await op.execute(self.db)
+                if dry_run:
+                    if isinstance(op, Upsert):
+                        op.action_taken = "updated" if op.id in _app_id_set else "inserted"
+                else:
+                    await op.execute(self.db)
             all_ops.extend(app_ops)
 
         # 5. Resolve tables (refs org + app UUIDs)
@@ -1511,7 +1720,11 @@ class GitHubSyncService:
             await _prog(f"Importing table: {mtable.name or key}")
             table_ops = await self._resolve_table(mtable.name or key, mtable, cache)
             for op in table_ops:
-                await op.execute(self.db)
+                if dry_run:
+                    if isinstance(op, Upsert):
+                        op.action_taken = "updated" if op.id in cache.get("table_ids", set()) else "inserted"
+                else:
+                    await op.execute(self.db)
             all_ops.extend(table_ops)
 
         # 6. Resolve event sources + subscriptions
@@ -1519,7 +1732,11 @@ class GitHubSyncService:
             await _prog(f"Importing event source: {mes.name or key}")
             es_ops = await self._resolve_event_source(mes.name or key, mes, imported_wf_ids)
             for op in es_ops:
-                await op.execute(self.db)
+                if dry_run:
+                    if isinstance(op, Upsert):
+                        op.action_taken = "inserted"  # no ES cache; assume new
+                else:
+                    await op.execute(self.db)
             all_ops.extend(es_ops)
 
         # 7. Resolve forms (metadata ops only — indexer called in _import_all_entities)
@@ -1529,7 +1746,11 @@ class GitHubSyncService:
                 await _prog(f"Importing form: {mform.name}")
                 form_ops = self._resolve_form(mform, content)
                 for op in form_ops:
-                    await op.execute(self.db)
+                    if dry_run:
+                        if isinstance(op, Upsert):
+                            op.action_taken = "inserted"  # no form cache; assume new
+                    else:
+                        await op.execute(self.db)
                 all_ops.extend(form_ops)
 
         # 8. Resolve agents (metadata ops only — indexer called in _import_all_entities)
@@ -1539,7 +1760,11 @@ class GitHubSyncService:
                 await _prog(f"Importing agent: {magent.name}")
                 agent_ops = self._resolve_agent(magent, content)
                 for op in agent_ops:
-                    await op.execute(self.db)
+                    if dry_run:
+                        if isinstance(op, Upsert):
+                            op.action_taken = "inserted"  # no agent cache; assume new
+                    else:
+                        await op.execute(self.db)
                 all_ops.extend(agent_ops)
 
         return all_ops
@@ -2130,7 +2355,7 @@ class GitHubSyncService:
                     resolved_list.append(item)
             data[field_name] = resolved_list
 
-    async def _resolve_deletions(self, work_dir: Path | None = None, manifest: "Manifest | None" = None, repo: "RepoStorage | None" = None) -> list:
+    async def _resolve_deletions(self, work_dir: Path | None = None, manifest: "Manifest | None" = None, repo: "RepoStorage | None" = None, dry_run: bool = False) -> list:
         """Compute delete/deactivate ops for entities removed from the manifest.
 
         Optimized: pushes filtering to SQL with NOT IN clauses, returning only
@@ -2249,9 +2474,10 @@ class GitHubSyncService:
                     entity_type=entity_type,
                     name=name,
                 ))
-            await self.db.execute(
-                sa_delete(model).where(model.id.in_(stale_ids))  # type: ignore[attr-defined]
-            )
+            if not dry_run:
+                await self.db.execute(
+                    sa_delete(model).where(model.id.in_(stale_ids))  # type: ignore[attr-defined]
+                )
             return len(stale_ids)
 
         # Helper: query stale IDs and soft-delete (deactivate)
@@ -2278,11 +2504,12 @@ class GitHubSyncService:
                     entity_type=entity_type,
                     name=name,
                 ))
-            await self.db.execute(
-                sa_update(model)
-                .where(model.id.in_(stale_ids))  # type: ignore[attr-defined]
-                .values(is_active=False, updated_at=now)
-            )
+            if not dry_run:
+                await self.db.execute(
+                    sa_update(model)
+                    .where(model.id.in_(stale_ids))  # type: ignore[attr-defined]
+                    .values(is_active=False, updated_at=now)
+                )
             return len(stale_ids)
 
         # Delete workflows synced from git that are no longer present
@@ -2290,7 +2517,7 @@ class GitHubSyncService:
             Workflow,
             [Workflow.is_active == True, Workflow.path.isnot(None)],  # noqa: E712
             present_wf_uuids,
-            "workflow",
+            "workflows",
         )
 
         # Delete integrations not in manifest
@@ -2298,7 +2525,7 @@ class GitHubSyncService:
             Integration,
             [Integration.is_deleted == False],  # noqa: E712
             present_integ_uuids,
-            "integration",
+            "integrations",
         )
 
         # Delete configs not in manifest (skip integration-schema-linked configs —
@@ -2313,40 +2540,46 @@ class GitHubSyncService:
                 logger.info(f"Deleting config {sid} — removed from repo")
                 entity_changes.append(EntityChange(
                     action="removed",
-                    entity_type="config",
+                    entity_type="configs",
                     name=str(sid),
                 ))
-            await self.db.execute(
-                sa_delete(Config).where(Config.id.in_(stale_cfg_ids))
-            )
+            if not dry_run:
+                await self.db.execute(
+                    sa_delete(Config).where(Config.id.in_(stale_cfg_ids))
+                )
 
-        # Soft-delete tables not in manifest (log only — data preserved)
-        table_q = select(Table.id)
+        # Tables not in manifest (data preserved — report as "keep")
+        table_q = select(Table.id, Table.name)
         if present_table_uuids:
             table_q = table_q.where(Table.id.notin_(present_table_uuids))
         table_result = await self.db.execute(table_q)
         for row in table_result.all():
-            logger.info(f"Table {row[0]} not in manifest (data preserved)")
+            logger.info(f"Table {row[0]} ({row[1]}) not in manifest (data preserved)")
+            entity_changes.append(EntityChange(
+                action="keep",
+                entity_type="tables",
+                name=row[1] or str(row[0]),
+            ))
 
         # Delete event subscriptions not in manifest
-        await _bulk_delete(EventSubscription, [], present_sub_uuids, "event_subscription")
+        await _bulk_delete(EventSubscription, [], present_sub_uuids, "event_subscriptions")
 
         # Delete event sources not in manifest
-        await _bulk_delete(EventSource, [], present_event_uuids, "event_source")
+        await _bulk_delete(EventSource, [], present_event_uuids, "events")
 
         # Delete forms not in manifest
         await _bulk_delete(
             Form,
             [Form.is_active == True],  # noqa: E712
             present_form_uuids,
-            "form",
+            "forms",
         )
 
         # Delete agents not in manifest
-        await _bulk_delete(Agent, [], present_agent_uuids, "agent")
+        await _bulk_delete(Agent, [], present_agent_uuids, "agents")
 
         # Delete apps not in manifest
-        await _bulk_delete(Application, [], present_app_uuids, "app")
+        await _bulk_delete(Application, [], present_app_uuids, "applications")
 
         # Soft-delete organizations not in manifest (only when manifest has orgs)
         if present_org_uuids:
@@ -2354,7 +2587,7 @@ class GitHubSyncService:
                 Organization,
                 [Organization.is_active == True],  # noqa: E712
                 present_org_uuids,
-                "organization",
+                "organizations",
             )
 
         # Soft-delete roles not in manifest (only when manifest has roles)
@@ -2363,7 +2596,7 @@ class GitHubSyncService:
                 Role,
                 [Role.is_active == True],  # noqa: E712
                 present_role_uuids,
-                "role",
+                "roles",
             )
 
         return entity_changes
@@ -2465,12 +2698,12 @@ class GitHubSyncService:
         await _detect_stale(
             Workflow,
             [Workflow.is_active == True, Workflow.path.isnot(None)],  # noqa: E712
-            present_wf_uuids, "workflow",
+            present_wf_uuids, "workflows",
         )
         await _detect_stale(
             Integration,
             [Integration.is_deleted == False],  # noqa: E712
-            present_integ_uuids, "integration",
+            present_integ_uuids, "integrations",
         )
 
         # Configs (skip integration-schema-linked configs)
@@ -2480,30 +2713,30 @@ class GitHubSyncService:
         cfg_result = await self.db.execute(cfg_q)
         for row in cfg_result.all():
             entity_changes.append(EntityChange(
-                action="removed", entity_type="config", name=str(row[0]),
+                action="removed", entity_type="configs", name=str(row[0]),
             ))
 
-        await _detect_stale(EventSubscription, [], present_sub_uuids, "event_subscription")
-        await _detect_stale(EventSource, [], present_event_uuids, "event_source")
+        await _detect_stale(EventSubscription, [], present_sub_uuids, "event_subscriptions")
+        await _detect_stale(EventSource, [], present_event_uuids, "events")
         await _detect_stale(
             Form,
             [Form.is_active == True],  # noqa: E712
-            present_form_uuids, "form",
+            present_form_uuids, "forms",
         )
-        await _detect_stale(Agent, [], present_agent_uuids, "agent")
-        await _detect_stale(Application, [], present_app_uuids, "app")
+        await _detect_stale(Agent, [], present_agent_uuids, "agents")
+        await _detect_stale(Application, [], present_app_uuids, "applications")
 
         if present_org_uuids:
             await _detect_stale(
                 Organization,
                 [Organization.is_active == True],  # noqa: E712
-                present_org_uuids, "organization",
+                present_org_uuids, "organizations",
             )
         if present_role_uuids:
             await _detect_stale(
                 Role,
                 [Role.is_active == True],  # noqa: E712
-                present_role_uuids, "role",
+                present_role_uuids, "roles",
             )
 
         return entity_changes

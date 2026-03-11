@@ -6,28 +6,6 @@ from typing import Literal
 from pydantic import BaseModel, Field
 
 
-class FilePushRequest(BaseModel):
-    """Request to push multiple files to _repo/."""
-    files: dict[str, str] = Field(..., description="Map of repo_path to base64-encoded content")
-    delete_missing_prefix: str | None = Field(
-        default=None,
-        description="If set, delete files under this prefix not in the push batch",
-    )
-
-
-class FilePushResponse(BaseModel):
-    """Response for file push."""
-    created: int = 0
-    updated: int = 0
-    deleted: int = 0
-    unchanged: int = 0
-    errors: list[str] = Field(default_factory=list)
-    warnings: list[str] = Field(default_factory=list)
-    manifest_applied: bool = False
-    manifest_files: dict[str, str] = Field(default_factory=dict)
-    modified_files: dict[str, str] = Field(default_factory=dict)
-
-
 class FilePullRequest(BaseModel):
     """Request to pull files from server."""
     prefix: str = Field(..., description="Repo prefix to pull from")
@@ -55,9 +33,12 @@ class FilePullResponse(BaseModel):
 class ManifestImportResponse(BaseModel):
     """Response for manifest import from S3 into DB."""
     applied: bool = False
+    dry_run: bool = False
     warnings: list[str] = Field(default_factory=list)
     manifest_files: dict[str, str] = Field(default_factory=dict)
     modified_files: dict[str, str] = Field(default_factory=dict)
+    deleted_entities: list[str] = Field(default_factory=list)
+    entity_changes: list[dict[str, str]] = Field(default_factory=list)
 
 
 class WatchSessionRequest(BaseModel):
