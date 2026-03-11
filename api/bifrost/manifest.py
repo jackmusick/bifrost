@@ -191,7 +191,9 @@ class ManifestTable(BaseModel):
 class ManifestEventSubscription(BaseModel):
     """Event subscription within an event source."""
     id: str
-    workflow_id: str
+    target_type: str = "workflow"
+    workflow_id: str | None = None
+    agent_id: str | None = None
     event_type: str | None = None
     filter_expression: str | None = None
     input_mapping: dict | None = None
@@ -376,6 +378,7 @@ def validate_manifest(manifest: Manifest) -> list[str]:
     org_ids = {org.id for org in manifest.organizations}
     role_ids = {role.id for role in manifest.roles}
     wf_ids = {wf.id for wf in manifest.workflows.values()}
+    agent_ids = {a.id for a in manifest.agents.values()}
     integration_ids = {integ.id for integ in manifest.integrations.values()}
     app_ids = {app.id for app in manifest.apps.values()}
 
@@ -446,11 +449,18 @@ def validate_manifest(manifest: Manifest) -> list[str]:
                 f"{evt.webhook_integration_id}"
             )
         for sub in evt.subscriptions:
-            if sub.workflow_id not in wf_ids:
-                errors.append(
-                    f"Event source '{name}' subscription '{sub.id}' references unknown workflow: "
-                    f"{sub.workflow_id}"
-                )
+            if sub.target_type == "agent":
+                if sub.agent_id and sub.agent_id not in agent_ids:
+                    errors.append(
+                        f"Event source '{name}' subscription '{sub.id}' references unknown agent: "
+                        f"{sub.agent_id}"
+                    )
+            else:
+                if sub.workflow_id and sub.workflow_id not in wf_ids:
+                    errors.append(
+                        f"Event source '{name}' subscription '{sub.id}' references unknown workflow: "
+                        f"{sub.workflow_id}"
+                    )
 
     return errors
 
