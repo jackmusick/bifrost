@@ -2359,6 +2359,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/files/manifest/import": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Import Manifest
+         * @description Import .bifrost/ manifest files from S3 into DB.
+         */
+        post: operations["import_manifest_api_files_manifest_import_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/files/watch": {
         parameters: {
             query?: never;
@@ -3415,22 +3435,22 @@ export interface paths {
          * Execute workflow via API key
          * @description Execute an endpoint-enabled workflow using an API key for authentication
          */
-        get: operations["execute_endpoint_api_endpoints__workflow_id__get"];
+        get: operations["execute_endpoint_api_endpoints__workflow_id__put"];
         /**
          * Execute workflow via API key
          * @description Execute an endpoint-enabled workflow using an API key for authentication
          */
-        put: operations["execute_endpoint_api_endpoints__workflow_id__get"];
+        put: operations["execute_endpoint_api_endpoints__workflow_id__put"];
         /**
          * Execute workflow via API key
          * @description Execute an endpoint-enabled workflow using an API key for authentication
          */
-        post: operations["execute_endpoint_api_endpoints__workflow_id__get"];
+        post: operations["execute_endpoint_api_endpoints__workflow_id__put"];
         /**
          * Execute workflow via API key
          * @description Execute an endpoint-enabled workflow using an API key for authentication
          */
-        delete: operations["execute_endpoint_api_endpoints__workflow_id__get"];
+        delete: operations["execute_endpoint_api_endpoints__workflow_id__put"];
         options?: never;
         head?: never;
         patch?: never;
@@ -11558,6 +11578,18 @@ export interface components {
             exists: boolean;
         };
         /**
+         * FileListMetadataItem
+         * @description File metadata item with path, etag, and last_modified.
+         */
+        FileListMetadataItem: {
+            /** Path */
+            path: string;
+            /** Etag */
+            etag: string;
+            /** Last Modified */
+            last_modified: string;
+        };
+        /**
          * FileListRequest
          * @description Request to list files.
          */
@@ -11582,6 +11614,12 @@ export interface components {
              * @enum {string}
              */
             mode: "local" | "cloud";
+            /**
+             * Include Metadata
+             * @description If true, return ETags + last_modified per file
+             * @default false
+             */
+            include_metadata: boolean;
         };
         /**
          * FileListResponse
@@ -11592,7 +11630,12 @@ export interface components {
              * Files
              * @description List of file/folder paths
              */
-            files: string[];
+            files?: string[];
+            /**
+             * Files Metadata
+             * @description Per-file metadata (when include_metadata=true)
+             */
+            files_metadata?: components["schemas"]["FileListMetadataItem"][];
         };
         /**
          * FileMetadata
@@ -13991,6 +14034,27 @@ export interface components {
              * @description Timestamp of last reindex operation
              */
             last_reindex?: string | null;
+        };
+        /**
+         * ManifestImportResponse
+         * @description Response for manifest import from S3 into DB.
+         */
+        ManifestImportResponse: {
+            /**
+             * Applied
+             * @default false
+             */
+            applied: boolean;
+            /** Warnings */
+            warnings?: string[];
+            /** Manifest Files */
+            manifest_files?: {
+                [key: string]: string;
+            };
+            /** Modified Files */
+            modified_files?: {
+                [key: string]: string;
+            };
         };
         /**
          * MessagePublic
@@ -22906,6 +22970,26 @@ export interface operations {
             };
         };
     };
+    import_manifest_api_files_manifest_import_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ManifestImportResponse"];
+                };
+            };
+        };
+    };
     manage_watch_session_api_files_watch_post: {
         parameters: {
             query?: never;
@@ -24594,7 +24678,7 @@ export interface operations {
             };
         };
     };
-    execute_endpoint_api_endpoints__workflow_id__get: {
+    execute_endpoint_api_endpoints__workflow_id__put: {
         parameters: {
             query?: never;
             header: {
@@ -24627,7 +24711,7 @@ export interface operations {
             };
         };
     };
-    execute_endpoint_api_endpoints__workflow_id__get: {
+    execute_endpoint_api_endpoints__workflow_id__put: {
         parameters: {
             query?: never;
             header: {
@@ -24660,7 +24744,7 @@ export interface operations {
             };
         };
     };
-    execute_endpoint_api_endpoints__workflow_id__get: {
+    execute_endpoint_api_endpoints__workflow_id__put: {
         parameters: {
             query?: never;
             header: {
@@ -24693,7 +24777,7 @@ export interface operations {
             };
         };
     };
-    execute_endpoint_api_endpoints__workflow_id__get: {
+    execute_endpoint_api_endpoints__workflow_id__put: {
         parameters: {
             query?: never;
             header: {

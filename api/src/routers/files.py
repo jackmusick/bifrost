@@ -25,6 +25,7 @@ from src.models.contracts.files import (
     FilePullResponse,
     FilePushRequest,
     FilePushResponse,
+    ManifestImportResponse,
     WatchSessionRequest,
 )
 from src.core.database import get_db
@@ -91,6 +92,7 @@ class FileListRequest(BaseModel):
     directory: str = Field(default="", description="Directory path relative to location root")
     location: Location = Field(default="workspace", description="Storage location")
     mode: Mode = Field(default="cloud", description="Storage mode: local or cloud")
+    include_metadata: bool = Field(default=False, description="If true, return ETags + last_modified per file")
 
 
 class FileExistsRequest(BaseModel):
@@ -106,9 +108,17 @@ class FileReadResponse(BaseModel):
     binary: bool = Field(default=False, description="True if content is base64-encoded")
 
 
+class FileListMetadataItem(BaseModel):
+    """File metadata item with path, etag, and last_modified."""
+    path: str
+    etag: str
+    last_modified: str  # ISO 8601
+
+
 class FileListResponse(BaseModel):
     """Response for file listing."""
-    files: list[str] = Field(..., description="List of file/folder paths")
+    files: list[str] = Field(default_factory=list, description="List of file/folder paths")
+    files_metadata: list[FileListMetadataItem] = Field(default_factory=list, description="Per-file metadata (when include_metadata=true)")
 
 
 class FileExistsResponse(BaseModel):
@@ -232,6 +242,31 @@ async def list_files_simple(
 ) -> FileListResponse:
     """List files in a directory (simple SDK-focused endpoint)."""
     try:
+        if request.include_metadata and request.mode == "cloud" and request.location == "workspace":
+            # Return ETags + last_modified via RepoStorage
+            from src.services.repo_storage import RepoStorage
+
+            repo = RepoStorage()
+            s3_metadata = await repo.list_with_metadata(request.directory)
+
+            # Filter out .git/ objects
+            s3_metadata = {
+                path: meta for path, meta in s3_metadata.items()
+                if not path.startswith(".git/")
+            }
+
+            return FileListResponse(
+                files=sorted(s3_metadata.keys()),
+                files_metadata=[
+                    FileListMetadataItem(
+                        path=path,
+                        etag=meta.etag,
+                        last_modified=meta.last_modified.isoformat(),
+                    )
+                    for path, meta in sorted(s3_metadata.items())
+                ],
+            )
+
         backend = get_backend(request.mode, db)
         files = await backend.list(request.directory, request.location)
         return FileListResponse(files=files)
@@ -564,6 +599,32 @@ async def get_manifest(
 
     manifest = await generate_manifest(db)
     return serialize_manifest_dir(manifest)
+
+
+@router.post("/manifest/import", response_model=ManifestImportResponse)
+async def import_manifest(
+    ctx: Context,
+    user: CurrentSuperuser,
+    db: AsyncSession = Depends(get_db),
+) -> ManifestImportResponse:
+    """Import .bifrost/ manifest files from S3 into DB."""
+    from src.services.github_sync import import_manifest_from_repo
+    from src.services.manifest_generator import generate_manifest
+    from src.services.manifest import serialize_manifest_dir
+
+    result = await import_manifest_from_repo(db)
+    await db.commit()
+
+    # Regenerate manifests to return canonical versions
+    manifest = await generate_manifest(db)
+    manifest_files = serialize_manifest_dir(manifest)
+
+    return ManifestImportResponse(
+        applied=result.applied,
+        warnings=result.warnings,
+        manifest_files=manifest_files,
+        modified_files=result.modified_files,
+    )
 
 
 # =============================================================================

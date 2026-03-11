@@ -197,3 +197,138 @@ def test_push_pull_binary_file(e2e_client, platform_admin):
     data = resp.json()
     assert data["created"] + data["updated"] + data["unchanged"] == 1
     assert data["errors"] == []
+
+
+# =============================================================================
+# Per-file endpoint tests (new CLI flow)
+# =============================================================================
+
+
+def test_list_with_metadata(e2e_client, platform_admin):
+    """POST /api/files/list with include_metadata returns ETags and timestamps."""
+    content = "# list metadata test"
+    e2e_client.post("/api/files/write", headers=platform_admin.headers, json={
+        "path": "modules/list_meta_test.py",
+        "content": content,
+        "mode": "cloud",
+        "location": "workspace",
+    })
+    resp = e2e_client.post("/api/files/list", headers=platform_admin.headers, json={
+        "include_metadata": True,
+        "mode": "cloud",
+        "location": "workspace",
+    })
+    assert resp.status_code == 200
+    data = resp.json()
+    assert "files" in data
+    assert "files_metadata" in data
+    assert len(data["files_metadata"]) > 0
+
+    # Find our test file in metadata
+    meta_map = {item["path"]: item for item in data["files_metadata"]}
+    assert "modules/list_meta_test.py" in meta_map
+    item = meta_map["modules/list_meta_test.py"]
+    assert "etag" in item
+    assert len(item["etag"]) == 32  # MD5 hex
+    assert "last_modified" in item
+    assert "T" in item["last_modified"]  # ISO 8601
+
+    # ETag should match MD5 of content
+    expected_md5 = hashlib.md5(content.encode("utf-8")).hexdigest()
+    assert item["etag"] == expected_md5
+
+
+def test_list_with_metadata_excludes_git(e2e_client, platform_admin):
+    """List with metadata should not return .git/ objects."""
+    e2e_client.post("/api/files/push", headers=platform_admin.headers, json={
+        "files": {".git/objects/meta_test": _b64("git object")},
+    })
+    resp = e2e_client.post("/api/files/list", headers=platform_admin.headers, json={
+        "include_metadata": True,
+        "mode": "cloud",
+        "location": "workspace",
+    })
+    data = resp.json()
+    for item in data["files_metadata"]:
+        assert not item["path"].startswith(".git/"), f"Got .git/ in metadata: {item['path']}"
+
+
+def test_list_without_metadata_unchanged(e2e_client, platform_admin):
+    """List without include_metadata should behave as before (files only, no metadata)."""
+    resp = e2e_client.post("/api/files/list", headers=platform_admin.headers, json={
+        "mode": "cloud",
+        "location": "workspace",
+    })
+    assert resp.status_code == 200
+    data = resp.json()
+    assert "files" in data
+    assert data.get("files_metadata", []) == []
+
+
+def test_manifest_import_endpoint(e2e_client, platform_admin):
+    """POST /api/files/manifest/import imports .bifrost/ from S3 into DB."""
+    # Write a workflow source file + manifest to S3
+    e2e_client.post("/api/files/write", headers=platform_admin.headers, json={
+        "path": "workflows/import_test_wf.py",
+        "content": "from bifrost import workflow\n\n@workflow\ndef import_test_wf():\n    pass\n",
+        "mode": "cloud",
+        "location": "workspace",
+    })
+    e2e_client.post("/api/files/write", headers=platform_admin.headers, json={
+        "path": ".bifrost/workflows.yaml",
+        "content": (
+            "workflows:\n"
+            "  import-test-wf:\n"
+            "    name: import-test-wf\n"
+            "    path: workflows/import_test_wf.py\n"
+        ),
+        "mode": "cloud",
+        "location": "workspace",
+    })
+
+    resp = e2e_client.post("/api/files/manifest/import", headers=platform_admin.headers)
+    assert resp.status_code == 200
+    data = resp.json()
+    assert "applied" in data
+    assert isinstance(data.get("warnings"), list)
+    assert isinstance(data.get("manifest_files"), dict)
+    assert isinstance(data.get("modified_files"), dict)
+
+
+def test_per_file_push_pull_roundtrip(e2e_client, platform_admin):
+    """Write files via /write, list with metadata, read back via /read."""
+    files = {
+        "apps/perfile/index.tsx": "export default () => <div>Per-file</div>",
+        "apps/perfile/utils.ts": "export const y = 2;",
+    }
+    # Write files one at a time
+    for path, content in files.items():
+        resp = e2e_client.post("/api/files/write", headers=platform_admin.headers, json={
+            "path": path,
+            "content": content,
+            "mode": "cloud",
+            "location": "workspace",
+        })
+        assert resp.status_code == 204
+
+    # List with metadata
+    resp = e2e_client.post("/api/files/list", headers=platform_admin.headers, json={
+        "include_metadata": True,
+        "mode": "cloud",
+        "location": "workspace",
+    })
+    assert resp.status_code == 200
+    data = resp.json()
+    meta_map = {item["path"]: item for item in data["files_metadata"]}
+    for path in files:
+        assert path in meta_map
+
+    # Read files back one at a time
+    for path, expected_content in files.items():
+        resp = e2e_client.post("/api/files/read", headers=platform_admin.headers, json={
+            "path": path,
+            "mode": "cloud",
+            "location": "workspace",
+        })
+        assert resp.status_code == 200
+        assert resp.json()["content"] == expected_content

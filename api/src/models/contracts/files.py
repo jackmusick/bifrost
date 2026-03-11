@@ -52,6 +52,14 @@ class FilePullResponse(BaseModel):
     )
 
 
+class ManifestImportResponse(BaseModel):
+    """Response for manifest import from S3 into DB."""
+    applied: bool = False
+    warnings: list[str] = Field(default_factory=list)
+    manifest_files: dict[str, str] = Field(default_factory=dict)
+    modified_files: dict[str, str] = Field(default_factory=dict)
+
+
 class WatchSessionRequest(BaseModel):
     """Request to manage a CLI watch session."""
     action: Literal["start", "stop", "heartbeat"]

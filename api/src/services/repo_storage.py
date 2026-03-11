@@ -11,6 +11,8 @@ import hashlib
 import logging
 from collections.abc import Callable
 from contextlib import asynccontextmanager
+from dataclasses import dataclass
+from datetime import datetime
 
 from aiobotocore.session import get_session
 
@@ -19,6 +21,13 @@ from src.config import Settings, get_settings
 logger = logging.getLogger(__name__)
 
 REPO_PREFIX = "_repo/"
+
+
+@dataclass
+class S3FileMetadata:
+    """Metadata for a file stored in S3."""
+    etag: str
+    last_modified: datetime
 
 
 _shared_session = None
@@ -86,6 +95,35 @@ class RepoStorage:
         """List files in _repo/ with optional sub-prefix. Returns relative paths."""
         async with self._get_client() as client:
             return await self._list_from_s3(client, prefix)
+
+    async def list_with_metadata(self, prefix: str = "") -> dict[str, S3FileMetadata]:
+        """List files in _repo/ with metadata. Returns {relative_path: S3FileMetadata}."""
+        async with self._get_client() as client:
+            return await self._list_with_metadata_from_s3(client, prefix)
+
+    async def _list_with_metadata_from_s3(self, client, prefix: str = "") -> dict[str, S3FileMetadata]:
+        full_prefix = self._repo_key(prefix)
+        result: dict[str, S3FileMetadata] = {}
+        continuation_token = None
+
+        while True:
+            kwargs = {"Bucket": self._bucket, "Prefix": full_prefix}
+            if continuation_token:
+                kwargs["ContinuationToken"] = continuation_token
+
+            response = await client.list_objects_v2(**kwargs)
+            for obj in response.get("Contents", []):
+                rel_path = obj["Key"][len(REPO_PREFIX):]
+                # S3 ETags are quoted — strip quotes for clean comparison
+                etag = obj["ETag"].strip('"')
+                last_modified = obj["LastModified"]
+                result[rel_path] = S3FileMetadata(etag=etag, last_modified=last_modified)
+
+            if not response.get("IsTruncated"):
+                break
+            continuation_token = response.get("NextContinuationToken")
+
+        return result
 
     async def _list_from_s3(self, client, prefix: str = "") -> list[str]:
         full_prefix = self._repo_key(prefix)
