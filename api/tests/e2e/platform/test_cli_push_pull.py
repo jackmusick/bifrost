@@ -457,3 +457,43 @@ def test_per_file_push_pull_roundtrip(e2e_client, platform_admin):
         })
         assert resp.status_code == 200
         assert resp.json()["content"] == expected_content
+
+
+def test_incremental_import_skips_unchanged(e2e_client, platform_admin):
+    """Importing the same manifest twice should report no entity_changes on the second import."""
+    from uuid import uuid4
+
+    wf_id = str(uuid4())
+    wf_py = "from bifrost import workflow\n\n@workflow\ndef incr_test_wf():\n    pass\n"
+
+    # Write workflow source
+    _write_file(e2e_client, platform_admin.headers, "workflows/incr_test_wf.py", wf_py)
+
+    workflows_yaml = (
+        f"workflows:\n"
+        f"  incr-test-wf:\n"
+        f"    id: {wf_id}\n"
+        f"    name: incr_test_wf\n"
+        f"    path: workflows/incr_test_wf.py\n"
+        f"    function_name: incr_test_wf\n"
+    )
+
+    # First import — should create the workflow
+    resp1 = e2e_client.post("/api/files/manifest/import", headers=platform_admin.headers, json={
+        "files": {".bifrost/workflows.yaml": _b64(workflows_yaml)},
+    })
+    assert resp1.status_code == 200
+    data1 = resp1.json()
+    assert data1["applied"] is True
+    assert len(data1.get("entity_changes", [])) > 0, "First import should have entity_changes"
+
+    # Second import — same manifest, should have no changes
+    resp2 = e2e_client.post("/api/files/manifest/import", headers=platform_admin.headers, json={
+        "files": {".bifrost/workflows.yaml": _b64(workflows_yaml)},
+    })
+    assert resp2.status_code == 200
+    data2 = resp2.json()
+    assert data2["applied"] is True
+    assert len(data2.get("entity_changes", [])) == 0, (
+        f"Second import should have no entity_changes but got: {data2.get('entity_changes')}"
+    )
