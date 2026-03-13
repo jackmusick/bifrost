@@ -31,7 +31,7 @@ interface AgentUsage {
 	run_count: number;
 	input_tokens: number;
 	output_tokens: number;
-	ai_cost: string;
+	ai_cost?: string;
 }
 import {
 	formatCurrency,
@@ -891,7 +891,7 @@ export function AgentTable({ agents, isLoading }: AgentTableProps) {
 										{formatNumber(agent.output_tokens)}
 									</DataTableCell>
 									<DataTableCell className="text-right font-mono">
-										{formatCurrency(agent.ai_cost)}
+										{formatCurrency(agent.ai_cost || "0")}
 									</DataTableCell>
 								</DataTableRow>
 							))}

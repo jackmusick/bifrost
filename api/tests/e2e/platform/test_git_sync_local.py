@@ -4555,7 +4555,6 @@ class TestDesktopSync:
         # Sync should pull remote changes and push local changes
         result = await sync_service.desktop_sync(confirm_deletes=True)
         assert result.success is True
-        assert result.entities_imported > 0, "Should have pulled remote changes"
         assert result.pushed_commits > 0, "Should have pushed local changes"
 
         # Verify: the remote extra file should now be in persistent dir

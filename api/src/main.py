@@ -120,6 +120,10 @@ async def app_lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     await init_db()
     logger.info("Database connection established")
 
+    # Register entity change hooks for real-time manifest sync
+    from src.core.entity_change_hook import register_entity_change_hooks
+    register_entity_change_hooks()
+
     # Register dynamic workflow endpoints for OpenAPI documentation
     logger.info("Registering workflow endpoints...")
     await register_dynamic_workflow_endpoints(app)
@@ -435,6 +439,42 @@ def create_app() -> FastAPI:
 
     # Restrict embed tokens to app-rendering endpoints only
     app.add_middleware(EmbedScopeMiddleware)
+
+    # Set request-scoped ContextVars for user attribution and session tracking
+    from src.core.request_context import RequestUser, set_request_user, set_request_session_id
+
+    @app.middleware("http")
+    async def request_context_middleware(request: Request, call_next):
+        # Set watch session ID from header
+        session_id = request.headers.get("x-bifrost-watch-session")
+        set_request_session_id(session_id)
+
+        # Try to extract user from JWT (best-effort, non-blocking)
+        try:
+            from src.core.security import decode_token
+            token = None
+            auth_header = request.headers.get("authorization", "")
+            if auth_header.startswith("Bearer "):
+                token = auth_header[7:]
+            elif "access_token" in request.cookies:
+                token = request.cookies["access_token"]
+            if token:
+                payload = decode_token(token, expected_type="access")
+                if payload:
+                    user_id = payload.get("sub", "")
+                    user_name = payload.get("name") or payload.get("email") or user_id
+                    set_request_user(RequestUser(user_id=user_id, user_name=user_name))
+            else:
+                set_request_user(None)
+        except Exception:
+            set_request_user(None)
+
+        response = await call_next(request)
+
+        # Reset context after request
+        set_request_user(None)
+        set_request_session_id(None)
+        return response
 
     # Register routers
     app.include_router(health_router)

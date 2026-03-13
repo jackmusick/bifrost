@@ -2291,31 +2291,6 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/api/files/push": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /**
-         * Push Files
-         * @description Push multiple files to _repo/ in a single batch.
-         *
-         *     For each file in the request, writes content via FileStorageService.
-         *     Compares content hashes to skip unchanged files.
-         *     If delete_missing_prefix is set, deletes files under that prefix
-         *     that are not in the push batch.
-         */
-        post: operations["push_files_api_files_push_post"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
     "/api/files/pull": {
         parameters: {
             query?: never;
@@ -3435,22 +3410,22 @@ export interface paths {
          * Execute workflow via API key
          * @description Execute an endpoint-enabled workflow using an API key for authentication
          */
-        get: operations["execute_endpoint_api_endpoints__workflow_id__put"];
+        get: operations["execute_endpoint_api_endpoints__workflow_id__delete"];
         /**
          * Execute workflow via API key
          * @description Execute an endpoint-enabled workflow using an API key for authentication
          */
-        put: operations["execute_endpoint_api_endpoints__workflow_id__put"];
+        put: operations["execute_endpoint_api_endpoints__workflow_id__delete"];
         /**
          * Execute workflow via API key
          * @description Execute an endpoint-enabled workflow using an API key for authentication
          */
-        post: operations["execute_endpoint_api_endpoints__workflow_id__put"];
+        post: operations["execute_endpoint_api_endpoints__workflow_id__delete"];
         /**
          * Execute workflow via API key
          * @description Execute an endpoint-enabled workflow using an API key for authentication
          */
-        delete: operations["execute_endpoint_api_endpoints__workflow_id__put"];
+        delete: operations["execute_endpoint_api_endpoints__workflow_id__delete"];
         options?: never;
         head?: never;
         patch?: never;
@@ -7772,7 +7747,7 @@ export interface components {
          */
         AgentPublic: {
             /** Id */
-            id: string | null;
+            id: string;
             /** Name */
             name: string;
             /** Description */
@@ -8018,7 +7993,7 @@ export interface components {
          */
         AgentSummary: {
             /** Id */
-            id: string | null;
+            id: string;
             /** Name */
             name: string;
             /** Description */
@@ -11735,67 +11710,6 @@ export interface components {
             };
         };
         /**
-         * FilePushRequest
-         * @description Request to push multiple files to _repo/.
-         */
-        FilePushRequest: {
-            /**
-             * Files
-             * @description Map of repo_path to base64-encoded content
-             */
-            files: {
-                [key: string]: string;
-            };
-            /**
-             * Delete Missing Prefix
-             * @description If set, delete files under this prefix not in the push batch
-             */
-            delete_missing_prefix?: string | null;
-        };
-        /**
-         * FilePushResponse
-         * @description Response for file push.
-         */
-        FilePushResponse: {
-            /**
-             * Created
-             * @default 0
-             */
-            created: number;
-            /**
-             * Updated
-             * @default 0
-             */
-            updated: number;
-            /**
-             * Deleted
-             * @default 0
-             */
-            deleted: number;
-            /**
-             * Unchanged
-             * @default 0
-             */
-            unchanged: number;
-            /** Errors */
-            errors?: string[];
-            /** Warnings */
-            warnings?: string[];
-            /**
-             * Manifest Applied
-             * @default false
-             */
-            manifest_applied: boolean;
-            /** Manifest Files */
-            manifest_files?: {
-                [key: string]: string;
-            };
-            /** Modified Files */
-            modified_files?: {
-                [key: string]: string;
-            };
-        };
-        /**
          * FileReadRequest
          * @description Request to read a file.
          */
@@ -14036,6 +13950,29 @@ export interface components {
             last_reindex?: string | null;
         };
         /**
+         * ManifestImportRequest
+         * @description Request body for manifest import.
+         */
+        ManifestImportRequest: {
+            /**
+             * Delete Removed Entities
+             * @default false
+             */
+            delete_removed_entities: boolean;
+            /**
+             * Files
+             * @description Map of .bifrost/ path to base64-encoded content
+             */
+            files?: {
+                [key: string]: string;
+            };
+            /**
+             * Dry Run
+             * @default false
+             */
+            dry_run: boolean;
+        };
+        /**
          * ManifestImportResponse
          * @description Response for manifest import from S3 into DB.
          */
@@ -14045,6 +13982,11 @@ export interface components {
              * @default false
              */
             applied: boolean;
+            /**
+             * Dry Run
+             * @default false
+             */
+            dry_run: boolean;
             /** Warnings */
             warnings?: string[];
             /** Manifest Files */
@@ -14055,6 +13997,12 @@ export interface components {
             modified_files?: {
                 [key: string]: string;
             };
+            /** Deleted Entities */
+            deleted_entities?: string[];
+            /** Entity Changes */
+            entity_changes?: {
+                [key: string]: string;
+            }[];
         };
         /**
          * MessagePublic
@@ -22882,39 +22830,6 @@ export interface operations {
             };
         };
     };
-    push_files_api_files_push_post: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["FilePushRequest"];
-            };
-        };
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["FilePushResponse"];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
     pull_files_api_files_pull_post: {
         parameters: {
             query?: never;
@@ -22977,7 +22892,11 @@ export interface operations {
             path?: never;
             cookie?: never;
         };
-        requestBody?: never;
+        requestBody?: {
+            content: {
+                "application/json": components["schemas"]["ManifestImportRequest"] | null;
+            };
+        };
         responses: {
             /** @description Successful Response */
             200: {
@@ -22986,6 +22905,15 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["ManifestImportResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
                 };
             };
         };
@@ -24678,7 +24606,7 @@ export interface operations {
             };
         };
     };
-    execute_endpoint_api_endpoints__workflow_id__put: {
+    execute_endpoint_api_endpoints__workflow_id__delete: {
         parameters: {
             query?: never;
             header: {
@@ -24711,7 +24639,7 @@ export interface operations {
             };
         };
     };
-    execute_endpoint_api_endpoints__workflow_id__put: {
+    execute_endpoint_api_endpoints__workflow_id__delete: {
         parameters: {
             query?: never;
             header: {
@@ -24744,7 +24672,7 @@ export interface operations {
             };
         };
     };
-    execute_endpoint_api_endpoints__workflow_id__put: {
+    execute_endpoint_api_endpoints__workflow_id__delete: {
         parameters: {
             query?: never;
             header: {
@@ -24777,7 +24705,7 @@ export interface operations {
             };
         };
     };
-    execute_endpoint_api_endpoints__workflow_id__put: {
+    execute_endpoint_api_endpoints__workflow_id__delete: {
         parameters: {
             query?: never;
             header: {

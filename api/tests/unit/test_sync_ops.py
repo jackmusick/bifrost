@@ -800,18 +800,18 @@ class TestDeactivateExecuteMocked:
 
 class TestManifestFieldCoverage:
     """Verify every entity type in the Manifest model has a _resolve_* method
-    in GitHubSyncService. This test catches new entity types added to the
+    in ManifestResolver. This test catches new entity types added to the
     manifest that haven't been wired up to the import pipeline.
     """
 
     def test_all_manifest_entity_types_have_resolve_method(self) -> None:
         """Every major entity type in Manifest must be covered by a _resolve_*
-        method in GitHubSyncService.
+        method in ManifestResolver.
         """
-        from src.services.github_sync import GitHubSyncService
+        from src.services.manifest_import import ManifestResolver
 
         resolve_methods = {
-            name for name in dir(GitHubSyncService)
+            name for name in dir(ManifestResolver)
             if name.startswith("_resolve_")
         }
 
@@ -832,19 +832,19 @@ class TestManifestFieldCoverage:
 
         missing = required - resolve_methods
         assert not missing, (
-            f"Missing _resolve_* methods in GitHubSyncService: {sorted(missing)}\n"
+            f"Missing _resolve_* methods in ManifestResolver: {sorted(missing)}\n"
             f"Add a _resolve_<entity_type> method that returns list[SyncOp]."
         )
 
     def test_plan_import_method_exists(self) -> None:
         """plan_import must exist and be callable."""
-        from src.services.github_sync import GitHubSyncService
+        from src.services.manifest_import import ManifestResolver
         import inspect
 
-        assert hasattr(GitHubSyncService, "plan_import"), (
-            "plan_import method is missing from GitHubSyncService"
+        assert hasattr(ManifestResolver, "plan_import"), (
+            "plan_import method is missing from ManifestResolver"
         )
-        assert inspect.iscoroutinefunction(GitHubSyncService.plan_import), (
+        assert inspect.iscoroutinefunction(ManifestResolver.plan_import), (
             "plan_import must be an async method"
         )
 

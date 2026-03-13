@@ -49,6 +49,7 @@ class ManifestOrganization(BaseModel):
     """Organization entry in manifest."""
     id: str
     name: str
+    is_active: bool = True
 
 
 class ManifestRole(BaseModel):
@@ -56,6 +57,7 @@ class ManifestRole(BaseModel):
     id: str
     name: str
     organization_id: str | None = None
+    is_active: bool = True
 
 
 class ManifestWorkflow(BaseModel):

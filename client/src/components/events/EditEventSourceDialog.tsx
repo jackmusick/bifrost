@@ -208,7 +208,7 @@ function EditEventSourceDialogContent({
 				params: {
 					path: { source_id: source.id },
 				},
-				body: body as typeof updateMutation.variables.body,
+				body: body as NonNullable<typeof updateMutation.variables>["body"],
 			});
 
 			toast.success("Event source updated");

@@ -371,11 +371,11 @@ function StepSummary({ step }: { step: AgentRunStep }) {
 		case "error":
 			return (
 				<div className="space-y-1">
-					{c.tool_name && (
+					{c.tool_name ? (
 						<p className="text-sm font-mono text-xs">
 							{c.tool_name as string}
 						</p>
-					)}
+					) : null}
 					<p className="text-sm text-destructive">
 						{c.error as string}
 					</p>

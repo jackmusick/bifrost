@@ -79,10 +79,14 @@ async def test_reimport_regenerates_manifest_and_reindexes_workflows():
     mock_db.begin_nested = MagicMock(return_value=mock_nested)
     mock_db.commit = AsyncMock()
 
+    # Create a mock resolver so we can patch _resolve_deletions on it
+    mock_resolver = MagicMock()
+    mock_resolver._resolve_deletions = AsyncMock(return_value=[])
+    service._resolver = mock_resolver
+
     with patch.object(service, '_regenerate_manifest_to_dir') as mock_regen, \
          patch.object(service, '_reindex_registered_workflows') as mock_reindex, \
          patch.object(service, '_import_all_entities', return_value=(5, [])), \
-         patch.object(service, '_delete_removed_entities'), \
          patch.object(service, '_update_file_index'), \
          patch.object(service, '_sync_app_previews'):
 

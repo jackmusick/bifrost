@@ -420,7 +420,7 @@ async def import_manifest(
     request: ManifestImportRequest | None = None,
 ) -> ManifestImportResponse:
     """Import .bifrost/ manifest files from S3 into DB."""
-    from src.services.github_sync import import_manifest_from_repo
+    from src.services.manifest_import import import_manifest_from_repo
 
     # Write provided .bifrost/ files to S3
     if request and request.files:
@@ -473,6 +473,7 @@ async def manage_watch_session(
     from src.core.cache.redis_client import get_shared_redis
     from src.core.pubsub import publish_file_activity
 
+    session_id = request.session_id or "unknown"
     key = f"bifrost:watch:{user.user_id}:{request.prefix}"
     r = await get_shared_redis()
 
@@ -481,6 +482,7 @@ async def manage_watch_session(
             "user_id": str(user.user_id),
             "user_name": user.name or user.email or "CLI",
             "prefix": request.prefix,
+            "session_id": session_id,
             "started_at": datetime.now(timezone.utc).isoformat(),
         }))
         if request.action == "start":
@@ -489,6 +491,7 @@ async def manage_watch_session(
                 user_name=user.name or user.email or "CLI",
                 activity_type="watch_start",
                 prefix=request.prefix,
+                session_id=session_id,
             )
     elif request.action == "stop":
         await r.delete(key)
@@ -497,6 +500,7 @@ async def manage_watch_session(
             user_name=user.name or user.email or "CLI",
             activity_type="watch_stop",
             prefix=request.prefix,
+            session_id=session_id,
         )
     return {"ok": True}
 

@@ -266,7 +266,9 @@ async function runGitOp<T>(
 		});
 	});
 
+	let hadProgress = false;
 	const unsubProgress = webSocketService.onGitProgress(job_id, (progress) => {
+		hadProgress = true;
 		// Stream each progress message immediately to the terminal
 		const pct = progress.total > 0
 			? `[${Math.round((progress.current / progress.total) * 100)}%] `
@@ -291,18 +293,30 @@ async function runGitOp<T>(
 				unsubLog();
 				unsubProgress();
 
-				// Flush accumulated sync log summaries to the same terminal execution
-				const finalStatus = complete.status === "success" ? "Success" : "Failed";
-				for (const log of syncLogs) {
-					useEditorStore.getState().streamTerminalLog(executionId, log, finalStatus);
-				}
-				// If no logs were streamed at all, create the execution with final status
-				if (syncLogs.length === 0) {
+				// Treat "needs_confirmation" as a non-error status — the caller
+				// handles the confirmation flow, not the terminal.
+				const isOk = complete.status === "success" || complete.status === "needs_confirmation";
+
+				// Only emit terminal logs if there was visible activity (progress
+				// messages or sync logs). Silent operations like "status" produce
+				// no output and shouldn't clutter the terminal.
+				const hadOutput = syncLogs.length > 0 || hadProgress;
+				if (hadOutput || !isOk) {
+					const finalStatus = isOk ? "Success" : "Failed";
+					for (const log of syncLogs) {
+						useEditorStore.getState().streamTerminalLog(executionId, log, finalStatus);
+					}
+					const opLabel = resultType === "sync" ? "Sync"
+						: resultType === "fetch" ? "Fetch"
+						: resultType === "commit" ? "Commit"
+						: resultType.charAt(0).toUpperCase() + resultType.slice(1);
 					useEditorStore.getState().streamTerminalLog(
 						executionId,
 						{
-							level: complete.status === "success" ? "INFO" : "ERROR",
-							message: complete.status === "success" ? "Done" : (complete.error || "Failed"),
+							level: isOk ? "INFO" : "WARNING",
+							message: isOk
+								? `${opLabel} complete`
+								: `${opLabel} failed: ${complete.error || "unknown error"}`,
 							source: "git",
 							timestamp: new Date().toISOString(),
 						},
@@ -310,8 +324,8 @@ async function runGitOp<T>(
 					);
 				}
 
-				if (complete.status === "success" || complete.resultType === resultType) {
-					if (complete.error && complete.status !== "success") {
+				if (isOk || complete.resultType === resultType) {
+					if (complete.error && !isOk) {
 						reject(new GitOpError(complete.error, complete.data as Record<string, unknown>));
 					} else {
 						resolve((complete.data ?? {}) as T);
@@ -584,7 +598,10 @@ export function SourceControlPanel() {
 				(jobId) => syncOp.mutateAsync(jobId, confirmDeletes ? { confirm_deletes: true } : undefined),
 				"sync",
 			);
-			if (result.success) {
+			if (result.needs_delete_confirmation && result.pending_deletes?.length) {
+				setPendingDeletes(result.pending_deletes);
+				toast.warning(`${result.pending_deletes.length} entity deletion(s) require confirmation`);
+			} else if (result.success) {
 				const parts = [];
 				if (result.pushed_commits > 0) parts.push(`pushed ${result.pushed_commits} commit(s)`);
 				if (result.entities_imported > 0) parts.push(`imported ${result.entities_imported} entities`);
@@ -598,9 +615,6 @@ export function SourceControlPanel() {
 				if (result.entity_changes?.length) {
 					logEntityChangesToTerminal(result.entity_changes, "sync");
 				}
-			} else if (result.needs_delete_confirmation && result.pending_deletes?.length) {
-				setPendingDeletes(result.pending_deletes);
-				toast.warning(`${result.pending_deletes.length} entity deletion(s) require confirmation`);
 			} else if (result.conflicts && result.conflicts.length > 0) {
 				setConflicts(result.conflicts);
 				toast.warning(`${result.conflicts.length} conflict(s) need resolution`);

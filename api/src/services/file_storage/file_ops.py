@@ -360,6 +360,21 @@ class FileOperationsService:
             except Exception as e:
                 logger.warning(f"Failed to mark repo dirty: {e}")
 
+        # Broadcast file_push event for watch mode sync
+        try:
+            from src.core.pubsub import publish_file_activity
+            from src.core.request_context import get_request_user, get_request_session_id
+            req_user = get_request_user()
+            await publish_file_activity(
+                user_id=req_user.user_id if req_user else updated_by,
+                user_name=req_user.user_name if req_user else updated_by,
+                activity_type="file_push",
+                paths=[path],
+                session_id=get_request_session_id(),
+            )
+        except Exception as e:
+            logger.warning(f"Failed to publish file_push for {path}: {e}")
+
         logger.info(f"File written: {path} ({size_bytes} bytes) by {updated_by}")
         return WriteResult(
             file_record=None,
@@ -396,6 +411,21 @@ class FileOperationsService:
                 await op(path)
             except Exception as e:
                 logger.warning(f"Delete side effect failed for {path}: {e}")
+
+        # Broadcast file_delete event for watch mode sync
+        try:
+            from src.core.pubsub import publish_file_activity
+            from src.core.request_context import get_request_user, get_request_session_id
+            req_user = get_request_user()
+            await publish_file_activity(
+                user_id=req_user.user_id if req_user else "system",
+                user_name=req_user.user_name if req_user else "system",
+                activity_type="file_delete",
+                paths=[path],
+                session_id=get_request_session_id(),
+            )
+        except Exception as e:
+            logger.warning(f"Failed to publish file_delete for {path}: {e}")
 
         logger.info(f"File deleted: {path}")
 

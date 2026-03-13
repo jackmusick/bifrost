@@ -45,3 +45,4 @@ class WatchSessionRequest(BaseModel):
     """Request to manage a CLI watch session."""
     action: Literal["start", "stop", "heartbeat"]
     prefix: str
+    session_id: str | None = None

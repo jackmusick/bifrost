@@ -48,6 +48,214 @@ from src.services.manifest import (
 logger = logging.getLogger(__name__)
 
 
+# =============================================================================
+# Per-entity serialization functions (ORM → Manifest Pydantic model)
+#
+# These are used by generate_manifest() and by the entity_change_hook to
+# serialize individual entities for real-time change broadcasts.
+# =============================================================================
+
+
+def serialize_organization(org: Organization) -> ManifestOrganization:
+    """Serialize an Organization ORM object to ManifestOrganization."""
+    return ManifestOrganization(id=str(org.id), name=org.name, is_active=org.is_active)
+
+
+def serialize_role(role: Role) -> ManifestRole:
+    """Serialize a Role ORM object to ManifestRole."""
+    return ManifestRole(id=str(role.id), name=role.name, is_active=role.is_active)
+
+
+def serialize_workflow(wf: Workflow, roles: list[str] | None = None) -> ManifestWorkflow:
+    """Serialize a Workflow ORM object to ManifestWorkflow."""
+    return ManifestWorkflow(
+        id=str(wf.id),
+        name=wf.name,
+        path=wf.path,
+        function_name=wf.function_name,
+        type=wf.type or "workflow",
+        description=wf.description,
+        organization_id=str(wf.organization_id) if wf.organization_id else None,
+        roles=roles or [],
+        access_level=wf.access_level or "role_based",
+        endpoint_enabled=wf.endpoint_enabled or False,
+        timeout_seconds=wf.timeout_seconds or 1800,
+        public_endpoint=wf.public_endpoint or False,
+        category=wf.category or "General",
+        tags=wf.tags or [],
+    )
+
+
+def serialize_form(form: Form, roles: list[str] | None = None) -> ManifestForm:
+    """Serialize a Form ORM object to ManifestForm."""
+    return ManifestForm(
+        id=str(form.id),
+        name=form.name,
+        path=f"forms/{form.id}.form.yaml",
+        organization_id=str(form.organization_id) if form.organization_id else None,
+        roles=roles or [],
+        access_level=form.access_level.value if form.access_level else "role_based",
+    )
+
+
+def serialize_agent(agent: Agent, roles: list[str] | None = None) -> ManifestAgent:
+    """Serialize an Agent ORM object to ManifestAgent."""
+    return ManifestAgent(
+        id=str(agent.id),
+        name=agent.name,
+        path=f"agents/{agent.id}.agent.yaml",
+        organization_id=str(agent.organization_id) if agent.organization_id else None,
+        roles=roles or [],
+        access_level=agent.access_level.value if agent.access_level else "role_based",
+        max_iterations=agent.max_iterations,
+        max_token_budget=agent.max_token_budget,
+    )
+
+
+def serialize_app(app: Application, roles: list[str] | None = None) -> ManifestApp:
+    """Serialize an Application ORM object to ManifestApp."""
+    return ManifestApp(
+        id=str(app.id),
+        path=(app.repo_path or f"apps/{app.slug}").rstrip("/"),
+        slug=app.slug,
+        name=app.name,
+        description=app.description,
+        dependencies=app.dependencies or {},
+        organization_id=str(app.organization_id) if app.organization_id else None,
+        roles=roles or [],
+        access_level=app.access_level if app.access_level else "authenticated",
+    )
+
+
+def serialize_integration(
+    integ: Integration,
+    config_schema: list[IntegrationConfigSchema] | None = None,
+    oauth_provider: OAuthProvider | None = None,
+    mappings: list[IntegrationMapping] | None = None,
+) -> ManifestIntegration:
+    """Serialize an Integration ORM object to ManifestIntegration."""
+    return ManifestIntegration(
+        id=str(integ.id),
+        name=integ.name,
+        entity_id=integ.entity_id,
+        entity_id_name=integ.entity_id_name,
+        default_entity_id=integ.default_entity_id,
+        list_entities_data_provider_id=(
+            str(integ.list_entities_data_provider_id)
+            if integ.list_entities_data_provider_id else None
+        ),
+        config_schema=[
+            ManifestIntegrationConfigSchema(
+                key=cs.key,
+                type=cs.type,
+                required=cs.required,
+                description=cs.description,
+                options=cs.options,
+                position=cs.position,
+            )
+            for cs in (config_schema or [])
+        ],
+        oauth_provider=(
+            ManifestOAuthProvider(
+                provider_name=oauth_provider.provider_name,
+                display_name=oauth_provider.display_name,
+                oauth_flow_type=oauth_provider.oauth_flow_type,
+                client_id=oauth_provider.client_id or "__NEEDS_SETUP__",
+                authorization_url=oauth_provider.authorization_url,
+                token_url=oauth_provider.token_url,
+                token_url_defaults=oauth_provider.token_url_defaults or None,
+                scopes=oauth_provider.scopes or [],
+                redirect_uri=oauth_provider.redirect_uri,
+            )
+            if oauth_provider else None
+        ),
+        mappings=[
+            ManifestIntegrationMapping(
+                organization_id=str(im.organization_id) if im.organization_id else None,
+                entity_id=im.entity_id,
+                entity_name=im.entity_name,
+                oauth_token_id=str(im.oauth_token_id) if im.oauth_token_id else None,
+            )
+            for im in (mappings or [])
+        ],
+    )
+
+
+def serialize_config(cfg: Config) -> ManifestConfig:
+    """Serialize a Config ORM object to ManifestConfig."""
+    from src.models.enums import ConfigType
+
+    return ManifestConfig(
+        id=str(cfg.id),
+        integration_id=str(cfg.integration_id) if cfg.integration_id else None,
+        key=cfg.key,
+        config_type=cfg.config_type.value if cfg.config_type and hasattr(cfg.config_type, 'value') else (cfg.config_type or "string"),
+        description=cfg.description,
+        organization_id=str(cfg.organization_id) if cfg.organization_id else None,
+        value=None if (cfg.config_type == ConfigType.SECRET or str(cfg.config_type) == "secret") else cfg.value,
+    )
+
+
+def serialize_table(table: Table) -> ManifestTable:
+    """Serialize a Table ORM object to ManifestTable."""
+    return ManifestTable(
+        id=str(table.id),
+        name=table.name,
+        description=table.description,
+        organization_id=str(table.organization_id) if table.organization_id else None,
+        application_id=str(table.application_id) if table.application_id else None,
+        **{"schema": table.schema},  # type: ignore[arg-type]  # alias for table_schema
+    )
+
+
+def serialize_event_source(
+    es: EventSource,
+    schedule: ScheduleSource | None = None,
+    webhook: WebhookSource | None = None,
+    subscriptions: list[EventSubscription] | None = None,
+) -> ManifestEventSource:
+    """Serialize an EventSource ORM object to ManifestEventSource."""
+    cron_expression = schedule.cron_expression if schedule else None
+    tz = schedule.timezone if schedule else None
+    schedule_enabled = schedule.enabled if schedule else None
+
+    adapter_name = webhook.adapter_name if webhook else None
+    webhook_integration_id = str(webhook.integration_id) if webhook and webhook.integration_id else None
+    webhook_config = webhook.config if webhook and webhook.config else None
+
+    return ManifestEventSource(
+        id=str(es.id),
+        name=es.name,
+        source_type=es.source_type if isinstance(es.source_type, str) else es.source_type.value,
+        organization_id=str(es.organization_id) if es.organization_id else None,
+        is_active=es.is_active,
+        cron_expression=cron_expression,
+        timezone=tz,
+        schedule_enabled=schedule_enabled,
+        adapter_name=adapter_name,
+        webhook_integration_id=webhook_integration_id,
+        webhook_config=webhook_config,
+        subscriptions=[
+            ManifestEventSubscription(
+                id=str(sub.id),
+                target_type=sub.target_type or "workflow",
+                workflow_id=str(sub.workflow_id) if sub.workflow_id else None,
+                agent_id=str(sub.agent_id) if sub.agent_id else None,
+                event_type=sub.event_type,
+                filter_expression=sub.filter_expression,
+                input_mapping=sub.input_mapping,
+                is_active=sub.is_active,
+            )
+            for sub in (subscriptions or [])
+        ],
+    )
+
+
+# =============================================================================
+# Full manifest generation
+# =============================================================================
+
+
 async def generate_manifest(db: AsyncSession) -> Manifest:
     """
     Generate a Manifest from current DB state.
@@ -158,8 +366,6 @@ async def generate_manifest(db: AsyncSession) -> Manifest:
     # ------------------------------------------------------------------
     # Configs (non-secret values, secrets redacted to None)
     # ------------------------------------------------------------------
-    from src.models.enums import ConfigType
-
     config_result = await db.execute(select(Config).order_by(Config.key))
     configs_list = config_result.scalars().all()
 
@@ -202,154 +408,52 @@ async def generate_manifest(db: AsyncSession) -> Manifest:
         subs_by_source.setdefault(str(sub.event_source_id), []).append(sub)
 
     # ------------------------------------------------------------------
-    # Build manifest
+    # Build manifest using per-entity serialization functions
     # ------------------------------------------------------------------
     manifest = Manifest(
-        organizations=[
-            ManifestOrganization(id=str(org.id), name=org.name)
-            for org in orgs_list
-        ],
-        roles=[
-            ManifestRole(
-                id=str(role.id),
-                name=role.name,
-            )
-            for role in roles_list
-        ],
+        organizations=[serialize_organization(org) for org in orgs_list],
+        roles=[serialize_role(role) for role in roles_list],
         workflows={
-            str(wf.id): ManifestWorkflow(
-                id=str(wf.id),
-                name=wf.name,
-                path=wf.path,
-                function_name=wf.function_name,
-                type=wf.type or "workflow",
-                description=wf.description,
-                organization_id=str(wf.organization_id) if wf.organization_id else None,
-                roles=wf_roles_by_wf.get(str(wf.id), []),
-                access_level=wf.access_level or "role_based",
-                endpoint_enabled=wf.endpoint_enabled or False,
-                timeout_seconds=wf.timeout_seconds or 1800,
-                public_endpoint=wf.public_endpoint or False,
-                category=wf.category or "General",
-                tags=wf.tags or [],
-            )
+            str(wf.id): serialize_workflow(wf, wf_roles_by_wf.get(str(wf.id), []))
             for wf in workflows_list
         },
         integrations={
-            str(integ.id): ManifestIntegration(
-                id=str(integ.id),
-                name=integ.name,
-                entity_id=integ.entity_id,
-                entity_id_name=integ.entity_id_name,
-                default_entity_id=integ.default_entity_id,
-                list_entities_data_provider_id=(
-                    str(integ.list_entities_data_provider_id)
-                    if integ.list_entities_data_provider_id else None
-                ),
-                config_schema=[
-                    ManifestIntegrationConfigSchema(
-                        key=cs.key,
-                        type=cs.type,
-                        required=cs.required,
-                        description=cs.description,
-                        options=cs.options,
-                        position=cs.position,
-                    )
-                    for cs in config_schema_by_integ.get(str(integ.id), [])
-                ],
-                oauth_provider=(
-                    ManifestOAuthProvider(
-                        provider_name=op.provider_name,
-                        display_name=op.display_name,
-                        oauth_flow_type=op.oauth_flow_type,
-                        client_id=op.client_id or "__NEEDS_SETUP__",
-                        authorization_url=op.authorization_url,
-                        token_url=op.token_url,
-                        token_url_defaults=op.token_url_defaults or None,
-                        scopes=op.scopes or [],
-                        redirect_uri=op.redirect_uri,
-                    )
-                    if (op := oauth_by_integ.get(str(integ.id))) else None
-                ),
-                mappings=[
-                    ManifestIntegrationMapping(
-                        organization_id=str(im.organization_id) if im.organization_id else None,
-                        entity_id=im.entity_id,
-                        entity_name=im.entity_name,
-                        oauth_token_id=str(im.oauth_token_id) if im.oauth_token_id else None,
-                    )
-                    for im in mappings_by_integ.get(str(integ.id), [])
-                ],
+            str(integ.id): serialize_integration(
+                integ,
+                config_schema=config_schema_by_integ.get(str(integ.id), []),
+                oauth_provider=oauth_by_integ.get(str(integ.id)),
+                mappings=mappings_by_integ.get(str(integ.id), []),
             )
             for integ in integrations_list
         },
         configs={
-            # Key by config UUID to avoid cross-org collisions on same key name
-            str(cfg.id): ManifestConfig(
-                id=str(cfg.id),
-                integration_id=str(cfg.integration_id) if cfg.integration_id else None,
-                key=cfg.key,
-                config_type=cfg.config_type.value if cfg.config_type else "string",
-                description=cfg.description,
-                organization_id=str(cfg.organization_id) if cfg.organization_id else None,
-                value=None if cfg.config_type == ConfigType.SECRET else cfg.value,
-            )
+            str(cfg.id): serialize_config(cfg)
             for cfg in configs_list
         },
         tables={
-            str(table.id): ManifestTable(
-                id=str(table.id),
-                name=table.name,
-                description=table.description,
-                organization_id=str(table.organization_id) if table.organization_id else None,
-                application_id=str(table.application_id) if table.application_id else None,
-                **{"schema": table.schema},  # type: ignore[arg-type]  # alias for table_schema
-            )
+            str(table.id): serialize_table(table)
             for table in tables_list
         },
         events={
-            str(es.id): _build_event_source_manifest(
-                es, schedule_by_source, webhook_by_source, subs_by_source
+            str(es.id): serialize_event_source(
+                es,
+                schedule=schedule_by_source.get(str(es.id)),
+                webhook=webhook_by_source.get(str(es.id)),
+                subscriptions=subs_by_source.get(str(es.id), []),
             )
             for es in event_sources_list
         },
         forms={
-            str(form.id): ManifestForm(
-                id=str(form.id),
-                name=form.name,
-                path=f"forms/{form.id}.form.yaml",
-                organization_id=str(form.organization_id) if form.organization_id else None,
-                roles=form_roles_by_form.get(str(form.id), []),
-                access_level=form.access_level.value if form.access_level else "role_based",
-            )
+            str(form.id): serialize_form(form, form_roles_by_form.get(str(form.id), []))
             for form in forms_list
         },
         agents={
-            str(agent.id): ManifestAgent(
-                id=str(agent.id),
-                name=agent.name,
-                path=f"agents/{agent.id}.agent.yaml",
-                organization_id=str(agent.organization_id) if agent.organization_id else None,
-                roles=agent_roles_by_agent.get(str(agent.id), []),
-                access_level=agent.access_level.value if agent.access_level else "role_based",
-                max_iterations=agent.max_iterations,
-                max_token_budget=agent.max_token_budget,
-            )
+            str(agent.id): serialize_agent(agent, agent_roles_by_agent.get(str(agent.id), []))
             for agent in agents_list
             if not agent.is_system  # Exclude system agents
         },
         apps={
-            str(app.id): ManifestApp(
-                id=str(app.id),
-                path=(app.repo_path or f"apps/{app.slug}").rstrip("/"),
-                slug=app.slug,
-                name=app.name,
-                description=app.description,
-                dependencies=app.dependencies or {},
-                organization_id=str(app.organization_id) if app.organization_id else None,
-                roles=app_roles_by_app.get(str(app.id), []),
-                access_level=app.access_level if app.access_level else "authenticated",
-            )
+            str(app.id): serialize_app(app, app_roles_by_app.get(str(app.id), []))
             for app in apps_list
         },
     )
@@ -363,55 +467,3 @@ async def generate_manifest(db: AsyncSession) -> Manifest:
     )
 
     return manifest
-
-
-def _build_event_source_manifest(
-    es: EventSource,
-    schedule_by_source: dict[str, ScheduleSource],
-    webhook_by_source: dict[str, WebhookSource],
-    subs_by_source: dict[str, list[EventSubscription]],
-) -> ManifestEventSource:
-    """Build a ManifestEventSource from ORM objects."""
-    es_id = str(es.id)
-
-    # Schedule config
-    sched = schedule_by_source.get(es_id)
-    cron_expression = sched.cron_expression if sched else None
-    tz = sched.timezone if sched else None
-    schedule_enabled = sched.enabled if sched else None
-
-    # Webhook config (exclude external state: external_id, state, expires_at)
-    wh = webhook_by_source.get(es_id)
-    adapter_name = wh.adapter_name if wh else None
-    webhook_integration_id = str(wh.integration_id) if wh and wh.integration_id else None
-    webhook_config = wh.config if wh and wh.config else None
-
-    # Subscriptions
-    subs = subs_by_source.get(es_id, [])
-
-    return ManifestEventSource(
-        id=es_id,
-        name=es.name,
-        source_type=es.source_type if isinstance(es.source_type, str) else es.source_type.value,
-        organization_id=str(es.organization_id) if es.organization_id else None,
-        is_active=es.is_active,
-        cron_expression=cron_expression,
-        timezone=tz,
-        schedule_enabled=schedule_enabled,
-        adapter_name=adapter_name,
-        webhook_integration_id=webhook_integration_id,
-        webhook_config=webhook_config,
-        subscriptions=[
-            ManifestEventSubscription(
-                id=str(sub.id),
-                target_type=sub.target_type or "workflow",
-                workflow_id=str(sub.workflow_id) if sub.workflow_id else None,
-                agent_id=str(sub.agent_id) if sub.agent_id else None,
-                event_type=sub.event_type,
-                filter_expression=sub.filter_expression,
-                input_mapping=sub.input_mapping,
-                is_active=sub.is_active,
-            )
-            for sub in subs
-        ],
-    )

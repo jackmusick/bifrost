@@ -137,8 +137,12 @@ class AgentPublic(BaseModel):
     max_iterations: int | None = None
     max_token_budget: int | None = None
 
-    @field_serializer("id", "organization_id", "owner_user_id")
-    def serialize_uuid(self, v: UUID | None) -> str | None:
+    @field_serializer("id")
+    def serialize_id(self, v: UUID) -> str:
+        return str(v)
+
+    @field_serializer("organization_id", "owner_user_id")
+    def serialize_nullable_uuid(self, v: UUID | None) -> str | None:
         return str(v) if v else None
 
     @field_serializer("created_at", "updated_at")
@@ -162,8 +166,12 @@ class AgentSummary(BaseModel):
     llm_model: str | None = None
     dependency_count: int = Field(default=0, description="Number of tool dependencies this agent uses")
 
-    @field_serializer("id", "organization_id", "owner_user_id")
-    def serialize_uuid(self, v: UUID | None) -> str | None:
+    @field_serializer("id")
+    def serialize_id(self, v: UUID) -> str:
+        return str(v)
+
+    @field_serializer("organization_id", "owner_user_id")
+    def serialize_nullable_uuid(self, v: UUID | None) -> str | None:
         return str(v) if v else None
 
     @field_serializer("created_at")

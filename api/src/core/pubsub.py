@@ -829,13 +829,19 @@ async def publish_pool_progress(
 async def publish_file_activity(
     user_id: str,
     user_name: str,
-    activity_type: str,  # "file_push" | "watch_start" | "watch_stop"
-    prefix: str,
+    activity_type: str,  # "file_push" | "file_delete" | "entity_change" | "watch_start" | "watch_stop"
+    prefix: str = "",
     file_count: int = 0,
     is_watch: bool = False,
+    paths: list[str] | None = None,
+    session_id: str | None = None,
+    entity_type: str | None = None,
+    entity_id: str | None = None,
+    action: str | None = None,
+    data: dict | None = None,
 ) -> None:
     """Broadcast file activity to admin-only file-activity channel."""
-    await manager.broadcast("file-activity", {
+    payload: dict = {
         "type": activity_type,
         "user_id": user_id,
         "user_name": user_name,
@@ -843,4 +849,17 @@ async def publish_file_activity(
         "file_count": file_count,
         "is_watch": is_watch,
         "timestamp": datetime.now(timezone.utc).isoformat(),
-    })
+    }
+    if paths is not None:
+        payload["paths"] = paths
+    if session_id is not None:
+        payload["session_id"] = session_id
+    if entity_type is not None:
+        payload["entity_type"] = entity_type
+    if entity_id is not None:
+        payload["entity_id"] = entity_id
+    if action is not None:
+        payload["action"] = action
+    if data is not None:
+        payload["data"] = data
+    await manager.broadcast("file-activity", payload)

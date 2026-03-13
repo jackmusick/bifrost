@@ -1557,7 +1557,7 @@ class TestDiffManifests:
         return Manifest(**kwargs)
 
     def _diff(self, incoming, current):
-        from src.services.github_sync import _diff_manifests
+        from src.services.manifest_import import _diff_manifests
         return _diff_manifests(incoming, current)
 
     def test_identical_manifests_empty_diff(self):
@@ -1671,7 +1671,7 @@ class TestCollectChangedIds:
         return Manifest(**kwargs)
 
     def _collect(self, incoming, current):
-        from src.services.github_sync import _collect_changed_ids
+        from src.services.manifest_import import _collect_changed_ids
         return _collect_changed_ids(incoming, current)
 
     def test_identical_returns_empty(self):
