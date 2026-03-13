@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import { Package, RefreshCw, Download, ArrowUp, Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -16,8 +16,11 @@ import { useEditorStore } from "@/stores/editorStore";
 import { useExecutionStreamStore } from "@/stores/executionStreamStore";
 
 /**
- * Package management panel for installing and managing Python packages
- * Shows installed packages, available updates, and provides installation UI
+ * Package management panel for installing and managing Python packages.
+ * Shows installed packages, available updates, and provides installation UI.
+ *
+ * Install flow: API updates requirements.txt, broadcasts to workers.
+ * Workers pip install, recycle processes, stream progress via WebSocket.
  */
 export function PackagePanel() {
 	const [packages, setPackages] = useState<InstalledPackage[]>([]);
@@ -27,11 +30,18 @@ export function PackagePanel() {
 	const [isInstalling, setIsInstalling] = useState(false);
 	const [isLoadingPackages, setIsLoadingPackages] = useState(false);
 	const [isCheckingUpdates, setIsCheckingUpdates] = useState(false);
-	const [connectionId, setConnectionId] = useState<string | null>(null);
 	const [isConnected, setIsConnected] = useState(false);
 	const [currentInstallationId, setCurrentInstallationId] = useState<
 		string | null
 	>(null);
+
+	// Track whether we've already handled completion for this installation.
+	// Multiple workers send complete events; we only process the first one.
+	const completionHandledRef = useRef(false);
+
+	// Ref for installationId so WebSocket callbacks can read it synchronously.
+	// React state updates are batched; the closure would capture stale values.
+	const currentInstallationIdRef = useRef<string | null>(null);
 
 	const setCurrentStreamingExecutionId = useEditorStore(
 		(state) => state.setCurrentStreamingExecutionId,
@@ -51,29 +61,7 @@ export function PackagePanel() {
 		const init = async () => {
 			try {
 				await webSocketService.connect();
-
-				if (!webSocketService.isConnected()) {
-					setIsConnected(false);
-					return;
-				}
-
-				setIsConnected(true);
-
-				// Get user ID (replaces connection ID)
-				const userId = webSocketService.getUserId();
-				if (userId) {
-					setConnectionId(userId);
-				} else {
-					// Poll for user ID (set after 'connected' message)
-					const checkId = setInterval(() => {
-						const id = webSocketService.getUserId();
-						if (id) {
-							setConnectionId(id);
-							clearInterval(checkId);
-						}
-					}, 100);
-					setTimeout(() => clearInterval(checkId), 5000);
-				}
+				setIsConnected(webSocketService.isConnected());
 			} catch (error) {
 				console.error("[PackagePanel] Failed to connect:", error);
 				setIsConnected(false);
@@ -83,7 +71,6 @@ export function PackagePanel() {
 		init();
 	}, []);
 
-	// Load packages function with useCallback to fix dependency warning
 	const loadPackages = useCallback(async () => {
 		setIsLoadingPackages(true);
 		try {
@@ -97,21 +84,20 @@ export function PackagePanel() {
 		}
 	}, []);
 
-	// Subscribe to package channel for streaming logs
+	// Subscribe to shared package:install channel for streaming logs
 	useEffect(() => {
-		if (!connectionId || !isConnected) {
+		if (!isConnected) {
 			return;
 		}
 
-		// Subscribe to package channel
-		const packageChannel = `package:${connectionId}`;
+		const packageChannel = "package:install";
 		webSocketService.subscribe(packageChannel);
 
-		// Handle package logs
 		const unsubscribeLog = webSocketService.onPackageLog((log) => {
-			if (currentInstallationId) {
+			const id = currentInstallationIdRef.current;
+			if (id) {
 				const store = useExecutionStreamStore.getState();
-				store.appendLog(currentInstallationId, {
+				store.appendLog(id, {
 					level: log.level.toUpperCase(),
 					message: log.message,
 					timestamp: new Date().toISOString(),
@@ -119,18 +105,21 @@ export function PackagePanel() {
 			}
 		});
 
-		// Handle package completion
+		// Handle completion — only process the first complete event
 		const unsubscribeComplete = webSocketService.onPackageComplete(
 			(complete) => {
-				if (currentInstallationId) {
+				if (completionHandledRef.current) return;
+				completionHandledRef.current = true;
+
+				const id = currentInstallationIdRef.current;
+				if (id) {
 					const store = useExecutionStreamStore.getState();
 					store.completeExecution(
-						currentInstallationId,
+						id,
 						undefined,
 						complete.status === "success" ? "Success" : "Failed",
 					);
 				}
-				// Reload packages after installation completes
 				loadPackages();
 			},
 		);
@@ -140,7 +129,7 @@ export function PackagePanel() {
 			unsubscribeComplete();
 			webSocketService.unsubscribe(packageChannel);
 		};
-	}, [connectionId, isConnected, currentInstallationId, loadPackages]);
+	}, [isConnected, loadPackages]);
 
 	// Load packages on mount
 	useEffect(() => {
@@ -153,16 +142,14 @@ export function PackagePanel() {
 			return;
 		}
 
-		// Determine completion message based on status
 		const completion =
 			streamState.status === "Success"
 				? {
-						message: "✓ Installation complete",
+						message: "Installation complete",
 						level: "SUCCESS" as const,
 					}
-				: { message: "✗ Installation failed", level: "ERROR" as const };
+				: { message: "Installation failed", level: "ERROR" as const };
 
-		// Move streaming logs to terminal output
 		appendTerminalOutput({
 			loggerOutput: [
 				...streamState.streamingLogs.map((log) => ({
@@ -181,9 +168,9 @@ export function PackagePanel() {
 			error: streamState.error,
 		});
 
-		// Cleanup
 		const executionId = currentInstallationId;
 		setCurrentInstallationId(null);
+		currentInstallationIdRef.current = null;
 		setCurrentStreamingExecutionId(null);
 		setIsInstalling(false);
 
@@ -191,7 +178,6 @@ export function PackagePanel() {
 			clearStream(executionId);
 		}
 
-		// Reload packages to show newly installed package
 		loadPackages();
 	}, [
 		streamState?.isComplete,
@@ -234,45 +220,33 @@ export function PackagePanel() {
 		const pkgName = packageName.trim();
 		const pkgVersion = version.trim();
 
-		// Create a unique installation ID
 		const installationId = `package-install-${Date.now()}`;
+		// Set ref synchronously so WebSocket callbacks can read it immediately
+		currentInstallationIdRef.current = installationId;
 		setCurrentInstallationId(installationId);
+		completionHandledRef.current = false;
 		setIsInstalling(true);
 
 		try {
-			// Initialize the stream in the store
 			const store = useExecutionStreamStore.getState();
 			store.startStreaming(installationId, "Running");
-
-			// Set execution ID to show in terminal
 			setCurrentStreamingExecutionId(installationId);
 
 			await installPackage(pkgName, pkgVersion || undefined);
 
-			// Clear form
 			setPackageName("");
 			setVersion("");
 
-			// Add initial message
-			store.appendLog(installationId, {
-				level: "INFO",
-				message: `Installing ${pkgName}${pkgVersion ? `==${pkgVersion}` : ""}...`,
-				timestamp: new Date().toISOString(),
-			});
-
 			if (!isConnected) {
-				// If not connected to WebSocket, add a queued message
 				store.appendLog(installationId, {
 					level: "INFO",
-					message:
-						"Package installation queued (no WebSocket connection)",
+					message: "Package installation queued (no WebSocket connection)",
 					timestamp: new Date().toISOString(),
 				});
 				store.completeExecution(installationId, undefined, "Success");
-				// Stop installing spinner immediately if not connected
 				setIsInstalling(false);
 				setCurrentInstallationId(null);
-				// Reload packages after a delay to see new installations
+				currentInstallationIdRef.current = null;
 				setTimeout(() => loadPackages(), 5000);
 			}
 		} catch (error) {
@@ -280,51 +254,41 @@ export function PackagePanel() {
 			const store = useExecutionStreamStore.getState();
 			store.appendLog(installationId, {
 				level: "ERROR",
-				message: `✗ Failed to start installation: ${error instanceof Error ? error.message : "Unknown error"}`,
+				message: `Failed to start installation: ${error instanceof Error ? error.message : "Unknown error"}`,
 				timestamp: new Date().toISOString(),
 			});
 			store.completeExecution(installationId, undefined, "Failed");
 			setIsInstalling(false);
 			setCurrentInstallationId(null);
+			currentInstallationIdRef.current = null;
 		}
 	}
 
 	async function handleInstallFromRequirements() {
-		// Create a unique installation ID
 		const installationId = `package-install-${Date.now()}`;
+		// Set ref synchronously so WebSocket callbacks can read it immediately
+		currentInstallationIdRef.current = installationId;
 		setCurrentInstallationId(installationId);
+		completionHandledRef.current = false;
 		setIsInstalling(true);
 
 		try {
-			// Initialize the stream in the store
 			const store = useExecutionStreamStore.getState();
 			store.startStreaming(installationId, "Running");
-
-			// Set execution ID to show in terminal
 			setCurrentStreamingExecutionId(installationId);
 
 			await installPackage();
 
-			// Add initial message
-			store.appendLog(installationId, {
-				level: "INFO",
-				message: "Installing packages from requirements.txt...",
-				timestamp: new Date().toISOString(),
-			});
-
 			if (!isConnected) {
-				// If not connected to WebSocket, add a queued message
 				store.appendLog(installationId, {
 					level: "INFO",
-					message:
-						"Package installation queued (no WebSocket connection)",
+					message: "Package installation queued (no WebSocket connection)",
 					timestamp: new Date().toISOString(),
 				});
 				store.completeExecution(installationId, undefined, "Success");
-				// Stop installing spinner immediately if not connected
 				setIsInstalling(false);
 				setCurrentInstallationId(null);
-				// Reload packages after a delay to see new installations
+				currentInstallationIdRef.current = null;
 				setTimeout(() => loadPackages(), 5000);
 			}
 		} catch (error) {
@@ -332,16 +296,16 @@ export function PackagePanel() {
 			const store = useExecutionStreamStore.getState();
 			store.appendLog(installationId, {
 				level: "ERROR",
-				message: `✗ Failed to start installation: ${error instanceof Error ? error.message : "Unknown error"}`,
+				message: `Failed to start installation: ${error instanceof Error ? error.message : "Unknown error"}`,
 				timestamp: new Date().toISOString(),
 			});
 			store.completeExecution(installationId, undefined, "Failed");
 			setIsInstalling(false);
 			setCurrentInstallationId(null);
+			currentInstallationIdRef.current = null;
 		}
 	}
 
-	// Find update for a package
 	function getUpdateForPackage(
 		pkg: InstalledPackage,
 	): PackageUpdate | undefined {

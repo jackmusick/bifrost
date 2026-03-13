@@ -1,15 +1,17 @@
 """Unit tests for requirements_cache module."""
 
+import hashlib
 import json
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import AsyncMock, patch
 
 import pytest
 
 from src.core.requirements_cache import (
     REQUIREMENTS_KEY,
     CachedRequirements,
+    append_package_to_requirements,
     get_requirements,
-    save_requirements_to_db,
+    save_requirements,
     set_requirements,
     warm_requirements_cache,
 )
@@ -85,87 +87,58 @@ class TestWarmRequirementsCache:
         mock_client.setex = AsyncMock()
         return mock_client
 
-    @pytest.fixture
-    def mock_file_index_record(self):
-        """Create a mock FileIndex record."""
-        mock_file = MagicMock()
-        mock_file.content = "flask==2.3.0\nrequests==2.31.0\n"
-        mock_file.content_hash = "def456"
-        return mock_file
+    async def test_caches_from_s3(self, mock_redis_client):
+        """Test warm_requirements_cache loads from S3 and caches."""
+        content = "flask==2.3.0\nrequests==2.31.0\n"
+        mock_repo = AsyncMock()
+        mock_repo.read.return_value = content.encode()
 
-    async def test_caches_from_database(self, mock_redis_client, mock_file_index_record):
-        """Test warm_requirements_cache loads from database and caches."""
-        mock_session = AsyncMock()
-        mock_result = MagicMock()
-        mock_result.scalar_one_or_none.return_value = mock_file_index_record
-        mock_session.execute.return_value = mock_result
-
-        with patch("src.core.requirements_cache.get_redis_client", return_value=mock_redis_client):
-            result = await warm_requirements_cache(session=mock_session)
+        with (
+            patch("src.core.requirements_cache.get_redis_client", return_value=mock_redis_client),
+            patch("src.services.repo_storage.RepoStorage", return_value=mock_repo),
+        ):
+            result = await warm_requirements_cache()
 
             assert result is True
-            mock_session.execute.assert_called_once()
+            mock_repo.read.assert_called_once_with("requirements.txt")
             mock_redis_client.setex.assert_called_once()
 
             # Verify cached content
             call_args = mock_redis_client.setex.call_args
             cached = json.loads(call_args[0][2])
-            assert cached["content"] == mock_file_index_record.content
-            assert cached["hash"] == mock_file_index_record.content_hash
+            assert cached["content"] == content
 
     async def test_returns_false_when_not_found(self, mock_redis_client):
-        """Test warm_requirements_cache returns False when requirements.txt not in file_index."""
-        mock_session = AsyncMock()
-        mock_result = MagicMock()
-        mock_result.scalar_one_or_none.return_value = None
-        mock_session.execute.return_value = mock_result
-
-        with patch("src.core.requirements_cache.get_redis_client", return_value=mock_redis_client):
-            result = await warm_requirements_cache(session=mock_session)
-
-            assert result is False
-            mock_redis_client.setex.assert_not_called()
-
-    async def test_returns_false_when_content_is_none(self, mock_redis_client):
-        """Test warm_requirements_cache returns False when file exists but content is None."""
-        mock_file = MagicMock()
-        mock_file.content = None
-        mock_file.content_hash = None
-
-        mock_session = AsyncMock()
-        mock_result = MagicMock()
-        mock_result.scalar_one_or_none.return_value = mock_file
-        mock_session.execute.return_value = mock_result
-
-        with patch("src.core.requirements_cache.get_redis_client", return_value=mock_redis_client):
-            result = await warm_requirements_cache(session=mock_session)
-
-            assert result is False
-            mock_redis_client.setex.assert_not_called()
-
-    async def test_creates_session_when_not_provided(self, mock_redis_client, mock_file_index_record):
-        """Test warm_requirements_cache creates its own session when none provided."""
-        mock_session = AsyncMock()
-        mock_result = MagicMock()
-        mock_result.scalar_one_or_none.return_value = mock_file_index_record
-        mock_session.execute.return_value = mock_result
-
-        mock_context_manager = AsyncMock()
-        mock_context_manager.__aenter__.return_value = mock_session
-        mock_context_manager.__aexit__.return_value = None
+        """Test warm_requirements_cache returns False when requirements.txt not in S3."""
+        mock_repo = AsyncMock()
+        mock_repo.read.side_effect = Exception("NoSuchKey")
 
         with (
             patch("src.core.requirements_cache.get_redis_client", return_value=mock_redis_client),
-            patch("src.core.database.get_db_context", return_value=mock_context_manager),
+            patch("src.services.repo_storage.RepoStorage", return_value=mock_repo),
         ):
             result = await warm_requirements_cache()
 
-            assert result is True
-            mock_session.execute.assert_called_once()
+            assert result is False
+            mock_redis_client.setex.assert_not_called()
+
+    async def test_returns_false_when_content_is_empty(self, mock_redis_client):
+        """Test warm_requirements_cache returns False when file is empty."""
+        mock_repo = AsyncMock()
+        mock_repo.read.return_value = b"  \n  "
+
+        with (
+            patch("src.core.requirements_cache.get_redis_client", return_value=mock_redis_client),
+            patch("src.services.repo_storage.RepoStorage", return_value=mock_repo),
+        ):
+            result = await warm_requirements_cache()
+
+            assert result is False
+            mock_redis_client.setex.assert_not_called()
 
 
-class TestSaveRequirementsToDb:
-    """Tests for save_requirements_to_db function."""
+class TestSaveRequirements:
+    """Tests for save_requirements function."""
 
     @pytest.fixture
     def mock_redis_client(self):
@@ -174,62 +147,84 @@ class TestSaveRequirementsToDb:
         mock_client.setex = AsyncMock()
         return mock_client
 
-    async def test_upserts_record(self, mock_redis_client):
-        """Test save_requirements_to_db upserts FileIndex record."""
+    async def test_writes_to_s3_and_cache(self, mock_redis_client):
+        """Test save_requirements writes to S3 and updates Redis cache."""
         content = "flask==2.3.0\nrequests==2.31.0\n"
+        mock_repo = AsyncMock()
 
-        mock_session = AsyncMock()
-        mock_session.execute.return_value = MagicMock()
+        with (
+            patch("src.core.requirements_cache.get_redis_client", return_value=mock_redis_client),
+            patch("src.services.repo_storage.RepoStorage", return_value=mock_repo),
+        ):
+            await save_requirements(content)
 
-        with patch("src.core.requirements_cache.get_redis_client", return_value=mock_redis_client):
-            await save_requirements_to_db(content, session=mock_session)
-
-            # Verify execute was called (upsert via insert...on_conflict_do_update)
-            mock_session.execute.assert_called_once()
-            mock_session.commit.assert_called_once()
+            # Verify S3 write
+            mock_repo.write.assert_called_once_with("requirements.txt", content.encode())
 
             # Verify cache was updated
             mock_redis_client.setex.assert_called_once()
 
     async def test_computes_correct_hash(self, mock_redis_client):
-        """Test save_requirements_to_db computes SHA-256 hash correctly."""
-        import hashlib
-
+        """Test save_requirements computes SHA-256 hash correctly."""
         content = "flask==2.3.0\nrequests==2.31.0\n"
         expected_hash = hashlib.sha256(content.encode()).hexdigest()
+        mock_repo = AsyncMock()
 
-        mock_session = AsyncMock()
-        mock_session.execute.return_value = MagicMock()
-
-        with patch("src.core.requirements_cache.get_redis_client", return_value=mock_redis_client):
-            await save_requirements_to_db(content, session=mock_session)
+        with (
+            patch("src.core.requirements_cache.get_redis_client", return_value=mock_redis_client),
+            patch("src.services.repo_storage.RepoStorage", return_value=mock_repo),
+        ):
+            await save_requirements(content)
 
             # Verify cache received correct hash
             call_args = mock_redis_client.setex.call_args
             cached = json.loads(call_args[0][2])
             assert cached["hash"] == expected_hash
 
-    async def test_creates_session_when_not_provided(self, mock_redis_client):
-        """Test save_requirements_to_db creates its own session when none provided."""
-        content = "flask==2.3.0\n"
 
-        mock_session = AsyncMock()
-        mock_result = MagicMock()
-        mock_result.scalar_one_or_none.return_value = None
-        mock_session.execute.return_value = mock_result
+class TestAppendPackageToRequirements:
+    """Tests for append_package_to_requirements function."""
 
-        mock_context_manager = AsyncMock()
-        mock_context_manager.__aenter__.return_value = mock_session
-        mock_context_manager.__aexit__.return_value = None
+    def test_appends_new_package(self):
+        """Test appending a new package returns is_update=False."""
+        current = "flask==2.3.0\n"
+        content, is_update = append_package_to_requirements(current, "requests", "2.31.0")
+        assert content == "flask==2.3.0\nrequests==2.31.0\n"
+        assert is_update is False
 
-        with (
-            patch("src.core.requirements_cache.get_redis_client", return_value=mock_redis_client),
-            patch("src.core.database.get_db_context", return_value=mock_context_manager),
-        ):
-            await save_requirements_to_db(content)
+    def test_updates_existing_package(self):
+        """Test updating an existing package returns is_update=True."""
+        current = "flask==2.3.0\nrequests==2.28.0\n"
+        content, is_update = append_package_to_requirements(current, "requests", "2.31.0")
+        assert content == "flask==2.3.0\nrequests==2.31.0\n"
+        assert is_update is True
 
-            mock_session.execute.assert_called_once()
-            mock_session.commit.assert_called_once()
+    def test_case_insensitive_match(self):
+        """Test case-insensitive package name matching returns is_update=True."""
+        current = "Flask==2.3.0\n"
+        content, is_update = append_package_to_requirements(current, "flask", "3.0.0")
+        assert content == "flask==3.0.0\n"
+        assert is_update is True
+
+    def test_appends_without_version(self):
+        """Test appending a package without a version returns is_update=False."""
+        current = "flask==2.3.0\n"
+        content, is_update = append_package_to_requirements(current, "requests", None)
+        assert content == "flask==2.3.0\nrequests\n"
+        assert is_update is False
+
+    def test_empty_current(self):
+        """Test appending to empty requirements returns is_update=False."""
+        content, is_update = append_package_to_requirements("", "flask", "2.3.0")
+        assert content == "flask==2.3.0\n"
+        assert is_update is False
+
+    def test_filters_empty_lines(self):
+        """Test that empty lines are filtered out."""
+        current = "flask==2.3.0\n\n\nrequests==2.31.0\n"
+        content, is_update = append_package_to_requirements(current, "boto3", "1.0.0")
+        assert content == "flask==2.3.0\nrequests==2.31.0\nboto3==1.0.0\n"
+        assert is_update is False
 
 
 class TestCachedRequirementsTypedDict:

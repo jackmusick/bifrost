@@ -71,16 +71,17 @@ export async function checkUpdates(): Promise<PackageUpdatesResponse> {
  * Standalone function to install a package
  * Use this for imperative calls outside of React components
  *
- * Installation is queued via RabbitMQ and progress is streamed via WebSocket
- * to the package:{user_id} channel.
+ * Updates requirements.txt and broadcasts a recycle signal to workers.
+ * Returns immediately — worker recycling happens asynchronously.
  *
- * @param packageName - Name of package to install (optional - if not provided, installs from requirements.txt)
+ * @param packageName - Name of package to install (optional - if not provided, recycles from requirements.txt)
  * @param version - Optional version to install (e.g., "2.31.0")
  */
 export async function installPackage(packageName?: string, version?: string) {
-	const body: InstallPackageRequest = packageName
-		? { package_name: packageName, version: version ?? null }
-		: ({} as InstallPackageRequest);
+	const body: InstallPackageRequest = {
+		package_name: packageName ?? null,
+		version: version ?? null,
+	};
 
 	const { data, error } = await apiClient.POST("/api/packages/install", {
 		body,

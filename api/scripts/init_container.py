@@ -95,7 +95,7 @@ async def warm_requirements_cache() -> bool:
     Raises:
         Exception: If cache warming fails
     """
-    logger.info("Warming requirements cache from database...")
+    logger.info("Warming requirements cache from S3...")
 
     try:
         from src.core.requirements_cache import warm_requirements_cache as _warm_cache
@@ -104,7 +104,7 @@ async def warm_requirements_cache() -> bool:
         if found:
             logger.info("Requirements cache warmed successfully")
         else:
-            logger.info("No requirements.txt found in database (cache empty)")
+            logger.info("No requirements.txt found in S3 (cache empty)")
         return found
 
     except ImportError as e:

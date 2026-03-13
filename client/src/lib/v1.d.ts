@@ -12648,14 +12648,14 @@ export interface components {
         };
         /**
          * InstallPackageRequest
-         * @description Request model for installing a package
+         * @description Request model for installing a package or recycling from requirements.txt
          */
         InstallPackageRequest: {
             /**
              * Package Name
-             * @description Package name (e.g., 'requests')
+             * @description Package name (e.g., 'requests'). If omitted, recycles workers to pick up requirements.txt changes.
              */
-            package_name: string;
+            package_name?: string | null;
             /**
              * Version
              * @description Version specifier (e.g., '>=2.28.0')
@@ -14919,12 +14919,12 @@ export interface components {
          */
         PackageInstallResponse: {
             /** Package Name */
-            package_name: string;
+            package_name?: string | null;
             /** Version */
             version?: string | null;
             /**
              * Status
-             * @description Installation status (success, failed, in_progress)
+             * @description Installation status (success, queued)
              */
             status: string;
             /**

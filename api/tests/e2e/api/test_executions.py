@@ -1028,11 +1028,12 @@ async def {workflow_name}(number: int = 1000000):
                 f"Install request failed: {response.text}"
             )
             install_data = response.json()
-            assert install_data.get("status") == "queued", (
+            assert install_data.get("status") == "success", (
                 f"Unexpected install status: {install_data}"
             )
 
             # Step 4: Poll until package appears in installed list
+            # Workers pip install the package then recycle processes.
             def check_package_installed():
                 response = e2e_client.get(
                     "/api/packages",
@@ -1048,14 +1049,20 @@ async def {workflow_name}(number: int = 1000000):
             assert installed, f"Package '{package_name}' not installed within timeout"
 
             # Step 5: Execute again - should succeed now
-            data = execute_workflow_sync(
-                e2e_client,
-                platform_admin.headers,
-                workflow_id,
-                {"number": 1234567},
-            )
-            assert data["status"] == "Success", (
-                f"Expected Success after package install, got: {data}"
+            def check_workflow_succeeds():
+                data = execute_workflow_sync(
+                    e2e_client,
+                    platform_admin.headers,
+                    workflow_id,
+                    {"number": 1234567},
+                )
+                if data["status"] == "Success":
+                    return data
+                return None
+
+            data = poll_until(check_workflow_succeeds, max_wait=60.0)
+            assert data is not None, (
+                "Workflow should succeed after package install within timeout"
             )
             result = data.get("result", {})
             assert result.get("humanized") == "1,234,567", (
@@ -1219,18 +1226,17 @@ def get_data():
             )
 
     @pytest.mark.asyncio
-    async def test_requirements_stored_in_database(
-        self, e2e_client, platform_admin, db_session
+    async def test_requirements_stored_in_s3(
+        self, e2e_client, platform_admin
     ):
         """
-        Test that installing a package creates/updates requirements.txt in database.
+        Test that installing a package stores requirements.txt in S3.
 
         Verifies that after package installation:
-        1. A file_index record exists with path='requirements.txt'
+        1. requirements.txt exists in S3 via RepoStorage
         2. The content includes the installed package
         """
-        from sqlalchemy import select
-        from src.models.orm.file_index import FileIndex
+        from src.services.repo_storage import RepoStorage
 
         package_name = "humanize"
 
@@ -1258,40 +1264,18 @@ def get_data():
             f"Install failed: {install_response.text}"
         )
         install_data = install_response.json()
-        assert install_data.get("status") == "queued", (
+        assert install_data.get("status") == "success", (
             f"Unexpected install status: {install_data}"
         )
 
-        # Poll until package appears in installed list (confirms installation completed)
-        def check_package_installed():
-            response = e2e_client.get(
-                "/api/packages",
-                headers=platform_admin.headers,
-            )
-            if response.status_code == 200:
-                packages = response.json().get("packages", [])
-                if any(p.get("name", "").lower() == package_name for p in packages):
-                    return True
-            return None
+        # Read requirements.txt from S3
+        repo = RepoStorage()
+        content_bytes = await repo.read("requirements.txt")
+        content = content_bytes.decode()
 
-        installed = poll_until(check_package_installed, max_wait=60.0)
-        assert installed, f"Package '{package_name}' not installed within timeout"
-
-        # Query database for requirements.txt in file_index
-        stmt = select(FileIndex).where(
-            FileIndex.path == "requirements.txt",
-            FileIndex.content.isnot(None),
-        )
-        result = await db_session.execute(stmt)
-        file = result.scalar_one_or_none()
-
-        assert file is not None, "requirements.txt should be stored in file_index"
-        assert file.content is not None, "requirements.txt should have content"
-        assert package_name in file.content.lower(), (
-            f"requirements.txt should contain '{package_name}', got: {file.content}"
-        )
-        assert file.content_hash is not None, (
-            "requirements.txt should have content hash"
+        assert content.strip(), "requirements.txt should have content in S3"
+        assert package_name in content.lower(), (
+            f"requirements.txt should contain '{package_name}', got: {content}"
         )
 
         # Cleanup: uninstall package
@@ -1337,7 +1321,7 @@ def get_data():
             f"Install failed: {install_response.text}"
         )
         install_data = install_response.json()
-        assert install_data.get("status") == "queued", (
+        assert install_data.get("status") == "success", (
             f"Unexpected install status: {install_data}"
         )
 

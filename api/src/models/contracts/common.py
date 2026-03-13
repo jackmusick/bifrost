@@ -84,16 +84,16 @@ class FileUploadResponse(BaseModel):
 
 
 class InstallPackageRequest(BaseModel):
-    """Request model for installing a package"""
-    package_name: str = Field(..., min_length=1, description="Package name (e.g., 'requests')")
+    """Request model for installing a package or recycling from requirements.txt"""
+    package_name: str | None = Field(default=None, min_length=1, description="Package name (e.g., 'requests'). If omitted, recycles workers to pick up requirements.txt changes.")
     version: str | None = Field(default=None, description="Version specifier (e.g., '>=2.28.0')")
 
 
 class PackageInstallResponse(BaseModel):
     """Response model for package installation"""
-    package_name: str
+    package_name: str | None = None
     version: str | None = None
-    status: str = Field(..., description="Installation status (success, failed, in_progress)")
+    status: str = Field(..., description="Installation status (success, queued)")
     message: str = Field(..., description="Installation message")
 
 

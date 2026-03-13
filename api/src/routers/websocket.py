@@ -200,9 +200,9 @@ async def websocket_connect(
             execution_id = channel.split(":", 1)[1]
             if await can_access_execution(user, execution_id):
                 allowed_channels.append(channel)
-        elif channel.startswith("package:"):
-            # Package installation channels - users can subscribe to their own
-            if channel == f"package:{user.user_id}":
+        elif channel == "package:install":
+            # Package installation channel - shared, superusers only
+            if user.is_superuser:
                 allowed_channels.append(channel)
         elif channel.startswith("git:"):
             # Git job channels - ephemeral, job-specific UUIDs
@@ -368,6 +368,22 @@ async def websocket_connect(
                         # App Builder channels - validate user has access to the app
                         app_id = channel.split(":", 2)[2]
                         if await can_access_app(user, app_id):
+                            if channel not in manager.connections:
+                                manager.connections[channel] = set()
+                            manager.connections[channel].add(websocket)
+                            await websocket.send_json({
+                                "type": "subscribed",
+                                "channel": channel
+                            })
+                        else:
+                            await websocket.send_json({
+                                "type": "error",
+                                "channel": channel,
+                                "message": "Access denied"
+                            })
+                    elif channel == "package:install":
+                        # Package installation channel - shared, superusers only
+                        if user.is_superuser:
                             if channel not in manager.connections:
                                 manager.connections[channel] = set()
                             manager.connections[channel].add(websocket)

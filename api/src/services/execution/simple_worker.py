@@ -20,10 +20,10 @@ from sys.modules before each execution to pick up code changes. For package
 installs, the ProcessPoolManager recycles worker processes so fresh Python
 interpreters can see newly installed packages.
 
-Persistence: On startup, workers call _install_requirements_from_cache_sync()
-to install packages from the cached requirements.txt in Redis. This ensures
-packages persist across container restarts. See api/src/core/requirements_cache.py
-for the full persistence flow.
+Persistence: The ProcessPoolManager calls install_requirements_from_cache()
+once at pool startup to install packages from the cached requirements.txt in
+Redis. Since all child processes share the same filesystem, this single install
+is sufficient. See api/src/core/requirements_cache.py for the full persistence flow.
 """
 
 from __future__ import annotations
@@ -43,24 +43,25 @@ from typing import Any
 logger = logging.getLogger(__name__)
 
 
-def _install_requirements_from_cache_sync(worker_id: str) -> None:
+def install_requirements_from_cache() -> None:
     """
     Install packages from cached requirements.txt.
 
-    Called at worker startup to ensure packages persist across container restarts.
-    Uses synchronous Redis client since we're not in async context yet.
+    Called once at pool startup to ensure packages persist across container restarts.
+    Uses synchronous Redis client since this may be called from a thread.
 
-    This function never raises - failures are logged and worker continues.
-    This allows the worker to still function even if Redis is unavailable
+    Since all child processes share the same filesystem as the parent (same container),
+    installing once in the parent process is sufficient — child processes inherit
+    the installed packages.
+
+    This function never raises - failures are logged and execution continues.
+    This allows the pool to still function even if Redis is unavailable
     or if the cached requirements are invalid.
 
     Retry behavior:
     - 3 attempts for Redis connection errors
     - 1 second delay between retries
     - All other errors fail immediately (no retry)
-
-    Args:
-        worker_id: Worker identifier for logging
     """
     import subprocess
     import tempfile
@@ -85,14 +86,14 @@ def _install_requirements_from_cache_sync(worker_id: str) -> None:
             client.close()
 
             if not data:
-                logger.info(f"[{worker_id}] No cached requirements.txt found")
+                logger.info("[pool] No cached requirements.txt found")
                 return
 
             cached: dict[str, Any] = json.loads(data)
             content = cached.get("content", "")
 
             if not content.strip():
-                logger.info(f"[{worker_id}] Cached requirements.txt is empty")
+                logger.info("[pool] Cached requirements.txt is empty")
                 return
 
             # Write to temp file and install
@@ -101,7 +102,7 @@ def _install_requirements_from_cache_sync(worker_id: str) -> None:
                 temp_path = f.name
 
             try:
-                logger.info(f"[{worker_id}] Installing packages from cached requirements.txt")
+                logger.info("[pool] Installing packages from cached requirements.txt")
 
                 result = subprocess.run(
                     [sys.executable, "-m", "pip", "install", "-r", temp_path, "--quiet"],
@@ -113,10 +114,10 @@ def _install_requirements_from_cache_sync(worker_id: str) -> None:
                 if result.returncode == 0:
                     # Count packages
                     pkg_count = len([line for line in content.strip().split("\n") if line.strip()])
-                    logger.info(f"[{worker_id}] Installed {pkg_count} packages from requirements.txt")
+                    logger.info(f"[pool] Installed {pkg_count} packages from requirements.txt")
                 else:
                     logger.warning(
-                        f"[{worker_id}] pip install failed: {result.stderr or result.stdout}"
+                        f"[pool] pip install failed: {result.stderr or result.stdout}"
                     )
             finally:
                 # Clean up temp file
@@ -130,25 +131,25 @@ def _install_requirements_from_cache_sync(worker_id: str) -> None:
         except redis.ConnectionError as e:
             if attempt < max_retries - 1:
                 logger.warning(
-                    f"[{worker_id}] Redis connection failed (attempt {attempt + 1}/{max_retries}): {e}"
+                    f"[pool] Redis connection failed (attempt {attempt + 1}/{max_retries}): {e}"
                 )
                 time.sleep(retry_delay)
             else:
                 logger.warning(
-                    f"[{worker_id}] Redis unavailable after {max_retries} attempts, "
+                    f"[pool] Redis unavailable after {max_retries} attempts, "
                     "skipping requirements install"
                 )
 
         except json.JSONDecodeError as e:
-            logger.warning(f"[{worker_id}] Invalid JSON in cached requirements: {e}")
+            logger.warning(f"[pool] Invalid JSON in cached requirements: {e}")
             return
 
         except subprocess.TimeoutExpired:
-            logger.warning(f"[{worker_id}] pip install timed out after 5 minutes")
+            logger.warning("[pool] pip install timed out after 5 minutes")
             return
 
         except Exception as e:
-            logger.warning(f"[{worker_id}] Failed to install requirements: {e}")
+            logger.warning(f"[pool] Failed to install requirements: {e}")
             return
 
 
@@ -185,10 +186,6 @@ def run_worker_process(
     if site.ENABLE_USER_SITE and os.path.exists(user_site) and user_site not in sys.path:
         sys.path.insert(0, user_site)
         logger.info(f"Added user site-packages to sys.path: {user_site}")
-
-    # Install packages from cached requirements.txt
-    # This ensures packages persist across container restarts
-    _install_requirements_from_cache_sync(worker_id)
 
     # Install virtual import hook (after default finders so filesystem is checked first)
     from src.services.execution.virtual_import import install_virtual_import_hook

@@ -7,14 +7,16 @@ installed packages survive container restarts.
 
 Persistence Flow:
 1. User installs package via /api/packages/install
-2. package_install.py consumer installs the package and calls save_requirements_to_db()
-3. requirements.txt is stored in file_index table + Redis cache
-4. On container restart, init_container.py calls warm_requirements_cache()
-5. Worker processes call _install_requirements_from_cache_sync() at startup
-6. pip install runs from cached requirements.txt
+2. API handler appends package to requirements, saves to S3 + Redis cache
+3. API broadcasts "recycle_workers" to all workers
+4. Workers recycle processes; ProcessPoolManager calls install_requirements_from_cache() once at pool startup
+5. pip install runs from cached requirements.txt (shared filesystem, all workers inherit)
+
+Source of truth: S3 (_repo/requirements.txt) via RepoStorage
+Cache: Redis (bifrost:requirements:content) — pool reads this synchronously at startup
 
 Related Files:
-- api/src/jobs/consumers/package_install.py - Saves after install
+- api/src/routers/packages.py - Saves requirements + broadcasts recycle
 - api/scripts/init_container.py - Warms cache on container startup
 - api/src/services/execution/simple_worker.py - Installs on worker startup
 
@@ -69,92 +71,93 @@ async def set_requirements(content: str, content_hash: str) -> None:
     logger.debug("Cached requirements.txt")
 
 
-async def warm_requirements_cache(session=None) -> bool:
+async def warm_requirements_cache() -> bool:
     """
-    Load requirements.txt from database into Redis cache.
+    Load requirements.txt from S3 into Redis cache.
 
     Called by init container or API startup to ensure cache is warm.
-
-    Args:
-        session: Optional SQLAlchemy AsyncSession. If not provided, creates its own.
+    Also called before broadcasting recycle when installing from requirements.txt,
+    to ensure workers pick up the latest file content.
 
     Returns:
         True if requirements.txt was cached, False if not found
     """
-    from sqlalchemy import select
+    from src.services.repo_storage import RepoStorage
 
-    from src.models.orm.file_index import FileIndex
+    try:
+        repo = RepoStorage()
+        content_bytes = await repo.read("requirements.txt")
+        content = content_bytes.decode()
 
-    async def _warm_with_session(db_session) -> bool:
-        stmt = select(FileIndex).where(
-            FileIndex.path == "requirements.txt",
-            FileIndex.content.isnot(None),
-        )
-        result = await db_session.execute(stmt)
-        file = result.scalar_one_or_none()
-
-        if file and file.content:
-            await set_requirements(
-                content=file.content,
-                content_hash=file.content_hash or "",
-            )
-            logger.info("Warmed requirements cache from database")
+        if content.strip():
+            content_hash = hashlib.sha256(content.encode()).hexdigest()
+            await set_requirements(content=content, content_hash=content_hash)
+            logger.info("Warmed requirements cache from S3")
             return True
 
-        logger.info("No requirements.txt found in database")
+        logger.info("requirements.txt in S3 is empty")
+        return False
+    except Exception as e:
+        # File may not exist yet in S3
+        logger.info(f"No requirements.txt found in S3: {e}")
         return False
 
-    if session is not None:
-        return await _warm_with_session(session)
-    else:
-        from src.core.database import get_db_context
 
-        async with get_db_context() as db_session:
-            return await _warm_with_session(db_session)
-
-
-async def save_requirements_to_db(content: str, session=None) -> None:
+async def save_requirements(content: str) -> None:
     """
-    Save requirements.txt to database and update cache.
+    Save requirements.txt to S3 and update Redis cache.
 
     Args:
         content: Full requirements.txt content
-        session: Optional SQLAlchemy AsyncSession. If not provided, creates its own.
     """
-    from sqlalchemy.dialects.postgresql import insert
-
-    from src.models.orm.file_index import FileIndex
+    from src.services.repo_storage import RepoStorage
 
     content_hash = hashlib.sha256(content.encode()).hexdigest()
 
-    async def _save_with_session(db_session) -> None:
-        from datetime import datetime, timezone
+    # Write to S3 (source of truth)
+    repo = RepoStorage()
+    await repo.write("requirements.txt", content.encode())
 
-        now = datetime.now(timezone.utc)
-        stmt = insert(FileIndex).values(
-            path="requirements.txt",
-            content=content,
-            content_hash=content_hash,
-            updated_at=now,
-        ).on_conflict_do_update(
-            index_elements=[FileIndex.path],
-            set_={
-                "content": content,
-                "content_hash": content_hash,
-                "updated_at": now,
-            },
+    # Update Redis cache (workers read this synchronously at startup)
+    await set_requirements(content, content_hash)
+    logger.info("Saved requirements.txt to S3 and cache")
+
+
+def append_package_to_requirements(
+    current: str, package: str, version: str | None
+) -> tuple[str, bool]:
+    """
+    Append or update a package in requirements.txt content.
+
+    Args:
+        current: Current requirements.txt content
+        package: Package name
+        version: Optional version specifier
+
+    Returns:
+        Tuple of (updated content, is_update) where is_update is True if
+        an existing package was updated (needs process recycle to clear
+        sys.modules), False if a new package was added.
+    """
+    lines = current.strip().split("\n") if current.strip() else []
+    package_lower = package.lower()
+    package_spec = f"{package}=={version}" if version else package
+
+    # Find and update existing entry, or append
+    found = False
+    for i, line in enumerate(lines):
+        # Parse package name from line (handles ==, >=, etc.)
+        line_package = (
+            line.split("==")[0].split(">=")[0].split("<=")[0].split("~=")[0].strip()
         )
-        await db_session.execute(stmt)
-        await db_session.commit()
+        if line_package.lower() == package_lower:
+            lines[i] = package_spec
+            found = True
+            break
 
-        # Update cache
-        await set_requirements(content, content_hash)
-        logger.info("Saved requirements.txt to database and cache")
+    if not found:
+        lines.append(package_spec)
 
-    if session is not None:
-        await _save_with_session(session)
-    else:
-        from src.core.database import get_db_context
-
-        async with get_db_context() as db_session:
-            await _save_with_session(db_session)
+    # Filter empty lines and ensure trailing newline
+    lines = [line for line in lines if line.strip()]
+    return ("\n".join(lines) + "\n" if lines else "", found)

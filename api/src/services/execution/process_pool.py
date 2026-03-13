@@ -318,6 +318,10 @@ class ProcessPoolManager:
         self._started = True
         self._shutdown = False
 
+        # Install cached requirements once (shared filesystem — all child processes inherit)
+        from src.services.execution.simple_worker import install_requirements_from_cache
+        await asyncio.to_thread(install_requirements_from_cache)
+
         # Spawn initial pool
         for _ in range(self.min_workers):
             self._spawn_process()
@@ -814,6 +818,12 @@ class ProcessPoolManager:
         """
         reason = command.get("reason", "API request")
         logger.info(f"Processing recycle_all command (reason: {reason})")
+
+        # Install cached requirements before spawning replacement processes
+        # (recycle_all is typically triggered after a package install on the API container;
+        # the worker container needs to pip install from the Redis-cached requirements)
+        from src.services.execution.simple_worker import install_requirements_from_cache
+        await asyncio.to_thread(install_requirements_from_cache)
 
         count, idle_handles = self.mark_for_recycle()
         logger.info(f"Marked {count} processes for recycling ({len(idle_handles)} idle)")

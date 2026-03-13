@@ -11,7 +11,6 @@ Each worker registers its installed packages at bifrost:pool:{pool_id}.
 import asyncio
 import logging
 import json
-import uuid
 from typing import Awaitable, cast
 
 from fastapi import APIRouter, HTTPException, status
@@ -26,6 +25,12 @@ from src.models import (
 )
 from src.core.auth import Context, CurrentSuperuser
 from src.core.redis_client import get_redis_client
+from src.core.requirements_cache import (
+    append_package_to_requirements,
+    get_requirements,
+    save_requirements,
+    warm_requirements_cache,
+)
 from src.jobs.rabbitmq import publish_broadcast
 
 logger = logging.getLogger(__name__)
@@ -280,7 +285,7 @@ async def check_updates(
     "/install",
     response_model=PackageInstallResponse,
     summary="Install a Python package",
-    description="Install a Python package (Platform admin only)",
+    description="Install a Python package or recycle workers from requirements.txt (Platform admin only)",
 )
 async def install_package(
     request: InstallPackageRequest,
@@ -288,54 +293,70 @@ async def install_package(
     user: CurrentSuperuser,
 ) -> PackageInstallResponse:
     """
-    Install a Python package via RabbitMQ job queue.
+    Install a Python package by updating requirements.txt and recycling workers.
 
-    Queues the installation job and returns immediately. Installation progress
-    is streamed via WebSocket to the package:{user_id} channel.
+    When package_name is provided: appends/updates the package in requirements.txt
+    (S3 + Redis cache), then broadcasts a recycle signal to all workers.
 
-    Args:
-        request: Package install request with name and optional version
+    When package_name is None: warms the Redis cache from S3 (picking up any
+    manual edits to requirements.txt), then broadcasts recycle.
 
-    Returns:
-        Installation response with job_id for tracking
+    Workers recycle their process pools; new processes pip install from the
+    cached requirements.txt on startup.
+
+    Returns immediately — worker recycling happens asynchronously.
     """
     try:
-        job_id = str(uuid.uuid4())
-        package_spec = request.package_name
-        if request.version:
-            package_spec = f"{request.package_name}=={request.version}"
+        if request.package_name:
+            # Append/update package in requirements.txt
+            package_spec = request.package_name
+            if request.version:
+                package_spec = f"{request.package_name}=={request.version}"
 
-        logger.info(f"Broadcasting package installation: {package_spec}", extra={"job_id": job_id})
+            cached = await get_requirements()
+            if not cached:
+                # Redis cache miss — warm from S3 and retry
+                await warm_requirements_cache()
+                cached = await get_requirements()
+            current_content = cached["content"] if cached else ""
+            updated_content, is_update = append_package_to_requirements(
+                current_content, request.package_name, request.version
+            )
+            await save_requirements(updated_content)
 
-        # Broadcast installation to all workers via fanout exchange
-        # The connection_id is the user_id so they can subscribe to package:{user_id}
+            logger.info(f"Updated requirements.txt with {package_spec}")
+        else:
+            # "Install from requirements.txt" — warm cache from S3 so workers
+            # pick up the latest file content
+            await warm_requirements_cache()
+            # Safe default: requirements.txt may contain updates
+            is_update = True
+            logger.info("Warmed requirements cache from S3 for recycle")
+
+        # Broadcast to all workers — they pip install + recycle processes
         await publish_broadcast(
             exchange_name="package-installations",
             message={
-                "type": "package_install",
-                "job_id": job_id,
+                "type": "recycle_workers",
                 "package": request.package_name,
                 "version": request.version if request.version else None,
-                "connection_id": str(user.user_id),  # User subscribes to package:{user_id}
-                "user_id": str(user.user_id),
-                "user_email": user.email,
+
+                "is_update": is_update,
             },
         )
-
-        logger.info(f"Package installation broadcast: {package_spec}", extra={"job_id": job_id})
 
         return PackageInstallResponse(
             package_name=request.package_name,
             version=request.version,
-            status="queued",
-            message=f"Installation queued with job_id: {job_id}",
+            status="success",
+            message="Requirements updated. Workers are recycling to pick up changes.",
         )
 
     except Exception as e:
-        logger.error(f"Error queueing package installation: {str(e)}", exc_info=True)
+        logger.error(f"Error updating requirements: {str(e)}", exc_info=True)
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Failed to queue package installation",
+            detail="Failed to update requirements",
         )
 
 
