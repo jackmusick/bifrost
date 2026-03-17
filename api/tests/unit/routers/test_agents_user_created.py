@@ -64,7 +64,6 @@ def make_agent(
     agent.system_tools = []
     agent.llm_model = None
     agent.llm_max_tokens = None
-    agent.llm_temperature = None
     agent.created_by = "admin@test.com"
     agent.created_at = datetime.now(timezone.utc)
     agent.updated_at = datetime.now(timezone.utc)

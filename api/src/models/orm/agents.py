@@ -8,7 +8,7 @@ from datetime import datetime, timezone
 from typing import TYPE_CHECKING
 from uuid import UUID, uuid4
 
-from sqlalchemy import Boolean, DateTime, Enum as SQLAlchemyEnum, Float, ForeignKey, Index, Integer, String, Text, text
+from sqlalchemy import Boolean, DateTime, Enum as SQLAlchemyEnum, ForeignKey, Index, Integer, String, Text, text
 from sqlalchemy.dialects.postgresql import ARRAY, JSONB
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -60,7 +60,6 @@ class Agent(Base):
     # LLM configuration overrides (null = use global config)
     llm_model: Mapped[str | None] = mapped_column(String(100), default=None)
     llm_max_tokens: Mapped[int | None] = mapped_column(Integer, default=None)
-    llm_temperature: Mapped[float | None] = mapped_column(Float, default=None)
     max_iterations: Mapped[int | None] = mapped_column(Integer, default=50)
     max_token_budget: Mapped[int | None] = mapped_column(Integer, default=100000)
     created_by: Mapped[str] = mapped_column(String(255), nullable=False)

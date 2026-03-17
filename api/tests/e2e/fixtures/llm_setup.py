@@ -95,7 +95,6 @@ def llm_anthropic_configured(
         "model": "claude-haiku-4-5-20251001",
         "api_key": llm_test_anthropic_key,
         "max_tokens": 1024,
-        "temperature": 0.7,
     }
 
     response = e2e_client.post(
@@ -143,7 +142,6 @@ def llm_openai_configured(
         "model": "gpt-4o-mini",
         "api_key": llm_test_openai_key,
         "max_tokens": 1024,
-        "temperature": 0.7,
     }
 
     response = e2e_client.post(

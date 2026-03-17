@@ -42,7 +42,6 @@ class OpenAIClient(BaseLLMClient):
         tools: list[ToolDefinition] | None = None,
         *,
         max_tokens: int | None = None,
-        temperature: float | None = None,
         model: str | None = None,
     ) -> LLMResponse:
         """Non-streaming completion via OpenAI API."""
@@ -55,9 +54,6 @@ class OpenAIClient(BaseLLMClient):
             "max_completion_tokens": max_tokens or self.config.max_tokens,
         }
 
-        # Only send temperature if explicitly passed — modern models have good defaults
-        if temperature is not None:
-            kwargs["temperature"] = temperature
         if openai_tools:
             kwargs["tools"] = openai_tools
 
@@ -94,7 +90,6 @@ class OpenAIClient(BaseLLMClient):
         tools: list[ToolDefinition] | None = None,
         *,
         max_tokens: int | None = None,
-        temperature: float | None = None,
         model: str | None = None,
     ) -> AsyncGenerator[LLMStreamChunk, None]:
         """Streaming completion via OpenAI API."""
@@ -109,8 +104,6 @@ class OpenAIClient(BaseLLMClient):
             "stream_options": {"include_usage": True},
         }
 
-        if temperature is not None:
-            kwargs["temperature"] = temperature
         if openai_tools:
             kwargs["tools"] = openai_tools
 

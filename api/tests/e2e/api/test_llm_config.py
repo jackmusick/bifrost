@@ -66,7 +66,6 @@ class TestLLMConfigurationCRUD:
                 "model": "claude-haiku-4-5-20251001",
                 "api_key": llm_test_anthropic_key,
                 "max_tokens": 2048,
-                "temperature": 0.5,
             },
             headers=platform_admin.headers,
         )
@@ -76,7 +75,6 @@ class TestLLMConfigurationCRUD:
         assert data["provider"] == "anthropic"
         assert data["model"] == "claude-haiku-4-5-20251001"
         assert data["max_tokens"] == 2048
-        assert data["temperature"] == 0.5
         assert data["is_configured"] is True
         assert data["api_key_set"] is True
         # API key should NOT be returned
@@ -100,7 +98,6 @@ class TestLLMConfigurationCRUD:
                 "model": "gpt-4o-mini",
                 "api_key": llm_test_openai_key,
                 "max_tokens": 4096,
-                "temperature": 0.7,
             },
             headers=platform_admin.headers,
         )
@@ -131,7 +128,6 @@ class TestLLMConfigurationCRUD:
                 "api_key": llm_test_custom_config["api_key"],
                 "endpoint": llm_test_custom_config["endpoint"],
                 "max_tokens": 2048,
-                "temperature": 0.7,
             },
             headers=platform_admin.headers,
         )
@@ -163,7 +159,6 @@ class TestLLMConfigurationCRUD:
                 "model": "claude-haiku-4-5-20251001",
                 "api_key": llm_test_anthropic_key,
                 "max_tokens": 1024,
-                "temperature": 0.5,
             },
             headers=platform_admin.headers,
         )
@@ -177,7 +172,6 @@ class TestLLMConfigurationCRUD:
                 "model": "claude-sonnet-4-20250514",
                 "api_key": llm_test_anthropic_key,
                 "max_tokens": 4096,
-                "temperature": 0.8,
             },
             headers=platform_admin.headers,
         )
@@ -192,7 +186,6 @@ class TestLLMConfigurationCRUD:
         data = response.json()
         assert data["model"] == "claude-sonnet-4-20250514"
         assert data["max_tokens"] == 4096
-        assert data["temperature"] == 0.8
 
     def test_get_config_after_set(
         self,

@@ -16,7 +16,6 @@ class LLMConfigResponse(BaseModel):
     model: str
     endpoint: str | None = None
     max_tokens: int = 16384
-    temperature: float = 0.7
     default_system_prompt: str | None = None
     is_configured: bool = True
     api_key_set: bool = False
@@ -47,12 +46,6 @@ class LLMConfigRequest(BaseModel):
         ge=1,
         le=128000,
         description="Maximum tokens for completion",
-    )
-    temperature: float = Field(
-        0.7,
-        ge=0.0,
-        le=2.0,
-        description="Temperature for sampling (0.0-2.0)",
     )
     default_system_prompt: str | None = Field(
         None,

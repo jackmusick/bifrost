@@ -49,7 +49,6 @@ class AnthropicClient(BaseLLMClient):
         tools: list[ToolDefinition] | None = None,
         *,
         max_tokens: int | None = None,
-        temperature: float | None = None,
         model: str | None = None,
     ) -> LLMResponse:
         """Non-streaming completion via Anthropic API."""
@@ -63,8 +62,6 @@ class AnthropicClient(BaseLLMClient):
             "max_tokens": max_tokens or self.config.max_tokens,  # Anthropic requires this param
         }
 
-        if temperature is not None:
-            kwargs["temperature"] = temperature
         if system_prompt:
             kwargs["system"] = system_prompt
         if anthropic_tools:
@@ -103,7 +100,6 @@ class AnthropicClient(BaseLLMClient):
         tools: list[ToolDefinition] | None = None,
         *,
         max_tokens: int | None = None,
-        temperature: float | None = None,
         model: str | None = None,
     ) -> AsyncGenerator[LLMStreamChunk, None]:
         """Streaming completion via Anthropic API."""
@@ -116,8 +112,6 @@ class AnthropicClient(BaseLLMClient):
             "max_tokens": max_tokens or self.config.max_tokens,  # Anthropic requires this param
         }
 
-        if temperature is not None:
-            kwargs["temperature"] = temperature
         if system_prompt:
             kwargs["system"] = system_prompt
         if anthropic_tools:

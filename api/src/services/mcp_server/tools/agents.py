@@ -219,7 +219,6 @@ async def get_agent(
                 "system_tools": agent.system_tools or [],
                 "llm_model": agent.llm_model,
                 "llm_max_tokens": agent.llm_max_tokens,
-                "llm_temperature": agent.llm_temperature,
             }
 
             display_text = f"Agent: {agent.name}"
@@ -244,7 +243,6 @@ async def create_agent(
     organization_id: str | None = None,
     llm_model: str | None = None,
     llm_max_tokens: int | None = None,
-    llm_temperature: float | None = None,
 ) -> ToolResult:
     """Create a new agent.
 
@@ -332,7 +330,6 @@ async def create_agent(
                 system_tools=system_tools or [],
                 llm_model=llm_model,
                 llm_max_tokens=llm_max_tokens,
-                llm_temperature=llm_temperature,
                 created_by=context.user_email,
                 created_at=now,
                 updated_at=now,
@@ -432,7 +429,6 @@ async def update_agent(
     system_tools: list[str] | None = None,
     llm_model: str | None = None,
     llm_max_tokens: int | None = None,
-    llm_temperature: float | None = None,
 ) -> ToolResult:
     """Update an existing agent.
 
@@ -548,10 +544,6 @@ async def update_agent(
             if llm_max_tokens is not None:
                 agent.llm_max_tokens = llm_max_tokens if llm_max_tokens > 0 else None
                 updates_made.append("llm_max_tokens")
-
-            if llm_temperature is not None:
-                agent.llm_temperature = llm_temperature if llm_temperature >= 0 else None
-                updates_made.append("llm_temperature")
 
             agent.updated_at = datetime.now(timezone.utc)
 

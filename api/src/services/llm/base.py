@@ -93,7 +93,6 @@ class LLMConfig:
     api_key: str
     endpoint: str | None = None
     max_tokens: int = 16384
-    temperature: float = 0.7
     # Optional parameters
     extra_params: dict[str, Any] = field(default_factory=dict)
 
@@ -115,7 +114,6 @@ class BaseLLMClient(ABC):
         tools: list[ToolDefinition] | None = None,
         *,
         max_tokens: int | None = None,
-        temperature: float | None = None,
         model: str | None = None,
     ) -> LLMResponse:
         """
@@ -125,7 +123,6 @@ class BaseLLMClient(ABC):
             messages: Conversation history
             tools: Optional list of tools the model can call
             max_tokens: Override default max tokens
-            temperature: Override default temperature
             model: Override default model (must be compatible with configured provider)
 
         Returns:
@@ -140,7 +137,6 @@ class BaseLLMClient(ABC):
         tools: list[ToolDefinition] | None = None,
         *,
         max_tokens: int | None = None,
-        temperature: float | None = None,
         model: str | None = None,
     ) -> AsyncGenerator[LLMStreamChunk, None]:
         """
@@ -150,7 +146,6 @@ class BaseLLMClient(ABC):
             messages: Conversation history
             tools: Optional list of tools the model can call
             max_tokens: Override default max tokens
-            temperature: Override default temperature
             model: Override default model (must be compatible with configured provider)
 
         Yields:

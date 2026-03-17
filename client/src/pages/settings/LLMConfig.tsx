@@ -107,7 +107,6 @@ export function LLMConfig() {
 	const [apiKey, setApiKey] = useState("");
 	const [endpoint, setEndpoint] = useState(DEFAULT_ENDPOINTS.openai);
 	const [maxTokens, setMaxTokens] = useState(4096);
-	const [temperature, setTemperature] = useState(0.7);
 	const [defaultSystemPrompt, setDefaultSystemPrompt] = useState("");
 
 	// Models state (loaded dynamically after test)
@@ -148,7 +147,6 @@ export function LLMConfig() {
 			setProvider(p);
 			setModel(config.model);
 			setMaxTokens(config.max_tokens);
-			setTemperature(config.temperature);
 			setDefaultSystemPrompt(config.default_system_prompt ?? "");
 			setEndpoint(config.endpoint || DEFAULT_ENDPOINTS[p] || DEFAULT_ENDPOINTS.openai);
 		}
@@ -281,7 +279,6 @@ export function LLMConfig() {
 					api_key: apiKey || undefined,
 					endpoint: isDefaultEndpoint ? undefined : endpoint || undefined,
 					max_tokens: maxTokens,
-					temperature,
 					default_system_prompt: defaultSystemPrompt || null,
 				},
 			});
@@ -320,7 +317,6 @@ export function LLMConfig() {
 			setApiKey("");
 			setEndpoint(DEFAULT_ENDPOINTS.openai);
 			setMaxTokens(16384);
-			setTemperature(0.7);
 			setDefaultSystemPrompt("");
 			setTestResult(null);
 			setAvailableModels([]);

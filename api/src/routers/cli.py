@@ -1864,7 +1864,6 @@ async def cli_ai_complete(
         response = await client.complete(
             messages=llm_messages,
             max_tokens=request.max_tokens,
-            temperature=request.temperature,
             model=request.model,
         )
 
@@ -1950,7 +1949,6 @@ async def cli_ai_stream(
             async for chunk in client.stream(
                 messages=llm_messages,
                 max_tokens=request.max_tokens,
-                temperature=request.temperature,
                 model=request.model,
             ):
                 if chunk.type == "delta":
@@ -2026,7 +2024,6 @@ async def cli_ai_info(
             provider=config.provider,
             model=config.model,
             max_tokens=config.max_tokens,
-            temperature=config.temperature,
         )
     except ValueError as e:
         raise HTTPException(

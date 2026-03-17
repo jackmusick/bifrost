@@ -116,7 +116,6 @@ const formSchema = z.object({
 	knowledge_sources: z.array(z.string()),
 	llm_model: z.string().nullable(),
 	llm_max_tokens: z.number().min(1).max(200000).nullable(),
-	llm_temperature: z.number().min(0).max(2).nullable(),
 	max_iterations: z.number().min(1).max(200).nullable(),
 	max_token_budget: z.number().min(1000).max(1000000).nullable(),
 });
@@ -168,7 +167,7 @@ export function AgentDialog({ agentId, open, onOpenChange }: AgentDialogProps) {
 			knowledge_sources: [],
 			llm_model: null,
 			llm_max_tokens: null,
-			llm_temperature: null,
+
 			max_iterations: null,
 			max_token_budget: null,
 		},
@@ -196,7 +195,6 @@ export function AgentDialog({ agentId, open, onOpenChange }: AgentDialogProps) {
 				system_tools?: string[];
 				llm_model?: string | null;
 				llm_max_tokens?: number | null;
-				llm_temperature?: number | null;
 				max_iterations?: number | null;
 				max_token_budget?: number | null;
 			};
@@ -216,7 +214,6 @@ export function AgentDialog({ agentId, open, onOpenChange }: AgentDialogProps) {
 				knowledge_sources: agent.knowledge_sources ?? [],
 				llm_model: agentWithOrg.llm_model ?? null,
 				llm_max_tokens: agentWithOrg.llm_max_tokens ?? null,
-				llm_temperature: agentWithOrg.llm_temperature ?? null,
 				max_iterations: agentWithOrg.max_iterations ?? null,
 				max_token_budget: agentWithOrg.max_token_budget ?? null,
 			});
@@ -235,7 +232,7 @@ export function AgentDialog({ agentId, open, onOpenChange }: AgentDialogProps) {
 				knowledge_sources: [],
 				llm_model: null,
 				llm_max_tokens: null,
-				llm_temperature: null,
+	
 				max_iterations: null,
 				max_token_budget: null,
 			});
@@ -267,7 +264,6 @@ export function AgentDialog({ agentId, open, onOpenChange }: AgentDialogProps) {
 				knowledge_sources: values.knowledge_sources,
 				llm_model: values.llm_model,
 				llm_max_tokens: values.llm_max_tokens,
-				llm_temperature: values.llm_temperature,
 				max_iterations: values.max_iterations,
 				max_token_budget: values.max_token_budget,
 			} as Parameters<typeof createAgent.mutateAsync>[0]["body"];

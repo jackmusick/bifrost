@@ -280,7 +280,6 @@ IMPORTANT: When the user's request can be fulfilled using one of your tools, you
             # Extract agent LLM overrides
             model_override = agent.llm_model if agent else None
             max_tokens_override = agent.llm_max_tokens if agent else None
-            temperature_override = agent.llm_temperature if agent else None
 
             while iteration < MAX_TOOL_ITERATIONS:
                 iteration += 1
@@ -296,7 +295,6 @@ IMPORTANT: When the user's request can be fulfilled using one of your tools, you
                     tools=tool_definitions if tool_definitions else None,
                     model=model_override,
                     max_tokens=max_tokens_override,
-                    temperature=temperature_override,
                 ):
                     if chunk.type == "delta" and chunk.content:
                         collected_content += chunk.content
@@ -1338,13 +1336,11 @@ IMPORTANT: When the user's request can be fulfilled using one of your tools, you
             # Apply delegated agent's LLM overrides if set
             delegate_model = delegated_agent.llm_model
             delegate_max_tokens = delegated_agent.llm_max_tokens
-            delegate_temp = delegated_agent.llm_temperature
 
             response = await llm_client.complete(
                 messages=messages,
                 model=delegate_model,
                 max_tokens=delegate_max_tokens,
-                temperature=delegate_temp,
             )
 
             duration_ms = int((time.time() - start_time) * 1000)

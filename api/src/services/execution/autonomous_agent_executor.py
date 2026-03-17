@@ -118,7 +118,6 @@ class AutonomousAgentExecutor:
                     tools=tool_definitions if tool_definitions else None,
                     model=model,
                     max_tokens=agent.llm_max_tokens,
-                    temperature=agent.llm_temperature,
                 )
             except Exception as e:
                 logger.error(f"LLM call failed in run {run_id}: {e}", exc_info=True)

@@ -60,7 +60,6 @@ async def get_llm_config(
         model=config.model,
         endpoint=config.endpoint,
         max_tokens=config.max_tokens,
-        temperature=config.temperature,
         default_system_prompt=config.default_system_prompt,
         is_configured=config.is_configured,
         api_key_set=config.api_key_set,
@@ -88,7 +87,6 @@ async def set_llm_config(
             api_key=request.api_key,
             endpoint=request.endpoint,
             max_tokens=request.max_tokens,
-            temperature=request.temperature,
             default_system_prompt=request.default_system_prompt,
             updated_by=user.email,
         )
@@ -108,7 +106,6 @@ async def set_llm_config(
         model=request.model,
         endpoint=request.endpoint,
         max_tokens=request.max_tokens,
-        temperature=request.temperature,
         default_system_prompt=request.default_system_prompt,
         is_configured=True,
         api_key_set=api_key_set,

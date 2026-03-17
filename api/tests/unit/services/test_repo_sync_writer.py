@@ -101,7 +101,6 @@ class TestWriteAgent:
         agent.created_at = None
         agent.updated_at = None
         agent.llm_model = "gpt-4"
-        agent.llm_temperature = None
         agent.llm_max_tokens = None
         agent.tools = []
         agent.delegations = []

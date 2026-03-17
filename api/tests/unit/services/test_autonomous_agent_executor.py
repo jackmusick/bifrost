@@ -30,7 +30,6 @@ def mock_agent():
     agent.max_token_budget = 50000
     agent.llm_model = None
     agent.llm_max_tokens = None
-    agent.llm_temperature = None
     agent.organization_id = uuid4()
     return agent
 

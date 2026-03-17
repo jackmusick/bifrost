@@ -58,7 +58,6 @@ def sample_config_data(fernet_instance):
         "encrypted_api_key": encrypted_key,
         "endpoint": None,
         "max_tokens": 4096,
-        "temperature": 0.7,
     }
 
 
@@ -455,7 +454,6 @@ class TestLLMConfigServiceLegacyCustomProvider:
             "encrypted_api_key": encrypted_key,
             "endpoint": "https://api.custom.com/v1",
             "max_tokens": 4096,
-            "temperature": 0.7,
         }
 
         mock_config = MagicMock()

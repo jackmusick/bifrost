@@ -34,7 +34,6 @@ class LLMProviderConfig:
     model: str
     endpoint: str | None = None  # For custom OpenAI-compatible providers
     max_tokens: int = 16384
-    temperature: float = 0.7
     default_system_prompt: str | None = None  # Default system prompt for agentless chat
     is_configured: bool = False
     api_key_set: bool = False  # Indicates if API key is configured (never return actual key)
@@ -111,7 +110,6 @@ class LLMConfigService:
             model=config_data.get("model", ""),
             endpoint=config_data.get("endpoint"),
             max_tokens=config_data.get("max_tokens", 16384),
-            temperature=config_data.get("temperature", 0.7),
             default_system_prompt=config_data.get("default_system_prompt"),
             is_configured=True,
             api_key_set=bool(config_data.get("encrypted_api_key")),
@@ -124,7 +122,6 @@ class LLMConfigService:
         api_key: str | None = None,
         endpoint: str | None = None,
         max_tokens: int = 16384,
-        temperature: float = 0.7,
         default_system_prompt: str | None = None,
         updated_by: str = "system",
     ) -> None:
@@ -137,7 +134,6 @@ class LLMConfigService:
             api_key: API key (will be encrypted). If None, preserves existing key.
             endpoint: Custom endpoint URL (for custom providers)
             max_tokens: Maximum tokens for completion
-            temperature: Temperature for sampling
             default_system_prompt: Default system prompt for agentless chat
             updated_by: Email/ID of user making the change
         """
@@ -167,7 +163,6 @@ class LLMConfigService:
             "encrypted_api_key": encrypted_api_key,
             "endpoint": endpoint,
             "max_tokens": max_tokens,
-            "temperature": temperature,
             "default_system_prompt": default_system_prompt,
         }
 

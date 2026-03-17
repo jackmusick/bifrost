@@ -247,7 +247,6 @@ class ai:
         response_format: type[T] | None = None,
         knowledge: list[str] | None = None,
         max_tokens: int | None = None,
-        temperature: float | None = None,
         org_id: str | None = None,
         model: str | None = None,
         timeout: float | None = None,
@@ -265,7 +264,6 @@ class ai:
             response_format: Pydantic model class for structured output
             knowledge: List of knowledge namespace(s) to search for context
             max_tokens: Override default max tokens
-            temperature: Override default temperature (0.0-2.0)
             org_id: Organization scope for knowledge search
             model: Override default model (must be compatible with configured provider)
             timeout: Override default HTTP timeout in seconds (default: 30s)
@@ -322,7 +320,6 @@ class ai:
             json={
                 "messages": msg_list,
                 "max_tokens": max_tokens,
-                "temperature": temperature,
                 "org_id": org_id,
                 "model": model,
                 "execution_id": execution_id,
@@ -358,7 +355,6 @@ class ai:
         system: str | None = None,
         knowledge: list[str] | None = None,
         max_tokens: int | None = None,
-        temperature: float | None = None,
         org_id: str | None = None,
         model: str | None = None,
     ) -> AsyncGenerator[AIStreamChunk, None]:
@@ -373,7 +369,6 @@ class ai:
             system: System prompt (prepended to messages)
             knowledge: List of knowledge namespace(s) to search for context
             max_tokens: Override default max tokens
-            temperature: Override default temperature (0.0-2.0)
             org_id: Organization scope for knowledge search
             model: Override default model (must be compatible with configured provider)
 
@@ -416,7 +411,6 @@ class ai:
             json={
                 "messages": msg_list,
                 "max_tokens": max_tokens,
-                "temperature": temperature,
                 "org_id": org_id,
                 "model": model,
                 "execution_id": execution_id,

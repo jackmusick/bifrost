@@ -27,7 +27,6 @@ DEFAULT_PROVIDER: Literal["openai", "anthropic"] = "openai"
 DEFAULT_OPENAI_MODEL = "gpt-4o"
 DEFAULT_ANTHROPIC_MODEL = "claude-sonnet-4-20250514"
 DEFAULT_MAX_TOKENS = 16384
-DEFAULT_TEMPERATURE = 0.7
 
 # SystemConfig keys (follows GitHub integration pattern)
 LLM_CONFIG_CATEGORY = "llm"
@@ -45,8 +44,7 @@ async def get_llm_config(session: AsyncSession) -> LLMConfig:
         "model": "gpt-4o" | "claude-sonnet-4-20250514",
         "encrypted_api_key": "<fernet-encrypted-key>",
         "endpoint": null,  # For custom OpenAI-compatible providers
-        "max_tokens": 4096,
-        "temperature": 0.7
+        "max_tokens": 4096
       }
 
     Returns:
@@ -106,7 +104,6 @@ async def get_llm_config(session: AsyncSession) -> LLMConfig:
 
     # Get optional parameters with defaults
     max_tokens = config_data.get("max_tokens", DEFAULT_MAX_TOKENS)
-    temperature = config_data.get("temperature", DEFAULT_TEMPERATURE)
     endpoint = config_data.get("endpoint") or None
 
     return LLMConfig(
@@ -115,7 +112,6 @@ async def get_llm_config(session: AsyncSession) -> LLMConfig:
         api_key=api_key,
         endpoint=endpoint,
         max_tokens=max_tokens,
-        temperature=temperature,
     )
 
 
@@ -149,7 +145,6 @@ def create_llm_client(
     model: str | None = None,
     endpoint: str | None = None,
     max_tokens: int = DEFAULT_MAX_TOKENS,
-    temperature: float = DEFAULT_TEMPERATURE,
 ) -> BaseLLMClient:
     """
     Create an LLM client with explicit configuration.
@@ -162,7 +157,6 @@ def create_llm_client(
         model: Model identifier (uses defaults if not provided)
         endpoint: Custom API endpoint URL
         max_tokens: Maximum tokens for completion
-        temperature: Temperature for sampling
 
     Returns:
         Configured LLM client
@@ -176,7 +170,6 @@ def create_llm_client(
         api_key=api_key,
         endpoint=endpoint,
         max_tokens=max_tokens,
-        temperature=temperature,
     )
 
     if provider == "openai":

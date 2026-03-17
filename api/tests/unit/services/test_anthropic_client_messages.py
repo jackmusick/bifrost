@@ -22,7 +22,6 @@ def client():
         config.api_key = "test-key"
         config.model = "claude-sonnet-4-20250514"
         config.max_tokens = 1024
-        config.temperature = 0.7
         return AnthropicClient(config)
 
 
