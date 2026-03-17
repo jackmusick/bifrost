@@ -183,6 +183,7 @@ Before writing any app code, design what you're building.
 4. **Fixed-height container:** Your app renders in a fixed-height box — manage your own scrolling
 5. **Custom CSS:** `styles.css` at app root, dark mode via `.dark` selector
 6. **Dependencies:** Declare npm packages in `app.yaml` (max 20, loaded from esm.sh)
+7. **Custom components:** Components in `components/` are auto-injected — do NOT write import statements for them. Just use `<MyComponent />` directly. Only import from `"bifrost"` or npm package names.
 
 For component lists, hooks API, CSS examples, sandbox constraints — grep `/tmp/bifrost-docs/llms.txt`.
 

@@ -107,6 +107,43 @@ export default function Dashboard() {
 
 
 @pytest.mark.asyncio
+async def test_relative_imports_are_stripped(compiler):
+    """Relative imports (custom components, same-app modules) must be stripped, not turned into $deps."""
+    source = '''
+import { StatusBadge } from "../../components/StatusBadge";
+import Header from "../components/Header";
+import * as Utils from "./utils";
+export default function Page() {
+    return <div><StatusBadge /><Header /></div>;
+}
+'''
+    result = await compiler.compile_file(source, "pages/overview.tsx")
+    assert result.success
+    assert "$deps" not in result.compiled
+    assert "StatusBadge" not in result.compiled or "import" not in result.compiled
+    # The component references in JSX should still be there
+    assert "StatusBadge" in result.compiled
+
+
+@pytest.mark.asyncio
+async def test_relative_imports_mixed_with_bifrost_and_npm(compiler):
+    """Relative imports are stripped while bifrost and npm imports are preserved."""
+    source = '''
+import { Card } from "bifrost";
+import { LineChart } from "recharts";
+import { StatusBadge } from "../../components/StatusBadge";
+export default function Page() {
+    return <Card><LineChart /><StatusBadge /></Card>;
+}
+'''
+    result = await compiler.compile_file(source, "pages/index.tsx")
+    assert result.success
+    assert "= $;" in result.compiled  # bifrost
+    assert '$deps["recharts"]' in result.compiled  # npm
+    assert '$deps["../../components/StatusBadge"]' not in result.compiled  # NOT in $deps
+
+
+@pytest.mark.asyncio
 async def test_no_imports_compiles_normally(compiler):
     """Files with no imports should compile without $deps references."""
     source = '''

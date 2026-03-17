@@ -27,6 +27,16 @@ function preprocessImports(source) {
   return result;
 }
 
+function preprocessRelativeImports(source) {
+  // Strip relative imports — custom components are auto-injected at runtime,
+  // and same-app modules are resolved by the runtime loader.
+  // Matches: import { X } from "./foo", import X from "../bar", import * as X from "../../baz"
+  return source.replace(
+    /^\s*import\s+(?:\{[^}]*\}|\w+|\*\s+as\s+\w+)(?:\s*,\s*(?:\{[^}]*\}|\w+))?\s+from\s+["']\.\.?\/[^"']+["']\s*;?\s*$/gm,
+    ""
+  );
+}
+
 function preprocessExternalImports(source) {
   // Use `var` instead of `const` — same reason as preprocessImports:
   // avoids redeclaration errors with scope parameters in strict mode.
@@ -112,6 +122,7 @@ function postprocessExports(compiled) {
 function compileFile(source, path) {
   try {
     let preprocessed = preprocessImports(source);      // bifrost imports → $
+    preprocessed = preprocessRelativeImports(preprocessed); // strip relative imports (auto-injected)
     preprocessed = preprocessExternalImports(preprocessed); // remaining → $deps["pkg"]
     const result = transform(preprocessed, {
       filename: path || "component.tsx",
