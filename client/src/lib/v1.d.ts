@@ -2798,7 +2798,7 @@ export interface paths {
         put?: never;
         /**
          * Install a Python package
-         * @description Install a Python package (Platform admin only)
+         * @description Install a Python package or recycle workers from requirements.txt (Platform admin only)
          */
         post: operations["install_package_api_packages_install_post"];
         delete?: never;
@@ -3410,22 +3410,22 @@ export interface paths {
          * Execute workflow via API key
          * @description Execute an endpoint-enabled workflow using an API key for authentication
          */
-        get: operations["execute_endpoint_api_endpoints__workflow_id__delete"];
+        get: operations["execute_endpoint_api_endpoints__workflow_id__put"];
         /**
          * Execute workflow via API key
          * @description Execute an endpoint-enabled workflow using an API key for authentication
          */
-        put: operations["execute_endpoint_api_endpoints__workflow_id__delete"];
+        put: operations["execute_endpoint_api_endpoints__workflow_id__put"];
         /**
          * Execute workflow via API key
          * @description Execute an endpoint-enabled workflow using an API key for authentication
          */
-        post: operations["execute_endpoint_api_endpoints__workflow_id__delete"];
+        post: operations["execute_endpoint_api_endpoints__workflow_id__put"];
         /**
          * Execute workflow via API key
          * @description Execute an endpoint-enabled workflow using an API key for authentication
          */
-        delete: operations["execute_endpoint_api_endpoints__workflow_id__delete"];
+        delete: operations["execute_endpoint_api_endpoints__workflow_id__put"];
         options?: never;
         head?: never;
         patch?: never;
@@ -7710,11 +7710,6 @@ export interface components {
              */
             llm_max_tokens?: number | null;
             /**
-             * Llm Temperature
-             * @description Override temperature
-             */
-            llm_temperature?: number | null;
-            /**
              * Max Iterations
              * @description Max LLM iterations for autonomous runs
              */
@@ -7790,8 +7785,6 @@ export interface components {
             llm_model?: string | null;
             /** Llm Max Tokens */
             llm_max_tokens?: number | null;
-            /** Llm Temperature */
-            llm_temperature?: number | null;
             /** Max Iterations */
             max_iterations?: number | null;
             /** Max Token Budget */
@@ -8080,11 +8073,6 @@ export interface components {
              * @description Override max tokens
              */
             llm_max_tokens?: number | null;
-            /**
-             * Llm Temperature
-             * @description Override temperature
-             */
-            llm_temperature?: number | null;
             /**
              * Max Iterations
              * @description Max LLM iterations for autonomous runs
@@ -8706,11 +8694,6 @@ export interface components {
              */
             max_tokens?: number | null;
             /**
-             * Temperature
-             * @description Override temperature (0.0-2.0)
-             */
-            temperature?: number | null;
-            /**
              * Org Id
              * @description Organization ID for knowledge search
              */
@@ -8772,11 +8755,6 @@ export interface components {
              * @description Default max tokens
              */
             max_tokens: number;
-            /**
-             * Temperature
-             * @description Default temperature
-             */
-            temperature: number;
         };
         /**
          * CLIConfigDeleteRequest
@@ -13535,12 +13513,6 @@ export interface components {
              */
             max_tokens: number;
             /**
-             * Temperature
-             * @description Temperature for sampling (0.0-2.0)
-             * @default 0.7
-             */
-            temperature: number;
-            /**
              * Default System Prompt
              * @description Default system prompt for agentless chat
              */
@@ -13565,11 +13537,6 @@ export interface components {
              * @default 16384
              */
             max_tokens: number;
-            /**
-             * Temperature
-             * @default 0.7
-             */
-            temperature: number;
             /** Default System Prompt */
             default_system_prompt?: string | null;
             /**
@@ -18268,6 +18235,8 @@ export interface components {
             action: "start" | "stop" | "heartbeat";
             /** Prefix */
             prefix: string;
+            /** Session Id */
+            session_id?: string | null;
         };
         /**
          * WebhookAdapterInfo
@@ -24606,7 +24575,7 @@ export interface operations {
             };
         };
     };
-    execute_endpoint_api_endpoints__workflow_id__delete: {
+    execute_endpoint_api_endpoints__workflow_id__put: {
         parameters: {
             query?: never;
             header: {
@@ -24639,7 +24608,7 @@ export interface operations {
             };
         };
     };
-    execute_endpoint_api_endpoints__workflow_id__delete: {
+    execute_endpoint_api_endpoints__workflow_id__put: {
         parameters: {
             query?: never;
             header: {
@@ -24672,7 +24641,7 @@ export interface operations {
             };
         };
     };
-    execute_endpoint_api_endpoints__workflow_id__delete: {
+    execute_endpoint_api_endpoints__workflow_id__put: {
         parameters: {
             query?: never;
             header: {
@@ -24705,7 +24674,7 @@ export interface operations {
             };
         };
     };
-    execute_endpoint_api_endpoints__workflow_id__delete: {
+    execute_endpoint_api_endpoints__workflow_id__put: {
         parameters: {
             query?: never;
             header: {
