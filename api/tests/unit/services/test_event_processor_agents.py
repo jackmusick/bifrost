@@ -9,11 +9,15 @@ enqueue_agent_run with the expected parameters.
 
 import uuid
 from datetime import datetime, timezone
+from typing import TYPE_CHECKING
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
 from src.models.enums import EventDeliveryStatus
+
+if TYPE_CHECKING:
+    from src.services.events.processor import EventProcessor
 
 
 def _make_event(
@@ -65,7 +69,7 @@ def _make_delivery(
     return delivery
 
 
-def _create_processor() -> MagicMock:
+def _create_processor() -> "EventProcessor":
     """Create an EventProcessor with all repos mocked out."""
     with (
         patch("src.services.events.processor.EventDeliveryRepository"),

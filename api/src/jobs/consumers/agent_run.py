@@ -134,7 +134,8 @@ class AgentRunConsumer(BaseConsumer):
                 if sync:
                     result_key = f"{REDIS_PREFIX}:{run_id}:result"
                     async with get_redis() as r:
-                        await r.lpush(result_key, json.dumps({
+                        # redis-py 7.x stubs type lpush as -> int, but it's async at runtime
+                        await r.lpush(result_key, json.dumps({  # pyright: ignore[reportGeneralTypeIssues]
                             "output": run_result.get("output"),
                             "status": run_result.get("status", "completed"),
                             "iterations_used": run_result.get("iterations_used", 0),
@@ -164,7 +165,7 @@ class AgentRunConsumer(BaseConsumer):
                 if sync:
                     result_key = f"{REDIS_PREFIX}:{run_id}:result"
                     async with get_redis() as r:
-                        await r.lpush(result_key, json.dumps({
+                        await r.lpush(result_key, json.dumps({  # pyright: ignore[reportGeneralTypeIssues]
                             "output": None,
                             "status": "failed",
                             "error": str(e),

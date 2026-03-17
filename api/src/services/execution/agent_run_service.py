@@ -70,7 +70,8 @@ async def wait_for_agent_run_result(run_id: str, timeout: int = 1800) -> dict | 
     """Block until agent run completes. Used for sync SDK calls."""
     result_key = f"{REDIS_PREFIX}:{run_id}:result"
     async with get_redis() as redis:
-        result = await redis.blpop(result_key, timeout=timeout)
+        # redis-py 7.x stubs type blpop as -> list, but it's async at runtime
+        result = await redis.blpop(result_key, timeout=timeout)  # pyright: ignore[reportGeneralTypeIssues]
         if result:
             return json.loads(result[1])
     return None
