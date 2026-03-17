@@ -310,10 +310,29 @@ async def import_manifest_from_repo(
 
     try:
         async with db.begin_nested():
+            # Delete stale entities FIRST to avoid unique constraint violations
+            # (e.g. workflow name collision when a workflow moves paths/gets new UUID)
+            deletion_changes = []
+            if delete_removed_entities and has_deletes:
+                deletion_changes = await resolver._resolve_deletions(
+                    manifest=manifest, repo=repo, dry_run=False,
+                )
+
             await resolver.plan_import(manifest, repo=repo, dry_run=False, changed_ids=changed_ids)
 
             # Use diff-computed entity_changes (more accurate than op-based)
             result.entity_changes = [c for c in entity_changes if c["action"] != "delete"]
+
+            # Append deletion results after the entity_changes reset above
+            for ec in deletion_changes:
+                result.deleted_entities.append(
+                    f"{ec.entity_type}: {ec.name}"
+                )
+                result.entity_changes.append({
+                    "action": "delete" if ec.action == "removed" else ec.action,
+                    "entity_type": ec.entity_type,
+                    "name": ec.name,
+                })
 
             # Run indexer side-effects (forms and agents)
             result.modified_files.update(
@@ -322,21 +341,6 @@ async def import_manifest_from_repo(
             result.modified_files.update(
                 await resolver._index_agents_from_manifest(manifest, _read_or_none, changed_ids)
             )
-
-            # Run entity deletions if requested (skip when diff has no deletes)
-            if delete_removed_entities and has_deletes:
-                deletion_changes = await resolver._resolve_deletions(
-                    manifest=manifest, repo=repo, dry_run=False,
-                )
-                for ec in deletion_changes:
-                    result.deleted_entities.append(
-                        f"{ec.entity_type}: {ec.name}"
-                    )
-                    result.entity_changes.append({
-                        "action": "delete" if ec.action == "removed" else ec.action,
-                        "entity_type": ec.entity_type,
-                        "name": ec.name,
-                    })
 
             result.applied = True
 
@@ -638,6 +642,19 @@ class ManifestResolver:
                 else:
                     await op.execute(self.db)
             all_ops.extend(app_ops)
+
+            # Compile source files from _repo/ into _apps/{id}/preview/
+            if not dry_run:
+                try:
+                    from src.services.app_storage import AppStorageService
+
+                    _synced, errors = await AppStorageService().sync_preview_compiled(
+                        mapp.id, mapp.path,
+                    )
+                    if errors:
+                        logger.warning(f"App {mapp.name} compile warnings: {errors}")
+                except Exception as e:
+                    logger.warning(f"Preview sync failed for app {mapp.name}: {e}")
 
         # 5. Resolve tables (refs org + app UUIDs)
         for key, mtable in manifest.tables.items():

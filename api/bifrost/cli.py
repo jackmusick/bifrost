@@ -2947,6 +2947,7 @@ async def _push_files(
     warnings: list[str] = []
     manifest_applied = False
     modified_files_response: dict[str, str] = {}
+    manifest_files_response: dict[str, str] = {}
 
     if has_manifest:
         try:
@@ -2959,6 +2960,7 @@ async def _push_files(
                 manifest_applied = manifest_data.get("applied", False)
                 warnings = manifest_data.get("warnings", [])
                 modified_files_response = manifest_data.get("modified_files", {})
+                manifest_files_response = manifest_data.get("manifest_files", {})
                 # Print deleted entities summary
                 deleted_entities = manifest_data.get("deleted_entities", [])
                 if deleted_entities:
@@ -3013,9 +3015,14 @@ async def _push_files(
         for warning in warnings:
             print(f"    - {warning}")
 
-    # Write back modified files from server response (e.g. forms/agents with resolved refs)
+    # Write back modified/manifest files from server response (e.g. forms/agents with resolved refs)
+    writeback_data: dict[str, Any] = {}
     if modified_files_response:
-        _write_back_server_files(path, repo_prefix, {"modified_files": modified_files_response})
+        writeback_data["modified_files"] = modified_files_response
+    if manifest_files_response:
+        writeback_data["manifest_files"] = manifest_files_response
+    if writeback_data:
+        _write_back_server_files(path, repo_prefix, writeback_data)
 
     # Validate if requested
     if validate and repo_prefix:
