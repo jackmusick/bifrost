@@ -66,6 +66,7 @@ class _CliColors:
     yellow: str
     red: str
     dim: str
+    bold: str
     reset: str
 
 
@@ -77,6 +78,7 @@ def _get_colors() -> _CliColors:
         yellow="\033[33m" if use_color else "",
         red="\033[31m" if use_color else "",
         dim="\033[2m" if use_color else "",
+        bold="\033[1m" if use_color else "",
         reset="\033[0m" if use_color else "",
     )
 
@@ -2214,14 +2216,6 @@ def _print_progress(current: int, total: int, label: str) -> None:
         sys.stdout.write("\n")
 
 
-def _get_file_mtime(file_path: pathlib.Path) -> datetime | None:
-    """Get a file's modification time as a timezone-aware datetime."""
-    try:
-        return datetime.fromtimestamp(file_path.stat().st_mtime, tz=timezone.utc)
-    except OSError:
-        return None
-
-
 def _format_server_time(iso_str: str) -> str:
     """Format an ISO 8601 timestamp for display (short format)."""
     try:
@@ -2229,17 +2223,6 @@ def _format_server_time(iso_str: str) -> str:
         return dt.strftime("%b %d %H:%M")
     except (ValueError, TypeError):
         return "unknown"
-
-
-def _parse_server_time(iso_str: str) -> datetime | None:
-    """Parse an ISO 8601 timestamp into a timezone-aware datetime."""
-    try:
-        dt = datetime.fromisoformat(iso_str)
-        if dt.tzinfo is None:
-            dt = dt.replace(tzinfo=timezone.utc)
-        return dt
-    except (ValueError, TypeError):
-        return None
 
 
 def _strip_repo_prefix(repo_path: str, repo_prefix: str) -> str:
@@ -2251,144 +2234,140 @@ def _strip_repo_prefix(repo_path: str, repo_prefix: str) -> str:
     return repo_path
 
 
-def _render_overwrite_table(
-    files_to_write: list[str],
-    local_root: pathlib.Path,
-    server_files: dict[str, Any],
-    repo_prefix: str,
-    uncommitted: set[str],
-    direction: str = "pull",
-    files_to_delete: list[str] | None = None,
-    print_summary: bool = True,
-) -> dict[str, int]:
-    """Render a color-coded table of ALL files involved in the operation.
-
-    Colors indicate what happens to each file:
-      - Green: the winning file (will exist after the operation)
-      - Orange: the file being overwritten (existed on target, getting replaced)
-      - Red: file being deleted with --mirror (no replacement)
-      - No color: new file being created (nothing existed on target side)
+def _interactive_file_select(
+    items: list[dict[str, str]],
+    columns: list[tuple[str, str, int]],
+    prompt_text: str = "Select files to pull",
+) -> list[dict[str, str]] | None:
+    """Interactive multi-select table for file selection.
 
     Args:
-        files_to_write: ALL files being written (overwrites + new)
-        direction: "pull" (server overwrites local) or "push" (local overwrites server)
-        files_to_delete: files that will be deleted (--mirror only)
+        items: List of dicts, each representing a row
+        columns: List of (key, header, width) tuples for display
+        prompt_text: Text shown above the table
+
+    Returns:
+        Selected items, or None if cancelled. Returns all items if not a TTY.
     """
+    if not items:
+        return []
+
+    # Non-TTY fallback: return all items
+    if not sys.stdin.isatty() or not sys.stdout.isatty():
+        return items
+
+    import tty
+    import termios
+
     c = _get_colors()
-    GREEN, ORANGE, RED, RESET = c.green, c.yellow, c.red, c.reset
+    selected = [True] * len(items)
+    cursor = 0
+    fd = sys.stdin.fileno()
+    old_settings = termios.tcgetattr(fd)
 
-    all_files = sorted(set(files_to_write) | set(files_to_delete or []))
-    if not all_files:
-        return {"new": 0, "changed": 0, "deleted": 0}
+    import re
+    _ansi_re = re.compile(r"\x1b\[[0-9;]*m")
 
-    # Compute column widths
-    max_name = max(len(f) for f in all_files)
-    max_name = max(max_name, 4)  # minimum "File" header width
-    ts_width = 24  # "Mar 10 14:23 (newer)" max width
-
-    header_file = "File".ljust(max_name)
-    header_local = "Local".ljust(ts_width)
-    header_platform = "Platform".ljust(ts_width)
-
-    if direction == "pull":
-        print()
-        print("  Files to pull from platform:")
-        print()
-    else:
-        print()
-        print("  Files to push to platform:")
-        print()
-    print(f"  {header_file}  {header_local}  {header_platform}")
-    print(f"  {'─' * max_name}  {'─' * ts_width}  {'─' * ts_width}")
-
-    uncommitted_files: list[str] = []
-    delete_set = set(files_to_delete or [])
-    count_new = 0
-    count_changed = 0
-    count_deleted = 0
-
-    for rel in all_files:
-        local_path = local_root / rel
-        local_ts = _format_file_time(local_path) if local_path.exists() else ""
-        local_dt = _get_file_mtime(local_path) if local_path.exists() else None
-
-        # Get server timestamp — server_files values may be dicts or strings
-        repo_path = f"{repo_prefix}/{rel}" if repo_prefix else rel
-        server_info = server_files.get(repo_path)
-        if isinstance(server_info, dict):
-            server_ts = _format_server_time(server_info.get("last_modified", ""))
-            server_dt = _parse_server_time(server_info.get("last_modified", ""))
-        else:
-            server_ts = ""
-            server_dt = None
-
-        # Determine which side is newer (only meaningful when both exist)
-        # Skip for .bifrost/ manifest files (always regenerated, timestamps meaningless)
-        # and when display timestamps are identical (sub-second diff not visible to user)
-        is_manifest = rel.startswith(".bifrost/")
-        timestamps_differ = local_ts != server_ts and local_ts and server_ts
-        local_newer = (not is_manifest and timestamps_differ
-                       and local_dt is not None and server_dt is not None and local_dt > server_dt)
-        server_newer = (not is_manifest and timestamps_differ
-                        and local_dt is not None and server_dt is not None and server_dt > local_dt)
-
-        name_display = rel.ljust(max_name)
-
-        if rel in delete_set:
-            # File being deleted (red) — --mirror mode
-            count_deleted += 1
-            if direction == "pull":
-                # Pull --mirror: local file being deleted
-                local_display = f"{RED}{local_ts} (delete){RESET}".ljust(ts_width + len(RED) + len(RESET))
-                server_display = "".ljust(ts_width)
+    def _trunc_and_pad(s: str, width: int) -> str:
+        """Truncate and pad a string to exact visible width, preserving ANSI codes."""
+        stripped = _ansi_re.sub("", s)
+        if len(stripped) <= width:
+            return s + " " * (width - len(stripped))
+        # Need to truncate: walk the original string tracking visible chars
+        result: list[str] = []
+        vis = 0
+        i = 0
+        while i < len(s) and vis < width:
+            m = _ansi_re.match(s, i)
+            if m:
+                result.append(m.group())
+                i = m.end()
             else:
-                # Push --mirror: server file being deleted
-                server_display = f"{RED}{server_ts} (delete){RESET}".ljust(ts_width + len(RED) + len(RESET))
-                local_display = "".ljust(ts_width)
-            print(f"  {name_display}  {local_display}  {server_display}")
-        elif direction == "pull":
-            # Pull: server wins (green), local loses (orange)
-            has_target = bool(local_ts)
-            if has_target:
-                count_changed += 1
+                result.append(s[i])
+                vis += 1
+                i += 1
+        return "".join(result)
+
+    def _render() -> list[str]:
+        """Build display lines."""
+        lines: list[str] = []
+        lines.append("")
+        lines.append(f"  {prompt_text}:")
+        lines.append("  (↑/↓ navigate, Space toggle, a=all, n=none, Enter confirm, Esc cancel)")
+        lines.append("")
+
+        # Header
+        hdr = "  [ ]  "
+        for _, header, width in columns:
+            hdr += header.ljust(width) + "  "
+        lines.append(hdr)
+        lines.append("  " + "─" * (len(hdr) - 2))
+
+        # Rows
+        for i, item in enumerate(items):
+            check = f"{c.green}[✓]{c.reset}" if selected[i] else "[ ]"
+            prefix = f"  {check}  "
+            row = ""
+            for key, _, width in columns:
+                val = item.get(key) or ""
+                row += _trunc_and_pad(val, width) + "  "
+            if i == cursor:
+                lines.append(f"{c.bold}{prefix}{row}{c.reset}")
             else:
-                count_new += 1
-            newer_tag = " (newer)" if server_newer else ""
-            overwritten_tag = " (newer)" if local_newer else ""
-            winner_display = f"{GREEN}{server_ts}{newer_tag}{RESET}".ljust(ts_width + len(GREEN) + len(RESET)) if server_ts else "".ljust(ts_width)
-            loser_display = f"{ORANGE}{local_ts}{overwritten_tag}{RESET}".ljust(ts_width + len(ORANGE) + len(RESET)) if local_ts else "".ljust(ts_width)
-            print(f"  {name_display}  {loser_display}  {winner_display}")
-        else:
-            # Push: local wins (green), server loses (orange)
-            has_target = bool(server_ts)
-            if has_target:
-                count_changed += 1
-            else:
-                count_new += 1
-            newer_tag = " (newer)" if local_newer else ""
-            overwritten_tag = " (newer)" if server_newer else ""
-            winner_display = f"{GREEN}{local_ts}{newer_tag}{RESET}".ljust(ts_width + len(GREEN) + len(RESET)) if local_ts else "".ljust(ts_width)
-            loser_display = f"{ORANGE}{server_ts}{overwritten_tag}{RESET}".ljust(ts_width + len(ORANGE) + len(RESET)) if server_ts else "".ljust(ts_width)
-            print(f"  {name_display}  {winner_display}  {loser_display}")
+                lines.append(f"{prefix}{row}")
 
-        if rel in uncommitted:
-            uncommitted_files.append(rel)
+        sel_count = sum(selected)
+        lines.append("")
+        lines.append(f"  {sel_count}/{len(items)} selected")
+        return lines
 
-    # Summary line
-    file_summary = _format_count_summary(
-        {"new": count_new, "changed": count_changed, "deleted": count_deleted},
-        {"new": ("green", "{n} new"), "changed": ("yellow", "{n} changed"), "deleted": ("red", "{n} deleted")},
-        c, separator="  ",
-    )
-    if file_summary and print_summary:
-        print(f"\n  {file_summary}")
+    prev_line_count = 0
+    try:
+        tty.setraw(fd)
 
-    if uncommitted_files:
-        print(f"\n  {RED}⚠ {len(uncommitted_files)} file(s) have uncommitted git changes (overwrite = lost work):{RESET}")
-        for f in uncommitted_files:
-            print(f"  {RED}  {f}{RESET}")
+        # Initial render
+        sys.stdout.write("\n")  # ensure we start on a new line
+        lines = _render()
+        sys.stdout.write("\n".join(lines))
+        sys.stdout.flush()
+        prev_line_count = len(lines)
 
-    return {"new": count_new, "changed": count_changed, "deleted": count_deleted}
+        while True:
+            ch = sys.stdin.read(1)
+            if ch == "\x1b":  # Escape sequence
+                seq = sys.stdin.read(2)
+                if seq == "[A":  # Up
+                    cursor = max(0, cursor - 1)
+                elif seq == "[B":  # Down
+                    cursor = min(len(items) - 1, cursor + 1)
+                elif seq == "" or seq[0] != "[":  # Bare Esc
+                    return None
+            elif ch == " ":  # Toggle
+                selected[cursor] = not selected[cursor]
+            elif ch in ("\r", "\n"):  # Enter = confirm
+                break
+            elif ch == "a":  # Select all
+                selected[:] = [True] * len(items)
+            elif ch == "n":  # Select none
+                selected[:] = [False] * len(items)
+            elif ch == "q":  # Quit
+                return None
+            elif ch == "\x03":  # Ctrl-C
+                return None
+
+            # Redraw: move cursor up and clear
+            sys.stdout.write(f"\x1b[{prev_line_count}A")
+            sys.stdout.write("\x1b[J")  # Clear from cursor to end
+            lines = _render()
+            sys.stdout.write("\n".join(lines))
+            sys.stdout.flush()
+            prev_line_count = len(lines)
+    finally:
+        termios.tcsetattr(fd, termios.TCSADRAIN, old_settings)
+        sys.stdout.write("\n")
+        sys.stdout.flush()
+
+    return [item for item, sel in zip(items, selected) if sel]
 
 
 async def _pull_from_server(
@@ -2413,7 +2392,11 @@ async def _pull_from_server(
             return True
         data = resp.json()
         for item in data.get("files_metadata", []):
-            server_metadata[item["path"]] = {"etag": item["etag"], "last_modified": item["last_modified"]}
+            server_metadata[item["path"]] = {
+                    "etag": item["etag"],
+                    "last_modified": item["last_modified"],
+                    "updated_by": item.get("updated_by", ""),
+                }
     except Exception as e:
         print(f"Warning: file listing failed: {e}", file=sys.stderr)
         return True
@@ -2512,22 +2495,71 @@ async def _pull_from_server(
             rel for rel in files_to_write if (local_root / rel).exists()
         ])
 
-        _render_overwrite_table(files_to_write, local_root, server_metadata, repo_prefix, uncommitted, direction="pull", files_to_delete=files_to_delete)
-
+        # Show git warnings before selector
         if uncommitted:
-            pass  # Warning already shown in table
+            c = _get_colors()
+            print(f"\n  {c.red}⚠ {len(uncommitted)} file(s) have uncommitted git changes (overwrite = lost work):{c.reset}")
+            for f in sorted(uncommitted):
+                print(f"  {c.red}  {f}{c.reset}")
         elif is_git:
             print("\n  Git is enabled, so overwritten versions can be recovered from git history.")
         else:
             print("\n  Git is not detected — overwritten changes will be irreversibly lost.")
 
-        try:
-            answer = input("\nAre you sure you want to continue? [y/N] ").strip().lower()
-        except (EOFError, KeyboardInterrupt):
-            print("\nPull cancelled.")
-            return True
-        if answer not in ("y", "yes"):
+        c = _get_colors()
+        selector_items: list[dict[str, str]] = []
+        for rel in files_to_write:
+            repo_path_item = f"{repo_prefix}/{rel}" if repo_prefix else rel
+            server_info = server_metadata.get(repo_path_item)
+            local_path = local_root / rel
+            is_new = not local_path.exists()
+            status = f"{c.green}new{c.reset}" if is_new else f"{c.yellow}changed{c.reset}"
+            local_ts = _format_file_time(local_path) if local_path.exists() else ""
+            server_ts = ""
+            author = ""
+            if isinstance(server_info, dict):
+                server_ts = _format_server_time(server_info.get("last_modified") or "")
+                author = server_info.get("updated_by") or ""
+            warn = " ⚠" if rel in uncommitted else ""
+            selector_items.append({
+                "rel": rel, "repo_path": repo_path_item,
+                "status": status + warn, "local_time": local_ts,
+                "server_time": server_ts, "author": author,
+                "_action": "write",
+            })
+        for rel in files_to_delete:
+            repo_path_item = f"{repo_prefix}/{rel}" if repo_prefix else rel
+            server_info = server_metadata.get(repo_path_item)
+            local_ts = _format_file_time(local_root / rel) if (local_root / rel).exists() else ""
+            selector_items.append({
+                "rel": rel, "repo_path": repo_path_item,
+                "status": f"{c.red}delete{c.reset}", "local_time": local_ts,
+                "server_time": "", "author": "",
+                "_action": "delete",
+            })
+        selected = _interactive_file_select(
+            selector_items,
+            columns=[
+                ("rel", "File", 40),
+                ("status", "Status", 10),
+                ("local_time", "Local", 16),
+                ("server_time", "Platform", 16),
+                ("author", "Author", 20),
+            ],
+            prompt_text="Select files to pull",
+        )
+        if selected is None:
             print("Pull cancelled.")
+            return True
+        selected_rels = {item["rel"] for item in selected}
+        files_to_write = [r for r in files_to_write if r in selected_rels]
+        files_to_download = [
+            rp for rp in files_to_download
+            if _strip_repo_prefix(rp, repo_prefix) in selected_rels
+        ]
+        files_to_delete = [r for r in files_to_delete if r in selected_rels]
+        if not files_to_download and not files_to_delete:
+            print("No files selected.")
             return True
 
     # 5. Download files one at a time with progress
@@ -2819,7 +2851,11 @@ async def _push_files(
         if resp.status_code == 200:
             data = resp.json()
             for item in data.get("files_metadata", []):
-                server_metadata[item["path"]] = {"etag": item["etag"], "last_modified": item["last_modified"]}
+                server_metadata[item["path"]] = {
+                    "etag": item["etag"],
+                    "last_modified": item["last_modified"],
+                    "updated_by": item.get("updated_by", ""),
+                }
     except Exception:
         pass
 
@@ -2863,59 +2899,79 @@ async def _push_files(
     if has_entity_changes:
         entity_counts = _render_entity_changes_table(entity_changes, print_summary=False)
 
-    # Render file table if there are file changes
-    file_counts: dict[str, int] = {"new": 0, "changed": 0, "deleted": 0}
-    files_to_write_display: list[str] = []
-    files_to_delete_display: list[str] = []
-    if has_file_changes:
-        for repo_path in files_to_upload:
-            rel = _strip_repo_prefix(repo_path, repo_prefix)
-            files_to_write_display.append(rel)
-        for server_path in files_to_delete_paths:
-            rel = _strip_repo_prefix(server_path, repo_prefix)
-            files_to_delete_display.append(rel)
-        table_server_files = {p: v for p, v in server_metadata.items()}
-        file_counts = _render_overwrite_table(
-            files_to_write_display, path, table_server_files, repo_prefix,
-            uncommitted=set(), direction="push", files_to_delete=files_to_delete_display,
-            print_summary=False,
+    # Interactive file selector (replaces table + y/N prompt)
+    if has_file_changes and not force:
+        cc = _get_colors()
+        selector_items: list[dict[str, str]] = []
+        for repo_path_item in files_to_upload:
+            rel = _strip_repo_prefix(repo_path_item, repo_prefix)
+            server_info = server_metadata.get(repo_path_item)
+            is_new = server_info is None
+            status = f"{cc.green}new{cc.reset}" if is_new else f"{cc.yellow}changed{cc.reset}"
+            local_ts = _format_file_time(path / rel)
+            server_ts = ""
+            author = ""
+            if isinstance(server_info, dict):
+                server_ts = _format_server_time(server_info.get("last_modified") or "")
+                author = server_info.get("updated_by") or ""
+            selector_items.append({
+                "rel": rel, "repo_path": repo_path_item,
+                "status": status, "local_time": local_ts,
+                "server_time": server_ts, "author": author,
+                "_action": "upload",
+            })
+        for server_path_item in files_to_delete_paths:
+            rel = _strip_repo_prefix(server_path_item, repo_prefix)
+            server_info = server_metadata.get(server_path_item)
+            server_ts = ""
+            author = ""
+            if isinstance(server_info, dict):
+                server_ts = _format_server_time(server_info.get("last_modified") or "")
+                author = server_info.get("updated_by") or ""
+            selector_items.append({
+                "rel": rel, "repo_path": server_path_item,
+                "status": f"{cc.red}delete{cc.reset}", "local_time": "",
+                "server_time": server_ts, "author": author,
+                "_action": "delete",
+            })
+        selected = _interactive_file_select(
+            selector_items,
+            columns=[
+                ("rel", "File", 40),
+                ("status", "Status", 10),
+                ("local_time", "Local", 16),
+                ("server_time", "Platform", 16),
+                ("author", "Author", 20),
+            ],
+            prompt_text="Select files to push",
         )
+        if selected is None:
+            print("Push cancelled.")
+            return 0
+        selected_repo_paths = {item["repo_path"] for item in selected}
+        files_to_upload = {rp: c for rp, c in files_to_upload.items() if rp in selected_repo_paths}
+        files_to_delete_paths = [rp for rp in files_to_delete_paths if rp in selected_repo_paths]
+        has_file_changes = bool(files_to_upload or files_to_delete_paths)
+        if not has_file_changes and not has_entity_changes:
+            print("No files selected.")
+            return 0
 
-    # Combined summary
-    cc = _get_colors()
-
-    _ENTITY_LABELS: dict[str, tuple[str, str]] = {
-        "adds": ("green", "{n} add{s}"),
-        "updates": ("yellow", "{n} update{s}"),
-        "deletes": ("red", "{n} delete{s}"),
-        "keeps": ("dim", "{n} kept"),
-    }
-    _FILE_LABELS: dict[str, tuple[str, str]] = {
-        "new": ("green", "{n} new"),
-        "changed": ("yellow", "{n} changed"),
-        "deleted": ("red", "{n} deleted"),
-    }
-
-    summary_sections: list[str] = []
-    if has_entity_changes:
+    # Entity changes prompt (entities can't be cherry-picked)
+    if has_entity_changes and not force:
+        cc = _get_colors()
+        _ENTITY_LABELS: dict[str, tuple[str, str]] = {
+            "adds": ("green", "{n} add{s}"),
+            "updates": ("yellow", "{n} update{s}"),
+            "deletes": ("red", "{n} delete{s}"),
+            "keeps": ("dim", "{n} kept"),
+        }
         entity_text = _format_count_summary(entity_counts, _ENTITY_LABELS, cc)
         if entity_text:
-            summary_sections.append(f"Entities: {entity_text}")
-
-    if has_file_changes:
-        file_text = _format_count_summary(file_counts, _FILE_LABELS, cc)
-        if file_text:
-            summary_sections.append(f"Files: {file_text}")
-
-    if summary_sections:
-        print(f"\n  {' · '.join(summary_sections)}")
-
-    # Single combined prompt
-    if not force:
+            print(f"\n  Entities: {entity_text}")
         if delete_removed_entities:
-            prompt = "\nEntities marked 'delete' will be removed. Push changes? [y/N] "
+            prompt = "\nEntities marked 'delete' will be removed. Push entity changes? [y/N] "
         else:
-            prompt = "\nPush changes? [y/N] "
+            prompt = "\nPush entity changes? [y/N] "
         try:
             answer = input(prompt).strip().lower()
         except (EOFError, KeyboardInterrupt):
