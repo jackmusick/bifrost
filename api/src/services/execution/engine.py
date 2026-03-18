@@ -78,8 +78,6 @@ class ExecutionRequest:
     execution_id: str
     caller: Caller
     organization: Organization | None
-    config: dict[str, Any]
-
     # Function to execute (preferred - passed directly from discovery)
     func: Any = None                     # The actual callable function
 
@@ -288,7 +286,6 @@ async def execute(request: ExecutionRequest) -> ExecutionResult:
         execution_id=request.execution_id,
         workflow_name=request.name or "",  # Workflow/script name for context
         public_url=get_settings().public_url,
-        _config=request.config,
         startup=request.startup,  # Launch workflow results (from form execution)
         roi=roi,
     )

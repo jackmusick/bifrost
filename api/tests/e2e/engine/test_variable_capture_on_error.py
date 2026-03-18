@@ -66,7 +66,6 @@ class TestVariableCaptureOnError:
             execution_id="test-exec-123",
             caller=Caller(user_id="test-user", email="test@example.com", name="Test User"),
             organization=Organization(id="test-org", name="Test Org"),
-            config={},
             name="failing_workflow_with_vars",
             parameters={},
             func=failing_workflow
@@ -125,7 +124,6 @@ class TestVariableCaptureOnError:
             execution_id="test-exec-456",
             caller=Caller(user_id="test-user", email="test@example.com", name="Test User"),
             organization=Organization(id="test-org", name="Test Org"),
-            config={},
             name="async_failing_workflow",
             parameters={},
             func=async_failing_workflow
@@ -176,7 +174,6 @@ class TestVariableCaptureOnError:
             execution_id="test-exec-attr",
             caller=Caller(user_id="test-user", email="test@example.com", name="Test User"),
             organization=Organization(id="test-org", name="Test Org"),
-            config={},
             name="dict_attribute_error_workflow",
             parameters={},
             func=dict_attribute_workflow

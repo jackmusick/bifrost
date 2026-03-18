@@ -29,7 +29,6 @@ class TestListReturnValue:
             execution_id="test-list-exec-1",
             caller=Caller(user_id="test-user", email="test@example.com", name="Test User"),
             organization=Organization(id="test-org", name="Test Org"),
-            config={},
             name="list_return_workflow",
             parameters={},
             func=return_list_workflow
@@ -64,7 +63,6 @@ class TestListReturnValue:
             execution_id="test-list-exec-2",
             caller=Caller(user_id="test-user", email="test@example.com", name="Test User"),
             organization=Organization(id="test-org", name="Test Org"),
-            config={},
             name="list_of_dicts_workflow",
             parameters={},
             func=return_list_of_dicts
@@ -98,7 +96,6 @@ class TestListReturnValue:
             execution_id="test-list-exec-3",
             caller=Caller(user_id="test-user", email="test@example.com", name="Test User"),
             organization=Organization(id="test-org", name="Test Org"),
-            config={},
             name="empty_list_workflow",
             parameters={},
             func=return_empty_list
@@ -133,7 +130,6 @@ class TestListReturnValue:
             execution_id="test-list-exec-4",
             caller=Caller(user_id="test-user", email="test@example.com", name="Test User"),
             organization=Organization(id="test-org", name="Test Org"),
-            config={},
             name="nested_list_workflow",
             parameters={},
             func=return_nested_list

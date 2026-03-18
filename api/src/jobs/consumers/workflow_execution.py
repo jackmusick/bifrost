@@ -714,17 +714,15 @@ class WorkflowExecutionConsumer(BaseConsumer):
                 started_at=start_time,
             )
 
-            # Load organization and config
+            # Load organization
             org = None
             org_data = None
-            config = {}
 
             if org_id:
                 from src.core.config_resolver import ConfigResolver
 
                 resolver = ConfigResolver()
                 org = await resolver.get_organization(org_id, db=db)
-                config = await resolver.load_config_for_scope(org_id, db=db)
                 if org:
                     org_data = {
                         "id": org.id,
@@ -732,11 +730,6 @@ class WorkflowExecutionConsumer(BaseConsumer):
                         "is_active": org.is_active,
                         "is_provider": org.is_provider,
                     }
-            else:
-                from src.core.config_resolver import ConfigResolver
-
-                resolver = ConfigResolver()
-                config = await resolver.load_config_for_scope("GLOBAL", db=db)
 
             # Build context for worker process
             context_data = {
@@ -752,7 +745,6 @@ class WorkflowExecutionConsumer(BaseConsumer):
                     "name": user_name,
                 },
                 "organization": org_data,
-                "config": config,
                 "tags": ["workflow"] if not is_script else [],
                 "timeout_seconds": timeout_seconds,
                 "transient": False,

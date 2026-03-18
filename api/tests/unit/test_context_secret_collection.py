@@ -1,55 +1,29 @@
-from unittest.mock import patch
 from src.sdk.context import ExecutionContext
 
 
 class TestCollectSecretValues:
-    """Test secret collection from config dict."""
+    """Test secret collection returns only dynamic secrets."""
 
-    def test_collects_secret_type_values(self):
+    def test_empty_by_default(self):
         ctx = ExecutionContext(
             user_id="u1", email="e@e.com", name="Test",
             scope="GLOBAL", organization=None,
             is_platform_admin=False, is_function_key=False,
             execution_id="exec-1",
-            _config={
-                "api_key": {"value": "encrypted_secret", "type": "secret"},
-                "name": {"value": "plain", "type": "string"},
-                "count": {"value": "42", "type": "int"},
-            },
-        )
-
-        with patch("src.core.security.decrypt_secret", return_value="real-secret-value"):
-            secrets = ctx._collect_secret_values()
-
-        assert secrets == {"real-secret-value"}
-
-    def test_skips_short_secrets(self):
-        ctx = ExecutionContext(
-            user_id="u1", email="e@e.com", name="Test",
-            scope="GLOBAL", organization=None,
-            is_platform_admin=False, is_function_key=False,
-            execution_id="exec-1",
-            _config={
-                "short": {"value": "encrypted_ab", "type": "secret"},
-            },
-        )
-
-        with patch("src.core.security.decrypt_secret", return_value="ab"):
-            secrets = ctx._collect_secret_values()
-
-        assert secrets == set()  # "ab" is too short
-
-    def test_empty_config(self):
-        ctx = ExecutionContext(
-            user_id="u1", email="e@e.com", name="Test",
-            scope="GLOBAL", organization=None,
-            is_platform_admin=False, is_function_key=False,
-            execution_id="exec-1",
-            _config={},
         )
 
         secrets = ctx._collect_secret_values()
         assert secrets == set()
+
+    def test_returns_dynamic_secrets(self):
+        ctx = ExecutionContext(
+            user_id="u1", email="e@e.com", name="Test",
+            scope="GLOBAL", organization=None,
+            is_platform_admin=False, is_function_key=False,
+            execution_id="exec-1",
+        )
+        ctx._register_dynamic_secret("super-secret-token")
+        assert ctx._collect_secret_values() == {"super-secret-token"}
 
 
 class TestRegisterDynamicSecret:
@@ -91,13 +65,3 @@ class TestRegisterDynamicSecret:
         secrets = ctx._collect_secret_values()
         assert "first-token-abc" in secrets
         assert "second-token-xyz" in secrets
-
-    def test_merged_with_config_secrets(self):
-        ctx = self._make_ctx(
-            _config={"api_key": {"value": "encrypted_secret", "type": "secret"}},
-        )
-        ctx._register_dynamic_secret("oauth-access-token-xyz")
-        with patch("src.core.security.decrypt_secret", return_value="real-secret-value"):
-            secrets = ctx._collect_secret_values()
-        assert "real-secret-value" in secrets
-        assert "oauth-access-token-xyz" in secrets

@@ -247,7 +247,6 @@ async def _run_execution(execution_id: str, context_data: dict[str, Any]) -> dic
             execution_id=execution_id,
             caller=caller,
             organization=org,
-            config=context_data.get("config", {}),
             func=workflow_func,
             code=context_data.get("code"),
             name=context_data.get("name"),

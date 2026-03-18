@@ -62,7 +62,6 @@ logging.info("Test log message 2")
             name="Test Org",
             is_active=True
         ),
-        config={},
         code=code_base64,
         name=None,  # Scripts don't have names in registry
         parameters={},
@@ -117,7 +116,6 @@ logging.info(f"Result = {result}")
             name="Test Org",
             is_active=True
         ),
-        config={},
         code=code_base64,
         name=None,
         parameters={},

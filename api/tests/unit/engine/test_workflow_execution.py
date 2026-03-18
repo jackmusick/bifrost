@@ -43,10 +43,6 @@ def mock_context(mock_org, mock_caller):
         is_platform_admin=False,
         is_function_key=False,
         execution_id="test-exec-123",
-        _config={
-            "default_license": "O365_E3",
-            "welcome_email_template": "welcome_v1"
-        }
     )
 
 
