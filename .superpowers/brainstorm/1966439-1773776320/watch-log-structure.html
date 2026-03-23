@@ -1,0 +1,64 @@
+<h2>Watch Log Line Structure</h2>
+<p class="subtitle">How should each log line be visually structured? Currently everything is one flat color per line.</p>
+
+<div class="section">
+  <h3>Current (for reference)</h3>
+  <div style="background:#0d1117; border-radius:8px; padding:16px 20px; font-family:'JetBrains Mono',monospace; font-size:13px; line-height:1.8; margin-bottom:24px;">
+    <div style="color:#7aa2f7;">  14:23:45  → Push  workflows/onboarding.py</div>
+    <div style="color:#9ece6a;">  14:23:45  ✓ Pushed workflows/onboarding.py</div>
+    <div style="color:#9ece6a;">  14:23:47  ← Pull  forms/ticket.yaml  (sarah)</div>
+    <div style="color:#e0af68;">  14:23:48  ✗ Delete  forms/old-form.yaml  (sarah)</div>
+    <div style="color:#f7768e;">  14:23:49  ⚠ Push error: connection timeout</div>
+    <div style="color:#6e7681;">  14:23:50  · Removed 2 entity(ies): config.smtp, config.auth</div>
+  </div>
+</div>
+
+<div class="options">
+  <div class="option" data-choice="a" onclick="toggleSelect(this)">
+    <div class="letter">A</div>
+    <div class="content">
+      <h3>Colored Action Tag + Dim Timestamp</h3>
+      <p>Action word gets a colored badge-like treatment. Timestamp and metadata are dimmed. Filename stays bright.</p>
+      <div style="background:#0d1117; border-radius:8px; padding:16px 20px; font-family:'JetBrains Mono',monospace; font-size:13px; line-height:2.0; margin-top:12px;">
+        <div><span style="color:#6e7681;">14:23:45</span>  <span style="color:#7aa2f7;">Push</span>    <span style="color:#e6edf3;">workflows/onboarding.py</span></div>
+        <div><span style="color:#6e7681;">14:23:45</span>  <span style="color:#9ece6a;">Pushed</span>  <span style="color:#e6edf3;">workflows/onboarding.py</span></div>
+        <div><span style="color:#6e7681;">14:23:47</span>  <span style="color:#9ece6a;">Pull</span>    <span style="color:#e6edf3;">forms/ticket.yaml</span>         <span style="color:#6e7681;">sarah</span></div>
+        <div><span style="color:#6e7681;">14:23:48</span>  <span style="color:#e0af68;">Delete</span>  <span style="color:#e6edf3;">forms/old-form.yaml</span>      <span style="color:#6e7681;">sarah</span></div>
+        <div><span style="color:#6e7681;">14:23:49</span>  <span style="color:#f7768e;">Error</span>   <span style="color:#e6edf3;">Push error: connection timeout</span></div>
+        <div><span style="color:#6e7681;">14:23:50</span>  <span style="color:#6e7681;">Info</span>    <span style="color:#6e7681;">Removed 2 entity(ies): config.smtp, config.auth</span></div>
+      </div>
+    </div>
+  </div>
+
+  <div class="option" data-choice="b" onclick="toggleSelect(this)">
+    <div class="letter">B</div>
+    <div class="content">
+      <h3>Fixed-Width Action Column + Icon</h3>
+      <p>Keep the icon but pad the action to a fixed width so filenames align into a clean column. User right-aligned or dimmed.</p>
+      <div style="background:#0d1117; border-radius:8px; padding:16px 20px; font-family:'JetBrains Mono',monospace; font-size:13px; line-height:2.0; margin-top:12px;">
+        <div><span style="color:#6e7681;">14:23:45</span>  <span style="color:#7aa2f7;">→ Push  </span>  <span style="color:#e6edf3;">workflows/onboarding.py</span></div>
+        <div><span style="color:#6e7681;">14:23:45</span>  <span style="color:#9ece6a;">✓ Pushed</span>  <span style="color:#e6edf3;">workflows/onboarding.py</span></div>
+        <div><span style="color:#6e7681;">14:23:47</span>  <span style="color:#9ece6a;">← Pull </span>  <span style="color:#e6edf3;">forms/ticket.yaml</span>         <span style="color:#484f58;">sarah</span></div>
+        <div><span style="color:#6e7681;">14:23:48</span>  <span style="color:#e0af68;">✗ Delete</span>  <span style="color:#e6edf3;">forms/old-form.yaml</span>      <span style="color:#484f58;">sarah</span></div>
+        <div><span style="color:#6e7681;">14:23:49</span>  <span style="color:#f7768e;">⚠ Error </span>  <span style="color:#e6edf3;">Push error: connection timeout</span></div>
+        <div><span style="color:#6e7681;">14:23:50</span>  <span style="color:#6e7681;">· Info  </span>  <span style="color:#6e7681;">Removed 2 entity(ies)</span></div>
+      </div>
+    </div>
+  </div>
+
+  <div class="option" data-choice="c" onclick="toggleSelect(this)">
+    <div class="letter">C</div>
+    <div class="content">
+      <h3>No Icon — Just Colored Action Word</h3>
+      <p>Drop the icons entirely. The color on the action word is enough to convey meaning. Cleaner, less noisy.</p>
+      <div style="background:#0d1117; border-radius:8px; padding:16px 20px; font-family:'JetBrains Mono',monospace; font-size:13px; line-height:2.0; margin-top:12px;">
+        <div><span style="color:#6e7681;">14:23:45</span>  <span style="color:#7aa2f7; font-weight:bold;">push</span>     <span style="color:#e6edf3;">workflows/onboarding.py</span></div>
+        <div><span style="color:#6e7681;">14:23:45</span>  <span style="color:#9ece6a; font-weight:bold;">pushed</span>   <span style="color:#e6edf3;">workflows/onboarding.py</span></div>
+        <div><span style="color:#6e7681;">14:23:47</span>  <span style="color:#9ece6a; font-weight:bold;">pull</span>     <span style="color:#e6edf3;">forms/ticket.yaml</span>         <span style="color:#484f58;">sarah</span></div>
+        <div><span style="color:#6e7681;">14:23:48</span>  <span style="color:#e0af68; font-weight:bold;">delete</span>   <span style="color:#e6edf3;">forms/old-form.yaml</span>      <span style="color:#484f58;">sarah</span></div>
+        <div><span style="color:#6e7681;">14:23:49</span>  <span style="color:#f7768e; font-weight:bold;">error</span>    <span style="color:#f7768e;">connection timeout</span></div>
+        <div><span style="color:#6e7681;">14:23:50</span>  <span style="color:#6e7681; font-weight:bold;">info</span>     <span style="color:#6e7681;">Removed 2 entity(ies)</span></div>
+      </div>
+    </div>
+  </div>
+</div>

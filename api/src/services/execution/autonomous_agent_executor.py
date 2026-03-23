@@ -15,7 +15,7 @@ from src.models.orm.agents import Agent
 from src.models.orm.agent_runs import AgentRunStep
 from src.core.constants import SYSTEM_USER_ID, SYSTEM_USER_EMAIL
 from src.core.pubsub import publish_agent_run_step
-from src.services.execution.agent_helpers import build_agent_system_prompt, resolve_agent_tools
+from src.services.execution.agent_helpers import build_agent_system_prompt, find_delegated_agent, resolve_agent_tools
 from src.services.llm import LLMMessage, ToolCallRequest, get_llm_client
 
 logger = logging.getLogger(__name__)
@@ -345,14 +345,7 @@ class AutonomousAgentExecutor:
         """Execute delegation to another agent (recursive autonomous run)."""
         task = tool_call.arguments.get("task", "")
 
-        # Match by tool name convention: delegate_to_{name_slug}
-        target_agent = None
-        for d in (agent.delegated_agents or []):
-            slug = f"delegate_to_{d.name.lower().replace(' ', '_')}"
-            if slug == tool_call.name and d.is_active:
-                target_agent = d
-                break
-
+        target_agent = find_delegated_agent(agent, tool_call.name)
         if not target_agent:
             return f"Delegation target for '{tool_call.name}' not found."
 

@@ -405,3 +405,152 @@ class TestSerializeForJson:
         assert "first" in result
         assert "second" in result
         assert "2" in result
+
+
+class TestChatDelegation:
+    """Test that chat _execute_delegation uses AutonomousAgentExecutor."""
+
+    @pytest.mark.asyncio
+    async def test_delegation_calls_autonomous_executor(self, executor):
+        """Chat delegation dispatches to AutonomousAgentExecutor.run()."""
+        from src.services.llm.base import ToolCallRequest
+
+        delegated = MagicMock()
+        delegated.name = "Data Analyst"
+        delegated.is_active = True
+
+        agent = MagicMock()
+        agent.delegated_agents = [delegated]
+
+        tool_call = ToolCallRequest(
+            id="tc1",
+            name="delegate_to_data_analyst",
+            arguments={"task": "Analyze revenue trends"},
+        )
+
+        with patch(
+            "src.services.agent_executor.AutonomousAgentExecutor"
+        ) as MockExecutorClass:
+            mock_sub = AsyncMock()
+            mock_sub.run = AsyncMock(return_value={
+                "output": "Revenue is up 15%",
+                "status": "completed",
+                "iterations_used": 3,
+                "tokens_used": 500,
+            })
+            MockExecutorClass.return_value = mock_sub
+
+            result = await executor._execute_delegation(tool_call, agent)
+
+        assert result.error is None
+        assert result.result["response"] == "Revenue is up 15%"
+        assert result.result["agent"] == "Data Analyst"
+        mock_sub.run.assert_awaited_once_with(
+            agent=delegated,
+            input_data={"task": "Analyze revenue trends", "_delegated_from": agent.name},
+        )
+
+    @pytest.mark.asyncio
+    async def test_delegation_agent_not_found(self, executor):
+        """Returns error when delegated agent doesn't match."""
+        from src.services.llm.base import ToolCallRequest
+
+        agent = MagicMock()
+        agent.delegated_agents = []
+
+        tool_call = ToolCallRequest(
+            id="tc1",
+            name="delegate_to_nonexistent",
+            arguments={"task": "Do something"},
+        )
+
+        result = await executor._execute_delegation(tool_call, agent)
+        assert result.error is not None
+        assert "not found" in result.error
+
+    @pytest.mark.asyncio
+    async def test_delegation_no_task(self, executor):
+        """Returns error when no task is provided."""
+        from src.services.llm.base import ToolCallRequest
+
+        delegated = MagicMock()
+        delegated.name = "Helper"
+        delegated.is_active = True
+
+        agent = MagicMock()
+        agent.delegated_agents = [delegated]
+
+        tool_call = ToolCallRequest(
+            id="tc1",
+            name="delegate_to_helper",
+            arguments={},
+        )
+
+        result = await executor._execute_delegation(tool_call, agent)
+        assert result.error is not None
+        assert "No task" in result.error
+
+    @pytest.mark.asyncio
+    async def test_delegation_propagates_failure_status(self, executor):
+        """When sub-executor returns failed status, error is propagated."""
+        from src.services.llm.base import ToolCallRequest
+
+        delegated = MagicMock()
+        delegated.name = "Broken Agent"
+        delegated.is_active = True
+
+        agent = MagicMock()
+        agent.delegated_agents = [delegated]
+
+        tool_call = ToolCallRequest(
+            id="tc1",
+            name="delegate_to_broken_agent",
+            arguments={"task": "Do something"},
+        )
+
+        with patch(
+            "src.services.agent_executor.AutonomousAgentExecutor"
+        ) as MockExecutorClass:
+            mock_sub = AsyncMock()
+            mock_sub.run = AsyncMock(return_value={
+                "output": None,
+                "status": "failed",
+                "error": "LLM call failed",
+                "iterations_used": 0,
+                "tokens_used": 0,
+            })
+            MockExecutorClass.return_value = mock_sub
+
+            result = await executor._execute_delegation(tool_call, agent)
+
+        assert result.error == "LLM call failed"
+
+    @pytest.mark.asyncio
+    async def test_delegation_handles_exception(self, executor):
+        """Exceptions during delegation are caught and returned as errors."""
+        from src.services.llm.base import ToolCallRequest
+
+        delegated = MagicMock()
+        delegated.name = "Crasher"
+        delegated.is_active = True
+
+        agent = MagicMock()
+        agent.delegated_agents = [delegated]
+
+        tool_call = ToolCallRequest(
+            id="tc1",
+            name="delegate_to_crasher",
+            arguments={"task": "Crash please"},
+        )
+
+        with patch(
+            "src.services.agent_executor.AutonomousAgentExecutor"
+        ) as MockExecutorClass:
+            mock_sub = AsyncMock()
+            mock_sub.run = AsyncMock(side_effect=RuntimeError("Connection lost"))
+            MockExecutorClass.return_value = mock_sub
+
+            result = await executor._execute_delegation(tool_call, agent)
+
+        assert result.error is not None
+        assert "Connection lost" in result.error

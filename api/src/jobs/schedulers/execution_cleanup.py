@@ -16,6 +16,7 @@ from sqlalchemy import select, and_
 from src.core.database import get_session_factory
 from src.core.pubsub import publish_execution_update, publish_history_update
 from src.models import Execution as ExecutionModel, ExecutionLog
+from src.models.orm.workflows import Workflow
 
 logger = logging.getLogger(__name__)
 
@@ -64,17 +65,27 @@ async def cleanup_stuck_executions() -> dict[str, Any]:
             )
             pending_stuck = list(pending_result.scalars().all())
 
-            # Find stuck RUNNING executions
-            running_cutoff = now - timedelta(minutes=RUNNING_TIMEOUT_MINUTES)
+            # Find stuck RUNNING executions — respect per-workflow timeout
+            # Join with Workflow to get configured timeout_seconds.
+            # Use workflow timeout + 5 min grace (process pool should kill first).
+            # Fallback to RUNNING_TIMEOUT_MINUTES if no workflow found.
             running_result = await db.execute(
-                select(ExecutionModel).where(
+                select(ExecutionModel, Workflow.timeout_seconds).where(
                     and_(
                         ExecutionModel.status == ExecutionStatus.RUNNING.value,
-                        ExecutionModel.started_at < running_cutoff,
                     )
-                )
+                ).outerjoin(Workflow, ExecutionModel.workflow_id == Workflow.id)
             )
-            running_stuck = list(running_result.scalars().all())
+            running_stuck = []
+            for execution, wf_timeout in running_result.all():
+                # timeout_seconds == 0 means no timeout — skip entirely
+                if wf_timeout is not None and wf_timeout == 0:
+                    continue
+                # Use per-workflow timeout + 5 min grace, or fallback
+                effective_timeout_s = (wf_timeout + 300) if wf_timeout else (RUNNING_TIMEOUT_MINUTES * 60)
+                elapsed = (now - execution.started_at).total_seconds()
+                if elapsed > effective_timeout_s:
+                    running_stuck.append(execution)
 
             # Find stuck CANCELLING executions
             cancelling_cutoff = now - timedelta(minutes=CANCELLING_TIMEOUT_MINUTES)
@@ -103,8 +114,9 @@ async def cleanup_stuck_executions() -> dict[str, Any]:
                         results["pending_timeouts"] += 1
 
                     elif execution.status == ExecutionStatus.RUNNING.value:
+                        elapsed_min = int((now - execution.started_at).total_seconds() / 60) if execution.started_at else RUNNING_TIMEOUT_MINUTES
                         timeout_reason = (
-                            f"Stuck in RUNNING status for {RUNNING_TIMEOUT_MINUTES}+ minutes. "
+                            f"Stuck in RUNNING status for {elapsed_min}+ minutes. "
                             "Likely worker crash or workflow hang."
                         )
                         final_status = ExecutionStatus.TIMEOUT

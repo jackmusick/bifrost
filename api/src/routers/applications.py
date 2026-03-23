@@ -53,7 +53,7 @@ KNOWN_APP_COMPONENTS = {
     # React
     "React", "Fragment",
     # Routing
-    "Outlet", "Link", "NavLink", "Navigate",
+    "Outlet", "Link", "NavLink", "Navigate", "RequireRole",
     # Layout
     "Card", "CardHeader", "CardFooter", "CardTitle", "CardAction", "CardDescription", "CardContent",
     # Forms
@@ -92,6 +92,34 @@ KNOWN_APP_COMPONENTS = {
 
 # Note: Lucide icons (lucide-react) are all valid - hundreds of icons available.
 # We skip checking those to avoid false positives.
+
+# All names available via `import { ... } from "bifrost"` in app code.
+# Built from: React exports, platform scope (scope.ts), UI components,
+# utility functions (utils.ts), and date-fns.
+KNOWN_BIFROST_EXPORTS = KNOWN_APP_COMPONENTS | {
+    # Platform hooks (from scope.ts / createPlatformScope)
+    "useWorkflowQuery", "useWorkflowMutation",
+    "useUser", "useAppState",
+    "useNavigate", "useParams", "useSearchParams",
+    "useLocation", "useMatch", "useResolvedPath", "useOutletContext",
+    # Platform functions
+    "navigate",
+    # React hooks and utilities (spread via ...React in runtime)
+    "useState", "useEffect", "useCallback", "useMemo", "useRef",
+    "useContext", "useReducer", "useLayoutEffect", "useId",
+    "useTransition", "useDeferredValue", "useSyncExternalStore",
+    "useInsertionEffect", "useDebugValue", "useImperativeHandle",
+    # React component utilities
+    "Fragment", "Suspense", "lazy", "memo", "forwardRef",
+    "createContext", "createRef", "createElement", "cloneElement",
+    "isValidElement", "Children", "StrictMode",
+    # Utility functions (from ...utils spread)
+    "cn", "formatDate", "formatDateShort", "formatTime",
+    "formatRelativeTime", "formatBytes", "formatNumber",
+    "formatCost", "formatDuration",
+    # Third-party utilities available in scope
+    "clsx", "twMerge", "format",
+}
 
 
 class AppValidationIssue(BaseModel):
@@ -1020,71 +1048,169 @@ async def validate_application(
             message="Missing pages/index.tsx (home page)",
         ))
 
-    # Analyze each TSX/TS file
+    # Get declared dependencies and track referenced ones
+    declared_deps = app.dependencies or {}
+    referenced_deps: set[str] = set()
+
+    # Build list of component files from the file index for cross-referencing
+    component_files = {
+        p[len(prefix) + len("components/"):].replace(".tsx", "").replace(".ts", "")
+        for p in files
+        if p.startswith(f"{prefix}components/") and (p.endswith(".tsx") or p.endswith(".ts"))
+    }
+
+    # Collect all compilable TSX/TS files
+    compilable_files = []
     for full_path, content in files.items():
         rel_path = full_path[len(prefix):]
+        if rel_path.endswith(".tsx") or rel_path.endswith(".ts"):
+            compilable_files.append({"path": rel_path, "source": content, "full_path": full_path})
 
-        if not (rel_path.endswith(".tsx") or rel_path.endswith(".ts")):
-            continue
+    # Compile all files via the server-side compiler
+    if compilable_files:
+        from src.services.app_compiler import AppCompilerService
 
-        # Check for forbidden patterns
-        forbidden = [
-            (r'\brequire\s*\(', "require() is not allowed"),
-            (r'\bmodule\.exports\b', "module.exports is not allowed"),
-        ]
-        for pattern, msg in forbidden:
-            for i, line in enumerate(content.split("\n"), 1):
-                if re.search(pattern, line) and not line.strip().startswith("//"):
+        compiler = AppCompilerService()
+        compile_inputs = [{"path": f["path"], "source": f["source"]} for f in compilable_files]
+        compile_results = await compiler.compile_batch(compile_inputs)
+
+        for comp_file, comp_result in zip(compilable_files, compile_results):
+            rel_path = comp_file["path"]
+            content = comp_file["source"]
+
+            # Report compilation errors
+            if not comp_result.success:
+                errors.append(AppValidationIssue(
+                    severity="error",
+                    file=rel_path,
+                    message=f"Compilation failed: {comp_result.error}",
+                ))
+
+            # Check for missing default export in pages and components
+            if comp_result.success and comp_result.default_export is None:
+                if rel_path.startswith("pages/") or rel_path.startswith("components/"):
                     errors.append(AppValidationIssue(
                         severity="error",
                         file=rel_path,
-                        message=msg,
-                        line=i,
+                        message="Missing default export. Pages and components must have a default export (e.g., export default function MyComponent() { ... })",
                     ))
 
-        # Check for unknown components (JSX tags starting with uppercase)
-        component_refs = set(re.findall(r'<([A-Z][a-zA-Z0-9]*)', content))
-        for comp_name in component_refs:
-            if comp_name not in KNOWN_APP_COMPONENTS:
-                # Could be a lucide icon (hundreds of them) or user-defined component
-                # Only warn, don't error
-                warnings.append(AppValidationIssue(
-                    severity="warning",
-                    file=rel_path,
-                    message=f"Unknown component <{comp_name}> - verify it exists in the runtime",
-                ))
+            # Check _layout.tsx uses <Outlet /> not {children}
+            if rel_path == "_layout.tsx":
+                if "{children}" in content and "Outlet" not in content:
+                    errors.append(AppValidationIssue(
+                        severity="error",
+                        file=rel_path,
+                        message="Layout uses {children} but should use <Outlet /> for page routing. Replace {children} with <Outlet />.",
+                    ))
 
-        # Check workflow IDs
-        # Match useWorkflowQuery("...") and useWorkflowMutation("...")
-        workflow_refs = re.findall(
-            r'(?:useWorkflowQuery|useWorkflowMutation)\s*\(\s*["\']([^"\']+)["\']',
-            content,
-        )
-        for wf_ref in workflow_refs:
-            # Check UUID format
-            try:
-                wf_uuid = UUID(wf_ref)
-            except ValueError:
-                errors.append(AppValidationIssue(
-                    severity="error",
-                    file=rel_path,
-                    message=f"Workflow reference '{wf_ref}' is not a valid UUID. Use workflow IDs, not names.",
-                ))
-                continue
-
-            # Check workflow exists
-            wf_result = await ctx.db.execute(
-                select(Workflow.id).where(
-                    Workflow.id == wf_uuid,
-                    Workflow.is_active == True,  # noqa: E712
-                )
+            # Check for undefined bifrost imports
+            bifrost_imports = re.findall(
+                r'import\s+\{([^}]+)\}\s+from\s+["\']bifrost["\']',
+                content,
             )
-            if not wf_result.scalar_one_or_none():
-                errors.append(AppValidationIssue(
-                    severity="error",
-                    file=rel_path,
-                    message=f"Workflow '{wf_ref}' not found or inactive",
-                ))
+            for match in bifrost_imports:
+                names = [n.strip().split(" as ")[0].strip() for n in match.split(",")]
+                for name in names:
+                    if name and name not in KNOWN_BIFROST_EXPORTS:
+                        # PascalCase names could be Lucide icons — warn, don't error
+                        if name[0].isupper():
+                            warnings.append(AppValidationIssue(
+                                severity="warning",
+                                file=rel_path,
+                                message=f"'{name}' is not a known bifrost export (could be a Lucide icon)",
+                            ))
+                        else:
+                            errors.append(AppValidationIssue(
+                                severity="error",
+                                file=rel_path,
+                                message=f"'{name}' is not available from 'bifrost'. Check spelling or see platform docs for available exports.",
+                            ))
+
+            # Check for forbidden patterns
+            forbidden = [
+                (r'\brequire\s*\(', "require() is not allowed"),
+                (r'\bmodule\.exports\b', "module.exports is not allowed"),
+            ]
+            for pattern, msg in forbidden:
+                for i, line in enumerate(content.split("\n"), 1):
+                    if re.search(pattern, line) and not line.strip().startswith("//"):
+                        errors.append(AppValidationIssue(
+                            severity="error",
+                            file=rel_path,
+                            message=msg,
+                            line=i,
+                        ))
+
+            # Extract external import references (non-bifrost) for dependency checking
+            for match in re.finditer(
+                r'^\s*import\s+.*?\s+from\s+["\']([^"\']+)["\']\s*;?\s*$',
+                content,
+                re.MULTILINE,
+            ):
+                pkg = match.group(1)
+                if pkg != "bifrost":
+                    referenced_deps.add(pkg)
+
+            # Check for unknown components (JSX tags starting with uppercase)
+            component_refs = set(re.findall(r'<([A-Z][a-zA-Z0-9]*)', content))
+            for comp_name in component_refs:
+                if comp_name not in KNOWN_APP_COMPONENTS and comp_name not in component_files:
+                    # Could be a lucide icon (hundreds of them) or user-defined component
+                    # Only warn, don't error
+                    warnings.append(AppValidationIssue(
+                        severity="warning",
+                        file=rel_path,
+                        message=f"Unknown component <{comp_name}> - verify it exists in the runtime",
+                    ))
+
+            # Check workflow IDs
+            # Match useWorkflowQuery("...") and useWorkflowMutation("...")
+            workflow_refs = re.findall(
+                r'(?:useWorkflowQuery|useWorkflowMutation)\s*\(\s*["\']([^"\']+)["\']',
+                content,
+            )
+            for wf_ref in workflow_refs:
+                # Check UUID format
+                try:
+                    wf_uuid = UUID(wf_ref)
+                except ValueError:
+                    errors.append(AppValidationIssue(
+                        severity="error",
+                        file=rel_path,
+                        message=f"Workflow reference '{wf_ref}' is not a valid UUID. Use workflow IDs, not names.",
+                    ))
+                    continue
+
+                # Check workflow exists
+                wf_result = await ctx.db.execute(
+                    select(Workflow.id).where(
+                        Workflow.id == wf_uuid,
+                        Workflow.is_active == True,  # noqa: E712
+                    )
+                )
+                if not wf_result.scalar_one_or_none():
+                    errors.append(AppValidationIssue(
+                        severity="error",
+                        file=rel_path,
+                        message=f"Workflow '{wf_ref}' not found or inactive",
+                    ))
+
+    # Check for missing/unused dependencies
+    for dep in referenced_deps:
+        if dep not in declared_deps:
+            errors.append(AppValidationIssue(
+                severity="error",
+                file="dependencies",
+                message=f"Missing dependency: '{dep}' is imported but not declared in app dependencies",
+            ))
+    for dep in declared_deps:
+        if dep not in referenced_deps:
+            warnings.append(AppValidationIssue(
+                severity="warning",
+                file="dependencies",
+                message=f"Unused dependency: '{dep}' is declared but not imported by any file",
+            ))
 
     return AppValidationResponse(
         valid=len(errors) == 0,

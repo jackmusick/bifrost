@@ -335,7 +335,8 @@ async def import_manifest_from_repo(
                     "name": ec.name,
                 })
 
-            # Run indexer side-effects (forms and agents)
+            # Run indexer side-effects (workflows, forms, and agents)
+            await resolver._index_workflows_from_manifest(manifest, _read_or_none, changed_ids)
             result.modified_files.update(
                 await resolver._index_forms_from_manifest(manifest, _read_or_none, changed_ids)
             )
@@ -788,6 +789,38 @@ class ManifestResolver:
 
         return modified
 
+    async def _index_workflows_from_manifest(
+        self,
+        manifest: "Manifest",
+        read_fn: "Callable[[str], Awaitable[bytes | None]]",
+        changed_ids: "set[str] | None" = None,
+    ) -> None:
+        """Run WorkflowIndexer for each workflow in the manifest.
+
+        After plan_import creates/updates workflow DB records, this re-runs the
+        AST-based indexer so that parameters_schema (and other code-derived
+        fields) are populated.  Without this, workflows imported from the
+        manifest would have an empty parameters_schema because the indexer
+        skipped them during file-write (the DB record didn't exist yet).
+
+        Args:
+            manifest: Parsed manifest with workflow entries
+            read_fn: Async callable that reads a file path, returning bytes or None
+            changed_ids: If set, only process workflows whose ID is in this set
+        """
+        from src.services.file_storage.indexers.workflow import WorkflowIndexer
+
+        indexer = WorkflowIndexer(self.db)
+
+        for _wf_name, mworkflow in manifest.workflows.items():
+            if changed_ids is not None and mworkflow.id not in changed_ids:
+                continue
+            content = await read_fn(mworkflow.path)
+            if content is not None:
+                await indexer.index_python_file(mworkflow.path, content)
+
+        await self.db.flush()
+
     async def _index_agents_from_manifest(
         self,
         manifest: "Manifest",
@@ -997,7 +1030,7 @@ class ManifestResolver:
             "organization_id": org_id,
             "access_level": getattr(mwf, "access_level", "role_based"),
             "endpoint_enabled": getattr(mwf, "endpoint_enabled", False),
-            "timeout_seconds": getattr(mwf, "timeout_seconds", 1800),
+            "timeout_seconds": mwf.timeout_seconds if mwf.timeout_seconds is not None else 1800,
             "public_endpoint": getattr(mwf, "public_endpoint", False),
             "category": getattr(mwf, "category", "General"),
             "tags": getattr(mwf, "tags", []),

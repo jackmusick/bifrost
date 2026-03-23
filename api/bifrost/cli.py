@@ -313,43 +313,47 @@ def main(args: list[str] | None = None) -> int:
         print_help()
         return 0
 
-    command = args[0].lower()
+    try:
+        command = args[0].lower()
 
-    if command in ("help", "-h", "--help"):
+        if command in ("help", "-h", "--help"):
+            print_help()
+            return 0
+
+        if command == "login":
+            return handle_login(args[1:])
+
+        if command == "logout":
+            return handle_logout(args[1:])
+
+        if command == "run":
+            return handle_run(args[1:])
+
+        if command == "git":
+            return handle_git(args[1:])
+
+        if command == "sync":
+            return handle_sync(args[1:])
+
+        if command == "push":
+            return handle_push(args[1:])
+
+        if command == "pull":
+            return handle_pull(args[1:])
+
+        if command == "watch":
+            return handle_watch(args[1:])
+
+        if command == "api":
+            return handle_api(args[1:])
+
+        # Unknown command
+        print(f"Unknown command: {command}", file=sys.stderr)
         print_help()
-        return 0
-
-    if command == "login":
-        return handle_login(args[1:])
-
-    if command == "logout":
-        return handle_logout(args[1:])
-
-    if command == "run":
-        return handle_run(args[1:])
-
-    if command == "git":
-        return handle_git(args[1:])
-
-    if command == "sync":
-        return handle_sync(args[1:])
-
-    if command == "push":
-        return handle_push(args[1:])
-
-    if command == "pull":
-        return handle_pull(args[1:])
-
-    if command == "watch":
-        return handle_watch(args[1:])
-
-    if command == "api":
-        return handle_api(args[1:])
-
-    # Unknown command
-    print(f"Unknown command: {command}", file=sys.stderr)
-    print_help()
-    return 1
+        return 1
+    except KeyboardInterrupt:
+        print()
+        return 130
 
 
 def print_help() -> None:
@@ -1809,6 +1813,92 @@ async def _process_watch_batch(
                 state.discard_writeback_paths(writeback_paths)
                 state.writeback_paused = False
 
+        # Auto-validate app directories after push (non-blocking)
+        await _auto_validate_app(client, push_files, repo_prefix, watch_app=watch_app)
+
+
+async def _auto_validate_app(
+    client: "BifrostClient",
+    pushed_files: dict[str, str],
+    repo_prefix: str,
+    watch_app: "WatchApp | None" = None,
+) -> None:
+    """Auto-validate if pushed files belong to an app directory."""
+    # Detect app paths from the pushed files
+    app_slugs: set[str] = set()
+    for rp in pushed_files:
+        # Match apps/{slug}/... pattern
+        if rp.startswith("apps/") or (repo_prefix and rp.startswith(f"{repo_prefix}apps/")):
+            # Extract slug: apps/{slug}/... or {prefix}apps/{slug}/...
+            stripped = rp
+            if repo_prefix and stripped.startswith(repo_prefix):
+                stripped = stripped[len(repo_prefix):]
+            parts = stripped.split("/")
+            if len(parts) >= 2 and parts[0] == "apps":
+                app_slugs.add(parts[1])
+        # Also detect if repo_prefix itself IS an app dir (e.g. watching apps/my-app/)
+        elif any(rp.endswith(f) for f in ("_layout.tsx", "pages/index.tsx")):
+            if repo_prefix:
+                slug = repo_prefix.rstrip("/").rsplit("/", 1)[-1]
+                app_slugs.add(slug)
+
+    for slug in app_slugs:
+        try:
+            val_response = await client.get(f"/api/applications/{slug}")
+            if val_response.status_code != 200:
+                continue
+            app_data = val_response.json()
+            app_id = app_data.get("id")
+            if not app_id:
+                continue
+            val_result = await client.post(f"/api/applications/{app_id}/validate")
+            if val_result.status_code != 200:
+                continue
+            val_data = val_result.json()
+            errors = val_data.get("errors", [])
+            warnings = val_data.get("warnings", [])
+            if not errors and not warnings:
+                msg = f"App '{slug}' validated — no issues"
+                if watch_app:
+                    watch_app.log_success(msg)
+                else:
+                    ts = datetime.now().strftime('%H:%M:%S')
+                    print(f"  [{ts}] \u2713 {msg}", flush=True)
+            else:
+                if errors:
+                    msg = f"App '{slug}' validation: {len(errors)} error(s)"
+                    if watch_app:
+                        watch_app.log_error(msg)
+                    else:
+                        ts = datetime.now().strftime('%H:%M:%S')
+                        print(f"  [{ts}] \u2717 {msg}", flush=True)
+                    for err in errors:
+                        err_msg = f"  {err.get('file', '?')}: {err.get('message', str(err))}"
+                        if watch_app:
+                            watch_app.log_error(err_msg)
+                        else:
+                            print(f"    {err_msg}", flush=True)
+                if warnings:
+                    msg = f"App '{slug}' validation: {len(warnings)} warning(s)"
+                    if watch_app:
+                        watch_app.log_info(msg)
+                    else:
+                        ts = datetime.now().strftime('%H:%M:%S')
+                        print(f"  [{ts}] \u26a0 {msg}", flush=True)
+                    for warn in warnings:
+                        warn_msg = f"  {warn.get('file', '?')}: {warn.get('message', str(warn))}"
+                        if watch_app:
+                            watch_app.log_info(warn_msg)
+                        else:
+                            print(f"    {warn_msg}", flush=True)
+        except Exception as e:
+            # Non-blocking — don't fail the watch loop on validation errors
+            if watch_app:
+                watch_app.log_error(f"Auto-validate '{slug}' failed: {e}")
+            else:
+                ts = datetime.now().strftime('%H:%M:%S')
+                print(f"  [{ts}] \u26a0 Auto-validate '{slug}' failed: {e}", flush=True)
+
 
 async def _ws_listener(state: _WatchState, client: "BifrostClient") -> None:
     """Listen for file-activity WebSocket events from other sessions."""
@@ -2941,33 +3031,32 @@ async def _sync_files(
             # Unchanged
             matched_server_paths.add(repo_path)
 
-    # Server-only files (--mirror mode)
-    if mirror:
-        prefix_filter = repo_prefix + "/" if repo_prefix else ""
-        for server_path, server_info in server_metadata.items():
-            if prefix_filter and not server_path.startswith(prefix_filter):
-                continue
-            if server_path in matched_server_paths:
-                continue
-            if server_path in files:
-                continue
-            rel = _strip_repo_prefix(server_path, repo_prefix)
-            if _is_bifrost_path(rel):
-                continue
-            if _should_skip_path(rel, spec):
-                continue
-            sync_items.append({
-                "name": rel,
-                "why": "server only",
-                "modified": _format_server_time(server_info.get("last_modified", "")),
-                "author": server_info.get("updated_by", ""),
-                "default_action": "pull",
-                "valid_actions": ["pull", "delete", "skip"],
-                "section": "files",
-                "repo_path": server_path,
-                "rel": rel,
-                "_content": "",
-            })
+    # Server-only files — always show for pull; --mirror adds delete option
+    prefix_filter = repo_prefix + "/" if repo_prefix else ""
+    for server_path, server_info in server_metadata.items():
+        if prefix_filter and not server_path.startswith(prefix_filter):
+            continue
+        if server_path in matched_server_paths:
+            continue
+        if server_path in files:
+            continue
+        rel = _strip_repo_prefix(server_path, repo_prefix)
+        if _is_bifrost_path(rel):
+            continue
+        if _should_skip_path(rel, spec):
+            continue
+        sync_items.append({
+            "name": rel,
+            "why": "server only",
+            "modified": _format_server_time(server_info.get("last_modified", "")),
+            "author": server_info.get("updated_by", ""),
+            "default_action": "pull",
+            "valid_actions": ["pull", "delete", "skip"] if mirror else ["pull", "skip"],
+            "section": "files",
+            "repo_path": server_path,
+            "rel": rel,
+            "_content": "",
+        })
 
     # ── 4. Entity diff ───────────────────────────────────────────────────
     entity_changes: list[dict[str, Any]] = []

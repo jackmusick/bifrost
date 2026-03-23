@@ -63,9 +63,23 @@ export async function loadDependencies(
 				result[name] = exports;
 			} catch (err) {
 				console.error(`Failed to load dependency ${name}@${version}:`, err);
-				// Set empty object so $deps["pkg"] is defined but empty
-				// — destructuring will give undefined for individual exports
-				result[name] = {};
+				// Return a proxy that throws on access — surfaces load failures
+				// visibly instead of silent undefined values.
+				// SafeComponent in app-code-runtime.ts catches these errors.
+				result[name] = new Proxy(
+					{},
+					{
+						get(_, prop) {
+							if (typeof prop === "symbol" || prop === "then")
+								return undefined;
+							throw new Error(
+								`Package "${name}@${version}" failed to load from esm.sh. ` +
+									`The "${String(prop)}" export is unavailable. ` +
+									`Check the browser console for details.`,
+							);
+						},
+					},
+				);
 			}
 		}),
 	);

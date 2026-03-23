@@ -75,7 +75,7 @@ class WorkflowMetadata(BaseModel):
 
     # Execution configuration
     execution_mode: Literal["sync", "async"] = Field(default="sync", description="Execution mode")
-    timeout_seconds: int = Field(default=1800, ge=1, le=7200, description="Max execution time in seconds (default 30 min, max 2 hours)")
+    timeout_seconds: int = Field(default=1800, ge=0, le=86400, description="Max execution time in seconds. 0 = no timeout. Default 1800 (30 min), max 86400 (24h).")
 
     # Retry policy (for future use)
     retry_policy: RetryPolicy | None = Field(default=None, description="Retry configuration")
@@ -122,7 +122,7 @@ class DataProviderMetadata(BaseModel):
     type: ExecutableType = Field(default=ExecutableType.DATA_PROVIDER, description="Always 'data_provider' for this model")
     category: str = "General"
     tags: list[str] = Field(default_factory=list, description="Tags for categorization and search")
-    timeout_seconds: int = Field(default=300, ge=1, le=7200, description="Max execution time in seconds (default 5 min)")
+    timeout_seconds: int = Field(default=300, ge=0, le=86400, description="Max execution time in seconds. 0 = no timeout. Default 300 (5 min), max 86400 (24h).")
     cache_ttl_seconds: int = Field(default=300, description="Cache TTL in seconds")
     parameters: list[WorkflowParameter] = Field(default_factory=list, description="Input parameters from @param decorators")
     source_file_path: str | None = Field(default=None, description="Full file path to the data provider source code")
@@ -295,9 +295,9 @@ class WorkflowUpdateRequest(BaseModel):
     )
     timeout_seconds: int | None = Field(
         default=None,
-        ge=1,
-        le=7200,
-        description="Max execution time in seconds (1-7200, default 1800)"
+        ge=0,
+        le=86400,
+        description="Max execution time in seconds. 0 = no timeout. Default 1800 (30 min), max 86400 (24h)."
     )
     execution_mode: Literal["sync", "async"] | None = Field(
         default=None,

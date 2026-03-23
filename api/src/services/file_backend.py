@@ -165,6 +165,8 @@ class S3Backend(FileBackend):
             # Workspace: pass raw path — read_file adds _repo/ prefix internally
             content, _ = await self.storage.read_file(path)
             return content
+        except (FileNotFoundError, ValueError):
+            raise
         except Exception as e:
             # Convert S3 errors to appropriate exceptions
             error_msg = str(e).lower()

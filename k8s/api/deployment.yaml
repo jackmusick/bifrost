@@ -22,7 +22,7 @@ spec:
       # Init container runs migrations and warms module cache
       initContainers:
         - name: init
-          image: ghcr.io/jackmusick/bifrost:latest
+          image: jackmusick/bifrost-api:latest
           command: ["python", "-m", "scripts.init_container"]
           envFrom:
             - configMapRef:
@@ -31,7 +31,7 @@ spec:
                 name: bifrost-secrets
       containers:
         - name: api
-          image: ghcr.io/jackmusick/bifrost:latest
+          image: jackmusick/bifrost-api:latest
           command: ["uvicorn", "src.main:app", "--host", "0.0.0.0", "--port", "8000"]
           ports:
             - containerPort: 8000

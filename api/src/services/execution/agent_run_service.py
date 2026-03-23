@@ -3,6 +3,8 @@ import json
 import logging
 from uuid import uuid4
 
+import redis.asyncio as aioredis
+
 from src.core.cache.redis_client import get_redis
 from src.jobs.rabbitmq import publish_message
 
@@ -67,11 +69,27 @@ async def enqueue_agent_run(
 
 
 async def wait_for_agent_run_result(run_id: str, timeout: int = 1800) -> dict | None:
-    """Block until agent run completes. Used for sync SDK calls."""
+    """Block until agent run completes. Used for sync SDK calls.
+
+    Uses a dedicated Redis connection with a socket_timeout that covers
+    the full BLPOP wait (the default 5s socket_timeout in get_redis()
+    kills the connection before the worker can push a result).
+    """
+    from src.config import get_settings
+
     result_key = f"{REDIS_PREFIX}:{run_id}:result"
-    async with get_redis() as redis:
-        # redis-py 7.x stubs type blpop as -> list, but it's async at runtime
-        result = await redis.blpop(result_key, timeout=timeout)  # pyright: ignore[reportGeneralTypeIssues]
+    # socket_timeout must exceed the BLPOP timeout so the connection
+    # stays alive for the entire blocking wait, plus a small buffer.
+    client = aioredis.from_url(
+        get_settings().redis_url,
+        decode_responses=True,
+        socket_timeout=float(timeout + 10),
+        socket_connect_timeout=5.0,
+    )
+    try:
+        result = await client.blpop(result_key, timeout=timeout)  # pyright: ignore[reportGeneralTypeIssues]
         if result:
             return json.loads(result[1])
-    return None
+        return None
+    finally:
+        await client.aclose()

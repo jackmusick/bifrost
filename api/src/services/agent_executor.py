@@ -38,7 +38,8 @@ from src.services.llm import (
     ToolDefinition,
     get_llm_client,
 )
-from src.services.execution.agent_helpers import resolve_agent_tools
+from src.services.execution.agent_helpers import find_delegated_agent, resolve_agent_tools
+from src.services.execution.autonomous_agent_executor import AutonomousAgentExecutor
 from src.services.tool_registry import ToolRegistry
 
 logger = logging.getLogger(__name__)
@@ -1287,69 +1288,44 @@ IMPORTANT: When the user's request can be fulfilled using one of your tools, you
         tool_call: ToolCallRequest,
         agent: Agent,
     ) -> ToolResult:
-        """
-        Execute a delegation to another agent.
-
-        This runs a nested agent execution and returns the result.
-        """
+        """Execute a delegation to another agent via AutonomousAgentExecutor."""
         start_time = time.time()
 
+        delegated_agent = find_delegated_agent(agent, tool_call.name)
+        if not delegated_agent:
+            return ToolResult(
+                tool_call_id=tool_call.id,
+                tool_name=tool_call.name,
+                result=None,
+                error=f"Delegated agent not found: {tool_call.name}",
+                duration_ms=int((time.time() - start_time) * 1000),
+            )
+
+        task = tool_call.arguments.get("task", "")
+        if not task:
+            return ToolResult(
+                tool_call_id=tool_call.id,
+                tool_name=tool_call.name,
+                result=None,
+                error="No task provided for delegation",
+                duration_ms=int((time.time() - start_time) * 1000),
+            )
+
         try:
-            # Match by tool name convention: delegate_to_{name_slug}
-            delegated_agent = None
-            for d in (agent.delegated_agents or []):
-                slug = f"delegate_to_{d.name.lower().replace(' ', '_')}"
-                if slug == tool_call.name and d.is_active:
-                    delegated_agent = d
-                    break
-
-            if not delegated_agent:
-                return ToolResult(
-                    tool_call_id=tool_call.id,
-                    tool_name=tool_call.name,
-                    result=None,
-                    error=f"Delegated agent not found: {tool_call.name}",
-                    duration_ms=int((time.time() - start_time) * 1000),
-                )
-
-            # Get the task from arguments
-            task = tool_call.arguments.get("task", "")
-            if not task:
-                return ToolResult(
-                    tool_call_id=tool_call.id,
-                    tool_name=tool_call.name,
-                    result=None,
-                    error="No task provided for delegation",
-                    duration_ms=int((time.time() - start_time) * 1000),
-                )
-
-            # Execute a single-turn completion with the delegated agent
-            # Note: We don't create a separate conversation for delegation
-            llm_client = await get_llm_client(self.session)
-
-            messages = [
-                LLMMessage(role="system", content=delegated_agent.system_prompt),
-                LLMMessage(role="user", content=task),
-            ]
-
-            # Get response (non-streaming for delegation)
-            # Apply delegated agent's LLM overrides if set
-            delegate_model = delegated_agent.llm_model
-            delegate_max_tokens = delegated_agent.llm_max_tokens
-
-            response = await llm_client.complete(
-                messages=messages,
-                model=delegate_model,
-                max_tokens=delegate_max_tokens,
+            sub_executor = AutonomousAgentExecutor(self.session)
+            sub_result = await sub_executor.run(
+                agent=delegated_agent,
+                input_data={"task": task, "_delegated_from": agent.name},
             )
 
             duration_ms = int((time.time() - start_time) * 1000)
+            output = sub_result.get("output", "Delegation completed with no output.")
 
             return ToolResult(
                 tool_call_id=tool_call.id,
                 tool_name=tool_call.name,
-                result={"response": response.content, "agent": delegated_agent.name},
-                error=None,
+                result={"response": str(output), "agent": delegated_agent.name},
+                error=None if sub_result.get("status") != "failed" else sub_result.get("error"),
                 duration_ms=duration_ms,
             )
 

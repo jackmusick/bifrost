@@ -106,8 +106,8 @@ class ExecutionInfo:
 
     @property
     def is_timed_out(self) -> bool:
-        """Check if execution has exceeded its timeout."""
-        return self.elapsed_seconds > self.timeout_seconds
+        """Check if execution has exceeded its timeout. 0 = no timeout."""
+        return self.timeout_seconds > 0 and self.elapsed_seconds > self.timeout_seconds
 
 
 @dataclass
@@ -627,7 +627,7 @@ class ProcessPoolManager:
             exec_info = handle.current_execution
             elapsed = exec_info.elapsed_seconds
 
-            if elapsed > exec_info.timeout_seconds:
+            if exec_info.timeout_seconds > 0 and elapsed > exec_info.timeout_seconds:
                 logger.warning(
                     f"Execution {exec_info.execution_id} timed out after "
                     f"{elapsed:.1f}s (timeout={exec_info.timeout_seconds}s)"

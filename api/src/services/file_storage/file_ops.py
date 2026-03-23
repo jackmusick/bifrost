@@ -135,7 +135,15 @@ class FileOperationsService:
                 agent_id = UUID(agent_match.group(1))
             except ValueError:
                 raise FileNotFoundError(f"Invalid agent path: {path}")
-            agent_stmt = select(Agent).where(Agent.id == agent_id)
+            agent_stmt = (
+                select(Agent)
+                .options(
+                    selectinload(Agent.tools),
+                    selectinload(Agent.delegated_agents),
+                    selectinload(Agent.roles),
+                )
+                .where(Agent.id == agent_id)
+            )
             agent_result = await self.db.execute(agent_stmt)
             agent = agent_result.scalar_one_or_none()
             if agent is not None:

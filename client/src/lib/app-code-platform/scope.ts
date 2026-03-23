@@ -18,6 +18,7 @@ import { useParams } from "./useParams";
 import { useSearchParams } from "./useSearchParams";
 import { navigate, useNavigate } from "./navigate";
 import { useUser } from "./useUser";
+import { RequireRole } from "./RequireRole";
 import { useAppState } from "./useAppState";
 import { Link, NavLink, Navigate } from "./navigation";
 
@@ -61,6 +62,9 @@ export function createPlatformScope(): Record<string, unknown> {
 
 		// User context
 		useUser,
+
+		// Role guards
+		RequireRole,
 
 		// App state
 		useAppState,

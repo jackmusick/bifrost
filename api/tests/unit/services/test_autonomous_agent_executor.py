@@ -3,6 +3,7 @@ import pytest
 from unittest.mock import AsyncMock, MagicMock, patch
 from uuid import uuid4
 
+from src.services.execution.agent_helpers import find_delegated_agent
 from src.services.execution.autonomous_agent_executor import AutonomousAgentExecutor
 from src.services.llm.base import LLMResponse, ToolCallRequest
 
@@ -268,3 +269,82 @@ class TestAutonomousAgentExecutor:
 
         assert result["status"] == "completed"
         assert result["output"] == "Recovered from error"
+
+    @pytest.mark.asyncio
+    @patch("src.services.execution.autonomous_agent_executor.get_llm_client")
+    @patch("src.services.execution.autonomous_agent_executor.resolve_agent_tools")
+    async def test_delegation_uses_find_delegated_agent(
+        self, mock_resolve_tools, mock_get_llm, mock_session, mock_agent
+    ):
+        """Delegation tool calls use find_delegated_agent to resolve target."""
+        # Create a delegated agent
+        delegated = MagicMock()
+        delegated.id = uuid4()
+        delegated.name = "Sub Agent"
+        delegated.is_active = True
+        delegated.system_prompt = "You are a sub agent."
+        delegated.tools = []
+        delegated.system_tools = []
+        delegated.knowledge_sources = []
+        delegated.delegated_agents = []
+        delegated.max_iterations = 5
+        delegated.max_token_budget = 10000
+        delegated.llm_model = None
+        delegated.llm_max_tokens = None
+        delegated.organization_id = mock_agent.organization_id
+
+        mock_agent.delegated_agents = [delegated]
+
+        # Verify find_delegated_agent resolves correctly
+        found = find_delegated_agent(mock_agent, "delegate_to_sub_agent")
+        assert found is delegated
+        assert find_delegated_agent(mock_agent, "delegate_to_nonexistent") is None
+
+        # Set up the main agent to make a delegation call
+        mock_resolve_tools.return_value = (
+            [MagicMock(name="delegate_to_sub_agent")],
+            {},
+        )
+
+        mock_llm = AsyncMock()
+        mock_llm.complete = AsyncMock(side_effect=[
+            # Main agent delegates
+            LLMResponse(
+                content=None,
+                tool_calls=[ToolCallRequest(
+                    id="tc1",
+                    name="delegate_to_sub_agent",
+                    arguments={"task": "Summarize data"},
+                )],
+                finish_reason="tool_use",
+                input_tokens=100,
+                output_tokens=50,
+            ),
+            # Sub agent responds (called by recursive run)
+            LLMResponse(
+                content="Sub agent summary",
+                tool_calls=None,
+                finish_reason="end_turn",
+                input_tokens=80,
+                output_tokens=40,
+            ),
+            # Main agent uses sub result
+            LLMResponse(
+                content="Final: Sub agent summary",
+                tool_calls=None,
+                finish_reason="end_turn",
+                input_tokens=200,
+                output_tokens=100,
+            ),
+        ])
+        mock_get_llm.return_value = mock_llm
+
+        executor = AutonomousAgentExecutor(mock_session)
+        result = await executor.run(
+            agent=mock_agent,
+            input_data={"task": "Delegate work"},
+            run_id=str(uuid4()),
+        )
+
+        assert result["status"] == "completed"
+        assert "Sub agent summary" in result["output"]

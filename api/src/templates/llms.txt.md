@@ -241,8 +241,59 @@ const { data } = useWorkflowQuery("workflow-uuid", { id }, { enabled: !!id });
 
 #### Other Hooks
 
-- `useUser()` — current authenticated user `{ id, email, name }`
-- `useAppState(key, initialValue)` — persistent cross-page state
+##### useUser()
+
+Returns the current authenticated user:
+
+```tsx
+const user = useUser();
+// user.id: string — unique user ID
+// user.email: string — user's email
+// user.name: string — display name
+// user.roles: string[] — all assigned roles
+// user.hasRole("Admin"): boolean — check specific role
+// user.organizationId: string — org ID (empty for platform users)
+```
+
+##### useAppState(key, initialValue)
+
+Zustand-backed cross-page state — like `useState` but persists across page navigations within the same app session.
+
+```tsx
+const [selectedClient, setSelectedClient] = useAppState("selectedClient", null);
+```
+
+- Can store anything: primitives, objects, arrays, nested structures
+- Scoped to the app session — cleared on browser refresh or switching apps
+- NOT persistent storage — for permanent data, use workflows to save/load from DB
+- Use cases: selected item between list/detail pages, filter/sort preferences, multi-step form data, sidebar state
+
+Example — list page sets, detail page reads:
+```tsx
+// List page
+const [, setClient] = useAppState("selectedClient", null);
+<Button onClick={() => { setClient(client); navigate("/details"); }}>View</Button>
+
+// Detail page
+const [client] = useAppState("selectedClient", null);
+if (!client) return <Navigate to="/" />;
+return <div>{client.name}</div>;
+```
+
+##### RequireRole
+
+Conditionally renders children based on user role:
+
+```tsx
+<RequireRole role="Admin" fallback={<Navigate to="/" />}>
+  <AdminPage />
+</RequireRole>
+```
+
+Props: `role` (string, required), `children` (ReactNode), `fallback` (ReactNode, defaults to null).
+
+##### Other Navigation Hooks
+
 - `useParams()` — URL path parameters
 - `useSearchParams()` — query string parameters
 - `useNavigate()` — programmatic navigation `navigate("/path")`
@@ -319,7 +370,7 @@ Max 20 packages. Loaded at runtime from esm.sh CDN.
 
 **React compatibility warning:** Packages with complex dependency trees (e.g. `framer-motion`, `@tiptap/*`, `react-beautiful-dnd`) may load a duplicate React instance through their transitive dependencies, causing "Cannot read properties of null (reading 'useContext')" errors. This happens because esm.sh doesn't always propagate React version pinning to transitive deps.
 
-**Safe packages** (pure logic, or simple React wrappers): `recharts`, `dayjs`, `date-fns`, `lodash`, `zod`, `uuid`, `clsx`, `react-icons`, `@tanstack/react-table`.
+**Safe packages** (pure logic, or simple React wrappers): `dayjs`, `lodash`, `zod`, `uuid`, `react-icons`, `@tanstack/react-table`. Note: `recharts`, `date-fns`, `clsx`, and `tailwind-merge` are pre-included and don't need to be declared.
 
 **Before adding a package**, test it by opening the browser console on a running app and running:
 ```js
@@ -342,6 +393,49 @@ Use `useWorkflowQuery`/`useWorkflowMutation` for calling backend workflows. Use 
 ### Layout
 
 Your app renders in a fixed-height container. The platform does not scroll the page for you — if a page needs scrolling, add `overflow-auto` to the element that should scroll.
+
+### Pre-included Packages
+
+These packages are available without declaring them in `app.yaml` dependencies:
+
+- `recharts` — charts and data visualization
+- `date-fns` — date formatting (`format` is available directly from `"bifrost"`)
+- `lucide-react` — all icons available from `"bifrost"` import
+- `clsx` — class name utility (also available as `cn` from `"bifrost"`)
+- `tailwind-merge` — Tailwind class merging (used by `cn`)
+
+### Error Handling in Apps
+
+**Loading states (required for every data-fetching page):**
+```tsx
+const { data, isLoading, isError, error } = useWorkflowQuery("uuid");
+if (isLoading) return <div className="flex items-center justify-center h-full"><Loader2 className="animate-spin" /></div>;
+if (isError) return <Alert variant="destructive"><AlertTitle>Error</AlertTitle><AlertDescription>{error ?? "Failed to load"}</AlertDescription></Alert>;
+```
+
+**Null-safe access:** Always `data?.items?.map(...)`, never `data.items.map(...)`.
+
+**Mutation error handling:**
+```tsx
+const { execute, isLoading } = useWorkflowMutation("uuid");
+const handleSubmit = async () => {
+  const result = await execute(params);
+  if (result.error) { toast.error(result.error); return; }
+  toast.success("Saved");
+};
+```
+
+### Common Mistakes
+
+| Mistake | What happens | Fix |
+|---------|-------------|-----|
+| Relative imports (`./utils`) | Stripped silently, module not found | Import from `"bifrost"` or npm package names only |
+| `{children}` in layout | Children not rendered | Use `<Outlet />` in `_layout.tsx` |
+| Workflow name instead of UUID | Runtime error | Use UUIDs from `.bifrost/workflows.yaml` |
+| Undeclared npm dependency | `undefined` exports, runtime error | Add to `app.yaml` dependencies first |
+| Missing default export in component | Component renders as undefined | Add `export default function MyComponent()` |
+| Using `$`, `$deps`, `__defaultExport__` as variable names | Conflicts with runtime internals | Use different variable names |
+| No loading/error state for queries | Blank page or crash on slow/failed loads | Always handle `isLoading` and `isError` |
 
 ## Tables
 

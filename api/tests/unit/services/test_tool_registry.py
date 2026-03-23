@@ -285,6 +285,61 @@ class TestToToolDefinition:
 
         assert result.parameters == {"type": "object", "properties": {}}
 
+    def test_array_type_includes_items(self):
+        tool = _make_registered_tool(
+            parameters_schema=[
+                {"name": "systems_involved", "type": "list", "label": "Systems Involved"},
+            ],
+        )
+
+        result = self.registry._to_tool_definition(tool)
+
+        prop = result.parameters["properties"]["systems_involved"]
+        assert prop["type"] == "array"
+        assert prop["items"] == {"type": "string"}
+
+    def test_non_array_type_has_no_items(self):
+        tool = _make_registered_tool(
+            parameters_schema=[
+                {"name": "name", "type": "string", "label": "Name"},
+            ],
+        )
+
+        result = self.registry._to_tool_definition(tool)
+
+        assert "items" not in result.parameters["properties"]["name"]
+
+    def test_options_become_enum(self):
+        tool = _make_registered_tool(
+            parameters_schema=[
+                {
+                    "name": "status",
+                    "type": "string",
+                    "label": "Status",
+                    "options": [
+                        {"label": "Open", "value": "open"},
+                        {"label": "Closed", "value": "closed"},
+                    ],
+                },
+            ],
+        )
+
+        result = self.registry._to_tool_definition(tool)
+
+        prop = result.parameters["properties"]["status"]
+        assert prop["enum"] == ["open", "closed"]
+
+    def test_no_options_means_no_enum(self):
+        tool = _make_registered_tool(
+            parameters_schema=[
+                {"name": "name", "type": "string", "label": "Name"},
+            ],
+        )
+
+        result = self.registry._to_tool_definition(tool)
+
+        assert "enum" not in result.parameters["properties"]["name"]
+
     def test_label_falls_back_to_name(self):
         tool = _make_registered_tool(
             parameters_schema=[

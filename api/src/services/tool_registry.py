@@ -216,6 +216,16 @@ class ToolRegistry:
                 "description": param_label,
             }
 
+            # Array types require an "items" field for OpenAI schema validation
+            if json_type == "array":
+                properties[param_name]["items"] = {"type": "string"}
+
+            # Add enum options if present (from Literal type annotations)
+            if param.get("options"):
+                properties[param_name]["enum"] = [
+                    opt["value"] for opt in param["options"]
+                ]
+
             # Add default value if present
             if "default_value" in param and param["default_value"] is not None:
                 properties[param_name]["default"] = param["default_value"]

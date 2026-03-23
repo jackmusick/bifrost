@@ -134,9 +134,15 @@ class AgentIndexer:
         # (e.g., agents/{uuid}.agent.yaml), so we don't need a separate file_path column.
         # We just use the ID from the YAML content directly.
 
-        # Parse channels
-        channels = agent_data.get("channels", ["chat"])
-        if not isinstance(channels, list):
+        # Parse channels — validate against AgentChannel enum
+        from src.models.enums import AgentChannel
+
+        valid_channel_values = {c.value for c in AgentChannel}
+        raw_channels = agent_data.get("channels", ["chat"])
+        if not isinstance(raw_channels, list):
+            raw_channels = ["chat"]
+        channels = [c for c in raw_channels if c in valid_channel_values]
+        if not channels:
             channels = ["chat"]
 
         # Get knowledge_sources (JSONB field)

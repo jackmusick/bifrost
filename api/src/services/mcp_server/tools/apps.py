@@ -590,7 +590,7 @@ async def validate_app(context: Any, app_id: str) -> ToolResult:
     from src.models.orm.applications import Application
     from src.models.orm.file_index import FileIndex
     from src.models.orm.workflows import Workflow
-    from src.routers.applications import KNOWN_APP_COMPONENTS
+    from src.routers.applications import KNOWN_APP_COMPONENTS, KNOWN_BIFROST_EXPORTS
 
     logger.info(f"MCP validate_app called with id={app_id}")
 
@@ -653,6 +653,30 @@ async def validate_app(context: Any, app_id: str) -> ToolResult:
 
                     if not comp_result.success:
                         errors.append({"severity": "error", "file": rel_path, "message": f"Compilation failed: {comp_result.error}"})
+
+                    # Check for missing default export in pages and components
+                    if comp_result.success and comp_result.default_export is None:
+                        if rel_path.startswith("pages/") or rel_path.startswith("components/"):
+                            errors.append({"severity": "error", "file": rel_path, "message": "Missing default export. Pages and components must have a default export (e.g., export default function MyComponent() { ... })"})
+
+                    # Check _layout.tsx uses <Outlet /> not {children}
+                    if rel_path == "_layout.tsx":
+                        if "{children}" in content and "Outlet" not in content:
+                            errors.append({"severity": "error", "file": rel_path, "message": "Layout uses {children} but should use <Outlet /> for page routing. Replace {children} with <Outlet />."})
+
+                    # Check for undefined bifrost imports
+                    bifrost_imports = re.findall(
+                        r'import\s+\{([^}]+)\}\s+from\s+["\']bifrost["\']',
+                        content,
+                    )
+                    for bfr_match in bifrost_imports:
+                        names = [n.strip().split(" as ")[0].strip() for n in bfr_match.split(",")]
+                        for name in names:
+                            if name and name not in KNOWN_BIFROST_EXPORTS:
+                                if name[0].isupper():
+                                    warnings.append({"severity": "warning", "file": rel_path, "message": f"'{name}' is not a known bifrost export (could be a Lucide icon)"})
+                                else:
+                                    errors.append({"severity": "error", "file": rel_path, "message": f"'{name}' is not available from 'bifrost'. Check spelling or see platform docs for available exports."})
 
                     # Extract external import references (non-bifrost)
                     for match in re.finditer(

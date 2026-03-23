@@ -100,7 +100,7 @@ async def get_workflow_metadata_only(
     # Build metadata from DB record
     metadata = WorkflowMetadata(
         name=workflow_record.name,
-        timeout_seconds=workflow_record.timeout_seconds or 1800,
+        timeout_seconds=workflow_record.timeout_seconds if workflow_record.timeout_seconds is not None else 1800,
         time_saved=workflow_record.time_saved or 0,
         value=float(workflow_record.value) if workflow_record.value else 0.0,
         execution_mode=workflow_record.execution_mode or "sync",
@@ -113,7 +113,7 @@ async def get_workflow_metadata_only(
         workflow_id=str(workflow_record.id),
         name=workflow_record.name,
         file_path=workflow_record.path,
-        timeout_seconds=workflow_record.timeout_seconds or 1800,
+        timeout_seconds=workflow_record.timeout_seconds if workflow_record.timeout_seconds is not None else 1800,
         time_saved=workflow_record.time_saved or 0,
         value=float(workflow_record.value) if workflow_record.value else 0.0,
         execution_mode=workflow_record.execution_mode or "sync",
@@ -176,7 +176,7 @@ async def get_workflow_for_execution(
             "name": workflow_record.name,
             "function_name": workflow_record.function_name,
             "path": workflow_record.path,
-            "timeout_seconds": workflow_record.timeout_seconds or 1800,
+            "timeout_seconds": workflow_record.timeout_seconds if workflow_record.timeout_seconds is not None else 1800,
             "time_saved": workflow_record.time_saved or 0,
             "value": float(workflow_record.value) if workflow_record.value else 0.0,
             "execution_mode": workflow_record.execution_mode or "async",
@@ -436,9 +436,15 @@ async def _enqueue_workflow_async(
             status=ExecutionStatus.PENDING,
         )
 
-    # Wait for result via Redis BLPOP
+    # Wait for result via Redis BLPOP — use actual workflow timeout (+ 60s buffer)
+    # 0 = no timeout: cap at 86400 (24h) to prevent infinite BLPOP hang
     redis_client = get_redis_client()
-    result = await redis_client.wait_for_result(execution_id, timeout_seconds=1800)
+    workflow_meta = await get_workflow_metadata_only(workflow_id)
+    if workflow_meta.timeout_seconds > 0:
+        wait_timeout = workflow_meta.timeout_seconds + 60
+    else:
+        wait_timeout = 86400
+    result = await redis_client.wait_for_result(execution_id, timeout_seconds=wait_timeout)
 
     if result is None:
         return WorkflowExecutionResponse(

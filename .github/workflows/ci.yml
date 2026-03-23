@@ -10,8 +10,8 @@ on:
 
 env:
   REGISTRY: ghcr.io
-  API_IMAGE: ghcr.io/jackmusick/bifrost-api
-  CLIENT_IMAGE: ghcr.io/jackmusick/bifrost-client
+  API_IMAGE: jackmusick/bifrost-api
+  CLIENT_IMAGE: jackmusick/bifrost-client
 
 jobs:
   # =============================================================================
@@ -204,12 +204,12 @@ jobs:
 
             **API:**
             ```bash
-            docker pull ghcr.io/jackmusick/bifrost-api:${{ steps.get_version.outputs.version }}
+            docker pull jackmusick/bifrost-api:${{ steps.get_version.outputs.version }}
             ```
 
             **Client:**
             ```bash
-            docker pull ghcr.io/jackmusick/bifrost-client:${{ steps.get_version.outputs.version }}
+            docker pull jackmusick/bifrost-client:${{ steps.get_version.outputs.version }}
             ```
 
             ### Type Stubs for IDEs

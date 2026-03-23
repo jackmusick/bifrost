@@ -21,6 +21,19 @@ EXECUTION MODE: You are running autonomously — there is no human in this conve
 - If a tool call fails, attempt reasonable alternatives before reporting failure."""
 
 
+def agent_delegation_slug(name: str) -> str:
+    """Generate the tool name slug for a delegated agent."""
+    return f"delegate_to_{name.lower().replace(' ', '_')}"
+
+
+def find_delegated_agent(agent: Agent, tool_name: str) -> Agent | None:
+    """Match a delegate_to_* tool name to the target agent."""
+    for d in (agent.delegated_agents or []):
+        if agent_delegation_slug(d.name) == tool_name and d.is_active:
+            return d
+    return None
+
+
 def build_agent_system_prompt(
     agent: Agent,
     *,
@@ -106,7 +119,7 @@ async def resolve_agent_tools(
         for delegated in agent.delegated_agents:
             if not delegated.is_active:
                 continue
-            tool_name = f"delegate_to_{delegated.name.lower().replace(' ', '_')}"
+            tool_name = agent_delegation_slug(delegated.name)
             if tool_name not in seen_names:
                 tool_definitions.append(
                     ToolDefinition(

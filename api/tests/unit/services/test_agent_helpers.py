@@ -2,7 +2,13 @@ import pytest
 from unittest.mock import AsyncMock, MagicMock, patch
 from uuid import uuid4
 
-from src.services.execution.agent_helpers import resolve_agent_tools, build_agent_system_prompt, AUTONOMOUS_MODE_SUFFIX
+from src.services.execution.agent_helpers import (
+    agent_delegation_slug,
+    build_agent_system_prompt,
+    find_delegated_agent,
+    resolve_agent_tools,
+    AUTONOMOUS_MODE_SUFFIX,
+)
 
 
 class TestResolveAgentTools:
@@ -104,3 +110,67 @@ class TestBuildAgentSystemPrompt:
 
         result = build_agent_system_prompt(mock_agent, execution_context={"mode": "chat"})
         assert result == "Base prompt."
+
+
+class TestAgentDelegationSlug:
+    def test_simple_name(self):
+        assert agent_delegation_slug("Reporter") == "delegate_to_reporter"
+
+    def test_name_with_spaces(self):
+        assert agent_delegation_slug("Data Analyst") == "delegate_to_data_analyst"
+
+    def test_mixed_case(self):
+        assert agent_delegation_slug("My Cool Agent") == "delegate_to_my_cool_agent"
+
+
+class TestFindDelegatedAgent:
+    def _make_agent(self, name: str, is_active: bool = True):
+        agent = MagicMock()
+        agent.name = name
+        agent.is_active = is_active
+        return agent
+
+    def test_finds_matching_agent(self):
+        parent = MagicMock()
+        child = self._make_agent("Data Analyst")
+        parent.delegated_agents = [child]
+
+        result = find_delegated_agent(parent, "delegate_to_data_analyst")
+        assert result is child
+
+    def test_returns_none_for_no_match(self):
+        parent = MagicMock()
+        parent.delegated_agents = [self._make_agent("Reporter")]
+
+        result = find_delegated_agent(parent, "delegate_to_nonexistent")
+        assert result is None
+
+    def test_skips_inactive_agent(self):
+        parent = MagicMock()
+        parent.delegated_agents = [self._make_agent("Reporter", is_active=False)]
+
+        result = find_delegated_agent(parent, "delegate_to_reporter")
+        assert result is None
+
+    def test_handles_no_delegated_agents(self):
+        parent = MagicMock()
+        parent.delegated_agents = None
+
+        result = find_delegated_agent(parent, "delegate_to_anything")
+        assert result is None
+
+    def test_handles_empty_list(self):
+        parent = MagicMock()
+        parent.delegated_agents = []
+
+        result = find_delegated_agent(parent, "delegate_to_anything")
+        assert result is None
+
+    def test_multiple_agents_returns_correct_one(self):
+        parent = MagicMock()
+        a1 = self._make_agent("Reporter")
+        a2 = self._make_agent("Data Analyst")
+        parent.delegated_agents = [a1, a2]
+
+        result = find_delegated_agent(parent, "delegate_to_data_analyst")
+        assert result is a2

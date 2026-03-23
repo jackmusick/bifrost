@@ -71,7 +71,7 @@ class ManifestWorkflow(BaseModel):
     roles: list[str] = Field(default_factory=list, description="Role UUIDs that can access this workflow")
     access_level: str = Field(default="role_based", description="role_based | authenticated | public")
     endpoint_enabled: bool = Field(default=False, description="Expose as HTTP API endpoint")
-    timeout_seconds: int = Field(default=1800, description="Max execution time")
+    timeout_seconds: int = Field(default=1800, description="Max execution time in seconds. 0 = no timeout. Default 1800 (30 min), max 86400 (24h).")
     public_endpoint: bool = Field(default=False, description="Allow unauthenticated API access")
     description: str | None = Field(default=None, description="Workflow description")
     category: str = Field(default="General", description="Category for organization")
