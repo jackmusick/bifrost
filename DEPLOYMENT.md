@@ -14,7 +14,8 @@ This guide walks you through deploying Bifrost on your own hardware today, and d
 6. [Security Hardening](#6-security-hardening)
 7. [Day-2 Operations (Backups, Scaling, Updates)](#7-day-2-operations)
 8. [Promoting to Azure Production](#8-promoting-to-azure-production)
-9. [Troubleshooting](#9-troubleshooting)
+9. [Sample Workflows (Bootstrapping)](#9-sample-workflows-bootstrapping)
+10. [Troubleshooting](#10-troubleshooting)
 
 ---
 
@@ -250,6 +251,37 @@ For any machine reachable over a network—even internally—you should terminat
 ---
 
 ## 5. Networking Requirements
+
+### Do you need to open inbound ports from the WAN?
+
+**For an initial lab deployment the answer is: almost certainly not.**
+
+Bifrost is primarily an *outbound* system — it reaches out to third-party APIs, runs your Python workflows, and connects to services on your behalf. Users on your LAN access the web UI by connecting to the Bifrost host on port 80/443. None of that requires a WAN pinhole.
+
+The one scenario that requires inbound internet access is **webhook-triggered automations**, where an external service (GitHub, Microsoft Graph, a PSA platform, etc.) needs to call Bifrost to fire a workflow. The webhook receiver endpoint is:
+
+```
+POST /api/hooks/{source_id}
+```
+
+These endpoints are unauthenticated in the traditional sense (no API key or session token required), but they are secured through two layers: HMAC signature validation performed by the adapter for each external service (the actual authentication mechanism), plus a UUID-based path that is unique per event source and not guessable (obscurity as a secondary defense). They are called by external services, so they must be reachable from the internet.
+
+**Decision guide:**
+
+| Use case | Inbound WAN port needed? |
+|----------|--------------------------|
+| Manual workflow execution from browser | ❌ No |
+| Scheduled (cron) workflows | ❌ No |
+| Workflows triggered by your own scripts or API calls | ❌ No — LAN access is sufficient |
+| OAuth SSO (users log in via Google / Microsoft / etc.) | ✅ Yes — the OAuth callback URL (`/auth/callback`) must be reachable by the identity provider |
+| Webhook-triggered workflows (GitHub events, Microsoft Graph subscriptions, etc.) | ✅ Yes — `/api/hooks/{source_id}` must be reachable from the internet |
+| MCP server for external LLM clients (Claude Desktop, etc.) | ✅ Yes — `/mcp` and the OAuth endpoints must be reachable |
+
+**For your initial lab:** Configure your LAN firewall to allow LAN clients on port 80/443. Skip the WAN pinhole entirely until you start building webhook-driven automations.
+
+When you do need inbound webhook access, the cleanest options are:
+- Open port 443 through your WAN and forward it to the Bifrost host (a single port-forward rule)
+- Use a tunnel service like [Cloudflare Tunnel](https://developers.cloudflare.com/cloudflare-one/connections/connect-networks/) or [ngrok](https://ngrok.com/) to expose the single HTTPS endpoint without touching your firewall — useful during development
 
 ### Ports used by Bifrost containers
 
@@ -708,7 +740,145 @@ Using your Azure Credits from the Microsoft partnership will eliminate these cos
 
 ---
 
-## 9. Troubleshooting
+## 9. Sample Workflows (Bootstrapping)
+
+Bifrost stores workflows as Python files in your organization's workspace. The repository includes ready-to-use example workflows under `api/tests/e2e/fixtures/workspace/`. Copy any of these into your workspace to have something running immediately.
+
+### How workflows work
+
+A workflow is a Python file containing one or more functions decorated with `@workflow`. Bifrost discovers, compiles, and makes them runnable from the web UI (manually, via schedule, or via webhook event) without any additional configuration:
+
+```python
+from bifrost import workflow, context
+
+@workflow(
+    name="my_workflow",
+    description="A short description shown in the UI",
+    category="My Category",           # groups workflows in the sidebar
+    tags=["tag1", "tag2"],            # optional — used for search/filtering
+    # schedule="0 9 * * *",          # optional — run on a cron schedule
+)
+async def my_workflow(param1: str, count: int = 1) -> dict:
+    """Parameters become the form fields in the UI."""
+    return {"result": f"Hello {param1}", "count": count}
+```
+
+### Example 1 — Simple greeting (manual run)
+
+A minimal workflow that accepts form inputs and returns a result. Good first test to confirm execution is working.
+
+```python
+# File: greeting.py
+import logging
+from bifrost import workflow, context
+
+logger = logging.getLogger(__name__)
+
+@workflow(
+    name="simple_greeting",
+    description="Creates a personalized greeting",
+    category="Examples",
+    tags=["example", "greeting"]
+)
+async def simple_greeting(
+    name: str,
+    greeting_type: str = "Hello",
+    include_timestamp: bool = False
+) -> dict:
+    import datetime
+
+    greeting = f"{greeting_type}, {name}!"
+    if include_timestamp:
+        timestamp = datetime.datetime.now(datetime.timezone.utc).isoformat()
+        greeting += f" (at {timestamp})"
+
+    logger.info(f"Generated greeting: {greeting}")
+    return {
+        "greeting": greeting,
+        "name": name,
+        "org_id": context.org_id   # context gives you org/user info at runtime
+    }
+```
+
+### Example 2 — Scheduled workflow (cron)
+
+Runs automatically on a schedule without any user action. Useful for nightly reports, recurring sync jobs, etc.
+
+```python
+# File: nightly_report.py
+import logging
+from bifrost import workflow
+
+logger = logging.getLogger(__name__)
+
+@workflow(
+    name="nightly_report",
+    description="Runs every night at 9 PM to summarize the day",
+    category="Scheduled",
+    tags=["scheduled", "report"],
+    schedule="0 21 * * *",   # cron: every day at 9:00 PM
+)
+async def nightly_report() -> dict:
+    # Put your actual logic here — call an API, query a DB, send an email, etc.
+    logger.info("Nightly report executed")
+    return {"status": "success", "message": "Report complete"}
+```
+
+### Example 3 — Multi-step workflow with loop
+
+Demonstrates iteration and structured return values:
+
+```python
+# File: bulk_processor.py
+import logging
+from bifrost import workflow
+
+logger = logging.getLogger(__name__)
+
+@workflow(
+    name="bulk_processor",
+    description="Processes a list of items and returns results",
+    category="Examples",
+    tags=["example", "loop"]
+)
+async def bulk_processor(items_csv: str, dry_run: bool = True) -> dict:
+    """
+    items_csv: comma-separated list of items to process
+    dry_run: if True, only simulate processing
+    """
+    items = [item.strip() for item in items_csv.split(",") if item.strip()]
+    results = []
+
+    for item in items:
+        logger.info(f"Processing: {item} (dry_run={dry_run})")
+        results.append({"item": item, "status": "simulated" if dry_run else "processed"})
+
+    return {"processed": len(results), "dry_run": dry_run, "results": results}
+```
+
+### Uploading a workflow
+
+1. In the Bifrost web UI, navigate to your organization's **Workspace**
+2. Create a new Python file (or upload one)
+3. Paste in any of the examples above
+4. Bifrost hot-reloads the workspace — your workflow appears in the **Workflows** list within seconds
+5. Click **Run** to execute it manually, or set a schedule in the `@workflow` decorator
+
+### Where to find more examples
+
+The E2E test fixtures contain several additional patterns you can adapt:
+
+| File | Patterns demonstrated |
+|------|-----------------------|
+| `api/tests/e2e/fixtures/workspace/e2e_basic_workflow.py` | Basic form inputs, context access |
+| `api/tests/e2e/fixtures/workspace/e2e_scheduled_workflow.py` | Cron scheduling |
+| `api/tests/e2e/fixtures/workspace/e2e_test_workflow.py` | Loops, multiple return values |
+| `api/tests/e2e/fixtures/workspace/e2e_cancellation_workflow.py` | Long-running / cancellable jobs |
+| `api/tests/e2e/fixtures/workspace/e2e_form_workflows.py` | Form-integrated workflows (data loading, validation, conditional fields) |
+
+---
+
+## 10. Troubleshooting
 
 ### Containers not starting
 
