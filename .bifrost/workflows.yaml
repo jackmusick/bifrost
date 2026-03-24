@@ -1,15 +1,14 @@
-a734696f-5d19-4fb3-a92e-916176b048c0:
-  id: a734696f-5d19-4fb3-a92e-916176b048c0
-  name: "MinIO Smoke Put/List"
-  path: "workflows/smoke/minio_put_list.py"
-  function_name: "minio_put_list"
+a02961df-79e2-4b4f-aa39-5e217c1b88d3:
+  id: a02961df-79e2-4b4f-aa39-5e217c1b88d3
+  name: "Hello World"
+  path: "workflows/sample/hello_world.py"
+  function_name: "hello_world"
   type: "workflow"
-  category: "Smoke"
-  description: "In-cluster MinIO S3 put+list smoke test using Bifrost S3 env vars"
-  timeout_seconds: 600
+  category: "Examples"
+  description: "A simple greeting workflow — says hi from Copilot CLI."
+  timeout_seconds: 300
   endpoint_enabled: false
   access_level: "authenticated"
   tags:
-    - smoke
-    - minio
-    - s3
+    - sample
+    - example
