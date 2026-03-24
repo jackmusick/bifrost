@@ -1,0 +1,6 @@
+name: sample-bifrost-workflow
+description: Sample workflow for testing .claude sync and Bifrost workflow registration
+tasks:
+  - id: test-1
+    run: |
+      echo "Hello from sample Bifrost workflow"
