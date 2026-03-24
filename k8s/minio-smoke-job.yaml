@@ -1,0 +1,50 @@
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: minio-smoke-test
+  namespace: bifrost
+spec:
+  backoffLimit: 0
+  template:
+    spec:
+      restartPolicy: Never
+      containers:
+        - name: smoke
+          image: python:3.11-slim
+          envFrom:
+            - secretRef:
+                name: bifrost-secrets
+          command:
+            - bash
+            - -c
+            - |
+              set -euo pipefail
+              pip install --no-cache-dir boto3 >/dev/null 2>&1 || true
+              python3 - <<'PY'
+import os,sys,traceback
+import boto3
+endpoint=os.environ.get('BIFROST_S3_ENDPOINT_URL')
+ak=os.environ.get('BIFROST_S3_ACCESS_KEY')
+sk=os.environ.get('BIFROST_S3_SECRET_KEY')
+bucket=os.environ.get('BIFROST_S3_BUCKET')
+print('endpoint',endpoint)
+print('bucket',bucket)
+if not (endpoint and ak and sk and bucket):
+    print('Missing env for smoke test', endpoint, ak is not None, sk is not None, bucket)
+    sys.exit(2)
+try:
+    s3=boto3.client('s3',aws_access_key_id=ak,aws_secret_access_key=sk,endpoint_url=endpoint)
+    key='smoke-{}'.format(int(__import__('time').time()))
+    s3.put_object(Bucket=bucket,Key=key,Body=b'test')
+    resp=s3.list_objects_v2(Bucket=bucket,Prefix=key,MaxKeys=1)
+    print('LIST', resp.get('KeyCount'))
+    if resp.get('KeyCount',0) < 1:
+        print('Put succeeded but key not found')
+        sys.exit(1)
+    print('Smoke test OK')
+    sys.exit(0)
+except Exception as e:
+    print('EXC',type(e),e)
+    traceback.print_exc()
+    sys.exit(1)
+PY
