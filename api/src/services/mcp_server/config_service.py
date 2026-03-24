@@ -141,6 +141,16 @@ class MCPConfigService:
             self.session.add(new_config)
             logger.info(f"MCP config created by {updated_by}")
 
+        # Ensure changes are flushed/committed so subsequent requests see them
+        try:
+            await self.session.flush()
+            # Commit here to make DB-visible immediately (safe in request lifecycle)
+            await self.session.commit()
+        except Exception:
+            # If commit fails, rollback to keep session clean and re-raise
+            await self.session.rollback()
+            raise
+
         return MCPConfig(
             enabled=enabled,
             require_platform_admin=require_platform_admin,
