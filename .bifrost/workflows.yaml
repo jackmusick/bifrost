@@ -1,0 +1,14 @@
+a02961df-79e2-4b4f-aa39-5e217c1b88d3:
+  id: a02961df-79e2-4b4f-aa39-5e217c1b88d3
+  name: "Hello World"
+  path: "workflows/sample/hello_world.py"
+  function_name: "hello_world"
+  type: "workflow"
+  category: "Examples"
+  description: "A simple greeting workflow — says hi from Copilot CLI."
+  timeout_seconds: 300
+  endpoint_enabled: false
+  access_level: "authenticated"
+  tags:
+    - sample
+    - example
