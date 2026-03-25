@@ -457,6 +457,20 @@ a637e66a-d3ab-4edb-9566-eb8090cde95f:
   - autoelevate
   - agent
   type: tool
+a8c25e73-6d14-4f87-b319-0e4a981c2d06:
+  category: GoToConnect
+  description: Per-tech call summary for the past N days. Useful for timesheet verification
+    and capacity planning.
+  function_name: get_call_activity_report
+  id: a8c25e73-6d14-4f87-b319-0e4a981c2d06
+  name: 'GoToConnect: Call Activity Report'
+  path: features/gotoconnect/workflows/tools.py
+  tags:
+  - gotoconnect
+  - reporting
+  - agent
+  timeout_seconds: 60
+  type: tool
 aaf2cc84-93ea-4436-b453-1c761925717e:
   category: HaloPSA
   description: List HaloPSA tickets with filtering, search, and pagination. Org users
@@ -500,6 +514,20 @@ b6317462-15cc-413c-afa7-dc0e8e1f3342:
   - microsoft
   - csp
   - permissions
+c2e8f147-3a91-4d05-b826-9f1e730d5c82:
+  category: GoToConnect
+  description: Get recent call history for a specific phone number. Useful for identifying
+    callers and correlating calls to HaloPSA clients.
+  function_name: get_call_history_for_number
+  id: c2e8f147-3a91-4d05-b826-9f1e730d5c82
+  name: 'GoToConnect: Call History for Number'
+  path: features/gotoconnect/workflows/tools.py
+  tags:
+  - gotoconnect
+  - calls
+  - agent
+  timeout_seconds: 60
+  type: tool
 c63d6c1e-80b9-44e6-aa1a-69246c2d0637:
   category: HaloPSA
   description: Add a note to a HaloPSA ticket. Private by default (hidden from end
@@ -551,6 +579,19 @@ d09ddc06-a7cc-4286-9668-583d12392e7a:
   name: get_appointments
   path: shared/halopsa/tools/timeentry.py
   type: tool
+d4f92b61-7c03-4e18-a537-2b8e641f9d04:
+  category: GoToConnect
+  description: Get presence and availability for all MTG GoToConnect users.
+  function_name: get_tech_availability
+  id: d4f92b61-7c03-4e18-a537-2b8e641f9d04
+  name: 'GoToConnect: Tech Availability'
+  path: features/gotoconnect/workflows/tools.py
+  tags:
+  - gotoconnect
+  - presence
+  - agent
+  timeout_seconds: 30
+  type: tool
 dd50b0c5-2673-4cce-a488-a66c2421412f:
   category: Microsoft CSP
   description: Seed the GDAP template from an existing relationship's assignments.
@@ -574,6 +615,20 @@ df641a19-7f97-488e-8cb0-5054712931cf:
   path: shared/halopsa/tools/timeentry.py
   tags:
   - HaloPSA
+  type: tool
+e7a13c84-5f2b-4901-8d46-3c9e752a0f17:
+  category: GoToConnect
+  description: Send an SMS to a customer from an MTG GoToConnect number.
+  function_name: send_sms_to_customer
+  id: e7a13c84-5f2b-4901-8d46-3c9e752a0f17
+  name: 'GoToConnect: Send SMS'
+  path: features/gotoconnect/workflows/tools.py
+  tags:
+  - gotoconnect
+  - sms
+  - messaging
+  - agent
+  timeout_seconds: 30
   type: tool
 eaf7753a-bdea-4221-9745-f195c4d06e72:
   description: 'Fill a timesheet by executing a confirmed day plan in one shot. Takes
@@ -638,6 +693,19 @@ f1473ec0-a303-4cdf-a039-ba3882332b27:
   tags:
   - organizations
   - admin
+f1b04d92-8e47-4c23-9a58-7d2f863b1e05:
+  category: GoToConnect
+  description: Get recent missed inbound calls for proactive customer follow-up.
+  function_name: get_recent_missed_calls
+  id: f1b04d92-8e47-4c23-9a58-7d2f863b1e05
+  name: 'GoToConnect: Recent Missed Calls'
+  path: features/gotoconnect/workflows/tools.py
+  tags:
+  - gotoconnect
+  - calls
+  - agent
+  timeout_seconds: 30
+  type: tool
 f5de214e-6df5-47dc-b0bb-aff679d3c47e:
   category: Platform
   description: Returns the calling user's role memberships and derived access flags

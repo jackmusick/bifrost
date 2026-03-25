@@ -29,3 +29,22 @@ a1f3e92c-7b4d-4e18-9c0a-2d5f831e6047:
     required: true
     position: 4
     description: CIPP API OAuth scope (e.g. api://{function-app-id}/.default)
+b5d37f20-9c41-4e8a-a162-4f7e083b2c91:
+  id: b5d37f20-9c41-4e8a-a162-4f7e083b2c91
+  name: GoToConnect
+  mappings: []
+  oauth_provider:
+    provider_name: GoToConnect
+    display_name: GoToConnect
+    authorization_url: https://authentication.logmeininc.com/oauth/authorize
+    token_url: https://authentication.logmeininc.com/oauth/token
+    client_id: <your-client-id>
+    scopes:
+    - voice-admin.v1.read
+    - users.v1.lines.read
+    - calls.v2.initiate
+    - call-history.v1.read
+    - call-reports.v1.read
+    - messaging.v1.send
+    - presence.v1.read
+    - voicemail.v1.read
