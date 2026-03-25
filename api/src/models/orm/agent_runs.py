@@ -42,6 +42,9 @@ class AgentRun(Base):
     )
     started_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), default=None)
     completed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), default=None)
+    parent_run_id: Mapped[UUID | None] = mapped_column(
+        ForeignKey("agent_runs.id", ondelete="CASCADE"), default=None
+    )
 
     # Relationships
     agent = relationship("Agent", lazy="joined")
@@ -50,6 +53,15 @@ class AgentRun(Base):
     )
     ai_usages: Mapped[list["AIUsage"]] = relationship(back_populates="agent_run")
     conversation = relationship("Conversation", lazy="select")
+    child_runs: Mapped[list["AgentRun"]] = relationship(
+        back_populates="parent_run",
+        foreign_keys="AgentRun.parent_run_id",
+    )
+    parent_run: Mapped["AgentRun | None"] = relationship(
+        back_populates="child_runs",
+        remote_side="AgentRun.id",
+        foreign_keys="AgentRun.parent_run_id",
+    )
 
     __table_args__ = (
         Index("ix_agent_runs_agent_id", "agent_id"),
@@ -57,6 +69,7 @@ class AgentRun(Base):
         Index("ix_agent_runs_status", "status"),
         Index("ix_agent_runs_trigger_type", "trigger_type"),
         Index("ix_agent_runs_created_at", "created_at"),
+        Index("ix_agent_runs_parent_run_id", "parent_run_id"),
     )
 
 

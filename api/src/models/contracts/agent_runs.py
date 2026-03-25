@@ -47,10 +47,12 @@ class AgentRunResponse(BaseModel):
     created_at: datetime
     started_at: datetime | None = None
     completed_at: datetime | None = None
+    parent_run_id: UUID | None = None
 
 
 class AgentRunDetailResponse(AgentRunResponse):
     steps: list[AgentRunStepResponse] = Field(default_factory=list)
+    child_run_ids: list[UUID] = Field(default_factory=list)
     ai_usage: list[AIUsagePublicSimple] | None = None
     ai_totals: AIUsageTotalsSimple | None = None
 
@@ -66,3 +68,7 @@ class AgentRunCreateRequest(BaseModel):
     input: dict | None = None
     output_schema: dict | None = None
     timeout: int = 1800
+
+
+class AgentRunRerunResponse(BaseModel):
+    run_id: UUID
