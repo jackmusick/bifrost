@@ -36587,6 +36587,107 @@ class NinjaOnePublicAPI:
 
 
 # =============================================================================
+# Bifrost Integration Helpers
+# =============================================================================
+
+
+def normalize_organization(organization: dict[str, Any]) -> dict[str, str | None]:
+    """Normalize a NinjaOne organization payload for Bifrost mapping workflows."""
+    organization_id = organization.get("id")
+    name = organization.get("name")
+    return {
+        "id": str(organization_id) if organization_id is not None else None,
+        "name": name or None,
+    }
+
+
+class ScopedNinjaOneClient:
+    """Thin async wrapper around the sync NinjaOne client for Bifrost use."""
+
+    def __init__(self, integration, *, base_url: str, organization_id: str | None = None):
+        self._integration = integration
+        self._base_url = base_url.rstrip("/")
+        self.organization_id = str(organization_id) if organization_id is not None else None
+
+    def _build_client(self) -> "NinjaOnePublicAPI":
+        oauth = getattr(self._integration, "oauth", None)
+        access_token = getattr(oauth, "access_token", None)
+        if not access_token:
+            raise RuntimeError(
+                "NinjaOne integration is missing an access token. Please complete the OAuth setup in Settings."
+            )
+
+        ninja = NinjaOnePublicAPI(base_url=self._base_url)
+        ninja.session.headers["Authorization"] = f"Bearer {access_token}"
+        return ninja
+
+    async def _call(self, method_name: str, *args, **kwargs):
+        ninja = self._build_client()
+        try:
+            method = getattr(ninja, method_name)
+            return method(*args, **kwargs)
+        except requests.exceptions.HTTPError as exc:
+            if exc.response is None or exc.response.status_code != 401:
+                raise
+
+            oauth = getattr(self._integration, "oauth", None)
+            refresh = getattr(oauth, "refresh", None)
+            if refresh is None:
+                raise
+
+            await refresh()
+            retry_client = self._build_client()
+            try:
+                return getattr(retry_client, method_name)(*args, **kwargs)
+            finally:
+                retry_client.session.close()
+        finally:
+            ninja.session.close()
+
+    async def list_organizations(self, **kwargs) -> list[dict]:
+        """List NinjaOne organizations using the integration OAuth token."""
+        return await self._call("list_organizations", **kwargs)
+
+    async def get_organization(self, organization_id: str | None = None) -> dict:
+        """Get a NinjaOne organization by explicit or mapped organization ID."""
+        target_organization_id = organization_id or self.organization_id
+        if not target_organization_id:
+            raise RuntimeError(
+                "NinjaOne client requires a mapped organization_id for org-scoped access."
+            )
+        return await self._call("get_organization", target_organization_id)
+
+    async def close(self) -> None:
+        """Compatibility no-op for async workflow helpers."""
+        return None
+
+
+async def get_client(scope: str | None = None) -> ScopedNinjaOneClient:
+    """Get a NinjaOne integration client for the requested Bifrost scope."""
+    from bifrost import integrations
+
+    integration = await integrations.get("NinjaOne", scope=scope)
+    if not integration:
+        raise RuntimeError("Integration 'NinjaOne' not found in Bifrost")
+
+    oauth = getattr(integration, "oauth", None)
+    access_token = getattr(oauth, "access_token", None)
+    if not access_token:
+        raise RuntimeError(
+            "NinjaOne integration is missing an access token. Please complete the OAuth setup in Settings."
+        )
+
+    config = integration.config or {}
+    base_url = config.get("base_url", "https://app.ninjarmm.com")
+    organization_id = getattr(integration, "entity_id", None)
+    return ScopedNinjaOneClient(
+        integration,
+        base_url=base_url,
+        organization_id=organization_id,
+    )
+
+
+# =============================================================================
 # Lazy Client (Bifrost Integration)
 # =============================================================================
 

@@ -438,6 +438,123 @@ client = HuntressAPIReference
 
 
 # =============================================================================
+# Bifrost Integration Helpers
+# =============================================================================
+
+
+def normalize_organization(organization: dict[str, Any]) -> dict[str, str | None]:
+    """Normalize a Huntress organization payload for Bifrost mapping workflows."""
+    organization_id = organization.get("id")
+    name = organization.get("name")
+    return {
+        "id": str(organization_id) if organization_id is not None else None,
+        "name": name or None,
+    }
+
+
+def _extract_collection(payload: Any, key: str) -> list[dict]:
+    if isinstance(payload, dict):
+        return payload.get(key) or []
+    return payload or []
+
+
+def _extract_single(payload: Any, key: str) -> dict:
+    if isinstance(payload, dict):
+        return payload.get(key) or {}
+    return payload or {}
+
+
+def _next_page_token(payload: Any) -> str | None:
+    if not isinstance(payload, dict):
+        return None
+    pagination = payload.get("pagination") or {}
+    return pagination.get("next_page_token")
+
+
+class ScopedHuntressClient:
+    """Thin async wrapper around the sync Huntress client for Bifrost use."""
+
+    def __init__(self, *, base_url: str, api_key: str, api_secret: str, organization_id: str | None = None):
+        self._base_url = base_url.rstrip("/")
+        self._api_key = api_key
+        self._api_secret = api_secret
+        self.organization_id = str(organization_id) if organization_id is not None else None
+
+    def _build_client(self) -> HuntressAPIReference:
+        session = requests.Session()
+        session.auth = (self._api_key, self._api_secret)
+        return HuntressAPIReference(self._base_url, session)
+
+    async def _call(self, method_name: str, *args, **kwargs):
+        client = self._build_client()
+        try:
+            method = getattr(client, method_name)
+            return method(*args, **kwargs)
+        finally:
+            client.session.close()
+
+    async def list_organizations(self, *, limit: int = 200) -> list[dict]:
+        """List all Huntress organizations, following page tokens when present."""
+        organizations: list[dict] = []
+        page_token: str | None = None
+
+        while True:
+            params: dict[str, Any] = {"limit": limit}
+            if page_token:
+                params["page_token"] = page_token
+
+            payload = await self._call("list_organizations", **params)
+            organizations.extend(_extract_collection(payload, "organizations"))
+
+            page_token = _next_page_token(payload)
+            if not page_token:
+                break
+
+        return organizations
+
+    async def get_organization(self, organization_id: str | None = None) -> dict:
+        """Get a Huntress organization by explicit or mapped organization ID."""
+        target_organization_id = organization_id or self.organization_id
+        if not target_organization_id:
+            raise RuntimeError(
+                "Huntress client requires a mapped organization_id for org-scoped access."
+            )
+
+        payload = await self._call("get_organizations_2", target_organization_id)
+        return _extract_single(payload, "organization")
+
+    async def close(self) -> None:
+        """Compatibility no-op for async workflow helpers."""
+        return None
+
+
+async def get_client(scope: str | None = None) -> ScopedHuntressClient:
+    """Get a Huntress integration client for the requested Bifrost scope."""
+    from bifrost import integrations
+
+    integration = await integrations.get("Huntress", scope=scope)
+    if not integration:
+        raise RuntimeError("Integration 'Huntress' not found in Bifrost")
+
+    config = integration.config or {}
+    api_key = config.get("api_key")
+    api_secret = config.get("api_secret")
+    if not api_key or not api_secret:
+        raise RuntimeError(
+            "Integration 'Huntress' is missing api_key or api_secret in config."
+        )
+
+    base_url = (config.get("base_url") or "https://api.huntress.io").rstrip("/")
+    organization_id = getattr(integration, "entity_id", None)
+    return ScopedHuntressClient(
+        base_url=base_url,
+        api_key=api_key,
+        api_secret=api_secret,
+        organization_id=organization_id,
+    )
+
+
+# =============================================================================
 # Lazy Client (Bifrost Integration)
 # =============================================================================
 

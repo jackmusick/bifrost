@@ -751,3 +751,439 @@ fb8f484b-a7c4-400a-bb00-76f89452fa3d:
   name: HaloPSA Open Tickets
   path: shared/halopsa/data_providers.py
   type: data_provider
+1e3af6ff-317b-49f1-a5c9-cc8c42306ed5:
+  access_level: authenticated
+  category: DNSFilter
+  description: Sync DNSFilter customer networks to Bifrost organizations.
+  endpoint_enabled: false
+  function_name: sync_dnsfilter_networks
+  id: 1e3af6ff-317b-49f1-a5c9-cc8c42306ed5
+  name: 'DNSFilter: Sync Networks'
+  path: features/dnsfilter/workflows/sync_networks.py
+  tags:
+  - dnsfilter
+  - sync
+  timeout_seconds: 300
+  type: workflow
+41d3fef1-f134-4ca9-a61a-4c9417151647:
+  access_level: authenticated
+  category: DNSFilter
+  description: Returns DNSFilter networks for org mapping picker.
+  endpoint_enabled: false
+  function_name: list_dnsfilter_networks
+  id: 41d3fef1-f134-4ca9-a61a-4c9417151647
+  name: 'DNSFilter: List Networks'
+  path: features/dnsfilter/workflows/data_providers.py
+  tags:
+  - dnsfilter
+  - data-provider
+  timeout_seconds: 60
+  type: data_provider
+cf6ab76a-f09c-417f-9362-ffcbe31f8649:
+  access_level: authenticated
+  category: Meraki
+  description: Sync Meraki organizations to Bifrost organizations.
+  endpoint_enabled: false
+  function_name: sync_meraki_organizations
+  id: cf6ab76a-f09c-417f-9362-ffcbe31f8649
+  name: 'Meraki: Sync Organizations'
+  path: features/meraki/workflows/sync_organizations.py
+  tags:
+  - meraki
+  - sync
+  timeout_seconds: 300
+  type: workflow
+9c752875-4f3e-475e-92be-bc47f54f72fa:
+  access_level: authenticated
+  category: Meraki
+  description: Returns Meraki organizations for org mapping picker.
+  endpoint_enabled: false
+  function_name: list_meraki_organizations
+  id: 9c752875-4f3e-475e-92be-bc47f54f72fa
+  name: 'Meraki: List Organizations'
+  path: features/meraki/workflows/data_providers.py
+  tags:
+  - meraki
+  - data-provider
+  timeout_seconds: 60
+  type: data_provider
+0af6ca86-dfea-4693-8906-1a0fb7341dad:
+  access_level: authenticated
+  category: VIPRE
+  description: Sync inferred VIPRE sites to Bifrost organizations.
+  endpoint_enabled: false
+  function_name: sync_vipre_sites
+  id: 0af6ca86-dfea-4693-8906-1a0fb7341dad
+  name: 'VIPRE: Sync Sites'
+  path: features/vipre/workflows/sync_sites.py
+  tags:
+  - vipre
+  - sync
+  timeout_seconds: 300
+  type: workflow
+fb8da981-cd23-4193-8dbc-694244386e52:
+  access_level: authenticated
+  category: VIPRE
+  description: Returns inferred VIPRE sites for org mapping picker.
+  endpoint_enabled: false
+  function_name: list_vipre_sites
+  id: fb8da981-cd23-4193-8dbc-694244386e52
+  name: 'VIPRE: List Sites'
+  path: features/vipre/workflows/data_providers.py
+  tags:
+  - vipre
+  - data-provider
+  timeout_seconds: 60
+  type: data_provider
+f19712ec-53bc-4b13-af96-bd529c7c9d64:
+  access_level: authenticated
+  category: Quoter
+  description: Sync Quoter organizations inferred from contacts to Bifrost organizations.
+  endpoint_enabled: false
+  function_name: sync_quoter_organizations
+  id: f19712ec-53bc-4b13-af96-bd529c7c9d64
+  name: 'Quoter: Sync Organizations'
+  path: features/quoter/workflows/sync_organizations.py
+  tags:
+  - quoter
+  - sync
+  timeout_seconds: 300
+  type: workflow
+f04a1d7c-3efe-421d-af15-d3c8bc689ebc:
+  access_level: authenticated
+  category: Quoter
+  description: Returns Quoter organizations inferred from contacts for org mapping picker.
+  endpoint_enabled: false
+  function_name: list_quoter_organizations
+  id: f04a1d7c-3efe-421d-af15-d3c8bc689ebc
+  name: 'Quoter: List Organizations'
+  path: features/quoter/workflows/data_providers.py
+  tags:
+  - quoter
+  - data-provider
+  timeout_seconds: 60
+  type: data_provider
+09298a60-57fd-4540-890d-13923d0f57a8:
+  access_level: authenticated
+  category: ConnectSecure
+  description: Sync ConnectSecure companies to Bifrost organizations.
+  endpoint_enabled: false
+  function_name: sync_connectsecure_companies
+  id: 09298a60-57fd-4540-890d-13923d0f57a8
+  name: 'ConnectSecure: Sync Companies'
+  path: features/connectsecure/workflows/sync_companies.py
+  tags:
+  - connectsecure
+  - sync
+  timeout_seconds: 300
+  type: workflow
+f6896db3-bb71-4100-a806-c9daa9f1d802:
+  access_level: authenticated
+  category: ConnectSecure
+  description: Returns ConnectSecure companies for org mapping picker.
+  endpoint_enabled: false
+  function_name: list_connectsecure_companies
+  id: f6896db3-bb71-4100-a806-c9daa9f1d802
+  name: 'ConnectSecure: List Companies'
+  path: features/connectsecure/workflows/data_providers.py
+  tags:
+  - connectsecure
+  - data-provider
+  timeout_seconds: 60
+  type: data_provider
+0aa603b2-6143-4656-9d01-3b4895388203:
+  access_level: authenticated
+  category: Pax8
+  description: Sync Pax8 companies to Bifrost organizations.
+  endpoint_enabled: false
+  function_name: sync_pax8_companies
+  id: 0aa603b2-6143-4656-9d01-3b4895388203
+  name: 'Pax8: Sync Companies'
+  path: features/pax8/workflows/sync_companies.py
+  tags:
+  - pax8
+  - sync
+  timeout_seconds: 300
+  type: workflow
+4371b6c0-7131-4447-bb81-777c6b6a5c63:
+  access_level: authenticated
+  category: Pax8
+  description: Returns Pax8 companies for org mapping picker.
+  endpoint_enabled: false
+  function_name: list_pax8_companies
+  id: 4371b6c0-7131-4447-bb81-777c6b6a5c63
+  name: 'Pax8: List Companies'
+  path: features/pax8/workflows/data_providers.py
+  tags:
+  - pax8
+  - data-provider
+  timeout_seconds: 60
+  type: data_provider
+8a85664e-c092-4450-8b65-c08cea3b1e02:
+  access_level: authenticated
+  category: Huntress
+  description: Sync Huntress organizations to Bifrost organizations.
+  endpoint_enabled: false
+  function_name: sync_huntress_organizations
+  id: 8a85664e-c092-4450-8b65-c08cea3b1e02
+  name: 'Huntress: Sync Organizations'
+  path: features/huntress/workflows/sync_organizations.py
+  tags:
+  - huntress
+  - sync
+  timeout_seconds: 300
+  type: workflow
+819b858f-ae9b-4653-beec-34420ba5d77c:
+  access_level: authenticated
+  category: Huntress
+  description: Returns Huntress organizations for org mapping picker.
+  endpoint_enabled: false
+  function_name: list_huntress_organizations
+  id: 819b858f-ae9b-4653-beec-34420ba5d77c
+  name: 'Huntress: List Organizations'
+  path: features/huntress/workflows/data_providers.py
+  tags:
+  - huntress
+  - data-provider
+  timeout_seconds: 60
+  type: data_provider
+e85b9aed-dfd3-438a-8aca-c481e57d8321:
+  access_level: authenticated
+  category: NinjaOne
+  description: Sync NinjaOne organizations to Bifrost organizations.
+  endpoint_enabled: false
+  function_name: sync_ninjaone_organizations
+  id: e85b9aed-dfd3-438a-8aca-c481e57d8321
+  name: 'NinjaOne: Sync Organizations'
+  path: features/ninjaone/workflows/sync_organizations.py
+  tags:
+  - ninjaone
+  - sync
+  timeout_seconds: 300
+  type: workflow
+d1319af0-74d3-4f17-a4cd-73077d68d84c:
+  access_level: authenticated
+  category: NinjaOne
+  description: Returns NinjaOne organizations for org mapping picker.
+  endpoint_enabled: false
+  function_name: list_ninjaone_organizations
+  id: d1319af0-74d3-4f17-a4cd-73077d68d84c
+  name: 'NinjaOne: List Organizations'
+  path: features/ninjaone/workflows/data_providers.py
+  tags:
+  - ninjaone
+  - data-provider
+  timeout_seconds: 60
+  type: data_provider
+0c02bf22-0e1f-4362-a7e3-089abfcd2478:
+  access_level: authenticated
+  category: Cove Data Protection
+  description: Sync Cove EndCustomer partners to Bifrost organizations.
+  endpoint_enabled: false
+  function_name: sync_cove_customers
+  id: 0c02bf22-0e1f-4362-a7e3-089abfcd2478
+  name: 'Cove Data Protection: Sync Customers'
+  path: features/cove/workflows/sync_customers.py
+  tags:
+  - cove
+  - sync
+  timeout_seconds: 300
+  type: workflow
+6a24ad7e-8574-49c5-856e-0df69a26711c:
+  access_level: authenticated
+  category: Cove Data Protection
+  description: Returns Cove EndCustomer partners for org mapping picker.
+  endpoint_enabled: false
+  function_name: list_cove_customers
+  id: 6a24ad7e-8574-49c5-856e-0df69a26711c
+  name: 'Cove Data Protection: List Customers'
+  path: features/cove/workflows/data_providers.py
+  tags:
+  - cove
+  - data-provider
+  timeout_seconds: 60
+  type: data_provider
+68783b26-eaa8-4ca4-b6c3-7bdaa7341d1f:
+  access_level: authenticated
+  category: Datto SaaS Protection
+  description: Sync Datto SaaS Protection domains to Bifrost organizations.
+  endpoint_enabled: false
+  function_name: sync_dattosaas_domains
+  id: 68783b26-eaa8-4ca4-b6c3-7bdaa7341d1f
+  name: 'Datto SaaS Protection: Sync Domains'
+  path: features/dattosaasprotection/workflows/sync_domains.py
+  tags:
+  - datto
+  - saas
+  - sync
+  timeout_seconds: 300
+  type: workflow
+af2c7f56-95ca-4a4c-a926-af8e892e13ec:
+  access_level: authenticated
+  category: Datto SaaS Protection
+  description: Returns Datto SaaS Protection domains for org mapping picker.
+  endpoint_enabled: false
+  function_name: list_dattosaas_domains
+  id: af2c7f56-95ca-4a4c-a926-af8e892e13ec
+  name: 'Datto SaaS Protection: List Domains'
+  path: features/dattosaasprotection/workflows/data_providers.py
+  tags:
+  - datto
+  - saas
+  - data-provider
+  timeout_seconds: 60
+  type: data_provider
+a0f7f3c4-0b42-4c63-a62b-adda48b1fb4a:
+  access_level: authenticated
+  category: Google Workspace Reseller
+  description: Returns reseller-visible Google Workspace customers for org mapping picker.
+  endpoint_enabled: false
+  function_name: list_google_workspace_reseller_customers
+  id: a0f7f3c4-0b42-4c63-a62b-adda48b1fb4a
+  name: 'Google Workspace Reseller: List Customers'
+  path: features/googleworkspacereseller/workflows/data_providers.py
+  tags:
+  - google
+  - workspace
+  - reseller
+  - data-provider
+  timeout_seconds: 60
+  type: data_provider
+a88d4582-5fb1-4d11-acb4-9fb7a8318f1c:
+  access_level: authenticated
+  category: Google Workspace Reseller
+  description: Sync reseller-managed Google Workspace customers into Bifrost organizations.
+  endpoint_enabled: false
+  function_name: sync_google_workspace_reseller_customers
+  id: a88d4582-5fb1-4d11-acb4-9fb7a8318f1c
+  name: 'Google Workspace Reseller: Sync Customers'
+  path: features/googleworkspacereseller/workflows/sync_customers.py
+  tags:
+  - google
+  - workspace
+  - reseller
+  type: workflow
+43509af6-8ba0-4b68-bbe4-a939b1e15dd5:
+  access_level: authenticated
+  category: Google Workspace
+  description: Discover and bind the current org-scoped Google Workspace tenant.
+  endpoint_enabled: false
+  function_name: sync_google_workspace_tenant
+  id: 43509af6-8ba0-4b68-bbe4-a939b1e15dd5
+  name: 'Google Workspace: Sync Current Tenant'
+  path: features/googleworkspace/workflows/sync_tenant.py
+  tags:
+  - google
+  - workspace
+  type: workflow
+13889a0e-534e-4160-a34f-9eb4b4642ddb:
+  access_level: authenticated
+  category: Datto RMM
+  description: Sync Datto RMM sites into Bifrost organizations.
+  endpoint_enabled: false
+  function_name: sync_dattormm_sites
+  id: 13889a0e-534e-4160-a34f-9eb4b4642ddb
+  name: 'Datto RMM: Sync Sites'
+  path: features/dattormm/workflows/sync_sites.py
+  tags:
+  - datto
+  - rmm
+  type: workflow
+7966b43d-f27a-4ae9-921c-269eccdede6d:
+  access_level: authenticated
+  category: Datto RMM
+  description: Returns Datto RMM sites for org mapping picker.
+  endpoint_enabled: false
+  function_name: list_dattormm_sites
+  id: 7966b43d-f27a-4ae9-921c-269eccdede6d
+  name: 'Datto RMM: List Sites'
+  path: features/dattormm/workflows/data_providers.py
+  tags:
+  - datto
+  - rmm
+  - data-provider
+  timeout_seconds: 60
+  type: data_provider
+d636601c-80da-4e50-8aa9-10ca7b170e08:
+  access_level: authenticated
+  category: Datto Networking
+  description: Sync Datto Networking networks into Bifrost organizations.
+  endpoint_enabled: false
+  function_name: sync_dattonetworking_networks
+  id: d636601c-80da-4e50-8aa9-10ca7b170e08
+  name: 'Datto Networking: Sync Networks'
+  path: features/dattonetworking/workflows/sync_networks.py
+  tags:
+  - datto
+  - networking
+  type: workflow
+27a96906-e182-4c90-bd30-5257843bbdd0:
+  access_level: authenticated
+  category: Datto Networking
+  description: Returns Datto Networking networks for org mapping picker.
+  endpoint_enabled: false
+  function_name: list_dattonetworking_networks
+  id: 27a96906-e182-4c90-bd30-5257843bbdd0
+  name: 'Datto Networking: List Networks'
+  path: features/dattonetworking/workflows/data_providers.py
+  tags:
+  - datto
+  - networking
+  - data-provider
+  timeout_seconds: 60
+  type: data_provider
+15b4340b-f453-43f3-a839-400db487660e:
+  access_level: authenticated
+  category: IT Glue
+  description: Sync IT Glue organizations into Bifrost organizations.
+  endpoint_enabled: false
+  function_name: sync_itglue_organizations
+  id: 15b4340b-f453-43f3-a839-400db487660e
+  name: 'IT Glue: Sync Organizations'
+  path: features/itglue/workflows/sync_organizations.py
+  tags:
+  - itglue
+  - documentation
+  type: workflow
+6e0f976b-8d6b-4c70-8286-ee245194f49d:
+  access_level: authenticated
+  category: IT Glue
+  description: Returns IT Glue organizations for org mapping picker.
+  endpoint_enabled: false
+  function_name: list_itglue_organizations
+  id: 6e0f976b-8d6b-4c70-8286-ee245194f49d
+  name: 'IT Glue: List Organizations'
+  path: features/itglue/workflows/data_providers.py
+  tags:
+  - itglue
+  - data-provider
+  timeout_seconds: 60
+  type: data_provider
+371399ce-463a-4cce-870b-ac74091fdf1e:
+  access_level: authenticated
+  category: Keeper MSP
+  description: Sync Keeper managed companies into Bifrost organizations.
+  endpoint_enabled: false
+  function_name: sync_keeper_managed_companies
+  id: 371399ce-463a-4cce-870b-ac74091fdf1e
+  name: 'Keeper MSP: Sync Managed Companies'
+  path: features/keepermsp/workflows/sync_managed_companies.py
+  tags:
+  - keeper
+  - msp
+  type: workflow
+d44e888b-600e-413f-8daa-75df583d5af4:
+  access_level: authenticated
+  category: Keeper MSP
+  description: Returns Keeper managed companies for org mapping picker.
+  endpoint_enabled: false
+  function_name: list_keeper_managed_companies
+  id: d44e888b-600e-413f-8daa-75df583d5af4
+  name: 'Keeper MSP: List Managed Companies'
+  path: features/keepermsp/workflows/data_providers.py
+  tags:
+  - keeper
+  - msp
+  - data-provider
+  timeout_seconds: 60
+  type: data_provider

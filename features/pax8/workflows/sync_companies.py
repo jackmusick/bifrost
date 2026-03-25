@@ -1,0 +1,74 @@
+"""
+Pax8: Sync Companies
+
+Syncs Pax8 customer companies to Bifrost organizations and creates
+IntegrationMappings so org-scoped workflows can resolve the mapped company ID.
+
+Entity model:
+  entity_id   = Pax8 company ID
+  entity_name = company name
+"""
+
+from bifrost import integrations, organizations
+from modules.pax8 import Pax8Client
+
+
+async def sync_pax8_companies() -> dict:
+    from modules.pax8 import get_client
+
+    client = await get_client(scope="global")
+    try:
+        companies = await client.list_companies()
+    finally:
+        await client.close()
+
+    existing_mappings = {
+        str(mapping.entity_id): mapping
+        for mapping in (await integrations.list_mappings("Pax8") or [])
+    }
+
+    all_orgs = await organizations.list()
+    orgs_by_name = {org.name.lower(): org for org in all_orgs}
+
+    created_orgs = 0
+    mapped = 0
+    already_mapped = 0
+    errors: list[str] = []
+
+    for company in companies:
+        normalized = Pax8Client.normalize_company(company)
+        company_id = normalized["id"]
+        company_name = normalized["name"] or company_id
+
+        if not company_id:
+            errors.append(f"Skipped company with no ID: {company}")
+            continue
+
+        if company_id in existing_mappings:
+            already_mapped += 1
+            continue
+
+        try:
+            org = orgs_by_name.get(company_name.lower())
+            if org is None:
+                org = await organizations.create(company_name)
+                orgs_by_name[company_name.lower()] = org
+                created_orgs += 1
+
+            await integrations.upsert_mapping(
+                "Pax8",
+                scope=org.id,
+                entity_id=company_id,
+                entity_name=company_name,
+            )
+            mapped += 1
+        except Exception as exc:
+            errors.append(f"{company_name} ({company_id}): {exc}")
+
+    return {
+        "total": len(companies),
+        "mapped": mapped,
+        "already_mapped": already_mapped,
+        "created_orgs": created_orgs,
+        "errors": errors,
+    }

@@ -199,13 +199,23 @@ class CoveClient:
 
     BASE_URL = "https://api.backup.management/jsonapi"
 
-    # Your reseller partner ID - used as the default root for enumeration.
-    # Obtained from the login response PartnerId field.
-    ROOT_PARTNER_ID = 2674794
+    # Reseller partner ID used as the default root for enumeration.
+    # Updated from the validated local vendor note on 2026-03-25.
+    ROOT_PARTNER_ID = 1738720
 
-    def __init__(self, username: str, password: str):
+    def __init__(
+        self,
+        username: str,
+        password: str,
+        partner_name: str,
+        root_partner_id: int | None = None,
+        partner_id: int | None = None,
+    ):
         self.username = username
         self.password = password
+        self.partner_name = partner_name
+        self.root_partner_id = root_partner_id or self.ROOT_PARTNER_ID
+        self.partner_id = partner_id
         self._visa_token: str | None = None
         self._client: httpx.AsyncClient | None = None
 
@@ -266,7 +276,11 @@ class CoveClient:
         payload = {
             "jsonrpc": "2.0",
             "method": "Login",
-            "params": {"username": self.username, "password": self.password},
+            "params": {
+                "partner": self.partner_name,
+                "username": self.username,
+                "password": self.password,
+            },
             "id": str(uuid.uuid4()),
         }
         response = await client.post(self.BASE_URL, json=payload)
@@ -284,6 +298,15 @@ class CoveClient:
             raise ValueError(
                 f"No visa token in login response. Keys returned: {list(body.keys())}"
             )
+
+        login_result = _unwrap(body.get("result"))
+        if isinstance(login_result, dict):
+            partner_id = login_result.get("PartnerId") or login_result.get("partnerId")
+            if partner_id is not None:
+                try:
+                    self.root_partner_id = int(partner_id)
+                except (TypeError, ValueError):
+                    pass
 
     async def _ensure_logged_in(self) -> None:
         if not self._visa_token:
@@ -308,9 +331,9 @@ class CoveClient:
         List customer partners under the given parent.
 
         Args:
-            parent_partner_id: Defaults to ROOT_PARTNER_ID (your reseller account).
-            fields: Field indices to include. Defaults to [0,1,2,3,4,5] which gives
-                    Id, Name, Level, ParentId, State, ServiceType.
+            parent_partner_id: Defaults to the authenticated reseller partner.
+            fields: UInt64 field bitmask values. Defaults to [64], the validated
+                    value required for Name population in EnumeratePartners.
             fetch_recursively: Whether to include nested children.
 
         Returns:
@@ -318,8 +341,8 @@ class CoveClient:
         """
         await self._ensure_logged_in()
         raw = await self._rpc_call("EnumeratePartners", {
-            "parentPartnerId": parent_partner_id or self.ROOT_PARTNER_ID,
-            "fields": fields if fields is not None else [0, 1, 2, 3, 4, 5],
+            "parentPartnerId": parent_partner_id or self.root_partner_id,
+            "fields": fields if fields is not None else [64],
             "fetchRecursively": fetch_recursively,
         })
         return _unwrap(raw) or []
@@ -367,6 +390,20 @@ class CoveClient:
         if isinstance(result, int):
             return await self.get_partner(result)
         return result or {}
+
+    @staticmethod
+    def normalize_partner(partner: dict) -> dict[str, str | None]:
+        """Normalize a Cove partner payload to the fields Bifrost mapping needs."""
+        partner_id = partner.get("Id") or partner.get("PartnerId") or partner.get("id")
+        name = partner.get("Name") or partner.get("name")
+        level = partner.get("Level") or partner.get("level")
+        state = partner.get("State") or partner.get("state")
+        return {
+            "id": str(partner_id) if partner_id is not None else None,
+            "name": name or None,
+            "level": level or None,
+            "state": state or None,
+        }
 
     # -------------------------------------------------------------------------
     # Devices
@@ -452,7 +489,7 @@ class CoveClient:
 # Convenience factory
 # ---------------------------------------------------------------------------
 
-async def get_client() -> CoveClient:
+async def get_client(scope: str | None = None) -> CoveClient:
     """
     Get a CoveClient configured from the 'Cove Data Protection' Bifrost integration.
 
@@ -465,18 +502,27 @@ async def get_client() -> CoveClient:
     """
     from bifrost import integrations
 
-    integration = await integrations.get("Cove Data Protection")
+    integration = await integrations.get("Cove Data Protection", scope=scope)
     if not integration:
         raise RuntimeError("Integration 'Cove Data Protection' not found in Bifrost")
 
     cfg = integration.config or {}
-    username = cfg.get("cove_username")
-    password = cfg.get("cove_password")
+    partner_name = cfg.get("partner_name")
+    username = cfg.get("username")
+    password = cfg.get("password")
 
-    if not username or not password:
+    if not partner_name or not username or not password:
         raise RuntimeError(
-            f"Integration 'Cove Data Protection' is missing cove_username or cove_password. "
+            "Integration 'Cove Data Protection' is missing partner_name, username, or password. "
             f"Found keys: {list(cfg.keys())}"
         )
 
-    return CoveClient(username=username, password=password)
+    partner_id = getattr(integration, "entity_id", None)
+    root_partner_id = cfg.get("root_partner_id")
+    return CoveClient(
+        username=username,
+        password=password,
+        partner_name=partner_name,
+        root_partner_id=int(root_partner_id) if root_partner_id else None,
+        partner_id=int(partner_id) if partner_id is not None else None,
+    )

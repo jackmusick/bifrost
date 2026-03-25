@@ -117,6 +117,19 @@ class ITGlueClient:
             body["data"]["relationships"] = relationships
         return body
 
+    @staticmethod
+    def normalize_organization(organization: dict[str, Any]) -> dict[str, str]:
+        """Normalize an IT Glue organization record into {id, name}."""
+        attributes = (
+            organization.get("attributes", {})
+            if isinstance(organization, dict)
+            else {}
+        )
+        return {
+            "id": str(organization.get("id") or ""),
+            "name": str(attributes.get("name") or ""),
+        }
+
     # =========================================================================
     # Organizations
     # =========================================================================
@@ -1250,6 +1263,24 @@ def create_client(api_key: str, region: Region | str = Region.US) -> ITGlueClien
     if isinstance(region, str):
         region = Region(region)
     return ITGlueClient(api_key, region)
+
+
+async def get_client(scope: str | None = None) -> ITGlueClient:
+    """Build an IT Glue client from the configured Bifrost integration."""
+    from bifrost import integrations
+
+    integration = await integrations.get("IT Glue", scope=scope)
+    if not integration:
+        raise RuntimeError("Integration 'IT Glue' not found in Bifrost")
+
+    config = integration.config or {}
+    api_key = config.get("api_key")
+    if not api_key:
+        raise RuntimeError("IT Glue integration missing required config: ['api_key']")
+
+    region_name = str(config.get("region", "US") or "US").upper()
+    region = Region.__members__.get(region_name, Region.US)
+    return create_client(api_key, region=region)
 
 
 # =============================================================================

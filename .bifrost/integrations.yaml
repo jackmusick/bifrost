@@ -29,6 +29,39 @@ a1f3e92c-7b4d-4e18-9c0a-2d5f831e6047:
     required: true
     position: 4
     description: CIPP API OAuth scope (e.g. api://{function-app-id}/.default)
+342cff77-ef6b-4f46-a6f8-2545b2c6bab1:
+  id: 342cff77-ef6b-4f46-a6f8-2545b2c6bab1
+  name: Microsoft CSP
+  default_entity_id: <your-tenant-id>
+  list_entities_data_provider_id: cd0b2104-9e2b-5e59-a794-25a5d8d58ae4
+  mappings: []
+  oauth_provider:
+    provider_name: Microsoft CSP
+    display_name: Microsoft CSP
+    authorization_url: https://login.microsoftonline.com/<your-tenant-id>/oauth2/v2.0/authorize
+    token_url: https://login.microsoftonline.com/<your-tenant-id>/oauth2/v2.0/token
+    client_id: <your-client-id>
+    scopes:
+    - Application.Read.All
+    - AppRoleAssignment.ReadWrite.All
+    - DelegatedAdminRelationship.ReadWrite.All
+    - ManagedTenants.Read.All
+    - offline_access
+dab30741-a455-4c50-bd2d-0ab3e78fe3cd:
+  id: dab30741-a455-4c50-bd2d-0ab3e78fe3cd
+  name: Microsoft
+  default_entity_id: <your-tenant-id>
+  list_entities_data_provider_id: cd0b2104-9e2b-5e59-a794-25a5d8d58ae4
+  mappings: []
+  oauth_provider:
+    provider_name: Microsoft Graph
+    display_name: Microsoft Graph
+    oauth_flow_type: client_credentials
+    authorization_url: https://login.microsoftonline.com/common/oauth2/v2.0/authorize
+    token_url: https://login.microsoftonline.com/{entity_id}/oauth2/v2.0/token
+    client_id: <your-client-id>
+    scopes:
+    - https://graph.microsoft.com/.default
 b5d37f20-9c41-4e8a-a162-4f7e083b2c91:
   id: b5d37f20-9c41-4e8a-a162-4f7e083b2c91
   name: GoToConnect
@@ -48,3 +81,341 @@ b5d37f20-9c41-4e8a-a162-4f7e083b2c91:
     - messaging.v1.send
     - presence.v1.read
     - voicemail.v1.read
+82252311-d1d6-4d69-b26f-b42989e60d03:
+  id: 82252311-d1d6-4d69-b26f-b42989e60d03
+  name: DNSFilter
+  list_entities_data_provider_id: 41d3fef1-f134-4ca9-a61a-4c9417151647
+  mappings: []
+  config_schema:
+  - key: api_key
+    type: secret
+    required: true
+    position: 0
+    description: DNSFilter API token from Account Settings
+aebb8d28-9531-4344-84a1-234ca3922941:
+  id: aebb8d28-9531-4344-84a1-234ca3922941
+  name: Meraki
+  list_entities_data_provider_id: 9c752875-4f3e-475e-92be-bc47f54f72fa
+  mappings: []
+  config_schema:
+  - key: api_key
+    type: secret
+    required: true
+    position: 0
+    description: Cisco Meraki Dashboard API key
+05b0c5ab-e7ff-4f24-ba4e-8693b4d9d5fb:
+  id: 05b0c5ab-e7ff-4f24-ba4e-8693b4d9d5fb
+  name: VIPRE
+  list_entities_data_provider_id: fb8da981-cd23-4193-8dbc-694244386e52
+  mappings: []
+  config_schema:
+  - key: base_uri
+    type: string
+    required: true
+    position: 0
+    description: VIPRE External API base URI (e.g. https://api.myvipre.com/api/v1)
+  - key: key_id
+    type: string
+    required: true
+    position: 1
+    description: VIPRE header value for X-Vipre-Endpoint-Key-Id
+  - key: api_key
+    type: secret
+    required: true
+    position: 2
+    description: VIPRE header value for X-Vipre-Endpoint-Api-Key
+201199f4-32dc-4cea-b176-5f37c488a94a:
+  id: 201199f4-32dc-4cea-b176-5f37c488a94a
+  name: Quoter
+  list_entities_data_provider_id: f04a1d7c-3efe-421d-af15-d3c8bc689ebc
+  mappings: []
+  config_schema:
+  - key: client_id
+    type: string
+    required: true
+    position: 0
+    description: Quoter OAuth client ID
+  - key: client_secret
+    type: secret
+    required: true
+    position: 1
+    description: Quoter OAuth client secret
+42e2cb7a-cd29-47b9-a88f-81b2f09227b1:
+  id: 42e2cb7a-cd29-47b9-a88f-81b2f09227b1
+  name: ConnectSecure
+  list_entities_data_provider_id: f6896db3-bb71-4100-a806-c9daa9f1d802
+  mappings: []
+  config_schema:
+  - key: base_uri
+    type: string
+    required: true
+    position: 0
+    description: ConnectSecure public API base URI (e.g. https://api.myconnectsecure.com)
+  - key: pod_id
+    type: string
+    required: true
+    position: 1
+    description: ConnectSecure pod identifier (e.g. pod103)
+  - key: tenant
+    type: string
+    required: true
+    position: 2
+    description: ConnectSecure tenant token used in auth (e.g. midtowntg)
+  - key: api_key
+    type: string
+    required: true
+    position: 3
+    description: ConnectSecure API client ID
+  - key: api_secret
+    type: secret
+    required: true
+    position: 4
+    description: ConnectSecure API client secret
+e9c8b2f0-bb09-4698-9deb-76e5d9f82d5f:
+  id: e9c8b2f0-bb09-4698-9deb-76e5d9f82d5f
+  name: Pax8
+  list_entities_data_provider_id: 4371b6c0-7131-4447-bb81-777c6b6a5c63
+  mappings: []
+  oauth_provider:
+    provider_name: Pax8
+    display_name: Pax8
+    oauth_flow_type: client_credentials
+    client_id: <your-client-id>
+    token_url: https://token-manager.pax8.com/oauth/token
+    audience: api://p8p.client
+6f141480-e0c7-46df-b84e-ffae00b2bb4b:
+  id: 6f141480-e0c7-46df-b84e-ffae00b2bb4b
+  name: Huntress
+  list_entities_data_provider_id: 819b858f-ae9b-4653-beec-34420ba5d77c
+  mappings: []
+  config_schema:
+  - key: api_key
+    type: string
+    required: true
+    position: 0
+    description: Huntress public API key
+  - key: api_secret
+    type: secret
+    required: true
+    position: 1
+    description: Huntress private API secret
+d2ecbeb7-af86-4276-bc1d-b466041eac2b:
+  id: d2ecbeb7-af86-4276-bc1d-b466041eac2b
+  name: HaloPSA
+  list_entities_data_provider_id: 3322338c-3b3b-4055-9897-8f600849a4b8
+  mappings: []
+  config_schema:
+  - key: base_url
+    type: string
+    required: true
+    position: 0
+    description: HaloPSA API base URL (e.g. https://<your-instance>.halopsa.com/api)
+  oauth_provider:
+    provider_name: HaloPSA
+    display_name: HaloPSA
+    oauth_flow_type: client_credentials
+    client_id: <your-client-id>
+    token_url: https://<your-instance>.halopsa.com/auth/token
+    scopes:
+    - all
+7936770f-eb46-4f91-92a7-3e37ed307715:
+  id: 7936770f-eb46-4f91-92a7-3e37ed307715
+  name: AutoElevate
+  mappings: []
+  config_schema:
+  - key: username
+    type: string
+    required: true
+    position: 0
+    description: AutoElevate login email
+  - key: password
+    type: secret
+    required: true
+    position: 1
+    description: AutoElevate login password
+  - key: totp_secret
+    type: secret
+    required: true
+    position: 2
+    description: Base32-encoded AutoElevate TOTP secret used for MFA
+cd9e2d6c-d2c0-4e67-bbef-7deed81b72e1:
+  id: cd9e2d6c-d2c0-4e67-bbef-7deed81b72e1
+  name: NinjaOne
+  list_entities_data_provider_id: d1319af0-74d3-4f17-a4cd-73077d68d84c
+  mappings: []
+  config_schema:
+  - key: base_url
+    type: string
+    required: true
+    position: 0
+    description: NinjaOne base URL (e.g. https://app.ninjarmm.com)
+  oauth_provider:
+    provider_name: NinjaOne
+    display_name: NinjaOne
+    oauth_flow_type: client_credentials
+    client_id: <your-client-id>
+    token_url: https://app.ninjarmm.com/ws/oauth/token
+    scopes:
+    - monitoring control management
+0323c8fa-c5dc-480f-b909-44b6e00a6a0b:
+  id: 0323c8fa-c5dc-480f-b909-44b6e00a6a0b
+  name: Cove Data Protection
+  list_entities_data_provider_id: 6a24ad7e-8574-49c5-856e-0df69a26711c
+  mappings: []
+  config_schema:
+  - key: partner_name
+    type: string
+    required: true
+    position: 0
+    description: Cove reseller partner name used in Login
+  - key: username
+    type: string
+    required: true
+    position: 1
+    description: Cove API username
+  - key: password
+    type: secret
+    required: true
+    position: 2
+    description: Cove API password or token for the API user
+6cab311a-1b24-480f-be76-4961c53bd138:
+  id: 6cab311a-1b24-480f-be76-4961c53bd138
+  name: Datto SaaS Protection
+  list_entities_data_provider_id: af2c7f56-95ca-4a4c-a926-af8e892e13ec
+  mappings: []
+  config_schema:
+  - key: api_key
+    type: string
+    required: true
+    position: 0
+    description: Datto SaaS Protection public API key
+  - key: api_secret
+    type: secret
+    required: true
+    position: 1
+    description: Datto SaaS Protection private API secret
+9ab36df0-5cf1-4a9d-a3ec-3f48caaeb7df:
+  id: 9ab36df0-5cf1-4a9d-a3ec-3f48caaeb7df
+  name: Google Workspace Reseller
+  list_entities_data_provider_id: a0f7f3c4-0b42-4c63-a62b-adda48b1fb4a
+  mappings: []
+  config_schema:
+  - key: service_account_json
+    type: secret
+    required: true
+    position: 0
+    description: Google service account JSON for the reseller tenant, raw JSON or base64-encoded JSON
+  - key: delegated_admin_email
+    type: string
+    required: true
+    position: 1
+    description: Reseller admin email to impersonate for Reseller API access
+d079ed0d-a97a-42d1-ad71-ce49b187a81d:
+  id: d079ed0d-a97a-42d1-ad71-ce49b187a81d
+  name: Google Workspace
+  mappings: []
+  config_schema:
+  - key: service_account_json
+    type: secret
+    required: true
+    position: 0
+    description: Google service account JSON for this tenant, raw JSON or base64-encoded JSON
+  - key: delegated_admin_email
+    type: string
+    required: true
+    position: 1
+    description: Google Workspace admin email to impersonate via domain-wide delegation
+  - key: customer_id
+    type: string
+    required: false
+    position: 2
+    description: Optional Google customer ID override; defaults to my_customer
+3062d7be-3bc3-4d05-8345-4d132ae1be72:
+  id: 3062d7be-3bc3-4d05-8345-4d132ae1be72
+  name: Datto RMM
+  list_entities_data_provider_id: 7966b43d-f27a-4ae9-921c-269eccdede6d
+  mappings: []
+  config_schema:
+  - key: base_uri
+    type: string
+    required: true
+    position: 0
+    description: Datto RMM API base URI (e.g. https://concord-api.centrastage.net)
+  - key: api_key
+    type: string
+    required: true
+    position: 1
+    description: Datto RMM API access key
+  - key: api_secret
+    type: secret
+    required: true
+    position: 2
+    description: Datto RMM API secret key
+  - key: oauth_client_id
+    type: string
+    required: false
+    position: 3
+    description: Optional OAuth client ID override; defaults to public-client
+  - key: oauth_client_secret
+    type: secret
+    required: false
+    position: 4
+    description: Optional OAuth client secret override; defaults to public
+e845171a-f587-4aa3-9ca5-c50e8fadb22e:
+  id: e845171a-f587-4aa3-9ca5-c50e8fadb22e
+  name: Datto Networking
+  list_entities_data_provider_id: 27a96906-e182-4c90-bd30-5257843bbdd0
+  mappings: []
+  config_schema:
+  - key: api_key
+    type: string
+    required: true
+    position: 0
+    description: Datto Networking / CloudTrax API key
+  - key: api_secret
+    type: secret
+    required: true
+    position: 1
+    description: Datto Networking / CloudTrax API secret
+  - key: base_url
+    type: string
+    required: false
+    position: 2
+    description: Optional API base URL override; defaults to https://api.cloudtrax.com
+f44af0ee-cab3-4359-bd73-7f46f760c632:
+  id: f44af0ee-cab3-4359-bd73-7f46f760c632
+  name: IT Glue
+  list_entities_data_provider_id: b1b397ad-6f1e-4bc3-908d-f1a5e341d16c
+  mappings: []
+  config_schema:
+  - key: api_key
+    type: secret
+    required: true
+    position: 0
+    description: IT Glue API key
+  - key: region
+    type: string
+    required: false
+    position: 1
+    description: Optional region code (US, EU, or AU); defaults to US
+60acef7a-1e01-492d-b93c-be5534ba255e:
+  id: 60acef7a-1e01-492d-b93c-be5534ba255e
+  name: Keeper MSP
+  list_entities_data_provider_id: d44e888b-600e-413f-8daa-75df583d5af4
+  mappings: []
+  config_schema:
+  - key: base_url
+    type: string
+    required: true
+    position: 0
+    description: Keeper Commander Service Mode base URL, e.g. http://keeper-commander:8090
+  - key: api_key
+    type: secret
+    required: true
+    position: 1
+    description: Keeper Commander Service Mode API key
+  - key: api_version
+    type: string
+    required: false
+    position: 2
+    description: Optional service API version override, v2 by default; set to v1 only if queue mode is disabled

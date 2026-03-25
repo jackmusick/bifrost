@@ -98,6 +98,7 @@ class Pax8Client:
             "Content-Type": "application/json",
             "Accept": "application/json",
         })
+        self.company_id: Optional[str] = None
 
     def _request(
         self,
@@ -166,6 +167,10 @@ class Pax8Client:
 
         return all_results
 
+    def close(self) -> None:
+        """Close the underlying HTTP session."""
+        self.session.close()
+
     # =========================================================================
     # Companies
     # =========================================================================
@@ -222,6 +227,18 @@ class Pax8Client:
     def get_company(self, company_id: str) -> dict:
         """Get a company by ID."""
         return self._request("GET", f"/companies/{company_id}")
+
+    @staticmethod
+    def normalize_company(company: dict[str, Any]) -> dict[str, str | None]:
+        """Normalize a Pax8 company payload to the fields Bifrost mapping needs."""
+        company_id = company.get("id") or company.get("companyId")
+        name = company.get("name") or company.get("displayName")
+        status = company.get("status")
+        return {
+            "id": str(company_id) if company_id is not None else None,
+            "name": name or None,
+            "status": status or None,
+        }
 
     def create_company(
         self,
@@ -694,6 +711,96 @@ def create_client(access_token: str) -> Pax8Client:
         Configured Pax8Client instance
     """
     return Pax8Client(access_token)
+
+
+class ScopedPax8Client:
+    """
+    Thin async wrapper around the sync Pax8 client for Bifrost integration use.
+
+    It reuses the configured integration OAuth token, retries once on 401 after
+    refreshing the token, and exposes the mapped Pax8 company ID for org scope.
+    """
+
+    def __init__(self, integration, company_id: str | None = None):
+        self._integration = integration
+        self.company_id = str(company_id) if company_id is not None else None
+        self._base_url = Pax8Client.BASE_URL
+
+    def _build_client(self) -> Pax8Client:
+        oauth = getattr(self._integration, "oauth", None)
+        access_token = getattr(oauth, "access_token", None)
+        if not access_token:
+            raise RuntimeError(
+                "Pax8 integration is missing an OAuth access token. Check the integration setup."
+            )
+
+        client = Pax8Client(access_token)
+        client.company_id = self.company_id
+        return client
+
+    async def _call(self, method_name: str, *args, **kwargs):
+        client = self._build_client()
+        try:
+            method = getattr(client, method_name)
+            return method(*args, **kwargs)
+        except requests.exceptions.HTTPError as exc:
+            if exc.response is None or exc.response.status_code != 401:
+                raise
+
+            oauth = getattr(self._integration, "oauth", None)
+            refresh = getattr(oauth, "refresh", None)
+            if refresh is None:
+                raise
+
+            await refresh()
+            retry_client = self._build_client()
+            try:
+                return getattr(retry_client, method_name)(*args, **kwargs)
+            finally:
+                retry_client.close()
+        finally:
+            client.close()
+
+    async def list_companies(self, **kwargs) -> list[dict]:
+        """List Pax8 companies using the integration OAuth token."""
+        return await self._call("list_companies", **kwargs)
+
+    async def get_company(self, company_id: str | None = None) -> dict:
+        """Get a Pax8 company by explicit or mapped company ID."""
+        target_company_id = company_id or self.company_id
+        if not target_company_id:
+            raise RuntimeError(
+                "Pax8 client requires a mapped company_id for org-scoped access."
+            )
+        return await self._call("get_company", target_company_id)
+
+    async def close(self) -> None:
+        """Compatibility no-op for async workflow helpers."""
+        return None
+
+
+async def get_client(scope: str | None = None) -> ScopedPax8Client:
+    """
+    Get a Pax8 integration client for the requested Bifrost scope.
+
+    Global scope returns a client with no mapped company ID. Org scope returns a
+    client whose ``company_id`` is sourced from the Pax8 IntegrationMapping.
+    """
+    from bifrost import integrations
+
+    integration = await integrations.get("Pax8", scope=scope)
+    if not integration:
+        raise RuntimeError("Integration 'Pax8' not found in Bifrost")
+
+    oauth = getattr(integration, "oauth", None)
+    access_token = getattr(oauth, "access_token", None)
+    if not access_token:
+        raise RuntimeError(
+            "Integration 'Pax8' is missing an OAuth access token. Check the integration setup."
+        )
+
+    company_id = getattr(integration, "entity_id", None)
+    return ScopedPax8Client(integration, company_id=company_id)
 
 
 # =============================================================================

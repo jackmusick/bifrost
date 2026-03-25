@@ -69,8 +69,10 @@ async def halo_client_sites(org_id: str = "") -> list[dict]:
     elif not context.org_id:
         return []
 
+    effective_org = org_id or context.org_id
+
     try:
-        client_id = await resolve_client_id(org_id or context.org_id)
+        client_id = await resolve_client_id(effective_org)
     except Exception as e:
         logger.warning(f"Could not resolve HaloPSA client for org {effective_org}: {e}")
         return []
