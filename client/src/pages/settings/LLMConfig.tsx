@@ -121,6 +121,7 @@ export function LLMConfig() {
 		message: string;
 	} | null>(null);
 	const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
+	const [pricingRefreshKey, setPricingRefreshKey] = useState(0);
 
 	// Load current configuration
 	const {
@@ -291,8 +292,9 @@ export function LLMConfig() {
 			setApiKey("");
 			setTestResult(null);
 
-			// Refetch to get updated config
+			// Refetch to get updated config and refresh pricing
 			refetch();
+			setPricingRefreshKey((k) => k + 1);
 		} catch (error) {
 			toast.error("Failed to save configuration", {
 				description:
@@ -655,7 +657,7 @@ export function LLMConfig() {
 			<EmbeddingConfigCard llmProvider={config?.provider} />
 
 			{/* Model Pricing Card */}
-			<ModelPricingCard />
+			<ModelPricingCard refreshKey={pricingRefreshKey} />
 
 			{/* Info Card */}
 			<Card>
@@ -1131,7 +1133,7 @@ function EmbeddingConfigCard({ llmProvider }: { llmProvider?: string }) {
  * Manage AI model pricing for cost tracking.
  * Shows models that have been used with their pricing, and allows adding/editing.
  */
-function ModelPricingCard() {
+function ModelPricingCard({ refreshKey = 0 }: { refreshKey?: number }) {
 	const [pricingData, setPricingData] = useState<AIModelPricingListItem[]>(
 		[],
 	);
@@ -1156,7 +1158,7 @@ function ModelPricingCard() {
 		output_price_per_million: 0,
 	});
 
-	// Load pricing data
+	// Load pricing data (with loading spinner for initial load)
 	const loadPricing = async () => {
 		try {
 			setIsLoading(true);
@@ -1173,9 +1175,27 @@ function ModelPricingCard() {
 		}
 	};
 
+	// Refresh pricing data without showing loading spinner
+	const refreshPricing = async () => {
+		try {
+			const data = await listPricing();
+			setPricingData(data.pricing || []);
+			setModelsWithoutPricing(data.models_without_pricing || []);
+		} catch {
+			// Silent refresh — don't toast on background refresh
+		}
+	};
+
 	useEffect(() => {
 		loadPricing();
 	}, []);
+
+	// Refresh when parent signals (e.g., after config save)
+	useEffect(() => {
+		if (refreshKey > 0) {
+			refreshPricing();
+		}
+	}, [refreshKey]);
 
 	// Format price for display
 	const formatPrice = (price: number | string | null | undefined): string => {
@@ -1271,22 +1291,28 @@ function ModelPricingCard() {
 	const confirmDeletePricing = async () => {
 		if (!deletingPricing?.id) return;
 
-		setSaving(true);
+		const deletedId = deletingPricing.id;
+		const deletedModel = `${deletingPricing.provider}/${deletingPricing.model}`;
+
+		// Optimistically remove from state
+		setPricingData((prev) => prev.filter((p) => p.id !== deletedId));
+		setShowDeleteConfirm(false);
+		setDeletingPricing(null);
+
 		try {
-			await deletePricing(deletingPricing.id);
+			await deletePricing(deletedId);
 			toast.success("Pricing deleted", {
-				description: `Removed pricing for ${deletingPricing.provider}/${deletingPricing.model}`,
+				description: `Removed pricing for ${deletedModel}`,
 			});
-			await loadPricing();
-			setShowDeleteConfirm(false);
-			setDeletingPricing(null);
+			// Background refresh to sync any server-side changes
+			refreshPricing();
 		} catch (error) {
 			toast.error("Failed to delete pricing", {
 				description:
 					error instanceof Error ? error.message : "Unknown error",
 			});
-		} finally {
-			setSaving(false);
+			// Revert on failure
+			refreshPricing();
 		}
 	};
 

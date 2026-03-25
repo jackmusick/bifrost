@@ -2,7 +2,7 @@
  * Agent Runs API service
  */
 
-import { useEffect } from "react";
+import { useEffect, useRef } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { apiClient } from "@/lib/api-client";
 import { webSocketService, type AgentRunUpdate, type AgentRunStepUpdate } from "@/services/websocket";
@@ -47,6 +47,7 @@ export interface AgentRun {
 	created_at: string;
 	started_at: string | null;
 	completed_at: string | null;
+	parent_run_id: string | null;
 }
 
 export interface AIUsageEntry {
@@ -70,6 +71,7 @@ export interface AIUsageTotals {
 
 export interface AgentRunDetail extends AgentRun {
 	steps: AgentRunStep[];
+	child_run_ids: string[];
 	ai_usage: AIUsageEntry[] | null;
 	ai_totals: AIUsageTotals | null;
 }
@@ -117,13 +119,26 @@ export function useAgentRuns(params?: {
 }
 
 export function useAgentRun(runId: string | undefined, options?: { refetchInterval?: number | false | ((query: { state: { data: AgentRunDetail | undefined } }) => number | false) }) {
+	const queryClient = useQueryClient();
 	return useQuery({
 		queryKey: ["agent-runs", runId],
 		queryFn: async () => {
 			// eslint-disable-next-line @typescript-eslint/no-explicit-any
 			const { data, error } = await apiClient.GET(`/api/agent-runs/${runId}` as any, {});
 			if (error) throw error;
-			return data as unknown as AgentRunDetail;
+			const fetched = data as unknown as AgentRunDetail;
+			// Merge any WS-buffered steps that arrived before this fetch completed
+			const existing = queryClient.getQueryData<AgentRunDetail>(["agent-runs", runId]);
+			if (existing?.steps?.length) {
+				const fetchedIds = new Set(fetched.steps.map(s => s.id));
+				const buffered = existing.steps.filter(s => !fetchedIds.has(s.id));
+				if (buffered.length) {
+					fetched.steps = [...fetched.steps, ...buffered].sort(
+						(a, b) => a.step_number - b.step_number
+					);
+				}
+			}
+			return fetched;
 		},
 		enabled: !!runId,
 		// eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -200,6 +215,7 @@ export function useAgentRunListStream(options: { enabled?: boolean } = {}) {
 									created_at: update.timestamp,
 									started_at: update.started_at ?? update.timestamp,
 									completed_at: update.completed_at ?? null,
+									parent_run_id: null,
 								};
 								queryClient.setQueryData(queryKey, {
 									...oldData,
@@ -234,9 +250,13 @@ export function useAgentRunStream(
 ) {
 	const { enabled = true, onComplete } = options;
 	const queryClient = useQueryClient();
+	const hasCaughtUp = useRef(false);
 
 	useEffect(() => {
 		if (!enabled || !runId) return;
+
+		// Reset on runId change so a new run gets its own catch-up fetch
+		hasCaughtUp.current = false;
 
 		let unsubUpdate: (() => void) | null = null;
 		let unsubStep: (() => void) | null = null;
@@ -282,23 +302,23 @@ export function useAgentRunStream(
 						queryClient.setQueryData<AgentRunDetail>(
 							["agent-runs", runId],
 							(old) => {
-								if (!old) return old;
+								const step = { ...update.step, created_at: update.timestamp };
+								if (!old) {
+									// Fetch still in-flight — seed a minimal shell so steps accumulate.
+									return { id: runId, steps: [step] } as AgentRunDetail;
+								}
 								const existingIds = new Set(old.steps.map((s) => s.id));
 								if (existingIds.has(update.step.id)) return old;
-								return {
-									...old,
-									steps: [
-										...old.steps,
-										{
-											...update.step,
-											created_at: update.timestamp,
-										},
-									],
-								};
+								return { ...old, steps: [...old.steps, step] };
 							},
 						);
 					},
 				);
+				// One-shot refetch to catch steps published before WS connected
+				if (!hasCaughtUp.current) {
+					hasCaughtUp.current = true;
+					queryClient.refetchQueries({ queryKey: ["agent-runs", runId] });
+				}
 			} catch (error) {
 				console.error("[useAgentRunStream] Failed to connect:", error);
 			}
