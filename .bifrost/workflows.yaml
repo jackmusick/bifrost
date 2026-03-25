@@ -1,74 +1,657 @@
-a02961df-79e2-4b4f-aa39-5e217c1b88d3:
-  id: a02961df-79e2-4b4f-aa39-5e217c1b88d3
-  name: "Hello World"
-  path: "workflows/sample/hello_world.py"
-  function_name: "hello_world"
-  type: "workflow"
-  category: "Examples"
-  description: "A simple greeting workflow — says hi from Copilot CLI."
-  timeout_seconds: 300
-  endpoint_enabled: false
-  access_level: "authenticated"
+07a5f9d5-48df-472d-b427-793eb6da2f45:
+  category: Microsoft CSP
+  description: Apply selected application permissions to the "Bifrost Microsoft" app
+    in the MSP's own tenant.
+  function_name: apply_partner_permissions
+  id: 07a5f9d5-48df-472d-b427-793eb6da2f45
+  name: apply_partner_permissions
+  path: features/microsoft_csp/workflows/apply_partner_permissions.py
   tags:
-    - sample
-    - example
-
-0df08d7b-4d69-4b17-a92e-df056d2996b3:
-  id: 0df08d7b-4d69-4b17-a92e-df056d2996b3
-  name: "Autotask: Sync Customers"
-  path: "workflows/autotask/sync_customers.py"
-  function_name: "sync_autotask_customers"
-  type: "workflow"
-  category: "Autotask"
-  description: "Sync active Autotask customer companies to Bifrost organizations."
-  timeout_seconds: 300
-  endpoint_enabled: false
-  access_level: "authenticated"
+  - microsoft
+  - csp
+  - permissions
+  - partner
+0ad1083d-bcab-4f4e-856a-749e65fefd1d:
+  category: Microsoft CSP
+  description: Sync GDAP assignments for all tenants with active relationships.
+  function_name: batch_update_gdap
+  id: 0ad1083d-bcab-4f4e-856a-749e65fefd1d
+  name: batch_update_gdap
+  path: features/microsoft_csp/workflows/batch_update_gdap.py
   tags:
-    - autotask
-    - sync
-
-32222c8b-5b11-40b2-aed3-e8840766cf15:
-  id: 32222c8b-5b11-40b2-aed3-e8840766cf15
-  name: "Autotask: List Companies"
-  path: "workflows/autotask/entities.py"
-  function_name: "list_autotask_companies"
-  type: "data_provider"
-  category: "Autotask"
-  description: "Returns active Autotask customer companies for org mapping."
-  timeout_seconds: 60
-  endpoint_enabled: false
-  access_level: "authenticated"
-  tags:
-    - autotask
-    - data-provider
-
+  - gdap
+  - batch
+  - update
 0c02bf22-0e1f-4362-a7e3-089abfcd2478:
+  access_level: authenticated
+  category: Cove
+  description: Sync Cove EndCustomer partner records to Bifrost organizations.
+  endpoint_enabled: false
+  function_name: sync_cove_customers
   id: 0c02bf22-0e1f-4362-a7e3-089abfcd2478
-  name: "Cove: Sync Customers"
-  path: "workflows/cove/sync_customers.py"
-  function_name: "sync_cove_customers"
-  type: "workflow"
-  category: "Cove"
-  description: "Sync Cove EndCustomer partner records to Bifrost organizations."
+  name: 'Cove: Sync Customers'
+  path: workflows/cove/sync_customers.py
+  tags:
+  - cove
+  - sync
   timeout_seconds: 300
+  type: workflow
+0df08d7b-4d69-4b17-a92e-df056d2996b3:
+  access_level: authenticated
+  category: Autotask
+  description: Sync active Autotask customer companies to Bifrost organizations.
   endpoint_enabled: false
-  access_level: "authenticated"
+  function_name: sync_autotask_customers
+  id: 0df08d7b-4d69-4b17-a92e-df056d2996b3
+  name: 'Autotask: Sync Customers'
+  path: workflows/autotask/sync_customers.py
   tags:
-    - cove
-    - sync
-
-6a24ad7e-8574-49c5-856e-0df69a26711c:
-  id: 6a24ad7e-8574-49c5-856e-0df69a26711c
-  name: "Cove: List Partners"
-  path: "workflows/cove/entities.py"
-  function_name: "list_cove_partners"
-  type: "data_provider"
-  category: "Cove"
-  description: "Returns active Cove EndCustomer partners for org mapping."
+  - autotask
+  - sync
+  timeout_seconds: 300
+  type: workflow
+0e86a4b8-046e-4b0b-a76d-37f62c13f22c:
+  description: Save a HaloPSA schema rule or pattern to knowledge for future SQL generation.
+  function_name: save_halopsa_rule
+  id: 0e86a4b8-046e-4b0b-a76d-37f62c13f22c
+  name: save_halopsa_rule
+  path: features/halopsa_reporting/workflows/knowledge_mgmt.py
+  type: tool
+10bd1daa-33d8-4674-99a5-9ef9479da7c1:
+  function_name: analyze_halopsa_report
+  id: 10bd1daa-33d8-4674-99a5-9ef9479da7c1
+  name: Analyze HaloPSA Report
+  path: features/halopsa_reporting/workflows/analyze_report.py
+12cf234b-a018-49ec-9ee5-c713008a6280:
+  category: AutoElevate
+  description: Approve an AutoElevate elevation request, optionally creating a rule
+  function_name: approve_request
+  id: 12cf234b-a018-49ec-9ee5-c713008a6280
+  name: approve_request
+  path: features/autoelevate/workflows/tools.py
+  tags:
+  - autoelevate
+  - agent
+  type: tool
+19b21fd8-8808-4f24-bec1-f8aba6b94f04:
+  description: 'Get an agent''s timesheet for a specific day. Returns the full day
+    state: logged events with ticket/customer context, target hours, actual hours,
+    unlogged hours, and break allowance. Use this to review the current state of a
+    timesheet before making changes.'
+  function_name: get_my_timesheet
+  id: 19b21fd8-8808-4f24-bec1-f8aba6b94f04
+  name: get_my_timesheet
+  path: shared/halopsa/tools/timeentry.py
+  type: tool
+1becf769-2243-417c-ba4c-be3f7a2f7410:
+  function_name: seed_report_to_knowledge
+  id: 1becf769-2243-417c-ba4c-be3f7a2f7410
+  name: Seed Report to Knowledge
+  path: features/halopsa_reporting/workflows/analyze_report.py
+245c0dbc-592d-4a5e-b0b5-0ebc256e72b1:
+  category: Microsoft CSP
+  description: Sync GDAP assignments to match the template for a single tenant.
+  function_name: update_gdap_assignments
+  id: 245c0dbc-592d-4a5e-b0b5-0ebc256e72b1
+  name: update_gdap_assignments
+  path: features/microsoft_csp/workflows/update_gdap_assignments.py
+  tags:
+  - gdap
+  - update
+  - assignments
+28985798-d75e-40de-bda5-4aeffdaa349c:
+  description: Send an email from your Microsoft 365 mailbox via Graph API. Sends
+    as the calling user (resolved from your login). Works for any Bifrost org with
+    a Microsoft integration that has Mail.Send permissions. Supports to, cc, bcc recipients,
+    HTML body, and importance.
+  function_name: send_outlook_email
+  id: 28985798-d75e-40de-bda5-4aeffdaa349c
+  name: send_outlook_email
+  path: shared/microsoft/tools/email.py
+  type: tool
+2c10be89-e286-47f7-9fef-276d0f23dc4c:
+  description: Search HaloPSA knowledge base for relevant reports and schema rules.
+  function_name: search_halopsa_knowledge
+  id: 2c10be89-e286-47f7-9fef-276d0f23dc4c
+  name: search_halopsa_knowledge
+  path: features/halopsa_reporting/workflows/knowledge_mgmt.py
+  type: tool
+32222c8b-5b11-40b2-aed3-e8840766cf15:
+  access_level: authenticated
+  category: Autotask
+  description: Returns active Autotask customer companies for org mapping.
+  endpoint_enabled: false
+  function_name: list_autotask_companies
+  id: 32222c8b-5b11-40b2-aed3-e8840766cf15
+  name: 'Autotask: List Companies'
+  path: workflows/autotask/entities.py
+  tags:
+  - autotask
+  - data-provider
   timeout_seconds: 60
-  endpoint_enabled: false
-  access_level: "authenticated"
+  type: data_provider
+3322338c-3b3b-4055-9897-8f600849a4b8:
+  description: Returns all active HaloPSA clients as {label, value} pairs for use
+    in forms and dropdowns.
+  function_name: halopsa_clients
+  id: 3322338c-3b3b-4055-9897-8f600849a4b8
+  name: HaloPSA Clients
+  path: shared/halopsa/data_providers.py
+  timeout_seconds: 300
+  type: data_provider
+42f771af-09cb-4932-ab42-7355956b3961:
+  category: Microsoft CSP
+  description: Create a new GDAP relationship for a customer tenant.
+  function_name: create_gdap_relationship
+  id: 42f771af-09cb-4932-ab42-7355956b3961
+  name: create_gdap_relationship
+  path: features/microsoft_csp/workflows/create_gdap_relationship.py
   tags:
-    - cove
-    - data-provider
+  - gdap
+  - create
+  - relationship
+434bcf19-22aa-48f1-90fd-b08eb8ee4b8a:
+  category: Microsoft CSP
+  description: Refresh/reconsent a tenant to ensure all permissions are up-to-date.
+  function_name: refresh_csp_status
+  id: 434bcf19-22aa-48f1-90fd-b08eb8ee4b8a
+  name: refresh_csp_status
+  path: features/microsoft_csp/workflows/refresh_status.py
+  tags:
+  - microsoft
+  - csp
+  - consent
+  - refresh
+435d4f34-bfdc-417e-a0d4-11baeb36b7c8:
+  description: Get the full content of a specific email by message ID. Use this after
+    list_emails to read the body of a specific message. Returns the full email including
+    body text, all recipients, and attachment names.
+  function_name: get_email
+  id: 435d4f34-bfdc-417e-a0d4-11baeb36b7c8
+  name: get_email
+  path: shared/microsoft/tools/email.py
+  type: tool
+47eda484-6594-421d-bdb8-251c2cd7b595:
+  description: Shared mailboxes from Exchange Online via Get-Mailbox
+  function_name: list_shared_mailboxes
+  id: 47eda484-6594-421d-bdb8-251c2cd7b595
+  name: Exchange Shared Mailboxes
+  path: shared/microsoft/exchange_data_providers.py
+  type: data_provider
+51ae59d3-e8c2-42e5-aff7-d9930d3b39c0:
+  description: Sites for the org's HaloPSA client, excluding inventory/stock locations
+  function_name: halo_client_sites
+  id: 51ae59d3-e8c2-42e5-aff7-d9930d3b39c0
+  name: HaloPSA Client Sites
+  path: shared/halopsa/data_providers.py
+  type: data_provider
+51ba7782-9106-4310-b38e-e6025ee96e46:
+  description: List emails from your mailbox. Searches inbox by default, or sent items,
+    or all folders. Filter by date range, sender, or search query. Returns email metadata
+    only (subject, from, to, timestamps) without message bodies to keep responses
+    compact. Use get_email with a message ID to read the full content. The caller's
+    mailbox is resolved automatically from your login. Works for any Bifrost org with
+    a Microsoft integration.
+  function_name: list_emails
+  id: 51ba7782-9106-4310-b38e-e6025ee96e46
+  name: list_emails
+  path: shared/microsoft/tools/email.py
+  type: tool
+51e1f0d7-7950-481d-8440-2b9e92652143:
+  access_level: authenticated
+  category: Bifrost
+  description: List all Bifrost organizations
+  function_name: bifrost_organizations
+  id: 51e1f0d7-7950-481d-8440-2b9e92652143
+  name: bifrost_organizations
+  path: shared/bifrost/data_providers.py
+  timeout_seconds: 300
+  type: data_provider
+5bce1d17-3783-48f1-8c33-f2935377a106:
+  description: Batch-analyze HaloPSA built-in reports and seed the knowledge base.
+  function_name: batch_analyze_reports
+  id: 5bce1d17-3783-48f1-8c33-f2935377a106
+  name: Batch Analyze HaloPSA Reports
+  path: features/halopsa_reporting/workflows/batch_analyze.py
+  timeout_seconds: 7200
+5d529005-6f27-4943-a4e5-16b7f40b9257:
+  description: Send an email from a HaloPSA ticket. Creates an action with email delivery.
+    Optionally include time entry fields if the email represents billable work. Uses
+    email template 11 (Ticket Update with signature) by default.
+  function_name: send_ticket_email
+  id: 5d529005-6f27-4943-a4e5-16b7f40b9257
+  name: send_ticket_email
+  path: shared/halopsa/tools/timeentry.py
+  type: tool
+64c71f79-8f9e-4196-b98d-88f979dd91de:
+  category: AutoElevate
+  description: Fetch the current AutoElevate approval policy from Outline
+  function_name: get_approval_policy
+  id: 64c71f79-8f9e-4196-b98d-88f979dd91de
+  name: get_approval_policy
+  path: features/autoelevate/workflows/tools.py
+  tags:
+  - autoelevate
+  - agent
+  type: tool
+68b410cf-07f2-4312-8e99-a692bc978740:
+  category: HaloPSA
+  description: Get a HaloPSA ticket by ID with full details, recent notes, and metadata.
+  function_name: get_ticket
+  id: 68b410cf-07f2-4312-8e99-a692bc978740
+  name: get_ticket
+  path: shared/halopsa/tools/tickets.py
+  tags:
+  - halopsa
+  - tickets
+  type: tool
+6a24ad7e-8574-49c5-856e-0df69a26711c:
+  access_level: authenticated
+  category: Cove
+  description: Returns active Cove EndCustomer partners for org mapping.
+  endpoint_enabled: false
+  function_name: list_cove_partners
+  id: 6a24ad7e-8574-49c5-856e-0df69a26711c
+  name: 'Cove: List Partners'
+  path: workflows/cove/entities.py
+  tags:
+  - cove
+  - data-provider
+  timeout_seconds: 60
+  type: data_provider
+6bd5dd41-d695-4654-8eb6-a5be6a1c7bcf:
+  category: Microsoft CSP
+  description: Get GDAP relationship status for all tenants.
+  function_name: get_gdap_status
+  id: 6bd5dd41-d695-4654-8eb6-a5be6a1c7bcf
+  name: get_gdap_status
+  path: features/microsoft_csp/workflows/get_gdap_status.py
+  tags:
+  - gdap
+  - status
+714aa855-eda3-4882-a4b7-1e63da942a77:
+  category: HaloPSA
+  description: List notes/actions on a HaloPSA ticket, newest first. Org users only
+    see public notes.
+  function_name: list_notes
+  id: 714aa855-eda3-4882-a4b7-1e63da942a77
+  name: list_notes
+  path: shared/halopsa/tools/notes.py
+  tags:
+  - halopsa
+  - notes
+  type: tool
+7457c662-79d1-4e7b-96b4-42c1112faf22:
+  category: Platform
+  description: Lists all users in an organization with their HR Admin role membership
+    status. Provider access required.
+  function_name: list_role_members
+  id: 7457c662-79d1-4e7b-96b4-42c1112faf22
+  name: List Role Members
+  path: shared/bifrost/workflows/manage_roles.py
+  tags:
+  - permissions
+  - roles
+  - admin
+74cafce3-5a5c-4a0c-ac45-5eddb852e2e4:
+  category: Microsoft CSP
+  description: Grant or refresh consent for a customer tenant.
+  function_name: consent_csp_tenant
+  id: 74cafce3-5a5c-4a0c-ac45-5eddb852e2e4
+  name: consent_csp_tenant
+  path: features/microsoft_csp/workflows/consent_tenant.py
+  tags:
+  - microsoft
+  - csp
+  - consent
+7aa4065e-9c69-4056-a7ff-33145d78e70d:
+  category: Microsoft CSP
+  description: Save selected Microsoft permissions.
+  function_name: save_selected_permissions
+  id: 7aa4065e-9c69-4056-a7ff-33145d78e70d
+  name: save_selected_permissions
+  path: features/microsoft_csp/workflows/save_permissions.py
+  tags:
+  - microsoft
+  - csp
+  - permissions
+7dc97ed7-37ae-4603-875f-0841fa071d31:
+  category: AutoElevate
+  description: Look up the AutoElevate elevation request linked to a HaloPSA ticket
+  function_name: get_elevation_request
+  id: 7dc97ed7-37ae-4603-875f-0841fa071d31
+  name: get_elevation_request
+  path: features/autoelevate/workflows/tools.py
+  tags:
+  - autoelevate
+  - agent
+  type: tool
+8a4ff0d6-0aab-42f1-be04-0c400726eca1:
+  description: Delete a break or lunch entry from the timesheet. Only works on timesheet
+    events (event_type=1), not on ticket actions. Use adjust_time_entry with timetaken=0
+    to remove work entries from the timesheet instead. The event ID comes from the
+    timesheet events list.
+  function_name: delete_break_entry
+  id: 8a4ff0d6-0aab-42f1-be04-0c400726eca1
+  name: delete_break_entry
+  path: shared/halopsa/tools/timeentry.py
+  type: tool
+8c03ac58-5dcc-4d7d-b747-399889cc478d:
+  description: Complete a HaloPSA appointment with time taken and an optional note.
+    This logs the time entry, marks the appointment as done (clearing it from dispatch),
+    and creates the action on the linked ticket if one exists. Use this instead of
+    creating separate time entries for scheduled meetings and appointments. The actual
+    time taken can differ from the appointment duration (e.g. a 30-min meeting that
+    ran 2 hours). The calling agent is resolved automatically.
+  function_name: complete_appointment
+  id: 8c03ac58-5dcc-4d7d-b747-399889cc478d
+  name: complete_appointment
+  path: shared/halopsa/tools/timeentry.py
+  type: tool
+900df916-9309-4001-b7b5-6fa4c06a13c2:
+  category: HaloPSA
+  description: Get the active service agreements for a HaloPSA client. Returns agreement
+    types like Unified IT, Managed IT, Security Essentials.
+  function_name: get_customer_agreements
+  id: 900df916-9309-4001-b7b5-6fa4c06a13c2
+  name: get_customer_agreements
+  path: shared/halopsa/tools/agreements.py
+  tags:
+  - halopsa
+  - agreements
+  type: tool
+90b14931-7c6d-4f1d-a41d-0007f1479049:
+  category: HaloPSA
+  description: Update fields on an existing HaloPSA ticket (summary, status, priority,
+    agent, team, etc.).
+  function_name: update_ticket
+  id: 90b14931-7c6d-4f1d-a41d-0007f1479049
+  name: update_ticket
+  path: shared/halopsa/tools/tickets.py
+  tags:
+  - halopsa
+  - tickets
+  type: tool
+94d8419c-44f2-4e86-bf5f-2df92b9ef933:
+  category: Microsoft CSP
+  description: Fetch available permissions from Microsoft APIs.
+  function_name: list_available_permissions
+  id: 94d8419c-44f2-4e86-bf5f-2df92b9ef933
+  name: list_available_permissions
+  path: features/microsoft_csp/workflows/list_permissions.py
+  tags:
+  - microsoft
+  - csp
+  - permissions
+9848d539-d6fd-4ecd-a512-0558f14fb084:
+  description: Returns HaloPSA report groups with report counts for use in form dropdowns.
+  function_name: list_report_groups
+  id: 9848d539-d6fd-4ecd-a512-0558f14fb084
+  name: List HaloPSA Report Groups
+  path: features/halopsa_reporting/workflows/batch_analyze.py
+  type: data_provider
+9dd8f037-400b-47c2-be1c-55d42a259541:
+  description: Save a working HaloPSA SQL report to knowledge for future reuse.
+  function_name: save_halopsa_report
+  id: 9dd8f037-400b-47c2-be1c-55d42a259541
+  name: save_halopsa_report
+  path: features/halopsa_reporting/workflows/knowledge_mgmt.py
+  type: tool
+9e9de8c5-d342-48c7-b0e3-21b8d0ff2bc1:
+  category: Microsoft CSP
+  description: Link a CSP tenant to a Bifrost organization.
+  function_name: link_csp_tenant
+  id: 9e9de8c5-d342-48c7-b0e3-21b8d0ff2bc1
+  name: link_csp_tenant
+  path: features/microsoft_csp/workflows/link_tenant.py
+  tags:
+  - microsoft
+  - csp
+  - link
+9f0edded-2f53-41d4-869d-aab126267b3d:
+  category: HaloPSA
+  description: Create a new HaloPSA ticket. Org users' client and requester are set
+    automatically.
+  function_name: create_ticket
+  id: 9f0edded-2f53-41d4-869d-aab126267b3d
+  name: create_ticket
+  path: shared/halopsa/tools/tickets.py
+  tags:
+  - halopsa
+  - tickets
+  type: tool
+a02961df-79e2-4b4f-aa39-5e217c1b88d3:
+  access_level: authenticated
+  category: Examples
+  description: A simple greeting workflow — says hi from Copilot CLI.
+  endpoint_enabled: false
+  function_name: hello_world
+  id: a02961df-79e2-4b4f-aa39-5e217c1b88d3
+  name: Hello World
+  path: workflows/sample/hello_world.py
+  tags:
+  - sample
+  - example
+  timeout_seconds: 300
+  type: workflow
+a25d00d9-3702-4f1f-9fb0-e86e098804c2:
+  description: 'Reconstruct your day by pulling timesheet, appointments, and email
+    signals, then correlating everything to build a complete picture. Returns: timesheet
+    assessment (coverage, anomalies), uncovered appointments that need time logged,
+    email activity threads matched to clients, and identified gaps. Use this as the
+    starting point for reviewing and filling in a timesheet. Only pulls email/appointment
+    signals when the timesheet shows gaps.'
+  function_name: reconstruct_day
+  id: a25d00d9-3702-4f1f-9fb0-e86e098804c2
+  name: reconstruct_day
+  path: shared/halopsa/tools/reconstruct.py
+  type: tool
+a637e66a-d3ab-4edb-9566-eb8090cde95f:
+  category: AutoElevate
+  description: Deny/escalate an AutoElevate elevation request for human review
+  function_name: deny_request
+  id: a637e66a-d3ab-4edb-9566-eb8090cde95f
+  name: deny_request
+  path: features/autoelevate/workflows/tools.py
+  tags:
+  - autoelevate
+  - agent
+  type: tool
+aaf2cc84-93ea-4436-b453-1c761925717e:
+  category: HaloPSA
+  description: List HaloPSA tickets with filtering, search, and pagination. Org users
+    only see their own tickets.
+  function_name: list_tickets
+  id: aaf2cc84-93ea-4436-b453-1c761925717e
+  name: list_tickets
+  path: shared/halopsa/tools/tickets.py
+  tags:
+  - halopsa
+  - tickets
+  type: tool
+b2b0550b-f214-4dc6-9095-7e82711ff3da:
+  description: Delete all documents in halopsa knowledge namespaces. Use before reseeding.
+  function_name: clear_halopsa_knowledge
+  id: b2b0550b-f214-4dc6-9095-7e82711ff3da
+  name: Clear HaloPSA Knowledge
+  path: features/halopsa_reporting/workflows/batch_analyze.py
+b6317462-15cc-413c-afa7-dc0e8e1f3342:
+  category: Microsoft CSP
+  description: Get currently selected Microsoft permissions.
+  function_name: get_selected_permissions
+  id: b6317462-15cc-413c-afa7-dc0e8e1f3342
+  name: get_selected_permissions
+  path: features/microsoft_csp/workflows/get_permissions.py
+  tags:
+  - microsoft
+  - csp
+  - permissions
+c63d6c1e-80b9-44e6-aa1a-69246c2d0637:
+  category: HaloPSA
+  description: Add a note to a HaloPSA ticket. Private by default (hidden from end
+    user).
+  function_name: add_note
+  id: c63d6c1e-80b9-44e6-aa1a-69246c2d0637
+  name: add_note
+  path: shared/halopsa/tools/notes.py
+  tags:
+  - halopsa
+  - notes
+  type: tool
+c943c063-7ef0-4316-b8ff-3fd02c1b7869:
+  description: Execute a SQL query against the HaloPSA reporting database and return
+    structured results.
+  function_name: execute_halopsa_sql
+  id: c943c063-7ef0-4316-b8ff-3fd02c1b7869
+  name: Execute HaloPSA SQL
+  path: features/halopsa_reporting/workflows/execute_halopsa_sql.py
+  type: tool
+cd0b2104-9e2b-5e59-a794-25a5d8d58ae4:
+  category: Microsoft
+  description: List Microsoft CSP customers from Partner Center
+  function_name: microsoft_customers
+  id: cd0b2104-9e2b-5e59-a794-25a5d8d58ae4
+  name: microsoft_customers
+  path: shared/microsoft/data_providers.py
+  timeout_seconds: 300
+  type: data_provider
+cff7890a-4fe2-4ecd-9769-67e41b9b84cf:
+  category: HaloPSA
+  description: Close a HaloPSA ticket with an optional resolution note.
+  function_name: close_ticket
+  id: cff7890a-4fe2-4ecd-9769-67e41b9b84cf
+  name: close_ticket
+  path: shared/halopsa/tools/tickets.py
+  tags:
+  - halopsa
+  - tickets
+  type: tool
+d09ddc06-a7cc-4286-9668-583d12392e7a:
+  description: Get your calendar appointments for a date range from HaloPSA. These
+    are synced from Microsoft 365 and may already have client and ticket associations.
+    Returns timed calendar events (not dateless tasks/reminders). Use this to see
+    what meetings and appointments you had so you can match them to time entries.
+    The calling agent is resolved automatically.
+  function_name: get_appointments
+  id: d09ddc06-a7cc-4286-9668-583d12392e7a
+  name: get_appointments
+  path: shared/halopsa/tools/timeentry.py
+  type: tool
+dd50b0c5-2673-4cce-a488-a66c2421412f:
+  category: Microsoft CSP
+  description: Seed the GDAP template from an existing relationship's assignments.
+  function_name: seed_gdap_template
+  id: dd50b0c5-2673-4cce-a488-a66c2421412f
+  name: seed_gdap_template
+  path: features/microsoft_csp/workflows/seed_gdap_template.py
+  tags:
+  - gdap
+  - template
+  - setup
+df641a19-7f97-488e-8cb0-5054712931cf:
+  description: Remove a time entry from the timesheet by zeroing out its duration.
+    The underlying action (note, email, etc.) is preserved but will no longer count
+    toward the timesheet. Use this to clean up duplicate entries, accidental time
+    logs, or test entries without losing the audit trail. The calling agent is resolved
+    automatically.
+  function_name: adjust_time_entry
+  id: df641a19-7f97-488e-8cb0-5054712931cf
+  name: adjust_time_entry
+  path: shared/halopsa/tools/timeentry.py
+  tags:
+  - HaloPSA
+  type: tool
+eaf7753a-bdea-4221-9745-f195c4d06e72:
+  description: 'Fill a timesheet by executing a confirmed day plan in one shot. Takes
+    an array of time blocks, each specifying what to log. Handles work entries (via
+    QuickTime), break/lunch entries, appointment completions, and time adjustments
+    to existing entries. Call reconstruct_day first to build the plan, confirm it
+    with the user, then pass the confirmed blocks here.
+
+
+    Each block needs: action (one of ''log'', ''break'', ''lunch'', ''complete'',
+    ''adjust''), start, end, and note. Optional fields: client_id (for client-facing
+    work), appointment_id (for ''complete'' action), action_id + ticket_id (for ''adjust''
+    action).
+
+
+    The calling agent is resolved automatically.'
+  function_name: fill_day
+  id: eaf7753a-bdea-4221-9745-f195c4d06e72
+  name: fill_day
+  path: shared/halopsa/tools/fill_day.py
+  type: tool
+eb1b9114-5826-4f6d-9c4f-015fbc8808e7:
+  description: Log a QuickTime entry. Creates a lightweight time entry that auto-creates
+    and closes a ticket behind the scenes. Use for time accountability on quick calls,
+    one-off meetings, QBRs, internal work, or anything that isn't a service ticket
+    the team needs to reference. Optionally tie to a specific client. Does NOT create
+    a visible service ticket.
+  function_name: log_quicktime
+  id: eb1b9114-5826-4f6d-9c4f-015fbc8808e7
+  name: log_quicktime
+  path: shared/halopsa/tools/timeentry.py
+  type: tool
+ec165a28-94ef-4fef-9779-e32c1ce48979:
+  category: Microsoft CSP
+  description: Check if Microsoft integrations are properly configured.
+  function_name: check_microsoft_setup
+  id: ec165a28-94ef-4fef-9779-e32c1ce48979
+  name: check_microsoft_setup
+  path: features/microsoft_csp/workflows/check_setup.py
+  tags:
+  - microsoft
+  - csp
+  - setup
+ef8cf1f2-b451-47f4-aee8-336f7cb21d33:
+  category: Microsoft CSP
+  description: List all CSP tenants with their current status.
+  function_name: list_csp_tenants
+  id: ef8cf1f2-b451-47f4-aee8-336f7cb21d33
+  name: list_csp_tenants
+  path: features/microsoft_csp/workflows/list_tenants.py
+  tags:
+  - microsoft
+  - csp
+  - tenants
+f1473ec0-a303-4cdf-a039-ba3882332b27:
+  category: Organizations
+  description: Create a new Bifrost organization with optional domain.
+  function_name: create_organization
+  id: f1473ec0-a303-4cdf-a039-ba3882332b27
+  name: create_organization
+  path: shared/bifrost/workflows/create_organization.py
+  tags:
+  - organizations
+  - admin
+f5de214e-6df5-47dc-b0bb-aff679d3c47e:
+  category: Platform
+  description: Returns the calling user's role memberships and derived access flags
+    for UI-level gating in apps. Provider users always receive full access.
+  function_name: get_my_permissions
+  id: f5de214e-6df5-47dc-b0bb-aff679d3c47e
+  name: Get My Permissions
+  path: shared/bifrost/workflows/get_my_permissions.py
+  tags:
+  - permissions
+  - roles
+  - platform
+f89ed46b-566d-4b40-991b-768278dcceb7:
+  category: Platform
+  description: Grant or revoke the HR Admin role for a Bifrost user. Provider access
+    required.
+  function_name: set_role_membership
+  id: f89ed46b-566d-4b40-991b-768278dcceb7
+  name: Set Role Membership
+  path: shared/bifrost/workflows/manage_roles.py
+  tags:
+  - permissions
+  - roles
+  - admin
+fb8f484b-a7c4-400a-bb00-76f89452fa3d:
+  description: Open HaloPSA tickets for a given org, for use in ticket selector dropdowns.
+  function_name: halo_open_tickets
+  id: fb8f484b-a7c4-400a-bb00-76f89452fa3d
+  name: HaloPSA Open Tickets
+  path: shared/halopsa/data_providers.py
+  type: data_provider
