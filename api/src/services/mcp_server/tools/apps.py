@@ -17,6 +17,7 @@ from fastmcp.tools.tool import ToolResult
 
 from src.core.pubsub import publish_app_draft_update, publish_app_published
 from src.services.mcp_server.tool_result import error_result, success_result
+from src.services.mcp_server.tools.db import get_tool_db
 
 logger = logging.getLogger(__name__)
 
@@ -25,14 +26,13 @@ async def list_apps(context: Any) -> ToolResult:
     """List all applications with file summaries."""
     from sqlalchemy import select
 
-    from src.core.database import get_db_context
     from src.models.orm.applications import Application
     from src.services.app_storage import AppStorageService
 
     logger.info("MCP list_apps called")
 
     try:
-        async with get_db_context() as db:
+        async with get_tool_db(context) as db:
             query = select(Application)
 
             if not context.is_platform_admin and context.org_id:
@@ -96,7 +96,6 @@ async def create_app(
 
     from sqlalchemy import select
 
-    from src.core.database import get_db_context
     from src.models.orm.applications import Application
     from src.services.file_storage import FileStorageService
 
@@ -126,7 +125,7 @@ async def create_app(
         slug = re.sub(r"[^a-z0-9]+", "-", name.lower()).strip("-")
 
     try:
-        async with get_db_context() as db:
+        async with get_tool_db(context) as db:
             existing = await db.execute(
                 select(Application).where(Application.slug == slug)
             )
@@ -211,7 +210,6 @@ async def get_app(
 
     from sqlalchemy import select
 
-    from src.core.database import get_db_context
     from src.models.orm.applications import Application
     from src.services.app_storage import AppStorageService
 
@@ -221,7 +219,7 @@ async def get_app(
         return error_result("Either app_id or app_slug is required")
 
     try:
-        async with get_db_context() as db:
+        async with get_tool_db(context) as db:
             query = select(Application)
 
             if app_id:
@@ -291,7 +289,6 @@ async def update_app(
 
     from sqlalchemy import select
 
-    from src.core.database import get_db_context
     from src.models.orm.applications import Application
 
     logger.info(f"MCP update_app called with id={app_id}")
@@ -302,7 +299,7 @@ async def update_app(
         return error_result(f"Invalid app_id format: {app_id}")
 
     try:
-        async with get_db_context() as db:
+        async with get_tool_db(context) as db:
             query = select(Application).where(Application.id == app_uuid)
 
             if not context.is_platform_admin and context.org_id:
@@ -363,7 +360,6 @@ async def publish_app(context: Any, app_id: str) -> ToolResult:
 
     from sqlalchemy import select
 
-    from src.core.database import get_db_context
     from src.models.orm.applications import Application
     from src.services.app_storage import AppStorageService
 
@@ -375,7 +371,7 @@ async def publish_app(context: Any, app_id: str) -> ToolResult:
         return error_result(f"Invalid app_id format: {app_id}")
 
     try:
-        async with get_db_context() as db:
+        async with get_tool_db(context) as db:
             query = select(Application).where(Application.id == app_uuid)
 
             if not context.is_platform_admin and context.org_id:
@@ -586,7 +582,6 @@ async def validate_app(context: Any, app_id: str) -> ToolResult:
 
     from sqlalchemy import select
 
-    from src.core.database import get_db_context
     from src.models.orm.applications import Application
     from src.models.orm.file_index import FileIndex
     from src.models.orm.workflows import Workflow
@@ -600,7 +595,7 @@ async def validate_app(context: Any, app_id: str) -> ToolResult:
         return error_result(f"Invalid app_id format: {app_id}")
 
     try:
-        async with get_db_context() as db:
+        async with get_tool_db(context) as db:
             # Get the app
             result = await db.execute(
                 select(Application).where(Application.id == app_uuid)
@@ -762,7 +757,6 @@ async def push_files(
 
     from sqlalchemy import select
 
-    from src.core.database import get_db_context
     from src.models.orm.file_index import FileIndex
     from src.services.app_storage import AppStorageService
     from src.services.file_storage import FileStorageService
@@ -770,7 +764,7 @@ async def push_files(
     logger.info(f"MCP push_files called with {len(files)} file(s)")
 
     try:
-        async with get_db_context() as db:
+        async with get_tool_db(context) as db:
             file_storage = FileStorageService(db)
             created = 0
             updated = 0
@@ -933,14 +927,13 @@ async def get_app_dependencies(
 
     from sqlalchemy import select
 
-    from src.core.database import get_db_context
     from src.models.orm.applications import Application
 
     if not app_id and not app_slug:
         return error_result("Either app_id or app_slug is required")
 
     try:
-        async with get_db_context() as db:
+        async with get_tool_db(context) as db:
             if app_id:
                 try:
                     app_uuid = UUID(app_id)
@@ -1003,7 +996,6 @@ async def update_app_dependencies(
 
     from sqlalchemy import select
 
-    from src.core.database import get_db_context
     from src.models.orm.applications import Application
     from src.services.app_storage import AppStorageService
 
@@ -1026,7 +1018,7 @@ async def update_app_dependencies(
             return error_result(f"Invalid version for {name}: {version}")
 
     try:
-        async with get_db_context() as db:
+        async with get_tool_db(context) as db:
             query = select(Application).where(Application.id == app_uuid)
             if not context.is_platform_admin and context.org_id:
                 query = query.where(

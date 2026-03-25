@@ -6,8 +6,9 @@
  * - Right (1/3): Sidebar with run metadata, input, and context
  */
 
-import { useState, useCallback } from "react";
+import { useState, useCallback, useEffect } from "react";
 import { useParams, useNavigate } from "react-router-dom";
+import { toast } from "sonner";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import {
@@ -18,6 +19,7 @@ import {
 	Zap,
 	Loader2,
 	MessageSquare,
+	RefreshCw,
 	Wrench,
 	AlertCircle,
 	AlertTriangle,
@@ -36,13 +38,24 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import {
+	AlertDialog,
+	AlertDialogAction,
+	AlertDialogCancel,
+	AlertDialogContent,
+	AlertDialogDescription,
+	AlertDialogFooter,
+	AlertDialogHeader,
+	AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
+import {
 	Collapsible,
 	CollapsibleContent,
 	CollapsibleTrigger,
 } from "@/components/ui/collapsible";
 import { Skeleton } from "@/components/ui/skeleton";
 import { VariablesTreeView } from "@/components/ui/variables-tree-view";
-import { useAgentRun, useAgentRunStream, type AgentRunStep } from "@/services/agentRuns";
+import { authFetch, apiClient } from "@/lib/api-client";
+import { useAgentRun, useAgentRunStream, type AgentRunStep, type AgentRunDetail as AgentRunDetailType } from "@/services/agentRuns";
 
 /** Render markdown text with GFM support */
 function Markdown({ children }: { children: string }) {
@@ -114,6 +127,12 @@ function AgentRunStatusIcon({ status }: { status: string }) {
 			return <Clock className={`${size} text-gray-500`} />;
 		case "budget_exceeded":
 			return <AlertTriangle className={`${size} text-yellow-500`} />;
+		case "cancelling":
+			return <Loader2 className={`${size} text-orange-500 animate-spin`} />;
+		case "cancelled":
+			return <XCircle className={`${size} text-gray-500`} />;
+		case "timeout":
+			return <Clock className={`${size} text-orange-500`} />;
 		default:
 			return <Clock className={`${size} text-gray-500`} />;
 	}
@@ -157,6 +176,27 @@ function AgentRunStatusBadge({ status }: { status: string }) {
 					Budget Exceeded
 				</Badge>
 			);
+		case "cancelling":
+			return (
+				<Badge variant="secondary" className="bg-orange-500 text-white">
+					<Loader2 className="mr-1 h-3 w-3 animate-spin" />
+					Cancelling
+				</Badge>
+			);
+		case "cancelled":
+			return (
+				<Badge variant="outline" className="border-gray-500 text-gray-600 dark:text-gray-400">
+					<XCircle className="mr-1 h-3 w-3" />
+					Cancelled
+				</Badge>
+			);
+		case "timeout":
+			return (
+				<Badge variant="destructive">
+					<XCircle className="mr-1 h-3 w-3" />
+					Timeout
+				</Badge>
+			);
 		default:
 			return <Badge variant="outline">{status}</Badge>;
 	}
@@ -172,6 +212,8 @@ function stepIcon(type: string) {
 			return <Wrench className="h-4 w-4 text-orange-500" />;
 		case "tool_result":
 			return <CheckCircle className="h-4 w-4 text-emerald-500" />;
+		case "tool_error":
+			return <AlertCircle className="h-4 w-4 text-red-500" />;
 		case "budget_warning":
 			return <AlertTriangle className="h-4 w-4 text-yellow-500" />;
 		case "error":
@@ -191,6 +233,8 @@ function stepLabel(type: string): string {
 			return "Tool Call";
 		case "tool_result":
 			return "Tool Result";
+		case "tool_error":
+			return "Tool Error";
 		case "budget_warning":
 			return "Budget Warning";
 		case "error":
@@ -357,7 +401,28 @@ function StepSummary({ step }: { step: AgentRunStep }) {
 		}
 
 		case "tool_result":
-			return <ToolResultDisplay content={c} />;
+			return (
+				<>
+					<ToolResultDisplay content={c} />
+					{c.child_run_id && (
+						<DelegationExpander childRunId={c.child_run_id as string} />
+					)}
+				</>
+			);
+
+		case "tool_error":
+			return (
+				<div className="space-y-1">
+					{c.tool_name ? (
+						<p className="text-sm font-mono text-xs">
+							{c.tool_name as string}
+						</p>
+					) : null}
+					<p className="text-sm text-destructive">
+						{c.error as string}
+					</p>
+				</div>
+			);
 
 		case "budget_warning":
 			return (
@@ -385,6 +450,70 @@ function StepSummary({ step }: { step: AgentRunStep }) {
 		default:
 			return null;
 	}
+}
+
+/** Expandable delegation sub-run — fetches child run on demand. */
+function DelegationExpander({ childRunId }: { childRunId: string }) {
+	const [expanded, setExpanded] = useState(false);
+	const [childRun, setChildRun] = useState<AgentRunDetailType | null>(null);
+	const [loading, setLoading] = useState(false);
+
+	useEffect(() => {
+		if (!expanded || childRun) return;
+		let cancelled = false;
+		setLoading(true);
+		(async () => {
+			try {
+				// eslint-disable-next-line @typescript-eslint/no-explicit-any
+				const { data, error } = await apiClient.GET(`/api/agent-runs/${childRunId}` as any, {});
+				if (cancelled) return;
+				if (error) throw error;
+				setChildRun(data as unknown as AgentRunDetailType);
+			} catch (e) {
+				console.error("[DelegationExpander] Failed to fetch child run:", e);
+			} finally {
+				if (!cancelled) setLoading(false);
+			}
+		})();
+		return () => { cancelled = true; };
+	}, [expanded, childRunId, childRun]);
+
+	return (
+		<div className="mt-2">
+			<button
+				type="button"
+				className="flex items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground transition-colors"
+				onClick={() => setExpanded(!expanded)}
+			>
+				{expanded ? (
+					<ChevronDown className="h-3.5 w-3.5" />
+				) : (
+					<ChevronRight className="h-3.5 w-3.5" />
+				)}
+				<Bot className="h-3.5 w-3.5" />
+				<span>Delegated agent run</span>
+				{childRun && (
+					<AgentRunStatusBadge status={childRun.status} />
+				)}
+			</button>
+			{expanded && (
+				<div className="ml-4 mt-2 pl-3 border-l-2 border-muted">
+					{loading && (
+						<div className="flex items-center gap-2 py-2 text-xs text-muted-foreground">
+							<Loader2 className="h-3.5 w-3.5 animate-spin" />
+							Loading steps...
+						</div>
+					)}
+					{childRun?.steps.map((step) => (
+						<StepCard key={step.id} step={step} />
+					))}
+					{childRun && childRun.steps.length === 0 && (
+						<p className="text-xs text-muted-foreground py-2">No steps recorded</p>
+					)}
+				</div>
+			)}
+		</div>
+	);
 }
 
 function StepCard({ step }: { step: AgentRunStep }) {
@@ -489,15 +618,18 @@ export function AgentRunDetail() {
 	const { runId } = useParams();
 	const navigate = useNavigate();
 	const [isAiUsageOpen, setIsAiUsageOpen] = useState(false);
-	const isRunning = (s?: string) => s === "running" || s === "queued";
+	const [showRerunDialog, setShowRerunDialog] = useState(false);
+	const [showCancelDialog, setShowCancelDialog] = useState(false);
+	const [isRerunning, setIsRerunning] = useState(false);
+	const [isCancelling, setIsCancelling] = useState(false);
+	const isRunning = (s?: string) => s === "running" || s === "queued" || s === "cancelling";
 
-	// Fetch with polling fallback: poll every 3s while running, stop when complete.
-	// This catches the race condition where the run completes between initial fetch
-	// and WebSocket connection — same pattern as ExecutionDetails.
-	// Uses function form since `run` isn't available during hook initialization.
-	const { data: run, isLoading, refetch } = useAgentRun(runId, {
-		refetchInterval: (query) => isRunning(query.state.data?.status) ? 3000 : false,
-	});
+	// No polling — WebSocket handles all live updates (steps + status).
+	// Polling was fighting WebSocket over the React Query cache, causing steps to
+	// "reset" when a poll response (missing recently-committed steps) replaced
+	// the WS-enriched cache. The onComplete callback + invalidateQueries on
+	// terminal status handle the final full refetch.
+	const { data: run, isLoading, refetch } = useAgentRun(runId);
 
 	// Stable onComplete callback
 	const handleStreamComplete = useCallback(() => {
@@ -511,6 +643,49 @@ export function AgentRunDetail() {
 		enabled: true,
 		onComplete: handleStreamComplete,
 	});
+
+	const handleRerun = useCallback(async () => {
+		if (!runId) return;
+		setIsRerunning(true);
+		try {
+			const res = await authFetch(`/api/agent-runs/${runId}/rerun`, {
+				method: "POST",
+			});
+			if (!res.ok) {
+				const err = await res.json().catch(() => ({ detail: res.statusText }));
+				throw new Error(err.detail || "Failed to rerun agent");
+			}
+			const data = await res.json();
+			toast.success("Agent rerun started");
+			setShowRerunDialog(false);
+			navigate(`/agent-runs/${data.run_id}`);
+		} catch (error) {
+			toast.error(`Failed to rerun agent: ${error}`);
+		} finally {
+			setIsRerunning(false);
+		}
+	}, [runId, navigate]);
+
+	const handleCancel = useCallback(async () => {
+		if (!runId) return;
+		setIsCancelling(true);
+		try {
+			const res = await authFetch(`/api/agent-runs/${runId}/cancel`, {
+				method: "POST",
+			});
+			if (!res.ok) {
+				const err = await res.json().catch(() => ({ detail: res.statusText }));
+				throw new Error(err.detail || "Failed to cancel agent run");
+			}
+			toast.success("Cancellation requested");
+			setShowCancelDialog(false);
+			refetch();
+		} catch (error) {
+			toast.error(`Failed to cancel: ${error}`);
+		} finally {
+			setIsCancelling(false);
+		}
+	}, [runId, refetch]);
 
 	const groupedAiUsage = (() => {
 		if (!run?.ai_usage?.length) return [];
@@ -590,7 +765,95 @@ export function AgentRunDetail() {
 						Run ID: <span className="font-mono">{run.id}</span>
 					</p>
 				</div>
+				{!isComplete && run.status !== "cancelling" && (
+					<Button
+						variant="outline"
+						onClick={() => setShowCancelDialog(true)}
+						disabled={isCancelling}
+					>
+						{isCancelling ? (
+							<Loader2 className="mr-2 h-4 w-4 animate-spin" />
+						) : (
+							<XCircle className="mr-2 h-4 w-4" />
+						)}
+						Cancel
+					</Button>
+				)}
+				{isComplete && (
+					<Button
+						variant="outline"
+						onClick={() => setShowRerunDialog(true)}
+						disabled={isRerunning}
+					>
+						{isRerunning ? (
+							<Loader2 className="mr-2 h-4 w-4 animate-spin" />
+						) : (
+							<RefreshCw className="mr-2 h-4 w-4" />
+						)}
+						Rerun
+					</Button>
+				)}
 			</div>
+
+			{/* Rerun confirmation dialog */}
+			<AlertDialog open={showRerunDialog} onOpenChange={setShowRerunDialog}>
+				<AlertDialogContent>
+					<AlertDialogHeader>
+						<AlertDialogTitle>Rerun Agent?</AlertDialogTitle>
+						<AlertDialogDescription>
+							This will run{" "}
+							<span className="font-semibold">
+								{run.agent_name || "this agent"}
+							</span>{" "}
+							again with the same input. You will be redirected to
+							the new run.
+						</AlertDialogDescription>
+					</AlertDialogHeader>
+					<AlertDialogFooter>
+						<AlertDialogCancel disabled={isRerunning}>
+							Cancel
+						</AlertDialogCancel>
+						<AlertDialogAction
+							onClick={handleRerun}
+							disabled={isRerunning}
+						>
+							{isRerunning ? (
+								<>
+									<Loader2 className="mr-2 h-4 w-4 animate-spin" />
+									Rerunning...
+								</>
+							) : (
+								"Yes, rerun agent"
+							)}
+						</AlertDialogAction>
+					</AlertDialogFooter>
+				</AlertDialogContent>
+			</AlertDialog>
+
+			{/* Cancel confirmation dialog */}
+			<AlertDialog open={showCancelDialog} onOpenChange={setShowCancelDialog}>
+				<AlertDialogContent>
+					<AlertDialogHeader>
+						<AlertDialogTitle>Cancel Agent Run?</AlertDialogTitle>
+						<AlertDialogDescription>
+							Are you sure you want to cancel{" "}
+							<span className="font-semibold">
+								{run.agent_name || "this agent run"}
+							</span>
+							? This action cannot be undone.
+						</AlertDialogDescription>
+					</AlertDialogHeader>
+					<AlertDialogFooter>
+						<AlertDialogCancel>No, keep running</AlertDialogCancel>
+						<AlertDialogAction
+							onClick={handleCancel}
+							className="bg-destructive hover:bg-destructive/90"
+						>
+							Yes, cancel agent run
+						</AlertDialogAction>
+					</AlertDialogFooter>
+				</AlertDialogContent>
+			</AlertDialog>
 
 			{/* Two-column layout */}
 			<div className="p-6 lg:p-8">

@@ -12,6 +12,7 @@ from uuid import UUID
 from fastmcp.tools.tool import ToolResult
 
 from src.services.mcp_server.tool_result import error_result, success_result
+from src.services.mcp_server.tools.db import get_tool_db
 
 # MCPContext is imported where needed to avoid circular imports
 
@@ -20,13 +21,12 @@ logger = logging.getLogger(__name__)
 
 async def list_forms(context: Any) -> ToolResult:
     """List all forms."""
-    from src.core.database import get_db_context
     from src.repositories.forms import FormRepository
 
     logger.info("MCP list_forms called")
 
     try:
-        async with get_db_context() as db:
+        async with get_tool_db(context) as db:
             # Determine org_id and user context based on context
             if context.is_platform_admin:
                 # Platform admins see all forms (no org filtering)
@@ -202,7 +202,6 @@ async def create_form(
     from sqlalchemy import select
     from sqlalchemy.orm import selectinload
 
-    from src.core.database import get_db_context
     from src.models import Form as FormORM
     from src.models import FormSchema
     from src.repositories.workflows import WorkflowRepository
@@ -255,7 +254,7 @@ async def create_form(
             return error_result(f"launch_workflow_id '{launch_workflow_id}' is not a valid UUID")
 
     try:
-        async with get_db_context() as db:
+        async with get_tool_db(context) as db:
             # Verify workflow exists with proper scoping
             ctx_org_id = UUID_TYPE(str(context.org_id)) if context.org_id else None
             ctx_user_id = UUID_TYPE(str(context.user_id)) if context.user_id else None
@@ -361,7 +360,6 @@ async def get_form(
     from sqlalchemy import select
     from sqlalchemy.orm import selectinload
 
-    from src.core.database import get_db_context
     from src.models import Form as FormORM
     from src.repositories.workflows import WorkflowRepository
 
@@ -371,7 +369,7 @@ async def get_form(
         return error_result("Either form_id or form_name is required")
 
     try:
-        async with get_db_context() as db:
+        async with get_tool_db(context) as db:
             # Build query
             query = select(FormORM).options(selectinload(FormORM.fields))
 
@@ -521,7 +519,6 @@ async def update_form(
     from sqlalchemy import delete, select
     from sqlalchemy.orm import selectinload
 
-    from src.core.database import get_db_context
     from src.models import Form as FormORM, FormField as FormFieldORM
     from src.models import FormSchema
     from src.repositories.workflows import WorkflowRepository
@@ -539,7 +536,7 @@ async def update_form(
         return error_result(f"'{form_id}' is not a valid UUID")
 
     try:
-        async with get_db_context() as db:
+        async with get_tool_db(context) as db:
             # Get existing form
             result = await db.execute(
                 select(FormORM)

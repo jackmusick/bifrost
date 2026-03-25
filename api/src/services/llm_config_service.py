@@ -8,7 +8,8 @@ Follows the same pattern as GitHubConfigService for SystemConfig storage.
 import base64
 import logging
 from dataclasses import dataclass
-from datetime import datetime, timezone
+from datetime import date, datetime, timezone
+from decimal import Decimal
 from typing import Literal
 from uuid import uuid4
 
@@ -18,6 +19,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.config import get_settings
 from src.models.orm import SystemConfig
+from src.models.orm.ai_usage import AIModelPricing
 
 logger = logging.getLogger(__name__)
 
@@ -245,8 +247,6 @@ class LLMConfigService:
 
     async def _test_openai(self, api_key: str, model: str, endpoint: str | None = None) -> LLMTestResult:
         """Test OpenAI-compatible connection and list models."""
-        import re
-
         try:
             from openai import AsyncOpenAI
 
@@ -260,35 +260,11 @@ class LLMConfigService:
             try:
                 models_response = await client.models.list()
 
-                # OpenAI date suffix pattern: -YYYY-MM-DD
-                date_pattern = re.compile(r"-\d{4}-\d{2}-\d{2}$")
-                seen_display_names: set[str] = set()
-
-                # Filter to chat-capable models (skip embeddings, tts, whisper, dall-e, etc.)
-                chat_prefixes = ("gpt-", "o1", "o3", "o4", "chatgpt-")
                 all_model_ids: list[str] = []
-
-                for m in sorted(models_response.data, key=lambda x: x.id, reverse=True):
+                for m in sorted(models_response.data, key=lambda x: x.id):
                     all_model_ids.append(m.id)
+                    model_infos.append(LLMModelInfo(id=m.id, display_name=m.id))
 
-                    # Only include chat/completion models
-                    if not any(m.id.startswith(p) for p in chat_prefixes):
-                        continue
-
-                    # Derive display name by stripping date suffix
-                    display_name = date_pattern.sub("", m.id)
-
-                    # Only include the newest version of each model (first seen since sorted desc)
-                    if display_name in seen_display_names:
-                        continue
-
-                    seen_display_names.add(display_name)
-                    model_infos.append(LLMModelInfo(id=m.id, display_name=display_name))
-
-                # Sort by display name for consistent ordering
-                model_infos.sort(key=lambda x: x.display_name)
-
-                # Check if the configured model is available
                 model_available = model in all_model_ids
             except Exception as e:
                 error_str = str(e).lower()
@@ -380,3 +356,105 @@ class LLMConfigService:
         """
         result = await self.test_connection()
         return result.models if result.success else None
+
+    async def sync_provider_pricing(
+        self,
+        provider: str,
+        model: str,
+        api_key: str,
+        endpoint: str,
+    ) -> int:
+        """
+        Fetch pricing from a provider's /models endpoint and update AIModelPricing
+        for the selected model and any existing pricing rows.
+
+        Only creates a new pricing row for the selected model. Updates existing rows
+        that match models returned by the provider.
+
+        Returns:
+            Number of models with pricing synced.
+        """
+        import httpx
+
+        models_url = f"{endpoint.rstrip('/')}/models"
+        async with httpx.AsyncClient(timeout=30) as http:
+            resp = await http.get(
+                models_url,
+                headers={"Authorization": f"Bearer {api_key}"},
+            )
+            resp.raise_for_status()
+            body = resp.json()
+
+        # Build a lookup of model_id -> (input_per_million, output_per_million)
+        provider_pricing: dict[str, tuple[Decimal, Decimal]] = {}
+        quantize_to = Decimal("0.0001")
+        max_price = Decimal("999999.9999")
+
+        for item in body.get("data", []):
+            model_id = item.get("id", "")
+            pricing = item.get("pricing")
+            if not model_id or not pricing:
+                continue
+
+            prompt_price = pricing.get("prompt")
+            completion_price = pricing.get("completion")
+            if not prompt_price or not completion_price:
+                continue
+
+            try:
+                input_pm = (Decimal(prompt_price) * 1_000_000).quantize(quantize_to)
+                output_pm = (Decimal(completion_price) * 1_000_000).quantize(quantize_to)
+            except Exception:
+                continue
+
+            if input_pm > max_price or output_pm > max_price:
+                continue
+
+            provider_pricing[model_id] = (input_pm, output_pm)
+
+        if not provider_pricing:
+            return 0
+
+        synced = 0
+        today = date.today()
+
+        # Update existing pricing rows that have a match in the provider data
+        existing_result = await self.session.execute(
+            select(AIModelPricing).where(AIModelPricing.provider == provider)
+        )
+        priced_models: set[str] = set()
+        for row in existing_result.scalars().all():
+            priced_models.add(row.model)
+            if row.model in provider_pricing:
+                input_pm, output_pm = provider_pricing[row.model]
+                row.input_price_per_million = input_pm
+                row.output_price_per_million = output_pm
+                row.updated_at = datetime.now(timezone.utc)
+                synced += 1
+
+        # Find models that have been used but don't have pricing yet
+        from src.models.orm.ai_usage import AIUsage
+
+        used_result = await self.session.execute(
+            select(AIUsage.model).where(AIUsage.provider == provider).distinct()
+        )
+        used_models = {row[0] for row in used_result.all()}
+
+        # Create pricing for: selected model + used models without pricing
+        models_to_add = ({model} | used_models) - priced_models
+        for model_id in models_to_add:
+            if model_id in provider_pricing:
+                input_pm, output_pm = provider_pricing[model_id]
+                self.session.add(
+                    AIModelPricing(
+                        provider=provider,
+                        model=model_id,
+                        input_price_per_million=input_pm,
+                        output_price_per_million=output_pm,
+                        effective_date=today,
+                    )
+                )
+                synced += 1
+
+        await self.session.flush()
+        return synced

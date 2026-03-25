@@ -143,6 +143,9 @@ class MCPContext:
     # Knowledge namespaces accessible to this user (from agent.knowledge_sources)
     accessible_namespaces: list[str] = field(default_factory=list)
 
+    # Database session from executor context (None when running via MCP server)
+    session: Any = None
+
 
 # =============================================================================
 # Context Helper Functions (for FastMCP authentication)
@@ -382,7 +385,14 @@ def get_system_tools() -> list[dict[str, Any]]:
         elif annotation is bool:
             return {"type": "boolean"}
         elif annotation is dict or origin is dict:
-            return {"type": "object"}
+            schema: dict[str, Any] = {"type": "object"}
+            if origin is dict:
+                args = get_args(annotation)
+                if len(args) == 2:
+                    schema["additionalProperties"] = python_type_to_json_schema(args[1])
+            else:
+                schema["additionalProperties"] = True
+            return schema
         elif annotation is list or origin is list:
             return {"type": "array"}
 
@@ -405,6 +415,7 @@ def get_system_tools() -> list[dict[str, Any]]:
                     "type": "object",
                     "properties": {},
                     "required": [],
+                    "additionalProperties": False,
                 }
 
                 if func:

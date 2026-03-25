@@ -283,7 +283,7 @@ class TestToToolDefinition:
 
         result = self.registry._to_tool_definition(tool)
 
-        assert result.parameters == {"type": "object", "properties": {}}
+        assert result.parameters == {"type": "object", "properties": {}, "additionalProperties": False}
 
     def test_array_type_includes_items(self):
         tool = _make_registered_tool(
@@ -297,6 +297,30 @@ class TestToToolDefinition:
         prop = result.parameters["properties"]["systems_involved"]
         assert prop["type"] == "array"
         assert prop["items"] == {"type": "string"}
+
+    def test_outer_schema_has_additional_properties_false(self):
+        tool = _make_registered_tool(
+            parameters_schema=[
+                {"name": "ticket_id", "type": "int", "label": "Ticket ID", "required": True},
+            ],
+        )
+
+        result = self.registry._to_tool_definition(tool)
+
+        assert result.parameters["additionalProperties"] is False
+
+    def test_object_type_has_additional_properties_true(self):
+        tool = _make_registered_tool(
+            parameters_schema=[
+                {"name": "fields", "type": "dict", "label": "Fields"},
+            ],
+        )
+
+        result = self.registry._to_tool_definition(tool)
+
+        prop = result.parameters["properties"]["fields"]
+        assert prop["type"] == "object"
+        assert prop["additionalProperties"] is True
 
     def test_non_array_type_has_no_items(self):
         tool = _make_registered_tool(

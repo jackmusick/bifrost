@@ -10,6 +10,7 @@ from typing import Any
 from fastmcp.tools.tool import ToolResult
 
 from src.services.mcp_server.tool_result import error_result, success_result
+from src.services.mcp_server.tools.db import get_tool_db
 
 # MCPContext is imported where needed to avoid circular imports
 
@@ -30,7 +31,6 @@ async def search_knowledge(
         namespace: Optional specific namespace to search (must be accessible)
         limit: Maximum number of results
     """
-    from src.core.database import get_db_context
     from src.repositories.knowledge import KnowledgeRepository
     from src.services.embeddings import get_embedding_client
 
@@ -59,7 +59,7 @@ async def search_knowledge(
         namespaces_to_search = accessible
 
     try:
-        async with get_db_context() as db:
+        async with get_tool_db(context) as db:
             # Generate query embedding
             embedding_client = await get_embedding_client(db)
             query_embedding = await embedding_client.embed_single(query)

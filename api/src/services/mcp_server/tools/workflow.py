@@ -10,6 +10,7 @@ from typing import Any
 from fastmcp.tools.tool import ToolResult
 
 from src.services.mcp_server.tool_result import error_result, success_result
+from src.services.mcp_server.tools.db import get_tool_db
 
 # MCPContext is imported where needed to avoid circular imports
 
@@ -22,7 +23,6 @@ async def execute_workflow(
     """Execute a workflow by ID or name and return results."""
     from uuid import UUID
 
-    from src.core.database import get_db_context
     from src.repositories.workflows import WorkflowRepository
     from src.services.execution.service import execute_tool
 
@@ -33,7 +33,7 @@ async def execute_workflow(
     logger.info(f"MCP execute_workflow: {workflow_id} with params: {params}")
 
     try:
-        async with get_db_context() as db:
+        async with get_tool_db(context) as db:
             ctx_org_id = UUID(str(context.org_id)) if context.org_id else None
             ctx_user_id = UUID(str(context.user_id)) if context.user_id else None
             repo = WorkflowRepository(
@@ -89,13 +89,12 @@ async def list_workflows(
     """List all registered workflows."""
     from uuid import UUID
 
-    from src.core.database import get_db_context
     from src.repositories.workflows import WorkflowRepository
 
     logger.info(f"MCP list_workflows called with query={query}, category={category}")
 
     try:
-        async with get_db_context() as db:
+        async with get_tool_db(context) as db:
             ctx_org_id = UUID(str(context.org_id)) if context.org_id else None
             ctx_user_id = UUID(str(context.user_id)) if context.user_id else None
             repo = WorkflowRepository(
@@ -148,13 +147,12 @@ async def validate_workflow(context: Any, file_path: str) -> ToolResult:
     """Validate a workflow Python file for syntax and decorator issues."""
     import ast
 
-    from src.core.database import get_db_context
     from src.services.file_storage import FileStorageService
 
     logger.info(f"MCP validate_workflow called with file_path={file_path}")
 
     try:
-        async with get_db_context() as db:
+        async with get_tool_db(context) as db:
             service = FileStorageService(db)
             content_bytes, _ = await service.read_file(file_path)
             content = content_bytes.decode("utf-8")
@@ -235,7 +233,6 @@ async def get_workflow(
     """Get detailed workflow metadata."""
     from uuid import UUID
 
-    from src.core.database import get_db_context
     from src.repositories.workflows import WorkflowRepository
 
     logger.info(f"MCP get_workflow called with id={workflow_id}, name={workflow_name}")
@@ -244,7 +241,7 @@ async def get_workflow(
         return error_result("Either workflow_id or workflow_name is required")
 
     try:
-        async with get_db_context() as db:
+        async with get_tool_db(context) as db:
             ctx_org_id = UUID(str(context.org_id)) if context.org_id else None
             ctx_user_id = UUID(str(context.user_id)) if context.user_id else None
             repo = WorkflowRepository(
@@ -298,7 +295,6 @@ async def register_workflow(context: Any, path: str, function_name: str, organiz
 
     from sqlalchemy import select
 
-    from src.core.database import get_db_context
     from src.models.orm.workflows import Workflow as WorkflowORM
     from src.services.file_storage import FileStorageService
     from src.services.file_storage.indexers.workflow import WorkflowIndexer
@@ -311,7 +307,7 @@ async def register_workflow(context: Any, path: str, function_name: str, organiz
         return error_result("path must be a .py file")
 
     try:
-        async with get_db_context() as db:
+        async with get_tool_db(context) as db:
             service = FileStorageService(db)
 
             # Read file

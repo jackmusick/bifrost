@@ -48,6 +48,7 @@ async def enqueue_agent_run(
         },
         "event_delivery_id": event_delivery_id,
         "sync": sync,
+        "cancelled": False,
     }
 
     # Store full context in Redis

@@ -10,6 +10,7 @@ from typing import Any
 from fastmcp.tools.tool import ToolResult
 
 from src.services.mcp_server.tool_result import error_result, success_result
+from src.services.mcp_server.tools.db import get_tool_db
 
 # MCPContext is imported where needed to avoid circular imports
 
@@ -20,13 +21,12 @@ async def list_integrations(context: Any) -> ToolResult:
     """List all available integrations."""
     from sqlalchemy import select
 
-    from src.core.database import get_db_context
     from src.models.orm.integrations import Integration, IntegrationMapping
 
     logger.info("MCP list_integrations called")
 
     try:
-        async with get_db_context() as db:
+        async with get_tool_db(context) as db:
             if context.is_platform_admin or not context.org_id:
                 result = await db.execute(
                     select(Integration)

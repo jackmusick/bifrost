@@ -15,6 +15,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import joinedload
 
 from src.services.mcp_server.tool_result import error_result, success_result
+from src.services.mcp_server.tools.db import get_tool_db
 
 logger = logging.getLogger(__name__)
 
@@ -31,7 +32,6 @@ async def list_event_sources(
     limit: int = 50,
 ) -> ToolResult:
     """List event sources with optional filters."""
-    from src.core.database import get_db_context
     from src.models.enums import EventSourceType
     from src.repositories.events import EventSourceRepository, EventSubscriptionRepository
 
@@ -50,7 +50,7 @@ async def list_event_sources(
 
         org_id = UUID(organization_id) if organization_id else None
 
-        async with get_db_context() as db:
+        async with get_tool_db(context) as db:
             repo = EventSourceRepository(db)
             sub_repo = EventSubscriptionRepository(db)
 
@@ -117,7 +117,6 @@ async def create_event_source(
     name, source_type, and organization already exists, reuses it and ensures
     a subscription to the workflow exists.
     """
-    from src.core.database import get_db_context
     from src.models.enums import EventSourceType
     from src.models.orm.events import EventSource, EventSubscription, ScheduleSource, WebhookSource
     from src.services.webhooks.registry import get_adapter_registry
@@ -149,7 +148,7 @@ async def create_event_source(
         now = datetime.now(_tz.utc)
         user_email = getattr(context, "user_email", "") or getattr(context, "email", "mcp")
 
-        async with get_db_context() as db:
+        async with get_tool_db(context) as db:
             org_uuid = UUID(organization_id) if organization_id else None
 
             # Upsert logic: if workflow_id provided, check for existing matching source
@@ -334,7 +333,6 @@ async def get_event_source(
     source_id: str,
 ) -> ToolResult:
     """Get details of a specific event source."""
-    from src.core.database import get_db_context
     from src.models.enums import EventSourceType
     from src.repositories.events import EventSourceRepository, EventSubscriptionRepository
 
@@ -344,7 +342,7 @@ async def get_event_source(
         return error_result("source_id is required")
 
     try:
-        async with get_db_context() as db:
+        async with get_tool_db(context) as db:
             repo = EventSourceRepository(db)
             source = await repo.get_by_id_with_details(UUID(source_id))
 
@@ -400,7 +398,6 @@ async def update_event_source(
     schedule_enabled: bool | None = None,
 ) -> ToolResult:
     """Update an existing event source."""
-    from src.core.database import get_db_context
     from src.models.enums import EventSourceType
     from src.models.orm.events import EventSource, WebhookSource
     from src.repositories.events import EventSourceRepository
@@ -411,7 +408,7 @@ async def update_event_source(
         return error_result("source_id is required")
 
     try:
-        async with get_db_context() as db:
+        async with get_tool_db(context) as db:
             repo = EventSourceRepository(db)
             source = await repo.get_by_id_with_details(UUID(source_id))
 
@@ -478,7 +475,6 @@ async def delete_event_source(
     source_id: str,
 ) -> ToolResult:
     """Soft delete an event source."""
-    from src.core.database import get_db_context
     from src.models.enums import EventSourceType
     from src.repositories.events import EventSourceRepository
     from src.services.webhooks.registry import get_adapter_registry
@@ -489,7 +485,7 @@ async def delete_event_source(
         return error_result("source_id is required")
 
     try:
-        async with get_db_context() as db:
+        async with get_tool_db(context) as db:
             repo = EventSourceRepository(db)
             source = await repo.get_by_id_with_details(UUID(source_id))
 
@@ -527,7 +523,6 @@ async def list_event_subscriptions(
     source_id: str,
 ) -> ToolResult:
     """List subscriptions for an event source."""
-    from src.core.database import get_db_context
     from src.repositories.events import (
         EventDeliveryRepository,
         EventSourceRepository,
@@ -540,7 +535,7 @@ async def list_event_subscriptions(
         return error_result("source_id is required")
 
     try:
-        async with get_db_context() as db:
+        async with get_tool_db(context) as db:
             from src.models.enums import EventDeliveryStatus
 
             source_repo = EventSourceRepository(db)
@@ -596,7 +591,6 @@ async def create_event_subscription(
     input_mapping: dict | None = None,
 ) -> ToolResult:
     """Create a subscription linking an event source to a workflow."""
-    from src.core.database import get_db_context
     from src.models.orm.events import EventSubscription
     from src.repositories.events import EventSourceRepository
 
@@ -611,7 +605,7 @@ async def create_event_subscription(
         now = datetime.now(_tz.utc)
         user_email = getattr(context, "user_email", "") or getattr(context, "email", "mcp")
 
-        async with get_db_context() as db:
+        async with get_tool_db(context) as db:
             # Verify source exists
             source_repo = EventSourceRepository(db)
             source = await source_repo.get_by_id(UUID(source_id))
@@ -668,7 +662,6 @@ async def update_event_subscription(
     is_active: bool | None = None,
 ) -> ToolResult:
     """Update an event subscription."""
-    from src.core.database import get_db_context
     from src.models.orm.events import EventSubscription
 
     logger.info(f"MCP update_event_subscription called: sub={subscription_id}")
@@ -677,7 +670,7 @@ async def update_event_subscription(
         return error_result("source_id and subscription_id are required")
 
     try:
-        async with get_db_context() as db:
+        async with get_tool_db(context) as db:
             result = await db.execute(
                 select(EventSubscription)
                 .options(joinedload(EventSubscription.workflow))
@@ -725,7 +718,6 @@ async def delete_event_subscription(
     subscription_id: str,
 ) -> ToolResult:
     """Soft delete an event subscription."""
-    from src.core.database import get_db_context
     from src.models.orm.events import EventSubscription
 
     logger.info(f"MCP delete_event_subscription called: sub={subscription_id}")
@@ -734,7 +726,7 @@ async def delete_event_subscription(
         return error_result("source_id and subscription_id are required")
 
     try:
-        async with get_db_context() as db:
+        async with get_tool_db(context) as db:
             result = await db.execute(
                 select(EventSubscription).where(
                     EventSubscription.id == UUID(subscription_id),

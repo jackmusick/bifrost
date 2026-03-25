@@ -13,6 +13,7 @@ from uuid import uuid4
 from fastmcp.tools.tool import ToolResult
 
 from src.services.mcp_server.tool_result import error_result, success_result
+from src.services.mcp_server.tools.db import get_tool_db
 
 # MCPContext is imported where needed to avoid circular imports
 
@@ -70,14 +71,13 @@ async def get_agent_schema(context: Any) -> ToolResult:  # noqa: ARG001
 
 async def list_agents(context: Any) -> ToolResult:
     """List all agents."""
-    from src.core.database import get_db_context
     from src.core.org_filter import OrgFilterType
     from src.repositories.agents import AgentRepository
 
     logger.info("MCP list_agents called")
 
     try:
-        async with get_db_context() as db:
+        async with get_tool_db(context) as db:
             # Determine org_id and admin status based on context
             is_admin = context.is_platform_admin
             if context.org_id:
@@ -142,7 +142,6 @@ async def get_agent(
     from sqlalchemy import or_, select
     from sqlalchemy.orm import selectinload
 
-    from src.core.database import get_db_context
     from src.models.orm import Agent
 
     logger.info(f"MCP get_agent called: agent_id={agent_id}, agent_name={agent_name}")
@@ -151,7 +150,7 @@ async def get_agent(
         return error_result("Either agent_id or agent_name is required")
 
     try:
-        async with get_db_context() as db:
+        async with get_tool_db(context) as db:
             # Build query
             query = select(Agent).options(
                 selectinload(Agent.tools),
@@ -265,7 +264,6 @@ async def create_agent(
     from sqlalchemy import select
     from sqlalchemy.orm import selectinload
 
-    from src.core.database import get_db_context
     from src.models.enums import AgentAccessLevel
     from src.models.orm import Agent, AgentDelegation, AgentTool, Workflow
 
@@ -312,7 +310,7 @@ async def create_agent(
             return error_result("organization_id is required when scope='organization' and no context org_id is set")
 
     try:
-        async with get_db_context() as db:
+        async with get_tool_db(context) as db:
             agent_id = uuid4()
             now = datetime.now(timezone.utc)
 
@@ -451,7 +449,6 @@ async def update_agent(
     from sqlalchemy import delete, select
     from sqlalchemy.orm import selectinload
 
-    from src.core.database import get_db_context
     from src.models.orm import Agent, AgentDelegation, AgentTool, Workflow
 
     logger.info(f"MCP update_agent called: agent_id={agent_id}")
@@ -473,7 +470,7 @@ async def update_agent(
             return error_result(f"Invalid channels: {list(invalid_channels)}. Valid options: {list(valid_channels)}")
 
     try:
-        async with get_db_context() as db:
+        async with get_tool_db(context) as db:
             # Get existing agent
             result = await db.execute(
                 select(Agent)
@@ -645,7 +642,6 @@ async def delete_agent(
     """
     from sqlalchemy import select
 
-    from src.core.database import get_db_context
     from src.models.orm import Agent
 
     logger.info(f"MCP delete_agent called: agent_id={agent_id}")
@@ -660,7 +656,7 @@ async def delete_agent(
         return error_result(f"'{agent_id}' is not a valid UUID")
 
     try:
-        async with get_db_context() as db:
+        async with get_tool_db(context) as db:
             result = await db.execute(
                 select(Agent).where(Agent.id == uuid_id)
             )

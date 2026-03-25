@@ -5,8 +5,9 @@
  * UI patterns mirror ExecutionHistory for consistency.
  */
 
-import { useState, useMemo } from "react";
+import { useState, useMemo, useCallback } from "react";
 import { useNavigate } from "react-router-dom";
+import { toast } from "sonner";
 import {
 	Bot,
 	RefreshCw,
@@ -21,6 +22,7 @@ import {
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
+import { authFetch } from "@/lib/api-client";
 import {
 	DataTable,
 	DataTableBody,
@@ -91,6 +93,27 @@ function getStatusBadge(status: string) {
 					Budget Exceeded
 				</Badge>
 			);
+		case "cancelling":
+			return (
+				<Badge variant="secondary" className="bg-orange-500 text-white">
+					<Loader2 className="mr-1 h-3 w-3 animate-spin" />
+					Cancelling
+				</Badge>
+			);
+		case "cancelled":
+			return (
+				<Badge variant="outline" className="border-gray-500 text-gray-600 dark:text-gray-400">
+					<XCircle className="mr-1 h-3 w-3" />
+					Cancelled
+				</Badge>
+			);
+		case "timeout":
+			return (
+				<Badge variant="destructive">
+					<XCircle className="mr-1 h-3 w-3" />
+					Timeout
+				</Badge>
+			);
 		default:
 			return <Badge variant="outline">{status}</Badge>;
 	}
@@ -158,6 +181,20 @@ export function AgentRuns() {
 
 	// Real-time updates via WebSocket
 	useAgentRunListStream();
+
+	const handleCancelRun = useCallback(async (runId: string, agentName: string | null) => {
+		try {
+			const res = await authFetch(`/api/agent-runs/${runId}/cancel`, { method: "POST" });
+			if (!res.ok) {
+				const err = await res.json().catch(() => ({ detail: res.statusText }));
+				throw new Error(err.detail || "Failed to cancel");
+			}
+			toast.success(`Cancellation requested for ${agentName || "agent run"}`);
+			refetch();
+		} catch (error) {
+			toast.error(`Failed to cancel: ${error}`);
+		}
+	}, [refetch]);
 
 	const runs = data?.items || [];
 
@@ -349,6 +386,19 @@ export function AgentRuns() {
 												{duration}
 											</DataTableCell>
 											<DataTableCell className="text-right">
+												{(run.status === "running" || run.status === "queued") && (
+													<Button
+														variant="ghost"
+														size="icon"
+														onClick={(e) => {
+															e.stopPropagation();
+															handleCancelRun(run.id, run.agent_name);
+														}}
+														title="Cancel Run"
+													>
+														<XCircle className="h-4 w-4" />
+													</Button>
+												)}
 												<Button
 													variant="ghost"
 													size="icon"

@@ -12,6 +12,7 @@ from uuid import UUID, uuid4
 from fastmcp.tools.tool import ToolResult
 
 from src.services.mcp_server.tool_result import error_result, success_result
+from src.services.mcp_server.tools.db import get_tool_db
 
 logger = logging.getLogger(__name__)
 
@@ -23,13 +24,12 @@ async def list_tables(
     """List tables with org filtering for non-admins."""
     from sqlalchemy import select
 
-    from src.core.database import get_db_context
     from src.models.orm.tables import Table
 
     logger.info(f"MCP list_tables called with scope={scope}")
 
     try:
-        async with get_db_context() as db:
+        async with get_tool_db(context) as db:
             query = select(Table)
 
             # Non-admins can only see their org's tables + global tables
@@ -87,7 +87,6 @@ async def get_table(
     """Get table details including schema."""
     from sqlalchemy import func, select
 
-    from src.core.database import get_db_context
     from src.models.orm.tables import Document, Table
 
     logger.info(f"MCP get_table called with id={table_id}")
@@ -101,7 +100,7 @@ async def get_table(
         return error_result(f"Invalid table_id format: {table_id}")
 
     try:
-        async with get_db_context() as db:
+        async with get_tool_db(context) as db:
             query = select(Table).where(Table.id == table_uuid)
 
             # Non-admins can only see their org's tables + global
@@ -241,7 +240,6 @@ async def create_table(
     """Create a new table with explicit scope."""
     from sqlalchemy import select
 
-    from src.core.database import get_db_context
     from src.models.orm.tables import Table
 
     logger.info(f"MCP create_table called with name={name}, scope={scope}")
@@ -291,7 +289,7 @@ async def create_table(
             return error_result("Cannot create tables in other organizations")
 
     try:
-        async with get_db_context() as db:
+        async with get_tool_db(context) as db:
             # Check for duplicate name within same scope
             query = select(Table).where(Table.name == name)
             if org_uuid:
@@ -353,7 +351,6 @@ async def update_table(
     """Update table properties."""
     from sqlalchemy import select
 
-    from src.core.database import get_db_context
     from src.models.orm.tables import Table
 
     logger.info(f"MCP update_table called with id={table_id}")
@@ -367,7 +364,7 @@ async def update_table(
         return error_result(f"Invalid table_id format: {table_id}")
 
     try:
-        async with get_db_context() as db:
+        async with get_tool_db(context) as db:
             query = select(Table).where(Table.id == table_uuid)
 
             # Non-admins can only update their org's tables
@@ -460,7 +457,6 @@ async def delete_table(
     """Delete a table and all its documents by ID."""
     from sqlalchemy import select
 
-    from src.core.database import get_db_context
     from src.models.orm.tables import Table
 
     logger.info(f"MCP delete_table called with id={table_id}")
@@ -474,7 +470,7 @@ async def delete_table(
         return error_result(f"Invalid table_id format: {table_id}")
 
     try:
-        async with get_db_context() as db:
+        async with get_tool_db(context) as db:
             query = select(Table).where(Table.id == table_uuid)
 
             # Non-admins can only delete their org's tables

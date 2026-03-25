@@ -5,7 +5,7 @@ CRUD + execute endpoints for autonomous agent runs.
 """
 
 import logging
-from datetime import datetime
+from datetime import datetime, timezone
 from decimal import Decimal
 from uuid import UUID
 
@@ -19,6 +19,7 @@ from src.models.contracts.agent_runs import (
     AgentRunCreateRequest,
     AgentRunDetailResponse,
     AgentRunListResponse,
+    AgentRunRerunResponse,
     AgentRunResponse,
     AgentRunStepResponse,
 )
@@ -26,6 +27,7 @@ from src.models.contracts.executions import AIUsagePublicSimple, AIUsageTotalsSi
 from src.models.orm.agent_runs import AgentRun
 from src.models.orm.ai_usage import AIUsage
 from src.models.orm.agents import Agent
+from src.core.redis_client import get_redis_client
 from src.services.execution.agent_run_service import (
     enqueue_agent_run,
     wait_for_agent_run_result,
@@ -63,6 +65,7 @@ def _run_to_response(run: AgentRun) -> AgentRunResponse:
         created_at=run.created_at,
         started_at=run.started_at,
         completed_at=run.completed_at,
+        parent_run_id=run.parent_run_id,
     )
 
 
@@ -80,8 +83,8 @@ async def list_agent_runs(
     offset: int = Query(0, ge=0),
 ) -> AgentRunListResponse:
     """List agent runs with optional filters."""
-    # Build base query
-    query = select(AgentRun).join(AgentRun.agent)
+    # Build base query — exclude delegation sub-runs from top-level list
+    query = select(AgentRun).join(AgentRun.agent).where(AgentRun.parent_run_id.is_(None))
 
     # Org filter: non-superusers see only their org's runs
     if not user.is_superuser:
@@ -190,6 +193,14 @@ async def get_agent_run(
             call_count=int(totals_row.call_count or 0),
         )
 
+    # Fetch child run IDs for delegation sub-runs
+    child_ids_result = await db.execute(
+        select(AgentRun.id)
+        .where(AgentRun.parent_run_id == run_id)
+        .order_by(AgentRun.created_at)
+    )
+    child_run_ids = [row[0] for row in child_ids_result.all()]
+
     return AgentRunDetailResponse(
         id=run.id,
         agent_id=run.agent_id,
@@ -215,6 +226,8 @@ async def get_agent_run(
         created_at=run.created_at,
         started_at=run.started_at,
         completed_at=run.completed_at,
+        parent_run_id=run.parent_run_id,
+        child_run_ids=child_run_ids,
         steps=[
             AgentRunStepResponse(
                 id=step.id,
@@ -231,6 +244,119 @@ async def get_agent_run(
         ai_usage=ai_usage_list,
         ai_totals=ai_totals_response,
     )
+
+
+@router.post("/{run_id}/rerun")
+async def rerun_agent_run(
+    run_id: UUID,
+    db: DbSession,
+    user: CurrentActiveUser,
+) -> AgentRunRerunResponse:
+    """Rerun an agent run with the same input (async, non-blocking)."""
+    query = select(AgentRun).where(AgentRun.id == run_id)
+
+    # Org filter: non-superusers see only their org's runs
+    if not user.is_superuser:
+        if user.organization_id:
+            query = query.where(AgentRun.org_id == user.organization_id)
+
+    result = await db.execute(query)
+    original = result.scalar_one_or_none()
+
+    if not original:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Agent run {run_id} not found",
+        )
+
+    new_run_id = await enqueue_agent_run(
+        agent_id=str(original.agent_id),
+        trigger_type="rerun",
+        input_data=original.input,
+        trigger_source=str(run_id),
+        output_schema=original.output_schema,
+        org_id=str(original.org_id) if original.org_id else None,
+        caller_user_id=str(user.user_id),
+        caller_email=user.email,
+        caller_name=getattr(user, "name", None),
+        sync=False,
+    )
+
+    return AgentRunRerunResponse(run_id=UUID(new_run_id))
+
+
+TERMINAL_STATUSES = {"completed", "failed", "cancelled", "budget_exceeded", "timeout"}
+
+
+@router.post("/{run_id}/cancel")
+async def cancel_agent_run(
+    run_id: UUID,
+    db: DbSession,
+    user: CurrentActiveUser,
+) -> dict:
+    """Cancel a queued or running agent run."""
+    query = select(AgentRun).where(AgentRun.id == run_id)
+
+    # Org filter: non-superusers see only their org's runs
+    if not user.is_superuser:
+        if user.organization_id:
+            query = query.where(AgentRun.org_id == user.organization_id)
+
+    result = await db.execute(query)
+    agent_run = result.scalar_one_or_none()
+
+    if not agent_run:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Agent run {run_id} not found",
+        )
+
+    if agent_run.status in TERMINAL_STATUSES:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Cannot cancel agent run with status '{agent_run.status}'",
+        )
+
+    if agent_run.status == "cancelling":
+        # Already cancelling — idempotent
+        return {"run_id": str(run_id), "status": "cancelling"}
+
+    redis_client = get_redis_client()
+
+    if agent_run.status == "queued":
+        # Not yet picked up by worker — cancel directly
+        agent_run.status = "cancelled"
+        agent_run.completed_at = datetime.now(timezone.utc)
+        await db.commit()
+
+        # Also mark the Redis context so worker skips if it picks up concurrently
+        from src.core.cache.redis_client import get_redis
+        redis_key = f"bifrost:agent_run:{run_id}:context"
+        async with get_redis() as r:
+            context_raw = await r.get(redis_key)
+            if context_raw:
+                import json
+                ctx = json.loads(context_raw)
+                ctx["cancelled"] = True
+                ttl = await r.ttl(redis_key)
+                await r.set(redis_key, json.dumps(ctx), ex=max(ttl, 60))
+
+        return {"run_id": str(run_id), "status": "cancelled"}
+
+    # Running — set to cancelling and signal via Redis
+    agent_run.status = "cancelling"
+    await db.commit()
+
+    await redis_client.set_agent_run_cancel_flag(str(run_id))
+    logger.info(f"Set cancel flag for agent run {run_id}")
+
+    try:
+        from src.core.pubsub import publish_agent_run_update
+        await publish_agent_run_update(agent_run, agent_run.agent.name if agent_run.agent else "Unknown")
+    except Exception:
+        pass
+
+    return {"run_id": str(run_id), "status": "cancelling"}
 
 
 @router.post("/execute")

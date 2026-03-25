@@ -13,7 +13,7 @@ from uuid import UUID, uuid4
 from fastmcp.tools.tool import ToolResult
 from sqlalchemy import select
 
-from src.core.database import get_db_context
+from src.services.mcp_server.tools.db import get_tool_db
 from src.models.orm.organizations import Organization
 from src.services.mcp_server.tool_result import error_result, success_result
 
@@ -28,7 +28,7 @@ async def list_organizations(context: Any) -> ToolResult:
     logger.info("MCP list_organizations called")
 
     try:
-        async with get_db_context() as db:
+        async with get_tool_db(context) as db:
             query = select(Organization).order_by(Organization.name)
             result = await db.execute(query)
             orgs = result.scalars().all()
@@ -66,7 +66,7 @@ async def get_organization(
         return error_result("Either organization_id or domain is required")
 
     try:
-        async with get_db_context() as db:
+        async with get_tool_db(context) as db:
             query = select(Organization)
 
             if organization_id:
@@ -137,7 +137,7 @@ async def create_organization(
         return error_result("domain must be 255 characters or less")
 
     try:
-        async with get_db_context() as db:
+        async with get_tool_db(context) as db:
             # Check for duplicate domain
             existing_query = select(Organization).where(Organization.domain == domain)
             existing_result = await db.execute(existing_query)

@@ -85,6 +85,13 @@ def _get_colors() -> _CliColors:
     )
 
 
+def _normalize_line_endings(data: bytes) -> bytes:
+    """Normalize CRLF to LF for text files. Binary files pass through unchanged."""
+    if b"\x00" in data[:8192]:
+        return data
+    return data.replace(b"\r\n", b"\n")
+
+
 def _is_bifrost_path(path: str) -> bool:
     """Check if a path refers to a .bifrost/ manifest directory."""
     return ".bifrost" in path.replace("\\", "/").split("/")
@@ -1648,7 +1655,7 @@ async def _process_watch_batch(
         abs_p = pathlib.Path(abs_path_str)
         if abs_p.exists():
             try:
-                raw = abs_p.read_bytes()
+                raw = _normalize_line_endings(abs_p.read_bytes())
                 content = base64.b64encode(raw).decode("ascii")
                 rel = abs_p.relative_to(base_path)
                 repo_path = f"{repo_prefix}/{rel}" if repo_prefix else str(rel)
@@ -2421,7 +2428,7 @@ def _compute_local_md5s(
         if spec.match_file(rel_str):
             continue
         try:
-            content = file_path.read_bytes()
+            content = _normalize_line_endings(file_path.read_bytes())
             md5 = _hashlib.md5(content).hexdigest()
             repo_path = f"{repo_prefix}/{rel_str}" if repo_prefix else rel_str
             hashes[repo_path] = md5
@@ -2553,7 +2560,7 @@ async def _pull_from_server(
             for bf in sorted(bifrost_dir.iterdir()):
                 if bf.is_file() and bf.suffix in (".yaml", ".yml"):
                     try:
-                        content = bf.read_bytes()
+                        content = _normalize_line_endings(bf.read_bytes())
                         local_hashes[f".bifrost/{bf.name}"] = hashlib.sha256(content).hexdigest()
                     except (OSError, UnicodeDecodeError):
                         continue
@@ -2784,7 +2791,7 @@ def _collect_push_files(
         if spec.match_file(rel_str):
             continue
         try:
-            raw = file_path.read_bytes()
+            raw = _normalize_line_endings(file_path.read_bytes())
             content = base64.b64encode(raw).decode("ascii")
             repo_path = f"{repo_prefix}/{rel_str}" if repo_prefix else rel_str
             files[repo_path] = content

@@ -97,6 +97,25 @@ async def set_llm_config(
 
     logger.info(f"LLM config updated by {user.email}: provider={request.provider}, model={request.model}")
 
+    # Auto-sync pricing from provider if using a custom endpoint
+    if request.endpoint:
+        try:
+            from src.services.llm.factory import get_llm_config as get_decrypted_config
+
+            llm_config = await get_decrypted_config(db)
+            count = await service.sync_provider_pricing(
+                provider=request.provider,
+                model=request.model,
+                api_key=llm_config.api_key,
+                endpoint=request.endpoint,
+            )
+            await db.commit()
+            if count:
+                logger.info(f"Synced pricing for {count} models from {request.endpoint}")
+        except Exception as e:
+            await db.rollback()
+            logger.warning(f"Failed to sync provider pricing: {e}")
+
     # Determine if API key is set: either a new key was provided, or an existing one was preserved
     config = await service.get_config()
     api_key_set = bool(config and config.api_key_set)

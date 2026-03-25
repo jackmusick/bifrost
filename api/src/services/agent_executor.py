@@ -11,6 +11,7 @@ Handles the chat completion loop for AI agents, including:
 - Agent delegation
 """
 
+import asyncio
 import json
 import logging
 import time
@@ -21,6 +22,7 @@ from uuid import UUID, uuid4
 
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import selectinload
 
 from src.models.contracts.agents import (
     AgentSwitch,
@@ -1312,14 +1314,48 @@ IMPORTANT: When the user's request can be fulfilled using one of your tools, you
             )
 
         try:
-            sub_executor = AutonomousAgentExecutor(self.session)
-            sub_result = await sub_executor.run(
-                agent=delegated_agent,
-                input_data={"task": task, "_delegated_from": agent.name},
+            from src.core.cache import get_shared_redis
+            from src.services.execution.autonomous_agent_executor import DELEGATION_TIMEOUT_SECONDS
+
+            logger.info(f"Agent '{agent.name}' delegating to '{delegated_agent.name}' via chat")
+
+            # Re-fetch with relationships loaded — the parent's selectinload
+            # doesn't transitively load the child agent's own relationships
+            result = await self.session.execute(
+                select(Agent)
+                .options(selectinload(Agent.tools), selectinload(Agent.delegated_agents))
+                .where(Agent.id == delegated_agent.id)
             )
+            delegated_agent = result.scalar_one()
+
+            redis_client = await get_shared_redis()
+            sub_executor = AutonomousAgentExecutor(self.session, redis_client=redis_client)
+            try:
+                sub_result = await asyncio.wait_for(
+                    sub_executor.run(
+                        agent=delegated_agent,
+                        input_data={"task": task, "_delegated_from": agent.name},
+                    ),
+                    timeout=DELEGATION_TIMEOUT_SECONDS,
+                )
+            except asyncio.TimeoutError:
+                logger.error(
+                    f"Delegation to '{delegated_agent.name}' timed out after {DELEGATION_TIMEOUT_SECONDS}s"
+                )
+                return ToolResult(
+                    tool_call_id=tool_call.id,
+                    tool_name=tool_call.name,
+                    result=None,
+                    error=f"Delegation to {delegated_agent.name} timed out after {DELEGATION_TIMEOUT_SECONDS}s",
+                    duration_ms=int((time.time() - start_time) * 1000),
+                )
 
             duration_ms = int((time.time() - start_time) * 1000)
             output = sub_result.get("output", "Delegation completed with no output.")
+
+            logger.info(
+                f"Delegation to '{delegated_agent.name}' completed with status={sub_result.get('status')}"
+            )
 
             return ToolResult(
                 tool_call_id=tool_call.id,
@@ -1371,6 +1407,7 @@ IMPORTANT: When the user's request can be fulfilled using one of your tools, you
                 is_platform_admin=user.is_superuser if user else False,
                 user_email=user.email if user else "",
                 user_name=user.name if user else "",
+                session=self.session,
             )
 
             # Call the tool function

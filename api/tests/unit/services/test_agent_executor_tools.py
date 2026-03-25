@@ -411,11 +411,12 @@ class TestChatDelegation:
     """Test that chat _execute_delegation uses AutonomousAgentExecutor."""
 
     @pytest.mark.asyncio
-    async def test_delegation_calls_autonomous_executor(self, executor):
+    async def test_delegation_calls_autonomous_executor(self, executor, mock_session):
         """Chat delegation dispatches to AutonomousAgentExecutor.run()."""
         from src.services.llm.base import ToolCallRequest
 
         delegated = MagicMock()
+        delegated.id = uuid4()
         delegated.name = "Data Analyst"
         delegated.is_active = True
 
@@ -428,9 +429,20 @@ class TestChatDelegation:
             arguments={"task": "Analyze revenue trends"},
         )
 
+        # Mock the re-fetch query that loads the delegated agent with relationships
+        refetched = MagicMock()
+        refetched.id = delegated.id
+        refetched.name = "Data Analyst"
+        mock_refetch_result = MagicMock()
+        mock_refetch_result.scalar_one.return_value = refetched
+        mock_session.execute = AsyncMock(return_value=mock_refetch_result)
+
         with patch(
             "src.services.agent_executor.AutonomousAgentExecutor"
-        ) as MockExecutorClass:
+        ) as MockExecutorClass, patch(
+            "src.core.cache.get_shared_redis", new_callable=AsyncMock
+        ) as mock_get_redis:
+            mock_get_redis.return_value = MagicMock()
             mock_sub = AsyncMock()
             mock_sub.run = AsyncMock(return_value={
                 "output": "Revenue is up 15%",
@@ -445,10 +457,67 @@ class TestChatDelegation:
         assert result.error is None
         assert result.result["response"] == "Revenue is up 15%"
         assert result.result["agent"] == "Data Analyst"
+        # The sub-executor receives the re-fetched agent, not the original
         mock_sub.run.assert_awaited_once_with(
-            agent=delegated,
+            agent=refetched,
             input_data={"task": "Analyze revenue trends", "_delegated_from": agent.name},
         )
+
+    @pytest.mark.asyncio
+    async def test_delegation_refetches_agent_with_relationships(self, executor, mock_session):
+        """Delegation re-fetches the target agent to ensure relationships are loaded.
+
+        Without this re-fetch, accessing agent.tools or agent.delegated_agents
+        on a child loaded via selectinload causes greenlet_spawn errors in async.
+        """
+        from src.services.llm.base import ToolCallRequest
+
+        delegated = MagicMock()
+        delegated.id = uuid4()
+        delegated.name = "Troubleshooting Agent"
+        delegated.is_active = True
+
+        agent = MagicMock()
+        agent.delegated_agents = [delegated]
+
+        tool_call = ToolCallRequest(
+            id="tc1",
+            name="delegate_to_troubleshooting_agent",
+            arguments={"task": "Fix the issue"},
+        )
+
+        refetched = MagicMock()
+        refetched.id = delegated.id
+        refetched.name = "Troubleshooting Agent"
+        mock_refetch_result = MagicMock()
+        mock_refetch_result.scalar_one.return_value = refetched
+        mock_session.execute = AsyncMock(return_value=mock_refetch_result)
+
+        with patch(
+            "src.services.agent_executor.AutonomousAgentExecutor"
+        ) as MockExecutorClass, patch(
+            "src.core.cache.get_shared_redis", new_callable=AsyncMock
+        ) as mock_get_redis:
+            mock_get_redis.return_value = MagicMock()
+            mock_sub = AsyncMock()
+            mock_sub.run = AsyncMock(return_value={
+                "output": "Fixed",
+                "status": "completed",
+                "iterations_used": 1,
+                "tokens_used": 100,
+            })
+            MockExecutorClass.return_value = mock_sub
+
+            result = await executor._execute_delegation(tool_call, agent)
+
+        # Verify session.execute was called (the re-fetch query)
+        mock_session.execute.assert_awaited()
+        # Verify the sub-executor got the re-fetched agent
+        mock_sub.run.assert_awaited_once_with(
+            agent=refetched,
+            input_data={"task": "Fix the issue", "_delegated_from": agent.name},
+        )
+        assert result.error is None
 
     @pytest.mark.asyncio
     async def test_delegation_agent_not_found(self, executor):
@@ -491,11 +560,12 @@ class TestChatDelegation:
         assert "No task" in result.error
 
     @pytest.mark.asyncio
-    async def test_delegation_propagates_failure_status(self, executor):
+    async def test_delegation_propagates_failure_status(self, executor, mock_session):
         """When sub-executor returns failed status, error is propagated."""
         from src.services.llm.base import ToolCallRequest
 
         delegated = MagicMock()
+        delegated.id = uuid4()
         delegated.name = "Broken Agent"
         delegated.is_active = True
 
@@ -508,9 +578,16 @@ class TestChatDelegation:
             arguments={"task": "Do something"},
         )
 
+        mock_refetch_result = MagicMock()
+        mock_refetch_result.scalar_one.return_value = delegated
+        mock_session.execute = AsyncMock(return_value=mock_refetch_result)
+
         with patch(
             "src.services.agent_executor.AutonomousAgentExecutor"
-        ) as MockExecutorClass:
+        ) as MockExecutorClass, patch(
+            "src.core.cache.get_shared_redis", new_callable=AsyncMock
+        ) as mock_get_redis:
+            mock_get_redis.return_value = MagicMock()
             mock_sub = AsyncMock()
             mock_sub.run = AsyncMock(return_value={
                 "output": None,
@@ -526,11 +603,12 @@ class TestChatDelegation:
         assert result.error == "LLM call failed"
 
     @pytest.mark.asyncio
-    async def test_delegation_handles_exception(self, executor):
+    async def test_delegation_handles_exception(self, executor, mock_session):
         """Exceptions during delegation are caught and returned as errors."""
         from src.services.llm.base import ToolCallRequest
 
         delegated = MagicMock()
+        delegated.id = uuid4()
         delegated.name = "Crasher"
         delegated.is_active = True
 
@@ -543,9 +621,16 @@ class TestChatDelegation:
             arguments={"task": "Crash please"},
         )
 
+        mock_refetch_result = MagicMock()
+        mock_refetch_result.scalar_one.return_value = delegated
+        mock_session.execute = AsyncMock(return_value=mock_refetch_result)
+
         with patch(
             "src.services.agent_executor.AutonomousAgentExecutor"
-        ) as MockExecutorClass:
+        ) as MockExecutorClass, patch(
+            "src.core.cache.get_shared_redis", new_callable=AsyncMock
+        ) as mock_get_redis:
+            mock_get_redis.return_value = MagicMock()
             mock_sub = AsyncMock()
             mock_sub.run = AsyncMock(side_effect=RuntimeError("Connection lost"))
             MockExecutorClass.return_value = mock_sub
@@ -554,3 +639,43 @@ class TestChatDelegation:
 
         assert result.error is not None
         assert "Connection lost" in result.error
+
+    @pytest.mark.asyncio
+    async def test_delegation_timeout_returns_error(self, executor, mock_session):
+        """Delegation returns timeout error when sub-executor takes too long."""
+        import asyncio
+        from src.services.llm.base import ToolCallRequest
+
+        delegated = MagicMock()
+        delegated.id = uuid4()
+        delegated.name = "Slow Agent"
+        delegated.is_active = True
+
+        agent = MagicMock()
+        agent.delegated_agents = [delegated]
+
+        tool_call = ToolCallRequest(
+            id="tc1",
+            name="delegate_to_slow_agent",
+            arguments={"task": "Take forever"},
+        )
+
+        mock_refetch_result = MagicMock()
+        mock_refetch_result.scalar_one.return_value = delegated
+        mock_session.execute = AsyncMock(return_value=mock_refetch_result)
+
+        with patch(
+            "src.services.agent_executor.AutonomousAgentExecutor"
+        ) as MockExecutorClass, patch(
+            "src.core.cache.get_shared_redis", new_callable=AsyncMock
+        ) as mock_get_redis, patch(
+            "src.services.agent_executor.asyncio.wait_for",
+            side_effect=asyncio.TimeoutError(),
+        ):
+            mock_get_redis.return_value = MagicMock()
+            MockExecutorClass.return_value = AsyncMock()
+
+            result = await executor._execute_delegation(tool_call, agent)
+
+        assert result.error is not None
+        assert "timed out" in result.error

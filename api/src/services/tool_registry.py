@@ -220,6 +220,10 @@ class ToolRegistry:
             if json_type == "array":
                 properties[param_name]["items"] = {"type": "string"}
 
+            # Object types accept freeform key-value pairs
+            if json_type == "object":
+                properties[param_name]["additionalProperties"] = True
+
             # Add enum options if present (from Literal type annotations)
             if param.get("options"):
                 properties[param_name]["enum"] = [
@@ -237,6 +241,7 @@ class ToolRegistry:
         parameters_schema: dict[str, Any] = {
             "type": "object",
             "properties": properties,
+            "additionalProperties": False,
         }
 
         if required:

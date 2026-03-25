@@ -12,6 +12,7 @@ from fastmcp.tools.tool import ToolResult
 
 from src.core.auth import UserPrincipal
 from src.services.mcp_server.tool_result import error_result, success_result
+from src.services.mcp_server.tools.db import get_tool_db
 
 # MCPContext is imported where needed to avoid circular imports
 
@@ -44,13 +45,12 @@ async def list_executions(
     limit: int = 20,
 ) -> ToolResult:
     """List recent workflow executions."""
-    from src.core.database import get_db_context
     from src.repositories.executions import ExecutionRepository
 
     logger.info(f"MCP list_executions called with workflow={workflow_name}, status={status}")
 
     try:
-        async with get_db_context() as db:
+        async with get_tool_db(context) as db:
             repo = ExecutionRepository(db)
 
             # Convert context to UserPrincipal
@@ -95,7 +95,6 @@ async def list_executions(
 
 async def get_execution(context: Any, execution_id: str) -> ToolResult:
     """Get details and logs for a specific workflow execution."""
-    from src.core.database import get_db_context
     from src.repositories.executions import ExecutionRepository
 
     logger.info(f"MCP get_execution called with id={execution_id}")
@@ -104,7 +103,7 @@ async def get_execution(context: Any, execution_id: str) -> ToolResult:
         return error_result("execution_id is required")
 
     try:
-        async with get_db_context() as db:
+        async with get_tool_db(context) as db:
             repo = ExecutionRepository(db)
 
             # Convert context to UserPrincipal

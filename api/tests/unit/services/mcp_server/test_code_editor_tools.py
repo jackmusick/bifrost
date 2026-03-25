@@ -233,7 +233,7 @@ async def sync_tickets(client_id: str) -> dict:
     return {"synced": True}
 '''
 
-        with patch("src.services.mcp_server.tools.code_editor.get_db_context") as mock_db:
+        with patch("src.services.mcp_server.tools.code_editor.get_tool_db") as mock_db:
             mock_session = AsyncMock()
             mock_db.return_value.__aenter__.return_value = mock_session
 
@@ -620,7 +620,7 @@ class TestDeleteContent:
             mock_repo.exists = AsyncMock(return_value=True)
             mock_repo_cls.return_value = mock_repo
 
-            with patch("src.services.mcp_server.tools.code_editor.get_db_context") as mock_db:
+            with patch("src.services.mcp_server.tools.code_editor.get_tool_db") as mock_db:
                 mock_session = AsyncMock()
                 mock_db.return_value.__aenter__.return_value = mock_session
 
@@ -652,7 +652,7 @@ class TestDeleteContent:
             mock_repo.exists = AsyncMock(return_value=True)
             mock_repo_cls.return_value = mock_repo
 
-            with patch("src.services.mcp_server.tools.code_editor.get_db_context") as mock_db:
+            with patch("src.services.mcp_server.tools.code_editor.get_tool_db") as mock_db:
                 mock_session = AsyncMock()
                 mock_db.return_value.__aenter__.return_value = mock_session
 
@@ -684,7 +684,7 @@ class TestDeleteContent:
             mock_repo.exists = AsyncMock(return_value=True)
             mock_repo_cls.return_value = mock_repo
 
-            with patch("src.services.mcp_server.tools.code_editor.get_db_context") as mock_db:
+            with patch("src.services.mcp_server.tools.code_editor.get_tool_db") as mock_db:
                 mock_session = AsyncMock()
                 mock_db.return_value.__aenter__.return_value = mock_session
 
@@ -716,7 +716,7 @@ class TestDeleteContent:
             mock_repo.exists = AsyncMock(return_value=False)
             mock_repo_cls.return_value = mock_repo
 
-            with patch("src.services.mcp_server.tools.code_editor.get_db_context") as mock_db:
+            with patch("src.services.mcp_server.tools.code_editor.get_tool_db") as mock_db:
                 mock_session = AsyncMock()
                 mock_db.return_value.__aenter__.return_value = mock_session
 
@@ -756,7 +756,7 @@ class TestDeleteContent:
             mock_repo.exists = AsyncMock(return_value=True)
             mock_repo_cls.return_value = mock_repo
 
-            with patch("src.services.mcp_server.tools.code_editor.get_db_context") as mock_db:
+            with patch("src.services.mcp_server.tools.code_editor.get_tool_db") as mock_db:
                 mock_session = AsyncMock()
                 mock_db.return_value.__aenter__.return_value = mock_session
 
@@ -823,7 +823,7 @@ async def get_ticket(ticket_id: str):
             mock_repo.exists = AsyncMock(return_value=True)
             mock_repo_cls.return_value = mock_repo
 
-            with patch("src.services.mcp_server.tools.code_editor.get_db_context") as mock_db:
+            with patch("src.services.mcp_server.tools.code_editor.get_tool_db") as mock_db:
                 mock_session = AsyncMock()
                 mock_db.return_value.__aenter__.return_value = mock_session
 
@@ -861,7 +861,7 @@ async def cleanup():
     return {"done": True}
 '''
 
-        with patch("src.services.mcp_server.tools.code_editor.get_db_context") as mock_db:
+        with patch("src.services.mcp_server.tools.code_editor.get_tool_db") as mock_db:
             mock_session = AsyncMock()
             mock_db.return_value.__aenter__.return_value = mock_session
 

@@ -27,7 +27,7 @@ from typing import Any
 from fastmcp.tools.tool import ToolResult
 from sqlalchemy import select
 
-from src.core.database import get_db_context
+from src.services.mcp_server.tools.db import get_tool_db
 from src.models.orm.file_index import FileIndex
 from src.services.file_storage import FileStorageService
 from src.services.repo_storage import RepoStorage
@@ -213,7 +213,7 @@ async def _replace_workspace_file(
     Returns:
         WorkspaceWriteResult with created status and any pending deactivations
     """
-    async with get_db_context() as db:
+    async with get_tool_db(context) as db:
         service = FileStorageService(db)
 
         # Check if file exists to determine created status
@@ -326,7 +326,7 @@ async def search_content(
     matches: list[dict[str, Any]] = []
 
     try:
-        async with get_db_context() as db:
+        async with get_tool_db(context) as db:
             query = select(FileIndex.path, FileIndex.content).where(
                 FileIndex.content.isnot(None),
             )
@@ -696,7 +696,7 @@ async def delete_content(
         return error_result("path is required")
 
     try:
-        async with get_db_context() as db:
+        async with get_tool_db(context) as db:
             # Verify file exists in S3 before deleting
             repo = RepoStorage()
             if not await repo.exists(path):

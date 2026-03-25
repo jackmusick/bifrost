@@ -205,6 +205,8 @@ def _agent_to_public(agent: Agent) -> AgentPublic:
         system_tools=[t for t in (agent.system_tools or []) if t in valid_system_tool_ids],
         llm_model=agent.llm_model,
         llm_max_tokens=agent.llm_max_tokens,
+        max_iterations=agent.max_iterations,
+        max_token_budget=agent.max_token_budget,
     )
 
 
@@ -263,7 +265,7 @@ async def list_agents(
 
     if is_admin:
         # Admins use list_all_in_scope with filter_type for flexibility
-        agents = await repo.list_all_in_scope(filter_type, active_only=active_only)
+        agents = await repo.list_all_in_scope(filter_type, active_only=False)
     else:
         # Regular users use list_agents with built-in cascade + role-based access
         agents = await repo.list_agents(active_only=active_only)

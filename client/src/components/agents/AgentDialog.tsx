@@ -1359,39 +1359,60 @@ export function AgentDialog({ agentId, open, onOpenChange }: AgentDialogProps) {
 																Model
 															</FormLabel>
 															<FormControl>
-																<Combobox
-																	value={
-																		field.value ??
-																		"__default__"
-																	}
-																	onValueChange={(
-																		value,
-																	) =>
-																		field.onChange(
-																			value ===
-																				"__default__"
-																				? null
-																				: value,
-																		)
-																	}
-																	placeholder="Use platform default"
-																	searchPlaceholder="Search models..."
-																	emptyText="No models found."
-																	options={[
-																		{
-																			value: "__default__",
-																			label: "Use platform default",
-																		},
-																		...availableModels.map(
-																			(
-																				model,
-																			) => ({
-																				value: model.id,
-																				label: model.display_name,
-																			}),
-																		),
-																	]}
-																/>
+																{availableModels.length >
+																0 ? (
+																	<Combobox
+																		value={
+																			field.value ??
+																			"__default__"
+																		}
+																		onValueChange={(
+																			value,
+																		) =>
+																			field.onChange(
+																				value ===
+																					"__default__"
+																					? null
+																					: value,
+																			)
+																		}
+																		placeholder="Use platform default"
+																		searchPlaceholder="Search models..."
+																		emptyText="No models found."
+																		options={[
+																			{
+																				value: "__default__",
+																				label: "Use platform default",
+																			},
+																			...availableModels.map(
+																				(
+																					model,
+																				) => ({
+																					value: model.id,
+																					label: model.display_name,
+																				}),
+																			),
+																		]}
+																	/>
+																) : (
+																	<Input
+																		placeholder="Enter model identifier (leave empty for default)"
+																		value={
+																			field.value ??
+																			""
+																		}
+																		onChange={(
+																			e,
+																		) =>
+																			field.onChange(
+																				e
+																					.target
+																					.value ||
+																					null,
+																			)
+																		}
+																	/>
+																)}
 															</FormControl>
 															<FormMessage />
 														</FormItem>

@@ -1,4 +1,5 @@
 """RabbitMQ consumer for autonomous agent runs."""
+import asyncio
 import json
 import logging
 import time
@@ -21,6 +22,8 @@ logger = logging.getLogger(__name__)
 
 QUEUE_NAME = "agent-runs"
 REDIS_PREFIX = "bifrost:agent_run"
+DEFAULT_RUN_TIMEOUT = 1800  # 30 minutes
+CANCEL_CHECK_INTERVAL = 2  # seconds between cancel flag checks
 
 
 class AgentRunConsumer(BaseConsumer):
@@ -50,6 +53,24 @@ class AgentRunConsumer(BaseConsumer):
             return
 
         context = json.loads(context_raw)
+
+        # Pre-cancel check: if cancelled before worker picked it up, skip execution
+        if context.get("cancelled"):
+            logger.info(f"Agent run {run_id}: pre-cancelled, skipping execution")
+            async with self._session_factory() as db:
+                agent_run = AgentRun(
+                    id=UUID(run_id),
+                    agent_id=UUID(agent_id),
+                    trigger_type=trigger_type,
+                    status="cancelled",
+                    org_id=UUID(context["org_id"]) if context.get("org_id") else None,
+                    started_at=datetime.now(timezone.utc),
+                    completed_at=datetime.now(timezone.utc),
+                )
+                db.add(agent_run)
+                await db.commit()
+            return
+
         start_time = time.time()
 
         async with self._session_factory() as db:
@@ -94,16 +115,59 @@ class AgentRunConsumer(BaseConsumer):
 
                 await publish_agent_run_update(agent_run, agent.name)
 
-                # Run the agent
+                # Run the agent with timeout (Layer 1: hard safety net)
+                run_timeout = agent.max_run_timeout or DEFAULT_RUN_TIMEOUT
+
                 async with get_redis() as redis_for_executor:
                     executor = AutonomousAgentExecutor(db, redis_client=redis_for_executor)
-                    run_result = await executor.run(
+
+                    # Create executor task so cancel watcher can cancel it
+                    executor_task = asyncio.ensure_future(executor.run(
                         agent=agent,
                         input_data=context.get("input"),
                         output_schema=context.get("output_schema"),
                         run_id=run_id,
                         _caller=context.get("caller"),
+                    ))
+
+                    # Cancel watcher: polls Redis flag, force-cancels task if stuck
+                    cancel_watcher = asyncio.ensure_future(
+                        AgentRunConsumer._cancel_watcher(run_id, executor_task, redis_for_executor)
                     )
+
+                    try:
+                        run_result = await asyncio.wait_for(
+                            asyncio.shield(executor_task),
+                            timeout=run_timeout,
+                        )
+                    except asyncio.TimeoutError:
+                        executor_task.cancel()
+                        try:
+                            await executor_task
+                        except asyncio.CancelledError:
+                            pass
+                        run_result = {
+                            "output": None,
+                            "iterations_used": 0,
+                            "tokens_used": 0,
+                            "status": "timeout",
+                            "llm_model": None,
+                            "error": f"Agent run timed out after {run_timeout}s",
+                        }
+                    except asyncio.CancelledError:
+                        run_result = {
+                            "output": None,
+                            "iterations_used": 0,
+                            "tokens_used": 0,
+                            "status": "cancelled",
+                            "llm_model": None,
+                        }
+                    finally:
+                        cancel_watcher.cancel()
+                        try:
+                            await cancel_watcher
+                        except asyncio.CancelledError:
+                            pass
 
                 # Update run record
                 duration_ms = int((time.time() - start_time) * 1000)
@@ -178,6 +242,32 @@ class AgentRunConsumer(BaseConsumer):
                         await r.delete(f"{REDIS_PREFIX}:{run_id}:context")
                 except Exception:
                     pass
+
+    @staticmethod
+    async def _cancel_watcher(
+        run_id: str,
+        task: asyncio.Task,  # pyright: ignore[reportMissingTypeArgument]
+        redis_client: object,
+    ) -> None:
+        """Background task that cancels the executor if Redis cancel flag is set.
+
+        This handles the case where the executor is stuck (e.g., hanging LLM call)
+        and can't check the cancel flag itself between iterations.
+        """
+        try:
+            while not task.done():
+                try:
+                    key = f"bifrost:agent_run:{run_id}:cancel"
+                    result = await redis_client.get(key)  # pyright: ignore[reportAttributeAccessIssue]
+                    if result is not None:
+                        logger.info(f"Cancel watcher: cancelling stuck task for run {run_id}")
+                        task.cancel()
+                        return
+                except Exception:
+                    pass  # Don't let Redis errors kill the watcher
+                await asyncio.sleep(CANCEL_CHECK_INTERVAL)
+        except asyncio.CancelledError:
+            pass  # Normal cleanup when executor finishes
 
     @staticmethod
     async def _update_event_delivery(
