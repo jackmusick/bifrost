@@ -62,6 +62,7 @@ class Agent(Base):
     llm_max_tokens: Mapped[int | None] = mapped_column(Integer, default=None)
     max_iterations: Mapped[int | None] = mapped_column(Integer, default=50)
     max_token_budget: Mapped[int | None] = mapped_column(Integer, default=100000)
+    max_run_timeout: Mapped[int | None] = mapped_column(Integer, default=None)
     created_by: Mapped[str] = mapped_column(String(255), nullable=False)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=lambda: datetime.now(timezone.utc), server_default=text("NOW()")

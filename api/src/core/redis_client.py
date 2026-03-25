@@ -396,6 +396,52 @@ class RedisClient:
             logger.error(f"Error waiting for result: {e}")
             raise
 
+    # =========================================================================
+    # Agent Run Cancellation (mirrors execution cancel flags)
+    # =========================================================================
+
+    async def set_agent_run_cancel_flag(self, run_id: str) -> None:
+        """
+        Set the cancellation flag for an agent run.
+
+        The executor checks this flag between iterations and tool calls.
+        The consumer's cancel watcher also checks it to force-cancel stuck runs.
+
+        Args:
+            run_id: Agent run ID to cancel
+        """
+        redis_client = await self._get_redis()
+        key = f"bifrost:agent_run:{run_id}:cancel"
+        try:
+            await redis_client.setex(key, 3600, "1")
+            logger.debug(f"Set agent run cancel flag: {key}")
+        except Exception as e:
+            logger.error(f"Failed to set agent run cancel flag: {e}")
+            raise
+
+    async def check_agent_run_cancel_flag(self, run_id: str) -> bool:
+        """
+        Check if an agent run has been flagged for cancellation.
+
+        Args:
+            run_id: Agent run ID to check
+
+        Returns:
+            True if cancelled, False otherwise
+        """
+        redis_client = await self._get_redis()
+        key = f"bifrost:agent_run:{run_id}:cancel"
+        try:
+            result = await redis_client.get(key)
+            return result is not None
+        except Exception as e:
+            logger.warning(f"Failed to check agent run cancel flag: {e}")
+            return False
+
+    # =========================================================================
+    # Execution Cancellation
+    # =========================================================================
+
     async def set_cancel_flag(self, execution_id: str) -> None:
         """
         Set the cancellation flag for an execution.
