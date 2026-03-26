@@ -3,6 +3,13 @@ CIPP data providers for org mapping UI.
 """
 
 
+from bifrost import data_provider
+@data_provider(
+    name="CIPP: List Tenants",
+    description="Returns CIPP-managed tenants for org mapping picker.",
+    category="CIPP",
+    tags=["cipp", "data-provider"],
+)
 async def list_cipp_tenants() -> list[dict]:
     """
     Returns all non-excluded CIPP tenants as {value, label} pairs

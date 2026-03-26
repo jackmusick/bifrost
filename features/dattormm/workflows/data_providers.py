@@ -2,9 +2,16 @@
 Datto RMM data providers for org mapping UI.
 """
 
+from bifrost import data_provider
 from modules import dattormm
 
 
+@data_provider(
+    name="Datto RMM: List Sites",
+    description="Returns Datto RMM sites for org mapping picker.",
+    category="Datto RMM",
+    tags=["datto", "rmm", "data-provider"],
+)
 async def list_dattormm_sites() -> list[dict]:
     """Return Datto RMM sites as {value, label} options for org mapping."""
     client = await dattormm.get_client(scope="global")

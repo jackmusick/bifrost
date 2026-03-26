@@ -10,10 +10,17 @@ Entity model:
   entity_name = managed company name
 """
 
+from bifrost import workflow
 from bifrost import integrations, organizations
 from modules import keeper
 
 
+@workflow(
+    name="Keeper MSP: Sync Managed Companies",
+    description="Sync Keeper managed companies into Bifrost organizations.",
+    category="Keeper MSP",
+    tags=["keeper", "msp"],
+)
 async def sync_keeper_managed_companies() -> dict:
     client = await keeper.get_client(scope="global")
     try:

@@ -9,10 +9,17 @@ Entity model:
   entity_name = company name
 """
 
+from bifrost import workflow
 from bifrost import integrations, organizations
 from modules.connectsecure import ConnectSecureClient
 
 
+@workflow(
+    name="ConnectSecure: Sync Companies",
+    description="Sync ConnectSecure companies to Bifrost organizations.",
+    category="ConnectSecure",
+    tags=["connectsecure", "sync"],
+)
 async def sync_connectsecure_companies() -> dict:
     from modules.connectsecure import get_client
 

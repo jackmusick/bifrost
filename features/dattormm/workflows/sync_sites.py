@@ -9,10 +9,17 @@ Entity model:
   entity_name = site name
 """
 
+from bifrost import workflow
 from bifrost import integrations, organizations
 from modules import dattormm
 
 
+@workflow(
+    name="Datto RMM: Sync Sites",
+    description="Sync Datto RMM sites into Bifrost organizations.",
+    category="Datto RMM",
+    tags=["datto", "rmm"],
+)
 async def sync_dattormm_sites() -> dict:
     client = await dattormm.get_client(scope="global")
     try:

@@ -9,10 +9,17 @@ Entity model:
   entity_name = network name
 """
 
+from bifrost import workflow
 from bifrost import integrations, organizations
 from modules import dattonetworking
 
 
+@workflow(
+    name="Datto Networking: Sync Networks",
+    description="Sync Datto Networking networks into Bifrost organizations.",
+    category="Datto Networking",
+    tags=["datto", "networking"],
+)
 async def sync_dattonetworking_networks() -> dict:
     client = await dattonetworking.get_client(scope="global")
     try:

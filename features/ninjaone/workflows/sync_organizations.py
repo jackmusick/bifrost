@@ -6,10 +6,17 @@ IntegrationMappings so org-scoped workflows can resolve the mapped
 organization ID.
 """
 
+from bifrost import workflow
 from bifrost import integrations, organizations
 from modules import ninjaone
 
 
+@workflow(
+    name="NinjaOne: Sync Organizations",
+    description="Sync NinjaOne organizations to Bifrost organizations.",
+    category="NinjaOne",
+    tags=["ninjaone", "sync"],
+)
 async def sync_ninjaone_organizations() -> dict:
     client = await ninjaone.get_client(scope="global")
     try:

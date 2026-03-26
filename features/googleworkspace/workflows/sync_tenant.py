@@ -5,10 +5,17 @@ Discovers the current tenant for an org-scoped direct Google Workspace
 integration and stores the customer mapping on that org.
 """
 
+from bifrost import workflow
 from bifrost import context, integrations, organizations
 from modules import googleworkspace
 
 
+@workflow(
+    name="Google Workspace: Sync Current Tenant",
+    description="Discover and bind the current org-scoped Google Workspace tenant.",
+    category="Google Workspace",
+    tags=["google", "workspace"],
+)
 async def sync_google_workspace_tenant(org_id: str = "") -> dict:
     effective_org = org_id or context.org_id
     if not effective_org:

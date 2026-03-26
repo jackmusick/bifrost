@@ -6,10 +6,17 @@ IntegrationMappings so org-scoped workflows can resolve the mapped
 organization ID.
 """
 
+from bifrost import workflow
 from bifrost import integrations, organizations
 from modules import huntress
 
 
+@workflow(
+    name="Huntress: Sync Organizations",
+    description="Sync Huntress organizations to Bifrost organizations.",
+    category="Huntress",
+    tags=["huntress", "sync"],
+)
 async def sync_huntress_organizations() -> dict:
     client = await huntress.get_client(scope="global")
     try:

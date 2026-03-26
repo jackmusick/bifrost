@@ -5,10 +5,17 @@ Syncs Cove EndCustomer partners to Bifrost organizations and creates
 IntegrationMappings so org-scoped workflows can resolve the mapped partner ID.
 """
 
+from bifrost import workflow
 from bifrost import integrations, organizations
 from modules.cove import CoveClient
 
 
+@workflow(
+    name="Cove Data Protection: Sync Customers",
+    description="Sync Cove EndCustomer partners to Bifrost organizations.",
+    category="Cove Data Protection",
+    tags=["cove", "sync"],
+)
 async def sync_cove_customers() -> dict:
     from modules.cove import get_client
 

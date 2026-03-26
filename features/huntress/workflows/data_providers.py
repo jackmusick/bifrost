@@ -2,9 +2,16 @@
 Huntress data providers for org mapping UI.
 """
 
+from bifrost import data_provider
 from modules import huntress
 
 
+@data_provider(
+    name="Huntress: List Organizations",
+    description="Returns Huntress organizations for org mapping picker.",
+    category="Huntress",
+    tags=["huntress", "data-provider"],
+)
 async def list_huntress_organizations() -> list[dict]:
     """Return Huntress organizations as {value, label} options for org mapping."""
     client = await huntress.get_client(scope="global")

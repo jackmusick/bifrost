@@ -10,10 +10,17 @@ Entity model:
   entity_name = organization name
 """
 
+from bifrost import workflow
 from bifrost import integrations, organizations
 from modules import itglue
 
 
+@workflow(
+    name="IT Glue: Sync Organizations",
+    description="Sync IT Glue organizations into Bifrost organizations.",
+    category="IT Glue",
+    tags=["itglue", "documentation"],
+)
 async def sync_itglue_organizations() -> dict:
     client = await itglue.get_client(scope="global")
     itglue_organizations = client.list_organizations()

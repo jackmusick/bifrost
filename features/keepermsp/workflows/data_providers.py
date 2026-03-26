@@ -2,9 +2,16 @@
 Keeper MSP data providers for org mapping UI.
 """
 
+from bifrost import data_provider
 from modules import keeper
 
 
+@data_provider(
+    name="Keeper MSP: List Managed Companies",
+    description="Returns Keeper managed companies for org mapping picker.",
+    category="Keeper MSP",
+    tags=["keeper", "msp", "data-provider"],
+)
 async def list_keeper_managed_companies() -> list[dict]:
     """Return Keeper managed companies as {value, label} options for org mapping."""
     client = await keeper.get_client(scope="global")

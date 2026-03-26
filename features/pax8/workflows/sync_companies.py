@@ -9,10 +9,17 @@ Entity model:
   entity_name = company name
 """
 
+from bifrost import workflow
 from bifrost import integrations, organizations
 from modules.pax8 import Pax8Client
 
 
+@workflow(
+    name="Pax8: Sync Companies",
+    description="Sync Pax8 companies to Bifrost organizations.",
+    category="Pax8",
+    tags=["pax8", "sync"],
+)
 async def sync_pax8_companies() -> dict:
     from modules.pax8 import get_client
 

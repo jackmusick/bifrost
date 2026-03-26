@@ -10,10 +10,17 @@ Entity model:
   entity_name = VIPRE siteName
 """
 
+from bifrost import workflow
 from bifrost import integrations, organizations
 from modules.vipre import VipreClient
 
 
+@workflow(
+    name="VIPRE: Sync Sites",
+    description="Sync inferred VIPRE sites to Bifrost organizations.",
+    category="VIPRE",
+    tags=["vipre", "sync"],
+)
 async def sync_vipre_sites() -> dict:
     from modules.vipre import get_client
 

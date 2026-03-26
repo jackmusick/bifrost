@@ -2,9 +2,16 @@
 ConnectSecure data providers for org mapping UI.
 """
 
+from bifrost import data_provider
 from modules.connectsecure import ConnectSecureClient
 
 
+@data_provider(
+    name="ConnectSecure: List Companies",
+    description="Returns ConnectSecure companies for org mapping picker.",
+    category="ConnectSecure",
+    tags=["connectsecure", "data-provider"],
+)
 async def list_connectsecure_companies() -> list[dict]:
     """Return ConnectSecure companies as {value, label} options for org mapping."""
     from modules.connectsecure import get_client

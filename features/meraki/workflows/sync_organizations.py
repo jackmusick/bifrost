@@ -10,10 +10,17 @@ Entity model:
   entity_name = organization name
 """
 
+from bifrost import workflow
 from bifrost import integrations, organizations
 from modules.meraki import MerakiClient
 
 
+@workflow(
+    name="Meraki: Sync Organizations",
+    description="Sync Meraki organizations to Bifrost organizations.",
+    category="Meraki",
+    tags=["meraki", "sync"],
+)
 async def sync_meraki_organizations() -> dict:
     from modules.meraki import get_client
 

@@ -2,9 +2,16 @@
 DNSFilter data providers for org mapping UI.
 """
 
+from bifrost import data_provider
 from modules.dnsfilter import DNSFilterClient
 
 
+@data_provider(
+    name="DNSFilter: List Networks",
+    description="Returns DNSFilter networks for org mapping picker.",
+    category="DNSFilter",
+    tags=["dnsfilter", "data-provider"],
+)
 async def list_dnsfilter_networks() -> list[dict]:
     """Return DNSFilter networks as {value, label} options for org mapping."""
     from modules.dnsfilter import get_client

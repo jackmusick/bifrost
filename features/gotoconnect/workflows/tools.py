@@ -7,9 +7,16 @@ pulling call history for ticket context, checking tech availability,
 and sending SMS to customers.
 """
 
+from bifrost import tool
 from datetime import datetime, timedelta, timezone
 
 
+@tool(
+    name="GoToConnect: Call History for Number",
+    description="Get recent call history for a specific phone number. Useful for identifying callers and correlating calls to HaloPSA clients.",
+    category="GoToConnect",
+    tags=["gotoconnect", "calls", "agent"],
+)
 async def get_call_history_for_number(
     phone_number: str,
     days: int = 30,
@@ -51,6 +58,12 @@ async def get_call_history_for_number(
     }
 
 
+@tool(
+    name="GoToConnect: Tech Availability",
+    description="Get presence and availability for all MTG GoToConnect users.",
+    category="GoToConnect",
+    tags=["gotoconnect", "presence", "agent"],
+)
 async def get_tech_availability() -> list[dict]:
     """
     Get presence and call queue status for all MTG GoToConnect users.
@@ -83,6 +96,12 @@ async def get_tech_availability() -> list[dict]:
     ]
 
 
+@tool(
+    name="GoToConnect: Send SMS",
+    description="Send an SMS to a customer from an MTG GoToConnect number.",
+    category="GoToConnect",
+    tags=["gotoconnect", "sms", "messaging", "agent"],
+)
 async def send_sms_to_customer(
     to_number: str,
     message: str,
@@ -123,6 +142,12 @@ async def send_sms_to_customer(
     return result
 
 
+@tool(
+    name="GoToConnect: Recent Missed Calls",
+    description="Get recent missed inbound calls for proactive customer follow-up.",
+    category="GoToConnect",
+    tags=["gotoconnect", "calls", "agent"],
+)
 async def get_recent_missed_calls(count: int = 20) -> list[dict]:
     """
     Get recent missed inbound calls across the MTG GoToConnect account.
@@ -153,6 +178,12 @@ async def get_recent_missed_calls(count: int = 20) -> list[dict]:
     return missed[:count]
 
 
+@tool(
+    name="GoToConnect: Call Activity Report",
+    description="Per-tech call summary for the past N days. Useful for timesheet verification and capacity planning.",
+    category="GoToConnect",
+    tags=["gotoconnect", "reporting", "agent"],
+)
 async def get_call_activity_report(days: int = 7) -> dict:
     """
     Get a summary of call activity for all MTG techs over the past N days.

@@ -2,9 +2,16 @@
 VIPRE data providers for org mapping UI.
 """
 
+from bifrost import data_provider
 from modules.vipre import VipreClient
 
 
+@data_provider(
+    name="VIPRE: List Sites",
+    description="Returns inferred VIPRE sites for org mapping picker.",
+    category="VIPRE",
+    tags=["vipre", "data-provider"],
+)
 async def list_vipre_sites() -> list[dict]:
     """Return inferred VIPRE sites as {value, label} options for org mapping."""
     from modules.vipre import get_client

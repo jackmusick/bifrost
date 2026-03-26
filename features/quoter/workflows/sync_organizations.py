@@ -10,9 +10,16 @@ Entity model:
   entity_name = Quoter contact.organization
 """
 
+from bifrost import workflow
 from bifrost import integrations, organizations
 
 
+@workflow(
+    name="Quoter: Sync Organizations",
+    description="Sync Quoter organizations inferred from contacts to Bifrost organizations.",
+    category="Quoter",
+    tags=["quoter", "sync"],
+)
 async def sync_quoter_organizations() -> dict:
     from modules.quoter import get_client
 

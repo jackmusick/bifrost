@@ -11,10 +11,17 @@ Note: the Reseller API does not expose customers.list. Customer discovery is
 derived from subscriptions.list and then enriched with customers.get.
 """
 
+from bifrost import workflow
 from bifrost import integrations, organizations
 from modules import googleworkspace
 
 
+@workflow(
+    name="Google Workspace Reseller: Sync Customers",
+    description="Sync reseller-managed Google Workspace customers into Bifrost organizations.",
+    category="Google Workspace Reseller",
+    tags=["google", "workspace", "reseller"],
+)
 async def sync_google_workspace_reseller_customers() -> dict:
     client = await googleworkspace.get_reseller_client(scope="global")
     try:

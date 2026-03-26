@@ -5,10 +5,17 @@ Syncs Datto SaaS Protection domain records to Bifrost organizations and creates
 IntegrationMappings so org-scoped workflows can resolve the mapped domain ID.
 """
 
+from bifrost import workflow
 from bifrost import integrations, organizations
 from modules.dattosaasprotection import DattoSaaSProtectionClient
 
 
+@workflow(
+    name="Datto SaaS Protection: Sync Domains",
+    description="Sync Datto SaaS Protection domains to Bifrost organizations.",
+    category="Datto SaaS Protection",
+    tags=["datto", "saas", "sync"],
+)
 async def sync_dattosaas_domains() -> dict:
     from modules.dattosaasprotection import get_client
 

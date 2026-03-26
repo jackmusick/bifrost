@@ -13,9 +13,16 @@ Run this after initial CIPP integration setup, and again whenever new
 customer tenants are onboarded in CIPP.
 """
 
+from bifrost import workflow
 from bifrost import integrations, organizations
 
 
+@workflow(
+    name="CIPP: Sync Tenants",
+    description="Sync CIPP-managed customer tenants to Bifrost organizations.",
+    category="CIPP",
+    tags=["cipp", "sync"],
+)
 async def sync_cipp_tenants() -> dict:
     from modules.cipp import get_client
 

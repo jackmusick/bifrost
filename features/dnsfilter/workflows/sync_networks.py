@@ -9,10 +9,17 @@ Entity model:
   entity_name = network name
 """
 
+from bifrost import workflow
 from bifrost import integrations, organizations
 from modules.dnsfilter import DNSFilterClient
 
 
+@workflow(
+    name="DNSFilter: Sync Networks",
+    description="Sync DNSFilter customer networks to Bifrost organizations.",
+    category="DNSFilter",
+    tags=["dnsfilter", "sync"],
+)
 async def sync_dnsfilter_networks() -> dict:
     from modules.dnsfilter import get_client
 
