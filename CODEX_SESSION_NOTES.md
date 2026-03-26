@@ -51,6 +51,8 @@ workflow/content repos.
   `.bifrost/` as generated/system-managed workspace state
 - See `docs/plans/2026-03-26-upstream-convergence-plan.md` before doing more
   repo-model work around manifests or dev image workflows
+- See `docs/plans/2026-03-26-feature-branch-closeout-plan.md` for the merge
+  path from `feat/autotask-cove-integrations` back to fork `main`
 
 ## Useful `.claude` Behavior That Matters
 
