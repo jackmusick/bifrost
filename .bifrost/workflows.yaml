@@ -660,13 +660,13 @@ workflows:
     - halopsa
     - tickets
     type: tool
-  a02961df-79e2-4b4f-aa39-5e217c1b88d3:
+  f708a8ea-be19-48d4-8234-b422b1675090:
     access_level: authenticated
     category: Examples
     description: A simple greeting workflow — says hi from Copilot CLI.
     endpoint_enabled: false
     function_name: hello_world
-    id: a02961df-79e2-4b4f-aa39-5e217c1b88d3
+    id: f708a8ea-be19-48d4-8234-b422b1675090
     name: Hello World
     path: workflows/sample/hello_world.py
     tags:

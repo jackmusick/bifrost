@@ -56,7 +56,7 @@ router = APIRouter(prefix="/api/github", tags=["GitHub"])
 def _extract_repo_from_url(repo_url: str) -> str:
     """Extract owner/repo from GitHub URL."""
     if repo_url.startswith("https://github.com/"):
-        return repo_url.replace("https://github.com/", "").rstrip(".git")
+        return repo_url.replace("https://github.com/", "").removesuffix(".git").rstrip("/")
     return repo_url
 
 
@@ -856,6 +856,5 @@ async def git_discard(
         paths=request.paths,
     )
     return GitJobResponse(job_id=job_id)
-
 
 
