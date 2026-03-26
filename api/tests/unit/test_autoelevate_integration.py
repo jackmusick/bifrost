@@ -47,3 +47,12 @@ async def test_get_client_requires_all_credentials(monkeypatch):
 
     with pytest.raises(RuntimeError, match="username, password, and totp_secret"):
         await autoelevate.get_client()
+
+
+def test_generate_totp_accepts_otpauth_uri(monkeypatch):
+    monkeypatch.setattr(autoelevate.time, "time", lambda: 0)
+
+    raw = autoelevate.generate_totp("JBSWY3DPEHPK3PXP")
+    from_uri = autoelevate.generate_totp("otpauth://totp?secret=JBSWY3DPEHPK3PXP")
+
+    assert from_uri == raw

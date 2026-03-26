@@ -32,6 +32,20 @@ import asyncio
 import httpx
 from typing import Any
 from datetime import datetime, timedelta, timezone
+from urllib.parse import parse_qs, urlparse
+
+
+def _normalize_totp_secret(secret: str) -> str:
+    """Accept a raw base32 seed or an otpauth URI and return the base32 seed."""
+    cleaned = secret.strip()
+    if cleaned.lower().startswith("otpauth://"):
+        parsed = urlparse(cleaned)
+        query = parse_qs(parsed.query)
+        extracted = query.get("secret", [None])[0]
+        if not extracted:
+            raise ValueError("TOTP otpauth URI is missing the secret parameter")
+        return extracted.strip()
+    return cleaned
 
 
 def generate_totp(secret: str, interval: int = 30) -> str:
@@ -45,7 +59,10 @@ def generate_totp(secret: str, interval: int = 30) -> str:
     Returns:
         6-digit TOTP code as string
     """
-    key = base64.b32decode(secret.upper() + "=" * ((8 - len(secret) % 8) % 8))
+    normalized_secret = _normalize_totp_secret(secret)
+    key = base64.b32decode(
+        normalized_secret.upper() + "=" * ((8 - len(normalized_secret) % 8) % 8)
+    )
     counter = int(time.time()) // interval
     counter_bytes = struct.pack(">Q", counter)
     hmac_hash = hmac.new(key, counter_bytes, hashlib.sha1).digest()

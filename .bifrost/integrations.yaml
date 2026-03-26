@@ -203,7 +203,7 @@ integrations:
       position: 1
       required: true
       type: secret
-    - description: Base32-encoded AutoElevate TOTP secret used for MFA
+    - description: Base32-encoded AutoElevate TOTP secret or otpauth URI used for MFA
       key: totp_secret
       position: 2
       required: true
