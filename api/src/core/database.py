@@ -104,6 +104,8 @@ def get_engine(settings: Settings | None = None) -> AsyncEngine:
             pool_size=settings.database_pool_size,
             max_overflow=settings.database_max_overflow,
             pool_pre_ping=True,  # Verify connections before use
+            pool_timeout=30,  # Fail fast when pool is exhausted
+            pool_recycle=1800,  # Recycle connections every 30 min
             connect_args=connect_args,
         )
 
