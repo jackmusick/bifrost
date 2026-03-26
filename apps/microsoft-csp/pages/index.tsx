@@ -529,7 +529,7 @@ export default function MicrosoftCspPage() {
         <div>
           <h1 className="text-3xl font-bold tracking-tight">Microsoft CSP</h1>
           <p className="text-muted-foreground mt-1">
-            Manage CSP customer tenants, GDAP relationships, and application consent.
+            Manage partner-side tenant discovery, GDAP relationships, and customer consent for the Bifrost Microsoft app.
           </p>
         </div>
         <div className="flex items-center gap-2">
@@ -555,6 +555,24 @@ export default function MicrosoftCspPage() {
           </Button>
         </div>
       </div>
+
+      <Card className="mb-6 shrink-0 border-blue-500/20 bg-blue-500/5">
+        <CardContent className="pt-6">
+          <div className="space-y-2 text-sm">
+            <p className="font-medium">How to think about these integrations</p>
+            <p className="text-muted-foreground">
+              <strong>Microsoft CSP</strong> is the delegated partner connection used to
+              see customers in Partner Center and perform GDAP or consent actions.
+              <strong> Microsoft</strong> is the customer-tenant application identity that
+              Bifrost uses after a tenant has been linked and consented.
+            </p>
+            <p className="text-muted-foreground">
+              In short: CSP is who we are as the partner, Microsoft is the app we
+              want customers to trust.
+            </p>
+          </div>
+        </CardContent>
+      </Card>
 
       {/* Status Cards */}
       <SetupStatusCards

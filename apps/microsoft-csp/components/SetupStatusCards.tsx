@@ -75,7 +75,7 @@ export function SetupStatusCards({
               </div>
               <div>
                 <h3 className="font-semibold">Microsoft CSP</h3>
-                <p className="text-sm text-muted-foreground">Partner Center API</p>
+                <p className="text-sm text-muted-foreground">Partner delegated access</p>
               </div>
             </div>
             {cspConnected ? (
@@ -92,7 +92,7 @@ export function SetupStatusCards({
           </div>
           {!cspConnected && (
             <p className="text-xs text-muted-foreground mt-3">
-              Settings → Integrations → Microsoft CSP
+              Connect this first for Partner Center, GDAP, and consent workflows.
             </p>
           )}
         </CardContent>
@@ -108,7 +108,7 @@ export function SetupStatusCards({
               </div>
               <div>
                 <h3 className="font-semibold">Microsoft</h3>
-                <p className="text-sm text-muted-foreground">Client Credentials</p>
+                <p className="text-sm text-muted-foreground">Customer app identity</p>
               </div>
             </div>
             {microsoftConnected ? (
@@ -125,7 +125,7 @@ export function SetupStatusCards({
           </div>
           {!microsoftConnected && (
             <p className="text-xs text-muted-foreground mt-3">
-              Settings → Integrations → Microsoft
+              Configure the Bifrost app identity used inside customer tenants.
             </p>
           )}
         </CardContent>

@@ -138,6 +138,18 @@ As of this note, `integrations.yaml` includes:
 - Keeper is integrated as `Keeper MSP` through Commander Service Mode over HTTP
 - Keeper is treated as a system Bifrost manages, not as Bifrost's primary
   secrets backend
+
+### Microsoft
+
+- `Microsoft CSP` and `Microsoft` are intentionally separate integrations
+- `Microsoft CSP` is the partner-side delegated OAuth connection for Partner
+  Center, tenant discovery, GDAP, and consent workflows
+- `Microsoft` is the Bifrost customer-tenant app identity used for Graph and
+  Exchange after tenants are linked and consented
+- The Microsoft CSP app expects both integrations to be configured; one does not
+  replace the other
+- Detailed rationale is in
+  `docs/plans/2026-03-26-microsoft-integration-boundaries.md`
 - For Bifrost runtime secrets, prefer an external store such as Azure Key Vault
 - See `docs/plans/2026-03-25-keeper-msp-integration-design-note.md`
 
