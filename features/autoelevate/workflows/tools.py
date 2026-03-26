@@ -13,9 +13,14 @@ from bifrost import workflow, config
 
 logger = logging.getLogger(__name__)
 
-# Email template IDs for HaloPSA notifications — configure to match your templates
-APPROVAL_EMAIL_TEMPLATE = config.get("autoelevate_approval_email_template_id", -148)
-DENIAL_EMAIL_TEMPLATE = config.get("autoelevate_denial_email_template_id", -145)
+
+async def _get_email_template_id(config_key: str, default: int) -> int:
+    """Resolve a HaloPSA email template ID from async config."""
+    value = await config.get(config_key, default)
+    try:
+        return int(value)
+    except (TypeError, ValueError):
+        return default
 
 
 @workflow(
@@ -35,7 +40,7 @@ async def get_approval_policy() -> dict:
     Set the 'autoelevate_approval_policy' config value with your organization's
     approval policy text (approved vendors, software lists, review guidelines).
     """
-    policy_text = config.get("autoelevate_approval_policy", "")
+    policy_text = await config.get("autoelevate_approval_policy", "")
     if not policy_text:
         return {
             "error": (
@@ -204,6 +209,10 @@ async def approve_request(
 
     # Add ticket note + send approval email + close
     if ticket_id:
+        approval_email_template = await _get_email_template_id(
+            "autoelevate_approval_email_template_id",
+            -148,
+        )
         rule_link = f'<br><a href="https://msp.autoelevate.com/elevation-rules/{rule_id}/edit">View Rule</a>' if rule_id else ""
         note_html = (
             f"This request has been <b>approved</b>.<br><br>"
@@ -215,7 +224,7 @@ async def approve_request(
             is_complete=True,
             close_ticket=True,
             send_email=True,
-            email_template_id=APPROVAL_EMAIL_TEMPLATE,
+            email_template_id=approval_email_template,
         )
 
     return {
@@ -271,6 +280,10 @@ async def deny_request(
 
     # Add ticket note + send denial email (ticket stays open)
     if ticket_id:
+        denial_email_template = await _get_email_template_id(
+            "autoelevate_denial_email_template_id",
+            -145,
+        )
         ae_link = f'https://msp.autoelevate.com/elevation-requests/{request_id}'
         note_html = (
             f"This request has been <b>denied</b> by automated review.<br><br>"
@@ -284,7 +297,7 @@ async def deny_request(
             is_complete=True,
             close_ticket=False,
             send_email=True,
-            email_template_id=DENIAL_EMAIL_TEMPLATE,
+            email_template_id=denial_email_template,
         )
 
     return {
