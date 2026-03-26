@@ -346,7 +346,7 @@ integrations:
       provider_name: NinjaOne
       scopes:
       - monitoring control management
-      token_url: https://app.ninjarmm.com/ws/oauth/token
+      token_url: null
   d079ed0d-a97a-42d1-ad71-ce49b187a81d:
     config_schema:
     - description: Google service account JSON for this tenant, raw JSON or base64-encoded
