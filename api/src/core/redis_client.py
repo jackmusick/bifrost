@@ -16,6 +16,7 @@ Execution Flow:
 
 import json
 import logging
+from decimal import Decimal
 from datetime import datetime, timezone
 from typing import Any, Awaitable, TypedDict, cast
 
@@ -664,13 +665,15 @@ class RedisClient:
         redis_client = await self._get_redis()
         key = f"{WORKFLOW_METADATA_CACHE_PREFIX}{workflow_id}"
 
+        normalized_value = float(value) if isinstance(value, Decimal) else value
+
         data = {
             "id": workflow_id,
             "name": name,
             "file_path": file_path,
             "timeout_seconds": timeout_seconds,
             "time_saved": time_saved,
-            "value": value,
+            "value": normalized_value,
             "execution_mode": execution_mode,
         }
 

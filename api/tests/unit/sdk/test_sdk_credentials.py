@@ -14,9 +14,11 @@ import pytest
 
 from bifrost.credentials import (
     clear_credentials,
+    get_credentials_backend,
     get_config_dir,
     get_credentials,
     get_credentials_path,
+    get_pass_entry,
     is_token_expired,
     save_credentials,
 )
@@ -25,12 +27,11 @@ from bifrost.credentials import (
 @pytest.fixture
 def temp_credentials_dir(tmp_path):
     """Use a temporary directory for credentials storage during tests."""
-    # Patch get_config_dir to return our temp directory
-    with patch("bifrost.credentials.get_config_dir", return_value=tmp_path):
-        # Also need to patch get_credentials_path since it calls get_config_dir
-        creds_path = tmp_path / "credentials.json"
-        with patch("bifrost.credentials.get_credentials_path", return_value=creds_path):
-            yield tmp_path
+    with patch.dict("os.environ", {"BIFROST_CREDENTIALS_BACKEND": "file"}, clear=False):
+        with patch("bifrost.credentials.get_config_dir", return_value=tmp_path):
+            creds_path = tmp_path / "credentials.json"
+            with patch("bifrost.credentials.get_credentials_path", return_value=creds_path):
+                yield tmp_path
 
 
 class TestGetConfigDir:
@@ -136,6 +137,81 @@ class TestCredentialsStorage:
         """Test clearing credentials when file doesn't exist."""
         # Should not raise an error
         clear_credentials()
+
+
+class TestPassCredentialsStorage:
+    """Tests for pass-backed credentials storage."""
+
+    @pytest.fixture
+    def pass_backend(self):
+        with patch.dict(
+            "os.environ",
+            {
+                "BIFROST_CREDENTIALS_BACKEND": "pass",
+                "BIFROST_PASS_ENTRY": "bifrost/test-credentials",
+            },
+            clear=False,
+        ):
+            yield
+
+    def test_backend_selection(self, pass_backend):
+        assert get_credentials_backend() == "pass"
+        assert get_pass_entry() == "bifrost/test-credentials"
+
+    def test_save_and_load_credentials_from_pass(self, pass_backend):
+        stored = {}
+
+        def fake_run(cmd, input=None, text=None, capture_output=None, check=None):
+            if cmd[:4] == ["pass", "insert", "-m", "-f"]:
+                stored["payload"] = input
+                return type("Result", (), {"stdout": ""})()
+            if cmd[:2] == ["pass", "show"]:
+                return type("Result", (), {"stdout": stored["payload"]})()
+            raise AssertionError(f"unexpected command: {cmd}")
+
+        with patch("bifrost.credentials.shutil.which", return_value="/usr/bin/pass"):
+            with patch("bifrost.credentials.subprocess.run", side_effect=fake_run):
+                save_credentials(
+                    api_url="https://api.example.com",
+                    access_token="access_token_123",
+                    refresh_token="refresh_token_456",
+                    expires_at="2025-01-01T12:00:00+00:00",
+                )
+                creds = get_credentials()
+
+        assert creds is not None
+        assert creds["api_url"] == "https://api.example.com"
+        assert creds["access_token"] == "access_token_123"
+        assert creds["refresh_token"] == "refresh_token_456"
+
+    def test_auto_migrates_file_credentials_to_pass(self, tmp_path):
+        stored = {}
+        creds_path = tmp_path / "credentials.json"
+        creds_path.write_text(json.dumps({
+            "api_url": "https://api.example.com",
+            "access_token": "access_token_123",
+            "refresh_token": "refresh_token_456",
+            "expires_at": "2025-01-01T12:00:00+00:00",
+        }))
+
+        def fake_run(cmd, input=None, text=None, capture_output=None, check=None):
+            if cmd[:4] == ["pass", "insert", "-m", "-f"]:
+                stored["payload"] = input
+                return type("Result", (), {"stdout": ""})()
+            if cmd[:2] == ["pass", "show"]:
+                raise __import__("subprocess").CalledProcessError(returncode=1, cmd=cmd)
+            raise AssertionError(f"unexpected command: {cmd}")
+
+        with patch.dict("os.environ", {"BIFROST_CREDENTIALS_BACKEND": "auto"}, clear=False):
+            with patch("bifrost.credentials.get_config_dir", return_value=tmp_path):
+                with patch("bifrost.credentials.get_credentials_path", return_value=creds_path):
+                    with patch("bifrost.credentials.shutil.which", return_value="/usr/bin/pass"):
+                        with patch("bifrost.credentials.subprocess.run", side_effect=fake_run):
+                            creds = get_credentials()
+
+        assert creds is not None
+        assert json.loads(stored["payload"])["refresh_token"] == "refresh_token_456"
+        assert not creds_path.exists()
 
 
 class TestTokenExpiry:
