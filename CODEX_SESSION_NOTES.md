@@ -47,6 +47,10 @@ workflow/content repos.
 - S3/RepoStorage is the source of truth for repo content in the platform
 - For manifests and git sync, use non-destructive upsert patterns for
   integrations, config schema, and mappings
+- The fork currently carries committed `.bifrost/*.yaml`, but upstream treats
+  `.bifrost/` as generated/system-managed workspace state
+- See `docs/plans/2026-03-26-upstream-convergence-plan.md` before doing more
+  repo-model work around manifests or dev image workflows
 
 ## Useful `.claude` Behavior That Matters
 
