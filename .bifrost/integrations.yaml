@@ -211,6 +211,34 @@ integrations:
     id: 7936770f-eb46-4f91-92a7-3e37ed307715
     mappings: []
     name: AutoElevate
+  7c3f243e-83d1-4d37-93da-2545e85d4cf2:
+    config_schema:
+    - description: API base URL (e.g. https://webservices14.autotask.net/atservicesrest)
+      key: base_url
+      position: 0
+      required: true
+      type: string
+    - description: ApiIntegrationCode header value
+      key: api_integration_code
+      position: 1
+      required: true
+      type: secret
+    - description: API username (email)
+      key: username
+      position: 2
+      required: true
+      type: string
+    - description: API secret/password
+      key: secret
+      position: 3
+      required: true
+      type: secret
+    entity_id: company_id
+    entity_id_name: Company
+    id: 7c3f243e-83d1-4d37-93da-2545e85d4cf2
+    list_entities_data_provider_id: 32222c8b-5b11-40b2-aed3-e8840766cf15
+    mappings: []
+    name: Autotask
   82252311-d1d6-4d69-b26f-b42989e60d03:
     config_schema:
     - description: DNSFilter API token from Account Settings
