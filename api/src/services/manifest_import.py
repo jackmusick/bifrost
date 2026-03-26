@@ -779,7 +779,7 @@ class ManifestResolver:
             post_values: dict = {}
             if org_id_uuid:
                 post_values["organization_id"] = org_id_uuid
-            if mform.access_level:
+            if mform.access_level is not None:
                 post_values["access_level"] = mform.access_level
             if post_values:
                 post_values["updated_at"] = datetime.now(timezone.utc)
@@ -1028,13 +1028,14 @@ class ManifestResolver:
             "type": getattr(mwf, "type", "workflow"),
             "is_active": True,
             "organization_id": org_id,
-            "access_level": getattr(mwf, "access_level", "role_based"),
             "endpoint_enabled": getattr(mwf, "endpoint_enabled", False),
             "timeout_seconds": mwf.timeout_seconds if mwf.timeout_seconds is not None else 1800,
             "public_endpoint": getattr(mwf, "public_endpoint", False),
             "category": getattr(mwf, "category", "General"),
             "tags": getattr(mwf, "tags", []),
         }
+        if mwf.access_level is not None:
+            wf_values["access_level"] = mwf.access_level
 
         # Only include description if manifest explicitly provides it
         if mwf.description is not None:
@@ -1687,7 +1688,6 @@ class ManifestResolver:
 
         app_id = UUID(mapp.id)
         org_id = UUID(mapp.organization_id) if mapp.organization_id else None
-        access_level = getattr(mapp, "access_level", "role_based")
 
         # Check prefetch cache for existing app by slug
         existing_id = cache["app_by_slug"].get(slug)
@@ -1698,9 +1698,10 @@ class ManifestResolver:
             "slug": slug,
             "repo_path": repo_path,
             "organization_id": org_id,
-            "access_level": access_level,
             "dependencies": mapp.dependencies or None,
         }
+        if mapp.access_level is not None:
+            app_values["access_level"] = mapp.access_level
 
         ops: list[SyncOp] = []
 
@@ -2012,7 +2013,7 @@ class ManifestResolver:
                 "created_by": "git-sync",
                 "organization_id": org_id,
             }
-            if hasattr(mform, "access_level") and mform.access_level:
+            if mform.access_level is not None:
                 form_values["access_level"] = mform.access_level
             ops.append(Upsert(
                 model=Form,
@@ -2063,7 +2064,7 @@ class ManifestResolver:
                 "max_iterations": data.get("max_iterations"),
                 "max_token_budget": data.get("max_token_budget"),
             }
-            if hasattr(magent, "access_level") and magent.access_level:
+            if magent.access_level is not None:
                 agent_values["access_level"] = magent.access_level
             ops.append(Upsert(
                 model=Agent,
