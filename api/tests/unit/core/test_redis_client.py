@@ -6,6 +6,7 @@ Tests the BLPOP/RPUSH pattern for synchronous workflow execution.
 
 import pytest
 import json
+from decimal import Decimal
 from unittest.mock import AsyncMock
 
 
@@ -19,6 +20,7 @@ class TestRedisClient:
         redis.rpush = AsyncMock()
         redis.expire = AsyncMock()
         redis.blpop = AsyncMock()
+        redis.setex = AsyncMock()
         redis.close = AsyncMock()
         return redis
 
@@ -119,6 +121,29 @@ class TestRedisClient:
 
         mock_redis.close.assert_called_once()
         assert client._redis is None
+
+    async def test_set_workflow_metadata_cache_serializes_decimal(self, mock_redis):
+        """Workflow metadata cache should coerce Decimal values to JSON numbers."""
+        from src.core.redis_client import RedisClient, WORKFLOW_METADATA_CACHE_PREFIX
+
+        client = RedisClient()
+        client._redis = mock_redis
+
+        await client.set_workflow_metadata_cache(
+            workflow_id="wf-123",
+            name="Test Workflow",
+            file_path="features/test/workflows/example.py",
+            timeout_seconds=300,
+            time_saved=15,
+            value=Decimal("42.50"),
+            execution_mode="sync",
+        )
+
+        mock_redis.setex.assert_called_once()
+        call_args = mock_redis.setex.call_args
+        assert call_args[0][0] == f"{WORKFLOW_METADATA_CACHE_PREFIX}wf-123"
+        payload = json.loads(call_args[0][2])
+        assert payload["value"] == 42.5
 
 
 class TestRedisClientSingleton:

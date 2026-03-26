@@ -7,6 +7,7 @@ ManifestResolver class and standalone import functions.
 """
 
 import logging
+import re
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
@@ -29,6 +30,75 @@ from bifrost.manifest import (
 )
 
 logger = logging.getLogger(__name__)
+
+
+_SETUP_PLACEHOLDER_RE = re.compile(r"<[^>]+>")
+
+
+def _is_setup_placeholder(value: str | None) -> bool:
+    """Return True when a manifest value is only a setup placeholder."""
+    if value is None:
+        return False
+    stripped = value.strip()
+    if not stripped:
+        return False
+    return stripped == "__NEEDS_SETUP__" or bool(_SETUP_PLACEHOLDER_RE.search(stripped))
+
+
+def _normalize_manifest_oauth_provider(op_data: object) -> tuple[dict, dict]:
+    """Return insert/update values that preserve runtime OAuth settings."""
+    client_id = (
+        "__NEEDS_SETUP__"
+        if _is_setup_placeholder(getattr(op_data, "client_id", None))
+        else getattr(op_data, "client_id", None)
+    )
+    authorization_url = (
+        None
+        if _is_setup_placeholder(getattr(op_data, "authorization_url", None))
+        else getattr(op_data, "authorization_url", None)
+    )
+    token_url = (
+        None
+        if _is_setup_placeholder(getattr(op_data, "token_url", None))
+        else getattr(op_data, "token_url", None)
+    )
+    redirect_uri = (
+        None
+        if _is_setup_placeholder(getattr(op_data, "redirect_uri", None))
+        else getattr(op_data, "redirect_uri", None)
+    )
+    token_url_defaults = getattr(op_data, "token_url_defaults", None) or {}
+    scopes = getattr(op_data, "scopes", None) or []
+
+    insert_values = {
+        "provider_name": getattr(op_data, "provider_name"),
+        "display_name": getattr(op_data, "display_name"),
+        "oauth_flow_type": getattr(op_data, "oauth_flow_type"),
+        "client_id": client_id,
+        "authorization_url": authorization_url,
+        "token_url": token_url,
+        "token_url_defaults": token_url_defaults,
+        "scopes": scopes,
+        "redirect_uri": redirect_uri,
+    }
+
+    update_values = {
+        "display_name": getattr(op_data, "display_name"),
+        "oauth_flow_type": getattr(op_data, "oauth_flow_type"),
+        "scopes": scopes,
+        "updated_at": datetime.now(timezone.utc),
+    }
+    if client_id and client_id != "__NEEDS_SETUP__":
+        update_values["client_id"] = client_id
+    if authorization_url:
+        update_values["authorization_url"] = authorization_url
+    if token_url:
+        update_values["token_url"] = token_url
+        update_values["token_url_defaults"] = token_url_defaults
+    if redirect_uri:
+        update_values["redirect_uri"] = redirect_uri
+
+    return insert_values, update_values
 
 
 # =============================================================================
@@ -1392,7 +1462,13 @@ class ManifestResolver:
         )
 
         # Delete agents not in manifest
-        await _bulk_delete(Agent, [], present_agent_uuids, "agents")
+        # System agents are platform-managed and should not be treated as repo drift.
+        await _bulk_delete(
+            Agent,
+            [Agent.is_system == False],  # noqa: E712
+            present_agent_uuids,
+            "agents",
+        )
 
         # Delete apps not in manifest
         await _bulk_delete(Application, [], present_app_uuids, "applications")
@@ -1444,11 +1520,13 @@ class ManifestResolver:
             )
             existing_by_name = by_name.scalar_one_or_none()
 
+        integ_default_entity_id = None if _is_setup_placeholder(minteg.default_entity_id) else minteg.default_entity_id
+
         integ_values: dict = {
             "name": integ_name,
             "entity_id": minteg.entity_id,
             "entity_id_name": minteg.entity_id_name,
-            "default_entity_id": minteg.default_entity_id,
+            "default_entity_id": integ_default_entity_id,
             "list_entities_data_provider_id": (
                 UUID(minteg.list_entities_data_provider_id)
                 if minteg.list_entities_data_provider_id else None
@@ -1519,35 +1597,22 @@ class ManifestResolver:
         # Sync OAuth provider (structure only — client_secret never imported)
         if minteg.oauth_provider:
             op_data = minteg.oauth_provider
+            insert_values, update_values = _normalize_manifest_oauth_provider(op_data)
             op_stmt = insert(OAuthProvider).values(
-                provider_name=op_data.provider_name,
-                display_name=op_data.display_name,
-                oauth_flow_type=op_data.oauth_flow_type,
-                client_id=op_data.client_id,
+                provider_name=insert_values["provider_name"],
+                display_name=insert_values["display_name"],
+                oauth_flow_type=insert_values["oauth_flow_type"],
+                client_id=insert_values["client_id"],
                 encrypted_client_secret=b"",  # placeholder — needs manual setup
-                authorization_url=op_data.authorization_url,
-                token_url=op_data.token_url,
-                token_url_defaults=op_data.token_url_defaults or {},
-                scopes=op_data.scopes or [],
-                redirect_uri=op_data.redirect_uri,
+                authorization_url=insert_values["authorization_url"],
+                token_url=insert_values["token_url"],
+                token_url_defaults=insert_values["token_url_defaults"],
+                scopes=insert_values["scopes"],
+                redirect_uri=insert_values["redirect_uri"],
                 integration_id=integ_id,
             ).on_conflict_do_update(
                 constraint="uq_oauth_providers_integration_id",
-                set_={
-                    "display_name": op_data.display_name,
-                    "oauth_flow_type": op_data.oauth_flow_type,
-                    **(
-                        {"client_id": op_data.client_id}
-                        if op_data.client_id and op_data.client_id != "__NEEDS_SETUP__"
-                        else {}
-                    ),
-                    "authorization_url": op_data.authorization_url,
-                    "token_url": op_data.token_url,
-                    "token_url_defaults": op_data.token_url_defaults or {},
-                    "scopes": op_data.scopes or [],
-                    "redirect_uri": op_data.redirect_uri,
-                    "updated_at": datetime.now(timezone.utc),
-                },
+                set_=update_values,
             )
             await self.db.execute(op_stmt)
 

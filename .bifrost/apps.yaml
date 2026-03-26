@@ -1,0 +1,8 @@
+apps:
+  microsoft-csp:
+    id: e17708e6-1291-417a-a69e-099f9760ee19
+    path: apps/microsoft-csp
+    slug: microsoft-csp
+    name: Microsoft CSP
+    description: Manage Microsoft CSP tenants, link to Bifrost organizations, and grant application consent.
+    access_level: authenticated

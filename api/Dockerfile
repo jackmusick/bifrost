@@ -43,7 +43,7 @@ COPY --from=builder /usr/local/bin /usr/local/bin
 
 # Copy application code (paths relative to root context)
 COPY api/src/ /app/src/
-COPY api/shared/ /app/shared/
+COPY shared/ /app/shared/
 COPY api/alembic/ /app/alembic/
 COPY api/alembic.ini /app/
 COPY api/bifrost/ /app/bifrost/

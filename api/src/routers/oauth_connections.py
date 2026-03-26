@@ -142,7 +142,14 @@ class OAuthConnectionRepository:
         """List all OAuth connections, optionally filtered by org."""
         query = select(OAuthProvider)
         if org_id:
-            query = query.where(OAuthProvider.organization_id == org_id)
+            query = query.where(
+                or_(
+                    OAuthProvider.organization_id == org_id,
+                    OAuthProvider.organization_id.is_(None),
+                )
+            )
+        else:
+            query = query.where(OAuthProvider.organization_id.is_(None))
         query = query.order_by(OAuthProvider.created_at.desc())
 
         result = await self.db.execute(query)

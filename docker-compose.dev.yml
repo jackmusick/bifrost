@@ -57,7 +57,7 @@ services:
     volumes:
       - ./api/src:/app/src:ro
       - /app/src/services/app_compiler/node_modules  # preserve npm deps from image
-      - ./api/shared:/app/shared:ro
+      - ./shared:/app/shared:ro
       - ./api/scripts:/app/scripts:ro
       - ./api/alembic:/app/alembic:ro
       - ./api/alembic.ini:/app/alembic.ini:ro
@@ -84,7 +84,7 @@ services:
     volumes:
       - ./api/src:/app/src:ro
       - /app/src/services/app_compiler/node_modules  # preserve npm deps from image
-      - ./api/shared:/app/shared:ro
+      - ./shared:/app/shared:ro
       - ./api/bifrost:/app/bifrost:ro
       - ./api/alembic:/app/alembic:ro
       - ./api/alembic.ini:/app/alembic.ini:ro
@@ -112,7 +112,7 @@ services:
     volumes:
       - ./api/src:/app/src:ro
       - /app/src/services/app_compiler/node_modules  # preserve npm deps from image
-      - ./api/shared:/app/shared:ro
+      - ./shared:/app/shared:ro
       - ./api/bifrost:/app/bifrost:ro
     command: >
       watchmedo auto-restart --directory=/app/src --directory=/app/shared --pattern="*.py" --recursive -- python -m src.scheduler.main
@@ -135,7 +135,7 @@ services:
     volumes:
       - ./api/src:/app/src:ro
       - /app/src/services/app_compiler/node_modules  # preserve npm deps from image
-      - ./api/shared:/app/shared:ro
+      - ./shared:/app/shared:ro
       - ./api/bifrost:/app/bifrost:ro
     command: >
       watchmedo auto-restart --directory=/app/src --directory=/app/shared --pattern="*.py" --recursive -- python -m src.worker.main

@@ -1,0 +1,11 @@
+agents:
+  ac6aa147-d6ee-46dd-a3fd-653dbedfc780:
+    access_level: authenticated
+    id: ac6aa147-d6ee-46dd-a3fd-653dbedfc780
+    name: Elevation Agent
+    path: agents/ac6aa147-d6ee-46dd-a3fd-653dbedfc780.agent.yaml
+  b70cfb81-411a-4110-ad20-a9c92c5934bf:
+    access_level: authenticated
+    id: b70cfb81-411a-4110-ad20-a9c92c5934bf
+    name: HaloPSA Report Agent
+    path: agents/b70cfb81-411a-4110-ad20-a9c92c5934bf.agent.yaml

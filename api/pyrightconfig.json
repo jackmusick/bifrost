@@ -1,7 +1,7 @@
 {
     "include": [
         "src/**/*.py",
-        "shared/**/*.py",
+        "../shared/**/*.py",
         "bifrost/**/*.py",
         "tests/**/*.py"
     ],
