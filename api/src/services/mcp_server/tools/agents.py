@@ -207,7 +207,6 @@ async def get_agent(
                 "access_level": agent.access_level.value if agent.access_level else "role_based",
                 "organization_id": str(agent.organization_id) if agent.organization_id else None,
                 "is_active": agent.is_active,
-                "is_system": agent.is_system,
                 "created_by": agent.created_by,
                 "created_at": agent.created_at.isoformat() if agent.created_at else None,
                 "updated_at": agent.updated_at.isoformat() if agent.updated_at else None,
@@ -495,10 +494,6 @@ async def update_agent(
                 if agent.organization_id is None:
                     return error_result("Only platform admins can update global agents.")
 
-            # Check if system agent
-            if agent.is_system:
-                return error_result("System agents cannot be updated.")
-
             updates_made = []
 
             # Apply updates
@@ -673,10 +668,6 @@ async def delete_agent(
                 # Global agents can only be deleted by admins
                 if agent.organization_id is None:
                     return error_result("Only platform admins can delete global agents.")
-
-            # Prevent deletion of system agents
-            if agent.is_system:
-                return error_result("System agents cannot be deleted.")
 
             # Soft delete
             agent.is_active = False

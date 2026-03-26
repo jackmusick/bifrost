@@ -48,7 +48,6 @@ class Agent(Base):
         ForeignKey("users.id"), default=None
     )
     is_active: Mapped[bool] = mapped_column(Boolean, default=True)
-    is_system: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
     # Knowledge namespaces this agent can search (RAG)
     knowledge_sources: Mapped[list[str]] = mapped_column(
         ARRAY(String), nullable=False, default=list, server_default='{}'

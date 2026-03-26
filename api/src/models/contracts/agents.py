@@ -117,7 +117,6 @@ class AgentPublic(BaseModel):
     access_level: AgentAccessLevel | None = None
     organization_id: UUID | None = None
     is_active: bool
-    is_system: bool = False
     created_by: str | None = None
     owner_user_id: UUID | None = None
     owner_email: str | None = None

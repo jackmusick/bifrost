@@ -104,7 +104,6 @@ async def global_agent(db_session: AsyncSession) -> AsyncGenerator[Agent, None]:
         access_level=AgentAccessLevel.ROLE_BASED,
         organization_id=None,  # Global
         is_active=True,
-                is_system=False,
         knowledge_sources=[],
         system_tools=[],
         created_by="test@example.com",
@@ -166,7 +165,6 @@ async def global_only_agent(db_session: AsyncSession) -> AsyncGenerator[Agent, N
         access_level=AgentAccessLevel.ROLE_BASED,
         organization_id=None,  # Global
         is_active=True,
-                is_system=False,
         knowledge_sources=[],
         system_tools=[],
         created_by="test@example.com",
@@ -286,6 +284,7 @@ class MockMCPContext:
         self.user_name = user_name
         self.enabled_system_tools: list[str] = []
         self.accessible_namespaces: list[str] = []
+        self.session = None
 
 
 # =============================================================================

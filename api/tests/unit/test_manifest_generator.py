@@ -50,7 +50,6 @@ def _mock_agent(name="test_agent", org_id=None, access_level=None):
     agent.organization_id = org_id
     agent.access_level = access_level or AgentAccessLevel.ROLE_BASED
     agent.is_active = True
-    agent.is_system = False
     return agent
 
 
@@ -323,48 +322,3 @@ async def test_generate_manifest_access_levels(mock_db):
     assert manifest.apps[str(app.id)].access_level == "role_based"
 
 
-@pytest.mark.asyncio
-async def test_generate_manifest_excludes_system_agents(mock_db):
-    """System agents should not appear in manifest."""
-    from src.services.manifest_generator import generate_manifest
-
-    user_agent = _mock_agent(name="User Agent")
-    system_agent = _mock_agent(name="Platform Assistant")
-    system_agent.is_system = True
-
-    agent_result = MagicMock()
-    agent_result.scalars.return_value.all.return_value = [user_agent, system_agent]
-
-    empty_result = MagicMock()
-    empty_result.scalars.return_value.all.return_value = []
-
-    mock_db.execute = AsyncMock(side_effect=[
-        empty_result,   # workflows
-        empty_result,   # forms
-        agent_result,   # agents
-        empty_result,   # apps
-        empty_result,   # organizations
-        empty_result,   # roles
-        empty_result,   # workflow_roles
-        empty_result,   # form_roles
-        empty_result,   # agent_roles
-        empty_result,   # app_roles
-        empty_result,   # integrations
-        empty_result,   # config_schemas
-        empty_result,   # oauth_providers
-        empty_result,   # integration_mappings
-        empty_result,   # configs
-        empty_result,   # tables
-        empty_result,   # knowledge_namespace_roles
-        empty_result,   # knowledge_store namespaces
-        empty_result,   # event_sources
-        empty_result,   # schedule_sources
-        empty_result,   # webhook_sources
-        empty_result,   # event_subscriptions
-    ])
-
-    manifest = await generate_manifest(mock_db)
-
-    assert str(user_agent.id) in manifest.agents
-    assert manifest.agents[str(user_agent.id)].name == "User Agent"
-    assert str(system_agent.id) not in manifest.agents

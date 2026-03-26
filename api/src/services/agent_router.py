@@ -93,7 +93,6 @@ class AgentRouter:
         self,
         message: str,
         available_agents: list[Agent] | None = None,
-        is_platform_admin: bool = False,
     ) -> Agent | None:
         """
         Use AI to route a message to the most appropriate agent.
@@ -101,7 +100,6 @@ class AgentRouter:
         Args:
             message: User's message text
             available_agents: Optional list of agents to consider (defaults to all active)
-            is_platform_admin: Whether the user is a platform admin (enables coding agent)
 
         Returns:
             Agent if a good match was found, None to handle directly
@@ -117,13 +115,6 @@ class AgentRouter:
                 .where(Agent.is_active.is_(True))
             )
             available_agents = list(result.scalars().all())
-
-        # For platform admins, include the coding agent (if not already in list)
-        if is_platform_admin:
-            from src.core.system_agents import get_coding_agent
-            coding_agent = await get_coding_agent(self.session)
-            if coding_agent and coding_agent not in available_agents:
-                available_agents.append(coding_agent)
 
         # If no agents available, return None
         if not available_agents:

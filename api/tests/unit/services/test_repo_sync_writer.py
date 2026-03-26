@@ -94,7 +94,6 @@ class TestWriteAgent:
         agent.access_level = None
         agent.organization_id = None
         agent.is_active = True
-        agent.is_system = False
         agent.created_by = None
         agent.owner_user_id = None
         agent.owner_email = None
