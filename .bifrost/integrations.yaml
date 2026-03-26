@@ -448,6 +448,6 @@ integrations:
       required: false
       type: string
     id: f44af0ee-cab3-4359-bd73-7f46f760c632
-    list_entities_data_provider_id: b1b397ad-6f1e-4bc3-908d-f1a5e341d16c
+    list_entities_data_provider_id: 6e0f976b-8d6b-4c70-8286-ee245194f49d
     mappings: []
     name: IT Glue
